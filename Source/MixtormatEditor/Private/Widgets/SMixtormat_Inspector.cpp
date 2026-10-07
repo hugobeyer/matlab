@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Widgets/SMixtormatOverlayPanel.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
@@ -10,62 +11,12 @@
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Images/SImage.h"
-#include "Widgets/SLeafWidget.h"
 
 // The inspector column: every per-selection parameter panel.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
-namespace
-{
-	// The target remains hit-testable at rest; only its corner outline appears on hover.
-	class SMixtormatInspectorResizeCorner : public SLeafWidget
-	{
-	public:
-		SLATE_BEGIN_ARGS(SMixtormatInspectorResizeCorner) : _Right(false), _Bottom(true) {}
-			SLATE_ARGUMENT(bool, Right)
-			SLATE_ARGUMENT(bool, Bottom)
-		SLATE_END_ARGS()
-
-		void Construct(const FArguments& InArgs)
-		{
-			bRight = InArgs._Right;
-			bBottom = InArgs._Bottom;
-		}
-
-		virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override
-		{
-			return FVector2D(MixtormatTokens::InspectorOverlayGripSize);
-		}
-
-		virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
-			const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
-			int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override
-		{
-			if (IsHovered())
-			{
-				const float Thickness = MixtormatTokens::InspectorHairlineThickness;
-				const FVector2f Size(AllottedGeometry.GetLocalSize());
-				const float EdgeX = bRight ? Size.X - Thickness : Thickness;
-				const float EdgeY = bBottom ? Size.Y - Thickness : Thickness;
-				const TArray<FVector2f> Corner = {
-					FVector2f(EdgeX, bBottom ? Thickness : Size.Y - Thickness),
-					FVector2f(EdgeX, EdgeY),
-					FVector2f(bRight ? Thickness : Size.X - Thickness, EdgeY)
-				};
-				FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
-					Corner, ESlateDrawEffect::None,
-					FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
-						* InWidgetStyle.GetColorAndOpacityTint(), true, Thickness);
-			}
-			return LayerId;
-		}
-
-	private:
-		bool bRight = false;
-		bool bBottom = true;
-	};
-}
+// The corner resize target is shared with the left panel and lives in SMixtormatOverlayPanel.cpp.
 
 
 
@@ -406,20 +357,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		LOCTEXT("HeightAmountHint", "How much of this op's height reaches the stack."));
 	const auto MakeResizeCorner = [this](const int32 Index) -> TSharedRef<SWidget>
 	{
-		return SAssignNew(InspectorResizeGrips[Index], SBox)
-			.WidthOverride(MixtormatTokens::InspectorOverlayGripSize)
-			.HeightOverride(MixtormatTokens::InspectorOverlayGripSize)
-			.ToolTipText(LOCTEXT("ResizeInspectorOverlayHint", "Drag to resize the Inspector."))
-			.Visibility_Lambda([this]()
-			{
-				return InspectorPlacement == EInspectorPlacement::Overlay
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[
-				SNew(SMixtormatInspectorResizeCorner)
-				.Right(Index % 2 != 0)
-				.Bottom(Index >= 2)
-			];
+		return MixtormatOverlay::MakeResizeCorner(InspectorOverlay, Index,
+			LOCTEXT("ResizeInspectorOverlayHint", "Drag to resize the Inspector."));
 	};
 	return SNew(SBox)
 		// Docked, the column is the authored width. Overlay, the floating host owns the size, so the
@@ -449,7 +388,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						return FLinearColor::White;
 					}
 					FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
-					Background.A *= MixtormatTokens::InspectorOverlayBackgroundOpacity;
+					Background.A *= MixtormatTokens::OverlayPanelBackgroundOpacity;
 					return Background;
 				})
 			[
@@ -459,7 +398,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, MixtormatTokens::InspectorTopMargin, 2.0f, 3.0f)
 				[
 					// The header doubles as the overlay's drag handle. Docked, nothing reads it.
-					SAssignNew(InspectorIdentityRow, SVerticalBox)
+					SAssignNew(InspectorOverlay.Header, SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						// Thumbnail, name, source, badge -- the same four fields in the same order as
@@ -498,6 +437,32 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							[
 								SNew(SMixtormatBadge)
 								.Text_Lambda([this]() { return GetSelectedBadgeText(); })
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
+							[
+								// Overlay only, and only while the height is explicit: the way back to auto-fit
+								// after a corner drag has frozen the height (D23).
+								SNew(SButton)
+								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+								.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+								.Visibility_Lambda([this]()
+								{
+									return InspectorPlacement == EInspectorPlacement::Overlay && !InspectorOverlay.bHeightAuto
+										? EVisibility::Visible : EVisibility::Collapsed;
+								})
+								.ToolTipText(LOCTEXT("FitInspectorHeightHint", "Fit the Inspector height to its content. Returns to automatic height; width and position stay as they are."))
+								.OnClicked_Lambda([this]()
+								{
+									MixtormatOverlay::FitHeight(InspectorOverlay, InspectorPanel, GetPreviewViewportBounds());
+									return FReply::Handled();
+								})
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("FitInspectorHeight", "Fit"))
+									.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+									.ColorAndOpacity(FSlateColor::UseForeground())
+								]
 							]
 						]
 					]

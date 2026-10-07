@@ -127,9 +127,14 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.Text_Lambda([this]()
 					{
-						return bLeftPanelCollapsed ? LOCTEXT("ShowLayers", "Show Layers") : LOCTEXT("HideLayers", "Hide Layers");
+						switch (LeftPanelPlacement)
+						{
+						case ELeftPanelPlacement::Docked: return LOCTEXT("LayersDocked", "Layers: Docked");
+						case ELeftPanelPlacement::Overlay: return LOCTEXT("LayersOverlay", "Layers: Overlay");
+						default: return LOCTEXT("LayersHidden", "Layers: Hidden");
+						}
 					})
-					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Collapse or expand the Layers / Library panel (L)."))
+					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Cycle Layers placement: Docked → Overlay → Hidden → Docked (L)."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::ToggleLeftPanelCollapsed)
 				]
@@ -361,10 +366,13 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 
 TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 {
-	// Detach the old tree before creating the single replacement inspector on theme refresh.
+	// Detach the old tree before creating the single replacement panels on theme refresh.
 	if (InspectorDockHost.IsValid()) InspectorDockHost->SetContent(SNullWidget::NullWidget);
 	if (InspectorOverlayHost.IsValid()) InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
+	if (LeftPanelDockHost.IsValid()) LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
+	if (LeftPanelOverlayHost.IsValid()) LeftPanelOverlayHost->SetContent(SNullWidget::NullWidget);
 	InspectorPanel = BuildInspectorPanel();
+	LeftPanel = BuildLeftPanel();
 	// Every rebuild runs a full layout pass, and that pass reports slot values back through
 	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
 	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
@@ -388,19 +396,18 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						.Value_Lambda([this]() { return bLeftPanelCollapsed ? 0.01f : ShellLeftFraction; })
 						.OnSlotResized_Lambda([this](float Value)
 						{
-							// Keep expanded widths separate from the temporary collapsed arrangement. The
-							// inspector column is not one of those: while it is away its share is carried by
-							// the centre slot, so this value is still a fraction of the full width and the
-							// Layers column stays resizable in every placement.
+							// Keep expanded widths separate from the temporary collapsed arrangement. While the
+							// left panel is away its share is carried by the centre slot, so this sliver's
+							// value is meaningless and must not become the remembered width.
 							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed)
 							{
 								ShellLeftFraction = Value;
 							}
 						})
 			[
-				SNew(SBox)
+				SAssignNew(LeftPanelDockHost, SBox)
 				.Visibility_Lambda([this]() { return bLeftPanelCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
-				[BuildLeftPanel()]
+				[LeftPanelPlacement == ELeftPanelPlacement::Overlay ? SNullWidget::NullWidget : LeftPanel.ToSharedRef()]
 			]
 			+ SSplitter::Slot()
 						.Value_Lambda([this]()
@@ -414,14 +421,22 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						})
 						.OnSlotResized_Lambda([this](float Value)
 						{
-							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed)
+							if (bSuppressSplitWriteBack)
 							{
-								// Hand the inspector's share back before storing, so the column returns
-								// to its own width rather than the borrowed one.
-								ShellCenterFraction = bInspectorCollapsed
-									? FMath::Max(0.0f, Value - ShellRightFraction)
-									: Value;
+								return;
 							}
+							// Hand every borrowed share back before storing, so the centre column returns to
+							// its own width rather than the one it was carrying for an absent panel -- the
+							// same pattern for the left panel as for the inspector.
+							if (bInspectorCollapsed)
+							{
+								Value = FMath::Max(0.0f, Value - ShellRightFraction);
+							}
+							if (bLeftPanelCollapsed)
+							{
+								Value = FMath::Max(0.0f, Value - (ShellLeftFraction - 0.01f));
+							}
+							ShellCenterFraction = Value;
 						})
 			[
 				SNew(SSplitter)
@@ -521,7 +536,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						.Value_Lambda([this]() { return bInspectorCollapsed ? 0.0f : ShellRightFraction; })
 						.OnSlotResized_Lambda([this](float Value)
 						{
-							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed && !bInspectorCollapsed)
+							// The right slot's value is a fraction of the full width in every placement, so the
+							// docked inspector stays resizable while the left panel floats or is hidden.
+							if (!bSuppressSplitWriteBack && !bInspectorCollapsed)
 							{
 								ShellRightFraction = Value;
 							}
@@ -536,33 +553,130 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 
 TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 {
-	return SNew(SBorder)
-		.Padding(0.0f)
-		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	return SNew(SOverlay)
+		+ SOverlay::Slot()
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
+			SNew(SBorder)
+			.Padding(0.0f)
+			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+			// Docked, the column keeps the ground colour it always had. Floating, it takes the
+			// inspector overlay's square, borderless, translucent surface -- the same tokens.
+			.BorderBackgroundColor_Lambda([this]()
+			{
+				if (LeftPanelPlacement != ELeftPanelPlacement::Overlay)
+				{
+					return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
+				}
+				FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
+				Background.A *= MixtormatTokens::OverlayPanelBackgroundOpacity;
+				return Background;
+			})
 			[
-				SNew(SMixtormatTabStrip)
-				.StretchTabs(true)
-				.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY"), LOCTEXT("GlobalLeftTab", "GLOBAL") })
-				.ToolTips({
-					LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
-					LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces."),
-					LOCTEXT("GlobalLeftTabHint", "Document-wide variables and settings.") })
-				.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
-				.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
+				SNew(SVerticalBox)
+				// Overlay only: the drag header. Docked, the tab strip is the panel's top edge and this
+				// row is collapsed away, so the docked layout is unchanged.
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SBox)
+					.HeightOverride(MixtormatTokens::OverlayPanelHeaderHeight)
+					.Visibility_Lambda([this]()
+					{
+						return LeftPanelPlacement == ELeftPanelPlacement::Overlay
+							? EVisibility::Visible : EVisibility::Collapsed;
+					})
+					[
+						// The header doubles as the floating panel's drag handle. Docked, nothing reads it.
+						SAssignNew(LeftPanelOverlay.Header, SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(SBox)
+							.WidthOverride(MixtormatTokens::OverlayPanelGripSize)
+							.HeightOverride(MixtormatTokens::OverlayPanelGripSize)
+							[
+								SNew(SImage)
+								.Image(MixtormatIcons::Grip())
+								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+									Mixtormat::EMixtormatColorRole::TextMuted)))
+							]
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text_Lambda([this]()
+							{
+								switch (LeftTabIndex)
+								{
+								case 1: return LOCTEXT("LibraryPageLabel", "LIBRARY");
+								case 2: return LOCTEXT("GlobalPageLabel", "GLOBAL");
+								default: return LOCTEXT("LayersPageLabel", "LAYERS");
+								}
+							})
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+								Mixtormat::EMixtormatColorRole::TextMuted)))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
+						[
+							// Overlay only, and only while the height is explicit: the way back to auto-fit
+							// after a corner drag has frozen the height (D23).
+							SNew(SButton)
+							.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+							.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+							.Visibility_Lambda([this]()
+							{
+								return LeftPanelPlacement == ELeftPanelPlacement::Overlay && !LeftPanelOverlay.bHeightAuto
+									? EVisibility::Visible : EVisibility::Collapsed;
+							})
+							.ToolTipText(LOCTEXT("FitLeftPanelHeightHint", "Fit the panel height to its content. Returns to automatic height; width and position stay as they are."))
+							.OnClicked_Lambda([this]()
+							{
+								MixtormatOverlay::FitHeight(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
+								return FReply::Handled();
+							})
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("FitLeftPanelHeight", "Fit"))
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+								.ColorAndOpacity(FSlateColor::UseForeground())
+							]
+						]
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SMixtormatTabStrip)
+					.StretchTabs(true)
+					.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY"), LOCTEXT("GlobalLeftTab", "GLOBAL") })
+					.ToolTips({
+						LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
+						LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces."),
+						LOCTEXT("GlobalLeftTabHint", "Document-wide variables and settings.") })
+					.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
+					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
+				]
+			+ SVerticalBox::Slot().FillHeight(1.0f)
+			[
+				SAssignNew(LeftSwitcher, SWidgetSwitcher)
+					.WidgetIndex(LeftTabIndex)
+					+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
+					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
+					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
+				]
 			]
-		+ SVerticalBox::Slot().FillHeight(1.0f)
-		[
-			SAssignNew(LeftSwitcher, SWidgetSwitcher)
-				.WidgetIndex(LeftTabIndex)
-				+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
-				+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
-				+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
-			]
-		];
+		]
+		// Overlay only; docked resizing remains the splitter's responsibility.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
+		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 0, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
+		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 1, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
+		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 2, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
@@ -671,210 +785,6 @@ FReply SMixtormat::ToggleBottomLibraryCollapsed()
 	bBottomLibraryCollapsed = !bBottomLibraryCollapsed;
 	return FReply::Handled();
 }
-
-FReply SMixtormat::ToggleLeftPanelCollapsed()
-{
-	if (bIsBaking)
-	{
-		return FReply::Handled();
-	}
-	bLeftPanelCollapsed = !bLeftPanelCollapsed;
-	return FReply::Handled();
-}
-
-FReply SMixtormat::ToggleInspectorCollapsed()
-{
-	if (bIsBaking)
-	{
-		return FReply::Handled();
-	}
-	switch (InspectorPlacement)
-		{
-		case EInspectorPlacement::Docked: InspectorPlacement = EInspectorPlacement::Overlay; break;
-		case EInspectorPlacement::Overlay: InspectorPlacement = EInspectorPlacement::Hidden; break;
-		case EInspectorPlacement::Hidden: InspectorPlacement = EInspectorPlacement::Docked; break;
-		}
-		bInspectorCollapsed = InspectorPlacement != EInspectorPlacement::Docked;
-		if (InspectorPlacement == EInspectorPlacement::Overlay)
-		{
-			// First entry places it flush right and full height, where the docked column was; after
-			// that the user's own geometry stands, re-clamped in case the panel has shrunk since.
-			EnsureInspectorOverlayPlaced();
-			ClampInspectorOverlay();
-		}
-		// Remove the old parent first; no rebuild means scroll and expansion state stay intact.
-		InspectorDockHost->SetContent(SNullWidget::NullWidget);
-		InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
-		(InspectorPlacement == EInspectorPlacement::Overlay ? InspectorOverlayHost : InspectorDockHost)
-			->SetContent(InspectorPanel.ToSharedRef());
-		return FReply::Handled();
-	}
-
-	void SMixtormat::EnsureInspectorOverlayPlaced()
-	{
-		if (bInspectorOverlayPlaced)
-		{
-			return;
-		}
-		// The viewport fills the preview panel, so its size is the space the overlay floats in. Read
-		// once: after this the user's own corner stands, and the next P press re-clamps it.
-		const FVector2D Bounds = GetInspectorOverlayBounds();
-		InspectorOverlaySize = FVector2D(
-			MixtormatTokens::InspectorWidth,
-			Bounds.Y > 0.0f ? Bounds.Y : MixtormatTokens::InspectorWidth);
-		InspectorOverlayPosition = FVector2D(FMath::Max(0.0f, Bounds.X - InspectorOverlaySize.X), 0.0f);
-		bInspectorOverlayPlaced = true;
-	}
-
-	FVector2D SMixtormat::GetInspectorOverlayBounds() const
-	{
-		return PreviewViewports.IsValidIndex(0) && PreviewViewports[0].IsValid()
-			? PreviewViewports[0]->GetCachedGeometry().GetLocalSize()
-			: FVector2D::ZeroVector;
-	}
-
-	void SMixtormat::ClampInspectorOverlay()
-	{
-		const FVector2D Bounds = GetInspectorOverlayBounds();
-		if (Bounds.X <= 0.0f || Bounds.Y <= 0.0f)
-		{
-			return;
-		}
-		InspectorOverlaySize = FVector2D(
-			FMath::Clamp(InspectorOverlaySize.X,
-				FMath::Min<double>(MixtormatTokens::InspectorOverlayMinWidth, Bounds.X), Bounds.X),
-			FMath::Clamp(InspectorOverlaySize.Y,
-				FMath::Min<double>(MixtormatTokens::InspectorOverlayMinHeight, Bounds.Y), Bounds.Y));
-		InspectorOverlayPosition = FVector2D(
-			FMath::Clamp(InspectorOverlayPosition.X, 0.0f, FMath::Max(0.0f, Bounds.X - InspectorOverlaySize.X)),
-			FMath::Clamp(InspectorOverlayPosition.Y, 0.0f, FMath::Max(0.0f, Bounds.Y - InspectorOverlaySize.Y)));
-	}
-
-	int32 SMixtormat::HitInspectorResizeCorner(const FVector2D& ScreenPosition) const
-	{
-		for (int32 Index = 0; Index < UE_ARRAY_COUNT(InspectorResizeGrips); ++Index)
-		{
-			const TSharedPtr<SWidget> Grip = InspectorResizeGrips[Index].Pin();
-			if (Grip.IsValid() && Grip->GetCachedGeometry().IsUnderLocation(ScreenPosition))
-			{
-				return Index;
-			}
-		}
-		return INDEX_NONE;
-	}
-
-	FReply SMixtormat::BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, const int32 ResizeCorner)
-	{
-		InspectorOverlayResizeCorner = ResizeCorner;
-		bInspectorOverlayResizing = ResizeCorner != INDEX_NONE;
-		bInspectorOverlayDragging = !bInspectorOverlayResizing;
-		// Sizes and positions are Slate-local units, including when Windows uses display scaling.
-		InspectorOverlayDragOrigin = PreviewViewports[0]->GetCachedGeometry().AbsoluteToLocal(ScreenPosition);
-		InspectorOverlayPositionAtDragStart = InspectorOverlayPosition;
-		InspectorOverlaySizeAtDragStart = InspectorOverlaySize;
-		return FReply::Handled().CaptureMouse(SharedThis(this));
-	}
-
-	void SMixtormat::UpdateInspectorOverlayInteraction(const FVector2D& ScreenPosition)
-	{
-		const FVector2D Delta = PreviewViewports[0]->GetCachedGeometry().AbsoluteToLocal(ScreenPosition)
-			- InspectorOverlayDragOrigin;
-		if (bInspectorOverlayResizing)
-		{
-			const bool bLeft = InspectorOverlayResizeCorner % 2 == 0;
-			const bool bTop = InspectorOverlayResizeCorner < 2;
-			const FVector2D Bounds = GetInspectorOverlayBounds();
-			// The opposite corner stays fixed, including at the minimum size and viewport edges.
-			const FVector2D Anchor = InspectorOverlayPositionAtDragStart + FVector2D(
-				bLeft ? InspectorOverlaySizeAtDragStart.X : 0.0f,
-				bTop ? InspectorOverlaySizeAtDragStart.Y : 0.0f);
-			const FVector2D Maximum(
-				FMath::Max(0.0f, bLeft ? Anchor.X : Bounds.X - Anchor.X),
-				FMath::Max(0.0f, bTop ? Anchor.Y : Bounds.Y - Anchor.Y));
-			InspectorOverlaySize = FVector2D(
-				FMath::Clamp(InspectorOverlaySizeAtDragStart.X + (bLeft ? -Delta.X : Delta.X),
-					FMath::Min<double>(MixtormatTokens::InspectorOverlayMinWidth, Maximum.X), Maximum.X),
-				FMath::Clamp(InspectorOverlaySizeAtDragStart.Y + (bTop ? -Delta.Y : Delta.Y),
-					FMath::Min<double>(MixtormatTokens::InspectorOverlayMinHeight, Maximum.Y), Maximum.Y));
-			InspectorOverlayPosition = Anchor - FVector2D(
-				bLeft ? InspectorOverlaySize.X : 0.0f,
-				bTop ? InspectorOverlaySize.Y : 0.0f);
-		}
-		else
-		{
-			InspectorOverlayPosition = InspectorOverlayPositionAtDragStart + Delta;
-		}
-		ClampInspectorOverlay();
-	}
-
-	FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-	{
-		if (InspectorPlacement == EInspectorPlacement::Overlay && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-		{
-			const FVector2D ScreenPosition = MouseEvent.GetScreenSpacePosition();
-			// Top corner resize targets take priority over the header's drag area.
-			if (const int32 Corner = HitInspectorResizeCorner(ScreenPosition); Corner != INDEX_NONE)
-			{
-				return BeginInspectorOverlayInteraction(ScreenPosition, Corner);
-			}
-			if (const TSharedPtr<SWidget> Header = InspectorIdentityRow.Pin();
-				Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
-			{
-				return BeginInspectorOverlayInteraction(ScreenPosition);
-			}
-		}
-		return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
-	}
-
-	FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-	{
-		if (!bInspectorOverlayDragging && !bInspectorOverlayResizing)
-		{
-			return SCompoundWidget::OnMouseMove(MyGeometry, MouseEvent);
-		}
-		UpdateInspectorOverlayInteraction(MouseEvent.GetScreenSpacePosition());
-		return FReply::Handled();
-	}
-
-	FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-	{
-		if (!bInspectorOverlayDragging && !bInspectorOverlayResizing)
-		{
-			return SCompoundWidget::OnMouseButtonUp(MyGeometry, MouseEvent);
-		}
-		bInspectorOverlayDragging = false;
-		bInspectorOverlayResizing = false;
-		return FReply::Handled().ReleaseMouseCapture();
-	}
-
-	void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
-	{
-		// Alt-tab or a modal mid-drag: drop the interaction rather than follow a mouse that is gone.
-		bInspectorOverlayDragging = false;
-		bInspectorOverlayResizing = false;
-		SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
-	}
-
-	FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const
-	{
-		if (InspectorPlacement == EInspectorPlacement::Overlay)
-		{
-			const FVector2D ScreenPosition = CursorEvent.GetScreenSpacePosition();
-			const int32 Corner = bInspectorOverlayResizing
-				? InspectorOverlayResizeCorner : HitInspectorResizeCorner(ScreenPosition);
-			if (Corner != INDEX_NONE)
-			{
-				return FCursorReply::Cursor(Corner == 0 || Corner == 3
-					? EMouseCursor::ResizeSouthEast : EMouseCursor::ResizeSouthWest);
-			}
-			if (const TSharedPtr<SWidget> Header = InspectorIdentityRow.Pin();
-				Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
-			{
-				return FCursorReply::Cursor(EMouseCursor::GrabHand);
-			}
-		}
-		return SCompoundWidget::OnCursorQuery(MyGeometry, CursorEvent);
-	}
 
 
 #undef LOCTEXT_NAMESPACE

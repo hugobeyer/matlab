@@ -624,12 +624,21 @@ namespace MixtormatTokens
 	inline float SplitterHitSize = 6.0f;
 	inline float LayerStackWidth = 423.0f;
 	inline float InspectorWidth = 520.0f;
-	// The floating overlay's corner grip, and the floor a drag can shrink it to. The grip is small
-	// enough to stay out of the content's way and still be a target.
-	inline float InspectorOverlayGripSize = 14.0f;
-		inline float InspectorOverlayBackgroundOpacity = 0.9f;
-	inline float InspectorOverlayMinWidth = 260.0f;
-	inline float InspectorOverlayMinHeight = 160.0f;
+	// ---- Floating panels ---------------------------------------------------------------------
+	// The Inspector and the left panel float the same way, so these describe the behaviour both
+	// share: the corner grip, the floor a drag can shrink a panel to, the translucency of the
+	// floating surface, and the first-entry inset from the viewport edges.
+	// The grip is small enough to stay out of the content's way and still be a target.
+	inline float OverlayPanelGripSize = 14.0f;
+	inline float OverlayPanelBackgroundOpacity = 0.9f;
+	inline float OverlayPanelMinWidth = 260.0f;
+	inline float OverlayPanelMinHeight = 160.0f;
+	// Its own token rather than PreviewLayout.OverlayInset: that one spaces the viewport toolbars,
+	// and a floating panel must not move when a toolbar's inset is retuned.
+	inline float OverlayPanelInset = 8.0f;
+	// The floating left panel's drag header: the row above the tab strip carrying the grip, the
+	// page name and the Fit height action. Overlay only.
+	inline float OverlayPanelHeaderHeight = 20.0f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;

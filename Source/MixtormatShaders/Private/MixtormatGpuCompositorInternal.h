@@ -794,7 +794,7 @@ namespace MixtormatGpuCompositor
 	};
 
 
-	// Strata Carver settings: the beds, their profile and the bend.
+	// Strata Carver settings: ordered interfaces, hardness, shelves and slab joints.
 	struct FStrataCarverRenderData
 	{
 		uint32 Seed = 3;
@@ -804,10 +804,14 @@ namespace MixtormatGpuCompositor
 		float ThicknessVariation = 0.5f;
 		float HeightVariation = 0.5f;
 		float Verticality = 0.7f;
-		float RampShape = 0.0f;
+		float LedgeWidth = 0.65f;
+		float HardnessContrast = 0.75f;
+		float SoftRecession = 0.65f;
 		float Bend = 0.03f;
 		int32 BendScale = 2;
-		float Breakup = 0.1f;
+		float Breakup = 0.35f;
+		int32 JointScale = 4;
+		float JointWidth = 0.035f;
 		float HeightFollow = 0.0f;
 		float Lamination = 0.25f;
 		float CrossBedding = 1.0f;

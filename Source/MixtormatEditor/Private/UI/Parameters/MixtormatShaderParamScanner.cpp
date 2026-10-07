@@ -155,6 +155,20 @@ namespace MixtormatShaderParamScanner
 		const FString Root = FPaths::Combine(PluginRoot, TEXT("Shaders/Private"));
 		TArray<FString> Files;
 		IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.usf"), true, false);
+
+		// Generator payload shaders carry Generator-owned parameter names. Generator Flow and the
+		// height modules stay Effect-owned: their parameters live in EMixtormatEffectType. The
+		// composite is the one Layer-owned shader.
+		static const TCHAR* const GeneratorShaders[] =
+		{
+			TEXT("MixtormatStrataCarver.usf"),
+			TEXT("MixtormatCracks.usf"),
+			TEXT("MixtormatRockFormation.usf"),
+			TEXT("MixtormatPebbles.usf"),
+			TEXT("MixtormatCliffStrata.usf"),
+			TEXT("MixtormatNoise.usf"),
+		};
+
 		for (const FString& File : Files)
 		{
 			FString Source;
@@ -178,9 +192,18 @@ namespace MixtormatShaderParamScanner
 				const FString RelativeFile = File.RightChop(PluginRoot.Len() + 1);
 				Tag.ShaderFile = RelativeFile;
 				const FString ShaderName = FPaths::GetCleanFilename(RelativeFile);
+				bool bGeneratorShader = false;
+				for (const TCHAR* GeneratorShader : GeneratorShaders)
+				{
+					if (ShaderName == GeneratorShader)
+					{
+						bGeneratorShader = true;
+						break;
+					}
+				}
 				Tag.Owner = ShaderName == TEXT("MixtormatComposite.usf")
 					? EMixtormatParameterOwnerType::Layer
-					: (ShaderName.StartsWith(TEXT("MixtormatCracks"))
+					: (bGeneratorShader
 						? EMixtormatParameterOwnerType::Generator
 						: EMixtormatParameterOwnerType::Effect);
 

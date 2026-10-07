@@ -49,26 +49,23 @@ enum class EMixtormatPebbleDirection : uint8
 	Axis UMETA(DisplayName = "Axis Biased")
 };
 
-// Strata Carver: a stack of beds, each weathered into a dip-slope ramp and a steeper face where
-// the next bed starts. Bent by a low-frequency field rather than a domain warp, so beds keep their
-// thickness. Closed form, so it costs one pass. Publishes bed IDs, the position inside each bed
-// and a per-bed random.
+// Strata Carver: coherent folded interfaces, hard shelves, recessed soft beds and joint-cut
+// slabs. Interface offsets are bounded so beds cannot cross. One field pass publishes signed
+// relief, bed IDs, position inside each bed and stable per-bed random.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 {
 	GENERATED_BODY()
 
-	
-	// Generator height contract: zero is neutral. Normalize maps the largest absolute
-	// excursion to 1 without moving zero; Height Scale is applied after normalization and may
-	// exceed -1..1.
+	// Generator height contract: zero is neutral. Shared normalization preserves zero;
+	// Height Scale is applied afterwards.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output")
 	bool bStrataNormalizeHeight = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float StrataHeightScale = 1.0f;
 
-// Draws every per-bed random: thickness, base, rise and cross-bedding, and the bend field.
+	// Draws interfaces, bed hardness, slab joints, cross-bedding and the shared fold.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0"))
 	int32 Seed = 3;
 
@@ -82,45 +79,62 @@ struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1.0", UIMax = "64.0"))
 	float StrataFrequency = 6.0f;
 
-	// Direction of the bedding, in degrees. Snaps to the nearest angle that tiles; 180 turns the
-	// faces the other way.
+	// Direction of the bedding, in degrees. Snaps to the nearest tileable lattice angle.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "360.0"))
 	float StrataRotation = 0.0f;
 
-	// 0 is evenly spaced beds; 1 lets thin and thick beds sit side by side.
+	// Varies interface spacing and lateral thickness. The shader saturates to keep beds ordered.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float ThicknessVariation = 0.5f;
 
-	// 0 gives every bed the same rise from the same base; 1 varies both, so some beds stand tall
-	// and some sit low.
+	// Per-bed shelf elevation variation, independent of the hard/soft material contrast.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float HeightVariation = 0.5f;
 
-	// How steep each bed's face is. 0 is a symmetric ridge, 1 a sheer wall.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
+	// Sharpens and narrows the shoulders between a shelf and its shared bed seams.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (DisplayName = "Edge Sharpness", UIMin = "0.0", UIMax = "1.0"))
 	float Verticality = 0.7f;
 
-	// The dip slope's profile. -1 hollows it, 0 is straight, 1 bulges it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "-1.0", UIMax = "1.0"))
+	// Serialized data only. The ramp algorithm has been replaced, not retained as another mode.
+	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Strata now uses geological shelves; use LedgeWidth."))
 	float RampShape = 0.0f;
 
-	// How far the beds bend, in tile widths, and how many bends cross the tile.
+	// Wider ledges leave more of each bed as a planar shelf. Hardness also affects shoulder width.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float LedgeWidth = 0.65f;
+
+	// 0 gives all beds equal hardness; 1 gives the full per-bed hard/soft contrast.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float HardnessContrast = 0.75f;
+
+	// Recesses soft beds and shared seams without changing their IDs or spacing.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float SoftRecession = 0.65f;
+
+	// Shared fold amplitude in tile widths, and its integer frequency along the bedding.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.25"))
 	float Bend = 0.03f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "8"))
 	int32 BendScale = 2;
 
-	// How ragged each face is, in beds.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.5"))
-	float Breakup = 0.1f;
+	// Joint-cut depth, rim chipping and planar slab displacement. Zero leaves continuous shelves.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (DisplayName = "Slab Breakup", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Breakup = 0.35f;
 
-	// How many beds the layer's own height shifts the bedding by. Above 0 the faces follow the
-	// contours of the surface underneath.
+	// Slabs per primitive strike repeat. Integer counts keep the joint network tileable.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "16"))
+	int32 JointScale = 4;
+
+	// Joint width as a fraction of nominal slab spacing. Zero closes cuts but retains slab relief.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.25", Delta = "0.005"))
+	float JointWidth = 0.035f;
+
+	// How many beds the upstream composite height shifts the bedding by; zero ignores it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "16.0"))
 	float HeightFollow = 0.0f;
 
-	// Fine laminae inside each bed, and how far each bed tilts them off the bedding plane.
+	// Fine laminae, stronger in soft beds and filtered by pixel footprint; cross-bedding tilts them.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float Lamination = 0.25f;
 

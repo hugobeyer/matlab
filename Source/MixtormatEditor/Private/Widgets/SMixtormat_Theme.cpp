@@ -208,6 +208,11 @@ EActiveTimerReturnType SMixtormat::ApplyPendingTheme(double CurrentTime, float D
 			int32 GroupIndex = 0;
 			TransferLayoutState(ChildSlot.GetWidget(), LayoutState, false, ScrollIndex, GroupIndex);
 
+			// A gesture cannot survive the rebuild: the header and grips it was hit-testing are
+			// about to be replaced. The capture is released on the next mouse-up.
+			MixtormatOverlay::CancelInteraction(InspectorOverlay);
+			MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
+
 			// Retain SMixtormat, its recipe/history and its existing viewport. Only layout widgets go
 			// away. In-place style refresh also keeps raw brush/style references in open popups valid.
 			ChildSlot[SNullWidget::NullWidget];

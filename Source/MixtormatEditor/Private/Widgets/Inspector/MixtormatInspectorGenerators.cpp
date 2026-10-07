@@ -202,6 +202,7 @@ TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildC
 TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 {
 	const auto Carver = [this]() { return GetSelectedStrataCarver(); };
+	const FMixtormatStrataCarver Defaults;
 
 	const auto Slider = [this, Carver](
 		const FText& Label,
@@ -251,42 +252,63 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 			LOCTEXT("StrataOutputScaleHint", "Scales the signed generator height after normalization.")));
 	}
 
-	AddSliderRow(Panel, SliderInt(
-		LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 9999.0, 3,
-		LOCTEXT("StrataSeedHint", "Draws every per-bed random and the bend.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataFrequency", "Strata Size"), &FMixtormatStrataCarver::StrataFrequency, 1.0, 64.0, 6.0, 1.0,
-			LOCTEXT("StrataFrequencyHint", "Beds across the tile. Also how many distinct beds are drawn before they repeat.")),
-		Slider(LOCTEXT("StrataDepth", "Depth"), &FMixtormatStrataCarver::Depth, 0.0, 1.0, 0.25, 0.001,
-			LOCTEXT("StrataDepthHint", "Height relief contributed by the strata."))));
-	AddSliderRow(Panel, Slider(
-		LOCTEXT("StrataRotation", "Direction"), &FMixtormatStrataCarver::StrataRotation, 0.0, 360.0, 0.0, 0.1,
-		LOCTEXT("StrataRotationHint", "Direction of the bedding. Snaps to the nearest angle that tiles; 180 turns the faces the other way.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataThickness", "Thickness Variation"), &FMixtormatStrataCarver::ThicknessVariation, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("StrataThicknessHint", "0 is evenly spaced beds; 1 lets thin and thick beds sit side by side.")),
-		Slider(LOCTEXT("StrataHeightVariation", "Height Variation"), &FMixtormatStrataCarver::HeightVariation, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("StrataHeightVariationHint", "0 gives every bed the same rise from the same base; 1 varies both."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataVerticality", "Verticality"), &FMixtormatStrataCarver::Verticality, 0.0, 1.0, 0.7, 0.01,
-			LOCTEXT("StrataVerticalityHint", "How steep each bed's face is. 0 is a symmetric ridge, 1 a sheer wall.")),
-		Slider(LOCTEXT("StrataRampShape", "Ramp Shape"), &FMixtormatStrataCarver::RampShape, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("StrataRampShapeHint", "The dip slope's profile. -1 hollows it, 0 is straight, 1 bulges it."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataBend", "Bend"), &FMixtormatStrataCarver::Bend, 0.0, 0.25, 0.03, 0.001,
-			LOCTEXT("StrataBendHint", "How far the beds bend, in tile widths. Beds keep their thickness.")),
-		SliderInt(LOCTEXT("StrataBendScale", "Bend Scale"), &FMixtormatStrataCarver::BendScale, 1.0, 8.0, 2,
-			LOCTEXT("StrataBendScaleHint", "How many bends cross the tile."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataBreakup", "Breakup"), &FMixtormatStrataCarver::Breakup, 0.0, 0.5, 0.1, 0.01,
-			LOCTEXT("StrataBreakupHint", "How ragged each face is, in beds.")),
-		Slider(LOCTEXT("StrataHeightFollow", "Height Follow"), &FMixtormatStrataCarver::HeightFollow, 0.0, 16.0, 0.0, 0.01,
-			LOCTEXT("StrataHeightFollowHint", "How many beds the layer's own height shifts the bedding by. Above 0 the faces follow the contours underneath."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("StrataLamination", "Lamination"), &FMixtormatStrataCarver::Lamination, 0.0, 1.0, 0.25, 0.01,
-			LOCTEXT("StrataLaminationHint", "Fine laminae inside each bed.")),
-		Slider(LOCTEXT("StrataCrossBedding", "Cross Bedding"), &FMixtormatStrataCarver::CrossBedding, 0.0, 3.0, 1.0, 0.01,
-			LOCTEXT("StrataCrossBeddingHint", "How far each bed tilts its laminae off the bedding plane."))));
+	{
+		const TSharedRef<SVerticalBox> Bedding = AddCard(Panel, LOCTEXT("StrataBedding", "BEDDING"));
+		AddSliderRow(Bedding, SliderInt(
+			LOCTEXT("StrataSeed", "Seed"), &FMixtormatStrataCarver::Seed, 0.0, 9999.0, Defaults.Seed,
+			LOCTEXT("StrataSeedHint", "Draws bed interfaces, hardness, folds and slab joints.")));
+		AddSliderRow(Bedding, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataFrequency", "Bed Count"), &FMixtormatStrataCarver::StrataFrequency, 1.0, 64.0, Defaults.StrataFrequency, 1.0,
+				LOCTEXT("StrataFrequencyHint", "Requested beds across the tile. Count and direction resolve together to a tileable lattice.")),
+			Slider(LOCTEXT("StrataDepth", "Relief Depth"), &FMixtormatStrataCarver::Depth, 0.0, 1.0, Defaults.Depth, 0.001,
+				LOCTEXT("StrataDepthHint", "Scales the signed geological relief before shared height normalization."))));
+		AddSliderRow(Bedding, Slider(
+			LOCTEXT("StrataRotation", "Direction"), &FMixtormatStrataCarver::StrataRotation, 0.0, 360.0, Defaults.StrataRotation, 0.1,
+			LOCTEXT("StrataRotationHint", "Bedding orientation. Snaps to the nearest tileable lattice angle; 0 gives horizontal beds.")));
+		AddSliderRow(Bedding, Slider(
+			LOCTEXT("StrataThickness", "Thickness Variation"), &FMixtormatStrataCarver::ThicknessVariation, 0.0, 1.0, Defaults.ThicknessVariation, 0.01,
+			LOCTEXT("StrataThicknessHint", "Varies bed thickness along the shelves. Interfaces stay ordered and never cross.")));
+		AddSliderRow(Bedding, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataBend", "Fold Strength"), &FMixtormatStrataCarver::Bend, 0.0, 0.25, Defaults.Bend, 0.001,
+				LOCTEXT("StrataBendHint", "Shared fold amplitude in tile widths. All beds follow the same fold.")),
+			SliderInt(LOCTEXT("StrataBendScale", "Fold Scale"), &FMixtormatStrataCarver::BendScale, 1.0, 8.0, Defaults.BendScale,
+				LOCTEXT("StrataBendScaleHint", "Integer fold frequency along the primitive bedding strike; also sets lateral thickness variation scale."))));
+		AddSliderRow(Bedding, Slider(
+			LOCTEXT("StrataHeightFollow", "Height Follow"), &FMixtormatStrataCarver::HeightFollow, 0.0, 16.0, Defaults.HeightFollow, 0.01,
+			LOCTEXT("StrataHeightFollowHint", "Shifts bedding with the upstream composite height. 0 makes an independent geological field.")));
+	}
+	{
+		const TSharedRef<SVerticalBox> Shelves = AddCard(Panel, LOCTEXT("StrataShelves", "SHELVES"));
+		AddSliderRow(Shelves, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataLedgeWidth", "Ledge Width"), &FMixtormatStrataCarver::LedgeWidth, 0.0, 1.0, Defaults.LedgeWidth, 0.01,
+				LOCTEXT("StrataLedgeWidthHint", "How much of each bed remains a broad planar shelf rather than an edge shoulder.")),
+			Slider(LOCTEXT("StrataVerticality", "Edge Sharpness"), &FMixtormatStrataCarver::Verticality, 0.0, 1.0, Defaults.Verticality, 0.01,
+				LOCTEXT("StrataVerticalityHint", "0 rounds shelf shoulders; 1 narrows them into sharper planar faces."))));
+		AddSliderRow(Shelves, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataHardnessContrast", "Hardness Contrast"), &FMixtormatStrataCarver::HardnessContrast, 0.0, 1.0, Defaults.HardnessContrast, 0.01,
+				LOCTEXT("StrataHardnessContrastHint", "Varies material hardness by bed. Hard beds stand proud with wider shelves; soft beds recede.")),
+			Slider(LOCTEXT("StrataSoftRecession", "Soft Recession"), &FMixtormatStrataCarver::SoftRecession, 0.0, 1.0, Defaults.SoftRecession, 0.01,
+				LOCTEXT("StrataSoftRecessionHint", "Deepens softer beds and shared seams without moving interfaces or changing bed IDs."))));
+		AddSliderRow(Shelves, Slider(
+			LOCTEXT("StrataHeightVariation", "Height Variation"), &FMixtormatStrataCarver::HeightVariation, 0.0, 1.0, Defaults.HeightVariation, 0.01,
+			LOCTEXT("StrataHeightVariationHint", "Varies whole shelf elevations independently of hardness.")));
+	}
+	{
+		const TSharedRef<SVerticalBox> Slabs = AddCard(Panel, LOCTEXT("StrataSlabs", "SLABS & LAMINAE"));
+		AddSliderRow(Slabs, Slider(
+			LOCTEXT("StrataBreakup", "Slab Breakup"), &FMixtormatStrataCarver::Breakup, 0.0, 1.0, Defaults.Breakup, 0.01,
+			LOCTEXT("StrataBreakupHint", "Joint cuts, wedge-shaped rim chips and small slab offsets. 0 leaves continuous shelves.")));
+		AddSliderRow(Slabs, MixtormatRow::MakePair(
+			SliderInt(LOCTEXT("StrataJointScale", "Joint Count"), &FMixtormatStrataCarver::JointScale, 1.0, 16.0, Defaults.JointScale,
+				LOCTEXT("StrataJointScaleHint", "Slabs per primitive strike repeat. Neighboring beds stagger their joints.")),
+			Slider(LOCTEXT("StrataJointWidth", "Joint Width"), &FMixtormatStrataCarver::JointWidth, 0.0, 0.25, Defaults.JointWidth, 0.005,
+				LOCTEXT("StrataJointWidthHint", "Width as a fraction of nominal slab spacing. 0 closes cuts while retaining slab relief."))));
+		AddSliderRow(Slabs, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataLamination", "Lamination"), &FMixtormatStrataCarver::Lamination, 0.0, 1.0, Defaults.Lamination, 0.01,
+				LOCTEXT("StrataLaminationHint", "Fine grooves inside beds, stronger in soft material. Subpixel laminae fade out.")),
+			Slider(LOCTEXT("StrataCrossBedding", "Cross Bedding"), &FMixtormatStrataCarver::CrossBedding, 0.0, 3.0, Defaults.CrossBedding, 0.01,
+				LOCTEXT("StrataCrossBeddingHint", "Per-bed integer tilt of the laminae along the strike; keeps the field tileable."))));
+	}
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedStrataCarver() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })

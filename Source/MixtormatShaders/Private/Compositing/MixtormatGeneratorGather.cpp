@@ -32,6 +32,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	case EMixtormatGeneratorType::StrataCarver:
 	{
 		const FMixtormatStrataCarver& Carver = Generator.StrataCarver;
+		const FMixtormatStrataCarver Defaults;
 		FStrataCarverRenderData& Out = ChildData.Generator.StrataCarver;
 		// Non-finite falls back to the default; ranges are authored in the tool.
 		const auto Finite = [](const float Value, const float Fallback)
@@ -39,23 +40,27 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			return FMath::IsFinite(Value) ? Value : Fallback;
 		};
 		ChildData.Generator.bNormalizeHeight = Carver.bStrataNormalizeHeight;
-		ChildData.Generator.HeightScale = Finite(Carver.StrataHeightScale, 1.0f);
+		ChildData.Generator.HeightScale = Finite(Carver.StrataHeightScale, Defaults.StrataHeightScale);
 		Out.Seed = static_cast<uint32>(Carver.Seed);
-		Out.Depth = Finite(Carver.Depth, 0.25f);
-		Out.StrataFrequency = Finite(Carver.StrataFrequency, 6.0f);
-		Out.StrataRotation = Finite(Carver.StrataRotation, 0.0f);
-		Out.ThicknessVariation = Finite(Carver.ThicknessVariation, 0.5f);
-		Out.HeightVariation = Finite(Carver.HeightVariation, 0.5f);
-		Out.Verticality = Finite(Carver.Verticality, 0.7f);
-		Out.RampShape = Finite(Carver.RampShape, 0.0f);
-		Out.Bend = Finite(Carver.Bend, 0.03f);
+		Out.Depth = Finite(Carver.Depth, Defaults.Depth);
+		Out.StrataFrequency = Finite(Carver.StrataFrequency, Defaults.StrataFrequency);
+		Out.StrataRotation = Finite(Carver.StrataRotation, Defaults.StrataRotation);
+		Out.ThicknessVariation = Finite(Carver.ThicknessVariation, Defaults.ThicknessVariation);
+		Out.HeightVariation = Finite(Carver.HeightVariation, Defaults.HeightVariation);
+		Out.Verticality = Finite(Carver.Verticality, Defaults.Verticality);
+		Out.LedgeWidth = Finite(Carver.LedgeWidth, Defaults.LedgeWidth);
+		Out.HardnessContrast = Finite(Carver.HardnessContrast, Defaults.HardnessContrast);
+		Out.SoftRecession = Finite(Carver.SoftRecession, Defaults.SoftRecession);
+		Out.Bend = Finite(Carver.Bend, Defaults.Bend);
 		Out.BendScale = Carver.BendScale;
-		Out.Breakup = Finite(Carver.Breakup, 0.1f);
-		Out.HeightFollow = Finite(Carver.HeightFollow, 0.0f);
-		Out.Lamination = Finite(Carver.Lamination, 0.25f);
-		Out.CrossBedding = Finite(Carver.CrossBedding, 1.0f);
-		Out.MaskInfluence = Finite(Carver.MaskInfluence, 1.0f);
-		Out.IDInfluence = Finite(Carver.IDInfluence, 0.0f);
+		Out.Breakup = Finite(Carver.Breakup, Defaults.Breakup);
+		Out.JointScale = Carver.JointScale;
+		Out.JointWidth = Finite(Carver.JointWidth, Defaults.JointWidth);
+		Out.HeightFollow = Finite(Carver.HeightFollow, Defaults.HeightFollow);
+		Out.Lamination = Finite(Carver.Lamination, Defaults.Lamination);
+		Out.CrossBedding = Finite(Carver.CrossBedding, Defaults.CrossBedding);
+		Out.MaskInfluence = Finite(Carver.MaskInfluence, Defaults.MaskInfluence);
+		Out.IDInfluence = Finite(Carver.IDInfluence, Defaults.IDInfluence);
 		break;
 	}
 	case EMixtormatGeneratorType::Cracks:

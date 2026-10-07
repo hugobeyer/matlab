@@ -7,6 +7,7 @@
 #include "MixtormatParameterDefinition.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Widgets/SMixtormatPreviewViewport.h"
+#include "Widgets/SMixtormatOverlayPanel.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "Widgets/MixtormatChildAddress.h"
 #include "UI/Rows/SMixtormatRow.h"
@@ -154,6 +155,9 @@ public:
 	// The floating inspector's drag and resize. Unhandled unless Overlay is active and the press
 	// landed on the panel's own chrome, so nothing else in the workspace changes.
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	// Tunnel phase: a press inside a floating panel brings it to the front before the press is
+	// routed to the control under it (D25).
+	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
@@ -1395,13 +1399,14 @@ private:
 	FReply ToggleBottomLibraryCollapsed();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
-	// Overlay placement: geometry, clamping, and the drag/resize interaction behind it.
-	void EnsureInspectorOverlayPlaced();
-	FVector2D GetInspectorOverlayBounds() const;
-	void ClampInspectorOverlay();
-	int32 HitInspectorResizeCorner(const FVector2D& ScreenPosition) const;
-		FReply BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, int32 ResizeCorner = INDEX_NONE);
-	void UpdateInspectorOverlayInteraction(const FVector2D& ScreenPosition);
+	// Floating panels: the shared stack both panels float in, and the fronting that decides which
+	// one a press lands on. Geometry, clamping, auto-fit height and the drag/resize interaction
+	// are shared free functions (SMixtormatOverlayPanel.h).
+	FVector2D GetPreviewViewportBounds() const;
+	FVector2D GetPreviewViewportLocalPosition(const FVector2D& ScreenPosition) const;
+	TSharedRef<SWidget> BuildFloatingPanelStack();
+	void BringFloatingPanelToFront(bool bLeftPanel);
+	void ApplyFloatingPanelOrder();
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -1492,26 +1497,29 @@ private:
 	float ShellRightFraction = 0.21f;
 	bool bLeftPanelCollapsed = false;
 	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
+	enum class ELeftPanelPlacement : uint8 { Docked, Overlay, Hidden };
 	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
+	ELeftPanelPlacement LeftPanelPlacement = ELeftPanelPlacement::Docked;
 	bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
 	TSharedPtr<SWidget> InspectorPanel;
+	TSharedPtr<SWidget> LeftPanel;
 	TSharedPtr<SBox> InspectorDockHost;
 	TSharedPtr<SBox> InspectorOverlayHost;
-	// Overlay geometry (prototype): the floating inspector's top-left corner in preview pixels and
-	// an explicit size, so it can be dragged and resized. Both live here rather than on the widgets
-	// so a theme reconstruction preserves them. Unplaced until the overlay is first entered.
-	FVector2D InspectorOverlayPosition = FVector2D::ZeroVector;
-	FVector2D InspectorOverlaySize = FVector2D::ZeroVector;
-	bool bInspectorOverlayPlaced = false;
-	bool bInspectorOverlayDragging = false;
-	bool bInspectorOverlayResizing = false;
-		int32 InspectorOverlayResizeCorner = INDEX_NONE;
-	FVector2D InspectorOverlayDragOrigin = FVector2D::ZeroVector;
-	FVector2D InspectorOverlayPositionAtDragStart = FVector2D::ZeroVector;
-	FVector2D InspectorOverlaySizeAtDragStart = FVector2D::ZeroVector;
-	// Corner order: top-left, top-right, bottom-left, bottom-right.
-	TWeakPtr<SWidget> InspectorIdentityRow;
-	TWeakPtr<SWidget> InspectorResizeGrips[4];
+	TSharedPtr<SBox> LeftPanelDockHost;
+	TSharedPtr<SBox> LeftPanelOverlayHost;
+	// The floating panels' geometry and gesture state. Both live here rather than on the widgets
+	// so a theme reconstruction preserves them; the placement, clamping and drag/resize code is
+	// shared (SMixtormatOverlayPanel.h).
+	FMixtormatOverlayPanelState InspectorOverlay;
+	FMixtormatOverlayPanelState LeftPanelOverlay;
+	// The two floating panels share one stack of two slots; the front slot paints and hit-tests
+	// last. A press inside a panel brings it forward on the next tick (D25).
+	TSharedPtr<SBox> FloatingPanelBackSlot;
+	TSharedPtr<SBox> FloatingPanelFrontSlot;
+	TSharedPtr<SWidget> InspectorOverlayFrame;
+	TSharedPtr<SWidget> LeftPanelOverlayFrame;
+	bool bLeftPanelInFront = false;
+	bool bAppliedLeftPanelInFront = false;
 	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
 	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
 	// derived from this one, so the pair can never disagree or renormalise against each other.

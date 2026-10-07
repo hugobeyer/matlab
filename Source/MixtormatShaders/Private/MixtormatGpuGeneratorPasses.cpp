@@ -82,8 +82,8 @@ namespace
 	}
 }
 
-// Strata beds as ramps and faces, in closed form. Writes the bed IDs, the
-// position inside each bed and a per-bed random alongside the height.
+// Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
+// position inside each bed and per-bed random alongside the signed height.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
 {
 public:
@@ -105,10 +105,14 @@ public:
 		SHADER_PARAMETER(float, ThicknessVariation)
 		SHADER_PARAMETER(float, HeightVariation)
 		SHADER_PARAMETER(float, Verticality)
-		SHADER_PARAMETER(float, RampShape)
+		SHADER_PARAMETER(float, LedgeWidth)
+		SHADER_PARAMETER(float, HardnessContrast)
+		SHADER_PARAMETER(float, SoftRecession)
 		SHADER_PARAMETER(float, Bend)
 		SHADER_PARAMETER(int32, BendScale)
 		SHADER_PARAMETER(float, Breakup)
+		SHADER_PARAMETER(int32, JointScale)
+		SHADER_PARAMETER(float, JointWidth)
 		SHADER_PARAMETER(float, HeightFollow)
 		SHADER_PARAMETER(float, Lamination)
 		SHADER_PARAMETER(float, CrossBedding)
@@ -977,8 +981,7 @@ namespace
 
 	FStrataLattice MakeStrataLattice(const float Frequency, const float RotationDegrees)
 	{
-		// Beds lie across the direction (sin, cos): rotation 0 is horizontal beds, and 180 is the
-		// same beds with their faces turned the other way.
+		// Beds lie across (sin, cos): rotation 0 gives horizontal bedding.
 		const float Radians = FMath::DegreesToRadians(RotationDegrees);
 		const FVector2f Want(FMath::Sin(Radians), FMath::Cos(Radians));
 
@@ -1012,9 +1015,8 @@ namespace
 
 	// One Strata Carver child.
 	//
-	// Takes the height currently standing as the layer's input and returns the carved one. The
-	// caller chains them, so two carvers on one layer are two carves of one surface rather than
-	// two competing for the same slot.
+	// Produces a signed geological relief field. Height Follow samples the upstream composite;
+	// combination and normalization remain owned by the shared generator-layer pipeline.
 	//
 	// The bedding coordinate reads the source height (Height Follow), so this cannot publish in
 	// the ID phase: its bed IDs exist from here on, for the children below it, and UV From IDs
@@ -1057,7 +1059,7 @@ namespace
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
 			FillGeneratorPlacement(P, Layer);
-						P->BedWave = Lattice.Wave;
+			P->BedWave = Lattice.Wave;
 			P->BedPerp = Lattice.Perp;
 			P->BedPeriod = Lattice.Period;
 			P->OutputSize = Size;
@@ -1065,10 +1067,14 @@ namespace
 			P->ThicknessVariation = Carver.ThicknessVariation;
 			P->HeightVariation = Carver.HeightVariation;
 			P->Verticality = Carver.Verticality;
-			P->RampShape = Carver.RampShape;
+			P->LedgeWidth = Carver.LedgeWidth;
+			P->HardnessContrast = Carver.HardnessContrast;
+			P->SoftRecession = Carver.SoftRecession;
 			P->Bend = Carver.Bend;
 			P->BendScale = Carver.BendScale;
 			P->Breakup = Carver.Breakup;
+			P->JointScale = Carver.JointScale;
+			P->JointWidth = Carver.JointWidth;
 			P->HeightFollow = Carver.HeightFollow;
 			P->Lamination = Carver.Lamination;
 			P->CrossBedding = Carver.CrossBedding;
