@@ -955,6 +955,9 @@ namespace MixtormatGpuCompositor
 	{
 		FPublishedField Height;
 		FPublishedField Warp;
+		// Destination-space coordinates: traced from Flow, or the source UVMap directly.
+		// Separate from the producer's field and the layer-wide source-sampling placement.
+		FRDGTextureRef WarpUV = nullptr;
 	};
 
 	struct FGeneratorRenderData

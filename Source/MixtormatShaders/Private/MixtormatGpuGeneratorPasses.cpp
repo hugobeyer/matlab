@@ -772,6 +772,37 @@ namespace
 		int32 SourceChildIndex;
 	};
 
+	// Shared Flow -> destination-UV binding for layer references and explicit generator inputs.
+	// The producer's typed field stays intact; only the consumer's placement is traced.
+	FRDGTextureRef AddReferencedFlowUVPass(FMixtormatComposeContext& Ctx,
+		const FOutputReferenceRenderData& Reference, const FPublishedField& Field,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.OutputReference.FlowUV"));
+		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
+		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		P->OutputSize = Size;
+		P->TraceLength = Reference.FlowTraceLength;
+		P->WarpStrength = Reference.FlowAmount;
+		P->Steps = Reference.FlowSteps;
+		P->FlowField = Field.Texture;
+		P->FlowSmooth = Field.FlowSmooth;
+		P->FlowValidity = Field.Validity;
+		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.OutputReference.Flow.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Coordinates;
+	}
+
 	// Every module sits in the Generator layer's UV placement, so the layer moves all of them.
 	template<typename TParameters>
 	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer)
@@ -2292,28 +2323,8 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		// address; nothing further is traced into destination UVs. Stopping here keeps them from
 		// silently falling into the Flow trace below -- a scalar is not a directional transport field.
 		if (Reference.Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.OutputReference.FlowUV"));
-		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
-		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-		P->OutputSize = Size;
-		P->TraceLength = Reference.FlowTraceLength;
-		P->WarpStrength = Reference.FlowAmount;
-		P->Steps = Reference.FlowSteps;
-		P->FlowField = Field.Texture;
-		P->FlowSmooth = Field.FlowSmooth;
-		P->FlowValidity = Field.Validity;
-		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-		P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.OutputReference.Flow.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		FRDGTextureRef Coordinates = AddReferencedFlowUVPass(
+			Ctx, Reference, Field, LayerCtx.LayerIndex, Child.SourceChildIndex);
 		LayerCtx.ReferencedUV = Coordinates;
 		Ctx.PublishedFieldOutputs.Add(
 			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("WarpedUV"))},
@@ -2425,6 +2436,18 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		};
 		ResolveInput(Child.Generator.HeightSource, Inputs.Height);
 		ResolveInput(Child.Generator.WarpSource, Inputs.Warp);
+		if (Inputs.Warp.IsComplete() && Inputs.Warp.Texture->Desc.Extent == Size)
+		{
+			if (Inputs.Warp.Kind == EMixtormatPublishedFieldKind::Flow)
+			{
+				Inputs.WarpUV = AddReferencedFlowUVPass(Ctx, Child.Generator.WarpSource.Reference,
+					Inputs.Warp, LayerCtx.LayerIndex, Child.SourceChildIndex);
+			}
+			else if (Inputs.Warp.Kind == EMixtormatPublishedFieldKind::UVMap)
+			{
+				Inputs.WarpUV = Inputs.Warp.Texture;
+			}
+		}
 		FGeneratorBundle Module;
 		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
 		switch (Child.Generator.Type)
