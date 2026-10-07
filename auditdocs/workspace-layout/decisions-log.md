@@ -30,6 +30,13 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D20 | Inspector overlay height auto-fits its content (capped at the viewport); a top/bottom corner drag makes it explicit, and foldout collapse then leaves the size alone | User |
 | D21 | The overlay is placed inset from the viewport edges by a token on first entry, not flush | User |
 | D22 | The left panel gets the same placement model as the inspector: Docked → Overlay → Hidden, one instance, draggable and resizable | User |
+| D23 | Reopening a panel preserves its Auto/Explicit height mode and user-set height, subject to viewport clamping. Foldout collapse does not reset explicit height; a small Fit height action returns to Auto without resetting width/position | User approved recommendations; planned, not implemented |
+| D24 | Float the entire LAYERS / LIBRARY / GLOBAL panel including its tab strip; `L` cycles Docked → Overlay → Hidden → Docked | User approved recommendations; planned, not implemented |
+| D25 | Clicked floating panels come to front; maintain independent geometry and gesture state. Gallery stays bottom-docked with its existing toggle; gallery-popover/auto-collapse work is deferred | User approved recommendations; planned, not implemented |
+| D26 | Bare Tab presses once to open; release does nothing. Escape/outside click dismisses; no hold/flick/release gesture in v1 | User; planned, not implemented |
+| D27 | Merge AA / Scale / Displacement with Default / Lumen / Final into the Render strip | User; planned, not implemented |
+| D28 | Quick-controls popup is an in-viewport overlay. Controls retain normal input focus/capture; nested Final menus remain usable. Close popup/nested menus and release capture before theme reconstruction | User approved recommendation; planned, not implemented |
+| D29 | Implement in stages; user tests each implemented stage in-editor. Tab delivery and UI behaviour are to be proven during implementation/testing, not assumed from a passing build | User |
 
 ## Implemented (2026-10)
 
@@ -40,6 +47,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I3 | GLOBAL as third left tab; inspector placeholder removed | `SMixtormat_Shell.cpp` (`BuildGlobalPage`), `SMixtormat_Inspector.cpp` |
 | I4 | Prototype geometry synced from Unreal: left 423 / inspector 520 / top bar 34 / layer row 26 / status bar 24 | `Docs/mixtormat-ui-prototype.html` |
 | I5 | `Docs/ui-prototype/` removed from the AGENTS.md exclusion list; the Zed `file_scan_exclusions` still blocks agent tooling — un-exclude in `.zed/settings.json` to read `tokens.css` / `components.css` / `falloff.js` | `AGENTS.md`, `.zed/settings.json` |
+| I6 | Inspector placement cycle: `P` + top-bar control cycle Docked → Overlay → Hidden; one `InspectorPanel` reparented between dock and viewport hosts; overlay dragged by the identity row, four corner resize grips, clamped on entry and during drag/resize | `SMixtormat_Shell.cpp`, `SMixtormat_Inspector.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat.h` |
 
 ## Recommended (pending confirmation)
 
@@ -51,7 +59,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | R4 | Malformed both-enabled binding: reference wins, variable driver skipped | Preserves existing behavior exactly; editor prevents authoring it |
 | R5 | Effective value: authored on slider + driven badge; computed result in popover only | Consistent with spatial drivers; no slider write/reset confusion |
 | R6 | Persistence scope: widths, heights, placement mode, collapsed flags only | Minimal; skip selection/scroll |
-| R7 | Auto-hide exception: hide only when no selection AND variables group collapsed | Keeps the variables cell reachable |
+| R7 | ~~Auto-hide exception based on the inspector's variables group~~ — superseded by D13 | GLOBAL is in the left panel; Auto visibility remains deferred |
 | R8 | ~~Inspector free drag: defer to a later pass~~ — superseded by D18 | Overlay + dock + hide + resize covers the need; drag is the only new machinery |
 
 ## Open
@@ -62,12 +70,14 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | O2 | Variables placement | Resolved — GLOBAL left tab (D13) |
 | O3 | Malformed both-enabled precedence final confirm | R4 recommended |
 | O4 | Effective-value display final confirm | R5 recommended |
-| O5 | Inspector drag: commit or defer | Assessed medium; R8 recommends defer |
-| O6 | Undo behavior: keep selection on undo, or accept overlay hiding | `ApplyEditHistoryState` L245 clears selection today |
-| O7 | Compact viewport mode (edge popovers + marking menu) | Deferred; prototype the inspector overlay cycle first |
-| O8 | Does `L` become the placement cycle for the left panel? | D22 implies yes, matching `P`; the top-bar tooltip and `HELPERS.md` change with it |
-| O9 | Does only the LAYERS tab float, or the whole left panel with its tab strip? | Whole panel is simpler and keeps one instance; the tab strip travelling with it is the recommendation |
-| O10 | How does an explicitly-sized overlay return to auto-fit height? | Cycling the placement is the current escape hatch; a fit control is out of scope |
+| O5 | Inspector drag: commit or defer | Resolved — D18 superseded R8; the drag shipped (I6) |
+| O6 | Future Auto-visibility behaviour after undo | `SMixtormat.cpp` L299–311 clears multi/group/effect/mask selection but retains/clamps a valid layer index; undo does not always remove inspector selection. No undo change in the current scope |
+| O7 | Compact viewport mode (edge popovers + marking menu) | The inspector cycle shipped (I6); the quick-controls prototype is now planned in `viewport-quick-controls-plan.md`, not implemented. Flick/release gestures remain deferred |
+| O8 | Does `L` become the placement cycle for the left panel? | Resolved — D24; update label/tooltips/help with the implementation |
+| O9 | Does only the LAYERS tab float, or the whole left panel with its tab strip? | Resolved — the whole panel travels (D24), still one instance |
+| O10 | How does an explicitly-sized overlay return to auto-fit height? | Resolved — Fit height action (D23). Reopening/cycling preserves height mode; no automatic reset |
+| O11 | Overlay stacking/fronting when two panels float (D22) | Resolved — clicked floating panel comes to front (D25). Capture routing remains implementation work |
+| O12 | Missing continuous viewport clamping | D18 requires viewport clamping, but source clamps only on entry/drag (Shell L698–750, L807). Implement re-clamping for window/splitter/gallery changes; do not treat the requirement as an optional new feature |
 
 ## Rejected
 
@@ -84,10 +94,21 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 
 ## Suggested order
 
-1. Inspector placement cycle — Docked → Overlay → Hidden
-   (`inspector-popover-handoff.md`).
-2. Variables Phase 1–2 behind the GLOBAL tab (data model first; still the
+1. ~~Inspector placement cycle — Docked → Overlay → Hidden~~ — done, see I6.
+2. Inspector overlay auto-fit height + default inset (D20/D21), including the
+   auto/explicit height mode (O10) and the viewport-resize re-clamp (O12).
+3. Layers placement (D22). Prerequisites: extract a generic overlay controller
+   from the inspector's drag/resize state (inspector-specific today), give the
+   left column placement state of its own, and apply whole-panel scope/fronting (D24/D25).
+4. Variables Phase 1–2 behind the GLOBAL tab (data model first; still the
    must-have feature, independent of layout work).
-3. Gallery tabs; finish the Unreal → prototype geometry sync.
-4. Layout persistence in editor settings (`UMixtormatEditorSettings`).
-5. Inspector drag/resize (only if still wanted after the cycle).
+5. Gallery work only after O1/R2 is confirmed; finish Unreal → prototype geometry sync.
+6. Layout persistence in editor settings (`UMixtormatEditorSettings`).
+7. Viewport quick controls: settle the extraction API first; tokenize touched
+   literals without changing appearance, extract builders, then visibility/regrouping
+   and the Tab popup (see the focused plan's separate decision gates).
+
+This is a suggested feature order, not a dependency chain: variables, gallery and
+persistence are not prerequisites for quick controls. Recommendations and open
+questions above are not user-approved decisions. See README §Implementation readiness
+before starting a feature stage.

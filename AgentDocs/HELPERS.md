@@ -10,9 +10,10 @@ plus the TODO lists for mapping and architecture work on top of it.
 - Tooltips name the key as a sentence suffix: `"Collapse or expand the material
   and mask galleries (G)."` — action first, key in parentheses, period last.
 - Menus advertise keys with `.Shortcut(LOCTEXT(..., "F2"))` on the row.
-- Keys **without a surface** (viewport hotkeys) are announced through
-  `WorkingStatusText` — "the only indication, same as every other viewport
-  hotkey here" (`SMixtormatPreviewViewport.cpp`).
+- Viewport feedback is not universally status-only: F moves the camera, H/Space
+  changes overlay visibility, Z updates displacement and V changes the mode label
+  as well as `WorkingStatusText` (`SMixtormat_Preview.cpp` L1400–1514). Some source
+  comments still describe status-only feedback; trust the live bindings.
 - Aliases are not advertised: `F12` works but menus say `F2`; `Ctrl+Shift+Z`
   is named in the Redo tooltip only because it is a second redo path.
 - Rename never lives on double-click (double-click opens/shuts a row); it is
@@ -23,10 +24,10 @@ plus the TODO lists for mapping and architecture work on top of it.
 
 | Mechanism | Where | Notes |
 |---|---|---|
-| `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (theme `--help-delay`, 350 ms). Used by shell actions such as the top bar and group buttons. |
+| `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (0.35 seconds / 350 ms). Token-only: no live-theme delay field/schema entry was found. Used by shell actions such as the top bar and group buttons. |
 | Plain tooltips | `.ToolTipText(...)` on widgets | Everywhere else (sliders, buttons, rows). |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
-| Status bar | `WorkingStatusText` | "Unsaved changes" / "All changes saved" / `Preview: <mode>`. Sole feedback for viewport hotkeys. |
+| Status bar | `WorkingStatusText` | "Unsaved changes" / "All changes saved" / `Preview: <mode>`. Supplements visual/control feedback; not updated by every viewport hotkey. |
 | Mode label | `GetPreviewModeLabel()` | `"{0}  (Shift+V for Material)"` on the preview. |
 | Empty states | Text blocks in panels | e.g. "No global variables yet.", "No layer selected". |
 | Entry-commit rules | `UI/Controls/MixtormatEntryCommit.h` | Enter/Tab/click-away accept; Escape/right-click cancel — documented in the header. |
@@ -35,11 +36,14 @@ plus the TODO lists for mapping and architecture work on top of it.
 
 `L`/`P` fire workspace-wide through the Slate input preprocessor
 (`SMixtormat.cpp::Construct`); the rest go through `OnKeyDown`, so they need
-workspace focus. Text entry always wins.
+workspace focus. The preprocessor yields for focused-widget type names containing
+`EditableText` or `TextEntry`; that is a type check, not a general text-input proof.
+It has no workspace/tab/window ownership guard (`SMixtormat.cpp` L30–48); verify
+unrelated editor windows and modal/popup focus before extending it.
 
 | Key | Action | Advertised where |
 |---|---|---|
-| `L` | Collapse/expand Layers/Library *(planned: becomes the placement cycle for the left panel — D22; tooltip must change with it)* | Top-bar tooltip `"… (L)."` |
+| `L` | Collapse/expand the left Layers/Library/GLOBAL panel *(proposed cycle for D22: confirm O8 and update help before changing behaviour)* | Top-bar tooltip `"… (L)."` |
 | `P` | Cycle Inspector placement: Docked → Overlay → Hidden | Top-bar tooltip `"Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."`; the control's own label reads `Inspector: Docked` / `Overlay` / `Hidden` |
 | `G` | Collapse/expand bottom galleries | Gallery collapse tooltip `"… (G)."` |
 | `I` | Toggle region-ID preview for the selected child | Not advertised — no tooltip found |
@@ -49,8 +53,8 @@ workspace focus. Text entry always wins.
 
 ## Hotkey catalog — viewport (`FMixtormatPreviewViewportClient::InputKey`)
 
-Focus = the viewport. Feedback = status bar only; there is no toolbar for
-these yet.
+Focus = the viewport. Feedback varies by action: camera/overlay changes, existing
+controls, the mode label and/or status bar. Shortcut discoverability is incomplete.
 
 | Key | Action |
 |---|---|
@@ -87,9 +91,9 @@ table in as surfaces land; add a "Help text" section to the mandated
 | `(F2)` rename | Context menus | `MixtormatLayerMenus.cpp` | Done |
 | Slider gesture line | Slider tooltip | `SMixtormatSlider.cpp` | Done |
 | `(Shift+V for Material)` | Preview mode label | `SMixtormatPreviewViewport.cpp` | Done |
-| Viewport keys (F, H/Space, Z, V, U/M) | Status bar only | `SMixtormatPreviewViewport.cpp` | TODO — decide a discoverable surface |
+| Viewport keys (F, H/Space, Z, V, U/M) | Mixed visual/control/status feedback | `SMixtormatPreviewViewport.cpp`, `SMixtormat_Preview.cpp` | TODO — decide a discoverable shortcut-help surface |
 | `I` region-ID preview | None | `SMixtormat.cpp` | TODO — add tooltip or menu entry |
-| `HelpDelay` token | `SMixtormatHelp` | `MixtormatDesignTokens.h`, theme schema | Verify the schema entry and `--help-delay` mapping |
+| `HelpDelay` token | `SMixtormatHelp` | `MixtormatDesignTokens.h` L468; `SMixtormatHelp.cpp` L58 | Token reader verified; no live-theme delay schema entry found |
 | Placement control `(P)` cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — label reads the current placement |
 | Overlay corner resize | Corner tooltip | `SMixtormat_Inspector.cpp` | Done — `"Drag to resize the Inspector."` |
 | Overlay header drag | None | `SMixtormat_Shell.cpp` | TODO — no hint that the header row drags the overlay |
@@ -111,15 +115,15 @@ table in as surfaces land; add a "Help text" section to the mandated
   tooltips plus the status bar. If a hover/help overlay is wanted (e.g. a
   viewport-key cheat sheet), extend `SMixtormatHelp` rather than inventing a
   second tooltip system.
-- **Viewport keys have no discoverable surface.** The planned `Tab` marking menu
+- **Viewport shortcuts lack a consolidated help surface.** The planned `Tab` marking menu
   (`auditdocs/workspace-layout/viewport-quick-controls-plan.md`) is the candidate
-  answer: it can list the viewport keys and the controls they act on, replacing
-  status-bar-only feedback. Decide whether the menu also advertises `F`/`H`/`Z`/`V`.
+  answer: it can list the viewport keys and the controls they act on, supplementing
+  existing feedback. Decide whether the menu also advertises `F`/`H`/`Z`/`V`.
 - **`Tab` collides with Slate focus navigation.** If the marking menu ships, bare
   Tab must be consumed only while the viewport has focus, and text entry must keep
   priority — the same rule the `L`/`P` preprocessor already follows.
-- **Temporary keys.** `U`/`M` module preview says "Temporary" in source —
-  either surface it properly or remove it.
+- **Temporary keys.** `U`/`M` module preview says "Temporary" in source.
+  Preserve them in this work; removal needs explicit approval.
 - **Empty-state copy** lives inline per panel; if a help pass comes, collect
   the strings in one table so tone stays consistent.
 

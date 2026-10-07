@@ -81,6 +81,9 @@ gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
 
 ## Viewport overlays / toolbars
 
-`Widgets/SMixtormatPreviewViewport.*` owns the preview viewport, overlays and
-toolbar. Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
+`Widgets/SMixtormat_Preview.cpp::BuildPreviewPanel` builds overlay controls and
+assembles the preview UI; shared preview state/setters are on `SMixtormat`.
+`Widgets/SMixtormatPreviewViewport.*` owns the viewport rendering/scene and input
+client, delegating workspace-owned actions back to `SMixtormat`.
+Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
