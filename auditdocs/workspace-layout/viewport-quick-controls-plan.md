@@ -1,11 +1,13 @@
 # Viewport quick controls — audit and prototype plan
 
 Status: audit/planning, 2026-10-07. Steps 1–2 and step 4 of the implementation sequence are now
-**coded and untested** (see `decisions-log.md` I9–I11): the control builders are extracted into
+**coded and untested** (see `decisions-log.md` I9–I13): the control builders are extracted into
 `SMixtormat_PreviewControls.cpp`, the Render strip is merged (D27), GLOBAL hosts the group
-switches plus the same settings, and bare Tab opens an in-viewport quick-controls popup.
-**Tab delivery is still unproven (B1)**: the client is the proposed entry point, not a verified
-one — if Tab does nothing in-editor, the fallback is a viewport-scoped input processor.
+switches plus the same settings, and a bare key opens an in-viewport quick-controls popup.
+**The key is `Q`, not Tab (I13):** Tab delivery worked, but Slate's focus navigation runs on Tab
+regardless of the widget handling it, so Tab also moved focus to the top bar. Recovering Tab would
+need a pre-routing input processor consuming it editor-wide while the pointer is over the
+viewport.
 The reference image is a grouping reference, not a visual or feature specification.
 
 ## Agreed scope

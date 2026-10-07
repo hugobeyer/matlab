@@ -51,8 +51,8 @@ Builders are `SMixtormat::Build*Panel` members.
 ## Shared controls
 
 `UI/Controls/`: `SMixtormatSlider.*`, `SMixtormatSegmentedControl.*`,
-`SMixtormatTabStrip.*`, `SMixtormatTile.*`, `MixtormatEntryCommit.*`,
-`SMixtormatGroupAction.h`.
+`SMixtormatTabStrip.*` (UI STYLE panel), `SMixtormatIconRail.*` (left column navigation),
+`SMixtormatTile.*`, `MixtormatEntryCommit.*`, `SMixtormatGroupAction.h`.
 
 ## Ramp widgets
 

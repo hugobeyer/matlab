@@ -912,11 +912,20 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				CycleSelectedModulePreview();
 			}))
-			// Bare Tab in the viewport. The delegate is installed once, on creation, and captures the
+			// Bare Q in the viewport. The delegate is installed once, on creation, and captures the
 			// workspace -- which survives a rebuild -- so it stays valid across theme refreshes.
 			.OnRequestQuickControls(FSimpleDelegate::CreateLambda([this]()
 			{
 				ToggleQuickControls();
+			}))
+			.OnDismissQuickControls(FMixtormatDismissQuickControls::CreateLambda([this]()
+			{
+				if (!bQuickControlsOpen)
+				{
+					return false;
+				}
+				CloseQuickControls();
+				return true;
 			}));
 
 	// The control clusters themselves live in SMixtormat_PreviewControls.cpp; this function only

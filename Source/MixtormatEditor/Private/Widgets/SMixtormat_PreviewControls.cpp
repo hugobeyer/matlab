@@ -7,6 +7,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
 #include "UI/Menus/SMixtormatHelp.h"
+#include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Framework/Application/SlateApplication.h"
@@ -234,6 +235,38 @@ namespace
 				];
 		}
 		return Row;
+	}
+
+	// Quadratic ease-out: fast off the mark, damped into place.
+	float EaseOutQuad(const float T)
+	{
+		const float Remaining = 1.0f - T;
+		return 1.0f - Remaining * Remaining;
+	}
+
+	// The grid: rows of three, for the quick-controls popup, where the icons are a palette of
+	// choices to scan rather than a strip to run along.
+	TSharedRef<SWidget> MakePreviewButtonGrid(const TArray<TSharedRef<SWidget>>& Buttons, const float Gap, const int32 Columns)
+	{
+		TSharedRef<SVerticalBox> Grid = SNew(SVerticalBox);
+		for (int32 Index = 0; Index < Buttons.Num(); Index += Columns)
+		{
+			TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+			for (int32 Column = 0; Column < Columns; ++Column)
+			{
+				const int32 ButtonIndex = Index + Column;
+				Row->AddSlot().AutoWidth()
+					.Padding(Column + 1 < Columns ? FMargin(0.0f, 0.0f, Gap, 0.0f) : FMargin(0.0f))
+					[
+						ButtonIndex < Buttons.Num() ? Buttons[ButtonIndex] : SNullWidget::NullWidget
+					];
+			}
+			Grid->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, Gap)
+			[
+				Row
+			];
+		}
+		return Grid;
 	}
 }
 
@@ -465,7 +498,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 		]);
 	return Layout == EPreviewControlLayout::Inline
 		? MakePreviewButtonRow(Buttons, ButtonGap)
-		: MakePreviewButtonRail(Buttons, ButtonGap);
+		: Layout == EPreviewControlLayout::Grid
+			? MakePreviewButtonGrid(Buttons, ButtonGap, 3)
+			: MakePreviewButtonRail(Buttons, ButtonGap);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewControlLayout Layout)
@@ -541,7 +576,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 		})));
 	return Layout == EPreviewControlLayout::Inline
 		? MakePreviewButtonRow(Buttons, ButtonGap)
-		: MakePreviewButtonRail(Buttons, ButtonGap);
+		: Layout == EPreviewControlLayout::Grid
+			? MakePreviewButtonGrid(Buttons, ButtonGap, 3)
+			: MakePreviewButtonRail(Buttons, ButtonGap);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewSceneControls()
@@ -718,20 +755,57 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 
 TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 {
-	// Top: render. Left: lighting. Right: geometry. Bottom: the Actions placeholder. The gap in the
-	// middle row is where the pointer sits, which is what makes this a marking menu rather than a
-	// panel that happens to be near the cursor.
+	// Each group is a card, and each card eases out from the centre along its own axis when the
+	// popup opens: top up, left left, right right, bottom down. The gap in the middle row is where
+	// the pointer sits, which is what makes this a marking menu rather than a panel near the cursor.
+	const auto Reveal = [this](const FVector2D& Axis)
+	{
+		return TAttribute<TOptional<FSlateRenderTransform>>::CreateLambda([this, Axis]()
+		{
+			const float Remaining = 1.0f - EaseOutQuad(QuickControlsReveal);
+			return TOptional<FSlateRenderTransform>(FSlateRenderTransform(
+				-Axis * Remaining * MixtormatTokens::QuickControlsRevealDistance));
+		});
+	};
+	const auto MakeCard = [this, Reveal](const FText& Title, const TSharedRef<SWidget>& Content, const FVector2D& Axis)
+	{
+		const TSharedRef<SMixtormatInspectorCard> Card = SNew(SMixtormatInspectorCard)
+			.Title(Title)
+			[Content];
+		Card->SetRenderTransform(Reveal(Axis));
+		return Card;
+	};
+
+	TSharedRef<SVerticalBox> RenderRows = SNew(SVerticalBox);
+	AddSliderRow(RenderRows, BuildPreviewRenderControls());
+	TSharedRef<SVerticalBox> LightingRows = SNew(SVerticalBox);
+	AddSliderRow(LightingRows, BuildPreviewLightingControls(EPreviewControlLayout::Grid));
+	TSharedRef<SVerticalBox> GeometryRows = SNew(SVerticalBox);
+	AddSliderRow(GeometryRows, BuildPreviewGeometryControls(EPreviewControlLayout::Grid));
+	TSharedRef<SVerticalBox> ActionRows = SNew(SVerticalBox);
+	AddSliderRow(ActionRows,
+		// One disabled row: the context actions are a later pass, and a placeholder that says so
+		// is more honest than a menu that does nothing.
+		SNew(SBox)
+		.IsEnabled(false)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("QuickControlsActionsPlaceholder", "Context actions — later"))
+			.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+				Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
+		]);
+
 	QuickControlsPanel = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 		[
-			MakePreviewCluster(BuildPreviewRenderControls())
+			MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(0.0, -1.0))
 		]
-		+ SVerticalBox::Slot().AutoHeight()
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				MakePreviewCluster(BuildPreviewLightingControls())
+				MakeCard(LOCTEXT("QuickControlsLighting", "LIGHTING"), LightingRows, FVector2D(-1.0, 0.0))
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
@@ -739,27 +813,18 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				MakePreviewCluster(BuildPreviewGeometryControls())
+				MakeCard(LOCTEXT("QuickControlsGeometry", "GEOMETRY"), GeometryRows, FVector2D(1.0, 0.0))
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+		.Padding(0.0f, MixtormatTokens::QuickControlsRowGap, 0.0f, 0.0f)
 		[
-			// One disabled row: the context actions are a later pass, and a placeholder that says so
-			// is more honest than a menu that does nothing.
-			SNew(SBox)
-			.IsEnabled(false)
-			[
-				MakePreviewCluster(
-					SNew(STextBlock)
-					.Text(LOCTEXT("QuickControlsActionsPlaceholder", "Context actions — later"))
-					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-						Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity))))
-			]
+			MakeCard(LOCTEXT("QuickControlsActions", "ACTIONS"), ActionRows, FVector2D(0.0, 1.0))
 		];
 
 	// Placed by padding, like the floating panels, so the pointer owns the position and the viewport
 	// owns the clamp. Self-hit-test-invisible: empty viewport must still reach the viewport.
-	return SNew(SBox)
+	const TSharedRef<SBox> Frame = SNew(SBox)
 		.Padding_Lambda([this]()
 		{
 			const FVector2D Bounds = GetPreviewViewportBounds();
@@ -792,6 +857,10 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			})
 			[QuickControlsPanel.ToSharedRef()]
 		];
+	// The popup fades in with the reveal, so the first frame -- before it has centred itself on the
+	// pointer -- is not a visible jump. Set from the reveal timer rather than as an attribute:
+	// SWidget::SetRenderOpacity takes a plain float.
+	return Frame;
 }
 
 void SMixtormat::ToggleQuickControls()
@@ -820,6 +889,24 @@ void SMixtormat::ToggleQuickControls()
 	QuickControlsPosition = Local;
 	bQuickControlsNeedsCentre = true;
 	bQuickControlsOpen = true;
+	// Fast and damped: the cards ease out along their axes from the centre. One timer, not a
+	// per-frame tick -- it stops as soon as the reveal has settled.
+	QuickControlsReveal = 0.0f;
+	if (QuickControlsPanel.IsValid())
+	{
+		QuickControlsPanel->SetRenderOpacity(0.0f);
+	}
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float DeltaTime)
+	{
+		QuickControlsReveal = FMath::Min(1.0f,
+			QuickControlsReveal + DeltaTime / MixtormatTokens::QuickControlsRevealSeconds);
+		if (QuickControlsPanel.IsValid())
+		{
+			QuickControlsPanel->SetRenderOpacity(EaseOutQuad(QuickControlsReveal));
+		}
+		Invalidate(EInvalidateWidgetReason::Paint);
+		return QuickControlsReveal < 1.0f ? EActiveTimerReturnType::Continue : EActiveTimerReturnType::Stop;
+	}));
 }
 
 void SMixtormat::CloseQuickControls()

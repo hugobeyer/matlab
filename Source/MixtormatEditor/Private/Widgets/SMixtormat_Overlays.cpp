@@ -61,12 +61,18 @@ FReply SMixtormat::ToggleLeftPanelCollapsed()
 	case ELeftPanelPlacement::Overlay: LeftPanelPlacement = ELeftPanelPlacement::Hidden; break;
 	case ELeftPanelPlacement::Hidden: LeftPanelPlacement = ELeftPanelPlacement::Docked; break;
 	}
+	ApplyLeftPanelPlacement();
+	return FReply::Handled();
+}
+
+void SMixtormat::ApplyLeftPanelPlacement()
+{
 	bLeftPanelCollapsed = LeftPanelPlacement != ELeftPanelPlacement::Docked;
 	LeftPanelOverlay.bFloating = LeftPanelPlacement == ELeftPanelPlacement::Overlay;
 	if (LeftPanelOverlay.bFloating)
 	{
-		// The whole panel travels -- tab strip included -- and lands inset from the viewport's left
-		// edge at its content height. One instance, reparented, never a second copy.
+		// The layer stack travels alone -- the rail stays in the column -- and lands inset from the
+		// viewport's left edge at its content height. One instance, reparented, never a copy.
 		MixtormatOverlay::Place(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds(),
 			MixtormatTokens::LayerStackWidth, false);
 		MixtormatOverlay::Clamp(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
@@ -75,7 +81,21 @@ FReply SMixtormat::ToggleLeftPanelCollapsed()
 	LeftPanelOverlayHost->SetContent(SNullWidget::NullWidget);
 	(LeftPanelOverlay.bFloating ? LeftPanelOverlayHost : LeftPanelDockHost)
 		->SetContent(LeftPanel.ToSharedRef());
-	return FReply::Handled();
+	SyncLeftCellPage();
+}
+
+void SMixtormat::SyncLeftCellPage()
+{
+	// The cell can only show the layer stack while it is docked; otherwise the rail selects the
+	// last page that can live there, so the highlight always matches what the cell holds.
+	if (LeftPanelPlacement == ELeftPanelPlacement::Docked)
+	{
+		ShowLeftPage(0);
+	}
+	else if (LeftTabIndex == 0)
+	{
+		ShowLeftPage(LastNonLayersPage);
+	}
 }
 
 FVector2D SMixtormat::GetPreviewViewportBounds() const

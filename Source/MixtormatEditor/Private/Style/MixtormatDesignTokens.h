@@ -642,13 +642,24 @@ namespace MixtormatTokens
 	// The floating left panel's drag margin above the tab strip: an empty strip, not a header row.
 	// The panel's identity is the tabs themselves, so this is a grab target and nothing else.
 	inline float OverlayPanelGrabMargin = 8.0f;
+	// The left column's icon rail: a narrow vertical strip of page icons. Its own tokens because
+	// the rail is a column, not a row -- the tab strip's paddings do not describe it.
+	inline float LeftRailPadding = 4.0f;
+	inline float LeftRailButtonGap = 2.0f;
 	// An empty state's line -- "No layer selected", "No global variables yet." -- is present but
 	// deliberately quiet: it is a note about the absence of content, not content.
 	inline float EmptyStateOpacity = 0.5f;
-	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting rail
-	// on the left and the geometry rail on the right. Wide enough that the popup reads as arranged
+	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting card
+	// on the left and the geometry card on the right. Wide enough that the popup reads as arranged
 	// around the cursor rather than as a panel that happens to be near it.
-	inline float QuickControlsCentreGap = 72.0f;
+	inline float QuickControlsCentreGap = 140.0f;
+	// Between the popup's rows: the cards need air between them, or the four read as one block.
+	inline float QuickControlsRowGap = 10.0f;
+	// The popup's reveal: how far each card travels along its own axis as it eases into place, and
+	// how long that takes. Fast and damped -- the movement says where the group came from, it is
+	// not there to be watched.
+	inline float QuickControlsRevealDistance = 26.0f;
+	inline float QuickControlsRevealSeconds = 0.16f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;

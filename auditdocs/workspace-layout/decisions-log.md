@@ -26,7 +26,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D16 | Inspector overlay: no outer border and no rounded corners; inner component styling unchanged | User |
 | D17 | Prototype sync direction for layout geometry is Unreal → HTML/CSS | User |
 | D18 | Inspector overlay is draggable by its header row and resizable from all four corners, with hover-only L outlines and viewport clamping | User |
-| D19 | Viewport marking menu is invoked with Tab; RMB click is reserved for the later context menu, and RMB drag keeps rotating lighting | User |
+| D19 | Viewport marking menu is invoked with `Q`; RMB click is reserved for the later context menu, and RMB drag keeps rotating lighting. **Amended from Tab (I13):** Slate navigates focus on Tab regardless of a widget handling it, so Tab also moved focus to the top bar | User; implemented (I11), key amended (I13) |
 | D20 | Inspector overlay height auto-fits its content (capped at the viewport); a top/bottom corner drag makes it explicit, and foldout collapse then leaves the size alone | User |
 | D21 | The overlay is placed inset from the viewport edges by a token on first entry, not flush | User |
 | D22 | The left panel gets the same placement model as the inspector: Docked → Overlay → Hidden, one instance, draggable and resizable | User |
@@ -52,17 +52,19 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I8 | Left panel placement: `L` cycles Docked → Overlay → Hidden → Docked; one `LeftPanel` (whole panel incl. tab strip) reparented between dock and viewport hosts; drag by an empty grab margin above the tab strip (no header row); shared drag/resize machinery with independent geometry; symmetric splitter write-back; clicked floating panel comes to front | `SMixtormat_Overlays.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat.h` |
 | I9 | Preview controls extracted into shared builders (`BuildPreview{Render,Lighting,Geometry,Scene,Camera,Output}Controls`); AA/Scale/Default-Lumen/Final/Displacement merged into one Render strip (D27); GLOBAL gains a PREVIEW / VIEWPORT section with five group-visibility switches and the same settings, organised as cards (VISIBILITY / RENDER / LIGHTING / GEOMETRY / CAMERA / OUTPUT) with the icon buttons laid out inline (`EPreviewControlLayout`); GLOBAL empty-state opacity tokenized | `SMixtormat_PreviewControls.cpp` (new), `SMixtormat_Preview.cpp` (shrank ~610 lines), `SMixtormat_Shell.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I10 | Side resize grips: left/right edges (width-only, height stays auto and re-measures), corners unchanged; AA / Default-Lumen / displacement removed from the viewport overlay and kept in GLOBAL only, leaving the overlay strip as render Scale + Final | `SMixtormatOverlayPanel.*`, `SMixtormat_Overlays.cpp`, `SMixtormat_Inspector.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp` |
-| I11 | Tab quick controls (D26/D28): bare Tab routed through `FMixtormatPreviewViewportClient::InputKey` (viewport focus only, no modifiers), popup built as an in-viewport overlay around the pointer (render top, lighting left, geometry right, disabled Actions row bottom), centred once measured and clamped to the viewport; dismissed by Escape, an outside click or a rebuild; requires the pointer over exposed viewport content | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
+| I11 | Tab quick controls (D26/D28): bare Tab routed through `FMixtormatPreviewViewportClient::InputKey` (viewport focus only, no modifiers), popup built as an in-viewport overlay around the pointer -- four cards (RENDER top, LIGHTING left, GEOMETRY right, disabled ACTIONS bottom) with the icons gridded, each card easing out along its own axis on open (quadratic ease-out, one-shot timer, no per-frame tick) -- centred once measured and clamped to the viewport; dismissed by Escape (routed through the client so the viewport's own Escape is untouched when the popup is closed), an outside click or a rebuild; requires the pointer over exposed viewport content | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
+| I12 | Left column navigation is a vertical icon rail (LAYERS / LIBRARY / GLOBAL) that stays docked; only the layer stack pops out, so the floating panel is the stack plus its grab margin and grips. The rail's selection follows the cell: docking the stack selects LAYERS, and while it floats or is hidden the cell falls back to the last non-layers page; choosing LAYERS in the rail while it floats docks it back. `SMixtormatTabStrip` is still used by the UI STYLE panel, so nothing became dead | `UI/Controls/SMixtormatIconRail.*` (new), `SMixtormat_Shell.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
+| I13 | Quick controls moved from Tab to `Q`: Tab delivery worked, but Slate's focus navigation runs on Tab regardless of the widget handling it, so the top bar lit up. The popup's cards also spread — a wider centre gap and a row gap between the four cards | `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`, `MixtormatDesignTokens.h` |
 
-I7–I11 are **code-complete and untested**: no build or in-editor run has been made in this
+I7–I13 are **code-complete and untested**: no build or in-editor run has been made in this
 session, and the repo's language-server diagnostics do not resolve engine/plugin include paths,
 so they carry no signal here. Gallery stays bottom-docked; variables, persistence, Auto
 visibility and collapse-to-header remain out of scope.
 
-**Tab delivery is still unproven (B1).** I11 routes bare Tab through the viewport client, which is
-the plan's proposed entry point, not a verified one: Slate may consume Tab for focus navigation
-before the client sees it. If Tab does nothing in-editor, the fallback is a viewport-scoped input
-processor (focus + pointer gated) — never the application-wide L/P preprocessor.
+**Tab delivery is settled (I13):** the client did receive Tab, but Slate's focus navigation runs
+on Tab regardless of the event being handled, so the key moved to `Q`. Tab is only recoverable
+with a pre-routing input processor, which would consume Tab editor-wide while the pointer is over
+the viewport — not worth it for a viewport menu.
 
 ## Recommended (pending confirmation)
 

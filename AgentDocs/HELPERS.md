@@ -43,7 +43,7 @@ unrelated editor windows and modal/popup focus before extending it.
 
 | Key | Action | Advertised where |
 |---|---|---|
-| `L` | Collapse/expand the left Layers/Library/GLOBAL panel *(proposed cycle for D22: confirm O8 and update help before changing behaviour)* | Top-bar tooltip `"… (L)."` |
+| `L` | Cycle the layer stack's placement: Docked → Overlay → Hidden → Docked. The left column's icon rail stays docked; only the stack travels | Top-bar tooltip `"Cycle Layers placement: Docked → Overlay → Hidden → Docked (L)."`; the control's label reads `Layers: Docked` / `Overlay` / `Hidden` |
 | `P` | Cycle Inspector placement: Docked → Overlay → Hidden | Top-bar tooltip `"Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."`; the control's own label reads `Inspector: Docked` / `Overlay` / `Hidden` |
 | `G` | Collapse/expand bottom galleries | Gallery collapse tooltip `"… (G)."` |
 | `I` | Toggle region-ID preview for the selected child | Not advertised — no tooltip found |
@@ -65,7 +65,7 @@ controls, the mode label and/or status bar. Shortcut discoverability is incomple
 | `Shift+V` | Jump straight back to Material (also in the mode label) |
 | `U` or `M` | Cycle module preview — **marked Temporary in source** |
 | Mouse wheel | Zoom camera |
-| `Tab` (bare) | Open the viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Escape or an outside click dismisses. **Implemented, untested** — routed through `FMixtormatPreviewViewportClient::InputKey`; delivery past Slate's focus navigation is unproven (B1). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
+| `Q` (bare) | Open the viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Escape or an outside click dismisses. **Implemented, untested** — routed through `FMixtormatPreviewViewportClient::InputKey`. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
 
 ## Hotkey catalog — controls
 
@@ -100,7 +100,8 @@ table in as surfaces land; add a "Help text" section to the mandated
 | Overlay header drag | None | `SMixtormat_Shell.cpp` | Inspector: identity row (no hint). Left panel: empty grab margin above the tab strip (no hint); the grab-hand cursor is the only affordance |
 | `Tab` marking menu | None | planned | TODO — arrives with the viewport quick-controls plan; decide its own help surface |
 | GLOBAL Preview/Viewport toggles | GLOBAL group rows | `SMixtormat_Shell.cpp` | Done — five switches with labels and tooltips; the settings below them are the viewport's own builders |
-| `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | TODO — arrives with the Layers placement model (D22) |
+| `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — the cycle moves the layer stack; the rail stays docked |
+| Left column rail | Icon tooltips | `SMixtormat_Shell.cpp` | Done — LAYERS / LIBRARY / GLOBAL icons carry the tab hints as tooltips |
 
 ## TODOs — architecture
 

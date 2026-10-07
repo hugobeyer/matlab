@@ -381,13 +381,20 @@ public:
 			Owner.FocusCamera();
 			return true;
 		}
-		// Bare Tab opens the workspace's quick controls. Shift+Tab and the modifier combinations
-		// keep their Slate meanings, and this client only sees the key while the viewport has
-		// focus -- which is the scoping the marking menu needs.
-		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Tab
+		// Bare Q opens the workspace's quick controls. Not Tab: Slate navigates focus on Tab
+		// regardless of a widget handling it, so Tab also lit up the top bar. Q is the client's own
+		// key, like F and H, and this client only sees it while the viewport has focus.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Q
 			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
 			Owner.RequestQuickControls();
+			return true;
+		}
+		// Escape closes them again. Consumed only when the workspace actually dismissed something,
+		// so the viewport's own Escape behaviour is untouched while the popup is closed.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Escape
+			&& Owner.RequestDismissQuickControls())
+		{
 			return true;
 		}
 		if (EventArgs.Event == IE_Pressed
@@ -503,6 +510,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
+	OnDismissQuickControls = InArgs._OnDismissQuickControls;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -1287,6 +1295,11 @@ void SMixtormatPreviewViewport::CycleModulePreview()
 void SMixtormatPreviewViewport::RequestQuickControls()
 {
 	OnRequestQuickControls.ExecuteIfBound();
+}
+
+bool SMixtormatPreviewViewport::RequestDismissQuickControls()
+{
+	return OnDismissQuickControls.IsBound() && OnDismissQuickControls.Execute();
 }
 
 void SMixtormatPreviewViewport::CycleChannelPreview()

@@ -1392,13 +1392,21 @@ private:
 	void RebuildMaskList();
 	TSharedRef<SWidget> BuildTopBar();
 	TSharedRef<SWidget> BuildAuthoringPage();
-	TSharedRef<SWidget> BuildLeftPanel();
+	// The docked left column: the icon rail plus the cell it selects. Only the layer stack travels,
+	// so the rail stays put and the cell shows a page that can live there.
+	TSharedRef<SWidget> BuildLeftColumn();
+	// What floats when the layer stack pops out: the stack, its grab margin and its grips.
+	TSharedRef<SWidget> BuildFloatingLayerStack();
 	TSharedRef<SWidget> BuildGlobalPage();
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	FReply ToggleBottomLibraryCollapsed();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
+	// Moves the single layer stack between its dock and overlay hosts, and keeps the rail's
+	// selection pointing at a page the cell can actually show.
+	void ApplyLeftPanelPlacement();
+	void SyncLeftCellPage();
 	// Floating panels: the shared stack both panels float in, and the fronting that decides which
 	// one a press lands on. Geometry, clamping, auto-fit height and the drag/resize interaction
 	// are shared free functions (SMixtormatOverlayPanel.h).
@@ -1479,8 +1487,8 @@ private:
 	void ToggleQuickControls();
 	void CloseQuickControls();
 	// How a group's buttons are laid out: the viewport's rails stack them down an edge, GLOBAL's
-	// cards run them inline so a card reads as one row of features rather than a column of bars.
-	enum class EPreviewControlLayout : uint8 { Rail, Inline };
+	// cards run them inline, and the quick-controls popup grids them as a palette of choices.
+	enum class EPreviewControlLayout : uint8 { Rail, Inline, Grid };
 	TSharedRef<SWidget> BuildPreviewLightingControls(EPreviewControlLayout Layout = EPreviewControlLayout::Rail);
 	TSharedRef<SWidget> BuildPreviewGeometryControls(EPreviewControlLayout Layout = EPreviewControlLayout::Rail);
 	TSharedRef<SWidget> BuildPreviewSceneControls();
@@ -1668,6 +1676,9 @@ private:
 	FVector2D QuickControlsSize = FVector2D::ZeroVector;
 	bool bQuickControlsNeedsCentre = false;
 	TSharedPtr<SWidget> QuickControlsPanel;
+	// The popup's reveal, 0 at the moment it opens and 1 when it has settled. Advanced by a
+	// one-shot active timer rather than a per-frame tick, so a settled popup costs nothing.
+	float QuickControlsReveal = 1.0f;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;
@@ -1684,6 +1695,9 @@ private:
 	int32 SelectedEffectIndex = INDEX_NONE;
 	int32 SelectedMaskIndex = INDEX_NONE;
 	int32 LeftTabIndex = 0;
+	// The page the cell falls back to while the layer stack is away: the rail's highlight always
+	// matches what the cell holds, and the layer stack is the one page that can leave it.
+	int32 LastNonLayersPage = 2;
 	int32 CompositionResolution = 2048;
 	// Bake-only, independent of CompositionResolution (the live preview's resolution, which this
 	// never changes). Reset from UMixtormatEditorSettings::DefaultBakeResolution the first time

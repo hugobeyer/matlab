@@ -3,7 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
-#include "UI/Controls/SMixtormatTabStrip.h"
+#include "UI/Controls/SMixtormatIconRail.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatThemeStore.h"
@@ -48,7 +48,18 @@ namespace
 
 FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 {
+	// Selecting LAYERS while it is away brings it back to the cell: the rail is the column's
+	// navigation, and there is only ever one layer stack.
+	if (PageIndex == 0 && LeftPanelPlacement != ELeftPanelPlacement::Docked)
+	{
+		LeftPanelPlacement = ELeftPanelPlacement::Docked;
+		ApplyLeftPanelPlacement();
+	}
 	LeftTabIndex = PageIndex;
+	if (PageIndex != 0)
+	{
+		LastNonLayersPage = PageIndex;
+	}
 	if (LeftSwitcher.IsValid())
 	{
 		LeftSwitcher->SetActiveWidgetIndex(PageIndex);
@@ -372,7 +383,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 	if (LeftPanelDockHost.IsValid()) LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
 	if (LeftPanelOverlayHost.IsValid()) LeftPanelOverlayHost->SetContent(SNullWidget::NullWidget);
 	InspectorPanel = BuildInspectorPanel();
-	LeftPanel = BuildLeftPanel();
+	LeftPanel = BuildFloatingLayerStack();
 	// Every rebuild runs a full layout pass, and that pass reports slot values back through
 	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
 	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
@@ -405,9 +416,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 							}
 						})
 			[
-				SAssignNew(LeftPanelDockHost, SBox)
+				SNew(SBox)
 				.Visibility_Lambda([this]() { return bLeftPanelCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
-				[LeftPanelPlacement == ELeftPanelPlacement::Overlay ? SNullWidget::NullWidget : LeftPanel.ToSharedRef()]
+				[BuildLeftColumn()]
 			]
 			+ SSplitter::Slot()
 						.Value_Lambda([this]()
@@ -551,8 +562,54 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
+TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 {
+	// The rail is the column's navigation and stays docked; only the layer stack travels. The cell
+	// shows whichever page the rail selects, and the layer stack is either in it or floating.
+	return SNew(SBorder)
+		.Padding(0.0f)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				SNew(SBox)
+				.Padding(FMargin(MixtormatTokens::LeftRailPadding))
+				[
+					SNew(SMixtormatIconRail)
+					.Options({
+						MixtormatIcons::HierarchyRoot(),
+						MixtormatIcons::Folder(),
+						MixtormatIcons::Globe() })
+					.ToolTips({
+						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
+						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),
+						LOCTEXT("GlobalRailHint", "Document-wide variables and preview settings.") })
+					.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
+					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
+				]
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			[
+				SAssignNew(LeftSwitcher, SWidgetSwitcher)
+					.WidgetIndex(LeftTabIndex)
+					+ SWidgetSwitcher::Slot()
+					[
+						SAssignNew(LeftPanelDockHost, SBox)
+						[LeftPanelPlacement == ELeftPanelPlacement::Docked
+							? LeftPanel.ToSharedRef() : SNullWidget::NullWidget]
+					]
+					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
+					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
+{
+	// What travels when the layer stack pops out: the stack itself, an empty grab margin above it
+	// and the resize grips. Docked, the margin and grips are collapsed and this is just the stack.
 	return SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -573,9 +630,8 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			})
 			[
 				SNew(SVerticalBox)
-				// Overlay only: an empty grab margin above the tab strip. The panel's identity is the
-				// tabs themselves, so this is a drag target rather than a header row; docked, it is
-				// collapsed away and the tab strip is the panel's top edge.
+				// Overlay only: an empty grab margin above the stack. The stack has no header of its
+				// own, so this is a drag target and nothing else.
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SAssignNew(LeftPanelOverlay.Header, SBox)
@@ -586,25 +642,9 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 				]
-				+ SVerticalBox::Slot().AutoHeight()
+				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
-					SNew(SMixtormatTabStrip)
-					.StretchTabs(true)
-					.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY"), LOCTEXT("GlobalLeftTab", "GLOBAL") })
-					.ToolTips({
-						LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
-						LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces."),
-						LOCTEXT("GlobalLeftTabHint", "Document-wide variables and settings.") })
-					.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
-					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
-				]
-			+ SVerticalBox::Slot().FillHeight(1.0f)
-			[
-				SAssignNew(LeftSwitcher, SWidgetSwitcher)
-					.WidgetIndex(LeftTabIndex)
-					+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
-					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
-					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
+					BuildLayerStackPanel()
 				]
 			]
 		]
