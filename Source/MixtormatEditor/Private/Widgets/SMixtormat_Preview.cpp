@@ -1517,16 +1517,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				CycleSelectedModulePreview();
 			}));
-	const auto RightOverlayPadding = [this]()
-	{
-		const float Inset = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset;
-		// Centre and right controls share the unobscured viewport area, not the inspector's
-		// initial width. Dragging/resizing the overlay moves that area's right boundary.
-		const float ReservedWidth = InspectorPlacement == EInspectorPlacement::Overlay
-			? FMath::Max(0.0f, GetInspectorOverlayBounds().X - InspectorOverlayPosition.X)
-			: 0.0f;
-		return FMargin(Inset, Inset, Inset + ReservedWidth, Inset);
-	};
+	// Viewport controls stay anchored to the full viewport, independently of the Inspector.
+	const FMargin ViewportOverlayPadding(Resolved.PreviewLayout.OverlayInset);
 			TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -1542,7 +1534,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[MakePreviewCluster(RenderControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
-		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
+		.Padding(ViewportOverlayPadding)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1577,7 +1569,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Top)
-		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
+		.Padding(ViewportOverlayPadding)
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatLightGizmo::Size)
@@ -1608,7 +1600,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[MakePreviewCluster(LightingControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
-		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
+		.Padding(ViewportOverlayPadding)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1625,7 +1617,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[MakePreviewCluster(SceneControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
+		.Padding(ViewportOverlayPadding)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1633,7 +1625,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		]
 		// FOV bottom centre, in the slot the watermark held.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
-		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
+		.Padding(ViewportOverlayPadding)
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })

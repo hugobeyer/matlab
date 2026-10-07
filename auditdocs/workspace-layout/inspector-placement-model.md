@@ -55,6 +55,63 @@ border and no rounded corners** (D16); inner component styling is unchanged.
 Implementation follows audit §6 option B: one instance, placement decided in
 `BuildWorkspaceUI`; never two instances (duplicate scroll/expansion state).
 
+## Overlay geometry: width, height and inset
+
+Implemented so far: explicit width and height, four corner resize targets, viewport
+clamping, and a default placement flush to the viewport's right edge at full height.
+The following changes that model.
+
+| Axis | Behaviour |
+|---|---|
+| Width | Explicit and resizable, as today |
+| Height | **Auto-fit by default**: the panel is as tall as its content, capped at the viewport height. A drag on a top or bottom corner switches it to an explicit height |
+| Inset | On first entry the overlay is placed **inset from the viewport edges by a token**, not flush |
+
+Why auto-fit: the inspector's content is a stack of foldouts. Collapsing them today
+leaves the panel at its old height with dead space below the last card, which reads as
+a broken panel rather than a collapsed one. With auto-fit, collapsing a foldout shrinks
+the panel to the content, and the panel grows again when it is expanded.
+
+Rules:
+
+- Auto-fit is capped at the viewport height; past that the inspector's own scroll box
+  takes over, exactly as it does in the docked column.
+- An explicit height is the user's choice: foldout collapse then leaves the panel size
+  alone and the scroll box absorbs the change. Do not silently snap back to auto-fit.
+- Auto-fit must not fight the drag. Resolve the height once per layout from the content's
+  desired size, and only while the height is auto.
+- The inset is a token (`InspectorOverlayInset` or similar), not a literal, and applies to
+  the default placement only — a dragged panel keeps wherever the user put it.
+- Open: whether a control returns an explicitly-sized panel to auto-fit. Out of scope for
+  the prototype; cycling the placement is the current escape hatch.
+
+## Layers placement — the same model
+
+The left column gets the same treatment as the inspector: **Docked → Overlay → Hidden**,
+with one instance reparented between hosts, never a second copy.
+
+| Piece | Approach |
+|---|---|
+| Scope | The left panel as a whole — the LAYERS / LIBRARY / GLOBAL tab strip travels with it. Open: whether only the LAYERS tab should float |
+| Hotkey | `L` becomes the cycle, matching `P`. The top-bar control and its tooltip change with it |
+| Splitter | The left slot collapses while floating; the centre slot carries its share and hands it back on write-back — the same pattern the inspector column already uses |
+| Styling | Square, borderless, translucent — the same tokens as the inspector overlay |
+| Default placement | Inset from the viewport's left edge, auto-fit height |
+| Reuse | The existing `bLeftPanelCollapsed` machinery and the inspector's overlay host/drag/resize code are the base; do not fork a second implementation |
+
+Consequences to plan for:
+
+- The left slot's write-back guard currently suppresses while collapsed. It must become
+  placement-aware the way the inspector column's did, or the Layers column stops being
+  resizable while floating.
+- Two overlays can be open at once. They must not share drag state, and each clamps to the
+  viewport independently.
+- Viewport controls stay anchored to the full viewport (see
+  `viewport-quick-controls-plan.md`), so a floating Layers panel may cover the left rail.
+  That is accepted: controls do not move to avoid overlays.
+- Out of scope: dragging a panel between columns, docking to the opposite side, and
+  persistence.
+
 ## Visibility state model (Auto mode — deferred until the cycle ships)
 
 | State | Overlay |

@@ -73,6 +73,12 @@ types: `Runtime/Public/MixtormatScalarRamp.h`, `MixtormatColorRamp.h`; math in
 Use the token/theme system; do not introduce local styling. `MixtormatStyle`
 (`Style/MixtormatStyle.h`) is the legacy style-set entry point.
 
+Two systems, one rule: structural constants go in `MixtormatTokens`
+(`Style/MixtormatDesignTokens.h`); anything retunable live goes in `FMixtormatTheme`
+plus `MixtormatThemeSchema.cpp`. Widgets read them through
+`FMixtormatThemeStore::GetResolved()` and never inline a value. Known local-literal
+gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
+
 ## Viewport overlays / toolbars
 
 `Widgets/SMixtormatPreviewViewport.*` owns the preview viewport, overlays and

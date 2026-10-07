@@ -26,6 +26,10 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D16 | Inspector overlay: no outer border and no rounded corners; inner component styling unchanged | User |
 | D17 | Prototype sync direction for layout geometry is Unreal → HTML/CSS | User |
 | D18 | Inspector overlay is draggable by its header row and resizable from all four corners, with hover-only L outlines and viewport clamping | User |
+| D19 | Viewport marking menu is invoked with Tab; RMB click is reserved for the later context menu, and RMB drag keeps rotating lighting | User |
+| D20 | Inspector overlay height auto-fits its content (capped at the viewport); a top/bottom corner drag makes it explicit, and foldout collapse then leaves the size alone | User |
+| D21 | The overlay is placed inset from the viewport edges by a token on first entry, not flush | User |
+| D22 | The left panel gets the same placement model as the inspector: Docked → Overlay → Hidden, one instance, draggable and resizable | User |
 
 ## Implemented (2026-10)
 
@@ -61,6 +65,9 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | O5 | Inspector drag: commit or defer | Assessed medium; R8 recommends defer |
 | O6 | Undo behavior: keep selection on undo, or accept overlay hiding | `ApplyEditHistoryState` L245 clears selection today |
 | O7 | Compact viewport mode (edge popovers + marking menu) | Deferred; prototype the inspector overlay cycle first |
+| O8 | Does `L` become the placement cycle for the left panel? | D22 implies yes, matching `P`; the top-bar tooltip and `HELPERS.md` change with it |
+| O9 | Does only the LAYERS tab float, or the whole left panel with its tab strip? | Whole panel is simpler and keeps one instance; the tab strip travelling with it is the recommendation |
+| O10 | How does an explicitly-sized overlay return to auto-fit height? | Cycling the placement is the current escape hatch; a fit control is out of scope |
 
 ## Rejected
 

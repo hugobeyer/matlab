@@ -39,8 +39,8 @@ workspace focus. Text entry always wins.
 
 | Key | Action | Advertised where |
 |---|---|---|
-| `L` | Collapse/expand Layers/Library | Top-bar tooltip `"… (L)."` |
-| `P` | Collapse/expand Inspector *(becomes the Docked → Overlay → Hidden cycle — tooltip must change with it)* | Top-bar tooltip `"… (P)."` |
+| `L` | Collapse/expand Layers/Library *(planned: becomes the placement cycle for the left panel — D22; tooltip must change with it)* | Top-bar tooltip `"… (L)."` |
+| `P` | Cycle Inspector placement: Docked → Overlay → Hidden | Top-bar tooltip `"Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."`; the control's own label reads `Inspector: Docked` / `Overlay` / `Hidden` |
 | `G` | Collapse/expand bottom galleries | Gallery collapse tooltip `"… (G)."` |
 | `I` | Toggle region-ID preview for the selected child | Not advertised — no tooltip found |
 | `F2` / `F12` | Rename selected layer or group | Menus `.Shortcut("F2")`; F12 undocumented alias |
@@ -61,6 +61,7 @@ these yet.
 | `Shift+V` | Jump straight back to Material (also in the mode label) |
 | `U` or `M` | Cycle module preview — **marked Temporary in source** |
 | Mouse wheel | Zoom camera |
+| `Tab` (bare) | **Planned, not implemented** — open the viewport marking menu. Belongs here (viewport focus), not in the workspace preprocessor, because Slate uses Tab for focus navigation. See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
 
 ## Hotkey catalog — controls
 
@@ -70,6 +71,7 @@ these yet.
 | Text entry (rename, slider type-in) | Enter / Tab / click-away commit; Escape or right-click cancels |
 | Ramp editor | `F` frames the view (`SMixtormatRampEditor.cpp`) |
 | Layer row | Double-click opens/shuts — never renames |
+| Inspector overlay | Header row drags the panel; each corner resizes it (hover shows a small L outline, opposite corner fixed). Corner tooltip: `"Drag to resize the Inspector."` |
 
 ## TODOs — mapping
 
@@ -79,7 +81,7 @@ table in as surfaces land; add a "Help text" section to the mandated
 
 | Hint / key | Surface | File | Status |
 |---|---|---|---|
-| `(L)`, `(P)` panel toggles | Top-bar tooltips | `SMixtormat_Shell.cpp` | Done — update `(P)` when the cycle ships |
+| `(L)`, `(P)` panel toggles | Top-bar tooltips | `SMixtormat_Shell.cpp` | Done — `(P)` now names the placement cycle |
 | `(G)` galleries | Gallery collapse button | `SMixtormat_Shell.cpp` | Done |
 | `(Ctrl+Z)` / `(Ctrl+Y or Ctrl+Shift+Z)` | Top-bar tooltips | `SMixtormat_Shell.cpp` | Done |
 | `(F2)` rename | Context menus | `MixtormatLayerMenus.cpp` | Done |
@@ -88,7 +90,12 @@ table in as surfaces land; add a "Help text" section to the mandated
 | Viewport keys (F, H/Space, Z, V, U/M) | Status bar only | `SMixtormatPreviewViewport.cpp` | TODO — decide a discoverable surface |
 | `I` region-ID preview | None | `SMixtormat.cpp` | TODO — add tooltip or menu entry |
 | `HelpDelay` token | `SMixtormatHelp` | `MixtormatDesignTokens.h`, theme schema | Verify the schema entry and `--help-delay` mapping |
-| Placement control `(P)` cycle | Inspector overlay header | `SMixtormat_Inspector.cpp` | TODO — arrives with the overlay handoff |
+| Placement control `(P)` cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — label reads the current placement |
+| Overlay corner resize | Corner tooltip | `SMixtormat_Inspector.cpp` | Done — `"Drag to resize the Inspector."` |
+| Overlay header drag | None | `SMixtormat_Shell.cpp` | TODO — no hint that the header row drags the overlay |
+| `Tab` marking menu | None | planned | TODO — arrives with the viewport quick-controls plan; decide its own help surface |
+| GLOBAL Preview/Viewport toggles | None | planned | TODO — group visibility switches need labels and tooltips |
+| `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | TODO — arrives with the Layers placement model (D22) |
 
 ## TODOs — architecture
 
@@ -98,11 +105,19 @@ table in as surfaces land; add a "Help text" section to the mandated
   a binding changes.
 - **Workspace keys are split.** `L`/`P` work everywhere (input preprocessor);
   `G`/`I`/`F2` need workspace focus. Decide whether all workspace-level keys
-  move to the preprocessor, or none.
+  move to the preprocessor, or none. `Tab` is the counter-example: it must stay
+  viewport-scoped, so the split is likely permanent.
 - **No contextual help overlay.** "Overlay text with context" today means
   tooltips plus the status bar. If a hover/help overlay is wanted (e.g. a
   viewport-key cheat sheet), extend `SMixtormatHelp` rather than inventing a
   second tooltip system.
+- **Viewport keys have no discoverable surface.** The planned `Tab` marking menu
+  (`auditdocs/workspace-layout/viewport-quick-controls-plan.md`) is the candidate
+  answer: it can list the viewport keys and the controls they act on, replacing
+  status-bar-only feedback. Decide whether the menu also advertises `F`/`H`/`Z`/`V`.
+- **`Tab` collides with Slate focus navigation.** If the marking menu ships, bare
+  Tab must be consumed only while the viewport has focus, and text entry must keep
+  priority — the same rule the `L`/`P` preprocessor already follows.
 - **Temporary keys.** `U`/`M` module preview says "Temporary" in source —
   either surface it properly or remove it.
 - **Empty-state copy** lives inline per panel; if a help pass comes, collect
@@ -111,4 +126,5 @@ table in as surfaces land; add a "Help text" section to the mandated
 ## Related
 
 - `UI.md` — regions and widgets. `ICONS.md` — glyphs. `CONVENTIONS.md` —
-  `LOCTEXT` rules. `auditdocs/workspace-layout/` — why `L`/`P` exist.
+  `LOCTEXT` rules. `auditdocs/workspace-layout/` — why `L`/`P` exist, and the
+  viewport quick-controls plan for the planned `Tab` marking menu.

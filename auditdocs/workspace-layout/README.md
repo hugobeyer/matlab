@@ -17,6 +17,7 @@ decision log, and the diagrams.
 | `inspector-placement-model.md` | Inspector as overlay / docked / hidden / auto, draggable popover, collapse-to-top |
 | `decisions-log.md` | Decided / recommended / open / rejected / implemented, with reasons |
 | `inspector-popover-handoff.md` | Handoff prompt: inspector Docked → Overlay → Hidden cycle |
+| `viewport-quick-controls-plan.md` | Source audit and lean directional popup / GLOBAL visibility plan |
 | `mixtormat_mermaid_concepts.md` | Original hybrid-workspace concept diagrams + codebase reconciliation |
 | `mermaid-diagrams.md` | Decision flowcharts and the inspector visibility state model |
 
