@@ -650,38 +650,50 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 				ToolTip)));
 	};
 	// The settings are the same builders the viewport overlay uses, so the two views cannot drift:
-	// a control added to the strip appears here, and both write the same state.
-	const float SectionGap = FMixtormatThemeStore::GetResolved().CardLayout.Gap;
+	// a control added to a strip appears here, and both write the same state. Cards, because a flat
+	// list of every preview control reads as a wall; each card is one feature, and the icon buttons
+	// run inline inside it rather than as a column of full-width bars.
 	TSharedRef<SVerticalBox> PreviewSection = SNew(SVerticalBox);
-	PreviewSection->AddSlot().AutoHeight()
-	[
-		MixtormatRow::MakeCaption(LOCTEXT("GlobalPreviewVisibility", "SHOW ON VIEWPORT"))
-	];
-	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupRender", "Render strip"),
-		LOCTEXT("PreviewGroupRenderHint", "Anti-aliasing, render scale, Default/Lumen, Final and displacement preview."),
-		bPreviewGroupRenderVisible);
-	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupLighting", "Lighting"),
-		LOCTEXT("PreviewGroupLightingHint", "Studio presets, the camera and lighting reset, and the light and skylight sliders."),
-		bPreviewGroupLightingVisible);
-	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupGeometry", "Geometry"),
-		LOCTEXT("PreviewGroupGeometryHint", "The preview mesh buttons and the UV 90° toggle."),
-		bPreviewGroupGeometryVisible);
-	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupCamera", "Camera"),
-		LOCTEXT("PreviewGroupCameraHint", "The preview mode label and the FOV slider."),
-		bPreviewGroupCameraVisible);
-	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupOutput", "Output"),
-		LOCTEXT("PreviewGroupOutputHint", "Composition resolution and the clear-debug control."),
-		bPreviewGroupOutputVisible);
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)
-	[
-		MixtormatRow::MakeCaption(LOCTEXT("GlobalPreviewSettings", "SETTINGS"))
-	];
-	PreviewSection->AddSlot().AutoHeight()[BuildPreviewRenderControls()];
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewLightingControls()];
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewGeometryControls()];
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewSceneControls()];
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewCameraControls()];
-	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewOutputControls()];
+	{
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewVisibility", "VISIBILITY"));
+		AddGroupToggle(Card, LOCTEXT("PreviewGroupRender", "Render strip"),
+			LOCTEXT("PreviewGroupRenderHint", "Render scale and the Final popup on the viewport."),
+			bPreviewGroupRenderVisible);
+		AddGroupToggle(Card, LOCTEXT("PreviewGroupLighting", "Lighting"),
+			LOCTEXT("PreviewGroupLightingHint", "Studio presets, the camera and lighting reset, and the light and skylight sliders."),
+			bPreviewGroupLightingVisible);
+		AddGroupToggle(Card, LOCTEXT("PreviewGroupGeometry", "Geometry"),
+			LOCTEXT("PreviewGroupGeometryHint", "The preview mesh buttons and the UV 90° toggle."),
+			bPreviewGroupGeometryVisible);
+		AddGroupToggle(Card, LOCTEXT("PreviewGroupCamera", "Camera"),
+			LOCTEXT("PreviewGroupCameraHint", "The preview mode label and the FOV slider."),
+			bPreviewGroupCameraVisible);
+		AddGroupToggle(Card, LOCTEXT("PreviewGroupOutput", "Output"),
+			LOCTEXT("PreviewGroupOutputHint", "Composition resolution and the clear-debug control."),
+			bPreviewGroupOutputVisible);
+	}
+	{
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewRender", "RENDER"));
+		AddSliderRow(Card, BuildPreviewRenderControls());
+	}
+	{
+		// Presets and the light sliders are one feature: what the surface is lit by.
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING"));
+		AddSliderRow(Card, BuildPreviewLightingControls(EPreviewControlLayout::Inline));
+		AddSliderRow(Card, BuildPreviewSceneControls());
+	}
+	{
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY"));
+		AddSliderRow(Card, BuildPreviewGeometryControls(EPreviewControlLayout::Inline));
+	}
+	{
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewCamera", "CAMERA"));
+		AddSliderRow(Card, BuildPreviewCameraControls());
+	}
+	{
+		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewOutput", "OUTPUT"));
+		AddSliderRow(Card, BuildPreviewOutputControls());
+	}
 
 	return SNew(SScrollBox)
 		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))

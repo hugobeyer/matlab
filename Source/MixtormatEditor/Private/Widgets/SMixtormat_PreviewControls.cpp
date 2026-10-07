@@ -205,6 +205,36 @@ namespace
 				.ColorAndOpacity(Color)
 			];
 	}
+
+	// The rail: one button per line, which is what the viewport's edges have room for.
+	TSharedRef<SWidget> MakePreviewButtonRail(const TArray<TSharedRef<SWidget>>& Buttons, const float Gap)
+	{
+		TSharedRef<SVerticalBox> Rail = SNew(SVerticalBox);
+		for (const TSharedRef<SWidget>& Button : Buttons)
+		{
+			Rail->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, Gap)
+			[
+				Button
+			];
+		}
+		return Rail;
+	}
+
+	// The row: the same buttons side by side, for GLOBAL's cards, where a column of full-width bars
+	// reads as a list of unrelated things rather than as one feature's options.
+	TSharedRef<SWidget> MakePreviewButtonRow(const TArray<TSharedRef<SWidget>>& Buttons, const float Gap)
+	{
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+		for (int32 Index = 0; Index < Buttons.Num(); ++Index)
+		{
+			Row->AddSlot().AutoWidth()
+				.Padding(Index + 1 < Buttons.Num() ? FMargin(0.0f, 0.0f, Gap, 0.0f) : FMargin(0.0f))
+				[
+					Buttons[Index]
+				];
+		}
+		return Row;
+	}
 }
 
 TSharedRef<SWidget> SMixtormat::MakePreviewCluster(const TSharedRef<SWidget>& Content)
@@ -384,35 +414,31 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
 	return Controls;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls()
+TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewControlLayout Layout)
 {
 	const float ButtonGap = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayButtonGap;
-	TSharedRef<SVerticalBox> Controls = SNew(SVerticalBox);
-	const auto AddPresetButton = [this, &Controls, ButtonGap](
+	TArray<TSharedRef<SWidget>> Buttons;
+	const auto AddPresetButton = [this, &Buttons](
 		const EMixtormatStudioLighting Preset,
 		const FText& ToolTip,
 		const FSlateBrush* Icon)
 	{
-		Controls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, ButtonGap)
-		[
-			MakePreviewRailButton(
-				TAttribute<bool>::CreateLambda([this, Preset]() { return StudioLighting == Preset; }),
-				true,
-				ToolTip,
-				FOnCheckStateChanged::CreateLambda([this, Preset](ECheckBoxState) { SetStudioLighting(Preset); }),
-				MakeRailGlyph(Icon, TAttribute<FSlateColor>::CreateLambda([this, Preset]()
-				{
-					return GetPreviewOverlayIconColor(false, StudioLighting == Preset);
-				})))
-		];
+		Buttons.Add(MakePreviewRailButton(
+			TAttribute<bool>::CreateLambda([this, Preset]() { return StudioLighting == Preset; }),
+			true,
+			ToolTip,
+			FOnCheckStateChanged::CreateLambda([this, Preset](ECheckBoxState) { SetStudioLighting(Preset); }),
+			MakeRailGlyph(Icon, TAttribute<FSlateColor>::CreateLambda([this, Preset]()
+			{
+				return GetPreviewOverlayIconColor(false, StudioLighting == Preset);
+			}))));
 	};
 	AddPresetButton(EMixtormatStudioLighting::Neutral, LOCTEXT("NeutralStudioButton", "Neutral studio"), MixtormatIcons::LightNeutral());
 	AddPresetButton(EMixtormatStudioLighting::Soft, LOCTEXT("SoftStudioButton", "Soft studio"), MixtormatIcons::LightSoft());
 	AddPresetButton(EMixtormatStudioLighting::Dramatic, LOCTEXT("DramaticStudioButton", "Dramatic studio"), MixtormatIcons::LightDramatic());
 	AddPresetButton(EMixtormatStudioLighting::Rim, LOCTEXT("RimStudioButton", "Rim lighting"), MixtormatIcons::LightRim());
 	AddPresetButton(EMixtormatStudioLighting::Workshop, LOCTEXT("WorkshopStudioButton", "Workshop lighting"), MixtormatIcons::Globe());
-	Controls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, ButtonGap)
-	[
+	Buttons.Add(
 		SNew(SBox)
 		.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
 			static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].ButtonSize)
@@ -436,17 +462,18 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls()
 				}))
 			]
 			]
-		]
-	];
-	return Controls;
+		]);
+	return Layout == EPreviewControlLayout::Inline
+		? MakePreviewButtonRow(Buttons, ButtonGap)
+		: MakePreviewButtonRail(Buttons, ButtonGap);
 }
 
-TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls()
+TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewControlLayout Layout)
 {
 	const float ButtonGap = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayButtonGap;
 	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
-	TSharedRef<SVerticalBox> Controls = SNew(SVerticalBox);
-	const auto AddMeshButton = [this, &Controls, ButtonGap](
+	TArray<TSharedRef<SWidget>> Buttons;
+	const auto AddMeshButton = [this, &Buttons](
 		const EMixtormatPreviewMesh MeshType,
 		const FText& ToolTip,
 		const FSlateBrush* Icon)
@@ -470,55 +497,51 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls()
 				? TOptional<FSlateRenderTransform>(FSlateRenderTransform(FQuat2D(FMath::DegreesToRadians(90.0f))))
 				: TOptional<FSlateRenderTransform>();
 		}));
-		Controls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, ButtonGap)
-		[
-			MakePreviewRailButton(
-				TAttribute<bool>::CreateLambda([this, MeshType]() { return PreviewMesh == MeshType; }),
-				true,
-				TAttribute<FText>::CreateLambda([this, MeshType, ToolTip]()
+		Buttons.Add(MakePreviewRailButton(
+			TAttribute<bool>::CreateLambda([this, MeshType]() { return PreviewMesh == MeshType; }),
+			true,
+			TAttribute<FText>::CreateLambda([this, MeshType, ToolTip]()
+			{
+				if (MeshType == EMixtormatPreviewMesh::Plane)
 				{
-					if (MeshType == EMixtormatPreviewMesh::Plane)
-					{
-						return PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
-							? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X")
-							: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal");
-					}
-					return ToolTip;
-				}),
-				FOnCheckStateChanged::CreateLambda([this, MeshType](ECheckBoxState) { SetPreviewMesh(MeshType); }),
-				SNew(SBox)
-				.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
-					static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
-				.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
-					static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[Glyph])
-		];
+					return PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
+						? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X")
+						: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal");
+				}
+				return ToolTip;
+			}),
+			FOnCheckStateChanged::CreateLambda([this, MeshType](ECheckBoxState) { SetPreviewMesh(MeshType); }),
+			SNew(SBox)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+				static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+				static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[Glyph]));
 	};
 	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere"), MixtormatIcons::Sphere());
 	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), MixtormatIcons::Cylinder());
 	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), MixtormatIcons::Cube());
 	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), MixtormatIcons::Plane());
-	Controls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, ButtonGap)
-	[
-		MakePreviewRailButton(
-			TAttribute<bool>::CreateLambda([this]() { return bGlobalUVRotation90; }),
-			TAttribute<bool>::CreateLambda([this]() { return bHasWorkingMaterial; }),
-			LOCTEXT("GlobalUVRotation90Hint", "Rotate the complete material UVs 90 degrees. All channels rotate together, including tangent-space normal direction."),
-			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-			{
-				SetGlobalUVRotation90(State == ECheckBoxState::Checked);
-			}),
-			SNew(STextBlock)
-			.Text(LOCTEXT("GlobalUVRotation90", "90°"))
-			.Font(LabelStyle.Font)
-			.ColorAndOpacity_Lambda([this]()
-			{
-				return GetPreviewOverlayLabelColor(false, bGlobalUVRotation90);
-			}))
-	];
-	return Controls;
+	Buttons.Add(MakePreviewRailButton(
+		TAttribute<bool>::CreateLambda([this]() { return bGlobalUVRotation90; }),
+		TAttribute<bool>::CreateLambda([this]() { return bHasWorkingMaterial; }),
+		LOCTEXT("GlobalUVRotation90Hint", "Rotate the complete material UVs 90 degrees. All channels rotate together, including tangent-space normal direction."),
+		FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+		{
+			SetGlobalUVRotation90(State == ECheckBoxState::Checked);
+		}),
+		SNew(STextBlock)
+		.Text(LOCTEXT("GlobalUVRotation90", "90°"))
+		.Font(LabelStyle.Font)
+		.ColorAndOpacity_Lambda([this]()
+		{
+			return GetPreviewOverlayLabelColor(false, bGlobalUVRotation90);
+		})));
+	return Layout == EPreviewControlLayout::Inline
+		? MakePreviewButtonRow(Buttons, ButtonGap)
+		: MakePreviewButtonRail(Buttons, ButtonGap);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewSceneControls()

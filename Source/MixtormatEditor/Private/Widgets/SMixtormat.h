@@ -1478,8 +1478,11 @@ private:
 	TSharedRef<SWidget> BuildQuickControlsOverlay();
 	void ToggleQuickControls();
 	void CloseQuickControls();
-	TSharedRef<SWidget> BuildPreviewLightingControls();
-	TSharedRef<SWidget> BuildPreviewGeometryControls();
+	// How a group's buttons are laid out: the viewport's rails stack them down an edge, GLOBAL's
+	// cards run them inline so a card reads as one row of features rather than a column of bars.
+	enum class EPreviewControlLayout : uint8 { Rail, Inline };
+	TSharedRef<SWidget> BuildPreviewLightingControls(EPreviewControlLayout Layout = EPreviewControlLayout::Rail);
+	TSharedRef<SWidget> BuildPreviewGeometryControls(EPreviewControlLayout Layout = EPreviewControlLayout::Rail);
 	TSharedRef<SWidget> BuildPreviewSceneControls();
 	TSharedRef<SWidget> BuildPreviewCameraControls();
 	TSharedRef<SWidget> BuildPreviewOutputControls();
