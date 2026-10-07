@@ -167,7 +167,11 @@ namespace
 	{
 		const Mixtormat::FMixtormatIconStyle& Icon = FMixtormatThemeStore::GetResolved().Icons.Roles[
 			static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)];
-		return SNew(SBox)
+		return SNew(SMixtormatHelp)
+			.Text(ToolTip)
+			.Enabled(bEnabled)
+			[
+			SNew(SBox)
 			.WidthOverride(Icon.ButtonSize)
 			.HeightOverride(Icon.ButtonSize)
 			[
@@ -177,7 +181,6 @@ namespace
 					SNew(SCheckBox)
 					.Style(&GetPreviewOverlayToggleStyle())
 					.IsEnabled(bEnabled)
-					.ToolTipText(ToolTip)
 					.IsChecked_Lambda([bChecked]()
 					{
 						return bChecked.Get(false) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
@@ -187,7 +190,8 @@ namespace
 						Content
 					]
 				]
-			];
+			]
+		];
 	}
 
 	// The glyph inside a rail button, at the role's glyph size.
@@ -483,16 +487,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 			// The resourceless overlay style, not Mixtormat.ViewportOverlayButton. That button style
 			// bakes its own legacy plate brush into every state, so keeping it here painted a second
 			// plate on top of the recipe's -- the one overlay control that did not match its neighbours.
-			SNew(SButton)
-			.ButtonStyle(&GetPreviewOverlayButtonStyle())
-			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
-			.ToolTipText(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
-			.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
+			SNew(SMixtormatHelp)
+			.Text(LOCTEXT("ResetPreviewCameraLightingHint", "Reset camera, FOV, and lighting"))
 			[
-				MakeRailGlyph(MixtormatIcons::Refresh(), TAttribute<FSlateColor>::CreateLambda([this]()
-				{
-					return GetPreviewOverlayIconColor(false);
-				}))
+				SNew(SButton)
+				.ButtonStyle(&GetPreviewOverlayButtonStyle())
+				.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
+				.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
+				[
+					MakeRailGlyph(MixtormatIcons::Refresh(), TAttribute<FSlateColor>::CreateLambda([this]()
+					{
+						return GetPreviewOverlayIconColor(false);
+					}))
+				]
 			]
 			]
 		]);
@@ -667,17 +674,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
-			SNew(SButton)
+			SNew(SMixtormatHelp)
+			.Text(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
 			.Visibility_Lambda([this]()
 			{
 				return DebugPreviewMode == EMixtormatDebugPreviewMode::None
 					? EVisibility::Collapsed
 					: EVisibility::Visible;
 			})
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
-			.ToolTipText(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
-			.OnClicked_Lambda([this]()
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+				.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+				.OnClicked_Lambda([this]()
 			{
 				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 				ChildPreviewTarget = FMixtormatChildPreviewTarget();
@@ -732,6 +741,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 					default: return FText::GetEmpty();
 					}
 				})
+					]
 			]
 		]
 		+ SHorizontalBox::Slot().AutoWidth().Padding(

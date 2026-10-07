@@ -4,6 +4,7 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -43,13 +44,16 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
 		const FMixtormatOnSegmentChosen OnChosen = InArgs._OnChosen;
 		Rail->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::LeftRailButtonGap)
 		[
-			SNew(SBox)
-			.WidthOverride(Role.ButtonSize)
-			.HeightOverride(Role.ButtonSize)
+			// The shared styled help, not Slate's default tooltip.
+			SNew(SMixtormatHelp)
+			.Text(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
 			[
-				SNew(SCheckBox)
-				.Style(&GetRailToggleStyle())
-				.ToolTipText(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
+				SNew(SBox)
+				.WidthOverride(Role.ButtonSize)
+				.HeightOverride(Role.ButtonSize)
+				[
+					SNew(SCheckBox)
+					.Style(&GetRailToggleStyle())
 				.IsChecked_Lambda([bActive]()
 				{
 					return bActive.Get(false) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
@@ -76,9 +80,10 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
 					]
 				]
 			]
-		];
-	}
-	ChildSlot
+			]
+			];
+		}
+		ChildSlot
 	[
 		Rail
 	];

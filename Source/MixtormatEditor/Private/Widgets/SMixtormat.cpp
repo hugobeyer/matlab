@@ -4,6 +4,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Framework/Application/SlateApplication.h"
 
@@ -412,7 +413,16 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 	FNumericResetBinding& Binding = NumericResetBindings.AddDefaulted_GetRef();
 	Binding.Widget = Slider;
 	Binding.Reset = BoundedReset;
-	return Slider;
+	// One help system for the whole UI: the shared styled help rather than Slate's default
+	// tooltip. The binding keeps the slider itself, so hover-to-reset still finds it inside the
+	// wrapper, and a caller with no tooltip of its own still gets the slider's gesture hint.
+	const FText HelpText = ToolTip.IsSet()
+		? ToolTip.Get(FText::GetEmpty())
+		: LOCTEXT("SliderHint", "Drag to adjust · click to type · Shift fine · Ctrl+Shift finer · Ctrl snap · MMB or hover + Backspace to reset");
+	return SNew(SMixtormatHelp)
+		.Text(HelpText)
+		.Enabled_Lambda([this]() { return !bIsBaking; })
+		[Slider];
 }
 
 TSharedRef<SVerticalBox> SMixtormat::AddCard(

@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormatOverlayPanel.h"
+#include "UI/Menus/SMixtormatHelp.h"
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
@@ -281,18 +282,21 @@ TSharedRef<SWidget> MixtormatOverlay::MakeResizeGrip(FMixtormatOverlayPanelState
 	const EMixtormatOverlayGrip Grip = static_cast<EMixtormatOverlayGrip>(Index);
 	// A side grip is a short bar along the edge it moves; a corner is a square at the corner.
 	const bool bSide = Grip == EMixtormatOverlayGrip::Left || Grip == EMixtormatOverlayGrip::Right;
-	return SAssignNew(State.ResizeGrips[Index], SBox)
-		.WidthOverride(MixtormatTokens::OverlayPanelGripSize)
-		.HeightOverride(bSide
-			? MixtormatTokens::OverlayPanelEdgeGripLength
-			: MixtormatTokens::OverlayPanelGripSize)
-		.ToolTipText(ToolTip)
+	return SNew(SMixtormatHelp)
+		.Text(ToolTip)
 		.Visibility_Lambda([&State]()
 		{
 			return State.bFloating ? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
+		SAssignNew(State.ResizeGrips[Index], SBox)
+		.WidthOverride(MixtormatTokens::OverlayPanelGripSize)
+		.HeightOverride(bSide
+			? MixtormatTokens::OverlayPanelEdgeGripLength
+			: MixtormatTokens::OverlayPanelGripSize)
+		[
 			SNew(SMixtormatOverlayResizeGrip)
 			.Grip(Grip)
+		]
 		];
 }

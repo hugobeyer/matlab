@@ -24,8 +24,8 @@ plus the TODO lists for mapping and architecture work on top of it.
 
 | Mechanism | Where | Notes |
 |---|---|---|
-| `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (0.35 seconds / 350 ms). Token-only: no live-theme delay field/schema entry was found. Used by shell actions such as the top bar and group buttons. |
-| Plain tooltips | `.ToolTipText(...)` on widgets | Everywhere else (sliders, buttons, rows). |
+| `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Styled hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (0.35 seconds / 350 ms). Used by shell actions, sliders, the icon rail, preview quick controls, and overlay resize/fit controls. It clears native tooltips in its child subtree. |
+| Plain tooltips | `.ToolTipText(...)` on widgets | Still used by existing controls outside the migrated surfaces; migrate only when those surfaces are intentionally touched. |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
 | Status bar | `WorkingStatusText` | "Unsaved changes" / "All changes saved" / `Preview: <mode>`. Supplements visual/control feedback; not updated by every viewport hotkey. |
 | Mode label | `GetPreviewModeLabel()` | `"{0}  (Shift+V for Material)"` on the preview. |
@@ -96,12 +96,12 @@ table in as surfaces land; add a "Help text" section to the mandated
 | `HelpDelay` token | `SMixtormatHelp` | `MixtormatDesignTokens.h` L468; `SMixtormatHelp.cpp` L58 | Token reader verified; no live-theme delay schema entry found |
 | Placement control `(P)` cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — label reads the current placement |
 | Overlay corner resize | Corner tooltip | `SMixtormat_Inspector.cpp` | Done — `"Drag to resize the Inspector."` |
-| Overlay Fit height | Bottom-centre chevron tooltip | `SMixtormat_Overlays.cpp` | Done — shown only while the height is explicit; same control for both panels |
+| Overlay Fit height | Bottom-centre chevron help | `SMixtormat_Overlays.cpp` | Done — `SMixtormatHelp`, shown only when the height is explicit; same control for both panels |
 | Overlay header drag | None | `SMixtormat_Shell.cpp` | Inspector: identity row (no hint). Left panel: empty grab margin above the tab strip (no hint); the grab-hand cursor is the only affordance |
 | `Tab` marking menu | None | planned | TODO — arrives with the viewport quick-controls plan; decide its own help surface |
 | GLOBAL Preview/Viewport toggles | GLOBAL group rows | `SMixtormat_Shell.cpp` | Done — five switches with labels and tooltips; the settings below them are the viewport's own builders |
 | `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — the cycle moves the layer stack; the rail stays docked |
-| Left column rail | Icon tooltips | `SMixtormat_Shell.cpp` | Done — LAYERS / LIBRARY / GLOBAL icons carry the tab hints as tooltips |
+| Left column rail | Icon help | `SMixtormatIconRail.cpp` | Done — LAYERS / LIBRARY / GLOBAL use `SMixtormatHelp` for their tab hints |
 
 ## TODOs — architecture
 

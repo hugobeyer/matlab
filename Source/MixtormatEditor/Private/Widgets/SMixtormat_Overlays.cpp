@@ -6,6 +6,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SBox.h"
@@ -207,11 +208,13 @@ TSharedRef<SWidget> SMixtormat::MakeOverlayFitButton(FMixtormatOverlayPanelState
 			return State.bFloating && !State.bHeightAuto ? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
-			SNew(SButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-			.ContentPadding(0.0f)
-			.ToolTipText(LOCTEXT("FitOverlayHeightHint", "Fit the panel height to its content. Returns to automatic height; width and position stay as they are."))
-			.OnClicked_Lambda([this, &State, Panel]()
+			SNew(SMixtormatHelp)
+			.Text(LOCTEXT("FitOverlayHeightHint", "Fit the panel height to its content. Returns to automatic height; width and position stay as they are."))
+			[
+				SNew(SButton)
+				.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+				.ContentPadding(0.0f)
+				.OnClicked_Lambda([this, &State, Panel]()
 			{
 				MixtormatOverlay::FitHeight(State, Panel, GetPreviewViewportBounds());
 				return FReply::Handled();
@@ -225,6 +228,7 @@ TSharedRef<SWidget> SMixtormat::MakeOverlayFitButton(FMixtormatOverlayPanelState
 				[
 					SNew(SImage).Image(MixtormatIcons::ChevronUp())
 				]
+			]
 			]
 		];
 }

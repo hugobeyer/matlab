@@ -315,3 +315,81 @@ inspector.**
 4. Layout persistence in editor settings.
 5. Global variables (data model first, panel second).
 6. Full redocking only if still wanted after the above.
+
+---
+
+## 8. Audit: overlay-only left navigation and galleries
+
+**Request:** remove the left-side splitter/cell. LAYERS, LIBRARY, and GLOBAL
+should be overlay surfaces; Layers alone gets the inspector-style pop-out /
+return interaction. The bottom gallery should also overlay the preview, removing
+its splitter division rather than reserving a bottom cell.
+
+### Verified current implementation
+
+- `BuildAuthoringPage` still allocates a three-slot horizontal splitter
+  (left / preview+gallery / inspector) and a vertical preview/gallery splitter.
+- `BuildLeftColumn` allocates a fixed-width rail plus `LeftSwitcher` cell.
+  The rail is docked; only the Layers widget can move to the preview overlay.
+  LIBRARY and GLOBAL remain in the cell.
+- `BuildBottomLibrary` contains its own horizontal MATERIALS/MASKS splitter.
+- The current overlay controller already supports one reparented widget,
+  auto-fit height, drag, corner/side resize, viewport clamping, and fronting.
+  It currently models only Inspector and the Layers stack.
+
+### Options
+
+| Option | Design | Trade-off |
+|---|---|---|
+| A. Reuse one left overlay host | Keep the rail as a narrow, fixed overlay at the viewport edge; clicking LIBRARY/GLOBAL opens their content in the same overlay surface. Layers uses that surface and retains its own drag/resize/return affordance. No left shell splitter slot or page cell. | Minimal shell width; requires page switching/reparenting and preserving each page's scroll state. |
+| B. Independent overlay per page | Give Layers, Library, and Global separate overlay frames. | Fast page switching, but more geometry/front-order state and more overlap; avoid unless simultaneous panels are required. |
+| C. External window / nested docking | Separate OS windows or `FTabManager`. | Does not meet the in-viewport overlay goal; adds lifecycle/reconstruction complexity. |
+
+**Recommendation:** Option A. Reuse the existing single-instance overlay pattern;
+keep the rail as an overlay control, not a splitter cell. Give the Layers page
+the same drag-to-move and explicit click-to-return path as the Inspector. Library
+and Global are selected overlay pages, not additional docked cells or pop-outs.
+Do not create a second Layers widget.
+
+### Gallery overlay options
+
+| Option | Design | Trade-off |
+|---|---|---|
+| A. Single bottom drawer | Remove the center vertical splitter; anchor one materials/masks drawer over the viewport bottom. Replace the internal split with MATERIALS / MASKS tabs or a compact mode switch. | Removes both divider handles and preserves screen space when closed; changing modes is one extra action. Recommended. |
+| B. Two independently open drawers | Keep materials and masks in separate overlay panels. | More simultaneous visibility, but adds stacking, placement, and width state; unnecessary unless side-by-side viewing is a requirement. |
+| C. Keep current split and paint over it | Merely style the existing split panels as overlays. | Still reserves layout space and retains both splitters; does not satisfy the request. Reject. |
+
+### Shared implementation constraints / risks
+
+- Remove splitter fractions/write-back for the removed left and preview/gallery
+  divisions; do not retain hidden splitter slots as a compatibility layer.
+- Keep the right Inspector dock/overlay/hidden cycle and its width behavior.
+  Recalculate the main authoring layout as Preview + Inspector; the preview
+  owns the overlay host for left navigation, Inspector, and gallery.
+- Reparent existing panel instances; preserve search, scroll, selection, and
+  gallery state across overlay close/open and theme reconstruction.
+- Define interactions before coding: rail click toggles/switches the overlay;
+  clicking the active Layers icon returns it to its dock/home state; dragging
+  Layers to the rail is an alternate return path. Outside click should not
+  unexpectedly discard edits or selections.
+- Gallery mode selection should preserve the existing MATERIALS and MASKS
+  builders and their state. Verify mask availability when no working material
+  exists; retain the current visibility rule.
+- Reuse `MixtormatOverlay` geometry and theme tokens. Do not invent independent
+  sizing literals. Overlay overlap order must be deterministic when Inspector,
+  left content, and gallery are open together.
+- These choices remove volatile fractions, but placement/size persistence remains
+  a separate opt-in task; current layout state is session-only.
+
+### Suggested migration / test order
+
+1. Extract the left rail from the left cell and host it over the preview without
+   allocating shell width; verify all three page selections.
+2. Route Layers, Library, and Global through one overlay surface; test click and
+   drag return for Layers and preserve page state on switching.
+3. Replace the preview/gallery vertical splitter with a bottom overlay drawer;
+   replace the MATERIALS/MASKS split with a mode selector.
+4. Remove obsolete fraction fields, splitter callbacks, and collapse wiring only
+   after all readers are updated.
+5. Test narrow/wide windows, resize/reconstruction, hit testing, overlay order,
+   text entry, mask visibility, and Inspector coexistence.
