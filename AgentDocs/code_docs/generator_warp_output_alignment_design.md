@@ -244,7 +244,7 @@ Existing seed validity/heuristics and source-distance approximations still apply
 
 ## 9. Noise and separately published fields — step 7 implementation
 
-Re-read `MixtormatNoise.usf` before supporting Noise as a warp target:
+`MixtormatNoise.usf`'s Gradient contract remains heterogeneous:
 - Value has a family-dependent raw contract; signed Height is derived from it, then the
   shared normalization and scale are applied separately.
 - Gradient/Value noise write analytic derivatives in generator-domain coordinates.
@@ -294,9 +294,10 @@ flow-tool owners. Preserve bHashedIds and never create IDs for Noise families wi
    Active structural Strata uses its direct boundary; inactive retains stage 8.
 5. Step 7 admits all later enabled unscoped generator targets. Strata regenerates in its
    structural frame; Rock, Pebbles, Cracks, Cliff and Noise use one explicit completed-bundle
-   pullback that owns Height/Coverage and typed companions. Noise Value/Gradient are republished
-   under the same revision; Gradient is declared source-frame transport data. Legacy inverse
-   centre/orientation limitations remain unchanged.
+   pullback that owns signed Height/Coverage and typed companions. Noise Value/Gradient are
+   republished under the same revision; its family-dependent Gradient meaning is explicitly
+   source-frame transport data, not blindly Jacobian-transformed. Legacy inverse centre/orientation
+   limitations remain unchanged.
 6. Source review only: broken StructuralWarp tests were removed at user request. Acceptance
    cases below are unexecuted; no agent compile/build/runtime/test results are claimed.
 
@@ -313,8 +314,10 @@ Primary files, relative to plugin root:
 - `Shaders/Private/MixtormatStrataCarver.usf`: aligned structural outputs/direct boundaries.
 - `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`: output demand/cache scope.
 
-Reference-only until step 7: `MixtormatGpuNoisePasses.cpp`, `MixtormatNoise.usf`, and the
-individual Rock/Pebbles/Cracks/Cliff producer shaders. No broad inspector/layout work in step 6.
+Step-7 implementation touches `MixtormatGpuNoisePasses.cpp` only to declare Noise Gradient's
+source-frame semantics; family evaluation in `MixtormatNoise.usf` remains unchanged. Producer
+shaders for Rock/Pebbles/Cracks/Cliff are unchanged; their existing bundle registrations define
+which fields move. No broad inspector/layout redesign.
 
 ## 12. Acceptance matrix (not executed)
 

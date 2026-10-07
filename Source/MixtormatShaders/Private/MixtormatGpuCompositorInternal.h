@@ -1104,8 +1104,8 @@ namespace MixtormatGpuCompositor
 
 	struct FGeneratorBundle
 	{
-		// Internal producer contract, not new public field kinds. Unknown/Noise vector
-		// semantics remain unsupported until step 7 inventories their frame and meaning.
+		// Internal producer contract, not new public field kinds. Unknown vectors remain
+		// unsupported; Noise declares heterogeneous source-frame semantics for transport-only sampling.
 		enum class EFieldSemantic : uint8
 		{
 			Unsupported,

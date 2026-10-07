@@ -78,7 +78,7 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 - Height is `PF_R32_FLOAT`; BaseColor/Normal/RAM are `float4`.
 - Substrate defaults in `MixtormatGpuComposePipeline.cpp` (`MixtormatSubstrate`).
 
-## Structural Warp / bundle alignment (steps 5–6)
+## Structural Warp / bundle alignment (steps 5–7)
 
 - `FMixtormatGeneratorStructuralWarpCS` → `MixtormatGeneratorStructuralWarp.usf::MainCS`.
 - `MixtormatGeneratorStructuralWarp.usf::CoordinateCS` turns final RG32F displacement into a
@@ -97,7 +97,8 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
   `length(g_source)` in the metric ratio. All companions read old IDs/boundaries from one
   immutable snapshot. Apply owns Height/Coverage; `PebbleCoverage` aliases moved Coverage.
 - `CrackDistance` remains a crack-cell attribute, distinct from the internal UV boundary.
-  Other structural targets and Noise semantics remain gated for step 7.
+  Rock, Pebbles, Cracks, Cliff and Noise use the completed typed bundle path; Noise Gradient
+  retains heterogeneous source-frame meaning and is transport-sampled without an implicit vector transform.
 
 Implementation and source review are not compile/runtime validation. Only the user's earlier
 step-2 compile is confirmed; the gather missing-header fix is present, newest build unconfirmed.

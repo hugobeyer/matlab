@@ -188,7 +188,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 #if BUNDLE_STAGE == 1
 		OutIds[Pixel] = MIXTORMAT_INVALID_REGION;
-#elif BUNDLE_STAGE == 2 || BUNDLE_STAGE == 5
+#elif BUNDLE_STAGE == 2 || BUNDLE_STAGE == 4 || BUNDLE_STAGE == 5
 		OutVector[Pixel] = 0.0f;
 #elif BUNDLE_STAGE == 3
 		OutVector[Pixel] = UV; // Invalid map remains invalid, never an identity substitute.

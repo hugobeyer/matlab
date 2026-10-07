@@ -1176,11 +1176,13 @@ namespace
 	// A step-7 completed-bundle operation owns every moved output. It is intentionally separate
 	// from flow apply, which has already authored Height/Coverage before companion remapping.
 	void RemapCompletedGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle,
-		FRDGTextureRef WarpedUV)
+		FRDGTextureRef CompletedSignedHeight, FRDGTextureRef WarpedUV)
 	{
 		const FGeneratorBundle Source = Bundle;
-		if (!Source.Height) { return; }
-		Bundle.Height = RemapBundleField(Ctx, Source.Height, WarpedUV, 0);
+		if (!CompletedSignedHeight) { return; }
+		// Shared normalization/Height Scale already resolved Module.Height; remap that exact
+		// published signed result rather than the bundle's pre-normalized native height.
+		Bundle.Height = RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 0);
 		if (Source.Coverage)
 		{
 			Bundle.Coverage = RemapBundleField(Ctx, Source.Coverage, WarpedUV, 0);
@@ -2847,7 +2849,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
 				const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
 				const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
-				RemapCompletedGeneratorBundle(Ctx, Module, Coordinates);
+				RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
 				if (ValueSnapshot.IsComplete())
 				{
 					Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
