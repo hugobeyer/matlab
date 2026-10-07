@@ -328,7 +328,7 @@ void SMixtormat::SetPreviewFov(const float FovDegrees)
 
 FReply SMixtormat::ResetPreviewCameraAndLighting()
 {
-	PreviewFov = MixtormatPreviewCamera::FovDefault;
+	PreviewFov = MixtormatPreviewCamera::OverlayFovDefault;
 	StudioLighting = EMixtormatStudioLighting::Neutral;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
@@ -1479,7 +1479,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewFov); }),
 			static_cast<double>(MixtormatPreviewCamera::FovMinimum),
 			static_cast<double>(MixtormatPreviewCamera::FovMaximum),
-			static_cast<double>(MixtormatPreviewCamera::FovDefault),
+			static_cast<double>(MixtormatPreviewCamera::OverlayFovDefault),
 			0.5, false,
 			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
 			{
@@ -1487,7 +1487,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			}),
 			FSimpleDelegate::CreateLambda([this]()
 			{
-				SetPreviewFov(MixtormatPreviewCamera::FovDefault);
+				SetPreviewFov(MixtormatPreviewCamera::OverlayFovDefault);
 			}),
 			LOCTEXT("PreviewFovHint", "Preview camera field of view."))
 	];

@@ -6,6 +6,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatColorOps.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDebugModes.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
 
@@ -1322,44 +1323,23 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	if (WriteDebug != 0)
 	{
-		float DebugValue = 0.0f;
-		if (DebugMode == 1)
-		{
-			DebugValue = GeneratedFeatureMask;
-		}
-		else if (DebugMode == 2)
-		{
-			DebugValue = HeightWeight;
-		}
-		else if (DebugMode == 3)
-		{
-			DebugValue = SampleContactField(UV);
-		}
-		else if (DebugMode == 4)
-		{
-			const float2 BorderGradient = SampleBorderGradient(UV, 0);
-			DebugValue = saturate(length(BorderGradient) * max(HeightBorderWidth, 1.0e-4f));
-		}
-		else if (DebugMode == 5)
-		{
-			DebugValue = DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-		}
-		if (DebugMode == 9)
-		{
-			// UV gradient: red = U, green = V of the UV the layer samples, with faint lines
-			// every eighth of a tile so scale, rotation and per-region remaps read at a glance.
-			const float2 Tile = frac(LayerUV);
-			const float2 Cell = frac(LayerUV * 8.0f);
-			// Compute shaders have no derivatives; a fixed width in cell units is enough here.
-			const float2 Line = 1.0f - saturate(min(Cell, 1.0f - Cell) / 0.03f);
-			const float Grid = max(Line.x, Line.y) * 0.35f;
-			OutputDebug[DispatchThreadId.xy] = float4(
-				MixtormatDebugColor(lerp(float3(Tile, 0.0f), float3(1.0f, 1.0f, 1.0f), Grid)), 1.0f);
-		}
-		else
-		{
-			OutputDebug[DispatchThreadId.xy] = float4(MixtormatDebugRamp(DebugValue), 1.0f);
-		}
+		// The mode's inputs, resolved here because every one of them reads this pass's own textures
+		// and parameters; how a mode is drawn lives in MixtormatDebugModes.ush. Each sample is
+		// guarded by the mode that reads it, so an unused signal is never paid for.
+		FMixtormatDebugModeInputs DebugInputs;
+		DebugInputs.UV = UV;
+		DebugInputs.LayerUV = LayerUV;
+		DebugInputs.FeatureMask = GeneratedFeatureMask;
+		DebugInputs.HeightWeight = HeightWeight;
+		DebugInputs.ContactField = DebugMode == 3 ? SampleContactField(UV) : 0.0f;
+		DebugInputs.BorderNormal = DebugMode == 4
+			? saturate(length(SampleBorderGradient(UV, 0)) * max(HeightBorderWidth, 1.0e-4f))
+			: 0.0f;
+		DebugInputs.MaskValue = DebugMode == 5
+			? DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f)
+			: 0.0f;
+		OutputDebug[DispatchThreadId.xy] = float4(
+			MixtormatDebugModeColor(DebugMode, DebugInputs), 1.0f);
 	}
 
 	OutputBC[DispatchThreadId.xy] = IsGenerator != 0

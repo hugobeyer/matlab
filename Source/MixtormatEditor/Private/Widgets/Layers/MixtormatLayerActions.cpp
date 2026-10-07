@@ -173,9 +173,11 @@ FReply SMixtormat::DeleteSelectedLayer()
 	return FReply::Handled();
 }
 
-bool SMixtormat::CanCreateGroupFromSelection() const
+bool SMixtormat::CanCreateGroup() const
 {
-	return bHasWorkingMaterial && !GetSelectedLayerIndices().IsEmpty();
+	// Always available with a material open: with a selection it groups those layers, without one
+	// it creates an empty group to drop layers into.
+	return bHasWorkingMaterial;
 }
 
 FText SMixtormat::MakeUniqueGroupName() const
@@ -201,6 +203,22 @@ FReply SMixtormat::CreateGroupFromSelection()
 	const TArray<int32> Selected = GetSelectedLayerIndices();
 	if (Selected.IsEmpty())
 	{
+		// An empty group. It has no members yet, so it has no position in the stack and the list
+		// renders it after it; the header is the drop target that gives it its first member.
+		FMixtormatLayerGroup& Group = WorkingLayerGroups.AddDefaulted_GetRef();
+		Group.DisplayName = MakeUniqueGroupName();
+		const FGuid NewGroupId = Group.GroupId;
+
+		// The same selection state clicking the header produces: the group is the subject, no
+		// shared child, and the layer-child selection is dropped rather than left looking selected.
+		SelectLayerGroup(NewGroupId);
+		CollapsedGroupIds.Remove(NewGroupId);
+
+		RecordEditHistory();
+		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+		WorkingStatusText = TEXT("Created an empty group");
+		SyncSelectedLayerControls();
+		RebuildLayerList();
 		return FReply::Handled();
 	}
 

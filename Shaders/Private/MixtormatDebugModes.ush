@@ -1,0 +1,91 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_DEBUG_MODES_USH
+#define MIXTORMAT_DEBUG_MODES_USH
+
+#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
+// How a debug mode is drawn, in one place.
+//
+// The caller owns the *inputs*: every signal a mode shows is resolved by the pass that owns the
+// textures and parameters behind it -- the composite's feature mask, contact field and border
+// gradient, the stain's coverage, the flow tool's warped coordinate. What lives here is only the
+// presentation, so a mode reads the same wherever it is written and a new mode has one home.
+//
+// Mode numbers are EMixtormatDebugPreviewMode's own values (MixtormatGpuCompositor.h); the scalar
+// modes go through the shared ramp, and the UV preview draws its own ramp.
+
+// ---- UV preview knobs -------------------------------------------------------------------------
+//
+// The UV this layer samples, drawn as a ramp with lines through it. These are the values the
+// composite hardcoded before this file existed; they are named here so the UI STYLE panel has one
+// obvious place to drive them from once the theme carries them.
+#define MIXTORMAT_UV_PREVIEW_CELLS 8.0f
+#define MIXTORMAT_UV_PREVIEW_LINE_WIDTH 0.03f
+#define MIXTORMAT_UV_PREVIEW_LINE_STRENGTH 0.35f
+
+// Red = U, green = V of the UV the layer samples, with faint lines every
+// MIXTORMAT_UV_PREVIEW_CELLS-th of a tile so scale, rotation and per-region remaps read at a
+// glance. Compute shaders have no derivatives, so the line width is a fixed width in cell units.
+float3 MixtormatDebugUvRamp(float2 LayerUV)
+{
+	const float2 Tile = frac(LayerUV);
+	const float2 Cell = frac(LayerUV * MIXTORMAT_UV_PREVIEW_CELLS);
+	const float2 Line = 1.0f - saturate(min(Cell, 1.0f - Cell) / MIXTORMAT_UV_PREVIEW_LINE_WIDTH);
+	const float Grid = max(Line.x, Line.y) * MIXTORMAT_UV_PREVIEW_LINE_STRENGTH;
+	return MixtormatDebugColor(lerp(float3(Tile, 0.0f), float3(1.0f, 1.0f, 1.0f), Grid));
+}
+
+// Everything a mode may show, already resolved by the caller. A mode that does not read a field
+// leaves it at 0; the caller is expected to skip the sampling behind an unused field rather than
+// pay for a signal nothing draws.
+struct FMixtormatDebugModeInputs
+{
+	float2 UV;
+	// The UV the layer samples, after tiling, rotation and any per-region remap. Mode 9 only.
+	float2 LayerUV;
+	// Mode 1: the cavity-to-convex feature mask.
+	float FeatureMask;
+	// Mode 2: the computed height blend weight.
+	float HeightWeight;
+	// Mode 3: the contact-AO field, sampled by the caller.
+	float ContactField;
+	// Mode 4: the border normal's strength, already scaled by the border width.
+	float BorderNormal;
+	// Mode 5: the layer mask, sampled by the caller.
+	float MaskValue;
+};
+
+// One mode's colour, ready to write into the debug target.
+float3 MixtormatDebugModeColor(uint DebugMode, FMixtormatDebugModeInputs In)
+{
+	if (DebugMode == 9)
+	{
+		return MixtormatDebugUvRamp(In.LayerUV);
+	}
+
+	float DebugValue = 0.0f;
+	if (DebugMode == 1)
+	{
+		DebugValue = In.FeatureMask;
+	}
+	else if (DebugMode == 2)
+	{
+		DebugValue = In.HeightWeight;
+	}
+	else if (DebugMode == 3)
+	{
+		DebugValue = In.ContactField;
+	}
+	else if (DebugMode == 4)
+	{
+		DebugValue = In.BorderNormal;
+	}
+	else if (DebugMode == 5)
+	{
+		DebugValue = In.MaskValue;
+	}
+	return MixtormatDebugRamp(DebugValue);
+}
+
+#endif

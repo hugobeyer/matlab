@@ -1422,7 +1422,7 @@ void SMixtormatPreviewViewport::ResetCameraAndLighting()
 	CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	CameraYaw = MixtormatPreviewCamera::YawDefault;
 	CameraPitch = MixtormatPreviewCamera::PitchDefault;
-	CameraFov = MixtormatPreviewCamera::FovDefault;
+	CameraFov = MixtormatPreviewCamera::OverlayFovDefault;
 	EnvironmentYaw = 0.0f;
 	SetStudioLighting(EMixtormatStudioLighting::Neutral);
 	FocusCamera();

@@ -704,7 +704,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 			: LOCTEXT("CreateGroupContext", "Create Group"),
 		MixtormatIcons::Folder(),
 		FSimpleDelegate::CreateLambda([this]() { CreateGroupFromSelection(); }))
-		.Enabled(TAttribute<bool>::CreateLambda([this]() { return CanCreateGroupFromSelection(); }));
+		.Enabled(TAttribute<bool>::CreateLambda([this]() { return CanCreateGroup(); }));
 	if (WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].GroupId.IsValid())
 	{
 		const FGuid GroupId = WorkingLayers[LayerIndex].GroupId;

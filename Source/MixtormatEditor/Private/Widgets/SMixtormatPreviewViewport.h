@@ -291,7 +291,7 @@ private:
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;
-	float CameraFov = MixtormatPreviewCamera::FovDefault;
+	float CameraFov = MixtormatPreviewCamera::OverlayFovDefault;
 	double LastLightRotateTime = -1000.0;
 	float LightingYaw = -45.0f;
 	float LightingPitch = -35.0f;

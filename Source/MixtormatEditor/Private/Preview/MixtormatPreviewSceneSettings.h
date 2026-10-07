@@ -24,6 +24,11 @@ namespace MixtormatPreviewCamera
 	constexpr float FovMinimum = 20.0f;
 	constexpr float FovMaximum = 90.0f;
 
+	// The live preview opens wider than a thumbnail: 60 degrees is the working view for judging
+	// relief and silhouette while orbiting, where the tighter 40 keeps a gallery tile's framing
+	// calm. The same split as FocusMargin / ViewportFocusMargin below.
+	constexpr float OverlayFovDefault = 60.0f;
+
 	constexpr float DistanceDefault = 225.0f;
 	constexpr float DistanceMinimum = 75.0f;
 	constexpr float DistanceMaximum = 400.0f;

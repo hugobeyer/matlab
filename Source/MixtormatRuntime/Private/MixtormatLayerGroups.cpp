@@ -170,16 +170,10 @@ namespace MixtormatLayerGroups
 			}
 		}
 
-		// A group with nothing in it has no position in the stack and nothing to broadcast to.
-		for (int32 Index = Groups.Num() - 1; Index >= 0; --Index)
-		{
-			int32 FirstIndex = INDEX_NONE;
-			int32 LastIndex = INDEX_NONE;
-			if (!GetGroupRange(Layers, Groups[Index].GroupId, FirstIndex, LastIndex))
-			{
-				Groups.RemoveAt(Index);
-			}
-		}
+		// Empty groups are kept. A group is an authored container: it can be created before it has
+		// members, and the editor lists it after the stack until something joins it. Removing it
+		// here would delete the container the moment its last member left, which is exactly the
+		// state the user is allowed to author.
 
 		// Group children share the child-ID space with layer children, because a reference names a
 		// child by GUID and resolves against whichever container holds it.

@@ -680,7 +680,7 @@ private:
 	FGuid ResolveGroupMembershipAt(int32 LayerIndex) const;
 	FReply CreateGroupFromSelection();
 	FReply UngroupLayerGroup(FGuid GroupId);
-	bool CanCreateGroupFromSelection() const;
+	bool CanCreateGroup() const;
 	TArray<int32> GetSelectedLayerIndices() const;
 	FText MakeUniqueGroupName() const;
 	bool IsGroupExpanded(const FGuid& GroupId) const;
@@ -1606,7 +1606,7 @@ private:
 	EMixtormatPreviewQuality PreviewQuality = EMixtormatPreviewQuality::Default;
 	EMixtormatPreviewAntiAliasing PreviewAntiAliasing = EMixtormatPreviewAntiAliasing::Temporal;
 	int32 PreviewScreenPercentage = MixtormatPreviewScreenPercentage::Default;
-	float PreviewFov = MixtormatPreviewCamera::FovDefault;
+	float PreviewFov = MixtormatPreviewCamera::OverlayFovDefault;
 	float PreviewDisplacementAmount = 1.0f;
 	// Start the overlay preview at half of each preset's authored lighting.
 	float PreviewLightIntensity = 0.8f;

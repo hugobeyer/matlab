@@ -309,15 +309,28 @@ FReply SMixtormat::HandleLayerDroppedOnGroup(
 	const int32 SourceLayerIndex,
 	const FGuid TargetGroupId)
 {
-	int32 FirstIndex = INDEX_NONE;
-	int32 LastIndex = INDEX_NONE;
 	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| !MixtormatLayerGroups::GetGroupRange(WorkingLayers, TargetGroupId, FirstIndex, LastIndex))
+		|| !MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TargetGroupId))
 	{
 		return FReply::Unhandled();
 	}
 	if (WorkingLayers[SourceLayerIndex].GroupId == TargetGroupId)
 	{
+		return FReply::Handled();
+	}
+
+	int32 FirstIndex = INDEX_NONE;
+	int32 LastIndex = INDEX_NONE;
+	if (!MixtormatLayerGroups::GetGroupRange(WorkingLayers, TargetGroupId, FirstIndex, LastIndex))
+	{
+		// An empty group has no run to land inside, so the dropped layer becomes its first member
+		// and keeps its position; the group then spans exactly that layer.
+		WorkingLayers[SourceLayerIndex].GroupId = TargetGroupId;
+		MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
+		RecordEditHistory();
+		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+		RefreshLayeredPreview();
+		RebuildLayerList();
 		return FReply::Handled();
 	}
 

@@ -117,6 +117,61 @@ void SMixtormat::RebuildLayerList()
 			]
 		];
 	}
+
+	// Groups with no members have no position in the stack, so they are listed after it. They are
+	// still real containers: the header is the drop target that gives them their first member, and
+	// their shared stack is authored here exactly as a membered group's is.
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		int32 FirstIndex = INDEX_NONE;
+		int32 LastIndex = INDEX_NONE;
+		if (MixtormatLayerGroups::GetGroupRange(WorkingLayers, Group.GroupId, FirstIndex, LastIndex))
+		{
+			continue;
+		}
+		// Edge drops on an empty group append at the end of the stack, which is where the group is
+		// drawn; the middle of the header is the membership drop.
+		const int32 AppendIndex = WorkingLayers.Num();
+		TSharedPtr<SVerticalBox> EmptyBody = SNew(SVerticalBox);
+		const TSharedRef<SWidget> Header = SNew(SMixtormatGroupRowDropTarget)
+			.TargetGroupId(Group.GroupId)
+			.FirstMemberIndex(AppendIndex)
+			.LastMemberIndex(AppendIndex - 1)
+			.OnLayerDropped(this, &SMixtormat::HandleLayerDroppedOnGroup)
+			.OnLayerInsertedAt(this, &SMixtormat::HandleLayerInsertedAt)
+			.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)
+			.OnSurfaceInsertedAt(this, &SMixtormat::HandleSurfaceDroppedAt)
+			.OnChildDropped(this, &SMixtormat::MoveChildToGroup)
+			[
+				BuildLayerGroupRow(Group.GroupId)
+			];
+		if (IsGroupExpanded(Group.GroupId))
+		{
+			for (int32 ChildIndex = 0; ChildIndex < Group.Children.Num(); ++ChildIndex)
+			{
+				const FMixtormatLayerHierarchyPaint Hierarchy =
+					ChildHierarchyPaint(Group.Children, ChildIndex, true);
+				EmptyBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
+				[
+					SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
+					[
+						SNew(SBox).Padding(FMargin(Hierarchy.Indent, 0.0f, 0.0f, 0.0f))
+						[BuildGroupChildRow(Group.GroupId, ChildIndex)]
+					]
+				];
+			}
+		}
+		LayerListBox->AddSlot().AutoHeight()
+		[
+			SNew(SMixtormatLayerGroupContainer)
+			.Header()[Header]
+			.Body()
+			[
+				SNew(SBox).Padding(FMargin(0.0f, LayerLayout.Gap, 0.0f, 0.0f))
+				[EmptyBody.ToSharedRef()]
+			]
+		];
+	}
 }
 
 void SMixtormat::RebuildMaskList()
@@ -298,15 +353,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							[
 								SNew(SMixtormatGroupAction, true)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-								.IsEnabled_Lambda([this]() { return CanCreateGroupFromSelection(); })
+								.IsEnabled_Lambda([this]() { return CanCreateGroup(); })
 								.ToolTipText_Lambda([this]()
 								{
 									const int32 Count = GetSelectedLayerIndices().Num();
 									if (Count == 0)
 									{
 										return LOCTEXT(
-											"CreateGroupDisabledHint",
-											"Select one or more layers first. Shift click for a run, Ctrl click to add one.");
+											"CreateEmptyGroupHint",
+											"Create an empty group. It is listed after the stack until a layer joins it -- drag a layer onto its header, or drop a surface there.");
 									}
 									return FText::Format(
 										LOCTEXT(
