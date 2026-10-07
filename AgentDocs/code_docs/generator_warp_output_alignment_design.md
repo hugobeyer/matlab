@@ -1,9 +1,10 @@
 # Generator warp output alignment — step 6 design for Sol
 
-Status: steps 5–6 implementation present, 2026-10-07; targeted source review only.
-Read [step 5](strata_structural_warp_design.md) first. Its coordinate, matrix and ordered
-Height Push/Warp contracts apply here. Other structural targets and Noise remain gated
-for step 7. Only the user's earlier step-2 compile is confirmed; the gather missing-header
+Status: steps 5–6 implementation present; step-7 Runtime target gate and inspector UI present,
+2026-10-07; targeted source review only. Read [step 5](strata_structural_warp_design.md) first.
+Its coordinate, matrix and ordered Height Push/Warp contracts apply here. Any later enabled,
+unscoped generator target, including Noise, is now admitted by the Runtime gate. Target execution
+remains GPU-owned: the parent adds the completed bundle operation. Only the user's earlier step-2 compile is confirmed; the gather missing-header
 issue is fixed, but the newest build is unconfirmed. Broken StructuralWarp tests were removed
 at user request; no agent compile, build, runtime, visual or test results are claimed.
 
@@ -241,7 +242,7 @@ Do not identify metric fields by names alone:
 
 Existing seed validity/heuristics and source-distance approximations still apply.
 
-## 9. Noise and separately published fields — gate step 7 correctly
+## 9. Noise and separately published fields — step 7 implementation
 
 Re-read `MixtormatNoise.usf` before supporting Noise as a warp target:
 - Value has a family-dependent raw contract; signed Height is derived from it, then the
@@ -257,13 +258,15 @@ meaning. For an actual generator-domain derivative used as a destination derivat
 chain is `g_domain*A*J`; for a geometric direction, determine vector versus covector meaning
 from its producer, not its name. Normalizing a transformed vector is another semantic choice.
 
-Do not change today's published Gradient meaning/frame silently. Step 6 records the
-contract and registry coverage requirement; step 7 must settle per-family transformations
-and compatibility before enabling Noise targets. No automatic Vector2-to-Flow conversion.
+Step 7 keeps the published Gradient frame unchanged and declares it `SourceFrameVector` in
+`GeneratorDomain`: lattice-family analytic covectors and Worley/Bars directions are both
+transport-sampled at the completed-warp coordinate. This preserves the existing public contract
+without guessing an incompatible covector or direction transform. Consumers requiring a
+final destination derivative must make an explicit family-aware conversion. No automatic
+Vector2-to-Flow conversion exists.
 
-When supported, update Value, Gradient, any real cell IDs and Height under the same operation
-revision. Do not leave old Value/Gradient addresses pointing into the unwarped node cache.
-Do not mutate cached producer textures; publish transformed outputs for the consumer graph.
+Step 7 updates Value, Gradient, real Worley IDs and signed Height under one operation revision.
+It publishes moved outputs for the consumer graph and never mutates cached producer textures.
 
 ## 10. Producer manifest checklist
 
@@ -279,7 +282,7 @@ Do not mutate cached producer textures; publish transformed outputs for the cons
 The manifest is a registration checklist, not approval to add missing outputs or enable new
 flow-tool owners. Preserve bHashedIds and never create IDs for Noise families without them.
 
-## 11. Implemented scope (steps 5 + 6)
+## 11. Implemented scope (steps 5–7)
 
 1. Step 5's ordered per-target RG32F D/R32F B compose and Strata coordinate/gradient chain
    are present; structural generation does not resample completed outputs.
@@ -289,8 +292,11 @@ flow-tool owners. Preserve bHashedIds and never create IDs for Noise families wi
    apply owns Height/Coverage, and coverage aliases do not get a second warp.
 4. Distance remapping excludes invalid/sentinel taps and retains the source-gradient numerator.
    Active structural Strata uses its direct boundary; inactive retains stage 8.
-5. Exact centres, unknown Vector2/Noise-family semantics and other structural targets remain
-   gated for step 7. Legacy inverse-based centre/orientation limitations remain unchanged.
+5. Step 7 admits all later enabled unscoped generator targets. Strata regenerates in its
+   structural frame; Rock, Pebbles, Cracks, Cliff and Noise use one explicit completed-bundle
+   pullback that owns Height/Coverage and typed companions. Noise Value/Gradient are republished
+   under the same revision; Gradient is declared source-frame transport data. Legacy inverse
+   centre/orientation limitations remain unchanged.
 6. Source review only: broken StructuralWarp tests were removed at user request. Acceptance
    cases below are unexecuted; no agent compile/build/runtime/test results are claimed.
 

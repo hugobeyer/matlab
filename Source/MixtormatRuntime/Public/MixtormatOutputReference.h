@@ -110,7 +110,7 @@ namespace MixtormatOutputReferences
 		int32 DestinationChildIndex,
 		const FMixtormatOutputReference& Reference);
 
-	// Ordered Structural Warp: explicit later, enabled, unscoped Strata target in the same
+	// Ordered Structural Warp: explicit later, enabled, unscoped generator target in the same
 	// Generator layer. Returns its authored child index; no implicit target or group support.
 	MIXTORMATRUNTIME_API int32 ResolveStructuralWarpTarget(
 		const TArray<FMixtormatLayer>& Layers,

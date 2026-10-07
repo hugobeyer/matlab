@@ -6,8 +6,9 @@
 
 // Completed-field flow companions only; apply owns Height/Coverage. Not structural generation.
 // 0 continuous attribute, 1 IDs, 2 valid UV boundary, 3 lifted coordinate map,
-// 5/6 legacy local centre/orientation, 7 valid UV scalar distance, 8 legacy bed boundary,
-// 9 height combine, 10 region attribute, 11 owner/phase-aware bed coordinate.
+// 4 declared source-frame vector data, 5/6 legacy local centre/orientation,
+// 7 valid UV scalar distance, 8 legacy bed boundary, 9 height combine,
+// 10 region attribute, 11 owner/phase-aware bed coordinate.
 int2 OutputSize;
 float InvalidDistance;
 
@@ -204,6 +205,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutIds[Pixel] = IdField.Load(int3(Anchor, 0));
 #elif BUNDLE_STAGE == 3
 	OutVector[Pixel] = MixtormatGeneratorWarpSampleCoordinate(VectorField, UV, OutputSize);
+#elif BUNDLE_STAGE == 4
+	// Declared producer-frame vectors are transported data. Do not apply a covector or
+	// inverse-direction transform unless the producer explicitly changes its public contract.
+	OutVector[Pixel] = VectorField.SampleLevel(LinearWrapSampler, UV, 0.0f);
 #elif BUNDLE_STAGE == 10
 	// Copy the producer random/default at exactly the output ID's wrapped anchor.
 	OutScalar[Pixel] = ScalarField.Load(int3(Anchor, 0));

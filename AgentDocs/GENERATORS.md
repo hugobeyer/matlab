@@ -45,12 +45,13 @@ Path: Runtime child/payload → `GatherGeneratorHeightModuleChild` →
 shader compilation and visual validation of Height Push have not been run by the agent.
 Ordered Structural Warp integration is now present; see below.
 
-## Structural Warp (steps 5–6 implemented)
+## Structural Warp (steps 5–7 implemented)
 
 `StructuralWarp` is an append-only Runtime child with its own enable flag and
 `FMixtormatGeneratorStructuralWarp` payload. `Source` is an `FMixtormatOutputReference`:
 Flow or UVMap only, never generic Vector2. It requires a completed earlier source and an
-explicit later, enabled same-layer Strata target; other targets and Noise remain gated.
+explicit later, enabled, unscoped same-layer generator target: Strata, Rock Formation, Pebbles,
+Cracks, Cliff Strata, or Noise. Group targets remain gated.
 
 `GatherGeneratorHeightModuleChild` fills `FGeneratorStructuralWarpRenderData.Source` and
 `TargetChildIndex`. Published source demand is registered before prefix reuse. GPU state
@@ -58,15 +59,20 @@ is per target: `GeneratorStructuralDisplacements` (RG32F) and the existing
 `GeneratorHeightPushFields` (R32F). `MixtormatGeneratorStructuralWarp.usf` writes fresh
 resources: `D_new = d + sample(D_old, psi)`, `B_new = sample(B_old, psi)`, `psi = x + d`.
 Flow reuses the stage-8 reference trace helper, applies amount once, then masks displacement.
+Strata regenerates in its structural frame. Rock Formation, Pebbles, Cracks, Cliff Strata and
+Noise use one completed-bundle pullback after native generation, existing flow and signed
+normalization. That operation owns Height/Coverage and companion remapping together, so neither
+is double-warped. `PebbleCoverage`/`CliffCoverage` remain aliases of the single moved coverage.
 
 Strata evaluates warped coordinates with placement once and gradients `g*A*J`; final B's
 already-destination gradient is not multiplied by J again. Active warp emits direct RG32F
 negative-inside boundary distance + validity; inactive warp retains stage-8 reconstruction.
 Step-6 producer descriptors (`RegisterNamedMask`) drive immutable-snapshot companion remaps:
-safe wrapped ID/random anchors, owner/phase-aware bed T and validity-aware distance metrics
-with the source-gradient numerator retained. Flow apply owns Height/Coverage, so neither is
-warped twice; `PebbleCoverage` aliases moved Coverage. `CrackDistance` stays a crack-cell
-attribute, not the internal UV boundary. See both structural/output-alignment design docs.
+	safe wrapped ID/random anchors, owner/phase-aware bed T, lifted-map composition, and
+validity-aware distance metrics with the source-gradient numerator retained. `CrackDistance`
+remains a crack-cell attribute, not the internal UV boundary. Noise Value is moved as its raw
+scalar; its heterogeneous generator-domain Gradient is explicitly transport-sampled, not
+blindly transformed. See both structural/output-alignment design docs.
 
 Evidence is implementation plus targeted source review only. Only the user's earlier step-2
 compile is confirmed; the gather missing-header issue is fixed, but the newest build is

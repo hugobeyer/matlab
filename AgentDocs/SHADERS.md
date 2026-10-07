@@ -81,9 +81,12 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 ## Structural Warp / bundle alignment (steps 5–6)
 
 - `FMixtormatGeneratorStructuralWarpCS` → `MixtormatGeneratorStructuralWarp.usf::MainCS`.
+- `MixtormatGeneratorStructuralWarp.usf::CoordinateCS` turns final RG32F displacement into a
+  lifted coordinate map for step-7 completed-bundle targets.
 - Fresh per-target RG32F D / R32F B outputs compose `D_new = d + sample(D_old, psi)` and
   `B_new = sample(B_old, psi)`. State lives in `GeneratorStructuralDisplacements` and
-  `GeneratorHeightPushFields`; this does not resample finished Strata outputs.
+  `GeneratorHeightPushFields`; Strata regenerates, while the other generators use one typed
+  completed-bundle pullback.
 - Flow uses the stage-8 reference trace helper with amount once; scoped masks gate the
   resulting displacement after tracing. UVMap uses periodic lifted-coordinate sampling.
 - Strata applies placement once at warped coordinates; gradients are `g*A*J + grad(B)`

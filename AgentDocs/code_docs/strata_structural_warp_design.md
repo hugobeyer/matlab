@@ -216,8 +216,10 @@ resampling, not exact geological reevaluation; structural outputs are not remapp
 4. Strata consumes final per-target D/B, evaluates placement once, chains `g*A*J`, and adds
    final destination B gradients without another J. Active warp binds the direct boundary;
    inactive warp retains existing stage-8 construction.
-5. Source/target/reference-flow controls and enable/menu integration are present. Other
-   structural targets and Noise remain gated for step 7; no geological fixes are included.
+5. Source/target/reference-flow controls and enable/menu integration are present. Step 7 now
+   routes non-Strata targets through the typed completed-bundle pullback documented in the
+   output-alignment design; this Strata path remains regeneration-only. No geological fixes
+   are included.
 6. Evidence here is source review only. The cases below remain acceptance criteria, not
    executed results; build/runtime validation requires explicit approval.
 

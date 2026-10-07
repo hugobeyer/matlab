@@ -422,8 +422,7 @@ namespace MixtormatOutputReferences
 		if (TargetIndex <= DestinationChildIndex) { return INDEX_NONE; }
 		const FMixtormatLayerChild& Target = Layer.Children[TargetIndex];
 		return Target.Type == EMixtormatLayerChildType::Generator && Target.Generator.bEnabled
-			&& !Target.ScopeOwnerChildId.IsValid()
-			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver ? TargetIndex : INDEX_NONE;
+			&& !Target.ScopeOwnerChildId.IsValid() ? TargetIndex : INDEX_NONE;
 	}
 
 	int32 ResolveSource(const TArray<FMixtormatLayer>& Layers,

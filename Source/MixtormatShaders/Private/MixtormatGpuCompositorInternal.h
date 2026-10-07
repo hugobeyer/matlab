@@ -1115,6 +1115,7 @@ namespace MixtormatGpuCompositor
 			UvDistance, // Negative inside; own scalar metric, immutable BoundaryField validity.
 			CoverageAlias, // Apply-owned Coverage, never an independent remap.
 			LiftedCoordinateMap, // Identity winding; compose periodic displacement.
+			SourceFrameVector, // Transport-sample only; no implicit covector/direction transform.
 			LegacyLocalCentre, // Existing affine-local inverse estimate only.
 			LegacyLocalOrientation // Existing inverse-Jacobian angle convention only.
 		};
@@ -1124,6 +1125,7 @@ namespace MixtormatGpuCompositor
 			BedFraction,
 			CrackCell,
 			MapUV,
+			GeneratorDomain,
 			Radians
 		};
 		// MapUV is the completed producer's source-map frame, not generator-domain units.
@@ -1153,6 +1155,9 @@ namespace MixtormatGpuCompositor
 		// Negative-inside local distance in map UV + validity. May be generated directly
 		// by structurally warped Strata; only a later completed-field flow remaps it.
 		FRDGTextureRef BoundaryField = nullptr;
+		// Noise declares its heterogeneous Gradient as producer-domain data. The completed-warp
+		// path transport-samples it rather than guessing a covector/direction transform.
+		FFieldDescriptor GradientDescriptor;
 		bool bHashedIds = false;
 
 		void RegisterNamedMask(const FName Name, FRDGTextureRef Texture,

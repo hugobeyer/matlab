@@ -15,6 +15,17 @@ Texture2D<float> ScopedMask;
 SamplerState LinearWrapSampler;
 RWTexture2D<float2> OutDisplacement;
 RWTexture2D<float> OutShift;
+RWTexture2D<float2> OutCoordinates;
+
+[numthreads(8, 8, 1)]
+void CoordinateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	// Preserve lift/winding and multi-tile travel for completed-bundle sampling.
+	OutCoordinates[Pixel] = UV + PreviousDisplacement.Load(int3(Pixel, 0));
+}
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)

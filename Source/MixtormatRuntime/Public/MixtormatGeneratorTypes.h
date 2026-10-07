@@ -719,7 +719,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorStructuralWarp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
 	FMixtormatOutputReference Source;
 
-	// Only a later, enabled Strata generator in this layer is supported.
+	// Any later, enabled, unscoped generator in this layer may be targeted.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
 	FGuid TargetChildId;
 };

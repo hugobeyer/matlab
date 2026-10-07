@@ -727,6 +727,26 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "MainCS", SF_Compute);
 
+class FMixtormatGeneratorStructuralWarpCoordinateCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCoordinateCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "CoordinateCS", SF_Compute);
+
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
 public:
@@ -1021,7 +1041,7 @@ namespace
 			P->IdField = Field;
 			P->OutIds = GraphBuilder.CreateUAV(Moved);
 		}
-		else if (Stage == 2 || Stage == 3 || Stage == 5 || Stage == 8)
+		else if (Stage == 2 || Stage == 3 || Stage == 4 || Stage == 5 || Stage == 8)
 		{
 			P->VectorField = Field;
 			P->ScalarField = Field;
@@ -1151,6 +1171,40 @@ namespace
 			Moved.BoundaryField = RemapBundleField(Ctx, Source.BoundaryField, WarpedUV, 2);
 		}
 		Bundle = MoveTemp(Moved);
+	}
+
+	// A step-7 completed-bundle operation owns every moved output. It is intentionally separate
+	// from flow apply, which has already authored Height/Coverage before companion remapping.
+	void RemapCompletedGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle,
+		FRDGTextureRef WarpedUV)
+	{
+		const FGeneratorBundle Source = Bundle;
+		if (!Source.Height) { return; }
+		Bundle.Height = RemapBundleField(Ctx, Source.Height, WarpedUV, 0);
+		if (Source.Coverage)
+		{
+			Bundle.Coverage = RemapBundleField(Ctx, Source.Coverage, WarpedUV, 0);
+		}
+		RemapGeneratorBundle(Ctx, Bundle, WarpedUV);
+	}
+
+	FRDGTextureRef AddStructuralWarpCoordinates(FMixtormatComposeContext& Ctx, FRDGTextureRef Displacement,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Coordinates = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.StructuralWarp.Coordinates"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCoordinateCS::FParameters>();
+		P->OutputSize = Size;
+		P->PreviousDisplacement = Displacement;
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Coordinates);
+		TShaderMapRef<FMixtormatGeneratorStructuralWarpCoordinateCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.StructuralWarp.Coordinates.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Coordinates;
 	}
 
 	// The bedding as an integer lattice vector, which is what lets the beds tile.
@@ -2775,6 +2829,45 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Ctx.GraphBuilder, Module.Height, Size,
 			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
 			TEXT("Mixtormat.Generator.SignedHeight"));
+
+		// Strata regenerates in its structural frame. Every other supported target instead owns
+		// one completed-bundle pullback after native generation, flow and signed normalization.
+		if (Child.Generator.Type != EMixtormatGeneratorType::StrataCarver)
+		{
+			if (const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(
+				Child.SourceChildIndex); Displacement && *Displacement)
+			{
+				const FRDGTextureRef Coordinates = AddStructuralWarpCoordinates(Ctx, *Displacement,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				const FPublishedFieldKey ValueKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Value"))};
+				const FPublishedFieldKey GradientKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Gradient"))};
+				const FPublishedField* NoiseValue = Child.Generator.Type == EMixtormatGeneratorType::Noise
+					? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
+				const FPublishedField* NoiseGradient = Child.Generator.Type == EMixtormatGeneratorType::Noise
+					? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
+				const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
+				const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
+				RemapCompletedGeneratorBundle(Ctx, Module, Coordinates);
+				if (ValueSnapshot.IsComplete())
+				{
+					Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
+						ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
+						nullptr, nullptr, false});
+				}
+				if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector
+					&& Module.GradientDescriptor.Units == FGeneratorBundle::EFieldUnits::GeneratorDomain
+					&& GradientSnapshot.Texture && GradientSnapshot.Texture->Desc.Extent == Size
+					&& GradientSnapshot.Texture->Desc.Format == PF_G32R32F)
+				{
+					// Noise Gradient is declared source-domain data: lattice families are analytic
+					// covectors and Worley/Bars are directions. Preserve that public frame by
+					// transport-sampling; do not silently apply either vector transform.
+					Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
+						GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
+						nullptr, nullptr, false});
+				}
+			}
+		}
 		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
 		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
 		// Explicit inputs address the completed signed module result, never the running sum.

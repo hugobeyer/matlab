@@ -253,11 +253,16 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 		{
 			Bundle->RegionIds = Ids;
 		}
+		// All families publish Gradient in generator-domain coordinates, but its meaning differs:
+		// analytic covector for lattice families; direction for Worley/Bars. Structural completed
+		// warp preserves that existing public frame by sampling, never by choosing a transform.
+		Bundle->GradientDescriptor = {FGeneratorBundle::EFieldSemantic::SourceFrameVector,
+			FGeneratorBundle::EFieldUnits::GeneratorDomain};
 	}
 
-	// Publication: the raw field and its gradient, under this child's address. The meanings --
-	// height, roughness, mask, whatever else -- belong to the consumers; this only states what
-	// the field is.
+	// Publication: the raw field and its generator-domain Gradient, under this child's address.
+	// A completed structural warp transport-samples this declared source-frame data; consumers
+	// requiring destination derivatives must apply their own explicit family-aware conversion.
 	Ctx.PublishedFieldOutputs.Add(
 		FPublishedFieldKey{Layer.LayerId, SourceChildIndex, FName(TEXT("Value"))},
 		FPublishedField{NoiseValueKind(NoiseType), Value, nullptr, nullptr, false});
