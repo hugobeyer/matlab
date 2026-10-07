@@ -269,10 +269,13 @@ path remains unchanged; do not route uniform globals through texture slots.
   during interactive scrubs. Avoid rebuilding the panel per tick; bind the
   displayed slider value and rebuild rows only on add/remove/duplicate.
 
-### Panel (new left tab)
+### Panel (GLOBAL page in shared left overlay)
 
-- `SMixtormat_Shell.cpp` `BuildLeftPanel` (L462–489): third tab option
-  `VARIABLES` + third `LeftSwitcher` slot. `LeftTabIndex` already exists.
+- GLOBAL currently exists as the third `LeftSwitcher` page in `SMixtormat_Shell.cpp`.
+  D31 moves that existing page into the shared Layers/Library/Global overlay; do not
+  add another cell or splitter slot. See `overlay-workspace-handoff.md`.
+- The existing active-page/rail state should continue to select GLOBAL; preserve the
+  page widget and scroll state while the shared overlay is hidden or another page is active.
 - New translation unit `Widgets/SMixtormat_Variables.cpp` (follows the
   `SMixtormat_*.cpp` convention; header declarations in `SMixtormat.h`).
 - Row: name (rename via `FMixtormatEntryCommit`), slider (`SMixtormatSlider`),
@@ -340,7 +343,7 @@ path remains unchanged; do not route uniform globals through texture slots.
 | Editor | `SMixtormatPreviewViewport.h/.cpp` | Thread variables through compose entry points **and pending request snapshots** |
 | Editor | `SMixtormat.h` | Working/Saved state, history, panel + setter declarations |
 | Editor | `SMixtormat.cpp` | History record/apply, preview funnel |
-| Editor | `SMixtormat_Shell.cpp` | Third left tab |
+| Editor | `SMixtormat_Shell.cpp` | Existing GLOBAL page, now hosted by D31's shared left overlay |
 | Editor | `SMixtormat_Variables.cpp` (new) | The panel |
 | Editor | `SMixtormat_Parameters.cpp` | Driver source menu, setter, popover rows |
 | Editor | `SMixtormat_Document.cpp` | Save/load/new, bake call |

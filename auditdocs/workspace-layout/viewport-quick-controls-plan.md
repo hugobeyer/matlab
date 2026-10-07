@@ -1,21 +1,21 @@
 # Viewport quick controls — audit and prototype plan
 
-Status: audit/planning, 2026-10-07. Steps 1–2 and step 4 of the implementation sequence are now
-**coded and untested** (see `decisions-log.md` I9–I13): the control builders are extracted into
-`SMixtormat_PreviewControls.cpp`, the Render strip is merged (D27), GLOBAL hosts the group
-switches plus the same settings, and a bare key opens an in-viewport quick-controls popup.
-**The key is `Q`, not Tab (I13):** Tab delivery worked, but Slate's focus navigation runs on Tab
-regardless of the widget handling it, so Tab also moved focus to the top bar. Recovering Tab would
-need a pre-routing input processor consuming it editor-wide while the pointer is over the
-viewport.
+Status: implemented in source, **build/in-editor verification still needed**. Steps 1–2 and 4
+are coded (see `decisions-log.md` I9–I13): shared builders, merged Render strip, GLOBAL controls,
+and the in-viewport quick-controls popup are in `SMixtormat_PreviewControls.cpp`.
+The key is bare `Q`, not Tab: Slate focus navigation ran on Tab regardless of handling it and
+moved focus to the top bar. Q toggles the menu; Q/Escape/outside click dismiss it, and choosing
+a mesh or lighting preset auto-dismisses it. The latest spacing/guide treatment is also unbuilt.
+The approved workspace-overlay change is separate; see `overlay-workspace-handoff.md`.
 The reference image is a grouping reference, not a visual or feature specification.
 
 ## Agreed scope
 
 - Reuse existing Slate controls, icons, plates, typography and theme tokens.
 - One-step access: actual controls visible immediately, no category → submenu navigation.
-- **Tab opens the marking/direct-controls menu** around the pointer; no wedges, glow,
-  connectors or fancy animation. RMB does not invoke this menu.
+- Bare Q opens/toggles the direct-controls menu around the pointer; it is a four-card
+  directional layout with a subtle faded crosshair and center bloom behind the cards.
+  RMB does not invoke this menu.
 - Top = render; left = lighting; right = geometry; bottom = Actions placeholder.
 - Actions becomes a conventional **RMB-click context-menu row list** later. RMB drag retains
   lighting rotation. For now, one disabled dummy row;
@@ -41,11 +41,9 @@ The reference image is a grouping reference, not a visual or feature specificati
 
 - RMB drag already rotates lighting. Tab avoids the marking-menu conflict; future RMB-click
   context actions must distinguish click from drag and never open after lighting rotation.
-- No explicit Tab binding was found in the audited main/viewport widgets. Slate uses Tab for
-  focus navigation: consume bare Tab only in the preview, preserving text entry, Shift+Tab
-  and normal navigation elsewhere. Client `InputKey` is the proposed entry point,
-  not a proven interception point: this review did not inspect engine Slate/viewport
-  Tab routing or test it in-editor. Prove delivery before implementing the popup.
+- Historical input audit: Tab delivery reached the viewport, but Slate focus navigation still
+  moved focus. I13 replaced Tab with Q. Q opening is viewport-scoped; while open, a narrow
+  workspace preprocessor handles Q close because popup controls can own keyboard focus.
 - 90° rotates the complete material UVs, including tangent-space normal direction. Label it
   “UV 90°”; it is not geometry rotation and must retain its existing material-edit semantics.
 - 1K/2K/4K changes **composition resolution**, unlike render Scale (viewport screen percentage).
@@ -56,9 +54,8 @@ The reference image is a grouping reference, not a visual or feature specificati
 - Existing sliders need capture and continued interaction. Releasing Tab must not generically
   activate or close controls: hold/flick/release handling would be a separate input-system pass.
 - Never change values merely on hover. Hover highlights; an explicit activation commits.
-- The GLOBAL section being extended lives in `SMixtormat_Shell.cpp`; its empty-state
-  text still uses a local `0.5f` opacity literal (L586–587). Tokenize it while adding
-  the Preview/Viewport section (token audit checklist).
+- The GLOBAL section lives in `SMixtormat_Shell.cpp`; the empty-state opacity is already
+  tokenized in current source. Do not revert it.
 - GLOBAL/popup/viewport may use separate **control views**, all bound to the same
   existing state/setters. This permission does not apply to duplicating Inspector
   or Layers panels: each panel remains one live instance, reparented between hosts.
@@ -89,8 +86,9 @@ Group visibility changes UI only; keep existing viewport hotkeys regardless of f
 
 ## Input plan
 
-- **Bare Tab:** open the direct-controls marking menu; ignore key repeats and modifiers.
-  Decided (D26): press once to open, then normal LMB interaction; release does not close.
+- **Bare Q:** toggle the direct-controls menu; ignore repeats and modifiers. Q opens only
+  while the viewport has focus; when the popup is already open, Q closes it even if a
+  popup control has keyboard focus. Selecting a mesh or light preset also closes it.
 - **RMB click:** reserved for the later conventional context menu, not implemented now.
 - **RMB drag:** retain lighting rotation. Later distinguish click/drag using Slate's drag threshold.
 - Escape/outside click dismisses. Sliders and existing Final popup retain normal capture/focus.
@@ -108,13 +106,13 @@ Group visibility changes UI only; keep existing viewport hotkeys regardless of f
 - An outside click needs a defined consumed-versus-forwarded policy; dismissing the
   popup must not accidentally start orbit or lighting rotation through its content.
 
-## Implementation sequence (when approved)
+## Implementation sequence (quick-controls work already coded; remaining validation)
 
 Step 0: settle the builder API/private boundary (B8) **before step 1**.
-D26–D28 settle the gesture, Render merge and in-viewport overlay approach. During
-step 4, prove viewport-scoped Tab delivery and implement/test focus and callback
-lifetimes (B1/B2/B10). Steps 1–2 do not require D22, variables, gallery changes or
-persistence. The user will test each implemented stage (D29).
+D26–D28 established the gesture, Render merge and in-viewport overlay approach; I13
+changed the key to Q. Re-test Q focus and callback lifetimes (B1/B2/B10) in-editor.
+The approved workspace layout changes D30–D32 are separate and are detailed in
+`overlay-workspace-handoff.md`. The user tests each implementation stage (D29).
 
 1. Extract focused control builders from `BuildPreviewPanel`; preserve callbacks, reset behavior,
    disabled states, tooltips, preview-mode feedback and debug clearing. Reuse builders in all views.

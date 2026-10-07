@@ -652,9 +652,19 @@ namespace MixtormatTokens
 	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting card
 	// on the left and the geometry card on the right. Wide enough that the popup reads as arranged
 	// around the cursor rather than as a panel that happens to be near it.
-	inline float QuickControlsCentreGap = 140.0f;
-	// Between the popup's rows: the cards need air between them, or the four read as one block.
-	inline float QuickControlsRowGap = 10.0f;
+	inline float QuickControlsCentreGap = 210.0f;
+	// Between the popup's rows: keep the four cards distinct and leave room for the centre guide.
+	inline float QuickControlsRowGap = 22.0f;
+	// The fine crosshair stops short of the cardinal cards and fades as it moves away from centre.
+	inline float QuickControlsGuideAxisLength = 176.0f;
+	inline float QuickControlsGuideAxisThickness = 1.0f;
+	inline float QuickControlsGuideAxisOpacity = 0.24f;
+	inline int32 QuickControlsGuideAxisSegments = 7;
+	inline float QuickControlsGuideGlowDiameter = 112.0f;
+	inline int32 QuickControlsGuideGlowRings = 7;
+	inline float QuickControlsGuideGlowRingStep = 14.0f;
+	inline float QuickControlsGuideGlowOpacityMin = 0.004f;
+	inline float QuickControlsGuideGlowOpacityStep = 0.0025f;
 	// The popup's reveal: how far each card travels along its own axis as it eases into place, and
 	// how long that takes. Fast and damped -- the movement says where the group came from, it is
 	// not there to be watched.

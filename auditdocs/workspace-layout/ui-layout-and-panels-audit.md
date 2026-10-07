@@ -320,10 +320,11 @@ inspector.**
 
 ## 8. Audit: overlay-only left navigation and galleries
 
-**Request:** remove the left-side splitter/cell. LAYERS, LIBRARY, and GLOBAL
-should be overlay surfaces; Layers alone gets the inspector-style pop-out /
-return interaction. The bottom gallery should also overlay the preview, removing
-its splitter division rather than reserving a bottom cell.
+**Decision (D30–D32, user-confirmed):** there are no left-navigation or gallery
+splitter cells. The rail is glued/pinned over the viewport edge and reserves no
+shell width. LAYERS, LIBRARY, and GLOBAL open in one shared left overlay surface;
+Layers alone supports dragging away and returning to the rail. The gallery is one
+bottom overlay drawer with a MATERIALS/MASKS mode switch.
 
 ### Verified current implementation
 
@@ -345,21 +346,23 @@ its splitter division rather than reserving a bottom cell.
 | B. Independent overlay per page | Give Layers, Library, and Global separate overlay frames. | Fast page switching, but more geometry/front-order state and more overlap; avoid unless simultaneous panels are required. |
 | C. External window / nested docking | Separate OS windows or `FTabManager`. | Does not meet the in-viewport overlay goal; adds lifecycle/reconstruction complexity. |
 
-**Recommendation:** Option A. Reuse the existing single-instance overlay pattern;
-keep the rail as an overlay control, not a splitter cell. Give the Layers page
-the same drag-to-move and explicit click-to-return path as the Inspector. Library
-and Global are selected overlay pages, not additional docked cells or pop-outs.
-Do not create a second Layers widget.
+**Decision:** Option A. Pin the rail to the viewport edge as an overlay control;
+it is not draggable and has no shell slot. Clicking an icon opens that page in the
+shared overlay surface; choosing another page replaces its content. Layers alone
+can be dragged out. Clicking LAYERS while it is out returns/snaps it to its home
+position beside the rail; dragging it onto the rail is the alternate return path.
+Library and Global do not get separate pop-out geometry. Reparent the existing
+widget instances; never create duplicate Layers, Library, or Global trees.
 
-### Gallery overlay options
+### Gallery overlay options — decision: one bottom drawer
 
 | Option | Design | Trade-off |
 |---|---|---|
-| A. Single bottom drawer | Remove the center vertical splitter; anchor one materials/masks drawer over the viewport bottom. Replace the internal split with MATERIALS / MASKS tabs or a compact mode switch. | Removes both divider handles and preserves screen space when closed; changing modes is one extra action. Recommended. |
+| A. Single bottom drawer | Remove the center vertical splitter; anchor one materials/masks drawer over the viewport bottom. Replace the internal split with MATERIALS / MASKS tabs or a compact mode switch. | Removes both divider handles and preserves screen space when closed; changing modes is one extra action. **User-confirmed.** |
 | B. Two independently open drawers | Keep materials and masks in separate overlay panels. | More simultaneous visibility, but adds stacking, placement, and width state; unnecessary unless side-by-side viewing is a requirement. |
 | C. Keep current split and paint over it | Merely style the existing split panels as overlays. | Still reserves layout space and retains both splitters; does not satisfy the request. Reject. |
 
-### Shared implementation constraints / risks
+### Agreed interaction model and implementation constraints
 
 - Remove splitter fractions/write-back for the removed left and preview/gallery
   divisions; do not retain hidden splitter slots as a compatibility layer.
@@ -368,13 +371,19 @@ Do not create a second Layers widget.
   owns the overlay host for left navigation, Inspector, and gallery.
 - Reparent existing panel instances; preserve search, scroll, selection, and
   gallery state across overlay close/open and theme reconstruction.
-- Define interactions before coding: rail click toggles/switches the overlay;
-  clicking the active Layers icon returns it to its dock/home state; dragging
-  Layers to the rail is an alternate return path. Outside click should not
-  unexpectedly discard edits or selections.
+- Rail is viewport-pinned (“glued” to the edge), visually above the preview,
+  outside shell layout sizing. The rail itself never floats or consumes a splitter
+  cell. It remains available while content overlays are hidden.
+- Rail click opens or switches the single left overlay page. Clicking LAYERS while
+  its stack is popped out returns it home beside the rail; dragging the stack onto
+  the rail also returns it. Library/Global switch in the same surface and have no
+  independent free-floating geometry. No outside-click policy may discard state.
 - Gallery mode selection should preserve the existing MATERIALS and MASKS
-  builders and their state. Verify mask availability when no working material
-  exists; retain the current visibility rule.
+  builders and their state. Use tabs/segmented mode selection in one bottom drawer;
+  opening/closing or switching mode must preserve search, zoom, selection and scroll.
+  Verify mask availability when no working material exists; retain the current visibility rule.
+- Keep the Inspector's current right-column Docked / Overlay / Hidden cycle. Its
+  shell splitter is not part of the removed left/gallery divisions.
 - Reuse `MixtormatOverlay` geometry and theme tokens. Do not invent independent
   sizing literals. Overlay overlap order must be deterministic when Inspector,
   left content, and gallery are open together.

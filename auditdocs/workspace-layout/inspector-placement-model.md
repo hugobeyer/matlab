@@ -1,6 +1,11 @@
 # Inspector Placement Model
 
-Extends `ui-layout-and-panels-audit.md` §6. Status: placement-cycle prototype implemented
+Extends `ui-layout-and-panels-audit.md` §6. The Inspector remains a docked right
+column or viewport overlay under the new D30–D32 plan; old references below to a
+resizable Layers column / left shell splitter describe pre-D30 source only. See
+`overlay-workspace-handoff.md` for the approved pinned-rail and shared-left-overlay model.
+
+Status: placement-cycle prototype implemented
 (2026-10) — `P` and the top-bar placement control cycle Docked → Overlay → Hidden.
 One inspector is reparented between dock and viewport hosts; Hidden stays attached
 in the collapsed dock host for theme layout-state transfer. Overlay uses a square,
@@ -10,8 +15,9 @@ drag/resize (a re-clamp on viewport resize is still open — O12).
 Corner targets show a small L outline only on hover; the opposite corner stays fixed. The
 Layers column stays resizable in every placement: while the inspector column is away
 its share is carried by the centre slot, so the splitter still divides the full width.
-Source wiring checked. The user reports the Unreal build passes; this review did not
-rerun it. UI behaviour has not been tested in the editor. Persistence, selection-driven
+Source wiring checked. Later user builds reported compile errors in unrelated recent widget edits; those
+were corrected locally, but a successful follow-up build has not been reported. UI
+behaviour has not been tested in the editor. Persistence, selection-driven
 Auto visibility and collapse-to-top remain deferred; D20 auto-fit height is separate.
 
 ## Goal

@@ -83,7 +83,13 @@ gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
 
 `Widgets/SMixtormat_Preview.cpp::BuildPreviewPanel` builds overlay controls and
 assembles the preview UI; shared preview state/setters are on `SMixtormat`.
-`Widgets/SMixtormatPreviewViewport.*` owns the viewport rendering/scene and input
-client, delegating workspace-owned actions back to `SMixtormat`.
+`Widgets/SMixtormatPreviewViewport.*` owns viewport rendering/scene and input,
+delegating workspace actions back to `SMixtormat`.
 Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
+
+Workspace overlay design approved for the next implementation stage: a viewport-pinned
+left rail with no shell width, one shared Layers/Library/Global overlay surface, and a
+bottom gallery drawer replacing the preview/gallery and materials/masks splitters.
+The Inspector remains dockable. See `auditdocs/workspace-layout/overlay-workspace-handoff.md`
+for source ownership, state constraints, UI STYLE token requirements, and testing.

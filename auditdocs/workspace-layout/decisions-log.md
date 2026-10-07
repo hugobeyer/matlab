@@ -29,14 +29,17 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D19 | Viewport marking menu is invoked with `Q`; RMB click is reserved for the later context menu, and RMB drag keeps rotating lighting. **Amended from Tab (I13):** Slate navigates focus on Tab regardless of a widget handling it, so Tab also moved focus to the top bar | User; implemented (I11), key amended (I13) |
 | D20 | Inspector overlay height auto-fits its content (capped at the viewport); a top/bottom corner drag makes it explicit, and foldout collapse then leaves the size alone | User |
 | D21 | The overlay is placed inset from the viewport edges by a token on first entry, not flush | User |
-| D22 | The left panel gets the same placement model as the inspector: Docked → Overlay → Hidden, one instance, draggable and resizable | User |
-| D23 | Reopening a panel preserves its Auto/Explicit height mode and user-set height, subject to viewport clamping. Foldout collapse does not reset explicit height; a small Fit height action returns to Auto without resetting width/position | User approved recommendations; planned, not implemented |
-| D24 | Float the entire LAYERS / LIBRARY / GLOBAL panel including its tab strip; `L` cycles Docked → Overlay → Hidden → Docked | User approved recommendations; planned, not implemented |
-| D25 | Clicked floating panels come to front; maintain independent geometry and gesture state. Gallery stays bottom-docked with its existing toggle; gallery-popover/auto-collapse work is deferred | User approved recommendations; planned, not implemented |
-| D26 | Bare Tab presses once to open; release does nothing. Escape/outside click dismisses; no hold/flick/release gesture in v1 | User; planned, not implemented |
-| D27 | Merge AA / Scale / Displacement with Default / Lumen / Final into the Render strip | User; planned, not implemented |
-| D28 | Quick-controls popup is an in-viewport overlay. Controls retain normal input focus/capture; nested Final menus remain usable. Close popup/nested menus and release capture before theme reconstruction | User approved recommendation; planned, not implemented |
-| D29 | Implement in stages; user tests each implemented stage in-editor. Tab delivery and UI behaviour are to be proven during implementation/testing, not assumed from a passing build | User |
+| D22 | Superseded by D30–D31: left navigation/content use the pinned-rail shared-overlay model, not a left Docked/Overlay/Hidden splitter column | Superseded by the user's overlay-only direction |
+| D23 | Reopening a panel preserves its Auto/Explicit height mode and user-set height, subject to viewport clamping. Foldout collapse does not reset explicit height; a small Fit height action returns to Auto without resetting width/position | User approved recommendation; implemented in I7, needs validation |
+| D24 | Superseded by D30–D32: left navigation/content are viewport overlays, not a shell splitter cell | Superseded by the user's overlay-only direction |
+| D25 | Superseded by D32: the gallery becomes a bottom overlay drawer; no preview/gallery or materials/masks divider | Superseded by the user's overlay-only direction |
+| D26 | Superseded by D19/I13: bare Q toggles the viewport quick controls; Tab remains normal Slate navigation | User; implemented in source, needs validation |
+| D27 | Merge AA / Scale / Displacement with Default / Lumen / Final into the Render strip | User; implemented in I9/I10, needs validation |
+| D28 | Quick-controls popup is an in-viewport overlay. Controls retain normal input focus/capture; nested Final menus remain usable. Close popup/nested menus and release capture before theme reconstruction | User approved recommendation; implemented in I11, needs validation |
+| D29 | Implement in stages; user tests each implemented stage in-editor. Input delivery and UI behaviour are to be proven during implementation/testing, not assumed from a passing build | User |
+| D30 | The left navigation rail is glued/pinned to the viewport edge as an overlay; it reserves no shell width and is not draggable | User confirmed the overlay recommendation |
+| D31 | LAYERS, LIBRARY, and GLOBAL all open in one shared left overlay surface. Rail selection switches/replaces the active content; Layers alone can be dragged out and returned by clicking its rail icon or dragging it back to the rail. Keep one live instance per page; no left splitter/cell | User confirmed the overlay recommendation |
+| D32 | The materials/masks gallery is one bottom overlay drawer with a mode switch. Remove the preview/gallery vertical splitter and the materials/masks internal splitter; no reserved gallery cell | User confirmed the overlay recommendation |
 
 ## Implemented (2026-10)
 
@@ -52,14 +55,15 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I8 | Left panel placement: `L` cycles Docked → Overlay → Hidden → Docked; one `LeftPanel` (whole panel incl. tab strip) reparented between dock and viewport hosts; drag by an empty grab margin above the tab strip (no header row); shared drag/resize machinery with independent geometry; symmetric splitter write-back; clicked floating panel comes to front | `SMixtormat_Overlays.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat.h` |
 | I9 | Preview controls extracted into shared builders (`BuildPreview{Render,Lighting,Geometry,Scene,Camera,Output}Controls`); AA/Scale/Default-Lumen/Final/Displacement merged into one Render strip (D27); GLOBAL gains a PREVIEW / VIEWPORT section with five group-visibility switches and the same settings, organised as cards (VISIBILITY / RENDER / LIGHTING / GEOMETRY / CAMERA / OUTPUT) with the icon buttons laid out inline (`EPreviewControlLayout`); GLOBAL empty-state opacity tokenized | `SMixtormat_PreviewControls.cpp` (new), `SMixtormat_Preview.cpp` (shrank ~610 lines), `SMixtormat_Shell.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I10 | Side resize grips: left/right edges (width-only, height stays auto and re-measures), corners unchanged; AA / Default-Lumen / displacement removed from the viewport overlay and kept in GLOBAL only, leaving the overlay strip as render Scale + Final | `SMixtormatOverlayPanel.*`, `SMixtormat_Overlays.cpp`, `SMixtormat_Inspector.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp` |
-| I11 | Tab quick controls (D26/D28): bare Tab routed through `FMixtormatPreviewViewportClient::InputKey` (viewport focus only, no modifiers), popup built as an in-viewport overlay around the pointer -- four cards (RENDER top, LIGHTING left, GEOMETRY right, disabled ACTIONS bottom) with the icons gridded, each card easing out along its own axis on open (quadratic ease-out, one-shot timer, no per-frame tick) -- centred once measured and clamped to the viewport; dismissed by Escape (routed through the client so the viewport's own Escape is untouched when the popup is closed), an outside click or a rebuild; requires the pointer over exposed viewport content | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
+| I11 | Quick controls (D26/D28): initially Tab, later changed to bare Q (I13), routed through `FMixtormatPreviewViewportClient::InputKey`; in-viewport popup around the pointer -- RENDER top, LIGHTING left, GEOMETRY right, disabled ACTIONS bottom; card reveal animation, centered after measurement and viewport-clamped. Escape/outside click/rebuild dismiss; Q also closes while popup controls own focus, and geometry/light selection auto-dismisses | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I12 | Left column navigation is a vertical icon rail (LAYERS / LIBRARY / GLOBAL) that stays docked; only the layer stack pops out, so the floating panel is the stack plus its grab margin and grips. The rail's selection follows the cell: docking the stack selects LAYERS, and while it floats or is hidden the cell falls back to the last non-layers page; choosing LAYERS in the rail while it floats docks it back. `SMixtormatTabStrip` is still used by the UI STYLE panel, so nothing became dead | `UI/Controls/SMixtormatIconRail.*` (new), `SMixtormat_Shell.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
-| I13 | Quick controls moved from Tab to `Q`: Tab delivery worked, but Slate's focus navigation runs on Tab regardless of the widget handling it, so the top bar lit up. The popup's cards also spread — a wider centre gap and a row gap between the four cards | `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`, `MixtormatDesignTokens.h` |
+| I13 | Quick controls moved from Tab to `Q`: Tab delivery worked, but Slate's focus navigation runs on Tab regardless of the widget handling it, so the top bar lit up. Popup spacing widened; a theme-tokenized hairline cross fades outward from a soft layered centre bloom behind the cards | `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`, `SMixtormat_PreviewControls.cpp`, `MixtormatDesignTokens.h` |
 
-I7–I13 are **code-complete and untested**: no build or in-editor run has been made in this
-session, and the repo's language-server diagnostics do not resolve engine/plugin include paths,
-so they carry no signal here. Gallery stays bottom-docked; variables, persistence, Auto
-visibility and collapse-to-header remain out of scope.
+I7–I13 are implemented in source but **not fully validated**: user-reported builds caught
+Slate bracket errors in the icon rail and preview controls; those edits were corrected, but a
+successful rebuild has not yet been reported. Q-close behavior and the marking-menu guide also
+need in-editor verification. D30–D32 document the approved next layout stage; it is not
+implemented. Variables and layout persistence remain separate work.
 
 **Tab delivery is settled (I13):** the client did receive Tab, but Slate's focus navigation runs
 on Tab regardless of the event being handled, so the key moved to `Q`. Tab is only recoverable
@@ -71,7 +75,7 @@ the viewport — not worth it for a viewport menu.
 | # | Recommendation | Why |
 |---|---|---|
 | R1 | ~~Variables home = pinned collapsible GLOBAL group in the inspector~~ — superseded by D13 (GLOBAL left tab) | User chose the third left tab over the pinned group |
-| R2 | Gallery = tabs (Materials / Masks) | Reuses `SMixtormatTabStrip`; full-width grids; kills two fraction states |
+| R2 | ~~Gallery = tabs (Materials / Masks)~~ — adopted as the mode switch inside the single bottom drawer (D32) | Reuses existing builders; no internal splitter |
 | R3 | Inspector header row (name, Add, Pin/Dock/Hide) | Pin/Dock/Hide need a home; reuse `LayerStackHeaderHeight` pattern |
 | R4 | Malformed both-enabled binding: reference wins, variable driver skipped | Preserves existing behavior exactly; editor prevents authoring it |
 | R5 | Effective value: authored on slider + driven badge; computed result in popover only | Consistent with spatial drivers; no slider write/reset confusion |
@@ -83,18 +87,18 @@ the viewport — not worth it for a viewport menu.
 
 | # | Question | Notes |
 |---|---|---|
-| O1 | Gallery form: tabs vs vertical split vs keep splitter | Three competing resolutions; R2 recommended |
+| O1 | Gallery form | Resolved by D32: one bottom overlay drawer with MATERIALS/MASKS mode switch; both splitter divisions removed |
 | O2 | Variables placement | Resolved — GLOBAL left tab (D13) |
 | O3 | Malformed both-enabled precedence final confirm | R4 recommended |
 | O4 | Effective-value display final confirm | R5 recommended |
 | O5 | Inspector drag: commit or defer | Resolved — D18 superseded R8; the drag shipped (I6) |
 | O6 | Future Auto-visibility behaviour after undo | `SMixtormat.cpp` L299–311 clears multi/group/effect/mask selection but retains/clamps a valid layer index; undo does not always remove inspector selection. No undo change in the current scope |
-| O7 | Compact viewport mode (edge popovers + marking menu) | The inspector cycle shipped (I6); the quick-controls prototype is now planned in `viewport-quick-controls-plan.md`, not implemented. Flick/release gestures remain deferred |
-| O8 | Does `L` become the placement cycle for the left panel? | Resolved — D24; update label/tooltips/help with the implementation |
-| O9 | Does only the LAYERS tab float, or the whole left panel with its tab strip? | Resolved — the whole panel travels (D24), still one instance |
+| O7 | Compact viewport mode (edge popovers + marking menu) | Q quick controls are implemented in source but need build/editor validation. Flick/release gestures remain deferred |
+| O8 | `L` behavior for Layers | Reconcile during D31: define Docked-at-home / popped-out / hidden behavior and update label/help; don't retain misleading old cycle text |
+| O9 | Which left content may pop out? | Resolved by D31: Layers alone; Library/Global remain pages in the shared overlay surface. The rail stays pinned |
 | O10 | How does an explicitly-sized overlay return to auto-fit height? | Resolved — Fit height action (D23). Reopening/cycling preserves height mode; no automatic reset |
-| O11 | Overlay stacking/fronting when two panels float (D22) | Resolved — clicked floating panel comes to front (D25). Capture routing remains implementation work |
-| O12 | Missing continuous viewport clamping | D18 requires viewport clamping, but source clamps only on entry/drag (Shell L698–750, L807). Implement re-clamping for window/splitter/gallery changes; do not treat the requirement as an optional new feature |
+| O11 | Overlay stacking/fronting | Inspector, one left overlay and gallery may coexist; define deterministic hit/front order during D30–D32 implementation |
+| O12 | Continuous viewport clamping | Implemented in I7 via overlay layout evaluation; re-test after D30–D32 remove/change splitter geometry |
 
 ## Rejected
 
@@ -111,21 +115,12 @@ the viewport — not worth it for a viewport menu.
 
 ## Suggested order
 
-1. ~~Inspector placement cycle — Docked → Overlay → Hidden~~ — done, see I6.
-2. Inspector overlay auto-fit height + default inset (D20/D21), including the
-   auto/explicit height mode (O10) and the viewport-resize re-clamp (O12).
-3. Layers placement (D22). Prerequisites: extract a generic overlay controller
-   from the inspector's drag/resize state (inspector-specific today), give the
-   left column placement state of its own, and apply whole-panel scope/fronting (D24/D25).
-4. Variables Phase 1–2 behind the GLOBAL tab (data model first; still the
-   must-have feature, independent of layout work).
-5. Gallery work only after O1/R2 is confirmed; finish Unreal → prototype geometry sync.
-6. Layout persistence in editor settings (`UMixtormatEditorSettings`).
-7. Viewport quick controls: settle the extraction API first; tokenize touched
-   literals without changing appearance, extract builders, then visibility/regrouping
-   and the Tab popup (see the focused plan's separate decision gates).
+1. Rebuild and verify the latest rail and quick-controls edits before changing layout.
+2. Implement D30: remove left shell slot; pin rail over viewport with no reserved width.
+3. Implement D31: single shared left overlay; Layers drag-out/return; preserve all page state.
+4. Implement D32: bottom gallery overlay and MATERIALS/MASKS mode switch; remove both gallery splitters.
+5. Add the approved UI STYLE metrics in `overlay-workspace-handoff.md` to the existing Preview/Gallery theme groups; structural limits remain tokens.
+6. Re-test Inspector placement/fronting and workspace reconstruction; persistence is separate.
 
-This is a suggested feature order, not a dependency chain: variables, gallery and
-persistence are not prerequisites for quick controls. Recommendations and open
-questions above are not user-approved decisions. See README §Implementation readiness
-before starting a feature stage.
+Variables data-model work and persistence are independent. See
+`overlay-workspace-handoff.md` for source paths, migration details and the test matrix.

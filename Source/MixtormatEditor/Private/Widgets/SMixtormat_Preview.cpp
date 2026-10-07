@@ -115,6 +115,7 @@ FReply SMixtormat::SetPreviewMesh(const EMixtormatPreviewMesh MeshType)
 			Viewport->SetPreviewMesh(MeshType, PlaneOrientation);
 		}
 	}
+	CloseQuickControls();
 	return FReply::Handled();
 }
 
@@ -870,6 +871,7 @@ void SMixtormat::PreviewSelectedSurfaceWithDisplacement()
 FReply SMixtormat::SetStudioLighting(const EMixtormatStudioLighting LightingPreset)
 {
 	StudioLighting = LightingPreset;
+	CloseQuickControls();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())

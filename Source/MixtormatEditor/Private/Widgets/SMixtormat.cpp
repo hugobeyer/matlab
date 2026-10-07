@@ -74,6 +74,13 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		{
 			return false;
 		}
+		// Once the popup is open, its buttons can take keyboard focus away from the viewport.
+		// Keep Q as a close key in that state only; opening it remains viewport-scoped.
+		if (Self->bQuickControlsOpen && KeyEvent.GetKey() == EKeys::Q)
+		{
+			Self->CloseQuickControls();
+			return true;
+		}
 		if (KeyEvent.GetKey() == EKeys::L)
 		{
 			Self->ToggleLeftPanelCollapsed();

@@ -41,6 +41,12 @@ workspace focus. The preprocessor yields for focused-widget type names containin
 It has no workspace/tab/window ownership guard (`SMixtormat.cpp` L30–48); verify
 unrelated editor windows and modal/popup focus before extending it.
 
+Approved next layout stage (D30–D32, not implemented): the rail becomes pinned over
+the viewport; Layers/Library/Global and the gallery become overlays with no left or
+gallery splitter cells. Revisit L/G wording and rail accessibility when implementing;
+current bindings still describe the current code until then. See
+`auditdocs/workspace-layout/overlay-workspace-handoff.md`.
+
 | Key | Action | Advertised where |
 |---|---|---|
 | `L` | Cycle the layer stack's placement: Docked → Overlay → Hidden → Docked. The left column's icon rail stays docked; only the stack travels | Top-bar tooltip `"Cycle Layers placement: Docked → Overlay → Hidden → Docked (L)."`; the control's label reads `Layers: Docked` / `Overlay` / `Hidden` |
@@ -65,7 +71,7 @@ controls, the mode label and/or status bar. Shortcut discoverability is incomple
 | `Shift+V` | Jump straight back to Material (also in the mode label) |
 | `U` or `M` | Cycle module preview — **marked Temporary in source** |
 | Mouse wheel | Zoom camera |
-| `Q` (bare) | Open the viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Escape or an outside click dismisses. **Implemented, untested** — routed through `FMixtormatPreviewViewportClient::InputKey`. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
+| `Q` (bare) | Toggle viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Q again, Escape, an outside click, or choosing a mesh/light preset dismisses. Opening remains viewport-scoped; Q closes while the popup has focus. **Implemented, needs in-editor verification** — opening is routed through `FMixtormatPreviewViewportClient::InputKey`; closing while a control has focus uses the workspace input processor. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
 
 ## Hotkey catalog — controls
 

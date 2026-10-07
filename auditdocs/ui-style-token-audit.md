@@ -37,6 +37,39 @@ values unless a design change is separately approved.
 | Gradients | `MixtormatTokens` gradient block (`GradientSamples`, `MultiplyMidPosition`, …) consumed by `MixtormatGradientPainter`, `MixtormatSurfacePainter`, `MixtormatWell` |
 | Borders / radius | `ControlLayout.CornerRadius`, `MixtormatTokens::CornerRadius` / inner-corner value, `Well.BorderWidth` / `BorderOpacity`, `Gallery.BorderWidth`, `MixtormatTokens::InspectorHairlineThickness` |
 
+## Approved overlay-workspace additions — UI STYLE token plan
+
+D30–D32 add overlay navigation and a bottom gallery drawer. When implementing,
+put user-retunable appearance/layout defaults in `FMixtormatTheme` plus
+`MixtormatThemeSchema.cpp` and `Config/UIStyleTheme.json`, grouped under the existing
+**Preview → Layout** and **Gallery → Gallery Layout** UI STYLE sections. Preserve the
+existing defaults as the starting values. Do not expose live panel geometry that the
+user has already dragged; geometry stays session state.
+
+| UI STYLE control to add | Theme metric / section | Purpose |
+|---|---|---|
+| Rail edge inset | `FMixtormatPreviewMetrics`, Preview → Layout | Gap from viewport edge to the pinned rail |
+| Rail-to-panel gap | `FMixtormatPreviewMetrics`, Preview → Layout | Separation between rail and shared left overlay |
+| Left overlay initial width | `FMixtormatPreviewMetrics`, Preview → Layout | First-placement width only; subsequent user resize is retained runtime state |
+| Left overlay surface opacity | Existing overlay theme or a dedicated Preview metric | Tune the translucent shared Layers/Library/Global surface without local alpha literals |
+| Marking-menu centre gap and row gap | `FMixtormatPreviewMetrics`, Preview → Layout | Retune the expanded four-card Q-menu arrangement |
+| Marking-menu guide length/thickness/opacity and bloom size/opacity | `FMixtormatPreviewMetrics`, Preview → Layout | Retune the faded hairline cross and soft center bloom; reuse the palette TextMuted role |
+| Gallery drawer edge inset | `FMixtormatGalleryMetrics`, Gallery → Gallery Layout | Gap from viewport bottom/edges |
+| Gallery drawer initial height | `FMixtormatGalleryMetrics`, Gallery → Gallery Layout | First-placement height only; user resize remains runtime state |
+| Gallery drawer header/mode-switch gap | `FMixtormatGalleryMetrics`, Gallery → Gallery Layout | Space around MATERIALS/MASKS mode selector |
+| Gallery drawer surface opacity | Existing gallery surface theme or a dedicated Gallery metric | Tune drawer surface treatment without local alpha literals |
+
+The current marking-menu guide/spacing values are structural `MixtormatTokens`
+for the recent prototype. If promoted to UI STYLE, move them into theme metrics rather
+than keeping parallel token copies. Add only metrics actually consumed by the UI.
+Use `EMixtormatThemeRefreshMode::Reconstruct` for dimensions that require rebuilding;
+use live refresh only for values the painter can safely re-read. Keep structural
+constraints (min resize sizes, grip target sizes, snap threshold, layout bounds) in
+`MixtormatTokens`, not UI STYLE. Keep rail glyph/button size sourced from the existing
+`PanelToolbar` icon role unless the design explicitly requires a separate role.
+The existing shell splitter style remains for the docked Inspector and must not be
+removed merely because the left/gallery splitters disappear.
+
 ## Gaps — local literals that must be tokenized
 
 | File | Line | Literal | What it is | Suggested home |

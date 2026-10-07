@@ -18,6 +18,9 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Rendering/SlateRenderTransform.h"
+#include "Rendering/DrawElements.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "Widgets/SLeafWidget.h"
 
 // The preview's control clusters, extracted from BuildPreviewPanel so the viewport overlay and the
 // GLOBAL Preview / Viewport section build the same controls from one place instead of two copies.
@@ -30,6 +33,57 @@
 
 namespace
 {
+	class SMixtormatQuickControlsGuide final : public SLeafWidget
+	{
+	public:
+		FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
+
+		int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,
+			FSlateWindowElementList& Elements, const int32 LayerId, const FWidgetStyle& WidgetStyle,
+			const bool) const override
+		{
+			const FVector2f Size(Geometry.GetLocalSize());
+			const FVector2f Center = Size * 0.5f;
+			const FLinearColor Base = FMixtormatThemeStore::GetResolved().Palette.Get(
+				Mixtormat::EMixtormatColorRole::TextMuted) * WidgetStyle.GetColorAndOpacityTint();
+
+			// Stacked rounded discs make a low-contrast centre bloom without a texture dependency.
+			for (int32 Ring = 0; Ring < MixtormatTokens::QuickControlsGuideGlowRings; ++Ring)
+			{
+				const float Diameter = MixtormatTokens::QuickControlsGuideGlowDiameter
+					- Ring * MixtormatTokens::QuickControlsGuideGlowRingStep;
+				FSlateRoundedBoxBrush Brush(FLinearColor::White, Diameter * 0.5f);
+				FLinearColor Tint = Base;
+				Tint.A *= MixtormatTokens::QuickControlsGuideGlowOpacityMin
+					+ Ring * MixtormatTokens::QuickControlsGuideGlowOpacityStep;
+				FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(
+					FVector2f(Diameter), FSlateLayoutTransform(Center - FVector2f(Diameter * 0.5f))),
+					&Brush, ESlateDrawEffect::None, Tint);
+			}
+
+			// Four fine arms, segmented so the guide fades away from the pointer into each card.
+			const int32 SegmentCount = MixtormatTokens::QuickControlsGuideAxisSegments;
+			const float AxisLength = MixtormatTokens::QuickControlsGuideAxisLength;
+			for (const FVector2f Direction : { FVector2f(1.0f, 0.0f), FVector2f(-1.0f, 0.0f),
+				FVector2f(0.0f, 1.0f), FVector2f(0.0f, -1.0f) })
+			{
+				for (int32 Segment = 0; Segment < SegmentCount; ++Segment)
+				{
+					const float Start = AxisLength * Segment / SegmentCount;
+					const float End = AxisLength * (Segment + 1) / SegmentCount;
+					TArray<FVector2f> Line = { Center + Direction * Start, Center + Direction * End };
+					FLinearColor Tint = Base;
+					Tint.A *= MixtormatTokens::QuickControlsGuideAxisOpacity
+						* (1.0f - static_cast<float>(Segment) / SegmentCount);
+					FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(),
+						Line, ESlateDrawEffect::None, Tint, true,
+						MixtormatTokens::QuickControlsGuideAxisThickness);
+				}
+			}
+			return LayerId;
+		}
+	};
+
 	class SMixtormatPreviewPlate final : public SCompoundWidget
 	{
 	public:
@@ -805,7 +859,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 				Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
 		]);
 
-	QuickControlsPanel = SNew(SVerticalBox)
+	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 		[
 			MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(0.0, -1.0))
@@ -830,6 +884,17 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 		.Padding(0.0f, MixtormatTokens::QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			MakeCard(LOCTEXT("QuickControlsActions", "ACTIONS"), ActionRows, FVector2D(0.0, 1.0))
+		];
+	QuickControlsPanel = SNew(SOverlay)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		+ SOverlay::Slot()
+		[
+			SNew(SMixtormatQuickControlsGuide)
+			.Visibility(EVisibility::HitTestInvisible)
+		]
+		+ SOverlay::Slot()
+		[
+			Cards
 		];
 
 	// Placed by padding, like the floating panels, so the pointer owns the position and the viewport
