@@ -487,8 +487,8 @@
 		"PreviewLayout.QuickControlsRowGap": 22,
 		"PreviewLayout.QuickControlsGuideAxisLength": 176,
 		"PreviewLayout.QuickControlsGuideAxisThickness": 1,
-		"PreviewLayout.QuickControlsGuideAxisOpacity": 0.24,
-		"PreviewLayout.QuickControlsGuideGlowDiameter": 112,
+		"PreviewLayout.QuickControlsGuideAxisOpacity": 0.12,
+		"PreviewLayout.QuickControlsGuideGlowDiameter": 240,
 		"PreviewLayout.QuickControlsGuideGlowOpacity": 0.019
 	},
 	"galleryShell":

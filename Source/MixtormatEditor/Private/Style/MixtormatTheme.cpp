@@ -371,8 +371,8 @@ namespace Mixtormat
 		T.PreviewLayout.QuickControlsRowGap = 22.0f;
 		T.PreviewLayout.QuickControlsGuideAxisLength = 176.0f;
 		T.PreviewLayout.QuickControlsGuideAxisThickness = 1.0f;
-		T.PreviewLayout.QuickControlsGuideAxisOpacity = 0.24f;
-		T.PreviewLayout.QuickControlsGuideGlowDiameter = 112.0f;
+		T.PreviewLayout.QuickControlsGuideAxisOpacity = 0.12f;
+		T.PreviewLayout.QuickControlsGuideGlowDiameter = 240.0f;
 		T.PreviewLayout.QuickControlsGuideGlowOpacity = 0.019f;
 
 		T.GalleryLayout.TileSize = 80.0f;

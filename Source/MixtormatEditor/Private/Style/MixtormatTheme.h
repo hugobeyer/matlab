@@ -708,8 +708,8 @@ namespace Mixtormat
 		float QuickControlsRowGap = 22.0f;
 		float QuickControlsGuideAxisLength = 176.0f;
 		float QuickControlsGuideAxisThickness = 1.0f;
-		float QuickControlsGuideAxisOpacity = 0.24f;
-		float QuickControlsGuideGlowDiameter = 112.0f;
+		float QuickControlsGuideAxisOpacity = 0.12f;
+		float QuickControlsGuideGlowDiameter = 240.0f;
 		float QuickControlsGuideGlowOpacity = 0.019f;
 	};
 
