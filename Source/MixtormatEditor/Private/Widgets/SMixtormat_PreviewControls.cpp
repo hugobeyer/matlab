@@ -36,6 +36,11 @@ namespace
 	class SMixtormatQuickControlsGuide final : public SLeafWidget
 	{
 	public:
+		SLATE_BEGIN_ARGS(SMixtormatQuickControlsGuide) {}
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments&) {}
+
 		FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
 
 		int32 OnPaint(const FPaintArgs&, const FGeometry& Geometry, const FSlateRect&,

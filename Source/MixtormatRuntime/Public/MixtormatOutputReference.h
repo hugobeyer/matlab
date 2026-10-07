@@ -99,6 +99,16 @@ namespace MixtormatOutputReferences
 		const FGuid& DestinationChildId,
 		const FMixtormatOutputReference& Reference);
 
+	// Explicit generator sockets only: completed signed Height, Flow or UVMap from an earlier
+	// generator scope in this layer or an earlier layer. Rejects self/forward scope reads,
+	// disabled owners and wrong output kinds. Legacy layer-wide Flow/UV validation is unchanged.
+	// Strictly decreasing evaluation order makes socket cycles impossible.
+	MIXTORMATRUNTIME_API int32 ResolveGeneratorInputSource(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 DestinationLayerIndex,
+		int32 DestinationChildIndex,
+		const FMixtormatOutputReference& Reference);
+
 	// Returns the authored source index only after ValidateDependency succeeds.
 	MIXTORMATRUNTIME_API int32 ResolveSource(
 		const TArray<FMixtormatLayer>& Layers,

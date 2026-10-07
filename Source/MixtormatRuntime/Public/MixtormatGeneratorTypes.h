@@ -6,6 +6,7 @@
 #include "MixtormatHeightTypes.h"
 #include "MixtormatScalarRamp.h"
 #include "MixtormatColorRamp.h"
+#include "MixtormatOutputReference.h"
 #include "MixtormatGeneratorTypes.generated.h"
 
 // Which generator an FMixtormatGenerator carries.
@@ -898,6 +899,25 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
 	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+
+	// Explicit inputs belong to this generator, not the layer-wide source-sampling placement.
+	// Height is the source module's completed signed output (after its tools and Height Scale).
+	// Consumers are implemented separately; disabled defaults preserve existing assets.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator|Inputs")
+	FMixtormatOutputReference HeightSource;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator|Inputs")
+	FMixtormatOutputReference WarpSource;
+
+	FMixtormatGenerator()
+	{
+		HeightSource.bEnabled = false;
+		HeightSource.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
+		HeightSource.OutputName = FName(TEXT("Height"));
+		WarpSource.bEnabled = false;
+		WarpSource.Kind = EMixtormatPublishedFieldKind::Flow;
+		WarpSource.OutputName = FName(TEXT("FlowDirection"));
+	}
 
 	// Deprecated: per-generator blend is gone. Generator modules are plain signed field producers
 	// and combination lives in the Generator-layer Height Blend sublayer. Kept only so existing

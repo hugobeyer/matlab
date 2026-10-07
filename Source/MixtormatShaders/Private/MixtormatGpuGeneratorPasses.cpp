@@ -2416,6 +2416,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
+		FGeneratorInputFields& Inputs = LayerCtx.GeneratorInputs.Add(Child.SourceChildIndex);
+		const auto ResolveInput = [&](const FGeneratorInputRenderData& Input, FPublishedField& Out)
+		{
+			if (!Input.bRequested || Input.Reference.Source.ChildIndex == INDEX_NONE) { return; }
+			const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Input.Reference.Source);
+			if (Source && Source->Kind == Input.Reference.Kind && Source->IsComplete()) { Out = *Source; }
+		};
+		ResolveInput(Child.Generator.HeightSource, Inputs.Height);
+		ResolveInput(Child.Generator.WarpSource, Inputs.Warp);
 		FGeneratorBundle Module;
 		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
 		switch (Child.Generator.Type)
@@ -2459,6 +2468,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			TEXT("Mixtormat.Generator.SignedHeight"));
 		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
 		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
+		// Explicit inputs address the completed signed module result, never the running sum.
+		Ctx.PublishedFieldOutputs.Add(
+			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Height"))},
+			FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
 
 		// The only publication point: every module publishes under its own child index, after its
 		// flow. The layer's default IDs are therefore the last module that produced any.

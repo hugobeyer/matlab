@@ -689,6 +689,18 @@ namespace MixtormatGpuCompositor
 								// Includes scoped group inputs and local alias chains before prefix reuse.
 								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
 							}
+							if (Child.Type == EMixtormatLayerChildType::Generator)
+							{
+								const auto DemandInput = [&](const FGeneratorInputRenderData& Input)
+								{
+									if (Input.bRequested && Input.Reference.Source.ChildIndex != INDEX_NONE)
+									{
+										Ctx.PublishedFieldDemand.Add(Input.Reference.Source);
+									}
+								};
+								DemandInput(Child.Generator.HeightSource);
+								DemandInput(Child.Generator.WarpSource);
+							}
 							if (Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 								&& Child.BoundaryId.bExplicitSource)
 							{

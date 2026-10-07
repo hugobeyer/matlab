@@ -292,6 +292,83 @@ namespace MixtormatOutputReferences
 		return Visit(Destination, 0);
 	}
 
+	int32 ResolveGeneratorInputSource(const TArray<FMixtormatLayer>& Layers,
+		const int32 DestinationLayerIndex, const int32 DestinationChildIndex,
+		const FMixtormatOutputReference& Reference)
+	{
+		if (!Reference.bEnabled || !Reference.HasSource()
+			|| !Layers.IsValidIndex(DestinationLayerIndex)) { return INDEX_NONE; }
+		const FMixtormatLayer& DestinationLayer = Layers[DestinationLayerIndex];
+		if (!DestinationLayer.bEnabled || DestinationLayer.Type != EMixtormatLayerType::Generator
+					|| !DestinationLayer.Children.IsValidIndex(DestinationChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		const FMixtormatLayerChild& Destination = DestinationLayer.Children[DestinationChildIndex];
+		if (Destination.Type != EMixtormatLayerChildType::Generator || !Destination.Generator.bEnabled
+			|| Destination.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
+		const bool bHeight = Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+			&& Reference.OutputName == FName(TEXT("Height"));
+		const bool bFlow = Reference.Kind == EMixtormatPublishedFieldKind::Flow
+			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::Flow);
+		const bool bUV = Reference.Kind == EMixtormatPublishedFieldKind::UVMap
+			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::UVMap);
+		if (!bHeight && !bFlow && !bUV) { return INDEX_NONE; }
+
+		int32 SourceLayerIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < Layers.Num(); ++Index)
+		{
+			if (Layers[Index].LayerId != Reference.SourceLayerId) { continue; }
+			if (SourceLayerIndex != INDEX_NONE) { return INDEX_NONE; }
+			SourceLayerIndex = Index;
+		}
+		if (SourceLayerIndex == INDEX_NONE || SourceLayerIndex > DestinationLayerIndex) { return INDEX_NONE; }
+		const FMixtormatLayer& SourceLayer = Layers[SourceLayerIndex];
+		if (!SourceLayer.bEnabled || SourceLayer.Type != EMixtormatLayerType::Generator) { return INDEX_NONE; }
+		int32 SourceIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < SourceLayer.Children.Num(); ++Index)
+		{
+			if (SourceLayer.Children[Index].ChildId != Reference.SourceChildId) { continue; }
+			if (SourceIndex != INDEX_NONE) { return INDEX_NONE; }
+			SourceIndex = Index;
+		}
+		if (SourceIndex == INDEX_NONE
+			|| (SourceLayerIndex == DestinationLayerIndex && SourceIndex >= DestinationChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		const FMixtormatLayerChild& Source = SourceLayer.Children[SourceIndex];
+		if (bHeight)
+		{
+			return Source.Type == EMixtormatLayerChildType::Generator && Source.Generator.bEnabled
+				&& !Source.ScopeOwnerChildId.IsValid() ? SourceIndex : INDEX_NONE;
+		}
+		if (Source.Type != EMixtormatLayerChildType::Effect || !Source.Effect.bEnabled
+			|| !Source.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
+		const int32 OwnerIndex = SourceLayer.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
+		{
+			return Child.ChildId == Source.ScopeOwnerChildId;
+		});
+		if (OwnerIndex == INDEX_NONE || OwnerIndex >= SourceIndex) { return INDEX_NONE; }
+		const FMixtormatLayerChild& Owner = SourceLayer.Children[OwnerIndex];
+		if (Owner.Type != EMixtormatLayerChildType::Generator || !Owner.Generator.bEnabled
+			|| Owner.ScopeOwnerChildId.IsValid() || !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type)
+			|| (SourceLayerIndex == DestinationLayerIndex && OwnerIndex >= DestinationChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		EMixtormatEffectType Type = Source.Effect.ProceduralType;
+		if (!Source.Effect.Effect.IsNull())
+		{
+			const UMixtormatEffect* Asset = Source.Effect.Effect.Get();
+			if (!Asset && IsInGameThread()) { Asset = Source.Effect.Effect.LoadSynchronous(); }
+			if (!Asset) { return INDEX_NONE; }
+			Type = Asset->EffectType;
+		}
+		return MixtormatIsGeneratorFlowEffect(Type)
+			&& (!bUV || Type != EMixtormatEffectType::FlowCarve) ? SourceIndex : INDEX_NONE;
+	}
+
 	int32 ResolveSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const int32 DestinationChildIndex,
 		const FMixtormatOutputReference& Reference)

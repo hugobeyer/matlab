@@ -11,7 +11,8 @@ namespace MixtormatGpuCompositor
 {
 void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
-	const bool bGeneratorLayer, const bool bCacheLayers, const uint64 PlacementKey)
+	const bool bGeneratorLayer, const bool bCacheLayers, const uint64 PlacementKey,
+	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
 {
 	// Modules exist only on Generator layers. A disabled layer must not gather them -- an
 	// enabled module on a hidden layer would build a surface nobody can see and still cost
@@ -26,6 +27,25 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	ChildData.Type = EMixtormatLayerChildType::Generator;
 	ChildData.SourceChildIndex = SourceChildIndex;
 	ChildData.Generator.Type = Generator.Type;
+	const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
+		FGeneratorInputRenderData& Out, const bool bHeight)
+	{
+		Out.bRequested = Reference.bEnabled;
+		Out.Reference.Kind = Reference.Kind;
+		const bool bCompatible = bHeight
+			? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+			: Reference.Kind == EMixtormatPublishedFieldKind::Flow || Reference.Kind == EMixtormatPublishedFieldKind::UVMap;
+		const int32 SourceIndex = bCompatible
+			? MixtormatOutputReferences::ResolveGeneratorInputSource(
+				EffectiveLayers, LayerIndex, SourceChildIndex, Reference) : INDEX_NONE;
+		Out.Reference.Source = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
+		Out.Reference.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
+		Out.Reference.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
+			? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
+		Out.Reference.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+	};
+	GatherInput(Generator.HeightSource, ChildData.Generator.HeightSource, true);
+	GatherInput(Generator.WarpSource, ChildData.Generator.WarpSource, false);
 
 	switch (Generator.Type)
 	{

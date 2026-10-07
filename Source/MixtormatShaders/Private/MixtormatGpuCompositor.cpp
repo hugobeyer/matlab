@@ -1684,7 +1684,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (LayerChild.Type == EMixtormatLayerChildType::Generator)
 			{
 				GatherGeneratorChild(Data, Layer, LayerChild, SourceChildIndex,
-					bGeneratorLayer, bCacheLayers, PlacementKey);
+					bGeneratorLayer, bCacheLayers, PlacementKey, LayerIndex, EffectiveLayers);
 				continue;
 			}
 
