@@ -7,7 +7,8 @@
 
 // Geological strata, not a sawtooth: ordered interfaces enclose hard shelves and softer
 // recessed beds. A common fold moves the entire stack; bounded interface variation changes
-// thickness without crossing. Joints split each shelf into planar slabs and chip their rims.
+// thickness without crossing. Extruded Voronoi cells split shelves into chamfered slabs.
+// This is a heightfield approximation of implicit rock volumes, not a volumetric solver.
 // All randomness wraps in the integer bedding/strike lattice, including neighboring beds.
 // Height is a signed field; IDs, bed position and bed random retain their published meanings.
 
@@ -123,6 +124,96 @@ float StrataJointBoundary(int Joint, int Period, uint Key)
 	return (float)Joint + 0.5f * (StrataRandom(Joint, Period, Key) - 0.5f);
 }
 
+// Uneven hinge spacing and linear limbs give chevron folds rather than rounded noise waves.
+float2 StrataFoldD(float X, int Period, uint Key)
+{
+	int I = (int)floor(X);
+	float Left = StrataJointBoundary(I, Period, Key);
+	float Right = StrataJointBoundary(I + 1, Period, Key);
+	if (X < Left)
+	{
+		--I;
+		Right = Left;
+		Left = StrataJointBoundary(I, Period, Key);
+	}
+	else if (X >= Right)
+	{
+		++I;
+		Left = Right;
+		Right = StrataJointBoundary(I + 1, Period, Key);
+	}
+	const float A = StrataRandom(I, Period, Key ^ 0x68bc21ebu);
+	const float B = StrataRandom(I + 1, Period, Key ^ 0x68bc21ebu);
+	return float2(lerp(A, B, (X - Left) / (Right - Left)), (B - A) / (Right - Left));
+}
+
+float StrataCellRandom(int2 Cell, int Period, uint Key)
+{
+	return StrataRandom(Cell.x, Period, MixtormatHashU((uint)Cell.y * 0x27d4eb2du ^ Key));
+}
+
+float2 StrataCellSite(int2 Cell, int Period, uint Key)
+{
+	return float2(Cell) + 0.5f + 0.5f * (float2(
+		StrataCellRandom(Cell, Period, Key),
+		StrataCellRandom(Cell, Period, Key ^ 0x85ebca6bu)) - 0.5f);
+}
+
+// Distances to the two closest cell planes, not F2-F1 (which bows the fracture faces).
+// Sites stay within +/-0.25 of their centers: 3x3 finds the owner; 5x5 around it
+// includes its possible Voronoi neighbors. Wrapped hashes keep geometry periodic in strike.
+float2 StrataCellPlanes(float2 Q, int Period, uint Key,
+	out float2 Local, out float Draw, out float2 Tilt)
+{
+	const int2 Base = int2(floor(Q));
+	int2 Owner = Base;
+	float Nearest = 1.0e10f;
+	[unroll]
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = -1; X <= 1; ++X)
+		{
+			const int2 Cell = Base + int2(X, Y);
+			const float2 Delta = StrataCellSite(Cell, Period, Key) - Q;
+			const float D2 = dot(Delta, Delta);
+			if (D2 < Nearest) { Nearest = D2; Owner = Cell; }
+		}
+	}
+	const float2 Site = StrataCellSite(Owner, Period, Key);
+	Local = Q - Site;
+	Draw = StrataCellRandom(Owner, Period, Key ^ 0xc2b2ae35u);
+	Tilt = float2(StrataCellRandom(Owner, Period, Key ^ 0x7feb352du),
+		StrataCellRandom(Owner, Period, Key ^ 0x846ca68bu)) * 2.0f - 1.0f;
+	float2 Planes = float2(1.0e10f, 1.0e10f);
+	[unroll]
+	for (int Y = -2; Y <= 2; ++Y)
+	{
+		[unroll]
+		for (int X = -2; X <= 2; ++X)
+		{
+			if (X == 0 && Y == 0) { continue; }
+			const float2 Delta = StrataCellSite(Owner + int2(X, Y), Period, Key) - Site;
+			const float D = max(0.0f, dot(0.5f * Delta - Local, normalize(Delta)));
+			if (D < Planes.x) { Planes.y = Planes.x; Planes.x = D; }
+			else { Planes.y = min(Planes.y, D); }
+		}
+	}
+	return Planes;
+}
+
+// Ordered but uneven internal contacts; endpoints remain attached to the parent bed.
+float2 StrataLaminaInterface(int Index, int Count, float Strike, int Period, uint Key)
+{
+	if (Index <= 0) { return float2(0.0f, 0.0f); }
+	if (Index >= Count) { return float2((float)Count, 0.0f); }
+	const uint ContactKey = MixtormatHashU((uint)Index * 0x9e3779b1u ^ Key);
+	const float2 Lateral = StrataFoldD(Strike * (float)Period, Period, ContactKey);
+	const float Offset = 0.28f * (StrataRandom(Index, Count, Key) * 2.0f - 1.0f)
+		+ 0.12f * (Lateral.x * 2.0f - 1.0f);
+	return float2((float)Index + Offset, 0.24f * Lateral.y * (float)Period);
+}
+
 float StrataFootprint(float2 DestinationGradient)
 {
 	return dot(abs(DestinationGradient) / float2(OutputSize), float2(1.0f, 1.0f));
@@ -137,19 +228,25 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 DestinationUV = (float2(P) + 0.5f) / float2(OutputSize);
 	const float2 UV = MixtormatGeneratorUV(DestinationUV);
 	const float2 StrikeVector = float2(BedPerp) / (float)max(BedPeriod, 1);
-	const float Strike = dot(UV, StrikeVector);
-	const float2 StrikeGradient = MixtormatGeneratorDestinationGradient(StrikeVector);
+	float Strike = dot(UV, StrikeVector);
+	float2 StrikeGradient = MixtormatGeneratorDestinationGradient(StrikeVector);
 
 	float S = dot(UV, float2(BedWave));
 	float2 SGradient = MixtormatGeneratorDestinationGradient(float2(BedWave));
 	if (Bend != 0.0f)
 	{
-		const int Period = max(BendScale, 1);
-		const float2 Broad = StrataNoiseD(Strike * (float)Period, Period, 0x5851f42du);
-		const float2 Fine = StrataNoiseD(Strike * (float)(Period * 2), Period * 2, 0xad90777du);
+		const int Period = max(BendScale, 1) * 2;
+		// Compose two shears: younger cross-folds turn the older fold hinges without
+		// independently warping each bed or losing the periodic structural frame.
+		const float AcrossScale = 2.0f / (float)max(BedPeriod, 1);
+		const float2 Across = StrataFoldD(S * AcrossScale, 2, 0x165667b1u);
+		Strike += Bend * 0.6f * (Across.x - 0.5f);
+		StrikeGradient += Bend * 0.6f * Across.y * AcrossScale * SGradient;
+		const float2 Broad = StrataFoldD(Strike * (float)Period, Period, 0x5851f42du);
+		const float2 Fine = StrataFoldD(Strike * (float)(Period * 3), Period * 3, 0xad90777du);
 		const float Amplitude = Bend * length(float2(BedWave));
-		S += Amplitude * ((Broad.x * 2.0f - 1.0f) + 0.25f * (Fine.x * 2.0f - 1.0f));
-		SGradient += Amplitude * (2.0f * Broad.y + Fine.y) * (float)Period * StrikeGradient;
+		S += Amplitude * ((Broad.x * 2.0f - 1.0f) + 0.15f * (Fine.x * 2.0f - 1.0f));
+		SGradient += Amplitude * (2.0f * Broad.y + 0.9f * Fine.y) * (float)Period * StrikeGradient;
 	}
 	if (HeightFollow != 0.0f)
 	{
@@ -187,7 +284,8 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Hard beds stand proud and retain broad planar shelves. Soft beds recede and have wider
 	// rounded shoulders. Seam height is shared by the two beds, not a per-bed sawtooth reset.
-	const float ShelfHeight = lerp(-0.1f - 0.25f * max(SoftRecession, 0.0f), 0.55f, Hardness)
+	const float ShelfHeight = lerp(-0.3f, 0.3f, Hardness)
+		- max(SoftRecession, 0.0f) * 0.25f * (1.0f - Hardness)
 		+ HeightVariation * 0.3f * (StrataBedRandom(Bed, 0x14057b7eu) - 0.5f);
 	const float Shoulder = lerp(0.42f, 0.08f, saturate(LedgeWidth))
 		* lerp(1.35f, 0.65f, Hardness) * lerp(1.25f, 0.55f, saturate(Verticality));
@@ -201,70 +299,82 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		+ (StrataSeamHeight(Bed) - ShelfHeight) * (1.0f - LowerBlend)
 		+ (StrataSeamHeight(Bed + 1) - ShelfHeight) * (1.0f - UpperBlend);
 
-	if (Breakup != 0.0f)
-	{
-		const int Period = max(JointScale, 1);
-		const uint Key = StrataBedKey(Bed, 0x9e3779b1u);
-		const float Q = Strike * (float)Period + StrataBedRandom(Bed, 0x68bc21ebu);
-		int Slab = (int)floor(Q);
-		float Left = StrataJointBoundary(Slab, Period, Key);
-		float Right = StrataJointBoundary(Slab + 1, Period, Key);
-		if (Q < Left)
-		{
-			--Slab;
-			Right = Left;
-			Left = StrataJointBoundary(Slab, Period, Key);
-		}
-		else if (Q >= Right)
-		{
-			++Slab;
-			Left = Right;
-			Right = StrataJointBoundary(Slab + 1, Period, Key);
-		}
-		const float U = saturate((Q - Left) / (Right - Left));
-		const float PixelQ = (float)Period * StrataFootprint(StrikeGradient);
-		const float DetailVisibility = 1.0f - smoothstep(0.25f, 0.75f, PixelQ);
-		const float SlabDraw = StrataRandom(Slab, Period, Key ^ 0x85ebca6bu);
-		const float Tilt = StrataRandom(Slab, Period, Key ^ 0xc2b2ae35u) * 2.0f - 1.0f;
-		// Keep slab tilt continuous where a closed joint has no cut to hide a height jump.
-		const float SlabInterior = smoothstep(0.0f, 0.15f, min(U, 1.0f - U));
-		Strata += Breakup * DetailVisibility * Interior * SlabInterior
-			* ((SlabDraw - 0.5f) * 0.35f + Tilt * (U - 0.5f) * 0.2f);
-
-		// Cuts attach to bed seams, with shared random values on either side of each joint.
-		// Wedge chips are intersections of bed-edge and joint distances, not fine noise bites.
-		if (JointWidth > 0.0f)
-		{
-			float Cut = 0.0f;
-			[unroll]
-			for (int Side = 0; Side < 2; ++Side)
-			{
-				const int Joint = Slab + Side;
-				const float D = Side == 0 ? Q - Left : Right - Q;
-				const float Draw = StrataRandom(Joint, Period, Key ^ 0x7feb352du);
-				const float Along = Draw < 0.5f ? T : 1.0f - T;
-				const float Reach = lerp(0.35f, 1.15f, StrataRandom(Joint, Period, Key ^ 0x846ca68bu));
-				const float Width = JointWidth * lerp(0.65f, 1.35f, Draw);
-				const float FilterWidth = max(Width, max(PixelQ, 1.0e-5f));
-				const float JointMask = (1.0f - smoothstep(0.0f, FilterWidth, D)) * Width / FilterWidth;
-				const float EndMask = 1.0f - smoothstep(Reach, Reach + 0.12f, Along);
-				const float Chip = saturate(1.0f - D / max(FilterWidth * 4.0f, 1.0e-5f) - Along / 0.28f);
-				Cut = max(Cut, JointMask * EndMask + Chip * 0.6f);
-			}
-			Strata -= Breakup * DetailVisibility * Interior * Cut * lerp(0.65f, 1.1f, Hardness);
-		}
-	}
-
 	if (Lamination != 0.0f)
 	{
-		const float Count = 4.0f + floor(StrataBedRandom(Bed, 0x632be59bu) * 5.0f);
-		const float Cross = round((StrataBedRandom(Bed, 0x94d049bbu) * 2.0f - 1.0f) * CrossBedding);
-		const float Phase = T * Count + Cross * Strike;
-		const float Footprint = StrataFootprint(TGradient * Count + Cross * StrikeGradient);
-		const float Width = max(0.1f, Footprint);
-		const float Line = (1.0f - smoothstep(0.0f, Width, abs(frac(Phase + 0.5f) - 0.5f))) * 0.1f / Width;
-		const float Visibility = 1.0f - smoothstep(0.25f, 0.5f, Footprint);
-		Strata -= Lamination * 0.12f * (1.0f - 0.65f * Hardness) * Line * Visibility * Interior;
+		const int Count = 3 + (int)floor(StrataBedRandom(Bed, 0x632be59bu) * 5.0f);
+		const int Period = max(BendScale, 1) * 2;
+		const uint Key = StrataBedKey(Bed, 0x94d049bbu);
+		const float2 Cross = StrataFoldD(Strike * (float)Period, Period, Key);
+		// A bounded shear fans laminae inside each bed and anchors both contacts.
+		// Unlike integer tilt, CrossBedding responds continuously to the slider.
+		const float CrossAmount = 0.22f * clamp(CrossBedding, 0.0f, 3.0f);
+		const float Envelope = 4.0f * T * (1.0f - T);
+		const float Phase = T * (float)Count + CrossAmount * (Cross.x - 0.5f) * Envelope;
+		const float2 PhaseGradient = ((float)Count + CrossAmount * (Cross.x - 0.5f)
+			* 4.0f * (1.0f - 2.0f * T)) * TGradient
+			+ CrossAmount * Cross.y * (float)Period * Envelope * StrikeGradient;
+		int Lamina = min((int)floor(Phase), Count - 1);
+		float2 A = StrataLaminaInterface(Lamina, Count, Strike, Period, Key);
+		float2 B = StrataLaminaInterface(Lamina + 1, Count, Strike, Period, Key);
+		if (Phase < A.x)
+		{
+			--Lamina;
+			B = A;
+			A = StrataLaminaInterface(Lamina, Count, Strike, Period, Key);
+		}
+		else if (Phase >= B.x && Lamina < Count - 1)
+		{
+			++Lamina;
+			A = B;
+			B = StrataLaminaInterface(Lamina + 1, Count, Strike, Period, Key);
+		}
+		const float Span = max(B.x - A.x, 1.0e-5f);
+		const float U = saturate((Phase - A.x) / Span);
+		const float2 UGradient = (PhaseGradient - lerp(A.y, B.y, U) * StrikeGradient) / Span;
+		const float Footprint = StrataFootprint(UGradient);
+		const float Visibility = 1.0f - smoothstep(0.2f, 0.65f, Footprint);
+		const float Draw = StrataRandom(Lamina, Count, Key ^ 0x7feb352du);
+		// Thin rock plates, not identical incised lines: asymmetric planar shoulders,
+		// variable resistance and thickness, with a shared recessed contact level.
+		const float Bevel = max(lerp(0.12f, 0.3f, Draw), max(Footprint, 1.0e-5f));
+		const float Plate = min(1.0f, min(U / Bevel, (1.0f - U) / (Bevel * 0.55f)));
+		const float Relief = -0.055f + Plate * lerp(0.075f, 0.22f, Draw);
+		Strata += Lamination * lerp(1.0f, 0.45f, Hardness) * Relief * Visibility * Interior;
+	}
+
+	if (Breakup != 0.0f)
+	{
+		const int JointPeriod = max(JointScale, 1);
+		const uint Key = StrataBedKey(Bed, 0x9e3779b1u);
+		// Anisotropic cells are long along bedding and have oblique cross joints.
+		const float2 Q = float2(Strike * (float)JointPeriod, T * 1.6f)
+			+ float2(StrataBedRandom(Bed, 0x68bc21ebu), 0.37f);
+		float2 Local;
+		float Draw;
+		float2 Tilt;
+		const float2 Planes = StrataCellPlanes(Q, JointPeriod, Key, Local, Draw, Tilt);
+		const float PixelQ = max((float)JointPeriod * StrataFootprint(StrikeGradient), 1.6f * PixelT);
+		const float Visibility = 1.0f - smoothstep(0.2f, 0.7f, PixelQ);
+		const float RoofOffset = (Draw - 0.5f) * 0.45f + dot(Local, Tilt) * 0.18f;
+		// Closing joints must also close per-cell height discontinuities.
+		const float ClosedRelief = RoofOffset * saturate(Planes.x / max(0.12f, PixelQ));
+		float SlabRelief = ClosedRelief;
+		if (JointWidth > 0.0f)
+		{
+			const float FloorHeight = min(StrataSeamHeight(Bed), StrataSeamHeight(Bed + 1)) - 0.25f;
+			const float Roof = Strata + RoofOffset;
+			const float Chamfer = max(lerp(0.2f, 0.055f, saturate(Verticality)), PixelQ);
+			const float Slope = 1.0f / max(Chamfer, 1.0e-5f);
+			// Solve the top/chamfer plane intersection of an extruded cell for height.
+			// A second diagonal plane clips corners into chips instead of rounded pits.
+			const float Wall = FloorHeight + max(0.0f, Planes.x - JointWidth) * Slope;
+			const float Corner = FloorHeight + max(0.0f, Planes.x + Planes.y
+				- 2.0f * JointWidth - Chamfer * 0.35f) * Slope * 0.70710678f;
+			const float CellHeight = max(FloorHeight, min(Roof, min(Wall, Corner)));
+			const float Open = saturate(JointWidth / max(PixelQ, 1.0e-5f));
+			SlabRelief = lerp(ClosedRelief, CellHeight - Strata, Open);
+		}
+		Strata += Breakup * Visibility * Interior * SlabRelief;
 	}
 
 	OutBedIds[P] = (uint)MixtormatWrapI(Bed, BedPeriod);
