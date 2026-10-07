@@ -639,66 +639,61 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Runoff", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
 	int32 RunoffSeed = 1;
 
-	// Erosion. A post-layer directional wear filter. An anisotropic Kuwahara pass builds an
-	// analysis surface from the composited height, slope-aware peak shaving and valley
-	// deposition derive a wear delta from that analysis, and the delta is carved into the
-	// untouched working height -- so fine source detail survives the filter instead of being
-	// progressively Kuwahara-smoothed.
+	// Erosion. A post-layer directional horizon filter. Exposed points seed a bounded
+	// eikonal envelope measured against the immutable input height, so wear propagates at a
+	// controllable Unit Distance without repeatedly destroying the source silhouette.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "8.0", Delta = "0.01"))
 	float ErosionAmount = 1.5f;
 
-	// Final carve-depth multiplier on the wear delta. The result remains subtractive overall;
-	// above 1 the generated wear digs deeper than the analysis surface's own relief.
+	// Maximum local seed depth multiplier. The shader scales this into normalized height units;
+	// the eikonal envelope only propagates the resulting source-relative carve offset.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float ErosionDepth = 1.0f;
 
-	// Derivative span in texels for the slope and curvature readings, on both axes. 1 is the
-	// normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost
-	// is fixed whatever the span -- the same four taps, farther apart -- and the analysis never
-	// replaces the height itself.
+	// UV distance per unit of vertical change for the eikonal wear envelope.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.01", UIMax = "1.0", Delta = "0.01"))
+	float ErosionUnitDistance = 0.3f;
+
+	// Direction toward the horizon light: X/Y lie in the texture tangent plane; Z is elevation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float ErosionDirectionX = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float ErosionDirectionY = -1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ErosionDirectionZ = 0.2f;
+
+	// Ray sample span in texels; iterations propagate the envelope over this stepped stencil.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "3", Delta = "1"))
 	int32 ErosionRadius = 1;
 
-	// Ping-pong wear iterations. Each pass re-analyses the previous pass's output, so wear
-	// propagates and deepens with count: 1 is a single local pass, 8 a mature result, 32 an
-	// extreme stress case. Typed values below 1 are raised to 1 by the solver -- a zero or
-	// negative pass count has no meaning.
+	// Ping-pong eikonal relaxations. More passes propagate the bounded wear envelope farther;
+	// the original composited height remains the obstacle and is never used as a moving target.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
 	int32 ErosionIterations = 8;
 
-	// Constant downhill force toward -Y in UV space, as a plain weight: how hard the flow is
-	// pulled down regardless of local slope. Flow direction is normalize(downhill slope *
-	// (1 - w) + (0, -1) * w). At 0 erosion follows terrain alone; at 1 wear streaks straight
-	// down the texture. Flat cross-gravity structure survives at any value -- material only
-	// ever moves downhill, so level mortar joints and ledges read no transport.
+	// Legacy direction bias retained for serialized effects; the inspector now authors the
+	// explicit X/Y/Z horizon direction above.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionGravityForce = 0.6f;
 
-	// Shapes slope sensitivity. Below 1 responds broadly to gentle slopes, above 1 concentrates
-	// wear increasingly on steep regions.
+	// Power applied to horizon exposure before it seeds the carve envelope.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.1", UIMax = "1.0", Delta = "0.01"))
 	float ErosionSlopePower = 1.0f;
 
-	// How much removed material refills valleys and downstream depressions. 0 is pure erosion.
-	// Not a conservation ratio: deposition is clamped per iteration for stability.
+	// Refill-only downstream smear, capped by the original source height. 0 disables deposition.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
 	float ErosionDeposit = 0.25f;
 
-	// Slope threshold below which wear is suppressed, in the filter's normalized slope space
-	// (height change per 1/256 of the tile, resolution-independent). 0 leaves every region
-	// eligible; higher values protect increasingly flat and subtle ones.
+	// Minimum normalized horizon exposure required to seed wear.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "0.5", Delta = "0.001"))
-	float ErosionPreserveFlats = 0.002f;
+	float ErosionPreserveFlats = 0.12f;
 
-	// Flow momentum: how much direction memory the solver keeps between iterations. The slope
-	// reading is blended into a persistent velocity field, so per-texel noise averages out
-	// instead of steering every pass. 0 reacts to every texel, 0.65 gives stable broad
-	// erosion directions, 1 barely moves. The height itself is never touched by this.
+	// Legacy smoothing value retained for serialized effects; the inspector presents this as
+	// horizon feathering in the eikonal version.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionSmoothing = 0.65f;
 
-	// Subtle seeded strength variation across the tile, from a smooth tileable lattice noise.
-	// Breaks up the uniformity of the carve the way material hardness differences do.
+	// Subtle seeded tileable noise and Voronoi hardness variation on the eikonal seed depth.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionVariation = 0.18f;
 

@@ -949,33 +949,40 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 		Panel = AddCard(Cards, LOCTEXT("EroGrpFilter", "Filter"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroAmount", "Amount"), &FMixtormatLayerEffect::ErosionAmount, 0.0, 8.0, 1.5, 0.01,
-			LOCTEXT("EroAmountHint", "Overall wear strength: how aggressively exposed peaks are shaved and valleys refill. 1 is clearly visible, 4+ is destructive, 8 is an extreme testing range. Zero is an exact pass-through and skips the effect.")),
+			LOCTEXT("EroAmountHint", "Controls how strongly exposed horizon samples seed wear. The eikonal envelope propagates that wear without recarving the original shape. Zero disables erosion.")),
 		MakeErosionSlider(LOCTEXT("EroDepth", "Depth"), &FMixtormatLayerEffect::ErosionDepth, 0.0, 2.0, 1.0, 0.01,
-			LOCTEXT("EroDepthHint", "How deeply the generated wear modifies the material relief, separate from how aggressively it is generated. The result remains subtractive overall."))));
+			LOCTEXT("EroDepthHint", "Maximum seed depth in normalized height units; the solver converts this to a bounded 0.05-height relief scale."))));
 
 	Panel = AddCard(Cards, LOCTEXT("EroGrpWear", "Wear"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSliderInt(LOCTEXT("EroRadius", "Radius"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 3.0, 1,
-			LOCTEXT("EroRadiusHint", "Derivative span in texels for the slope and curvature readings. 1 is the normal working value at the doubled erosion resolution; 2-3 read broader structure. Cost is fixed whatever the span.")),
-		MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 16.0, 8,
-			LOCTEXT("EroIterationsHint", "Ping-pong wear passes. Each pass analyses the previous pass's output, so wear propagates and deepens with count: 1 is a single local pass, 8 a mature result."))));
+		MakeErosionSlider(LOCTEXT("EroUnitDistance", "Unit Distance"), &FMixtormatLayerEffect::ErosionUnitDistance, 0.01, 1.0, 0.3, 0.01,
+			LOCTEXT("EroUnitDistanceHint", "Eikonal slope control: UV distance per unit of height change. Smaller values make steeper, tighter wear; larger values spread the profile farther while preserving its shape.")),
+		MakeErosionSliderInt(LOCTEXT("EroRadius", "Ray Step"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 3.0, 1,
+			LOCTEXT("EroRadiusHint", "Texel spacing for horizon samples and eikonal relaxations. Erosion runs at doubled resolution when available."))));
+	AddSliderRow(Panel, MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 16.0, 8,
+		LOCTEXT("EroIterationsHint", "Min-plus eikonal relaxations. More passes propagate the bounded wear envelope farther from exposed seeds.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeErosionSlider(LOCTEXT("EroGravityForce", "Gravity Force"), &FMixtormatLayerEffect::ErosionGravityForce, 0.0, 1.0, 0.6, 0.01,
-			LOCTEXT("EroGravityForceHint", "Constant downhill force toward -Y, as a weight over the local slope. 0 follows terrain alone, 1 streaks straight down. Material only ever moves downhill, so flat joints and ledges survive at any value.")),
-		MakeErosionSlider(LOCTEXT("EroSmoothing", "Smoothing"), &FMixtormatLayerEffect::ErosionSmoothing, 0.0, 1.0, 0.65, 0.01,
-			LOCTEXT("EroSmoothingHint", "Flow momentum: how much direction memory the solver keeps between iterations, so surface noise averages out instead of steering the wear. The height itself is never blurred."))));
-	AddSliderRow(Panel, MakeErosionSlider(LOCTEXT("EroSlopePower", "Slope Power"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 1.0, 1.0, 0.01,
-			LOCTEXT("EroSlopePowerHint", "Below 1 responds broadly to gentle slopes, 1 keeps the raw slope response.")));
+		MakeErosionSlider(LOCTEXT("EroDirectionX", "Direction X"), &FMixtormatLayerEffect::ErosionDirectionX, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("EroDirectionHint", "Tangent XY points toward the horizon light; Z sets its elevation. The vector is normalized by the solver.")),
+		MakeErosionSlider(LOCTEXT("EroDirectionY", "Direction Y"), &FMixtormatLayerEffect::ErosionDirectionY, -1.0, 1.0, -1.0, 0.01,
+			LOCTEXT("EroDirectionHint", "Tangent XY points toward the horizon light; Z sets its elevation. The vector is normalized by the solver."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroDirectionZ", "Direction Z"), &FMixtormatLayerEffect::ErosionDirectionZ, 0.0, 1.0, 0.2, 0.01,
+			LOCTEXT("EroDirectionZHint", "Elevation of the horizon direction. Keep this modest for a grazing, texture-friendly horizon.")),
+		MakeErosionSlider(LOCTEXT("EroSmoothing", "Horizon Feather"), &FMixtormatLayerEffect::ErosionSmoothing, 0.0, 1.0, 0.65, 0.01,
+			LOCTEXT("EroSmoothingHint", "Softens the horizon visibility transition. Higher values reduce hard, noisy exposure boundaries."))));
+	AddSliderRow(Panel, MakeErosionSlider(LOCTEXT("EroSlopePower", "Exposure Shape"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 1.0, 1.0, 0.01,
+			LOCTEXT("EroSlopePowerHint", "Shapes how strongly exposed horizon samples seed the wear envelope.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroDeposit", "Deposit"), &FMixtormatLayerEffect::ErosionDeposit, 0.0, 4.0, 0.25, 0.01,
-			LOCTEXT("EroDepositHint", "How much removed material refills valleys and depressions, and the strength of the downstream deposit tail left below eroded runs. Upward-facing ledges catch more with Gravity Force. Zero is pure erosion.")),
-		MakeErosionSlider(LOCTEXT("EroPreserveFlats", "Preserve Flats"), &FMixtormatLayerEffect::ErosionPreserveFlats, 0.0, 0.5, 0.002, 0.001,
-			LOCTEXT("EroPreserveFlatsHint", "Slope threshold below which wear is suppressed, in normalized gradient space (height change per 1/256 of the tile). Zero leaves every region eligible; higher values protect increasingly flat ones."))));
+			LOCTEXT("EroDepositHint", "Refill-only downstream smear, capped at the original height. Zero disables the deposit tail.")),
+		MakeErosionSlider(LOCTEXT("EroPreserveFlats", "Exposure Threshold"), &FMixtormatLayerEffect::ErosionPreserveFlats, 0.0, 0.5, 0.12, 0.001,
+			LOCTEXT("EroPreserveFlatsHint", "Minimum horizon exposure needed to seed wear. Raise it to restrict carving to the brightest-facing features."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroVariation", "Variation"), &FMixtormatLayerEffect::ErosionVariation, 0.0, 1.0, 0.18, 0.01,
-			LOCTEXT("EroVariationHint", "Seeded wear-strength variation across the tile, so the carve breaks up like material hardness patches instead of eroding uniformly. Zero is uniform.")),
+			LOCTEXT("EroVariationHint", "Subtle seeded broad noise and Voronoi depth variation on the seed amount. The horizon and eikonal profile stay smooth; zero gives uniform wear.")),
 		MakeErosionSliderInt(LOCTEXT("EroSeed", "Seed"), &FMixtormatLayerEffect::ErosionSeed, 0.0, 9999.0, 1,
-			LOCTEXT("EroSeedHint", "Seeds the variation field. Same seed, same variation, at any resolution."))));
+			LOCTEXT("EroSeedHint", "Seeds the broad wear variation and Voronoi depth pattern."))));
 
 
 	// Erosion contributes no base colour. Its resolved mask only weights surface channels.

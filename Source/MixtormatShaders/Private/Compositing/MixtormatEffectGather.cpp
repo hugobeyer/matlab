@@ -31,6 +31,11 @@ void GatherErosion(FEffectRenderData& EffectData, const FMixtormatLayerEffect& L
 	// adds the finite guard and the definition hard floors without clamping art.
 	EffectData.ErosionAmount = EffectFloat(TEXT("ErosionAmount"), LayerEffect.ErosionAmount);
 	EffectData.ErosionDepth = EffectFloat(TEXT("ErosionDepth"), LayerEffect.ErosionDepth);
+	EffectData.ErosionUnitDistance = EffectFloat(TEXT("ErosionUnitDistance"), LayerEffect.ErosionUnitDistance);
+	EffectData.ErosionDirection = FVector3f(
+		EffectFloat(TEXT("ErosionDirectionX"), LayerEffect.ErosionDirectionX),
+		EffectFloat(TEXT("ErosionDirectionY"), LayerEffect.ErosionDirectionY),
+		EffectFloat(TEXT("ErosionDirectionZ"), LayerEffect.ErosionDirectionZ));
 	EffectData.ErosionRadius = EffectInt(TEXT("ErosionRadius"), LayerEffect.ErosionRadius);
 	EffectData.ErosionIterations = EffectInt(TEXT("ErosionIterations"), LayerEffect.ErosionIterations);
 	EffectData.ErosionGravityForce = EffectFloat(TEXT("ErosionGravityForce"), LayerEffect.ErosionGravityForce);

@@ -417,7 +417,9 @@ namespace MixtormatGpuCompositor
 
 		float ErosionAmount = 1.5f;
 		float ErosionDepth = 1.0f;
-		int32 ErosionRadius = 2;
+		float ErosionUnitDistance = 0.3f;
+		FVector3f ErosionDirection = FVector3f(0.0f, -1.0f, 0.2f);
+		int32 ErosionRadius = 1;
 		int32 ErosionIterations = 8;
 		float ErosionGravityForce = 0.6f;
 		float ErosionSlopePower = 1.0f;

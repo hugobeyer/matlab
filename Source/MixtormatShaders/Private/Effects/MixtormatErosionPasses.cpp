@@ -19,11 +19,13 @@ public:
 		SHADER_PARAMETER(int32, ResamplePass)
 		SHADER_PARAMETER(int32, ResampleRidge)
 		SHADER_PARAMETER(int32, SmearPass)
+		SHADER_PARAMETER(int32, SeedPass)
 		SHADER_PARAMETER(uint32, WriteRidge)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(float, UnitDistance)
+		SHADER_PARAMETER(FVector3f, Direction)
 		SHADER_PARAMETER(int32, Radius)
-		SHADER_PARAMETER(int32, Iterations)
 		SHADER_PARAMETER(int32, Stride)
 		SHADER_PARAMETER(float, GravityForce)
 		SHADER_PARAMETER(float, SlopePower)
@@ -37,6 +39,7 @@ public:
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SeedHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousVelocity)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
@@ -236,13 +239,12 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionA")),
 				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionB"))};
 			FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroRidgeDesc, TEXT("Mixtormat.ErosionRidge"));
+			FRDGTextureRef EroSeed = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionSeedHeight"));
 			FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionN"));
 			// The layer normal every carving pass reads, lifted to erosion resolution.
 			FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
 
-			// The flow-momentum ping-pong pair. Velocity is internal to the solve: it is
-			// cleared once, seeded from zero on the first iteration, and never leaves the
-			// erosion block, so the resample path only ever binds the dummy.
+			// Stores the authored downhill tangent for the optional post-solve deposit smear.
 			const FRDGTextureDesc EroVelDesc = FRDGTextureDesc::Create2D(
 				EroRes,
 				PF_FloatRGBA,
@@ -314,11 +316,13 @@ namespace MixtormatGpuCompositor
 				RP->ResamplePass = 1;
 				RP->ResampleRidge = bCarryRidge ? 1 : 0;
 				RP->SmearPass = 0;
+				RP->SeedPass = 0;
 				RP->WriteRidge = 0u;
 				RP->Stride = 1;
 				RP->PreviousRidge = InRidge;
 				RP->PreviousHeight = InH;
 				RP->SourceHeight = InH;
+				RP->SeedHeight = EroSeed;
 				RP->PreviousVelocity = EroVelDummy;
 				RP->LayerMask = PendingErosion.FeatureMask;
 				RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
@@ -357,24 +361,24 @@ namespace MixtormatGpuCompositor
 				AddCopyTexturePass(GraphBuilder, OutputN[WriteIndex], EroSrcN);
 			}
 
-			// Bound dispatch work and use the same count for shader step stability.
+			// Bound the number of eikonal relaxations to keep dispatch work predictable.
 			const int32 ErosionIterations = FMath::Clamp(Ero.ErosionIterations, 1, 64);
 
-			// Each wear iteration re-derives its slope and curvature from the current
-			// working height, so no pass can feed a masked boundary or quantized
-			// intermediate back into the next one; every reading is analysis-only --
-			// nothing but the wear delta and the relax shave ever touch the height.
+			// Horizon exposure always reads SourceH. Iterations only relax the source-relative
+			// carve offset, so wear cannot feed back into its own exposure or reshape the source.
 			auto SetErosionParameters = [&](FMixtormatErosionCS::FParameters* Parameters)
 			{
 				Parameters->OutputSize = EroRes;
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
 				Parameters->SmearPass = 0;
+				Parameters->SeedPass = 0;
 				Parameters->WriteRidge = 1u;
 				Parameters->Amount = Ero.ErosionAmount;
 				Parameters->Depth = Ero.ErosionDepth;
+				Parameters->UnitDistance = Ero.ErosionUnitDistance;
+				Parameters->Direction = Ero.ErosionDirection;
 				Parameters->Radius = Ero.ErosionRadius;
-				Parameters->Iterations = ErosionIterations;
 				Parameters->GravityForce = Ero.ErosionGravityForce;
 				Parameters->SlopePower = Ero.ErosionSlopePower;
 				Parameters->Deposit = Ero.ErosionDeposit;
@@ -392,6 +396,7 @@ namespace MixtormatGpuCompositor
 				Parameters->InvertMask =
 					!PendingErosion.bHasScopedMask && Ero.bErosionInvertMask ? 1u : 0u;
 				Parameters->SourceHeight = SourceH;
+				Parameters->SeedHeight = EroSeed;
 				Parameters->PreviousNormal = EroSrcN;
 				Parameters->LayerMask = PendingErosion.FeatureMask;
 				Parameters->PlacementMaskTexture = ErosionPlacementMask;
@@ -407,9 +412,28 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(EroRes.Y, 8),
 				1);
 
-			// The wear loop runs the exposed iteration count, ping-ponging between the
-			// two height targets: every pass analyses the previous pass's output, never
-			// the original input, so wear propagates and deepens with iteration count.
+			// Compute horizon visibility once from the immutable source. The relaxations
+			// reuse this seed texture instead of repeating the ray march every iteration.
+			FMixtormatErosionCS::FParameters* SeedParameters =
+				GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+			SetErosionParameters(SeedParameters);
+			SeedParameters->SeedPass = 1;
+			SeedParameters->WriteRidge = 1u;
+			SeedParameters->PreviousHeight = SourceH;
+			SeedParameters->SeedHeight = SourceH;
+			SeedParameters->OutputHeight = GraphBuilder.CreateUAV(EroSeed);
+			SeedParameters->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
+			SeedParameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
+			SeedParameters->OutputNormal = GraphBuilder.CreateUAV(ErosionNormalDummy);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Erosion.L%d.HorizonSeeds", LayerIndex),
+				ErosionShader,
+				SeedParameters,
+				ErosionGroups);
+
+			// Ping-pong the eikonal envelope; immutable SourceH remains the obstacle and
+			// seed reference on every pass.
 
 			for (int32 Iteration = 0; Iteration < ErosionIterations; ++Iteration)
 			{
@@ -418,20 +442,17 @@ namespace MixtormatGpuCompositor
 				SetErosionParameters(IterationParameters);
 				IterationParameters->Stride = ErosionJumpStride(Iteration, ErosionJumpStart);
 				IterationParameters->PreviousHeight =
-					Iteration == 0 ? SourceH : EroH[(Iteration - 1) & 1];
+					Iteration == 0 ? EroSeed : EroH[(Iteration - 1) & 1];
 				IterationParameters->OutputHeight =
 					GraphBuilder.CreateUAV(EroH[Iteration & 1]);
-				// The flow momentum ping-pongs beside the height, and the ridge is written
-				// once -- by the final iteration only. Normals are never written here; the
-				// shared height-derived pass owns them.
+				// Direction is carried for optional deposit smear. The shared height-derived
+				// pass owns normals.
 				IterationParameters->PreviousVelocity =
 					Iteration == 0 ? EroVel[0] : EroVel[(Iteration - 1) & 1];
 				IterationParameters->OutputVelocity =
 					GraphBuilder.CreateUAV(EroVel[Iteration & 1]);
-				const bool bFinalIteration = Iteration == ErosionIterations - 1;
-				IterationParameters->WriteRidge = bFinalIteration ? 1u : 0u;
-				IterationParameters->OutputRidge = GraphBuilder.CreateUAV(
-					bFinalIteration ? EroRidge : ResampleRidgeDummy);
+				IterationParameters->WriteRidge = 0u;
+				IterationParameters->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
 				IterationParameters->OutputNormal =
 					GraphBuilder.CreateUAV(ErosionNormalDummy);
 				FComputeShaderUtils::AddPass(
@@ -442,9 +463,8 @@ namespace MixtormatGpuCompositor
 					ErosionGroups);
 			}
 
-			// Post-iteration deposit smear: one downstream drag of the settled height along the
-			// flow the solve converged to. Refill-only in the shader and volume-clamped, and an
-			// exact skip at Deposit 0 -- tails are part of deposition, not a separate effect.
+			// Optional refill-only downstream smear. It remains capped by SourceH and is skipped
+			// exactly when Deposit is zero.
 			FRDGTextureRef Result = EroH[(ErosionIterations - 1) & 1];
 			if (Ero.ErosionDeposit > 0.0f)
 			{
@@ -452,6 +472,7 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 				SetErosionParameters(SmearParameters);
 				SmearParameters->SmearPass = 1;
+				SmearParameters->SeedPass = 0;
 				SmearParameters->WriteRidge = 0u;
 				SmearParameters->PreviousHeight = Result;
 				SmearParameters->SourceHeight = SourceH;
