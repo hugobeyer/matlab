@@ -8,8 +8,9 @@ shared signed normalization; the layer's delta normal then rebuilds normals from
 Code: `Shaders/Private/MixtormatGeneratorFlow.usf`, `AddGeneratorFlowToolPasses` in
 `MixtormatGpuGeneratorPasses.cpp`, `GatherGeneratorFlow`.
 
-See also: `generator_flow_interaction_audit.md` — cross-generator flow interaction, verified
-against source.
+See also: `generator_flow_interaction_audit.md` — historical baseline audit; its original
+implementation-gap statements predate steps 1–7. Current generator interaction status is in
+`../GENERATORS.md` and `generator_warp_output_alignment_design.md` (targeted source review only).
 
 As built:
 - Seeds: SDF source seeds only where every gradient tap saw an outline, |d| is within the kernel

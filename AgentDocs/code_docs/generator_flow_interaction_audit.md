@@ -1,9 +1,11 @@
 # Mixtormat — Generator Flow Interaction (audit and plan)
 
-Status: static audit, verified against source by direct reads (2026-10-07), plus one
-read-only sub-audit of Runtime/Editor. No build, GPU capture, or Unreal session was run.
-Line numbers are from this revision and may drift. This file records findings and a
-proposed direction; it is not the canonical owner of current behavior — source wins.
+Status: baseline static audit (2026-10-07), captured before the explicit generator-input,
+Height Push, Structural Warp and typed bundle-warp work. Sections 1–5 and 7–9 describe that
+baseline or historical proposals; do not read their "missing"/"not implemented" statements as
+current status. Steps 1–7 are now described in `GENERATORS.md`, `SHADERS.md`, and the two
+warp design docs, based on targeted source review only. No current build, shader compile,
+Unreal/runtime or visual validation is confirmed. This remains a historical audit; source wins.
 
 Scope: can one generator's flow tools (Shape Deform / Generator Flow / Flow Carve) deform
 another generator's output, and what is missing to make that possible. Companion to
@@ -196,10 +198,11 @@ folding deformation into height scaling. Warping must carry IDs/UVs with it (sec
 - Constraints: keep tileable; preserve signed height, bed IDs, bed position, bed random,
   mask/ID influence.
 
-## 9. Smallest implementation plan (approval required)
+## 9. Historical implementation plan (superseded)
 
-No code changes are authorized by this plan. Keep existing tools, gates and serialized
-behavior; implement in small, separately reviewable slices.
+The sequence below records the plan before steps 1–7 were implemented. It is not current
+status or authorization. For current implementation evidence and Sol's review items, see
+`GENERATORS.md` and `generator_warp_output_alignment_design.md`.
 
 1. **Typed per-generator inputs and order.** Reuse typed reference identity/validation,
    adding explicit source/target connections rather than treating layer-wide ReferencedUV

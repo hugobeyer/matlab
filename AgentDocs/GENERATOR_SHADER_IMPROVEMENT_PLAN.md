@@ -227,11 +227,7 @@ Initial controls: bed spacing, thickness variation, fold strength/scale, hardnes
 contrast, joint spacing, and fault offset. Separate structural controls from detail.
 A height field can suggest recesses but cannot represent true overhangs or undercuts.
 
-Status: implemented as a replacement, not an opt-in mode. `MixtormatStrataCarver.usf` now
-builds ordered interfaces, hard shelves, soft recesses and joint-cut slabs; `RampShape` is
-deprecated (serialized only), and `LedgeWidth`, `HardnessContrast`, `SoftRecession`,
-`JointScale` and `JointWidth` are the new controls. Existing Strata assets render with the
-new algorithm at their saved settings. Faults and pinch-outs remain future work.
+Status: shader redesign implemented as a replacement, not an opt-in mode. `MixtormatStrataCarver.usf` builds ordered interfaces, hard shelves, soft recesses and joint-cut slabs; `RampShape` is deprecated (serialized only), and `LedgeWidth`, `HardnessContrast`, `SoftRecession`, `JointScale` and `JointWidth` are the new controls. Steps 5–7 later added ordered Strata Structural Warp and typed completed-bundle warp for the other five generators; see `GENERATORS.md` and the two warp design docs. These are implementation/source-review claims, not validation: current build, shader compilation, runtime and visual behavior remain unconfirmed. Faults and pinch-outs remain future work.
 
 ### C2. Erosion: separate three different processes
 

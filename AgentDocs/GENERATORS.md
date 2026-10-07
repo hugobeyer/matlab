@@ -131,3 +131,30 @@ inverse centre/orientation approximations remain; no geological fixes are includ
 
 `Editor/Private/Widgets/MixtormatChildCapabilities.cpp` — `GetChildCapabilities`
 is the single place a generator's previewable/copyable outputs are declared.
+
+## Sol review checklist — steps 1–7
+
+Implementation claims below and in the linked shader/design docs are based on targeted source
+review. Only the earlier step-2 compile is confirmed; do not treat source presence as a passing
+build, shader compile, test, runtime or visual result. `HeightSource`/`WarpSource` remain
+serialized, disabled-by-default fields; they are not the ordered Height Push/Structural Warp
+sockets. Runtime header comments still say consumers are implemented separately and need a
+source-truth review; no code change is made here.
+
+- [ ] **Sources/order:** direct completed signed Height or eligible Flow/UVMap; reject self,
+  forward, disabled, invalid and wrong-kind sources/targets. Check cache demand and same-layer order.
+- [ ] **Parameter trace:** Runtime defaults/serialization → gather/render data → GPU uniforms,
+  dispatch and resource lifetime → shader use → inspector rows/enable state. Include reference
+  Flow Amount/Trace Length/Steps and Height Push/Warp source, target and enable controls.
+- [ ] **Separate modules:** Height Push changes Strata bedding; Structural Warp changes the
+  structural coordinate map. Confirm authored order and non-commuting Push/Warp composition.
+- [ ] **Jacobian:** verify row-gradient `g*J`, placement exactly once, `grad(B)` not transformed
+  twice, non-square texel differences, masks, degeneracy and boundary validity.
+- [ ] **Tile/identity:** preserve signed Height, invalid IDs/hash semantics, UV winding,
+  ID-anchored per-region random, owner/phase-aware bed position, and destination mask/ID influence.
+- [ ] **Single ownership:** no double warp of Height/Coverage; coverage aliases share one result;
+  Noise Value/Gradient and each producer's named fields move under the same source revision.
+- [ ] **Six producers:** Strata regeneration; Rock, Pebbles, Cracks, Cliff and Noise typed bundle
+  policies. Verify Cliff identity inventory and Noise family-specific Gradient contract.
+- [ ] **Known limits:** local centre/orientation inverse approximations, raster filtering/distance
+  approximations and carried-over Strata defects remain. Record runtime tests still needed.
