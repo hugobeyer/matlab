@@ -610,13 +610,18 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 		]
 		// Overlay only; docked resizing remains the splitter's responsibility.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
-		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 0, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 0, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
-		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 1, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 1, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
-		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 2, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 2, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		// The two side edges: width only, so the height stays auto and re-measures at the new width.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 4, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
+		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 5, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
 		// The way back to auto-fit after a corner drag has frozen the height (D23): bottom-centre,
 		// the edge the height is about.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)

@@ -1465,6 +1465,11 @@ private:
 	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
 	// caller decides where it goes and how it is wrapped.
 	TSharedRef<SWidget> BuildPreviewRenderControls();
+	// The overlay's compact copy of the render strip: render scale and the Final popup only. AA,
+	// Default/Lumen and displacement live in GLOBAL, where there is room for them.
+	TSharedRef<SWidget> BuildPreviewRenderStrip();
+	TSharedRef<SWidget> MakePreviewScaleRow();
+	TSharedRef<SWidget> MakePreviewFinalButton();
 	TSharedRef<SWidget> BuildPreviewLightingControls();
 	TSharedRef<SWidget> BuildPreviewGeometryControls();
 	TSharedRef<SWidget> BuildPreviewSceneControls();

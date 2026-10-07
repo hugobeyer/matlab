@@ -6,6 +6,20 @@
 
 class SWidget;
 
+// The grips a floating panel resizes from. Corners first, then the two side edges: the top and
+// bottom edges are deliberately absent -- the top edge is the drag handle and the bottom edge
+// carries the Fit chevron, so a grip there would fight both.
+enum class EMixtormatOverlayGrip : uint8
+{
+	TopLeft,
+	TopRight,
+	BottomLeft,
+	BottomRight,
+	Left,
+	Right,
+	Count
+};
+
 // One floating panel's geometry and gesture state.
 //
 // The Inspector and the left panel float the same way -- dragged by a header, resized from four
@@ -32,10 +46,10 @@ struct FMixtormatOverlayPanelState
 	FVector2D DragOrigin = FVector2D::ZeroVector;
 	FVector2D PositionAtDragStart = FVector2D::ZeroVector;
 	FVector2D SizeAtDragStart = FVector2D::ZeroVector;
-	// The drag handle: the Inspector's identity row, the left panel's overlay header.
+	// The drag handle: the Inspector's identity row, the left panel's grab margin.
 	TWeakPtr<SWidget> Header;
-	// Corner order: top-left, top-right, bottom-left, bottom-right.
-	TWeakPtr<SWidget> ResizeGrips[4];
+	// Indexed by EMixtormatOverlayGrip.
+	TWeakPtr<SWidget> ResizeGrips[static_cast<int32>(EMixtormatOverlayGrip::Count)];
 };
 
 // The shared floating-panel machinery. Bounds are the viewport-local rect the panels float in;
@@ -59,13 +73,13 @@ namespace MixtormatOverlay
 	// Returns the height to auto without touching width or position (D23).
 	void FitHeight(FMixtormatOverlayPanelState& State, const TSharedPtr<SWidget>& Panel, const FVector2D& Bounds);
 
-	int32 HitResizeCorner(const FMixtormatOverlayPanelState& State, const FVector2D& ScreenPosition);
+	int32 HitResizeGrip(const FMixtormatOverlayPanelState& State, const FVector2D& ScreenPosition);
 	bool IsHit(const FMixtormatOverlayPanelState& State, const FVector2D& LocalPosition);
 	void BeginInteraction(FMixtormatOverlayPanelState& State, const FVector2D& LocalPosition, int32 ResizeCorner);
 	void UpdateInteraction(FMixtormatOverlayPanelState& State, const FVector2D& LocalPosition, const FVector2D& Bounds);
 	void CancelInteraction(FMixtormatOverlayPanelState& State);
 
-	// The corner grip: a hit target that draws its L outline only on hover. Registered in the
-	// state so the workspace can hit-test it.
-	TSharedRef<SWidget> MakeResizeCorner(FMixtormatOverlayPanelState& State, int32 Index, const FText& ToolTip);
+	// One resize grip: a hit target that draws its outline only on hover. Registered in the state
+	// so the workspace can hit-test it.
+	TSharedRef<SWidget> MakeResizeGrip(FMixtormatOverlayPanelState& State, int32 Index, const FText& ToolTip);
 }

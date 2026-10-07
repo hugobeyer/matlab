@@ -207,11 +207,71 @@ namespace
 	}
 }
 
+TSharedRef<SWidget> SMixtormat::MakePreviewScaleRow()
+{
+	return MakeSlider(
+		LOCTEXT("PreviewScaleLabel", "Scale"),
+		TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewScreenPercentage); }),
+		static_cast<double>(MixtormatPreviewScreenPercentage::Minimum),
+		static_cast<double>(MixtormatPreviewScreenPercentage::Maximum),
+		static_cast<double>(MixtormatPreviewScreenPercentage::Default),
+		1.0, false,
+		FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+		{
+			SetPreviewScreenPercentage(FMath::RoundToInt(Value));
+		}),
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			SetPreviewScreenPercentage(MixtormatPreviewScreenPercentage::Default);
+		}),
+		LOCTEXT("PreviewScaleHint", "Render resolution as a percentage of the viewport. Above 100 the extra samples are real, so it fixes shading aliasing rather than hiding it -- 150 with FXAA is the sharpest stable option here, at 2.25x the fill rate. Below 100 it buys back frame time on an expensive graph."));
+}
+
+TSharedRef<SWidget> SMixtormat::MakePreviewFinalButton()
+{
+	const Mixtormat::FMixtormatPreviewMetrics& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
+	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
+	return SNew(SMixtormatPreviewPlate)
+		.ToolTip(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
+		[
+			SNew(SComboButton)
+				.ButtonStyle(&GetPreviewOverlayButtonStyle())
+				.Method(EPopupMethod::UseCurrentWindow)
+				.ContentPadding(FMargin(Layout.TogglePadding))
+				.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+				.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
+				.ButtonContent()
+				[
+					SNew(STextBlock)
+					.Font(LabelStyle.Font)
+					.ColorAndOpacity_Lambda([this]() { return GetPreviewOverlayLabelColor(false, false); })
+					.Text(LOCTEXT("FinalCompositeButton", "Final"))
+				]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPreviewRenderStrip()
+{
+	// The overlay's copy: render scale and the Final popup, the two the user reaches for while
+	// looking at the surface. AA, Default/Lumen and displacement are set once and then left alone,
+	// so they live in GLOBAL -- on the viewport they were five rows of chrome over the material.
+	const float Gap = FMixtormatThemeStore::GetResolved().PreviewLayout.ToolbarGap;
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			MakePreviewScaleRow()
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		.Padding(Gap, 0.0f, 0.0f, 0.0f)
+		[
+			MakePreviewFinalButton()
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
 {
 	const Mixtormat::FMixtormatPreviewMetrics& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
 	const float RowGap = FMixtormatThemeStore::GetResolved().ControlLayout.RowGap;
-	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
 
 	const TArray<FText> AntiAliasingOptions = {
 		LOCTEXT("PreviewAaFxaa", "FXAA"),
@@ -252,22 +312,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
 	];
 	Controls->AddSlot().AutoHeight()
 	[
-		MakeSlider(
-			LOCTEXT("PreviewScaleLabel", "Scale"),
-			TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewScreenPercentage); }),
-			static_cast<double>(MixtormatPreviewScreenPercentage::Minimum),
-			static_cast<double>(MixtormatPreviewScreenPercentage::Maximum),
-			static_cast<double>(MixtormatPreviewScreenPercentage::Default),
-			1.0, false,
-			FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
-			{
-				SetPreviewScreenPercentage(FMath::RoundToInt(Value));
-			}),
-			FSimpleDelegate::CreateLambda([this]()
-			{
-				SetPreviewScreenPercentage(MixtormatPreviewScreenPercentage::Default);
-			}),
-			LOCTEXT("PreviewScaleHint", "Render resolution as a percentage of the viewport. Above 100 the extra samples are real, so it fixes shading aliasing rather than hiding it -- 150 with FXAA is the sharpest stable option here, at 2.25x the fill rate. Below 100 it buys back frame time on an expensive graph."))
+		MakePreviewScaleRow()
 	];
 	// Default / Lumen and the Final popup on one row: both answer how the frame is resolved, which
 	// is why they belong to the render strip rather than to the material.
@@ -293,23 +338,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		.Padding(Layout.ToolbarGap, 0.0f, 0.0f, 0.0f)
 		[
-			SNew(SMixtormatPreviewPlate)
-			.ToolTip(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
-			[
-				SNew(SComboButton)
-					.ButtonStyle(&GetPreviewOverlayButtonStyle())
-					.Method(EPopupMethod::UseCurrentWindow)
-					.ContentPadding(FMargin(Layout.TogglePadding))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
-					.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
-					.ButtonContent()
-					[
-						SNew(STextBlock)
-						.Font(LabelStyle.Font)
-						.ColorAndOpacity_Lambda([this]() { return GetPreviewOverlayLabelColor(false, false); })
-						.Text(LOCTEXT("FinalCompositeButton", "Final"))
-					]
-			]
+			MakePreviewFinalButton()
 		]
 	];
 	Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)

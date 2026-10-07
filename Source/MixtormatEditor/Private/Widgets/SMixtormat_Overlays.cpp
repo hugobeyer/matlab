@@ -278,7 +278,7 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 				continue;
 			}
 			// Top corner resize targets take priority over the header's drag area.
-			if (const int32 Corner = MixtormatOverlay::HitResizeCorner(State, ScreenPosition); Corner != INDEX_NONE)
+			if (const int32 Corner = MixtormatOverlay::HitResizeGrip(State, ScreenPosition); Corner != INDEX_NONE)
 			{
 				MixtormatOverlay::BeginInteraction(State, GetPreviewViewportLocalPosition(ScreenPosition), Corner);
 				return FReply::Handled().CaptureMouse(SharedThis(this));
@@ -355,11 +355,21 @@ FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPoint
 			continue;
 		}
 		const int32 Corner = State.bResizing
-			? State.ResizeCorner : MixtormatOverlay::HitResizeCorner(State, ScreenPosition);
+			? State.ResizeCorner : MixtormatOverlay::HitResizeGrip(State, ScreenPosition);
 		if (Corner != INDEX_NONE)
 		{
-			return FCursorReply::Cursor(Corner == 0 || Corner == 3
-				? EMouseCursor::ResizeSouthEast : EMouseCursor::ResizeSouthWest);
+			// A corner shows the diagonal it moves; a side grip shows the single axis.
+			switch (static_cast<EMixtormatOverlayGrip>(Corner))
+			{
+			case EMixtormatOverlayGrip::Left:
+			case EMixtormatOverlayGrip::Right:
+				return FCursorReply::Cursor(EMouseCursor::ResizeLeftRight);
+			case EMixtormatOverlayGrip::TopLeft:
+			case EMixtormatOverlayGrip::BottomRight:
+				return FCursorReply::Cursor(EMouseCursor::ResizeSouthEast);
+			default:
+				return FCursorReply::Cursor(EMouseCursor::ResizeSouthWest);
+			}
 		}
 		if (const TSharedPtr<SWidget> Header = State.Header.Pin();
 			Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))

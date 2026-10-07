@@ -630,6 +630,9 @@ namespace MixtormatTokens
 	// floating surface, and the first-entry inset from the viewport edges.
 	// The grip is small enough to stay out of the content's way and still be a target.
 	inline float OverlayPanelGripSize = 14.0f;
+	// A side grip is a short bar along the edge it moves rather than a square at a corner: long
+	// enough to read as an edge target, short enough to leave the panel's own content clickable.
+	inline float OverlayPanelEdgeGripLength = 40.0f;
 	inline float OverlayPanelBackgroundOpacity = 0.9f;
 	inline float OverlayPanelMinWidth = 260.0f;
 	inline float OverlayPanelMinHeight = 160.0f;

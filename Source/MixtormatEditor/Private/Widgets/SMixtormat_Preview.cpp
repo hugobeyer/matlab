@@ -934,9 +934,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			PreviewViewport
 		]
-		// The render strip, top left: how the frame is resolved -- AA, render scale, Default/Lumen,
-		// the Final popup and displacement preview. The one cluster that says nothing about the
-		// material, which is why it is also the one the GLOBAL switches can hide on its own.
+		// The render strip, top left: render scale and the Final popup. AA, Default/Lumen and
+		// displacement moved to GLOBAL -- five rows of chrome over the material was too much, and
+		// they are set once and then left alone.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
 		.Padding(Resolved.PreviewLayout.OverlayInset)
 		[
@@ -946,7 +946,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				return bPreviewOverlayUiVisible && bPreviewGroupRenderVisible
 					? EVisibility::Visible : EVisibility::Collapsed;
 			})
-			[MakePreviewCluster(BuildPreviewRenderControls())]
+			[MakePreviewCluster(BuildPreviewRenderStrip())]
 		]
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Right)

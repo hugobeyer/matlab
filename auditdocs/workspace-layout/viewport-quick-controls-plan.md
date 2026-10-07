@@ -67,7 +67,7 @@ The reference image is a grouping reference, not a visual or feature specificati
 
 | Group | Popup / GLOBAL content | Default viewport visibility |
 |---|---|---|
-| Render | AA, render Scale, Default/Lumen, existing Final popup, displacement + amount | On, top-centre strip; wrap existing rows if narrow |
+| Render | Overlay keeps render Scale + the Final popup; AA, Default/Lumen and displacement + amount are **GLOBAL only** (I10) | On, top-left strip |
 | Lighting | Current preset icons, Light and Skylight sliders, existing camera/lighting reset | On during prototype; left rail/card |
 | Geometry | Sphere, cylinder, cube, plane, UV 90° | On during prototype; right rail |
 | Camera | Existing FOV and preview-mode label | On, bottom-centre; GLOBAL also exposes FOV |

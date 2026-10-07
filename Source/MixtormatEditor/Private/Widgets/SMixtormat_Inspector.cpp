@@ -355,9 +355,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		},
 		LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground. Height Blend lets the layer run over the stack where its mask is strong and its height is higher: its settings open in the card below."),
 		LOCTEXT("HeightAmountHint", "How much of this op's height reaches the stack."));
-	const auto MakeResizeCorner = [this](const int32 Index) -> TSharedRef<SWidget>
+	const auto MakeResizeGrip = [this](const int32 Index) -> TSharedRef<SWidget>
 	{
-		return MixtormatOverlay::MakeResizeCorner(InspectorOverlay, Index,
+		return MixtormatOverlay::MakeResizeGrip(InspectorOverlay, Index,
 			LOCTEXT("ResizeInspectorOverlayHint", "Drag to resize the Inspector."));
 	};
 	return SNew(SBox)
@@ -797,13 +797,18 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			]
 			// Overlay only; docked resizing remains the splitter's responsibility.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
-		[MakeResizeCorner(0)]
+		[MakeResizeGrip(0)]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
-		[MakeResizeCorner(1)]
+		[MakeResizeGrip(1)]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
-		[MakeResizeCorner(2)]
+		[MakeResizeGrip(2)]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		[MakeResizeCorner(3)]
+		[MakeResizeGrip(3)]
+		// The two side edges: width only, so the height stays auto and re-measures at the new width.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
+		[MakeResizeGrip(4)]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
+		[MakeResizeGrip(5)]
 		// The way back to auto-fit after a corner drag has frozen the height (D23): bottom-centre,
 		// the edge the height is about.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
