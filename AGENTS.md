@@ -81,6 +81,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 - `AgentDocs/GENERATORS.md` — generator registration → gather → GPU → shader → inspector
 - `AgentDocs/UI.md` — Slate regions, hierarchy, inspector, controls, theme
 - `AgentDocs/ICONS.md` — icon set: names, keys, files, roles, how to add one, gaps
+- `AgentDocs/HELPERS.md` — tooltips/hints/overlay help text: mechanisms, hotkey catalog, mapping + architecture TODOs
 - `AgentDocs/COMPOSITION.md` — gather, masks, IDs, references, passes, caching
 - `AgentDocs/SHADERS.md` — shader dirs, class↔file map, bindings, conventions
 - `AgentDocs/CONVENTIONS.md` — naming, ownership, serialization, checklists

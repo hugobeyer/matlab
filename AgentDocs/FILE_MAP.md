@@ -23,6 +23,7 @@ the range, not the file.
 | Change bake | `Compositing/MixtormatBakeService.*`, `Widgets/Dialogs/SMixtormatBake*Dialog.*` |
 | Change theme/style | `Style/MixtormatDesignTokens.h`, `Style/MixtormatThemeStore.*`, `Config/UIStyleTheme.json` |
 | Add/change an icon | `AgentDocs/ICONS.md` → `UI/Atoms/MixtormatIcons.*` → `Style/MixtormatStyle.cpp` (`SetPngIcon`) → `Resources/Icons/` |
+| Add/change a tooltip, hint or hotkey text | `AgentDocs/HELPERS.md` → the widget's `.ToolTipText`, menu `.Shortcut`, or the key handler (`SMixtormat.cpp::OnKeyDown`, viewport `InputKey`) |
 | Change layer hierarchy UI | `UI/Layers/*`, `Widgets/Layers/*` |
 | Change clipboard / copy output | `Widgets/Layers/MixtormatLayerClipboard.cpp`, `Widgets/MixtormatChildCapabilities.*` |
 | Change references / instances | `Runtime/Public/MixtormatParameterBinding.h`, `MixtormatOutputReference.h` |
