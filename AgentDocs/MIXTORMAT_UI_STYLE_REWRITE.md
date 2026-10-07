@@ -1710,7 +1710,12 @@ No legacy names required.
 
 # 54. HTML/CSS mapping
 
-The prototype remains the visual specification.
+The prototype remains the visual specification — the multi-file source is
+`Docs/ui-prototype/` (`tokens.css`, `components.css`, `falloff.js`; see §89),
+with a standalone export at `Docs/mixtormat-ui-prototype.html` +
+`Docs/mixtormat-prototype-tokens.json`. As of 2026-10 the folder is unreadable
+by agent tooling (Zed `file_scan_exclusions` in `.zed/settings.json`); read it
+manually until un-excluded.
 
 Create a mapping table during implementation.
 
@@ -2226,9 +2231,13 @@ The style system resolves this into state modifiers.
 
 # 80. Prototype synchronization
 
-`Docs/ui-prototype/` remains the visual source of truth.
+`Docs/ui-prototype/` (and its standalone export
+`Docs/mixtormat-ui-prototype.html` + `Docs/mixtormat-prototype-tokens.json`)
+remains the visual source of truth for surface recipes.
 
-Do not silently diverge Unreal defaults from HTML.
+Do not silently diverge Unreal defaults from HTML. One exception: layout
+geometry syncs the other way for now — Unreal's tokens are authoritative and
+the prototype is updated to match (decisions-log D17).
 
 For every migrated recipe, document:
 

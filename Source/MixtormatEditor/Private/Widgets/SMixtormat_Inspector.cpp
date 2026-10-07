@@ -409,26 +409,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				[
 					BuildInstanceBanner()
 				]
-				// Nothing selected: document-wide settings. Empty for now.
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(SBox)
-					.Visibility_Lambda([this]()
-					{
-						return bHasWorkingMaterial && !HasAnySelection() ? EVisibility::Visible : EVisibility::Collapsed;
-					})
-					.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap, 0.0f))
-					[
-						SNew(SMixtormatInspectorGroup)
-						.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
-						.InitiallyExpanded(true)
-						[
-							SNew(STextBlock)
-							.Text(LOCTEXT("GlobalEmpty", "No global settings yet."))
-							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(0.5f)))
-						]
-					]
-				]
+
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
 					SNew(SScrollBox)

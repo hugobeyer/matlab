@@ -80,6 +80,11 @@ namespace
 
 SMixtormat::~SMixtormat()
 {
+	if (WorkspaceHotkeyProcessor.IsValid() && FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().UnregisterInputPreProcessor(WorkspaceHotkeyProcessor);
+		WorkspaceHotkeyProcessor.Reset();
+	}
 	if (AssetUpdatedHandle.IsValid())
 	{
 		if (FAssetRegistryModule* AssetRegistryModule =

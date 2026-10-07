@@ -12,6 +12,7 @@
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
 #include "Services/MixtormatSurfaceImporter.h"
+#include "Widgets/Layout/SScrollBox.h"
 
 
 namespace
@@ -523,10 +524,11 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			[
 				SNew(SMixtormatTabStrip)
 				.StretchTabs(true)
-				.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY") })
+				.Options({ LOCTEXT("LayersLeftTab", "LAYERS"), LOCTEXT("LibraryLeftTab", "LIBRARY"), LOCTEXT("GlobalLeftTab", "GLOBAL") })
 				.ToolTips({
 					LOCTEXT("LayersLeftTabHint", "The layer stack: layers, their masks, effects and filters."),
-					LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces.") })
+					LOCTEXT("LibraryLeftTabHint", "Saved mixes and imported user surfaces."),
+					LOCTEXT("GlobalLeftTabHint", "Document-wide variables and settings.") })
 				.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
 				.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 			]
@@ -536,6 +538,31 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 				.WidgetIndex(LeftTabIndex)
 				+ SWidgetSwitcher::Slot()[BuildLayerStackPanel()]
 				+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
+				+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
+{
+	return SNew(SScrollBox)
+		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+		+ SScrollBox::Slot()
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap, 0.0f))
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
+			.InitiallyExpanded(true)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this]()
+				{
+					return bHasWorkingMaterial
+						? LOCTEXT("GlobalEmpty", "No global variables yet.")
+						: LOCTEXT("GlobalNoMaterial", "Create or open a material to add global variables.");
+				})
+				.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+					Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(0.5f)))
 			]
 		];
 }

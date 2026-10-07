@@ -5,6 +5,7 @@
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Framework/Application/SlateApplication.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -13,6 +14,46 @@
 // _Inspector / _Shell, and the helper widgets in SMixtormatInternal.h.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+namespace
+{
+	class FMixtormatWorkspaceHotkeys final : public IInputProcessor
+	{
+	public:
+		explicit FMixtormatWorkspaceHotkeys(TFunction<bool(const FKeyEvent&)>&& InHandleKey)
+			: HandleKey(MoveTemp(InHandleKey))
+		{
+		}
+
+		virtual void Tick(const float, FSlateApplication&, TSharedRef<ICursor>) override {}
+
+		virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& KeyEvent) override
+		{
+			if (KeyEvent.IsRepeat() || KeyEvent.IsControlDown() || KeyEvent.IsCommandDown()
+				|| KeyEvent.IsAltDown() || KeyEvent.IsShiftDown())
+			{
+				return false;
+			}
+
+			const TSharedPtr<SWidget> FocusedWidget = SlateApp.GetKeyboardFocusedWidget();
+			if (FocusedWidget.IsValid())
+			{
+				const FString WidgetType = FocusedWidget->GetType().ToString();
+				if (WidgetType.Contains(TEXT("EditableText")) || WidgetType.Contains(TEXT("TextEntry")))
+				{
+					return false;
+				}
+			}
+
+			return HandleKey ? HandleKey(KeyEvent) : false;
+		}
+
+		virtual const TCHAR* GetDebugName() const override { return TEXT("MixtormatWorkspaceHotkeys"); }
+
+	private:
+		TFunction<bool(const FKeyEvent&)> HandleKey;
+	};
+}
 
 void SMixtormat::Construct(const FArguments& InArgs)
 {
@@ -24,6 +65,27 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		this, &SMixtormat::HandleReferencedCompositionUpdated);
 
 	BuildWorkspaceUI();
+	const TWeakPtr<SMixtormat> WeakSelf = StaticCastSharedRef<SMixtormat>(AsShared());
+	WorkspaceHotkeyProcessor = MakeShared<FMixtormatWorkspaceHotkeys>([WeakSelf](const FKeyEvent& KeyEvent)
+	{
+		const TSharedPtr<SMixtormat> Self = WeakSelf.Pin();
+		if (!Self.IsValid())
+		{
+			return false;
+		}
+		if (KeyEvent.GetKey() == EKeys::L)
+		{
+			Self->ToggleLeftPanelCollapsed();
+			return true;
+		}
+		if (KeyEvent.GetKey() == EKeys::P)
+		{
+			Self->ToggleInspectorCollapsed();
+			return true;
+		}
+		return false;
+	});
+	FSlateApplication::Get().RegisterInputPreProcessor(WorkspaceHotkeyProcessor);
 	ResetEditHistory(true);
 }
 

@@ -13,6 +13,7 @@
 #include "UI/Controls/SMixtormatSlider.h"
 #include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
+#include "Framework/Application/IInputProcessor.h"
 #include "Widgets/SCompoundWidget.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -1381,6 +1382,7 @@ private:
 	TSharedRef<SWidget> BuildTopBar();
 	TSharedRef<SWidget> BuildAuthoringPage();
 	TSharedRef<SWidget> BuildLeftPanel();
+	TSharedRef<SWidget> BuildGlobalPage();
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	FReply ToggleBottomLibraryCollapsed();
@@ -1490,6 +1492,7 @@ private:
 	// One page since the mixer and presets mock-ups were removed. Kept as a switcher rather than
 	// unwound to a bare widget because the live-theme rebuild tears the tree down and re-parents
 	// through it, and the settings window will want the second slot.
+	TSharedPtr<IInputProcessor> WorkspaceHotkeyProcessor;
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
 	TSharedPtr<SButton> BottomLibraryToggleButton;

@@ -1,6 +1,9 @@
 # Inspector Placement Model
 
-Extends `ui-layout-and-panels-audit.md` §6. Status: design, no code written.
+Extends `ui-layout-and-panels-audit.md` §6. Status: partially implemented
+(2026-10) — docked collapse, the `L`/`P` workspace hotkeys and the GLOBAL tab
+exist; the overlay and the `P` cycle are the next build. Handoff:
+`inspector-popover-handoff.md`.
 
 ## Goal
 
@@ -16,9 +19,8 @@ vertically to a top bar.
   L626) containing:
   - identity row (name + badge) — `SMixtormat_Inspector.cpp` L396–405
   - instance banner — L408–411
-  - **GLOBAL placeholder group** — L412–430, visible when
-    `bHasWorkingMaterial && !HasAnySelection()`, currently reads
-    "No global settings yet."
+  - ~~GLOBAL placeholder group~~ — moved to the left column as the third tab
+    (`BuildGlobalPage`); the inspector no longer hosts it (D13).
   - two mutually exclusive scroll boxes: child inspector (gated by
     `HasSelectedChildInspector()`, L497–500) and layer inspector (the inverse),
     with generator layers getting their own group (L509–513) and regular layers
@@ -35,14 +37,18 @@ vertically to a top bar.
 | Mode | Behavior |
 |---|---|
 | Docked Right | Current behavior; right splitter slot |
-| Overlay | Floats over the viewport, resizable from its left edge |
+| Overlay | Same inspector over the viewport's right edge |
 | Hidden | Collapsed away entirely |
-| Auto | Overlay shown on selection, hidden otherwise (see state model) |
+| Auto (deferred) | Overlay shown on selection, hidden otherwise (see state model) |
+
+The cycle (`P` and the placement control): **Docked → Overlay → Hidden →
+Docked** (D15). The overlay keeps the inspector's layout with **no outer
+border and no rounded corners** (D16); inner component styling is unchanged.
 
 Implementation follows audit §6 option B: one instance, placement decided in
 `BuildWorkspaceUI`; never two instances (duplicate scroll/expansion state).
 
-## Visibility state model (Auto mode)
+## Visibility state model (Auto mode — deferred until the cycle ships)
 
 | State | Overlay |
 |---|---|
@@ -57,16 +63,11 @@ Implementation follows audit §6 option B: one instance, placement decided in
 - Empty-space click deselects → hides (desired).
 - Build once, toggle visibility via lambda — never rebuild on selection.
 
-## The GLOBAL section is the variables home
+## The GLOBAL section — superseded
 
-The placeholder at L412–430 was built as the document-scope slot. It sits
-**outside** the scroll boxes, so it is pinned at the top of the inspector —
-exactly where a variable scrub target belongs.
-
-Recommended: replace the placeholder with the global variables cell
-(collapsible `SMixtormatInspectorGroup`, expansion preserved by
-`TransferLayoutState`), cap the list height with its own scroll (precedent:
-`InspectorMaskGalleryMaxHeight` token, `MixtormatDesignTokens.h` L616).
+The inspector's pinned placeholder was moved out: document-scope content is
+now the GLOBAL third left-column tab (D13, `BuildGlobalPage`). The variables
+cell lives there, not in the inspector; the inspector stays selection-only.
 
 ## Showing variables and selection content at the same time
 
@@ -75,13 +76,14 @@ requires variables and selection content to coexist.
 
 | Where | Both visible? | Cost |
 |---|---|---|
-| Pinned group in inspector (recommended) | Yes — variables on top, selection scrolls below | Smallest; reuses the existing slot + collapse machinery |
+| Pinned group in inspector (superseded — D13) | Yes — variables on top, selection scrolls below | Was smallest; the user chose the GLOBAL tab instead |
 | Bottom drawer third tab (Materials / Masks / Variables) | Yes — full width for sliders | Small; drawer eats viewport height, often collapsed |
-| Left panel third tab | Yes, but loses the layer stack while editing variables | Small; worst for the driving workflow |
+| Left panel third tab (chosen — D13) | Yes, but loses the layer stack while editing variables | Small; the user accepted the tab trade-off |
 | Separate overlay / floating window | Yes | Most chrome; fights the "max viewport" goal |
 
-With the pinned group, the full driving layout is: layer stack (left) +
-viewport (center) + variables and driven parameters (right), all visible.
+With the GLOBAL tab, the driving layout is: left column on GLOBAL (variables),
+viewport center, inspector right — selection content and variable sliders
+coexist because they sit in different columns.
 
 Auto-hide interaction: hide only when no selection **and** the variables group
 is collapsed; or drop auto-hide in favor of manual `P` + collapse.

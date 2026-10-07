@@ -22,6 +22,7 @@ the range, not the file.
 | Change preview behaviour | `Widgets/SMixtormatPreviewViewport.*`, `Widgets/SMixtormat_Preview.cpp`, `MixtormatGpuDebugPreviewPasses.cpp` |
 | Change bake | `Compositing/MixtormatBakeService.*`, `Widgets/Dialogs/SMixtormatBake*Dialog.*` |
 | Change theme/style | `Style/MixtormatDesignTokens.h`, `Style/MixtormatThemeStore.*`, `Config/UIStyleTheme.json` |
+| Add/change an icon | `AgentDocs/ICONS.md` → `UI/Atoms/MixtormatIcons.*` → `Style/MixtormatStyle.cpp` (`SetPngIcon`) → `Resources/Icons/` |
 | Change layer hierarchy UI | `UI/Layers/*`, `Widgets/Layers/*` |
 | Change clipboard / copy output | `Widgets/Layers/MixtormatLayerClipboard.cpp`, `Widgets/MixtormatChildCapabilities.*` |
 | Change references / instances | `Runtime/Public/MixtormatParameterBinding.h`, `MixtormatOutputReference.h` |

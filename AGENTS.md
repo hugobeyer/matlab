@@ -27,7 +27,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 - `Content/` (gitignored; `.uasset`/`.umap`/textures are binary)
 - `.claude/worktrees/` (stale, empty)
 - `*.uasset`, `*.umap`, `*.png`, `*.exr`, `*.hdr`, `*.zip`
-- `Docs/ui-prototype/`, `Docs/docs-assets/` (design prototypes, not source)
+- `Docs/docs-assets/` (design assets, not source)
 - `AgentDocs/old_docs/` (superseded; see §6)
 
 ## 4. Architecture map
@@ -80,6 +80,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 - `AgentDocs/FILE_MAP.md` — task → files, symbols → owners, large-file sections
 - `AgentDocs/GENERATORS.md` — generator registration → gather → GPU → shader → inspector
 - `AgentDocs/UI.md` — Slate regions, hierarchy, inspector, controls, theme
+- `AgentDocs/ICONS.md` — icon set: names, keys, files, roles, how to add one, gaps
 - `AgentDocs/COMPOSITION.md` — gather, masks, IDs, references, passes, caching
 - `AgentDocs/SHADERS.md` — shader dirs, class↔file map, bindings, conventions
 - `AgentDocs/CONVENTIONS.md` — naming, ownership, serialization, checklists
