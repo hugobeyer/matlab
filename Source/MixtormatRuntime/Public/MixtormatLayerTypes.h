@@ -160,7 +160,8 @@ enum class EMixtormatLayerChildType : uint8
 	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
 	// Appended: a structural input module, independent of height combination and UV warping.
-	HeightPush UMETA(DisplayName = "Height Push")
+	HeightPush UMETA(DisplayName = "Height Push"),
+		StructuralWarp UMETA(DisplayName = "Structural Warp")
 };
 
 USTRUCT(BlueprintType)
@@ -270,6 +271,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightPush"))
 	FMixtormatGeneratorHeightPush HeightPush;
+
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::StructuralWarp"))
+		FMixtormatGeneratorStructuralWarp StructuralWarp;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

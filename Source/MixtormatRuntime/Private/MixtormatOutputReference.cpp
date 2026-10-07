@@ -306,8 +306,10 @@ namespace MixtormatOutputReferences
 		}
 		const FMixtormatLayerChild& Destination = DestinationLayer.Children[DestinationChildIndex];
 		const bool bPush = Destination.Type == EMixtormatLayerChildType::HeightPush;
+		const bool bWarp = Destination.Type == EMixtormatLayerChildType::StructuralWarp;
 		if (Destination.ScopeOwnerChildId.IsValid()
 			|| (bPush ? !Destination.HeightPush.bEnabled
+				: bWarp ? !Destination.StructuralWarp.bEnabled
 				: Destination.Type != EMixtormatLayerChildType::Generator || !Destination.Generator.bEnabled))
 		{
 			return INDEX_NONE;
@@ -318,7 +320,8 @@ namespace MixtormatOutputReferences
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::Flow);
 		const bool bUV = Reference.Kind == EMixtormatPublishedFieldKind::UVMap
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::UVMap);
-		if ((!bHeight && !bFlow && !bUV) || (bPush && !bHeight)) { return INDEX_NONE; }
+		if ((!bHeight && !bFlow && !bUV) || (bPush && !bHeight)
+					|| (bWarp && !bFlow && !bUV)) { return INDEX_NONE; }
 
 		int32 SourceLayerIndex = INDEX_NONE;
 		for (int32 Index = 0; Index < Layers.Num(); ++Index)
@@ -362,6 +365,31 @@ namespace MixtormatOutputReferences
 		{
 			return INDEX_NONE;
 		}
+		if (bWarp)
+		{
+			// Structural sources must identify one completed generator scope, not an ambiguous owner.
+			for (int32 Index = OwnerIndex + 1; Index < SourceLayer.Children.Num(); ++Index)
+			{
+				if (SourceLayer.Children[Index].ChildId == Owner.ChildId) { return INDEX_NONE; }
+			}
+		}
+		if (bWarp && SourceLayerIndex == DestinationLayerIndex)
+		{
+			// A tool row before the module is not enough if its generator scope finishes later.
+			for (int32 Index = DestinationChildIndex; Index < SourceLayer.Children.Num(); ++Index)
+			{
+				FGuid ParentId = SourceLayer.Children[Index].ScopeOwnerChildId;
+				for (int32 Depth = 0; ParentId.IsValid() && Depth < SourceLayer.Children.Num(); ++Depth)
+				{
+					if (ParentId == Owner.ChildId) { return INDEX_NONE; }
+					const int32 ParentIndex = SourceLayer.Children.IndexOfByPredicate(
+						[&](const FMixtormatLayerChild& Child) { return Child.ChildId == ParentId; });
+					if (ParentIndex == INDEX_NONE) { return INDEX_NONE; }
+					ParentId = SourceLayer.Children[ParentIndex].ScopeOwnerChildId;
+				}
+				if (ParentId.IsValid()) { return INDEX_NONE; }
+			}
+		}
 		EMixtormatEffectType Type = Source.Effect.ProceduralType;
 		if (!Source.Effect.Effect.IsNull())
 		{
@@ -372,6 +400,30 @@ namespace MixtormatOutputReferences
 		}
 		return MixtormatIsGeneratorFlowEffect(Type)
 			&& (!bUV || Type != EMixtormatEffectType::FlowCarve) ? SourceIndex : INDEX_NONE;
+	}
+
+	int32 ResolveStructuralWarpTarget(const TArray<FMixtormatLayer>& Layers,
+		const int32 DestinationLayerIndex, const int32 DestinationChildIndex, const FGuid& TargetChildId)
+	{
+		if (!TargetChildId.IsValid() || !Layers.IsValidIndex(DestinationLayerIndex)) { return INDEX_NONE; }
+		const FMixtormatLayer& Layer = Layers[DestinationLayerIndex];
+		if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
+			|| !Layer.Children.IsValidIndex(DestinationChildIndex)) { return INDEX_NONE; }
+		const FMixtormatLayerChild& Module = Layer.Children[DestinationChildIndex];
+		if (Module.Type != EMixtormatLayerChildType::StructuralWarp
+			|| !Module.StructuralWarp.bEnabled || Module.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
+		int32 TargetIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+		{
+			if (Layer.Children[Index].ChildId != TargetChildId) { continue; }
+			if (TargetIndex != INDEX_NONE) { return INDEX_NONE; }
+			TargetIndex = Index;
+		}
+		if (TargetIndex <= DestinationChildIndex) { return INDEX_NONE; }
+		const FMixtormatLayerChild& Target = Layer.Children[TargetIndex];
+		return Target.Type == EMixtormatLayerChildType::Generator && Target.Generator.bEnabled
+			&& !Target.ScopeOwnerChildId.IsValid()
+			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver ? TargetIndex : INDEX_NONE;
 	}
 
 	int32 ResolveSource(const TArray<FMixtormatLayer>& Layers,

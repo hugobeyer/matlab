@@ -81,6 +81,7 @@ namespace
 		case EMixtormatParameterOwnerType::HeightCurve: return Child.Type == EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatParameterOwnerType::HeightColorRamp: return Child.Type == EMixtormatLayerChildType::HeightColorRamp;
 				case EMixtormatParameterOwnerType::HeightPush: return Child.Type == EMixtormatLayerChildType::HeightPush;
+						case EMixtormatParameterOwnerType::StructuralWarp: return Child.Type == EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatParameterOwnerType::CombineId: return Child.Type == EMixtormatLayerChildType::CombineId;
 		case EMixtormatParameterOwnerType::IdGroup: return Child.Type == EMixtormatLayerChildType::IdGroup;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
@@ -181,6 +182,7 @@ namespace
 		case EMixtormatParameterOwnerType::HeightCurve: View.ConstData = &Child.HeightCurve; break;
 		case EMixtormatParameterOwnerType::HeightColorRamp: View.ConstData = &Child.HeightColorRamp; break;
 				case EMixtormatParameterOwnerType::HeightPush: View.ConstData = &Child.HeightPush; break;
+						case EMixtormatParameterOwnerType::StructuralWarp: View.ConstData = &Child.StructuralWarp; break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
 		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
@@ -548,6 +550,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::HeightCurve: return { FMixtormatGeneratorHeightCurve::StaticStruct() };
 		case EMixtormatParameterOwnerType::HeightColorRamp: return { FMixtormatGeneratorHeightColorRamp::StaticStruct() };
 				case EMixtormatParameterOwnerType::HeightPush: return { FMixtormatGeneratorHeightPush::StaticStruct() };
+						case EMixtormatParameterOwnerType::StructuralWarp: return { FMixtormatGeneratorStructuralWarp::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
 		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };
@@ -689,6 +692,18 @@ namespace MixtormatParameterBinding
 					Child.BoundaryId.RegionIdsSource.SourceChildId = *NewSourceChildId;
 				}
 			}
+			if (Child.StructuralWarp.Source.SourceLayerId == OldLayerId)
+			{
+				Child.StructuralWarp.Source.SourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.StructuralWarp.Source.SourceChildId))
+				{
+					Child.StructuralWarp.Source.SourceChildId = *NewSourceChildId;
+				}
+			}
+			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
+			{
+				Child.StructuralWarp.TargetChildId = *NewTargetChildId;
+			}
 			if (Child.OutputReference.SourceLayerId == OldLayerId)
 			{
 				Child.OutputReference.SourceLayerId = NewLayerId;
@@ -767,6 +782,9 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.OutputReference.SourceChildId, ChildIdRemap);
 				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceChildId, ChildIdRemap);
+				RemapGuid(Child.StructuralWarp.Source.SourceLayerId, OwnerIdRemap);
+				RemapGuid(Child.StructuralWarp.Source.SourceChildId, ChildIdRemap);
+				RemapGuid(Child.StructuralWarp.TargetChildId, ChildIdRemap);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapBinding(Binding);
@@ -1119,6 +1137,11 @@ namespace MixtormatParameterBinding
 				&& Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
 			{
 				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
+			}
+			if (Child.StructuralWarp.Source.SourceChildId == ChildId
+				&& Child.StructuralWarp.Source.SourceLayerId == OldLayerId)
+			{
+				Child.StructuralWarp.Source.SourceLayerId = NewLayerId;
 			}
 			if (Child.OutputReference.SourceChildId == ChildId
 				&& Child.OutputReference.SourceLayerId == OldLayerId)

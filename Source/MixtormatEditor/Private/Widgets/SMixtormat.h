@@ -75,6 +75,7 @@ enum class EMixtormatChildCreation : uint8
 	HeightColorRamp,
 	Peeling,
 	HeightPush,
+	StructuralWarp,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -545,6 +546,10 @@ private:
 	const FMixtormatGeneratorHeightPush* GetSelectedHeightPush() const;
 	TSharedRef<SWidget> BuildHeightPushControls();
 	TSharedRef<SWidget> BuildHeightPushConnectionMenu(bool bTarget);
+	FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp();
+	const FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp() const;
+	TSharedRef<SWidget> BuildStructuralWarpControls();
+	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;

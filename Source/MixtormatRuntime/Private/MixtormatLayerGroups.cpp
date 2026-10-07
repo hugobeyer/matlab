@@ -292,6 +292,7 @@ namespace MixtormatLayerGroups
 				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
 				RemapPair(Child.OutputReference.SourceLayerId, Child.OutputReference.SourceChildId);
 				RemapPair(Child.BoundaryId.RegionIdsSource.SourceLayerId, Child.BoundaryId.RegionIdsSource.SourceChildId);
+				RemapPair(Child.StructuralWarp.Source.SourceLayerId, Child.StructuralWarp.Source.SourceChildId);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
@@ -313,6 +314,11 @@ namespace MixtormatLayerGroups
 				// already does, rather than the layer treating what the group did.
 				FMixtormatLayerChild& Clone = Layer.Children.Add_GetRef(GroupChild);
 				Clone.ChildId = ChildIdRemap.FindChecked(GroupChild.ChildId);
+				// Structural modules are layer-local; group expansion must not enable an unsupported owner.
+				if (Clone.Type == EMixtormatLayerChildType::StructuralWarp)
+				{
+					Clone.StructuralWarp.bEnabled = false;
+				}
 
 				if (Clone.ScopeOwnerChildId.IsValid())
 				{

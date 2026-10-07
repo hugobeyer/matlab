@@ -98,6 +98,7 @@ namespace
 		case EMixtormatLayerChildType::HeightCurve: return EMixtormatParameterOwnerType::HeightCurve;
 		case EMixtormatLayerChildType::HeightColorRamp: return EMixtormatParameterOwnerType::HeightColorRamp;
 				case EMixtormatLayerChildType::HeightPush: return EMixtormatParameterOwnerType::HeightPush;
+						case EMixtormatLayerChildType::StructuralWarp: return EMixtormatParameterOwnerType::StructuralWarp;
 
 		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
@@ -128,6 +129,7 @@ namespace
 		case EMixtormatLayerChildType::HeightCurve: return &Child.HeightCurve;
 		case EMixtormatLayerChildType::HeightColorRamp: return &Child.HeightColorRamp;
 				case EMixtormatLayerChildType::HeightPush: return &Child.HeightPush;
+						case EMixtormatLayerChildType::StructuralWarp: return &Child.StructuralWarp;
 
 		case EMixtormatLayerChildType::IdGroup: return &Child.IdGroup;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
@@ -791,6 +793,7 @@ namespace
 		case EMixtormatLayerChildType::HeightCurve: return FMixtormatGeneratorHeightCurve::StaticStruct();
 		case EMixtormatLayerChildType::HeightColorRamp: return FMixtormatGeneratorHeightColorRamp::StaticStruct();
 					case EMixtormatLayerChildType::HeightPush: return FMixtormatGeneratorHeightPush::StaticStruct();
+								case EMixtormatLayerChildType::StructuralWarp: return FMixtormatGeneratorStructuralWarp::StaticStruct();
 
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();

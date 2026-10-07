@@ -50,6 +50,9 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 
 ## 5. Modification rules
 
+- Do not add or run tests, test harnesses, diagnostics, or automated validation.
+  Use targeted source reads and static review only. Builds, commands and Unreal
+  launches require explicit user consent; testing requires explicit consent too.
 - Identify canonical ownership before editing; do not duplicate definitions.
 - Do not remove parameters, behavior, compatibility paths, or public APIs that
   merely look unused — confirm readers first (reflection, shader tags, gather).

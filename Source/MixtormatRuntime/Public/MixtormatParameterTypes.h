@@ -40,7 +40,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
-	HeightPush UMETA(DisplayName = "Height Push")
+	HeightPush UMETA(DisplayName = "Height Push"),
+		StructuralWarp UMETA(DisplayName = "Structural Warp")
 };
 
 UENUM(BlueprintType)

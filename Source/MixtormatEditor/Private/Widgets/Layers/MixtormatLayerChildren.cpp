@@ -95,6 +95,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightCurve:     return Child.HeightCurve.bEnabled;
 		case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
 		case EMixtormatLayerChildType::HeightPush:      return Child.HeightPush.bEnabled;
+				case EMixtormatLayerChildType::StructuralWarp:  return Child.StructuralWarp.bEnabled;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently reporting the Mask payload's flag.
@@ -129,6 +130,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightCurve:     Child.HeightCurve.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightColorRamp: Child.HeightColorRamp.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightPush:      Child.HeightPush.bEnabled = bEnabled; break;
+				case EMixtormatLayerChildType::StructuralWarp:  Child.StructuralWarp.bEnabled = bEnabled; break;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently mutating the Mask payload's flag.
@@ -682,6 +684,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
 		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
+				case EMixtormatChildCreation::StructuralWarp:  return EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -933,7 +936,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightPush))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightPush
+						|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::StructuralWarp))
 	{
 		return SelectedMaskIndex;
 	}
@@ -1389,6 +1393,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	if (Child.Type == EMixtormatLayerChildType::HeightPush)
 	{
 		return LOCTEXT("HeightPushChildName", "Height Push");
+	}
+	if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
+	{
+		return LOCTEXT("StructuralWarpChildName", "Structural Warp");
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
@@ -1906,6 +1914,18 @@ const FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush() const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	return Child && Child->Type == EMixtormatLayerChildType::HeightPush ? &Child->HeightPush : nullptr;
+}
+
+FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp()
+{
+	return const_cast<FMixtormatGeneratorStructuralWarp*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedStructuralWarp());
+}
+
+const FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::StructuralWarp ? &Child->StructuralWarp : nullptr;
 }
 
 FMixtormatGeneratorHeightCurve* SMixtormat::GetSelectedHeightCurve()

@@ -700,6 +700,30 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightPush
 	float Amount = 1.0f;
 };
 
+// Ordered structural pullback before an explicit target; never resamples finished geology.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatGeneratorStructuralWarp
+{
+	GENERATED_BODY()
+
+	FMixtormatGeneratorStructuralWarp()
+	{
+		Source.Kind = EMixtormatPublishedFieldKind::Flow;
+		Source.OutputName = FName(TEXT("FlowDirection"));
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
+	bool bEnabled = true;
+
+	// Completed Flow or identity-winding lifted UVMap. Vector2 is not a coordinate contract.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
+	FMixtormatOutputReference Source;
+
+	// Only a later, enabled Strata generator in this layer is supported.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
+	FGuid TargetChildId;
+};
+
 // A Generator-layer sublayer that remaps the running signed height through the shared scalar ramp.
 // The ramp is authored in -1..1 with zero at the centre; the signed field is never converted to
 // 0..1 first.

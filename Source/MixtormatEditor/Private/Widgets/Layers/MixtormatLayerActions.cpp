@@ -1441,7 +1441,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	if ((CreatedType == EMixtormatLayerChildType::Generator
 		|| CreatedType == EMixtormatLayerChildType::HeightBlend
 		|| CreatedType == EMixtormatLayerChildType::HeightCurve
-		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp)
+		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp
+				|| CreatedType == EMixtormatLayerChildType::StructuralWarp)
 		&& !CanAddGeneratorModule(Target))
 	{
 		return FReply::Handled();

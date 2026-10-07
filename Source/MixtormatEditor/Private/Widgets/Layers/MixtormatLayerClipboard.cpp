@@ -45,6 +45,11 @@ namespace MixtormatLayersPrivate
 			RemapPair(Copy.OutputReference.SourceLayerId, Copy.OutputReference.SourceChildId);
 			RemapPair(Copy.BoundaryId.RegionIdsSource.SourceLayerId, Copy.BoundaryId.RegionIdsSource.SourceChildId);
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
+			RemapPair(Copy.StructuralWarp.Source.SourceLayerId, Copy.StructuralWarp.Source.SourceChildId);
+			if (const FGuid* Target = ChildIdRemap.Find(Copy.StructuralWarp.TargetChildId))
+			{
+				Copy.StructuralWarp.TargetChildId = *Target;
+			}
 			for (FMixtormatParameterBinding& Binding : Copy.ParameterBindings)
 			{
 				RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
@@ -202,6 +207,15 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return INDEX_NONE;
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp)
+	{
+		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
+		{
+			return Layer.LayerId == Dest.OwnerId;
+		});
+		if (Dest.OwnerType != EMixtormatChildOwnerType::Layer || !WorkingLayers.IsValidIndex(LayerIndex)
+			|| WorkingLayers[LayerIndex].Type != EMixtormatLayerType::Generator) { return INDEX_NONE; }
+	}
 	if (DestContainer->IsValidIndex(AnchorChildIndex)
 		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
 	{
@@ -225,7 +239,8 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			? Clipboard.Source.ChildId : FGuid();
 		FGuid PublishedOwnerId, PublishedChildId;
 		const bool bPublished = GetPublishedOutputSource(Payload, PublishedOwnerId, PublishedChildId);
-		if (!bScoped && bPublished && DestContainer->IsValidIndex(Insert)
+		if (!bScoped && (bPublished || Payload.Type == EMixtormatLayerChildType::StructuralWarp)
+			&& DestContainer->IsValidIndex(Insert)
 			&& (*DestContainer)[Insert].ScopeOwnerChildId.IsValid())
 		{
 			Insert = FindSiblingRoot(*DestContainer, Insert, FGuid());
@@ -254,6 +269,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
 		}
 		else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			&& Payload.Type != EMixtormatLayerChildType::StructuralWarp
 			&& DestContainer->IsValidIndex(AnchorChildIndex)
 			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
 			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Payload))

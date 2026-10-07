@@ -122,6 +122,8 @@ public:
 		SHADER_PARAMETER(uint32, HasScopedMask)
 		SHADER_PARAMETER(uint32, HasRegionIds)
 		SHADER_PARAMETER(uint32, HasHeightPush)
+		SHADER_PARAMETER(uint32, HasStructuralWarp)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, StructuralDisplacement)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightPushField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
@@ -131,6 +133,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutBedIds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedPosition)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedRandom)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutBoundaryField)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -638,7 +641,7 @@ class FMixtormatGeneratorBundleCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorBundleCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorBundleCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 10);
+	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 12);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -651,6 +654,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleHeight)
+		SHADER_PARAMETER(float, InvalidDistance)
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScalar)
@@ -694,6 +698,34 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightPush.usf", "MainCS", SF_Compute);
+
+class FMixtormatGeneratorStructuralWarpCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, HasPreviousDisplacement)
+		SHADER_PARAMETER(uint32, HasPreviousShift)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpCoordinates)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutDisplacement)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "MainCS", SF_Compute);
 
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
@@ -966,7 +998,8 @@ namespace
 	}
 
 	FRDGTextureRef RemapBundleField(FMixtormatComposeContext& Ctx, FRDGTextureRef Field,
-		FRDGTextureRef WarpedUV, const int32 Stage, FRDGTextureRef Boundary = nullptr)
+		FRDGTextureRef WarpedUV, const int32 Stage, FRDGTextureRef Boundary = nullptr,
+		FRDGTextureRef SourceIds = nullptr, const float InvalidDistance = 0.0f)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -980,6 +1013,8 @@ namespace
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
 		P->OutputSize = Size;
 		P->WarpedUV = WarpedUV;
+		P->IdField = SourceIds;
+		P->InvalidDistance = InvalidDistance;
 		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 		if (Stage == 1)
 		{
@@ -1005,23 +1040,117 @@ namespace
 		return Moved;
 	}
 
+	// Existing flow apply has already replaced Height/Coverage. Remap only companions
+	// from one immutable producer revision; structural generation never calls this.
 	void RemapGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle, FRDGTextureRef WarpedUV)
 	{
-		if (Bundle.RegionIds) { Bundle.RegionIds = RemapBundleField(Ctx, Bundle.RegionIds, WarpedUV, 1); }
-		if (Bundle.CentreUV) { Bundle.CentreUV = RemapBundleField(Ctx, Bundle.CentreUV, WarpedUV, 5); }
-		if (Bundle.Orientation) { Bundle.Orientation = RemapBundleField(Ctx, Bundle.Orientation, WarpedUV, 6); }
-		for (TPair<FName, FRDGTextureRef>& Mask : Bundle.NamedMasks)
+		using ESemantic = FGeneratorBundle::EFieldSemantic;
+		using EUnits = FGeneratorBundle::EFieldUnits;
+		const FGeneratorBundle Source = Bundle;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const auto HasMapExtent = [Size](FRDGTextureRef Texture)
 		{
-			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
-				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
-			Mask.Value = RemapBundleField(Ctx, Mask.Value, WarpedUV,
-				bDistance && Bundle.BoundaryField ? 7 : 0, Bundle.BoundaryField);
-		}
-		// Rebuild the local distance metric before the next tool seeds against the moved outline.
-		if (Bundle.BoundaryField)
+			return !Texture || Texture->Desc.Extent == Size;
+		};
+		const auto HasScalarFormat = [](FRDGTextureRef Texture)
 		{
-			Bundle.BoundaryField = RemapBundleField(Ctx, Bundle.BoundaryField, WarpedUV, 2);
+			return Texture && (Texture->Desc.Format == PF_R16F || Texture->Desc.Format == PF_R32_FLOAT);
+		};
+		// Fixed slots have contracts too: storage alone cannot authorize an inverse or
+		// reinterpret a generic Vector2/Noise output as an identity-winding map.
+		if (!ensureMsgf(WarpedUV && Size.X > 0 && Size.Y > 0 && HasMapExtent(WarpedUV)
+			&& WarpedUV->Desc.Format == PF_G32R32F
+			&& HasMapExtent(Source.RegionIds) && HasMapExtent(Source.BoundaryField)
+			&& HasMapExtent(Source.CentreUV) && HasMapExtent(Source.Orientation)
+			&& (!Source.RegionIds || Source.RegionIds->Desc.Format == PF_R32_UINT)
+			&& (!Source.BoundaryField || Source.BoundaryField->Desc.Format == PF_G32R32F)
+			&& (!Source.CentreUV || (Source.CentreUV->Desc.Format == PF_G32R32F
+				&& Source.CentreDescriptor.Semantic == ESemantic::LegacyLocalCentre
+				&& Source.CentreDescriptor.Units == EUnits::MapUV))
+			&& (!Source.Orientation || (HasScalarFormat(Source.Orientation)
+				&& Source.OrientationDescriptor.Semantic == ESemantic::LegacyLocalOrientation
+				&& Source.OrientationDescriptor.Units == EUnits::Radians)),
+			TEXT("Unsupported generator companion extent, format or fixed-slot policy")))
+		{
+			return;
 		}
+		// Reject unsupported producers before scheduling any companion writes. In particular,
+		// missing metadata must never implicitly enable Noise or generic Vector2 transport.
+		for (const TPair<FName, FRDGTextureRef>& Mask : Source.NamedMasks)
+		{
+			const FGeneratorBundle::FFieldDescriptor* Descriptor = Source.NamedMaskDescriptors.Find(Mask.Key);
+			bool bSupported = Descriptor && Mask.Value && HasMapExtent(Mask.Value);
+			if (bSupported)
+			{
+				const bool bCoordinate = Descriptor->Semantic == ESemantic::LiftedCoordinateMap;
+				bSupported = bCoordinate ? Mask.Value->Desc.Format == PF_G32R32F
+					: HasScalarFormat(Mask.Value);
+			}
+			if (bSupported)
+			{
+				switch (Descriptor->Semantic)
+				{
+				case ESemantic::ContinuousAttribute:
+					bSupported = Descriptor->Units == EUnits::Unitless || Descriptor->Units == EUnits::CrackCell;
+					break;
+				case ESemantic::RegionAttribute:
+					bSupported = Source.RegionIds && Descriptor->Units == EUnits::Unitless;
+					break;
+				case ESemantic::BedCoordinate:
+					bSupported = Source.RegionIds && Descriptor->Units == EUnits::BedFraction;
+					break;
+				case ESemantic::UvDistance:
+					bSupported = Source.BoundaryField && Descriptor->Units == EUnits::MapUV
+						&& FMath::IsFinite(Descriptor->InvalidDistance);
+					break;
+				case ESemantic::CoverageAlias:
+					bSupported = HasMapExtent(Source.Coverage) && HasScalarFormat(Source.Coverage)
+						&& Descriptor->Units == EUnits::Unitless;
+					break;
+				case ESemantic::LiftedCoordinateMap:
+					bSupported = Descriptor->Units == EUnits::MapUV;
+					break;
+				default:
+					bSupported = false;
+					break;
+				}
+			}
+			if (!ensureMsgf(bSupported, TEXT("Unsupported generator companion policy: %s"), *Mask.Key.ToString()))
+			{
+				return;
+			}
+		}
+
+		FGeneratorBundle Moved = Source;
+		if (Source.RegionIds) { Moved.RegionIds = RemapBundleField(Ctx, Source.RegionIds, WarpedUV, 1); }
+		if (Source.CentreUV) { Moved.CentreUV = RemapBundleField(Ctx, Source.CentreUV, WarpedUV, 5); }
+		if (Source.Orientation) { Moved.Orientation = RemapBundleField(Ctx, Source.Orientation, WarpedUV, 6); }
+		for (const TPair<FName, FRDGTextureRef>& Mask : Source.NamedMasks)
+		{
+			const FGeneratorBundle::FFieldDescriptor& Descriptor = Source.NamedMaskDescriptors.FindChecked(Mask.Key);
+			int32 Stage = INDEX_NONE;
+			switch (Descriptor.Semantic)
+			{
+			case ESemantic::ContinuousAttribute: Stage = 0; break;
+			case ESemantic::RegionAttribute: Stage = 10; break;
+			case ESemantic::BedCoordinate: Stage = 11; break;
+			case ESemantic::UvDistance: Stage = 7; break;
+			case ESemantic::LiftedCoordinateMap: Stage = 3; break;
+			case ESemantic::CoverageAlias:
+				Moved.NamedMasks[Mask.Key] = Source.Coverage;
+				continue;
+			default: checkNoEntry(); return;
+			}
+			Moved.NamedMasks[Mask.Key] = RemapBundleField(Ctx, Mask.Value, WarpedUV, Stage,
+				Source.BoundaryField, Source.RegionIds, Descriptor.InvalidDistance);
+		}
+		// Preserve a direct structural Strata boundary; only this later flow operation
+		// pulls it back. All named-distance passes still read the old metric/validity.
+		if (Source.BoundaryField)
+		{
+			Moved.BoundaryField = RemapBundleField(Ctx, Source.BoundaryField, WarpedUV, 2);
+		}
+		Bundle = MoveTemp(Moved);
 	}
 
 	// The bedding as an integer lattice vector, which is what lets the beds tile.
@@ -1112,6 +1241,9 @@ namespace
 		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
 		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
 		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
+		const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(Child.SourceChildIndex);
+		const bool bHasStructuralWarp = Displacement && *Displacement;
+		FRDGTextureRef DirectBoundary = MakeField(PF_G32R32F, TEXT("Mixtormat.Strata.DirectBoundary"));
 
 		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
@@ -1144,6 +1276,8 @@ namespace
 			const FRDGTextureRef* Push = LayerCtx.GeneratorHeightPushFields.Find(Child.SourceChildIndex);
 			P->HasHeightPush = Push && *Push ? 1u : 0u;
 			P->HeightPushField = Push && *Push ? *Push : SourceHeight;
+			P->HasStructuralWarp = bHasStructuralWarp ? 1u : 0u;
+			P->StructuralDisplacement = bHasStructuralWarp ? *Displacement : Ctx.EmptyPatternUV;
 			P->SourceHeight = SourceHeight;
 			P->ResolveMask = ScopedMask;
 			P->ResolveRegionIds = RegionIds;
@@ -1152,6 +1286,7 @@ namespace
 			P->OutBedIds = GraphBuilder.CreateUAV(BedIds);
 			P->OutBedPosition = GraphBuilder.CreateUAV(BedPosition);
 			P->OutBedRandom = GraphBuilder.CreateUAV(BedRandom);
+			P->OutBoundaryField = GraphBuilder.CreateUAV(DirectBoundary);
 			TShaderMapRef<FMixtormatStrataCarverResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(
@@ -1166,9 +1301,12 @@ namespace
 			Bundle->Height = CarvedHeight;
 
 			Bundle->RegionIds = BedIds;
-			Bundle->BoundaryField = RemapBundleField(Ctx, BedPosition, nullptr, 8);
-			Bundle->NamedMasks.Add(FName(TEXT("StrataPosition")), BedPosition);
-			Bundle->NamedMasks.Add(FName(TEXT("StrataRandom")), BedRandom);
+			Bundle->BoundaryField = bHasStructuralWarp ? DirectBoundary
+				: RemapBundleField(Ctx, BedPosition, nullptr, 8);
+			Bundle->RegisterNamedMask(FName(TEXT("StrataPosition")), BedPosition,
+				FGeneratorBundle::EFieldSemantic::BedCoordinate, FGeneratorBundle::EFieldUnits::BedFraction);
+			Bundle->RegisterNamedMask(FName(TEXT("StrataRandom")), BedRandom,
+				FGeneratorBundle::EFieldSemantic::RegionAttribute);
 		}
 		return CarvedHeight;
 	}
@@ -1857,14 +1995,30 @@ namespace
 
 			Bundle->RegionIds = Outputs[5];
 			Bundle->BoundaryField = Outputs[6];
-			static const TCHAR* const Names[10] = {
-				TEXT("RockTop"), TEXT("RockChamfer"), TEXT("RockWall"), TEXT("RockEdgeDistance"),
-				TEXT("RockTopRamp"), TEXT("RockChamferRamp"), TEXT("RockWallRamp"),
-				TEXT("RockHeight"), TEXT("RockSlope"), TEXT("RockGap")};
-			static const int32 Slots[10] = {1, 2, 3, 4, 7, 8, 9, 10, 11, 12};
-			for (int32 Index = 0; Index < UE_ARRAY_COUNT(Names); ++Index)
+			using ESemantic = FGeneratorBundle::EFieldSemantic;
+			using EUnits = FGeneratorBundle::EFieldUnits;
+			static const struct
 			{
-				Bundle->NamedMasks.Add(FName(Names[Index]), Outputs[Slots[Index]]);
+				const TCHAR* Name;
+				int32 Slot;
+				ESemantic Semantic;
+				EUnits Units;
+			} Fields[] = {
+				{TEXT("RockTop"), 1, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockChamfer"), 2, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockWall"), 3, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockEdgeDistance"), 4, ESemantic::UvDistance, EUnits::MapUV},
+				{TEXT("RockTopRamp"), 7, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockChamferRamp"), 8, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockWallRamp"), 9, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				// Intrinsic geometry attributes, not slope/height recomputed from flowed relief.
+				{TEXT("RockHeight"), 10, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockSlope"), 11, ESemantic::ContinuousAttribute, EUnits::Unitless},
+				{TEXT("RockGap"), 12, ESemantic::ContinuousAttribute, EUnits::Unitless}};
+			for (const auto& Field : Fields)
+			{
+				// Rock's no-hit public distance is zero; BoundaryField retains its invalid bit.
+				Bundle->RegisterNamedMask(FName(Field.Name), Outputs[Field.Slot], Field.Semantic, Field.Units);
 			}
 		}
 
@@ -2039,9 +2193,13 @@ namespace
 
 			Bundle->RegionIds = Outputs[3];
 			Bundle->BoundaryField = Outputs[5];
-			Bundle->NamedMasks.Add(FName(TEXT("CrackMask")), Outputs[1]);
-			Bundle->NamedMasks.Add(FName(TEXT("CrackDistance")), Outputs[2]);
-			Bundle->NamedMasks.Add(FName(TEXT("PieceRandom")), Outputs[4]);
+			Bundle->RegisterNamedMask(FName(TEXT("CrackMask")), Outputs[1],
+				FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			// Positive crack-cell attribute, not the separate negative-inside UV boundary.
+			Bundle->RegisterNamedMask(FName(TEXT("CrackDistance")), Outputs[2],
+				FGeneratorBundle::EFieldSemantic::ContinuousAttribute, FGeneratorBundle::EFieldUnits::CrackCell);
+			Bundle->RegisterNamedMask(FName(TEXT("PieceRandom")), Outputs[4],
+				FGeneratorBundle::EFieldSemantic::RegionAttribute);
 		}
 
 		FRDGTextureRef Field = Outputs[0];
@@ -2111,7 +2269,10 @@ namespace
 		}
 		Field = Chamfered;
 		const FName CutName(TEXT("ChamferCut"));
-		if (Bundle) { Bundle->NamedMasks.Add(CutName, ChamferCut); }
+		if (Bundle)
+		{
+			Bundle->RegisterNamedMask(CutName, ChamferCut, FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		}
 		FRDGTextureRef Combined = Make(PF_R32_FLOAT, TEXT("Mixtormat.Cracks.LayerHeight"));
 		FMixtormatCracksCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatCracksCS::FStage>(4);
@@ -2253,9 +2414,12 @@ namespace
 			Bundle->Coverage = Outputs[1];
 			Bundle->RegionIds = Outputs[4];
 			Bundle->BoundaryField = PackScalarBoundary(Ctx, Outputs[2]);
-			Bundle->NamedMasks.Add(FName(TEXT("PebbleCoverage")), Outputs[1]);
-			Bundle->NamedMasks.Add(FName(TEXT("PebbleEdgeDistance")), Outputs[2]);
-			Bundle->NamedMasks.Add(FName(TEXT("PebbleRandom")), Outputs[3]);
+			Bundle->RegisterNamedMask(FName(TEXT("PebbleCoverage")), Outputs[1],
+				FGeneratorBundle::EFieldSemantic::CoverageAlias);
+			Bundle->RegisterNamedMask(FName(TEXT("PebbleEdgeDistance")), Outputs[2],
+				FGeneratorBundle::EFieldSemantic::UvDistance, FGeneratorBundle::EFieldUnits::MapUV, 1e9f);
+			Bundle->RegisterNamedMask(FName(TEXT("PebbleRandom")), Outputs[3],
+				FGeneratorBundle::EFieldSemantic::RegionAttribute);
 		}
 
 		FRDGTextureRef PebbleField = Outputs[0];
@@ -2301,7 +2465,15 @@ namespace
 			}
 			auto& Stored=LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);Stored.Append(O,SlotCount);
 		}
-		if(Bundle){Bundle->Height=O[5];Bundle->RegionIds=O[2];Bundle->Coverage=O[9];Bundle->NamedMasks.Add(FName(TEXT("CliffBlockSeam")),O[6]);Bundle->NamedMasks.Add(FName(TEXT("CliffRowSeam")),O[7]);Bundle->NamedMasks.Add(FName(TEXT("CliffCavity")),O[8]);Bundle->NamedMasks.Add(FName(TEXT("CliffVoronoi")),O[4]);Bundle->NamedMasks.Add(FName(TEXT("CliffCoverage")),O[9]);}
+		if (Bundle)
+		{
+			Bundle->Height = O[5]; Bundle->RegionIds = O[2]; Bundle->Coverage = O[9];
+			Bundle->RegisterNamedMask(FName(TEXT("CliffBlockSeam")), O[6], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			Bundle->RegisterNamedMask(FName(TEXT("CliffRowSeam")), O[7], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			Bundle->RegisterNamedMask(FName(TEXT("CliffCavity")), O[8], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			Bundle->RegisterNamedMask(FName(TEXT("CliffVoronoi")), O[4], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			Bundle->RegisterNamedMask(FName(TEXT("CliffCoverage")), O[9], FGeneratorBundle::EFieldSemantic::CoverageAlias);
+		}
 		return O[5];
 	}
 
@@ -2380,6 +2552,55 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	for (const FChildRenderData& Child : Layer.Children)
 	{
 		// Structural input modules run at their own authored position, before a later target.
+		if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
+		{
+			const FGeneratorStructuralWarpRenderData& Warp = Child.StructuralWarp;
+			const FPublishedField* FoundSource = Ctx.PublishedFieldOutputs.Find(Warp.Source.Source);
+			if (Warp.TargetChildIndex == INDEX_NONE || !FoundSource || !FoundSource->IsComplete()
+				|| FoundSource->Kind != Warp.Source.Kind || FoundSource->Texture->Desc.Extent != Size
+				|| (Warp.Source.Kind != EMixtormatPublishedFieldKind::Flow
+					&& Warp.Source.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
+			if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
+				&& (Warp.Source.FlowAmount == 0.0f || Warp.Source.FlowTraceLength == 0.0f)) { continue; }
+			const FPublishedField Source = *FoundSource;
+			const FRDGTextureRef Coordinates = Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
+				? AddReferencedFlowUVPass(Ctx, Warp.Source, Source, LayerCtx.LayerIndex, Child.SourceChildIndex)
+				: Source.Texture;
+			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
+			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const FRDGTextureRef Mask = bHasMask
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : RunningHeight;
+			const FRDGTextureRef* OldD = LayerCtx.GeneratorStructuralDisplacements.Find(Warp.TargetChildIndex);
+			const FRDGTextureRef* OldB = LayerCtx.GeneratorHeightPushFields.Find(Warp.TargetChildIndex);
+			const auto MakeState = [&](EPixelFormat Format, const TCHAR* Name)
+			{
+				return Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+			};
+			FRDGTextureRef NewD = MakeState(PF_G32R32F, TEXT("Mixtormat.Generator.StructuralDisplacement"));
+			FRDGTextureRef NewB = MakeState(PF_R32_FLOAT, TEXT("Mixtormat.Generator.WarpedBeddingShift"));
+			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCS::FParameters>();
+			P->OutputSize = Size;
+			P->HasPreviousDisplacement = OldD && *OldD ? 1u : 0u;
+			P->HasPreviousShift = OldB && *OldB ? 1u : 0u;
+			P->HasMask = bHasMask ? 1u : 0u;
+			P->WarpCoordinates = Coordinates;
+			P->PreviousDisplacement = OldD && *OldD ? *OldD : Coordinates;
+			P->PreviousShift = OldB && *OldB ? *OldB : RunningHeight;
+			P->ScopedMask = Mask;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			P->OutDisplacement = Ctx.GraphBuilder.CreateUAV(NewD);
+			P->OutShift = Ctx.GraphBuilder.CreateUAV(NewB);
+			TShaderMapRef<FMixtormatGeneratorStructuralWarpCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.StructuralWarp.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+			const bool bHadShift = OldB && *OldB;
+			LayerCtx.GeneratorStructuralDisplacements.Add(Warp.TargetChildIndex, NewD);
+			if (bHadShift) { LayerCtx.GeneratorHeightPushFields.Add(Warp.TargetChildIndex, NewB); }
+			continue;
+		}
 		if (Child.Type == EMixtormatLayerChildType::HeightPush)
 		{
 			const FGeneratorHeightPushRenderData& Push = Child.HeightPush;

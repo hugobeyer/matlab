@@ -240,7 +240,8 @@ namespace MixtormatLayerBadges
 		}
 		if (Child.Type == EMixtormatLayerChildType::HeightCurve
 			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp
-			|| Child.Type == EMixtormatLayerChildType::HeightPush)
+			|| Child.Type == EMixtormatLayerChildType::HeightPush
+						|| Child.Type == EMixtormatLayerChildType::StructuralWarp)
 		{
 			return FText::GetEmpty();
 		}
@@ -309,6 +310,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::HeightCurve: return LOCTEXT("ChildKindHeightCurve", "HCRV");
 		case EMixtormatLayerChildType::HeightColorRamp: return LOCTEXT("ChildKindHeightColorRamp", "HCLR");
 					case EMixtormatLayerChildType::HeightPush: return LOCTEXT("ChildKindHeightPush", "HPUSH");
+							case EMixtormatLayerChildType::StructuralWarp: return LOCTEXT("ChildKindStructuralWarp", "WARP");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

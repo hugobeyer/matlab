@@ -364,6 +364,32 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.HeightPush.Amount = FMath::IsFinite(Push.Amount) ? Push.Amount : 0.0f;
 		break;
 	}
+	case EMixtormatLayerChildType::StructuralWarp:
+	{
+		const FMixtormatGeneratorStructuralWarp& Warp = LayerChild.StructuralWarp;
+		if (!Warp.bEnabled || LayerChild.ScopeOwnerChildId.IsValid()) { return; }
+		const int32 SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
+			EffectiveLayers, LayerIndex, SourceChildIndex, Warp.Source);
+		const int32 TargetIndex = MixtormatOutputReferences::ResolveStructuralWarpTarget(
+			EffectiveLayers, LayerIndex, SourceChildIndex, Warp.TargetChildId);
+		if (SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE) { return; }
+		const float FlowAmount = FMath::IsFinite(Warp.Source.FlowAmount) ? Warp.Source.FlowAmount : 0.0f;
+		const float TraceLength = FMath::IsFinite(Warp.Source.FlowTraceLength)
+			? FMath::Max(Warp.Source.FlowTraceLength, 0.0f) : 0.0f;
+		if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
+			&& (FlowAmount == 0.0f || TraceLength == 0.0f)) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::StructuralWarp;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FGeneratorStructuralWarpRenderData& Out = ChildData.StructuralWarp;
+		Out.Source.Source = {Warp.Source.SourceLayerId, SourceIndex, Warp.Source.OutputName};
+		Out.Source.Kind = Warp.Source.Kind;
+		Out.Source.FlowAmount = FlowAmount;
+		Out.Source.FlowTraceLength = TraceLength;
+		Out.Source.FlowSteps = FMath::Max(Warp.Source.FlowSteps, 1);
+		Out.TargetChildIndex = TargetIndex;
+		break;
+	}
 	case EMixtormatLayerChildType::HeightBlend:
 	{
 		const FMixtormatGeneratorHeightBlend& Blend = LayerChild.HeightBlend;

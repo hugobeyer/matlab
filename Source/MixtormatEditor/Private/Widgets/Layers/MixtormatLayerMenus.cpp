@@ -102,7 +102,10 @@ TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex
 			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, DestIndex]()
 			{
 				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
-			}));
+			})).Enabled(!WorkingLayers.IsValidIndex(LayerIndex)
+				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+				|| ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::StructuralWarp
+				|| WorkingLayers[DestIndex].Type == EMixtormatLayerType::Generator);
 	}
 	if (Menu.IsEmpty())
 	{
@@ -1060,7 +1063,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
 			.Enabled(TAttribute<bool>(CanCreateChild(Target) && !Target.IsGroup()
 						&& !Target.ScopeOwnerChildId.IsValid()));
-		Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::StructuralWarp); }))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target) && CanAddGeneratorModule(Target)));
+	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(),
@@ -1234,6 +1240,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
+		|| RowType == EMixtormatLayerChildType::StructuralWarp
 		|| bGenerator;
 
 	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
@@ -1333,6 +1340,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::Generator:
 			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
+			break;
+		case EMixtormatLayerChildType::StructuralWarp:
+			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");
 			break;
 		default:
 			break;

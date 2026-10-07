@@ -4,6 +4,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorWarp.ush"
 
 // Geological strata, not a sawtooth: ordered interfaces enclose hard shelves and softer
 // recessed beds. A common fold moves the entire stack; bounded interface variation changes
@@ -56,7 +57,10 @@ float IDInfluence;
 uint HasScopedMask;
 uint HasRegionIds;
 uint HasHeightPush;
+uint HasStructuralWarp;
 
+// Periodic unwrapped displacement in destination tile units, not absolute coordinates.
+Texture2D<float2> StructuralDisplacement;
 Texture2D<float> HeightPushField;
 Texture2D<float> SourceHeight;
 Texture2D<float> ResolveMask;
@@ -67,6 +71,7 @@ RWTexture2D<float> OutHeight;
 RWTexture2D<uint> OutBedIds;
 RWTexture2D<float> OutBedPosition;
 RWTexture2D<float> OutBedRandom;
+RWTexture2D<float2> OutBoundaryField;
 
 float StrataRandom(int Index, int Period, uint Key)
 {
@@ -221,6 +226,15 @@ float StrataFootprint(float2 DestinationGradient)
 	return dot(abs(DestinationGradient) / float2(OutputSize), float2(1.0f, 1.0f));
 }
 
+void StrataWriteInvalid(int2 P)
+{
+	OutHeight[P] = 0.0f;
+	OutBedIds[P] = MIXTORMAT_INVALID_REGION;
+	OutBedPosition[P] = 0.0f;
+	OutBedRandom[P] = 0.0f;
+	OutBoundaryField[P] = float2(0.0f, 0.0f);
+}
+
 [numthreads(8, 8, 1)]
 void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -228,13 +242,39 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	const int2 P = int2(DispatchThreadId.xy);
 	const float2 DestinationUV = (float2(P) + 0.5f) / float2(OutputSize);
-	const float2 UV = MixtormatGeneratorUV(DestinationUV);
+	OutBoundaryField[P] = float2(0.0f, 0.0f);
+	float2 StructuralUV = DestinationUV;
+	float2x2 J = float2x2(1.0f, 0.0f, 0.0f, 1.0f);
+	if (HasStructuralWarp != 0u)
+	{
+		StructuralUV += StructuralDisplacement.Load(int3(P, 0));
+		if (!all(isfinite(StructuralUV))) { StrataWriteInvalid(P); return; }
+
+		// Difference D directly: the coordinate helper's Jacobian expects absolute W.
+		const float2 X = float2(1.0f, 0.0f) + (
+			StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(1, 0), OutputSize), 0))
+			- StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P - int2(1, 0), OutputSize), 0)))
+			* (0.5f * OutputSize.x);
+		const float2 Y = float2(0.0f, 1.0f) + (
+			StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(0, 1), OutputSize), 0))
+			- StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P - int2(0, 1), OutputSize), 0)))
+			* (0.5f * OutputSize.y);
+		J = float2x2(X.x, Y.x, X.y, Y.y);
+	}
+	const float2 UV = MixtormatGeneratorUV(StructuralUV);
+	if (!all(isfinite(UV))) { StrataWriteInvalid(P); return; }
 	const float2 StrikeVector = float2(BedPerp) / (float)max(BedPeriod, 1);
 	float Strike = dot(UV, StrikeVector);
 	float2 StrikeGradient = MixtormatGeneratorDestinationGradient(StrikeVector);
 
 	float S = dot(UV, float2(BedWave));
 	float2 SGradient = MixtormatGeneratorDestinationGradient(float2(BedWave));
+	if (HasStructuralWarp != 0u)
+	{
+		StrikeGradient = mul(StrikeGradient, J);
+		SGradient = mul(SGradient, J);
+	}
+	// B and its final gradient are destination-space; neither receives J again.
 	if (HasHeightPush != 0u)
 	{
 		const float2 Texel = 1.0f / float2(OutputSize);
@@ -245,15 +285,21 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV + float2(0.0f, Texel.y), 0.0f)
 				- HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV - float2(0.0f, Texel.y), 0.0f)) / (2.0f * Texel);
 	}
+	if (!isfinite(Strike) || !isfinite(S)) { StrataWriteInvalid(P); return; }
 	if (Bend != 0.0f)
 	{
 		const int Period = max(BendScale, 1) * 2;
 		// Compose two shears: younger cross-folds turn the older fold hinges without
 		// independently warping each bed or losing the periodic structural frame.
 		const float AcrossScale = 2.0f / (float)max(BedPeriod, 1);
+		if (!isfinite(S * AcrossScale)) { StrataWriteInvalid(P); return; }
 		const float2 Across = StrataFoldD(S * AcrossScale, 2, 0x165667b1u);
 		Strike += Bend * 0.6f * (Across.x - 0.5f);
 		StrikeGradient += Bend * 0.6f * Across.y * AcrossScale * SGradient;
+		if (!isfinite(Strike * (float)Period) || !isfinite(Strike * (float)(Period * 3)))
+		{
+			StrataWriteInvalid(P); return;
+		}
 		const float2 Broad = StrataFoldD(Strike * (float)Period, Period, 0x5851f42du);
 		const float2 Fine = StrataFoldD(Strike * (float)(Period * 3), Period * 3, 0xad90777du);
 		const float Amplitude = Bend * length(float2(BedWave));
@@ -273,6 +319,11 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		SGradient += HeightFollow * SourceGradient;
 	}
 
+	// Reject non-finite coordinates before any bedding/noise integer indexing.
+	if (!isfinite(S) || !isfinite(Strike * (float)max(BendScale, 1)))
+	{
+		StrataWriteInvalid(P); return;
+	}
 	int Bed = (int)floor(S);
 	float2 Lower = StrataInterface(Bed, Strike);
 	float2 Upper = StrataInterface(Bed + 1, Strike);
@@ -287,6 +338,24 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		++Bed;
 		Lower = Upper;
 		Upper = StrataInterface(Bed + 1, Strike);
+	}
+	if (HasStructuralWarp != 0u)
+	{
+		const float FL = S - Lower.x;
+		const float FU = Upper.x - S;
+		const float2 gL = SGradient - Lower.y * StrikeGradient;
+		const float2 gU = Upper.y * StrikeGradient - SGradient;
+		const float LengthL = length(gL);
+		const float LengthU = length(gU);
+		if (all(isfinite(Lower)) && all(isfinite(Upper)) && Upper.x > Lower.x
+			&& isfinite(FL) && isfinite(FU) && FL >= 0.0f && FU >= 0.0f
+			&& all(isfinite(gL)) && all(isfinite(gU))
+			&& isfinite(LengthL) && isfinite(LengthU) && LengthL > 1e-12f && LengthU > 1e-12f)
+		{
+			// Local negative-inside interface distance in destination UV units.
+			const float Distance = -min(FL / LengthL, FU / LengthU);
+			if (isfinite(Distance)) { OutBoundaryField[P] = float2(Distance, 1.0f); }
+		}
 	}
 	const float Thickness = max(Upper.x - Lower.x, 1.0e-5f);
 	const float T = saturate((S - Lower.x) / Thickness);
@@ -316,6 +385,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const int Count = 3 + (int)floor(StrataBedRandom(Bed, 0x632be59bu) * 5.0f);
 		const int Period = max(BendScale, 1) * 2;
 		const uint Key = StrataBedKey(Bed, 0x94d049bbu);
+		if (!isfinite(Strike * (float)Period)) { StrataWriteInvalid(P); return; }
 		const float2 Cross = StrataFoldD(Strike * (float)Period, Period, Key);
 		// A bounded shear fans laminae inside each bed and anchors both contacts.
 		// Unlike integer tilt, CrossBedding responds continuously to the slider.
@@ -325,6 +395,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float2 PhaseGradient = ((float)Count + CrossAmount * (Cross.x - 0.5f)
 			* 4.0f * (1.0f - 2.0f * T)) * TGradient
 			+ CrossAmount * Cross.y * (float)Period * Envelope * StrikeGradient;
+		if (!isfinite(Phase)) { StrataWriteInvalid(P); return; }
 		int Lamina = min((int)floor(Phase), Count - 1);
 		float2 A = StrataLaminaInterface(Lamina, Count, Strike, Period, Key);
 		float2 B = StrataLaminaInterface(Lamina + 1, Count, Strike, Period, Key);
@@ -361,6 +432,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Anisotropic cells are long along bedding and have oblique cross joints.
 		const float2 Q = float2(Strike * (float)JointPeriod, T * 1.6f)
 			+ float2(StrataBedRandom(Bed, 0x68bc21ebu), 0.37f);
+		if (!all(isfinite(Q))) { StrataWriteInvalid(P); return; }
 		float2 Local;
 		float Draw;
 		float2 Tilt;

@@ -974,8 +974,13 @@ namespace MixtormatGpuCompositor
 		FCliffStrataRenderData CliffStrata;
 	};
 
-	// Generator-layer Height Blend sublayer. SourceChildIndex is the referenced module resolved to
-	// this layer's child index; INDEX_NONE falls back to the running height.
+	// Ordered structural modules target a later same-layer Strata child explicitly.
+	struct FGeneratorStructuralWarpRenderData
+	{
+		FOutputReferenceRenderData Source;
+		int32 TargetChildIndex = INDEX_NONE;
+	};
+
 	struct FGeneratorHeightPushRenderData
 	{
 		FOutputReferenceRenderData Source;
@@ -1067,6 +1072,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorHeightCurveRenderData HeightCurve;
 		FGeneratorHeightColorRampRenderData HeightColorRamp;
 		FGeneratorHeightPushRenderData HeightPush;
+		FGeneratorStructuralWarpRenderData StructuralWarp;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
@@ -1098,16 +1104,64 @@ namespace MixtormatGpuCompositor
 
 	struct FGeneratorBundle
 	{
+		// Internal producer contract, not new public field kinds. Unknown/Noise vector
+		// semantics remain unsupported until step 7 inventories their frame and meaning.
+		enum class EFieldSemantic : uint8
+		{
+			Unsupported,
+			ContinuousAttribute,
+			RegionAttribute, // Same wrapped anchor as this bundle's immutable RegionIds.
+			BedCoordinate, // Owner + local phase branch from immutable RegionIds.
+			UvDistance, // Negative inside; own scalar metric, immutable BoundaryField validity.
+			CoverageAlias, // Apply-owned Coverage, never an independent remap.
+			LiftedCoordinateMap, // Identity winding; compose periodic displacement.
+			LegacyLocalCentre, // Existing affine-local inverse estimate only.
+			LegacyLocalOrientation // Existing inverse-Jacobian angle convention only.
+		};
+		enum class EFieldUnits : uint8
+		{
+			Unitless,
+			BedFraction,
+			CrackCell,
+			MapUV,
+			Radians
+		};
+		// MapUV is the completed producer's source-map frame, not generator-domain units.
+		// Region/bed attributes associate with this bundle's RegionIds; UV distances use
+		// its BoundaryField validity. Remapping snapshots both associations before writes.
+		struct FFieldDescriptor
+		{
+			EFieldSemantic Semantic = EFieldSemantic::Unsupported;
+			EFieldUnits Units = EFieldUnits::Unitless;
+			float InvalidDistance = 0.0f;
+		};
+
 		FRDGTextureRef Height = nullptr;
 		// Pebbles' local support, transformed by flow and published as an explicit mask.
 		// Never accumulated or used as final layer visibility.
 		FRDGTextureRef Coverage = nullptr;
 		FRDGTextureRef RegionIds = nullptr;
+		// Legacy affine-local inverse estimates in map UV / radians, not exact per-ID
+		// centres or lifted coordinate maps. Preserve their existing invalid handling.
 		FRDGTextureRef CentreUV = nullptr;
 		FRDGTextureRef Orientation = nullptr;
+		FFieldDescriptor CentreDescriptor{EFieldSemantic::LegacyLocalCentre, EFieldUnits::MapUV};
+		FFieldDescriptor OrientationDescriptor{EFieldSemantic::LegacyLocalOrientation, EFieldUnits::Radians};
 		TMap<FName, FRDGTextureRef> NamedMasks;
+		// Exhaustively registered at production; contains policies only, no second textures.
+		TMap<FName, FFieldDescriptor> NamedMaskDescriptors;
+		// Negative-inside local distance in map UV + validity. May be generated directly
+		// by structurally warped Strata; only a later completed-field flow remaps it.
 		FRDGTextureRef BoundaryField = nullptr;
 		bool bHashedIds = false;
+
+		void RegisterNamedMask(const FName Name, FRDGTextureRef Texture,
+			const EFieldSemantic Semantic, const EFieldUnits Units = EFieldUnits::Unitless,
+			const float InvalidDistance = 0.0f)
+		{
+			NamedMasks.Add(Name, Texture);
+			NamedMaskDescriptors.Add(Name, FFieldDescriptor{Semantic, Units, InvalidDistance});
+		}
 	};
 
 	struct FLayerRenderData
@@ -1557,6 +1611,8 @@ namespace MixtormatGpuCompositor
 		TMap<int32, FRDGTextureRef> GeneratorModuleHeights;
 		TMap<int32, FGeneratorInputFields> GeneratorInputs;
 		TMap<int32, FRDGTextureRef> GeneratorHeightPushFields;
+		// Destination-tile displacement, separate from the composed signed bedding shift.
+		TMap<int32, FRDGTextureRef> GeneratorStructuralDisplacements;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1626,6 +1682,7 @@ namespace MixtormatGpuCompositor
 			GeneratorModuleHeights.Reset();
 			GeneratorInputs.Reset();
 			GeneratorHeightPushFields.Reset();
+			GeneratorStructuralDisplacements.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};

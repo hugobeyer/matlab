@@ -99,7 +99,7 @@ namespace MixtormatOutputReferences
 		const FGuid& DestinationChildId,
 		const FMixtormatOutputReference& Reference);
 
-	// Explicit generator sockets (or a Height Push child's signed Height source): completed
+	// Explicit generator sockets, Height Push signed Height, or Structural Warp Flow/UVMap: completed
 	// signed Height, Flow or UVMap from an earlier
 	// generator scope in this layer or an earlier layer. Rejects self/forward scope reads,
 	// disabled owners and wrong output kinds. Legacy layer-wide Flow/UV validation is unchanged.
@@ -109,6 +109,14 @@ namespace MixtormatOutputReferences
 		int32 DestinationLayerIndex,
 		int32 DestinationChildIndex,
 		const FMixtormatOutputReference& Reference);
+
+	// Ordered Structural Warp: explicit later, enabled, unscoped Strata target in the same
+	// Generator layer. Returns its authored child index; no implicit target or group support.
+	MIXTORMATRUNTIME_API int32 ResolveStructuralWarpTarget(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 DestinationLayerIndex,
+		int32 DestinationChildIndex,
+		const FGuid& TargetChildId);
 
 	// Returns the authored source index only after ValidateDependency succeeds.
 	MIXTORMATRUNTIME_API int32 ResolveSource(

@@ -1,0 +1,79 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#ifndef MIXTORMAT_GENERATOR_WARP_USH
+#define MIXTORMAT_GENERATOR_WARP_USH
+
+// Addressing wraps, but coordinates retain their identity winding and multi-tile travel.
+int2 MixtormatGeneratorWarpWrap(int2 Pixel, int2 Size)
+{
+	return ((Pixel % Size) + Size) % Size;
+}
+
+// Returns false before converting non-finite coordinates to integers. The final bound
+// handles frac(UV)*Size rounding to Size without clamping the authored displacement.
+bool MixtormatGeneratorWarpAnchor(float2 UV, int2 Size, out int2 Anchor)
+{
+	Anchor = int2(0, 0);
+	if (!all(isfinite(UV)) || any(Size <= 0)) { return false; }
+	Anchor = min(int2(floor(frac(UV) * float2(Size))), Size - 1);
+	return true;
+}
+
+// Tap order: (0,0), (1,0), (0,1), (1,1). Call only with finite UV and positive Size.
+void MixtormatGeneratorWarpBilinear(float2 UV, int2 Size, out int2 Base, out float4 Weights)
+{
+	const float2 Texel = frac(UV) * float2(Size) - 0.5f;
+	Base = int2(floor(Texel));
+	const float2 T = frac(Texel);
+	Weights = float4((1.0f - T.x) * (1.0f - T.y), T.x * (1.0f - T.y),
+		(1.0f - T.x) * T.y, T.x * T.y);
+}
+
+float2 MixtormatGeneratorWarpLoadDisplacement(Texture2D<float2> Coordinates, int2 Pixel, int2 Size)
+{
+	const int2 Wrapped = MixtormatGeneratorWarpWrap(Pixel, Size);
+	return Coordinates.Load(int3(Wrapped, 0)) - (float2(Wrapped) + 0.5f) / float2(Size);
+}
+
+// A periodic displacement texture (not an absolute coordinate texture).
+float2 MixtormatGeneratorWarpSampleDisplacement(Texture2D<float2> Displacement, float2 UV, int2 Size)
+{
+	int2 P;
+	float4 Weights;
+	MixtormatGeneratorWarpBilinear(UV, Size, P, Weights);
+	return Displacement.Load(int3(MixtormatGeneratorWarpWrap(P, Size), 0)) * Weights.x
+		+ Displacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(1, 0), Size), 0)) * Weights.y
+		+ Displacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(0, 1), Size), 0)) * Weights.z
+		+ Displacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(1, 1), Size), 0)) * Weights.w;
+}
+
+// Recover displacement at each wrapped texel BEFORE interpolation. Never interpolate
+// wrapped absolute UVs, shorten displacement with round, or discard the query's winding.
+float2 MixtormatGeneratorWarpSampleCoordinateDisplacement(Texture2D<float2> Coordinates,
+	float2 UV, int2 Size)
+{
+	int2 P;
+	float4 Weights;
+	MixtormatGeneratorWarpBilinear(UV, Size, P, Weights);
+	return MixtormatGeneratorWarpLoadDisplacement(Coordinates, P, Size) * Weights.x
+		+ MixtormatGeneratorWarpLoadDisplacement(Coordinates, P + int2(1, 0), Size) * Weights.y
+		+ MixtormatGeneratorWarpLoadDisplacement(Coordinates, P + int2(0, 1), Size) * Weights.z
+		+ MixtormatGeneratorWarpLoadDisplacement(Coordinates, P + int2(1, 1), Size) * Weights.w;
+}
+
+float2 MixtormatGeneratorWarpSampleCoordinate(Texture2D<float2> Coordinates, float2 UV, int2 Size)
+{
+	return UV + MixtormatGeneratorWarpSampleCoordinateDisplacement(Coordinates, UV, Size);
+}
+
+// Columns of dW/dx. Differentiate periodic displacement, including masked map gradients.
+void MixtormatGeneratorWarpJacobian(Texture2D<float2> Coordinates, int2 Pixel, int2 Size,
+	out float2 X, out float2 Y)
+{
+	X = float2(1.0f, 0.0f) + (MixtormatGeneratorWarpLoadDisplacement(Coordinates, Pixel + int2(1, 0), Size)
+		- MixtormatGeneratorWarpLoadDisplacement(Coordinates, Pixel - int2(1, 0), Size)) * (0.5f * Size.x);
+	Y = float2(0.0f, 1.0f) + (MixtormatGeneratorWarpLoadDisplacement(Coordinates, Pixel + int2(0, 1), Size)
+		- MixtormatGeneratorWarpLoadDisplacement(Coordinates, Pixel - int2(0, 1), Size)) * (0.5f * Size.y);
+}
+
+#endif

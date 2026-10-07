@@ -694,6 +694,11 @@ namespace MixtormatGpuCompositor
 							{
 								Ctx.PublishedFieldDemand.Add(Child.HeightPush.Source.Source);
 							}
+							if (Child.Type == EMixtormatLayerChildType::StructuralWarp
+								&& Child.StructuralWarp.Source.Source.ChildIndex != INDEX_NONE)
+							{
+								Ctx.PublishedFieldDemand.Add(Child.StructuralWarp.Source.Source);
+							}
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{
 								const auto DemandInput = [&](const FGeneratorInputRenderData& Input)

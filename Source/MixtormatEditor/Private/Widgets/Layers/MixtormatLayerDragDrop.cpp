@@ -639,6 +639,11 @@ FReply SMixtormat::MoveChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
+	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp
+		&& WorkingLayers[DestLayerIndex].Type != EMixtormatLayerType::Generator)
+	{
+		return FReply::Unhandled();
+	}
 	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
 	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
 		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
@@ -705,6 +710,10 @@ FReply SMixtormat::MoveChildToGroup(
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
 	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
+	{
+		return FReply::Unhandled();
+	}
+	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp)
 	{
 		return FReply::Unhandled();
 	}

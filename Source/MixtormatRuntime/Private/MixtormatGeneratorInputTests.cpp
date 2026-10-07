@@ -3,6 +3,9 @@
 #include "MixtormatMaterial.h"
 #include "MixtormatOutputReference.h"
 
+#include "MixtormatLayerGroups.h"
+
+
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
 
@@ -156,4 +159,5 @@ bool FMixtormatHeightPushSourceTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Disabled height producer is unavailable"), Resolve(), INDEX_NONE);
 	return true;
 }
+
 #endif
