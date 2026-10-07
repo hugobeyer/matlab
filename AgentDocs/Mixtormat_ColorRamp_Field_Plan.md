@@ -134,7 +134,7 @@ Ordered by value, cheapest first.
 | GeneratorRunning | chain height | yes | Today's input; keeps existing assets identical |
 | ModuleRef | earlier module's signed height | yes | Restrict to earlier modules only (`ResolveEarlierSource` rule) |
 | LayerHeight | layer input height | yes | `AddLayerInputPass` runs before generators |
-| CompositeBelow | `HeightTargets[1 - (LayerIndex & 1)]` | yes | Layer 0 has none: gate off exactly like `SurfaceValid` |
+| CompositeBelow | `HeightTargets[1 - (LayerIndex & 1)]` | yes | Layer 0 binds the same accumulator; it is empty there, which reads as the ramp's bottom-stop colour. No silent substitution |
 | Flow | vector field | future | Length / angle / component; Flow is not a UV map |
 | UVMap | absolute coordinates | future | Field is already at output resolution: do **not** re-apply the layer UV transform |
 | RegionIds | id field | future | Needs a defined id → scalar rule; see Open Decisions |
@@ -145,19 +145,27 @@ Ordered by value, cheapest first.
 
 Each phase is independently shippable and leaves existing assets identical.
 
-### Phase A — Data + plumbing (height sources only)
-- `FMixtormatGeneratorHeightColorRamp`: add `Source` (new appended enum:
-  `Running / ModuleRef / LayerHeight / CompositeBelow`), `SourceLayerId`,
-  `SourceChildId`, `SourceChannel` (reserved for Flow/UV extraction), and
-  `SourceRange` semantics only if needed.
-- `MixtormatGeneratorGather.cpp`: gather the enum + refs; resolve
-  `SourceChildIndex` with the HeightBlend pattern; verify by texture presence,
-  not by index (field plan §1 rule).
-- `FGeneratorHeightColorRampRenderData`: carry the resolved source mode.
+### Phase A — Data + plumbing (height sources only) — **implemented**
+
+Landed as: `Source` (`EMixtormatColorRampSource`: `GeneratorRunning` /
+`ModuleRef` / `LayerHeight` / `CompositeBelow`) + `SourceChildId` on
+`FMixtormatGeneratorHeightColorRamp`; `Source` / `SourceChildIndex` on
+`FGeneratorHeightColorRampRenderData`; gather resolves the referenced module
+using the HeightBlend rule (earlier modules only, texture presence verified by
+lookup); the pass resolves the source texture on the C++ side and the shader
+binds one `SourceHeight` SRV; inspector gained a Source menu row and a Module
+chip row (ModuleRef only, earlier generators only).
+
+Dropped from the original sketch: `SourceChannel` (no dead reserved fields —
+field-agnostic sources are Phase F) and `SourceLayerId` (modules are same-layer).
+
+- `FMixtormatGeneratorHeightColorRamp`: `Source` enum + `SourceChildId` only.
+- `MixtormatGeneratorGather.cpp`: gather the enum + resolved child index.
+- `FGeneratorHeightColorRampRenderData`: carry the resolved source.
 - `AddGeneratorHeightColorRampPass` / call site: bind the selected texture.
-  Bind a valid dummy for RDG on every unused path.
-- Inspector `BuildHeightColorRampControls`: a compact source dropdown.
-- Keep the published field name `"Color"`; keep defaults = running chain.
+- Inspector `BuildHeightColorRampControls` + `BuildColorRampSourceMenu`.
+- Keep the published field name `"Color"`; defaults = running chain, so existing
+  assets are unchanged.
 
 ### Phase B — Gate (scoped mask chain)
 - `MixtormatChildScope.cpp` `CanOwnScopedMasks`: add `HeightColorRamp`.

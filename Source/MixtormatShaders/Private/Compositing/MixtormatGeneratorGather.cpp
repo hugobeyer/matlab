@@ -377,6 +377,22 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
 		Out.OutputName = FName(TEXT("Color"));
+		Out.Source = static_cast<int32>(Ramp.Source);
+		// Resolve the referenced module to this layer's child index, the same rule Height Blend
+		// follows: only an earlier module can have produced a height by the time this sublayer
+		// runs. Anything unresolvable reads the running height, the module's defined neutral.
+		Out.SourceChildIndex = INDEX_NONE;
+		if (Ramp.Source == EMixtormatColorRampSource::ModuleRef && Ramp.SourceChildId.IsValid())
+		{
+			for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
+			{
+				if (Layer.Children[Index].ChildId == Ramp.SourceChildId)
+				{
+					Out.SourceChildIndex = Index;
+					break;
+				}
+			}
+		}
 		const MixtormatColorRampMath::FGpuPayload Payload =
 			MixtormatColorRampMath::PrepareGpuPayload(Ramp.Ramp);
 		Out.StopCount = Payload.StopCount;

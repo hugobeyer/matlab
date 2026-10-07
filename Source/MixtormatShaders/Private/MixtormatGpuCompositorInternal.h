@@ -983,10 +983,14 @@ namespace MixtormatGpuCompositor
 		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> CurvePoints;
 	};
 
-	// Generator-layer Height Color Ramp sublayer, carrying the prepared colour-ramp GPU payload.
+	// Generator-layer Height Color Ramp sublayer, carrying the prepared colour-ramp GPU payload
+	// and the resolved source: Source is an EMixtormatColorRampSource value; SourceChildIndex is
+	// the referenced module resolved to this layer's child index (ModuleRef only).
 	struct FGeneratorHeightColorRampRenderData
 	{
 		FName OutputName;
+		int32 Source = 0;
+		int32 SourceChildIndex = INDEX_NONE;
 		uint32 StopCount = 0;
 		uint32 Interpolation = 0;
 		TStaticArray<float, FMixtormatColorRamp::MaxStops> Positions;

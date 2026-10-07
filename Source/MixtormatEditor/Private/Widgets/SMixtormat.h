@@ -527,6 +527,7 @@ private:
 	FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp();
 	const FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp() const;
 	TSharedRef<SWidget> BuildHeightColorRampControls();
+	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();

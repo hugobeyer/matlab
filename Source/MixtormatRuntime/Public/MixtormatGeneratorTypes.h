@@ -716,6 +716,21 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 	float Amount = 1.0f;
 };
 
+// Which scalar height a Color Ramp module reads. Serialized by value: append, never reorder.
+UENUM(BlueprintType)
+enum class EMixtormatColorRampSource : uint8
+{
+	// The running generator height: the chain, exactly as the module behaved before this existed.
+	GeneratorRunning UMETA(DisplayName = "Generator Height"),
+	// An earlier module in this layer, by child id. A missing or later reference reads the
+	// running height rather than failing.
+	ModuleRef UMETA(DisplayName = "Module"),
+	// The layer's own input height, resolved before any generator module runs.
+	LayerHeight UMETA(DisplayName = "Layer Height"),
+	// The accumulated height composited below this layer. Empty on the bottom layer.
+	CompositeBelow UMETA(DisplayName = "Composite Below")
+};
+
 // A Generator-layer sublayer that maps the running signed height through a reusable colour ramp
 // and publishes the result as a colour field for later albedo/material use.
 USTRUCT(BlueprintType)
@@ -734,6 +749,16 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bEnabled = true;
+
+	// Where the ramp's scalar comes from. The default preserves the original contract: the
+	// running generator height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
+	EMixtormatColorRampSource Source = EMixtormatColorRampSource::GeneratorRunning;
+
+	// The module referenced by ModuleRef. Only an earlier module can have produced a height by
+	// the time this sublayer runs, so a later or missing id reads the running height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
+	FGuid SourceChildId;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	FMixtormatColorRamp Ramp;

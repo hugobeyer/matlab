@@ -983,6 +983,51 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 		[Panel]];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	if (!GetSelectedHeightColorRamp()) { return Menu.Build(); }
+	Menu.Item(LOCTEXT("ColorRampSourceModuleNonePick", "None"), nullptr,
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			if (FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp())
+			{
+				R->SourceChildId.Invalidate();
+				RefreshLayeredPreview();
+			}
+		}));
+	if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		// Only earlier modules: this sublayer runs in chain order, so a later module has not
+		// produced a height yet and referencing it would silently read the running chain. The
+		// order filter applies only when the selection actually resolves to this ramp in this
+		// array; otherwise list everything, the same as Height Blend's source menu.
+		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[SelectedLayerIndex].Children;
+		const int32 SelfIndex = GetSelectedChildIndex();
+		const bool bFilterByOrder = Children.IsValidIndex(SelfIndex)
+			&& Children[SelfIndex].Type == EMixtormatLayerChildType::HeightColorRamp;
+		for (int32 Index = 0; Index < Children.Num(); ++Index)
+		{
+			if (bFilterByOrder && Index >= SelfIndex) { break; }
+			const FMixtormatLayerChild& Child = Children[Index];
+			if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+			const FGuid ChildId = Child.ChildId;
+			Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([this, ChildId]()
+				{
+					if (FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp())
+					{
+						R->SourceChildId = ChildId;
+						R->Source = EMixtormatColorRampSource::ModuleRef;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}));
+		}
+	}
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 {
 	const auto Ramp = [this]() { return GetSelectedHeightColorRamp(); };
@@ -1004,6 +1049,52 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 				RefreshLayeredPreview();
 			}
 		})));
+
+	// Where the ramp's scalar comes from. Generator Height keeps the original chain behaviour;
+	// Module is an earlier generator's published height; Layer Height is this layer's resolved
+	// input; Composite Below is the height accumulated under this layer.
+	const auto RampSourceIs = [Ramp](const EMixtormatColorRampSource Source)
+	{
+		const FMixtormatGeneratorHeightColorRamp* R = Ramp();
+		return R && R->Source == Source;
+	};
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
+		LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
+		LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
+		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+	AddSliderRow(Panel,
+		SNew(SBox)
+		.Visibility_Lambda([RampSourceIs]()
+		{
+			return RampSourceIs(EMixtormatColorRampSource::ModuleRef)
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::MakeTrailing(
+				LOCTEXT("ColorRampSourceModule", "Module"),
+				MixtormatRow::MakeChip(
+					TAttribute<FText>::CreateLambda([this]()
+					{
+						const FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp();
+						if (!R || !R->SourceChildId.IsValid())
+						{
+							return LOCTEXT("ColorRampSourceModuleNone", "None");
+						}
+						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+						{
+							for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
+							{
+								if (Child.ChildId == R->SourceChildId)
+								{
+									return GetLayerChildName(Child);
+								}
+							}
+						}
+						return LOCTEXT("ColorRampSourceModuleMissing", "Missing");
+					}),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildColorRampSourceMenu)),
+				LOCTEXT("ColorRampSourceModuleHint", "The earlier module whose signed height this ramp maps. Picking one switches Source to Module; a missing reference reads the running height."))
+		]);
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ColorRampHeading", "COLOR RAMP")).InitiallyExpanded(true)

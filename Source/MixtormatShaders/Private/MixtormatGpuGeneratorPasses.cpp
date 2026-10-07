@@ -743,7 +743,7 @@ public:
 		SHADER_PARAMETER(uint32, Interpolation)
 		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -870,8 +870,9 @@ namespace
 		return Out;
 	}
 
-	// Generator-layer Height Color Ramp sublayer. Returns the published colour field.
-	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
+	// Generator-layer Height Color Ramp sublayer. SourceHeight is whichever height the module's
+	// resolved source names; the C++ side resolves that, the pass is a pure map.
+	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef SourceHeight,
 		const FGeneratorHeightColorRampRenderData& Ramp)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -889,7 +890,7 @@ namespace
 			P->Positions[Index] = FVector4f(Ramp.Positions[Index], 0.0f, 0.0f, 0.0f);
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
-		P->RunningHeight = RunningHeight;
+		P->SourceHeight = SourceHeight;
 		P->OutColor = GraphBuilder.CreateUAV(Out);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightColorRamp"), Shader, P,
@@ -2355,7 +2356,30 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 		{
-			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RunningHeight, Child.HeightColorRamp);
+			// Resolve the height this ramp maps. The C++ side decides the source so the pass stays
+			// a pure map: the running chain (default), an earlier module's published height, the
+			// layer input, or the height accumulated below this layer. A ModuleRef that resolves
+			// to nothing reads the running chain, which is the module's defined neutral.
+			FRDGTextureRef RampSource = RunningHeight;
+			switch (static_cast<EMixtormatColorRampSource>(Child.HeightColorRamp.Source))
+			{
+			case EMixtormatColorRampSource::ModuleRef:
+				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(
+					Child.HeightColorRamp.SourceChildIndex))
+				{
+					RampSource = *Found;
+				}
+				break;
+			case EMixtormatColorRampSource::LayerHeight:
+				RampSource = LayerCtx.LayerInputHeight;
+				break;
+			case EMixtormatColorRampSource::CompositeBelow:
+				RampSource = Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
+				break;
+			default:
+				break;
+			}
+			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RampSource, Child.HeightColorRamp);
 			const FPublishedField ColorField{
 				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(
