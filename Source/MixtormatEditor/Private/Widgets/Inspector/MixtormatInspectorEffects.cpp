@@ -971,8 +971,11 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroDirectionZHint", "Elevation of the horizon direction. Keep this modest for a grazing, texture-friendly horizon.")),
 		MakeErosionSlider(LOCTEXT("EroSmoothing", "Horizon Feather"), &FMixtormatLayerEffect::ErosionSmoothing, 0.0, 1.0, 0.65, 0.01,
 			LOCTEXT("EroSmoothingHint", "Softens the horizon visibility transition. Higher values reduce hard, noisy exposure boundaries."))));
-	AddSliderRow(Panel, MakeErosionSlider(LOCTEXT("EroSlopePower", "Exposure Shape"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 1.0, 1.0, 0.01,
-			LOCTEXT("EroSlopePowerHint", "Shapes how strongly exposed horizon samples seed the wear envelope.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeErosionSlider(LOCTEXT("EroSlopePower", "Exposure Shape"), &FMixtormatLayerEffect::ErosionSlopePower, 0.1, 1.0, 1.0, 0.01,
+			LOCTEXT("EroSlopePowerHint", "Shapes how strongly exposed horizon samples seed the wear envelope.")),
+		MakeErosionSlider(LOCTEXT("EroSecondaryAmount", "Secondary Seeds"), &FMixtormatLayerEffect::ErosionSecondaryAmount, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("EroSecondaryAmountHint", "Adds flow-noise and alligator-like seeds along horizon boundaries. Higher values create more eikonal seed patches; zero uses horizon seeds only."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroDeposit", "Deposit"), &FMixtormatLayerEffect::ErosionDeposit, 0.0, 4.0, 0.25, 0.01,
 			LOCTEXT("EroDepositHint", "Refill-only downstream smear, capped at the original height. Zero disables the deposit tail.")),
@@ -980,7 +983,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroPreserveFlatsHint", "Minimum horizon exposure needed to seed wear. Raise it to restrict carving to the brightest-facing features."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroVariation", "Variation"), &FMixtormatLayerEffect::ErosionVariation, 0.0, 1.0, 0.18, 0.01,
-			LOCTEXT("EroVariationHint", "Subtle seeded broad noise and Voronoi depth variation on the seed amount. The horizon and eikonal profile stay smooth; zero gives uniform wear.")),
+			LOCTEXT("EroVariationHint", "Subtle seeded depth variation in each seed. Use Secondary Seeds to control how many extra boundary seeds are created.")),
 		MakeErosionSliderInt(LOCTEXT("EroSeed", "Seed"), &FMixtormatLayerEffect::ErosionSeed, 0.0, 9999.0, 1,
 			LOCTEXT("EroSeedHint", "Seeds the broad wear variation and Voronoi depth pattern."))));
 

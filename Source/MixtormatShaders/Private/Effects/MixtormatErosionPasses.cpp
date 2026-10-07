@@ -32,6 +32,7 @@ public:
 		SHADER_PARAMETER(float, Deposit)
 		SHADER_PARAMETER(float, PreserveFlats)
 		SHADER_PARAMETER(float, Smoothing)
+		SHADER_PARAMETER(float, SecondaryAmount)
 		SHADER_PARAMETER(float, Variation)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(uint32, UsePlacementMask)
@@ -384,6 +385,7 @@ namespace MixtormatGpuCompositor
 				Parameters->Deposit = Ero.ErosionDeposit;
 				Parameters->PreserveFlats = Ero.ErosionPreserveFlats;
 				Parameters->Smoothing = Ero.ErosionSmoothing;
+				Parameters->SecondaryAmount = Ero.ErosionSecondaryAmount;
 				Parameters->Variation = Ero.ErosionVariation;
 				Parameters->Seed = (uint32)Ero.ErosionSeed;
 				// Overwritten per iteration below; 1 is the accumulate-at-home stride the

@@ -43,6 +43,8 @@ void GatherErosion(FEffectRenderData& EffectData, const FMixtormatLayerEffect& L
 	EffectData.ErosionDeposit = EffectFloat(TEXT("ErosionDeposit"), LayerEffect.ErosionDeposit);
 	EffectData.ErosionPreserveFlats = EffectFloat(TEXT("ErosionPreserveFlats"), LayerEffect.ErosionPreserveFlats);
 	EffectData.ErosionSmoothing = EffectFloat(TEXT("ErosionSmoothing"), LayerEffect.ErosionSmoothing);
+	EffectData.ErosionSecondaryAmount = EffectFloat(
+		TEXT("ErosionSecondaryAmount"), LayerEffect.ErosionSecondaryAmount);
 	EffectData.ErosionVariation = EffectFloat(TEXT("ErosionVariation"), LayerEffect.ErosionVariation);
 	EffectData.ErosionSeed = EffectInt(TEXT("ErosionSeed"), LayerEffect.ErosionSeed);
 	EffectData.ErosionMaskTiling = static_cast<float>(

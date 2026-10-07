@@ -42,6 +42,7 @@ float SlopePower;
 float Deposit;
 float PreserveFlats;
 float Smoothing;
+float SecondaryAmount;
 float Variation;
 // @param ErosionSeed
 uint Seed;
@@ -86,16 +87,20 @@ float ErosionVariationField(float2 UV, uint Seed)
 	[unroll]
 	for (int Octave = 0; Octave < 2; ++Octave)
 	{
-		const float Period = 8.0f * (float)(1 << Octave);
-		const float2 P = UV * Period;
+		const int LatticePeriod = 8 * (1 << Octave);
+		const float2 P = UV * (float)LatticePeriod;
 		const int2 I = (int2)floor(P);
 		const float2 F = P - (float2)I;
 		const float2 S = F * F * (3.0f - 2.0f * F);
 		const uint OctaveSeed = Seed + (uint)Octave * 977u;
-		const float A = ErosionHashCell(I, OctaveSeed);
-		const float B = ErosionHashCell(I + int2(1, 0), OctaveSeed);
-		const float C = ErosionHashCell(I + int2(0, 1), OctaveSeed);
-		const float D = ErosionHashCell(I + int2(1, 1), OctaveSeed);
+		const int2 IW = (I % LatticePeriod + LatticePeriod) % LatticePeriod;
+		const int2 IX = (IW + int2(1, 0)) % LatticePeriod;
+		const int2 IY = (IW + int2(0, 1)) % LatticePeriod;
+		const int2 IXY = (IW + int2(1, 1)) % LatticePeriod;
+		const float A = ErosionHashCell(IW, OctaveSeed);
+		const float B = ErosionHashCell(IX, OctaveSeed);
+		const float C = ErosionHashCell(IY, OctaveSeed);
+		const float D = ErosionHashCell(IXY, OctaveSeed);
 		Field += Amplitude * lerp(lerp(A, B, S.x), lerp(C, D, S.x), S.y);
 		Total += Amplitude;
 		Amplitude *= 0.5f;
@@ -250,17 +255,40 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float SeedExposure = pow(
 			saturate((Exposure - Threshold) / max(1.0f - Threshold, 1.0e-4f)),
 			max(SlopePower, 0.01f));
+
+		// Angular flow noise is bent by the source height and its slope along the light
+		// tangent. The warp stays periodic with UV, while the horizon band concentrates
+		// secondary eikonal seeds on exposed/sheltered boundaries.
+		const float2 PerpDir = float2(-TangentDir.y, TangentDir.x);
+		const float2 BendStep = TangentDir * ((float)Span / Resolution);
+		const float HeightForward = SourceHeight.SampleLevel(
+			LinearWrapSampler, UV + BendStep, 0.0f);
+		const float HeightBack = SourceHeight.SampleLevel(
+			LinearWrapSampler, UV - BendStep, 0.0f);
+		const float HeightBend = 0.5f * (HeightForward - HeightBack);
+		const float WarpNoise = ErosionVariationField(UV * 3.0f, Seed + 8111u) - 0.5f;
+		const float2 AngularUV = UV
+			+ TangentDir * ((Source - 0.5f) * 0.06f + HeightBend * 0.25f)
+			+ PerpDir * WarpNoise * 0.025f;
+		const float FlowNoise = ErosionVariationField(AngularUV * 3.0f, Seed + 1237u);
+		const float CellDepth = ErosionVoronoiDepth(AngularUV * 2.0f, Seed + 971u);
+		const float SecondaryPattern = smoothstep(0.38f, 0.72f, lerp(FlowNoise, CellDepth, 0.45f));
+		const float HorizonBandWidth = HorizonFeather + (0.10f + 0.35f * saturate(SecondaryAmount)) / 256.0f;
+		const float HorizonBand = 1.0f - smoothstep(
+			HorizonFeather, HorizonBandWidth, abs(MaxHorizonSlope - HorizonLimit));
+		const float SecondarySeed = saturate(SecondaryAmount) * HorizonBand * SecondaryPattern;
+		const float CombinedSeed = saturate(SeedExposure + SecondarySeed);
+
 		const float BroadNoise = ErosionVariationField(UV, Seed + 4099u) * 2.0f - 1.0f;
-		const float CellDepth = ErosionVoronoiDepth(UV, Seed);
 		const float ChippedDepth = lerp(1.0f, 0.9f + 0.2f * CellDepth, saturate(Variation));
 		const float Hardness = max(0.0f, 1.0f + BroadNoise * Variation * ErosionVariationScale);
 		const float SeedDepth = max(Depth, 0.0f) * 0.05f
 			* (1.0f - exp(-max(Amount, 0.0f)))
-			* SeedExposure * ChippedDepth * Hardness * Gate;
+			* CombinedSeed * ChippedDepth * Hardness * Gate;
 		OutputHeight[Pixel] = Source - SeedDepth;
 		if (WriteRidge != 0u)
 		{
-			OutputRidge[Pixel] = saturate(SeedExposure) * Gate;
+			OutputRidge[Pixel] = CombinedSeed * Gate;
 		}
 		return;
 	}

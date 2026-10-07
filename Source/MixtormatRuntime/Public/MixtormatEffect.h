@@ -693,7 +693,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionSmoothing = 0.65f;
 
-	// Subtle seeded tileable noise and Voronoi hardness variation on the eikonal seed depth.
+	// Secondary seed density from angular flow noise around horizon boundaries.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ErosionSecondaryAmount = 0.5f;
+
+	// Seeded tileable noise and Voronoi hardness variation on the eikonal seed depth.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ErosionVariation = 0.18f;
 

@@ -426,6 +426,7 @@ namespace MixtormatGpuCompositor
 		float ErosionDeposit = 0.25f;
 		float ErosionPreserveFlats = 0.002f;
 		float ErosionSmoothing = 0.65f;
+		float ErosionSecondaryAmount = 0.5f;
 		float ErosionVariation = 0.18f;
 		int32 ErosionSeed = 1;
 		FTextureRHIRef ErosionPlacementMask;
