@@ -3,7 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatParameterTypes.h"
+#include "MixtormatLayerTypes.h"
+#include "UObject/Class.h"
 #include "MixtormatParameterDefinition.h"
 
 // The plugin-owned authoring database: persistent overrides of an authoring setup --

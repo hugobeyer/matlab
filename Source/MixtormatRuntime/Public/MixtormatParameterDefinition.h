@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatParameterTypes.h"
 #include "UObject/NameTypes.h"
 
 // The runtime parameter CONTRACT: hard validity bounds and the shader's mathematical

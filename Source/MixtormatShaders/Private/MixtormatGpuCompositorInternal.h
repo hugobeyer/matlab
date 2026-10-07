@@ -9,7 +9,7 @@
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMask.h"
 #include "MixtormatMaskShaping.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 #include "MixtormatParameterDefinition.h"
 #include "RendererInterface.h"
 #include "RenderGraphBuilder.h"

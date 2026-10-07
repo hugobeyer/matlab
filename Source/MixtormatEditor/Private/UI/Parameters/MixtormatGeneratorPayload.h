@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "MixtormatMaterial.h"
+#include "MixtormatGeneratorTypes.h"
+#include "UObject/Class.h"
 
 namespace MixtormatGeneratorPayload
 {

@@ -3,6 +3,7 @@
 #include "Compositing/MixtormatLayerGather.h"
 
 #include "Compositing/MixtormatComposeHash.h"
+#include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
 #include "MixtormatParameterDefinition.h"
 #include "MixtormatReliefScaling.h"

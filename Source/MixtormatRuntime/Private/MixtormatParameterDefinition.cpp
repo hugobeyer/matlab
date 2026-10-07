@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatParameterDefinition.h"
+#include "MixtormatLayerTypes.h"
 #include "MixtormatReliefScaling.h"
 
 #include "Misc/AssertionMacros.h"

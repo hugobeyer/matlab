@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 
 // What kind of container OwnerId names. A child's own FGuid fields (SourceLayerId,
 // Mask.PublishedSourceLayerId, ...) already double as either a LayerId or a GroupId depending on

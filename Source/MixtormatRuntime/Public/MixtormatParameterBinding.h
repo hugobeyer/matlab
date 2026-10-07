@@ -3,7 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
+#include "MixtormatParameterTypes.h"
+#include "UObject/Class.h"
 
 // What a parameter address is allowed to name.
 //

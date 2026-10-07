@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 
 struct FMixtormatLayer;
 struct FMixtormatLayerChild;

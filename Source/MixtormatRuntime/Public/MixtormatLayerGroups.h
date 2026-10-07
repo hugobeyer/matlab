@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 
 // Groups resolve to ordinary layers before anything renders.
 //

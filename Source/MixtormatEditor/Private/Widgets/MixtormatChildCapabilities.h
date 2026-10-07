@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 #include "MixtormatGpuCompositor.h"
 
 // One output a child can publish, and everything downstream needs to know about it: whether it

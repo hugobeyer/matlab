@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MixtormatMaterial.h"
+#include "MixtormatLayerTypes.h"
 
 // One lookup for ScopeOwnerChildId. Editor placement and gather evaluation both use this so a
 // GUID the UI still shows cannot evaluate as a different owner, or as a layer-wide mask.
