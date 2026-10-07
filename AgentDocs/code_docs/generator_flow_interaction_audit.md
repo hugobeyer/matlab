@@ -59,13 +59,17 @@ another generator's output, and what is missing to make that possible. Companion
 - Missing/incomplete reference sources fail silently (L2264–2265).
 - Generic scalar/vector reference kinds (Scalar01, ScalarSigned, SDF, Vector2) have no
   destination consumer (L2290–2294).
-- Comment vs code, unresolved statically: L1282–1284 says published masks/IDs stay
-  undeformed, but `RemapGeneratorBundle` (L950–967) remaps `NamedMasks` and `RegionIds`
-  after a non-carve apply (L1552–1560).
+- Confirmed remap path: after an active non-carve apply, `RemapGeneratorBundle`
+  (L950–967, L1545–1564) remaps IDs, named masks, centre UV, orientation and boundary
+  distances. Height and coverage are updated separately by the apply. The contrary
+  masks/IDs/original-boundary comment at L1282–1284 is stale, not unresolved behavior.
+- Pebbles coverage is moved/published, but does not gate shared height combine:
+  `AddGeneratorModuleCombine` binds only RunningHeight/ModuleHeight (L788–812), and
+  `MixtormatGeneratorBundle.usf` stage 9 adds them (L69–72).
 
 ## 3. Per-generator status
 
-| Generator | Own flow tools | Publishes flow/UV | Consumes another generator's flow |
+| Generator | Own flow tools | Generator-owned flow/UV outputs (excludes children) | Consumes another generator's flow |
 |---|---|---|---|
 | Strata Carver | Yes | No (publishes bed IDs/position/random; boundary field is internal) | No |
 | Rock Formation | Yes | No | No |
@@ -103,10 +107,10 @@ Value/Gradient and any out-of-bundle fields are not covered.
 
 1. Pass `LayerCtx.ReferencedUV` into `AddStrataCarverPasses` as new shader uniforms
    (`ReferencedUVEnabled`, `ReferencedUVField`); no new UPROPERTY.
-2. In `MixtormatStrataCarver.usf`, warp the destination UV by the flow displacement
-   (toroidal) before `MixtormatGeneratorUV`; transform the displacement through placement
-   (`MixtormatGeneratorSourceVector`, `MixtormatGeneratorPlacement.ush` L24–30) so the
-   integer bedding lattice stays periodic.
+2. In `MixtormatStrataCarver.usf`, apply a toroidal displacement before placement/bedding,
+   folds and joints. Choose one coordinate contract: warp destination UV before
+   `MixtormatGeneratorUV`, or transform displacement into generator space once; never both.
+   Preserve the periodic integer bedding lattice.
 3. Chain the flow Jacobian into `StrikeGradient`/`SGradient`, the bend terms, and
    Height Follow (including its source taps).
 4. Keep mask/ID influence sampling at the unwarped destination UV (flow-tool semantics:
@@ -115,9 +119,11 @@ Value/Gradient and any out-of-bundle fields are not covered.
 Caveats: sampled flow and boundary distances remain approximations; "structurally exact"
 is too strong.
 
-Recommendation: B for Strata Carver (one shader change, all four outputs stay mutually
-consistent by construction); A remains the right tool for generators whose bundle is
-already flow-native (Rock, Pebbles).
+Candidate direction: B for Strata Carver to move geological structure and derive aligned
+outputs, subject to Jacobian/filtering correctness. It requires shader parameter declarations,
+GPU bindings and dispatch changes, not just one shader edit. A is a completed-field option
+for other generators, but needs typed output handling. Neither is approved or implemented;
+layer-wide ReferencedUV is not an explicit per-generator input socket.
 
 ## 5. Inspector / authoring findings
 
@@ -144,13 +150,16 @@ already flow-native (Rock, Pebbles).
 Fixed in this pass:
 
 - `GENERATORS.md` L20–22 — Rock-only claim corrected to the four eligible owners.
-- `flow_generation_core.md` — status (owner list, dispatch name), owners bullet and
-  limitations bullet corrected; the mask/ID/boundary remap claim is now marked disputed
-  (see §2).
+- `flow_generation_core.md` — current owners/dispatch, confirmed remapping and ungated
+  shared height combine corrected; original integration/milestone text marked historical.
+- This audit — generator-owned vs child-owned outputs clarified; option B includes GPU
+  bindings/dispatch and a single placement transform, not a shader-only change.
+- Scope is these routed docs only; no repository-wide documentation consistency audit.
 
 Still open (text inside code files, not edited):
 
 - `MixtormatEffect.h` L55–57 comment says Rock-only.
+- `MixtormatGpuGeneratorPasses.cpp` L1282–1284 claims undeformed masks/IDs/original boundary.
 - Inspector tooltip "Generator layers support every kind" (`MixtormatInspectorGenerators.cpp`
   L39) and the paste hint (`MixtormatLayerClipboard.cpp` L401–405) are misleading —
   `CanAddGeneratorFlow` requires an eligible generator child (`MixtormatLayerChildren.cpp`
@@ -187,7 +196,50 @@ folding deformation into height scaling. Warping must carry IDs/UVs with it (sec
 - Constraints: keep tileable; preserve signed height, bed IDs, bed position, bed random,
   mask/ID influence.
 
-## 9. Requires Unreal (not verified statically)
+## 9. Smallest implementation plan (approval required)
+
+No code changes are authorized by this plan. Keep existing tools, gates and serialized
+behavior; implement in small, separately reviewable slices.
+
+1. **Typed per-generator inputs and order.** Reuse typed reference identity/validation,
+   adding explicit source/target connections rather than treating layer-wide ReferencedUV
+   as a socket. Earlier layers and earlier same-layer generators only; reject self, forward
+   and cyclic dependencies. Define whether each source is native or post-normalization
+   signed height, and which ordered module revision its outputs represent. Track dependencies
+   for cache invalidation; compose ordered warp maps, not layer-wide last-reference wins.
+2. **Inspector and parameter contract.** Add kind-specific reference FlowAmount,
+   FlowTraceLength and FlowSteps rows for the existing controls. For each new input/control,
+   trace Runtime/defaults → gather/render data → GPU declaration/binding/dispatch → shader
+   tags → inspector metadata/authoring. Expose source, target, stage and order; disable
+   unavailable modes with a reason. Preserve existing flow-tool controls as distinct rows.
+3. **Height Push, separate from Warp.** Define an independently ordered Height Push module
+   with an explicit signed-height source and target. Strata's structural use shifts bedding,
+   not Height Scale or blend; retain existing composite-below Height Follow behavior unless
+   explicitly changed. Define target semantics for other generators before enabling them;
+   never silently substitute height addition for structural pushing. Height Blend and Flow
+   Carve remain separate operations. Restore Strata mask/ID bindings and its missing
+   IDInfluence row without changing defaults.
+4. **Warp across all six generators.** Strata: structural coordinate path before bedding,
+   folds and joints, with one placement transform and chained Jacobians/footprints.
+   Rock Formation, Pebbles and Cracks: typed completed-bundle path first.
+   Cliff Strata: completed-bundle target without enabling unsupported flow ownership or
+   treating internal OutFlow as a published Flow. Noise: include separately published
+   Value/Gradient and any IDs. Gradient remains Vector2, not automatically Flow.
+5. **Aligned typed outputs.** Warp signed Height, coverage, IDs, UV centres/orientation,
+   named masks and boundary fields together. IDs/per-region random use discrete sampling;
+   bed position uses seam-aware sampling tied to bed identity. Chain gradients/footprints
+   through Jacobians and correct distance metrics. Preserve tiling, signed values, bed
+   position/random and destination-space mask/ID influence. Declare distance sign/units
+   and validity; do not promote approximate distances to exact SDFs.
+6. **Validation, only with consent.** First static end-to-end parameter and ordering checks;
+   then approved build/Unreal tests for all six targets, masks/IDs, source disablement,
+   saved defaults, seam continuity, signed height, non-square filtering and cache updates.
+   Structural warp does not by itself fix the carried-over seam defects or joint prominence.
+
+Decision before implementation: approve the explicit input/module contract and Strata-first
+slice. Do not introduce an interim layer-wide warp path that will later need replacing.
+
+## 10. Requires Unreal (not verified statically)
 
 - Stage-8 trace cost at 4K × Steps=16 per consuming layer.
 - Prefix-cache invalidation when a generator newly depends on another layer's field.

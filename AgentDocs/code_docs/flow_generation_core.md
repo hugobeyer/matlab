@@ -1,4 +1,4 @@
-# Mixtormat — Flow Generation Tools (core proposal)
+# Mixtormat — Flow Generation Tools (current implementation and historical proposal)
 
 Status: implemented, unvalidated in Unreal. Shape Deform, Generator Flow and Flow Carve are
 effect types 9-11, valid only scoped under a generator that can own them
@@ -25,18 +25,29 @@ As built:
   shader only guards defined math (at least one step). Flow Carve Depth is a gain on the
   gathered drop (1 = down to the strongest distance-weighted sample), not a cap.
 - Owners: Rock Formation (RG boundary field), Pebbles (edge distance packed with its 1e9
-  no-hit sentinel as invalid; its coverage is moved with the height so the pebble combine
-  gates moved height by moved coverage; a Deposit adds the raised pixels to coverage),
+  no-hit sentinel as invalid; coverage moves with height and is published as PebbleCoverage;
+  Deposit extends coverage, but the shared module combine does not gate height by coverage),
   Strata Carver (bed-interface distance derived from BedPosition, bundle stage 8) and
   Cracks (piece-border distance).
 - Trace sign: Generator Flow traces upstream (sign via Warp Strength). Flow Carve Groove gathers
   downstream (edges slump toward lower ground ahead, like `carve.cl`); Deposit gathers upstream.
-- Limitations: Depth is in the owner's field height units (before Height Scale); non-square
-  outputs measure distance in UV, not texels. The earlier claim that published masks/IDs and
-  the boundary field stay undeformed is disputed: `RemapGeneratorBundle` remaps them after
-  each non-carve apply (`MixtormatGpuGeneratorPasses.cpp` L950-967, L1552-1560), while the
-  comment at L1282-1284 says the opposite. Unresolved statically; see
-  `generator_flow_interaction_audit.md` §2.
+- Output alignment: after an active non-carve apply, `RemapGeneratorBundle` remaps IDs,
+  named masks, centre UV, orientation and boundary distances (`MixtormatGpuGeneratorPasses.cpp`
+  L950–967, L1545–1564). The apply updates Height and coverage separately. The contrary code
+  comment at L1282–1284 is stale; this call path is confirmed statically.
+- Shared combine: `AddGeneratorModuleCombine` binds RunningHeight and ModuleHeight only
+  (L788–812); bundle shader stage 9 adds them without coverage gating.
+- Limitations: Depth is in the owner's native field units (before Height Scale); non-square
+  outputs measure distance in UV, not texels. BedPosition/BedRandom use bilinear scalar
+  remapping, and separately published Noise fields are outside this path. See
+  `generator_flow_interaction_audit.md` §2/§8.
+
+## Historical proposal (not a current implementation checklist)
+
+The sections below preserve the original design, integration candidates and milestones.
+Claims such as “no existing file yet” and “publishing ... can follow” describe that earlier
+proposal, not the current implementation summarized above. Original paths and validation
+counts are historical; current owners, dispatch and stages are recorded above and in the audit.
 
 ## Goal
 
@@ -46,8 +57,9 @@ and optional mask/height slopes and is not this tool. Keep existing Flow Warp be
 
 ## Existing files and integration points
 
-Paths below are relative to the plugin root. These files exist; none implements the proposed
-Generator Flow solve yet.
+Historical integration map: at proposal time these files existed, but did not yet implement
+Generator Flow. The current implementation now exists (see the status and code links above).
+Paths in the table were intended to be plugin-root-relative, not current routing guidance.
 
 | Concern | Existing file(s) | Integration point |
 | --- | --- | --- |
@@ -58,7 +70,7 @@ Generator Flow solve yet.
 | Layer items and controls | [`Source/MixtormatEditor/Private/Widgets/SMixtormat_Layers.cpp`](../Source/MixtormatEditor/Private/Widgets/SMixtormat_Layers.cpp), [`Source/MixtormatEditor/Private/Widgets/SMixtormat_Inspector.cpp`](../Source/MixtormatEditor/Private/Widgets/SMixtormat_Inspector.cpp) | Add scoped item placement/menu entries and inspector controls. Existing Flow Warp currently scopes to mask/effect or layer, not a generator. |
 | Preview routing | [`Source/MixtormatShaders/Public/MixtormatGpuCompositor.h`](../Source/MixtormatShaders/Public/MixtormatGpuCompositor.h), [`Source/MixtormatEditor/Private/Widgets/MixtormatChildCapabilities.cpp`](../Source/MixtormatEditor/Private/Widgets/MixtormatChildCapabilities.cpp), [`Source/MixtormatEditor/Private/Widgets/SMixtormat_Preview.cpp`](../Source/MixtormatEditor/Private/Widgets/SMixtormat_Preview.cpp), [`Source/MixtormatShaders/Private/MixtormatGpuDebugPreviewPasses.cpp`](../Source/MixtormatShaders/Private/MixtormatGpuDebugPreviewPasses.cpp) | Define selectable output kinds and preview textures for flow, UV grid, influence and carve mask. |
 
-**New work (no existing file yet):** a shared distance/direction solve and the generator-owned
+**Originally proposed new work (now implemented; see status above):** a shared distance/direction solve and the generator-owned
 deform/carve shaders and passes. Choose their names when implementing those milestones;
 `Docs/openclref/carve.cl` is a COP reference, not a running Mixtormat pass.
 

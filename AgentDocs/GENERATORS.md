@@ -45,9 +45,11 @@ combine. See `code_docs/generator_flow_interaction_audit.md`.
 
 `Shaders/Private/MixtormatGpuGeneratorPasses.cpp`
 
-- `AddGeneratorLayerPasses` (~L2312) — once per Generator layer; walks module
-  children in authored order; each module builds scalar height then blends with
-  the shared HeightBlend into `LayerCtx.LayerInputHeight`.
+- `AddGeneratorLayerPasses` — once per Generator layer; walks module children in
+  authored order. Each generator builds native height, runs its flow tools, then applies
+  shared signed normalization / Height Scale. Shared bundle stage 9 adds module height
+  to running height without coverage gating; explicit Height Blend sublayers are separate.
+  The final running height becomes `LayerCtx.LayerInputHeight`.
 - Dispatch switch (~L2378): `AddStrataCarverPasses`, `AddRockFormationPasses`,
   `AddPebblesPasses`, `AddCracksPasses`, `AddCliffStrataPasses`, Noise.
 - `AddGeneratorModuleCombine` (~L780).
