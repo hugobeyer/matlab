@@ -26,7 +26,7 @@ compiled default (struct initializer / CDO)
   → unsaved developer edit
 ```
 
-- **Compiled default** — the UPROPERTY initializer in `MixtormatMaterial.h`.
+- **Compiled default** — the UPROPERTY initializer in the struct's owning runtime header (`MixtormatLayerTypes.h`, `MixtormatGeneratorTypes.h`, `MixtormatMaskTypes.h`, `MixtormatIdTypes.h`, `MixtormatEffect.h`, …).
 - **UI range** — `meta = (UIMin/UIMax/Delta)` on the UPROPERTY (editor-only).
 - **Authoring override** — `MixtormatParameterAuthoring.*` + the JSON.
 - **Hard bound / sanitize** — `MixtormatParameterDefinition.h` (runtime, ships).
@@ -67,7 +67,7 @@ Never duplicate a default. Never widen a hard bound from the editor.
 
 ## Shader modification checklist
 
-1. Declare the parameter on the struct (`MixtormatMaterial.h`).
+1. Declare the parameter on the struct (its owning runtime header, e.g. `MixtormatLayerTypes.h` / `MixtormatGeneratorTypes.h` / `MixtormatMaskTypes.h`).
 2. Gather it (`Compositing/Mixtormat*Gather.cpp`).
 3. Bind it in the pass (`MixtormatGpu*Passes.cpp`).
 4. Add the uniform + `// @param` tag in the `.usf`/`.ush`.

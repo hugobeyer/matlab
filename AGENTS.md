@@ -16,7 +16,9 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 
 1. Read this file first. Then open **one** `AgentDocs/` file for the subsystem.
 2. Search by exact symbol (`rg`, LSP references) before opening files.
-3. Open line ranges, not whole files. `MixtormatMaterial.h` is ~4,400 lines.
+3. Open line ranges, not whole files. The runtime data model is split by domain:
+   `MixtormatLayerTypes.h` (~680), `MixtormatGeneratorTypes.h` (~890),
+   `MixtormatIdTypes.h` (~845), `MixtormatMaskTypes.h` (~600), `MixtormatEffect.h` (~1,180).
 4. Follow the routing links below; do not re-derive architecture each session.
 
 ## 3. Hard exclusions — never read, search, or edit
@@ -32,7 +34,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 
 | Area | Primary location | Entry points |
 |---|---|---|
-| Runtime data/model | `Source/MixtormatRuntime/Public/MixtormatMaterial.h` | `FMixtormatLayer`, `FMixtormatLayerChild`, `UMixtormatMaterial`, all enums |
+| Runtime data/model | `Source/MixtormatRuntime/Public/MixtormatLayerTypes.h` (aggregation; plus `MixtormatMaterial.h`, `MixtormatMaskTypes.h`, `MixtormatIdTypes.h`, `MixtormatGeneratorTypes.h`, `MixtormatParameterTypes.h`, `MixtormatHeightTypes.h`, `MixtormatEffect.h`) | `FMixtormatLayer`, `FMixtormatLayerChild`, `UMixtormatMaterial`, all enums |
 | Layer composition | `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp` | `EnqueueCompose`, `AddLayerCompositePass` |
 | GPU passes | `Source/MixtormatShaders/Private/MixtormatGpu*Passes.cpp` | `Add*Passes` functions |
 | Shaders | `Shaders/Private/*.usf`, `*.ush` | `IMPLEMENT_GLOBAL_SHADER` sites in `MixtormatShaders` |
@@ -62,7 +64,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 
 ## 6. Navigation recipes
 
-- **Generator parameter?** `MixtormatMaterial.h` (struct) → `MixtormatGeneratorGather.cpp`
+- **Generator parameter?** `MixtormatGeneratorTypes.h` (struct) → `MixtormatGeneratorGather.cpp`
   → `MixtormatGpuGeneratorPasses.cpp` → `Mixtormat<Name>.usf` → `MixtormatInspectorGenerators.cpp`.
 - **Preview feature?** `SMixtormatPreviewViewport.*` → `SMixtormat_Preview.cpp` →
   `MixtormatGpuDebugPreviewPasses.cpp` → `MixtormatDebugPreviewBlit.usf`.

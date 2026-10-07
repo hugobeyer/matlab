@@ -8,10 +8,11 @@ effect (post-composite filter) nor a mask (0..1 coverage).
 
 | Thing | File |
 |---|---|
-| `EMixtormatGeneratorType` | `Runtime/Public/MixtormatMaterial.h` (~L2764) |
-| `FMixtormatGenerator` (payload union) | `MixtormatMaterial.h` (~L3637) |
-| Per-generator structs | `FMixtormatStrataCarver`, `FMixtormatCracks`, `FMixtormatRockFormation`, `FMixtormatPebbles`, `FMixtormatCliffStrata`, `FMixtormatNoise` — all in `MixtormatMaterial.h` |
-| `MixtormatCanOwnGeneratorFlow` | `MixtormatMaterial.h` (~L2782) |
+| `EMixtormatGeneratorType` | `Runtime/Public/MixtormatGeneratorTypes.h` (~L15) |
+| `FMixtormatGenerator` (payload union) | `MixtormatGeneratorTypes.h` (~L853) |
+| Per-generator structs | `FMixtormatStrataCarver`, `FMixtormatCracks`, `FMixtormatRockFormation`, `FMixtormatPebbles`, `FMixtormatCliffStrata`, `FMixtormatNoise` — all in `MixtormatGeneratorTypes.h` |
+| Generator height sublayers | `FMixtormatGeneratorHeightBlend`, `FMixtormatGeneratorHeightCurve`, `FMixtormatGeneratorHeightColorRamp` — `MixtormatGeneratorTypes.h` |
+| `MixtormatCanOwnGeneratorFlow` | `MixtormatGeneratorTypes.h` (~L34) |
 
 Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 `CliffStrata`, `Noise`. Enum is serialized by value — **append, never reorder**.
@@ -22,7 +23,7 @@ scoped under a Rock Formation generator and rewrite its height before combine.
 
 ## Defaults / parameter metadata
 
-- Compiled defaults: the struct initializers in `MixtormatMaterial.h`.
+- Compiled defaults: the struct initializers in `MixtormatGeneratorTypes.h`.
 - UI ranges: `meta = (UIMin/UIMax/Delta)` on the UPROPERTYs, read by
   `Editor/Private/UI/Parameters/MixtormatParameterUiMeta.*`.
 - Authoring overrides: `Config/MixtormatParameterAuthoring.json` via

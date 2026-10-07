@@ -7,8 +7,12 @@ the range, not the file.
 
 | Task | Start here |
 |---|---|
-| Add/change a layer or child field | `Runtime/Public/MixtormatMaterial.h` |
-| Add a child type | `EMixtormatLayerChildType` → `Widgets/MixtormatChildCapabilities.cpp` → `Widgets/Layers/MixtormatLayerChildren.cpp` → inspector → gather |
+| Add/change a layer or child field | `Runtime/Public/MixtormatLayerTypes.h` |
+| Add/change a mask payload | `Runtime/Public/MixtormatMaskTypes.h` |
+| Add/change an ID payload | `Runtime/Public/MixtormatIdTypes.h` |
+| Add/change a generator payload | `Runtime/Public/MixtormatGeneratorTypes.h` |
+| Add/change a parameter/reference/driver type | `Runtime/Public/MixtormatParameterTypes.h` |
+| Add a child type | `EMixtormatLayerChildType` (`MixtormatLayerTypes.h`) → `Widgets/MixtormatChildCapabilities.cpp` → `Widgets/Layers/MixtormatLayerChildren.cpp` → inspector → gather |
 | Add an effect | `Runtime/Public/MixtormatEffect.h` → `Effects/Mixtormat*Passes.cpp` → `Shaders/Private/Mixtormat*.usf` → `Widgets/Inspector/MixtormatInspectorEffects.cpp` |
 | Add a generator | `GENERATORS.md` |
 | Add a mask producer | `MixtormatGpuMaskPasses.cpp` + `Compositing/MixtormatMaskGather.cpp` + `Shaders/Private/MixtormatMask*.usf` |
@@ -28,8 +32,14 @@ the range, not the file.
 
 | Symbol | File |
 |---|---|
-| `FMixtormatLayer`, `FMixtormatLayerChild`, `UMixtormatMaterial` | `Runtime/Public/MixtormatMaterial.h` |
-| `EMixtormatLayerChildType`, `EMixtormatGeneratorType`, `EMixtormatParameterOwnerType` | `Runtime/Public/MixtormatMaterial.h` |
+| `FMixtormatLayer`, `FMixtormatLayerChild`, `FMixtormatLayerGroup`, `EMixtormatLayerChildType`, layer enums | `Runtime/Public/MixtormatLayerTypes.h` |
+| `UMixtormatMaterial`, `FMixtormatFinalSettings`, `MixtormatCompositionReferences` | `Runtime/Public/MixtormatMaterial.h` |
+| `EMixtormatGeneratorType`, `FMixtormatGenerator`, generator payloads, `MixtormatCanOwnGeneratorFlow` | `Runtime/Public/MixtormatGeneratorTypes.h` |
+| `EMixtormatParameterOwnerType`, `FMixtormatParameterAddress`, `FMixtormatParameterBinding`, driver/reference types | `Runtime/Public/MixtormatParameterTypes.h` |
+| `EMixtormatHeightOp`, `FMixtormatHeightBlend` | `Runtime/Public/MixtormatHeightTypes.h` |
+| `FMixtormatMaskLayer`, `FMixtormatGeneratedMask`, `FMixtormatColorIdMask`, `FMixtormatRandomIdMask`, `FMixtormatCraquelure` | `Runtime/Public/MixtormatMaskTypes.h` |
+| `FMixtormatClusterFilter`, `FMixtormatHsvIdFilter`, `FMixtormatPatternFilter`, `FMixtormatIdGroup`, `FMixtormatRampIdFilter`, `FMixtormatUvIdFilter`, `FMixtormatReliefIdFilter`, `FMixtormatBoundaryIdFilter`, `FMixtormatCombineIdFilter` | `Runtime/Public/MixtormatIdTypes.h` |
+| `FMixtormatLayerEffect`, `EMixtormatGradeTonemap`, `EMixtormatStainMode`, `EMixtormatPeelType` | `Runtime/Public/MixtormatEffect.h` |
 | `EMixtormatEffectType`, `MixtormatEffectClassOf` | `Runtime/Public/MixtormatEffect.h` |
 | `MixtormatParameterContracts::*` | `Runtime/Public/MixtormatParameterDefinition.h` |
 | `MixtormatParameterBinding::*` | `Runtime/Public/MixtormatParameterBinding.h` |
@@ -52,7 +62,13 @@ the range, not the file.
 
 | File | ~Lines | Sections / useful symbols |
 |---|---|---|
-| `Runtime/Public/MixtormatMaterial.h` | 4,400 | enums L24–3706; structs L92–3871; `FMixtormatLayer` L3933; `UMixtormatMaterial` L4311 |
+| `Runtime/Public/MixtormatEffect.h` | 1,180 | effect enums + `UMixtormatEffect`; `FMixtormatLayerEffect` L268 |
+| `Runtime/Public/MixtormatGeneratorTypes.h` | 890 | generator enum + payloads; `FMixtormatGenerator` L853 |
+| `Runtime/Public/MixtormatIdTypes.h` | 845 | ID filters; `FMixtormatPatternFilter` L329 |
+| `Runtime/Public/MixtormatLayerTypes.h` | 680 | layer enums; `FMixtormatLayerChild` L164; `FMixtormatLayer` L328 |
+| `Runtime/Public/MixtormatMaskTypes.h` | 600 | mask enums + payloads; `FMixtormatMaskLayer` L90 |
+| `Runtime/Public/MixtormatParameterTypes.h` | 240 | parameter address/reference/driver/binding |
+| `Runtime/Public/MixtormatMaterial.h` | 134 | `FMixtormatFinalSettings` L16; `UMixtormatMaterial` L76 |
 | `Shaders/Private/MixtormatGpuGeneratorPasses.cpp` | 2,400 | `AddGeneratorLayerPasses` L2312; module combine L780 |
 | `Shaders/Private/MixtormatGpuCompositor.cpp` | 1,700 | `RequestComposeInternal` L1685; gather dispatch |
 | `Shaders/Private/MixtormatGpuComposePipeline.cpp` | 1,000 | `EnqueueCompose` L834; final AO/normal L29–73 |

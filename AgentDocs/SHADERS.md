@@ -80,6 +80,7 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 
 ## Adding a shader parameter
 
-Trace the full path: CPU declaration (`MixtormatMaterial.h`) → gather
-(`Compositing/Mixtormat*Gather.cpp`) → dispatch/binding (`MixtormatGpu*Passes.cpp`)
+Trace the full path: CPU declaration (the struct's owning runtime header, e.g.
+`MixtormatLayerTypes.h` / `MixtormatGeneratorTypes.h` / `MixtormatMaskTypes.h`) →
+gather (`Compositing/Mixtormat*Gather.cpp`) → dispatch/binding (`MixtormatGpu*Passes.cpp`)
 → defaults → inspector metadata → `.usf`/`.ush` (+ `// @param` tag).

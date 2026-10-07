@@ -47,16 +47,36 @@ coverage and join the mask chain. See `COMPOSITION.md` and `GENERATORS.md`.
 
 ## Canonical types (Runtime)
 
+The runtime data model is split by domain. `MixtormatMaterial.h` is now a small
+asset/aggregation header; it includes `MixtormatLayerTypes.h`, which pulls in the
+rest. Dependency flow:
+
+```
+ParameterTypes  HeightTypes  MaskTypes  IdTypes  GeneratorTypes  Effect(types)
+        \            |           |          |           /
+         +-----------+-----------+----------+----------+
+                              |
+                         LayerTypes
+                              |
+                      MixtormatMaterial
+```
+
 | Type | File | Notes |
 |---|---|---|
-| `FMixtormatLayer` | `MixtormatMaterial.h` | one stack entry; `LayerId`, children, height/UV/feature fields |
-| `FMixtormatLayerChild` | `MixtormatMaterial.h` | union-ish payload: Mask/Effect/Generator/Id/… by `Type` |
-| `FMixtormatLayerGroup` | `MixtormatMaterial.h` | group; shared children broadcast onto members |
+| `FMixtormatLayer` | `MixtormatLayerTypes.h` | one stack entry; `LayerId`, children, height/UV/feature fields |
+| `FMixtormatLayerChild` | `MixtormatLayerTypes.h` | union-ish payload: Mask/Effect/Generator/Id/… by `Type` |
+| `FMixtormatLayerGroup` | `MixtormatLayerTypes.h` | group; shared children broadcast onto members |
 | `UMixtormatMaterial` | `MixtormatMaterial.h` | the asset; `Layers`, `LayerGroups`, baked outputs |
-| `EMixtormatLayerChildType` | `MixtormatMaterial.h` | child taxonomy (append-only) |
+| `FMixtormatFinalSettings` | `MixtormatMaterial.h` | document-level final AO/normal settings |
+| `EMixtormatLayerChildType` | `MixtormatLayerTypes.h` | child taxonomy (append-only) |
 | `EMixtormatEffectType` | `MixtormatEffect.h` | effect taxonomy (append-only) |
-| `EMixtormatGeneratorType` | `MixtormatMaterial.h` | generator taxonomy (append-only) |
-| `FMixtormatParameterAddress` | `MixtormatMaterial.h` | `(LayerId, ChildId, Owner, Parameter, ValueType)` |
+| `FMixtormatLayerEffect` | `MixtormatEffect.h` | per-child effect payload |
+| `EMixtormatGeneratorType` | `MixtormatGeneratorTypes.h` | generator taxonomy (append-only) |
+| `FMixtormatGenerator` | `MixtormatGeneratorTypes.h` | generator payload union |
+| `EMixtormatHeightOp`, `FMixtormatHeightBlend` | `MixtormatHeightTypes.h` | shared height-combine block |
+| `FMixtormatMaskLayer`, `FMixtormatGeneratedMask`, `FMixtormatColorIdMask`, `FMixtormatRandomIdMask`, `FMixtormatCraquelure` | `MixtormatMaskTypes.h` | mask payloads |
+| `FMixtormatClusterFilter`, `FMixtormatPatternFilter`, `FMixtormatIdGroup`, … | `MixtormatIdTypes.h` | ID pipeline payloads |
+| `FMixtormatParameterAddress`, `FMixtormatParameterBinding` | `MixtormatParameterTypes.h` | parameter/reference/driver infrastructure |
 | `FMixtormatParameterContract` | `MixtormatParameterDefinition.h` | sparse hard bounds / normalization / saturate |
 | `FMixtormatOutputReference` | `MixtormatOutputReference.h` | published-field reference |
 | `FMixtormatMaskShaping` | `MixtormatMaskShaping.h` | shared mask shaping block (embed) |
