@@ -3,6 +3,10 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatOverlayPanel.h"
 #include "InputCoreTypes.h"
+#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SNullWidget.h"
@@ -164,6 +168,44 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingPanelStack()
 			SAssignNew(FloatingPanelFrontSlot, SBox)
 			.Visibility(EVisibility::SelfHitTestInvisible)
 			[bLeftPanelInFront ? LeftPanelOverlayFrame.ToSharedRef() : InspectorOverlayFrame.ToSharedRef()]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::MakeOverlayFitButton(FMixtormatOverlayPanelState& State, const TSharedPtr<SWidget>& Panel)
+{
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatIconStyle& Icon = FMixtormatThemeStore::GetResolved().Icons.Roles[
+		static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)];
+	// The gallery's collapse chevron is the precedent: a small plate floating on the panel's edge,
+	// present only when it has something to do. Here that is an explicit height, which only a
+	// corner drag creates -- so this appears at the edge the drag just moved.
+	return SNew(SBox)
+		.WidthOverride(Icon.ButtonSize)
+		.HeightOverride(Icon.ButtonSize)
+		.Visibility_Lambda([&State]()
+		{
+			return State.bFloating && !State.bHeightAuto ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SButton)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+			.ContentPadding(0.0f)
+			.ToolTipText(LOCTEXT("FitOverlayHeightHint", "Fit the panel height to its content. Returns to automatic height; width and position stay as they are."))
+			.OnClicked_Lambda([this, &State, Panel]()
+			{
+				MixtormatOverlay::FitHeight(State, Panel, GetPreviewViewportBounds());
+				return FReply::Handled();
+			})
+			[
+				SNew(SBox)
+				.WidthOverride(Icon.GlyphSize)
+				.HeightOverride(Icon.GlyphSize)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SImage).Image(MixtormatIcons::ChevronUp())
+				]
+			]
 		];
 }
 

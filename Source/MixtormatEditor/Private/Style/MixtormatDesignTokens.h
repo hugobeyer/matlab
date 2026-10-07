@@ -636,9 +636,9 @@ namespace MixtormatTokens
 	// Its own token rather than PreviewLayout.OverlayInset: that one spaces the viewport toolbars,
 	// and a floating panel must not move when a toolbar's inset is retuned.
 	inline float OverlayPanelInset = 8.0f;
-	// The floating left panel's drag header: the row above the tab strip carrying the grip, the
-	// page name and the Fit height action. Overlay only.
-	inline float OverlayPanelHeaderHeight = 20.0f;
+	// The floating left panel's drag margin above the tab strip: an empty strip, not a header row.
+	// The panel's identity is the tabs themselves, so this is a grab target and nothing else.
+	inline float OverlayPanelGrabMargin = 8.0f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;

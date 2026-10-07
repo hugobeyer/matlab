@@ -438,32 +438,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 								SNew(SMixtormatBadge)
 								.Text_Lambda([this]() { return GetSelectedBadgeText(); })
 							]
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
-							[
-								// Overlay only, and only while the height is explicit: the way back to auto-fit
-								// after a corner drag has frozen the height (D23).
-								SNew(SButton)
-								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-								.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
-								.Visibility_Lambda([this]()
-								{
-									return InspectorPlacement == EInspectorPlacement::Overlay && !InspectorOverlay.bHeightAuto
-										? EVisibility::Visible : EVisibility::Collapsed;
-								})
-								.ToolTipText(LOCTEXT("FitInspectorHeightHint", "Fit the Inspector height to its content. Returns to automatic height; width and position stay as they are."))
-								.OnClicked_Lambda([this]()
-								{
-									MixtormatOverlay::FitHeight(InspectorOverlay, InspectorPanel, GetPreviewViewportBounds());
-									return FReply::Handled();
-								})
-								[
-									SNew(STextBlock)
-									.Text(LOCTEXT("FitInspectorHeight", "Fit"))
-									.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
-									.ColorAndOpacity(FSlateColor::UseForeground())
-								]
-							]
 						]
 					]
 				]
@@ -830,6 +804,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		[MakeResizeCorner(2)]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
 		[MakeResizeCorner(3)]
+		// The way back to auto-fit after a corner drag has frozen the height (D23): bottom-centre,
+		// the edge the height is about.
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
+		[MakeOverlayFitButton(InspectorOverlay, InspectorPanel)]
 		];
 }
 

@@ -553,7 +553,6 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 
 TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 {
-	const ISlateStyle& Style = FMixtormatStyle::Get();
 	return SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -574,77 +573,18 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 			})
 			[
 				SNew(SVerticalBox)
-				// Overlay only: the drag header. Docked, the tab strip is the panel's top edge and this
-				// row is collapsed away, so the docked layout is unchanged.
+				// Overlay only: an empty grab margin above the tab strip. The panel's identity is the
+				// tabs themselves, so this is a drag target rather than a header row; docked, it is
+				// collapsed away and the tab strip is the panel's top edge.
 				+ SVerticalBox::Slot().AutoHeight()
 				[
-					SNew(SBox)
-					.HeightOverride(MixtormatTokens::OverlayPanelHeaderHeight)
+					SAssignNew(LeftPanelOverlay.Header, SBox)
+					.HeightOverride(MixtormatTokens::OverlayPanelGrabMargin)
 					.Visibility_Lambda([this]()
 					{
 						return LeftPanelPlacement == ELeftPanelPlacement::Overlay
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					[
-						// The header doubles as the floating panel's drag handle. Docked, nothing reads it.
-						SAssignNew(LeftPanelOverlay.Header, SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, 0.0f, 0.0f)
-						[
-							SNew(SBox)
-							.WidthOverride(MixtormatTokens::OverlayPanelGripSize)
-							.HeightOverride(MixtormatTokens::OverlayPanelGripSize)
-							[
-								SNew(SImage)
-								.Image(MixtormatIcons::Grip())
-								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-									Mixtormat::EMixtormatColorRole::TextMuted)))
-							]
-						]
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						.Padding(MixtormatTokens::LayerNameInset, 0.0f, 0.0f, 0.0f)
-						[
-							SNew(STextBlock)
-							.Text_Lambda([this]()
-							{
-								switch (LeftTabIndex)
-								{
-								case 1: return LOCTEXT("LibraryPageLabel", "LIBRARY");
-								case 2: return LOCTEXT("GlobalPageLabel", "GLOBAL");
-								default: return LOCTEXT("LayersPageLabel", "LAYERS");
-								}
-							})
-							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
-							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-								Mixtormat::EMixtormatColorRole::TextMuted)))
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, MixtormatTokens::LayerRowInsetTrailing, 0.0f)
-						[
-							// Overlay only, and only while the height is explicit: the way back to auto-fit
-							// after a corner drag has frozen the height (D23).
-							SNew(SButton)
-							.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-							.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
-							.Visibility_Lambda([this]()
-							{
-								return LeftPanelPlacement == ELeftPanelPlacement::Overlay && !LeftPanelOverlay.bHeightAuto
-									? EVisibility::Visible : EVisibility::Collapsed;
-							})
-							.ToolTipText(LOCTEXT("FitLeftPanelHeightHint", "Fit the panel height to its content. Returns to automatic height; width and position stay as they are."))
-							.OnClicked_Lambda([this]()
-							{
-								MixtormatOverlay::FitHeight(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
-								return FReply::Handled();
-							})
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("FitLeftPanelHeight", "Fit"))
-								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
-								.ColorAndOpacity(FSlateColor::UseForeground())
-							]
-						]
-					]
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
@@ -676,7 +616,11 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
 		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 2, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))];
+		[MixtormatOverlay::MakeResizeCorner(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
+		// The way back to auto-fit after a corner drag has frozen the height (D23): bottom-centre,
+		// the edge the height is about.
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
+		[MakeOverlayFitButton(LeftPanelOverlay, LeftPanel)];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildGlobalPage()

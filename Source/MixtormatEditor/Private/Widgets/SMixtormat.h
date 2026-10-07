@@ -1405,6 +1405,9 @@ private:
 	FVector2D GetPreviewViewportBounds() const;
 	FVector2D GetPreviewViewportLocalPosition(const FVector2D& ScreenPosition) const;
 	TSharedRef<SWidget> BuildFloatingPanelStack();
+	// The Fit height action both floating panels share: a small chevron on the panel's bottom
+	// edge, shown only while the height is explicit (D23).
+	TSharedRef<SWidget> MakeOverlayFitButton(FMixtormatOverlayPanelState& State, const TSharedPtr<SWidget>& Panel);
 	void BringFloatingPanelToFront(bool bLeftPanel);
 	void ApplyFloatingPanelOrder();
 	TSharedRef<SWidget> BuildLibraryPage();
