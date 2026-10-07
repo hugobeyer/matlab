@@ -1,10 +1,15 @@
 # Mixtormat — Flow Generation Tools (core proposal)
 
 Status: implemented, unvalidated in Unreal. Shape Deform, Generator Flow and Flow Carve are
-effect types 9-11, valid only scoped under an enabled Rock Formation or Pebbles. Each runs its own shared
-solve inside `AddRockFormationPasses`, on the rock height before the combine; the layer's delta
-normal then rebuilds normals from the result. Code: `Shaders/Private/MixtormatGeneratorFlow.usf`,
-`AddRockFlowToolPasses` in `MixtormatGpuGeneratorPasses.cpp`, `GatherGeneratorFlow`.
+effect types 9-11, valid only scoped under a generator that can own them
+(`MixtormatCanOwnGeneratorFlow`: Strata Carver, Rock Formation, Pebbles, Cracks). Each runs
+its own shared solve after the owning generator's module, on its native field before the
+shared signed normalization; the layer's delta normal then rebuilds normals from the result.
+Code: `Shaders/Private/MixtormatGeneratorFlow.usf`, `AddGeneratorFlowToolPasses` in
+`MixtormatGpuGeneratorPasses.cpp`, `GatherGeneratorFlow`.
+
+See also: `generator_flow_interaction_audit.md` — cross-generator flow interaction, verified
+against source.
 
 As built:
 - Seeds: SDF source seeds only where every gradient tap saw an outline, |d| is within the kernel
@@ -19,14 +24,19 @@ As built:
 - No clamps anywhere: gather passes authored values through (non-finite guard only) and the
   shader only guards defined math (at least one step). Flow Carve Depth is a gain on the
   gathered drop (1 = down to the strongest distance-weighted sample), not a cap.
-- Owners: Rock Formation (RG boundary field) and Pebbles (edge distance packed with its 1e9
+- Owners: Rock Formation (RG boundary field), Pebbles (edge distance packed with its 1e9
   no-hit sentinel as invalid; its coverage is moved with the height so the pebble combine
-  gates moved height by moved coverage; a Deposit adds the raised pixels to coverage).
+  gates moved height by moved coverage; a Deposit adds the raised pixels to coverage),
+  Strata Carver (bed-interface distance derived from BedPosition, bundle stage 8) and
+  Cracks (piece-border distance).
 - Trace sign: Generator Flow traces upstream (sign via Warp Strength). Flow Carve Groove gathers
   downstream (edges slump toward lower ground ahead, like `carve.cl`); Deposit gathers upstream.
-- Limitations: published Rock top/chamfer/wall/IDs stay undeformed (published in the ID phase);
-  the boundary field is the rock's original one for every item; Depth is in rock-field height
-  units (before Height Scale); non-square outputs measure distance in UV, not texels.
+- Limitations: Depth is in the owner's field height units (before Height Scale); non-square
+  outputs measure distance in UV, not texels. The earlier claim that published masks/IDs and
+  the boundary field stay undeformed is disputed: `RemapGeneratorBundle` remaps them after
+  each non-carve apply (`MixtormatGpuGeneratorPasses.cpp` L950-967, L1552-1560), while the
+  comment at L1282-1284 says the opposite. Unresolved statically; see
+  `generator_flow_interaction_audit.md` §2.
 
 ## Goal
 

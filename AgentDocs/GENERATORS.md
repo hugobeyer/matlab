@@ -19,7 +19,9 @@ Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 
 Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`) live in
 `EMixtormatEffectType` (`MixtormatEffect.h`), not here. They are valid only
-scoped under a Rock Formation generator and rewrite its height before combine.
+scoped under a generator that can own them (`MixtormatCanOwnGeneratorFlow`:
+Strata Carver, Rock Formation, Pebbles, Cracks) and rewrite its height before
+combine. See `code_docs/generator_flow_interaction_audit.md`.
 
 ## Defaults / parameter metadata
 
