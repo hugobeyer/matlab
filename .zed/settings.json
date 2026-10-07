@@ -1,0 +1,30 @@
+{
+  // Keep agent search and the project panel out of generated / binary / stale paths.
+  // See AGENTS.md §3 for the same list in prose.
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/Binaries",
+    "**/Intermediate",
+    "**/Saved",
+    "**/DerivedDataCache",
+    "**/.vs",
+    "**/Content",
+    "**/.claude/worktrees",
+    "**/Docs/ui-prototype",
+    "**/Docs/docs-assets",
+    "**/AgentDocs/old_docs",
+    "**/*.uasset",
+    "**/*.umap",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.tga",
+    "**/*.bmp",
+    "**/*.tif",
+    "**/*.tiff",
+    "**/*.exr",
+    "**/*.hdr",
+    "**/*.webp",
+    "**/*.zip"
+  ]
+}
