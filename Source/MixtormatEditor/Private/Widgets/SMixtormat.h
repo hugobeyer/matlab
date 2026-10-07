@@ -1461,6 +1461,15 @@ private:
 	void DeleteBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
+	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /
+	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
+	// caller decides where it goes and how it is wrapped.
+	TSharedRef<SWidget> BuildPreviewRenderControls();
+	TSharedRef<SWidget> BuildPreviewLightingControls();
+	TSharedRef<SWidget> BuildPreviewGeometryControls();
+	TSharedRef<SWidget> BuildPreviewSceneControls();
+	TSharedRef<SWidget> BuildPreviewCameraControls();
+	TSharedRef<SWidget> BuildPreviewOutputControls();
 	TSharedRef<SWidget> BuildInspectorPanel();
 	// The one list of child types that own the child-inspector scrollbox. Both master visibility
 	// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel
@@ -1627,7 +1636,15 @@ private:
 	// idle instead of re-submitting an unchanged stack every frame while the mouse is held.
 	bool bPreviewSubmitPending = false;
 	bool bShowCompositionBefore = false;
-	bool bPreviewOverlayUiVisible = true;
+	bool bPreviewOverlayUiVisible = false;
+	// Viewport group visibility, one flag per group, driven by the GLOBAL switches. Session state
+	// on the retained workspace; the H/Space master flag above composes with these rather than
+	// replacing them, and hidden groups keep their hotkeys.
+	bool bPreviewGroupRenderVisible = true;
+	bool bPreviewGroupLightingVisible = true;
+	bool bPreviewGroupGeometryVisible = true;
+	bool bPreviewGroupCameraVisible = true;
+	bool bPreviewGroupOutputVisible = true;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;

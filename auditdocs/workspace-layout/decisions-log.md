@@ -50,11 +50,13 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I6 | Inspector placement cycle: `P` + top-bar control cycle Docked → Overlay → Hidden; one `InspectorPanel` reparented between dock and viewport hosts; overlay dragged by the identity row, four corner resize grips, clamped on entry and during drag/resize | `SMixtormat_Shell.cpp`, `SMixtormat_Inspector.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat.h` |
 | I7 | Overlay auto-fit height (capped at the viewport, explicit mode retained across reopen, foldout collapse never resets it), tokenized first-entry inset, Fit height action (bottom-centre chevron, shown only while the height is explicit), and re-clamp on every layout pass (window/splitter/gallery) | `SMixtormatOverlayPanel.*` (new), `SMixtormat_Overlays.cpp` (new), `SMixtormat_Inspector.cpp`, `MixtormatDesignTokens.h`, `SMixtormat.h` |
 | I8 | Left panel placement: `L` cycles Docked → Overlay → Hidden → Docked; one `LeftPanel` (whole panel incl. tab strip) reparented between dock and viewport hosts; drag by an empty grab margin above the tab strip (no header row); shared drag/resize machinery with independent geometry; symmetric splitter write-back; clicked floating panel comes to front | `SMixtormat_Overlays.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat.h` |
+| I9 | Preview controls extracted into shared builders (`BuildPreview{Render,Lighting,Geometry,Scene,Camera,Output}Controls`); AA/Scale/Default-Lumen/Final/Displacement merged into one Render strip (D27); GLOBAL gains a PREVIEW / VIEWPORT section with five group-visibility switches and the same settings; GLOBAL empty-state opacity tokenized | `SMixtormat_PreviewControls.cpp` (new), `SMixtormat_Preview.cpp` (shrank ~610 lines), `SMixtormat_Shell.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 
-I7/I8 are **code-complete and untested**: no build or in-editor run has been made in this
+I7/I8/I9 are **code-complete and untested**: no build or in-editor run has been made in this
 session, and the repo's language-server diagnostics do not resolve engine/plugin include paths,
 so they carry no signal here. Gallery stays bottom-docked; variables, persistence, Auto
-visibility and collapse-to-header remain out of scope.
+visibility and collapse-to-header remain out of scope. Stage 4 (viewport-scoped Tab and the
+quick-controls overlay) is not started.
 
 ## Recommended (pending confirmation)
 

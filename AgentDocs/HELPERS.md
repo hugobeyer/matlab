@@ -99,7 +99,7 @@ table in as surfaces land; add a "Help text" section to the mandated
 | Overlay Fit height | Bottom-centre chevron tooltip | `SMixtormat_Overlays.cpp` | Done — shown only while the height is explicit; same control for both panels |
 | Overlay header drag | None | `SMixtormat_Shell.cpp` | Inspector: identity row (no hint). Left panel: empty grab margin above the tab strip (no hint); the grab-hand cursor is the only affordance |
 | `Tab` marking menu | None | planned | TODO — arrives with the viewport quick-controls plan; decide its own help surface |
-| GLOBAL Preview/Viewport toggles | None | planned | TODO — group visibility switches need labels and tooltips |
+| GLOBAL Preview/Viewport toggles | GLOBAL group rows | `SMixtormat_Shell.cpp` | Done — five switches with labels and tooltips; the settings below them are the viewport's own builders |
 | `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | TODO — arrives with the Layers placement model (D22) |
 
 ## TODOs — architecture

@@ -625,24 +625,88 @@ TSharedRef<SWidget> SMixtormat::BuildLeftPanel()
 
 TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 {
+	// One switch per viewport group: the H/Space master flag still hides everything, and these hide
+	// one group each. Session state on the retained workspace, so a theme rebuild keeps them and a
+	// hidden group keeps its hotkeys.
+	const auto AddGroupToggle = [this](const TSharedRef<SVerticalBox>& Panel, const FText& Label,
+		const FText& ToolTip, bool& bFlag)
+	{
+		AddSliderRow(Panel, MixtormatRow::Make(
+			Label,
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([&bFlag]()
+				{
+					return bFlag ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([&bFlag](const ECheckBoxState State)
+				{
+					bFlag = State == ECheckBoxState::Checked;
+				}),
+				ToolTip)));
+	};
+	// The settings are the same builders the viewport overlay uses, so the two views cannot drift:
+	// a control added to the strip appears here, and both write the same state.
+	const float SectionGap = FMixtormatThemeStore::GetResolved().CardLayout.Gap;
+	TSharedRef<SVerticalBox> PreviewSection = SNew(SVerticalBox);
+	PreviewSection->AddSlot().AutoHeight()
+	[
+		MixtormatRow::MakeCaption(LOCTEXT("GlobalPreviewVisibility", "SHOW ON VIEWPORT"))
+	];
+	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupRender", "Render strip"),
+		LOCTEXT("PreviewGroupRenderHint", "Anti-aliasing, render scale, Default/Lumen, Final and displacement preview."),
+		bPreviewGroupRenderVisible);
+	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupLighting", "Lighting"),
+		LOCTEXT("PreviewGroupLightingHint", "Studio presets, the camera and lighting reset, and the light and skylight sliders."),
+		bPreviewGroupLightingVisible);
+	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupGeometry", "Geometry"),
+		LOCTEXT("PreviewGroupGeometryHint", "The preview mesh buttons and the UV 90° toggle."),
+		bPreviewGroupGeometryVisible);
+	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupCamera", "Camera"),
+		LOCTEXT("PreviewGroupCameraHint", "The preview mode label and the FOV slider."),
+		bPreviewGroupCameraVisible);
+	AddGroupToggle(PreviewSection, LOCTEXT("PreviewGroupOutput", "Output"),
+		LOCTEXT("PreviewGroupOutputHint", "Composition resolution and the clear-debug control."),
+		bPreviewGroupOutputVisible);
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)
+	[
+		MixtormatRow::MakeCaption(LOCTEXT("GlobalPreviewSettings", "SETTINGS"))
+	];
+	PreviewSection->AddSlot().AutoHeight()[BuildPreviewRenderControls()];
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewLightingControls()];
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewGeometryControls()];
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewSceneControls()];
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewCameraControls()];
+	PreviewSection->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 0.0f)[BuildPreviewOutputControls()];
+
 	return SNew(SScrollBox)
 		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 		+ SScrollBox::Slot()
 		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap, 0.0f))
 		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
-			.InitiallyExpanded(true)
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock)
-				.Text_Lambda([this]()
-				{
-					return bHasWorkingMaterial
-						? LOCTEXT("GlobalEmpty", "No global variables yet.")
-						: LOCTEXT("GlobalNoMaterial", "Create or open a material to add global variables.");
-				})
-				.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-					Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(0.5f)))
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
+				.InitiallyExpanded(true)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([this]()
+					{
+						return bHasWorkingMaterial
+							? LOCTEXT("GlobalEmpty", "No global variables yet.")
+							: LOCTEXT("GlobalNoMaterial", "Create or open a material to add global variables.");
+					})
+					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+						Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("GlobalPreviewHeading", "PREVIEW / VIEWPORT"))
+				.InitiallyExpanded(true)
+				[PreviewSection]
 			]
 		];
 }

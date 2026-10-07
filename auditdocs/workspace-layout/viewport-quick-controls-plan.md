@@ -1,6 +1,10 @@
 # Viewport quick controls — audit and prototype plan
 
-Status: audit/planning only, 2026-10-07. No UI implementation in this pass.
+Status: audit/planning, 2026-10-07. Steps 1–2 of the implementation sequence are now **coded
+and untested** (see `decisions-log.md` I9): the control builders are extracted into
+`SMixtormat_PreviewControls.cpp`, the Render strip is merged (D27), and GLOBAL hosts the group
+switches plus the same settings. Step 4 — the Tab-invoked popup — is **not started**; Tab
+delivery is still unproven (B1).
 The reference image is a grouping reference, not a visual or feature specification.
 
 ## Agreed scope
