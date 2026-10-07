@@ -10,10 +10,62 @@
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SLeafWidget.h"
 
 // The inspector column: every per-selection parameter panel.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+namespace
+{
+	// The target remains hit-testable at rest; only its corner outline appears on hover.
+	class SMixtormatInspectorResizeCorner : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatInspectorResizeCorner) : _Right(false), _Bottom(true) {}
+			SLATE_ARGUMENT(bool, Right)
+			SLATE_ARGUMENT(bool, Bottom)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs)
+		{
+			bRight = InArgs._Right;
+			bBottom = InArgs._Bottom;
+		}
+
+		virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override
+		{
+			return FVector2D(MixtormatTokens::InspectorOverlayGripSize);
+		}
+
+		virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+			const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+			int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override
+		{
+			if (IsHovered())
+			{
+				const float Thickness = MixtormatTokens::InspectorHairlineThickness;
+				const FVector2f Size(AllottedGeometry.GetLocalSize());
+				const float EdgeX = bRight ? Size.X - Thickness : Thickness;
+				const float EdgeY = bBottom ? Size.Y - Thickness : Thickness;
+				const TArray<FVector2f> Corner = {
+					FVector2f(EdgeX, bBottom ? Thickness : Size.Y - Thickness),
+					FVector2f(EdgeX, EdgeY),
+					FVector2f(bRight ? Thickness : Size.X - Thickness, EdgeY)
+				};
+				FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(),
+					Corner, ESlateDrawEffect::None,
+					FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
+						* InWidgetStyle.GetColorAndOpacityTint(), true, Thickness);
+			}
+			return LayerId;
+		}
+
+	private:
+		bool bRight = false;
+		bool bBottom = true;
+	};
+}
 
 
 
@@ -352,6 +404,23 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		},
 		LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground. Height Blend lets the layer run over the stack where its mask is strong and its height is higher: its settings open in the card below."),
 		LOCTEXT("HeightAmountHint", "How much of this op's height reaches the stack."));
+	const auto MakeResizeCorner = [this](const int32 Index) -> TSharedRef<SWidget>
+	{
+		return SAssignNew(InspectorResizeGrips[Index], SBox)
+			.WidthOverride(MixtormatTokens::InspectorOverlayGripSize)
+			.HeightOverride(MixtormatTokens::InspectorOverlayGripSize)
+			.ToolTipText(LOCTEXT("ResizeInspectorOverlayHint", "Drag to resize the Inspector."))
+			.Visibility_Lambda([this]()
+			{
+				return InspectorPlacement == EInspectorPlacement::Overlay
+					? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatInspectorResizeCorner)
+				.Right(Index % 2 != 0)
+				.Bottom(Index >= 2)
+			];
+	};
 	return SNew(SBox)
 		// Docked, the column is the authored width. Overlay, the floating host owns the size, so the
 		// panel fills whatever the user has dragged it to.
@@ -375,9 +444,13 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				})
 				.BorderBackgroundColor_Lambda([this]()
 				{
-					return InspectorPlacement == EInspectorPlacement::Overlay
-						? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell)
-						: FLinearColor::White;
+					if (InspectorPlacement != EInspectorPlacement::Overlay)
+					{
+						return FLinearColor::White;
+					}
+					FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
+					Background.A *= MixtormatTokens::InspectorOverlayBackgroundOpacity;
+					return Background;
 				})
 			[
 				SNew(SVerticalBox)
@@ -783,24 +856,15 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			]
 		]
 			]
-			// Overlay only: the corner that resizes the floating panel. Docked mode has no grip --
-			// the column's width is the splitter's business there.
-			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
-			[
-				SAssignNew(InspectorResizeGrip, SBox)
-				.WidthOverride(MixtormatTokens::InspectorOverlayGripSize)
-				.HeightOverride(MixtormatTokens::InspectorOverlayGripSize)
-				.Visibility_Lambda([this]()
-				{
-					return InspectorPlacement == EInspectorPlacement::Overlay
-						? EVisibility::Visible : EVisibility::Collapsed;
-				})
-				[
-					SNew(SImage)
-					.Image(MixtormatIcons::Grip())
-					.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
-				]
-			]
+			// Overlay only; docked resizing remains the splitter's responsibility.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
+		[MakeResizeCorner(0)]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
+		[MakeResizeCorner(1)]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
+		[MakeResizeCorner(2)]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+		[MakeResizeCorner(3)]
 		];
 }
 

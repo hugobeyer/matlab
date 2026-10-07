@@ -5,7 +5,8 @@ Extends `ui-layout-and-panels-audit.md` §6. Status: placement-cycle prototype i
 One inspector is reparented between dock and viewport hosts; Hidden stays attached
 in the collapsed dock host for theme layout-state transfer. Overlay uses a square,
 borderless shell-colored surface, floats at the viewport's right edge, and is dragged
-by its header row and resized by a bottom-left grip, clamped to the viewport. The
+by its header row and resized from all four corners, clamped to the viewport.
+Corner targets show a small L outline only on hover; the opposite corner stays fixed. The
 Layers column stays resizable in every placement: while the inspector column is away
 its share is carried by the centre slot, so the splitter still divides the full width.
 Source wiring checked; Unreal build/UI validation pending. Persistence, Auto mode and

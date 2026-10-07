@@ -1399,7 +1399,8 @@ private:
 	void EnsureInspectorOverlayPlaced();
 	FVector2D GetInspectorOverlayBounds() const;
 	void ClampInspectorOverlay();
-	FReply BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, bool bResize);
+	int32 HitInspectorResizeCorner(const FVector2D& ScreenPosition) const;
+		FReply BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, int32 ResizeCorner = INDEX_NONE);
 	void UpdateInspectorOverlayInteraction(const FVector2D& ScreenPosition);
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
@@ -1504,12 +1505,13 @@ private:
 	bool bInspectorOverlayPlaced = false;
 	bool bInspectorOverlayDragging = false;
 	bool bInspectorOverlayResizing = false;
+		int32 InspectorOverlayResizeCorner = INDEX_NONE;
 	FVector2D InspectorOverlayDragOrigin = FVector2D::ZeroVector;
 	FVector2D InspectorOverlayPositionAtDragStart = FVector2D::ZeroVector;
 	FVector2D InspectorOverlaySizeAtDragStart = FVector2D::ZeroVector;
-	// The overlay's own chrome: the header row drags the panel, the corner grip resizes it.
+	// Corner order: top-left, top-right, bottom-left, bottom-right.
 	TWeakPtr<SWidget> InspectorIdentityRow;
-	TWeakPtr<SWidget> InspectorResizeGrip;
+	TWeakPtr<SWidget> InspectorResizeGrips[4];
 	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
 	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
 	// derived from this one, so the pair can never disagree or renormalise against each other.

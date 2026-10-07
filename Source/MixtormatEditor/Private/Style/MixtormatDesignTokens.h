@@ -627,6 +627,7 @@ namespace MixtormatTokens
 	// The floating overlay's corner grip, and the floor a drag can shrink it to. The grip is small
 	// enough to stay out of the content's way and still be a target.
 	inline float InspectorOverlayGripSize = 14.0f;
+		inline float InspectorOverlayBackgroundOpacity = 0.9f;
 	inline float InspectorOverlayMinWidth = 260.0f;
 	inline float InspectorOverlayMinHeight = 160.0f;
 	inline float TopBarHeight = 38.0f;

@@ -741,20 +741,35 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 			return;
 		}
 		InspectorOverlaySize = FVector2D(
-			FMath::Clamp(InspectorOverlaySize.X, MixtormatTokens::InspectorOverlayMinWidth,
-				FMath::Max(MixtormatTokens::InspectorOverlayMinWidth, Bounds.X)),
-			FMath::Clamp(InspectorOverlaySize.Y, MixtormatTokens::InspectorOverlayMinHeight,
-				FMath::Max(MixtormatTokens::InspectorOverlayMinHeight, Bounds.Y)));
+			FMath::Clamp(InspectorOverlaySize.X,
+				FMath::Min<double>(MixtormatTokens::InspectorOverlayMinWidth, Bounds.X), Bounds.X),
+			FMath::Clamp(InspectorOverlaySize.Y,
+				FMath::Min<double>(MixtormatTokens::InspectorOverlayMinHeight, Bounds.Y), Bounds.Y));
 		InspectorOverlayPosition = FVector2D(
 			FMath::Clamp(InspectorOverlayPosition.X, 0.0f, FMath::Max(0.0f, Bounds.X - InspectorOverlaySize.X)),
 			FMath::Clamp(InspectorOverlayPosition.Y, 0.0f, FMath::Max(0.0f, Bounds.Y - InspectorOverlaySize.Y)));
 	}
 
-	FReply SMixtormat::BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, const bool bResize)
+	int32 SMixtormat::HitInspectorResizeCorner(const FVector2D& ScreenPosition) const
 	{
-		bInspectorOverlayResizing = bResize;
-		bInspectorOverlayDragging = !bResize;
-		InspectorOverlayDragOrigin = ScreenPosition;
+		for (int32 Index = 0; Index < UE_ARRAY_COUNT(InspectorResizeGrips); ++Index)
+		{
+			const TSharedPtr<SWidget> Grip = InspectorResizeGrips[Index].Pin();
+			if (Grip.IsValid() && Grip->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	FReply SMixtormat::BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, const int32 ResizeCorner)
+	{
+		InspectorOverlayResizeCorner = ResizeCorner;
+		bInspectorOverlayResizing = ResizeCorner != INDEX_NONE;
+		bInspectorOverlayDragging = !bInspectorOverlayResizing;
+		// Sizes and positions are Slate-local units, including when Windows uses display scaling.
+		InspectorOverlayDragOrigin = PreviewViewports[0]->GetCachedGeometry().AbsoluteToLocal(ScreenPosition);
 		InspectorOverlayPositionAtDragStart = InspectorOverlayPosition;
 		InspectorOverlaySizeAtDragStart = InspectorOverlaySize;
 		return FReply::Handled().CaptureMouse(SharedThis(this));
@@ -762,16 +777,28 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 
 	void SMixtormat::UpdateInspectorOverlayInteraction(const FVector2D& ScreenPosition)
 	{
-		const FVector2D Delta = ScreenPosition - InspectorOverlayDragOrigin;
+		const FVector2D Delta = PreviewViewports[0]->GetCachedGeometry().AbsoluteToLocal(ScreenPosition)
+			- InspectorOverlayDragOrigin;
 		if (bInspectorOverlayResizing)
 		{
-			// The grip is the bottom-left corner, so the right edge stays where the user put it.
-			const FVector2D Size = InspectorOverlaySizeAtDragStart + FVector2D(-Delta.X, Delta.Y);
+			const bool bLeft = InspectorOverlayResizeCorner % 2 == 0;
+			const bool bTop = InspectorOverlayResizeCorner < 2;
+			const FVector2D Bounds = GetInspectorOverlayBounds();
+			// The opposite corner stays fixed, including at the minimum size and viewport edges.
+			const FVector2D Anchor = InspectorOverlayPositionAtDragStart + FVector2D(
+				bLeft ? InspectorOverlaySizeAtDragStart.X : 0.0f,
+				bTop ? InspectorOverlaySizeAtDragStart.Y : 0.0f);
+			const FVector2D Maximum(
+				FMath::Max(0.0f, bLeft ? Anchor.X : Bounds.X - Anchor.X),
+				FMath::Max(0.0f, bTop ? Anchor.Y : Bounds.Y - Anchor.Y));
 			InspectorOverlaySize = FVector2D(
-				FMath::Max(Size.X, MixtormatTokens::InspectorOverlayMinWidth),
-				FMath::Max(Size.Y, MixtormatTokens::InspectorOverlayMinHeight));
-			InspectorOverlayPosition.X = InspectorOverlayPositionAtDragStart.X
-				+ (InspectorOverlaySizeAtDragStart.X - InspectorOverlaySize.X);
+				FMath::Clamp(InspectorOverlaySizeAtDragStart.X + (bLeft ? -Delta.X : Delta.X),
+					FMath::Min<double>(MixtormatTokens::InspectorOverlayMinWidth, Maximum.X), Maximum.X),
+				FMath::Clamp(InspectorOverlaySizeAtDragStart.Y + (bTop ? -Delta.Y : Delta.Y),
+					FMath::Min<double>(MixtormatTokens::InspectorOverlayMinHeight, Maximum.Y), Maximum.Y));
+			InspectorOverlayPosition = Anchor - FVector2D(
+				bLeft ? InspectorOverlaySize.X : 0.0f,
+				bTop ? InspectorOverlaySize.Y : 0.0f);
 		}
 		else
 		{
@@ -785,16 +812,15 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 		if (InspectorPlacement == EInspectorPlacement::Overlay && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 		{
 			const FVector2D ScreenPosition = MouseEvent.GetScreenSpacePosition();
-			// The grip wins where the two overlap: it sits in the corner the header also covers.
-			if (const TSharedPtr<SWidget> Grip = InspectorResizeGrip.Pin();
-				Grip.IsValid() && Grip->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+			// Top corner resize targets take priority over the header's drag area.
+			if (const int32 Corner = HitInspectorResizeCorner(ScreenPosition); Corner != INDEX_NONE)
 			{
-				return BeginInspectorOverlayInteraction(ScreenPosition, true);
+				return BeginInspectorOverlayInteraction(ScreenPosition, Corner);
 			}
 			if (const TSharedPtr<SWidget> Header = InspectorIdentityRow.Pin();
 				Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
 			{
-				return BeginInspectorOverlayInteraction(ScreenPosition, false);
+				return BeginInspectorOverlayInteraction(ScreenPosition);
 			}
 		}
 		return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
@@ -834,10 +860,12 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 		if (InspectorPlacement == EInspectorPlacement::Overlay)
 		{
 			const FVector2D ScreenPosition = CursorEvent.GetScreenSpacePosition();
-			if (const TSharedPtr<SWidget> Grip = InspectorResizeGrip.Pin();
-				Grip.IsValid() && Grip->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+			const int32 Corner = bInspectorOverlayResizing
+				? InspectorOverlayResizeCorner : HitInspectorResizeCorner(ScreenPosition);
+			if (Corner != INDEX_NONE)
 			{
-				return FCursorReply::Cursor(EMouseCursor::ResizeSouthWest);
+				return FCursorReply::Cursor(Corner == 0 || Corner == 3
+					? EMouseCursor::ResizeSouthEast : EMouseCursor::ResizeSouthWest);
 			}
 			if (const TSharedPtr<SWidget> Header = InspectorIdentityRow.Pin();
 				Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))

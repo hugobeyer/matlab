@@ -25,7 +25,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D15 | `P` cycles inspector placement: Docked → Overlay → Hidden → Docked | User |
 | D16 | Inspector overlay: no outer border and no rounded corners; inner component styling unchanged | User |
 | D17 | Prototype sync direction for layout geometry is Unreal → HTML/CSS | User |
-| D18 | Inspector overlay is draggable by its header row and resizable by a bottom-left grip, clamped to the viewport | User |
+| D18 | Inspector overlay is draggable by its header row and resizable from all four corners, with hover-only L outlines and viewport clamping | User |
 
 ## Implemented (2026-10)
 
