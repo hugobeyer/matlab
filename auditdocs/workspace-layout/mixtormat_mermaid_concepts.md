@@ -339,3 +339,54 @@ MASKS --> M2["Radius ┃ Smoothing"]
 MASKS --> M3["Strength ┃ Power"]
 MASKS --> M4["Height ┃ AO"]
 ```
+
+---
+
+# Reconciliation with the codebase
+
+Added during the workspace-layout review. Verified against source; see
+`decisions-log.md` and `inspector-placement-model.md` for the full context.
+
+## Agrees with verified architecture
+
+- Inspector Overlay / Docked / Hidden = audit §6 option B (reparent the single
+  instance in `BuildWorkspaceUI`).
+- Persistence in `UMixtormatEditorSettings` — matches the audit; no layout
+  store exists today.
+- Hotkeys: `G` exists (`SMixtormat.cpp` L565); `L` and `P` are free.
+- Two controls per row: `MixtormatRow::MakePair` already supports this;
+  partially exists in the inspector today.
+
+## New, not yet in any plan
+
+- Inspector **header bar** (name, Add, Pin/Dock/Hide) — none exists today;
+  `BuildInspectorPanel` returns a bare `SBox`.
+- Inspector **free drag position** + Pin — beyond the audit's resize handle;
+  assessed medium (see `inspector-placement-model.md`).
+- **Auto** placement mode: overlay shown on selection, hidden otherwise, with
+  a `P` manual toggle and Pin suppressing auto-hide.
+- **Collapse-to-top**: the popover collapses to a ~30px bar at the top of the
+  viewport; the identity row (name + badge) already works as that bar.
+
+## Conflicts to resolve
+
+- This document shows the gallery as a **tabbed drawer** (Materials / Masks
+tabs); current code is a two-column splitter, and the audit proposed a
+vertical split — three competing resolutions. Recommendation: tabs.
+- This document omits the **VARIABLES cell** entirely. Recommendation: the
+inspector's existing GLOBAL placeholder section (shown when nothing is
+selected, currently "No global settings yet.") becomes the variables cell,
+pinned and collapsible so it coexists with selection content.
+
+## Where the variables cell fits
+
+```mermaid
+flowchart LR
+    LEFT["Left panel
+Layers / Library"] --- VIEW["Viewport"]
+    VIEW --- INSP["Inspector
+GLOBAL variables (pinned)
++ selection content"]
+    VIEW --- GALLERY["Bottom drawer
+Materials / Masks"]
+```
