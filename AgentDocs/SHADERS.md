@@ -28,7 +28,7 @@ Convention: `FMixtormat<Feature><Stage>CS` → `Mixtormat<Feature>.usf` →
 `MixtormatRegionId.ush`, `MixtormatCurvature.ush`, `MixtormatHeightNormal.ush`,
 `MixtormatEdgeShading.ush`, `MixtormatMaskShaping.ush`, `MixtormatDebugColor.ush`,
 `MixtormatGeneratorPlacement.ush`, `MixtormatGeneratorHeightModules.ush`,
-`MixtormatGully.ush`, `MixtormatCellular.ush`.
+`MixtormatGully.ush`, `MixtormatCellular.ush`, `MixtormatGeneratorWarp.ush`.
 
 Capacity headers (`MixtormatScalarRampCapacity.ush`,
 `MixtormatColorRampCapacity.ush`) are included by **Runtime C++** too
@@ -77,6 +77,30 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 - Resolution is the compositor's `FIntPoint` (preview vs bake differ).
 - Height is `PF_R32_FLOAT`; BaseColor/Normal/RAM are `float4`.
 - Substrate defaults in `MixtormatGpuComposePipeline.cpp` (`MixtormatSubstrate`).
+
+## Structural Warp / bundle alignment (steps 5–6)
+
+- `FMixtormatGeneratorStructuralWarpCS` → `MixtormatGeneratorStructuralWarp.usf::MainCS`.
+- Fresh per-target RG32F D / R32F B outputs compose `D_new = d + sample(D_old, psi)` and
+  `B_new = sample(B_old, psi)`. State lives in `GeneratorStructuralDisplacements` and
+  `GeneratorHeightPushFields`; this does not resample finished Strata outputs.
+- Flow uses the stage-8 reference trace helper with amount once; scoped masks gate the
+  resulting displacement after tracing. UVMap uses periodic lifted-coordinate sampling.
+- Strata applies placement once at warped coordinates; gradients are `g*A*J + grad(B)`
+  where applicable. B's destination gradient receives no second J. Active warp writes a
+  direct RG32F negative-inside distance/validity boundary; inactive retains bundle stage 8.
+- `RegisterNamedMask` producer descriptors select bundle stages 10 (ID-anchored attributes)
+  and 11 (owner/phase-aware bed T), plus validity-aware distance remapping retaining
+  `length(g_source)` in the metric ratio. All companions read old IDs/boundaries from one
+  immutable snapshot. Apply owns Height/Coverage; `PebbleCoverage` aliases moved Coverage.
+- `CrackDistance` remains a crack-cell attribute, distinct from the internal UV boundary.
+  Other structural targets and Noise semantics remain gated for step 7.
+
+Implementation and source review are not compile/runtime validation. Only the user's earlier
+step-2 compile is confirmed; the gather missing-header fix is present, newest build unconfirmed.
+Broken StructuralWarp tests were removed at user request; no agent build, shader compile,
+runtime or test results are claimed. Raster derivatives/distances remain approximations;
+legacy centre/orientation inverse handling and geological defects are not fixed here.
 
 ## Adding a shader parameter
 

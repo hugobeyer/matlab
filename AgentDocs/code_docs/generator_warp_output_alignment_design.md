@@ -1,14 +1,16 @@
 # Generator warp output alignment — step 6 design for Sol
 
-Status: design only, 2026-10-07. No code implementation or commands in this pass.
+Status: steps 5–6 implementation present, 2026-10-07; targeted source review only.
 Read [step 5](strata_structural_warp_design.md) first. Its coordinate, matrix and ordered
-Height Push/Warp contracts apply here. Implement steps 5 and 6 together; support for new
-warp targets across the remaining generators is step 7, not implicitly authorized here.
+Height Push/Warp contracts apply here. Other structural targets and Noise remain gated
+for step 7. Only the user's earlier step-2 compile is confirmed; the gather missing-header
+issue is fixed, but the newest build is unconfirmed. Broken StructuralWarp tests were removed
+at user request; no agent compile, build, runtime, visual or test results are claimed.
 
 ## 1. Scope and invariants
 
 Step 5 generates Strata's geometry and outputs in the final structural frame. Step 6
-specifies correct typed handling when existing post-generation Shape Deform/Generator Flow
+implements typed handling when existing post-generation Shape Deform/Generator Flow
 resamples a completed bundle, and the output contract future targets must satisfy.
 
 - One coordinate map and one immutable source revision per operation.
@@ -23,27 +25,34 @@ resamples a completed bundle, and the output contract future targets must satisf
 ## 2. Current source evidence
 
 `FGeneratorBundle` in `MixtormatGpuCompositorInternal.h` contains Height, Coverage, RegionIds,
-CentreUV, Orientation, NamedMasks, BoundaryField and bHashedIds. NamedMasks carries no
-sampling semantics today. `FPublishedField::IsComplete` checks formats/payload presence,
+CentreUV, Orientation, NamedMasks, BoundaryField and bHashedIds. Producer-owned
+`RegisterNamedMask` now attaches `NamedMaskDescriptors` (semantic, units, invalid distance),
+without a second texture registry. `FPublishedField::IsComplete` checks formats/payload presence,
 not vector meaning, coordinate frame, per-pixel validity or source revision.
 
 `MixtormatGpuGeneratorPasses.cpp::RemapGeneratorBundle` currently remaps IDs, centre/orientation,
 named masks and boundaries. It does not remap Height/Coverage. The flow apply updates those
 separately, and repoints PebbleCoverage to the moved coverage. This is confirmed code behavior.
 
-`MixtormatGeneratorBundle.usf`:
-- Stage 0 bilinearly samples every ordinary named scalar, including bed position/random.
-- Stage 1 nearest-loads IDs using `floor(frac(UV)*size)` without a final bounds guard.
-- Stages 2/7 rescale distances from a boundary-gradient metric.
-- Stages 5/6 use an inverse-Jacobian approximation for centres/orientation.
-- Stage 8 derives an approximate bed boundary from wrapped BedPosition differences.
+`MixtormatGeneratorBundle.usf` now uses:
+- Stage 0 for declared continuous attributes; stage 10 copies random at the ID anchor.
+- Stage 1 with a shared finite, safely bounded wrapped anchor; stage 11 uses owner/phase-aware T.
+- Stages 2/7 with validity-aware distance stencils and `length(g_source)/length(g_source*J)`.
+  Named UV distances use their own gradient; old BoundaryField supplies validity only.
+- Stages 5/6 retaining legacy local inverse centre/orientation approximations, not exact inverses.
+- Stage 8 for inactive structural Strata; active structural Strata supplies direct RG32F
+  negative-inside destination distance + validity, with no second publication correction.
+
+`RemapGeneratorBundle` captures an immutable source snapshot, builds moved companions from
+old IDs/boundaries and commits together. Apply owns Height/Coverage; `PebbleCoverage` aliases
+moved Coverage. `CrackDistance` remains a positive crack-cell attribute, not a UV SDF.
 
 Noise publishes Value/Gradient separately in `MixtormatGpuNoisePasses.cpp`. They are not
 members of its bundle and would be missed by a bundle-only generic warp.
 
 ## 3. Internal output descriptors, not a second reference system
 
-Add a small shader-side description of sampling semantics to producer-owned outputs.
+Implemented: small shader-side descriptors on producer-owned outputs via `RegisterNamedMask`.
 Reuse existing published addresses and `EMixtormatPublishedFieldKind`; these are not new
 Runtime sockets, public field kinds or a parallel registry.
 
@@ -53,9 +62,9 @@ The producer must state, where relevant:
 - Coordinate frame/units; associated ID map; validity source.
 - Scalar's relation to its geometry: transported material attribute versus derived quantity.
 
-Attach policy to the existing named-output entry, or use a tightly scoped, exhaustively
-registered policy table at bundle construction. Avoid a separate mutable name->texture
-registry and avoid guessing from output names inside the remap loop.
+`NamedMaskDescriptors` is the producer-registered policy table alongside existing NamedMasks;
+it contains policies only, not another mutable name->texture registry. The remap loop selects
+stages by declared semantic/units and rejects unsupported combinations before companion writes.
 
 Keep `NamedMasks`' published names and legacy consumers intact. Audit each current named
 output while attaching descriptors. Unknown semantic combinations are unsupported; never
@@ -270,18 +279,20 @@ Do not mutate cached producer textures; publish transformed outputs for the cons
 The manifest is a registration checklist, not approval to add missing outputs or enable new
 flow-tool owners. Preserve bHashedIds and never create IDs for Noise families without them.
 
-## 11. Sol implementation order (steps 5 + 6)
+## 11. Implemented scope (steps 5 + 6)
 
-1. Implement step 5's ordered (D,B) state and Strata coordinate/gradient chain.
-2. Register sampling semantics for the current bundle outputs. Add the shared safe wrapped
-   anchor and owner-guided BedPosition/discrete-scalar paths.
-3. Route existing companion remapping through those policies, retaining the apply-owned
-   Height/Coverage path. Use old IDs/metrics until the operation has completely committed.
-4. Handle distance validity without sentinel blending, and use step 5's generated boundary
-   only in its active structural path. Keep scalar output contracts distinct from SDFs.
-5. Leave unsupported exact-centre, unknown Vector2 and Noise-family semantics gated for
-   step 7 rather than inventing compatibility conversions.
-6. Add focused tests; build/Unreal execution still requires user consent.
+1. Step 5's ordered per-target RG32F D/R32F B compose and Strata coordinate/gradient chain
+   are present; structural generation does not resample completed outputs.
+2. Current bundle producers register semantics; shared safe wrapped anchors couple IDs/random,
+   and stage 11 interpolates T only within the anchor's owner/local phase branch.
+3. Companion remapping reads one immutable snapshot with old IDs/boundaries, then commits;
+   apply owns Height/Coverage, and coverage aliases do not get a second warp.
+4. Distance remapping excludes invalid/sentinel taps and retains the source-gradient numerator.
+   Active structural Strata uses its direct boundary; inactive retains stage 8.
+5. Exact centres, unknown Vector2/Noise-family semantics and other structural targets remain
+   gated for step 7. Legacy inverse-based centre/orientation limitations remain unchanged.
+6. Source review only: broken StructuralWarp tests were removed at user request. Acceptance
+   cases below are unexecuted; no agent compile/build/runtime/test results are claimed.
 
 Existing resampling corrections can change assets with active flow tools. That is an
 intentional behavior correction, not a behavior-preserving refactor. Disabled/no-warp paths,
@@ -299,7 +310,7 @@ Primary files, relative to plugin root:
 Reference-only until step 7: `MixtormatGpuNoisePasses.cpp`, `MixtormatNoise.usf`, and the
 individual Rock/Pebbles/Cracks/Cliff producer shaders. No broad inspector/layout work in step 6.
 
-## 12. Acceptance matrix
+## 12. Acceptance matrix (not executed)
 
 - ID seam: negative UV, exact 0/1, near-1 rounding, multiple tile offsets, non-square output.
   Every load stays in bounds; outputs are original uint IDs or the original invalid sentinel.

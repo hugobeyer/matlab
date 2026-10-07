@@ -43,7 +43,36 @@ Path: Runtime child/payload → `GatherGeneratorHeightModuleChild` →
 `MixtormatGeneratorHeightPush.usf` → `MixtormatStrataCarver.usf` →
 `BuildHeightPushControls` (source, target, amount, enable). Implementation added; build,
 shader compilation and visual validation of Height Push have not been run by the agent.
-Independent Warp-module ordering remains future work.
+Ordered Structural Warp integration is now present; see below.
+
+## Structural Warp (steps 5–6 implemented)
+
+`StructuralWarp` is an append-only Runtime child with its own enable flag and
+`FMixtormatGeneratorStructuralWarp` payload. `Source` is an `FMixtormatOutputReference`:
+Flow or UVMap only, never generic Vector2. It requires a completed earlier source and an
+explicit later, enabled same-layer Strata target; other targets and Noise remain gated.
+
+`GatherGeneratorHeightModuleChild` fills `FGeneratorStructuralWarpRenderData.Source` and
+`TargetChildIndex`. Published source demand is registered before prefix reuse. GPU state
+is per target: `GeneratorStructuralDisplacements` (RG32F) and the existing
+`GeneratorHeightPushFields` (R32F). `MixtormatGeneratorStructuralWarp.usf` writes fresh
+resources: `D_new = d + sample(D_old, psi)`, `B_new = sample(B_old, psi)`, `psi = x + d`.
+Flow reuses the stage-8 reference trace helper, applies amount once, then masks displacement.
+
+Strata evaluates warped coordinates with placement once and gradients `g*A*J`; final B's
+already-destination gradient is not multiplied by J again. Active warp emits direct RG32F
+negative-inside boundary distance + validity; inactive warp retains stage-8 reconstruction.
+Step-6 producer descriptors (`RegisterNamedMask`) drive immutable-snapshot companion remaps:
+safe wrapped ID/random anchors, owner/phase-aware bed T and validity-aware distance metrics
+with the source-gradient numerator retained. Flow apply owns Height/Coverage, so neither is
+warped twice; `PebbleCoverage` aliases moved Coverage. `CrackDistance` stays a crack-cell
+attribute, not the internal UV boundary. See both structural/output-alignment design docs.
+
+Evidence is implementation plus targeted source review only. Only the user's earlier step-2
+compile is confirmed; the gather missing-header issue is fixed, but the newest build is
+unconfirmed. Broken StructuralWarp tests were removed at user request; no agent compile,
+build, runtime or test results are claimed. Raster composition/filtering and legacy local
+inverse centre/orientation approximations remain; no geological fixes are included.
 
 ## Defaults / parameter metadata
 
@@ -61,7 +90,7 @@ Independent Warp-module ordering remains future work.
 - `GatherGeneratorChild` — switch on `Generator.Type`; resolves settings into
   `FGeneratorRenderData`; applies `PlacementKey` to `FieldKey` for cached types.
 - `GatherGeneratorHeightModuleChild` — Height Blend / Height Curve / Height
-  Color Ramp / Height Push sublayers.
+  Color Ramp / Height Push / Structural Warp sublayers.
 
 ## GPU dispatch
 
@@ -84,8 +113,8 @@ Independent Warp-module ordering remains future work.
 `MixtormatNoise.usf`, `MixtormatGeneratorBundle.usf`, `MixtormatGeneratorFlow.usf`,
 `MixtormatGeneratorHeightBlend.usf`, `MixtormatGeneratorHeightCurve.usf`,
 `MixtormatGeneratorHeightColorRamp.usf`, `MixtormatGeneratorHeightPush.usf`,
-`MixtormatGeneratorHeightModules.ush`,
-`MixtormatGeneratorPlacement.ush`.
+`MixtormatGeneratorStructuralWarp.usf`, `MixtormatGeneratorWarp.ush`,
+`MixtormatGeneratorHeightModules.ush`, `MixtormatGeneratorPlacement.ush`.
 
 ## Inspector
 

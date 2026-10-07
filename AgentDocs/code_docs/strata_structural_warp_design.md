@@ -1,15 +1,18 @@
 # Strata structural warp — design handoff for Sol
 
-Status: design only, 2026-10-07. No implementation, build or visual validation in this pass.
-This document specifies step 5; it does not authorize unrelated seam fixes or UI redesign.
+Status: steps 5–6 implementation present, 2026-10-07; targeted source review only.
+This document records step 5; unrelated seam fixes, UI redesign and step-7 targets stay out of scope.
 Read [step 6 — output alignment](generator_warp_output_alignment_design.md) alongside it.
-Sol's implementation handoff covers both designs; these documents are not implemented code.
+Only the user's earlier step-2 compile is confirmed. The gather missing-header issue is fixed,
+but the newest build is unconfirmed. Broken StructuralWarp tests were removed at user request;
+no agent compile, build, runtime, visual or test results are claimed.
 
 ## 1. Decision
 
-Add an independently ordered **Structural Warp** child alongside Height Push, before an
-explicit later Strata target. Reuse `FMixtormatOutputReference` for its source. Accept Flow
-or UVMap, not Vector2. Sources must already be completed when the module executes.
+Implemented: independently ordered, append-only Runtime **Structural Warp** child alongside
+Height Push, with its own enable flag and `FMixtormatGeneratorStructuralWarp` payload.
+`Source` uses `FMixtormatOutputReference`: Flow or UVMap, not Vector2. Sources must already
+be completed; the explicit target is a later, enabled same-layer Strata generator.
 
 Evaluate geology at warped coordinates; do not resample finished Strata height, IDs or
 bed-position/random outputs for this operation. Existing post-generation flow children
@@ -43,8 +46,10 @@ one; future external producers need explicit semantics/validation.
 
 Initial state is identity coordinates and zero bedding shift. Store state by target child
 index, not in a layer-wide slot. Use RDG ping-pong outputs; never read/write one texture.
-Retain separate resources: RG32F displacement and R32F bedding shift. Missing initial
-resources represent identity/zero, not fallback to another source.
+Implemented state maps are `GeneratorStructuralDisplacements` (RG32F displacement) and
+existing `GeneratorHeightPushFields` (R32F bedding shift), keyed by target child index.
+`MixtormatGeneratorStructuralWarp.usf::MainCS` writes fresh D/B resources per operation.
+Missing initial resources represent identity/zero, not fallback to another source.
 
 ### Height Push
 
@@ -164,8 +169,8 @@ hardcoded off; restoring those bindings is separate work, not something warp fix
 
 ### Boundary field for an active structural warp
 
-Avoid deriving new boundaries from wrapped/half-precision BedPosition if possible. Sol should
-add an internal RG32F boundary output computed from the already available interface functions:
+The active structural path now writes an internal RG32F distance+validity boundary directly
+from interface functions, rather than wrapped/half-precision BedPosition:
 
     FL = S - Lower.x;   gL = gS - Lower.y * gStrike
     FU = Upper.x - S;   gU = Upper.y * gStrike - gS
@@ -194,25 +199,27 @@ that happens to be identity can be compared within numerical tolerance; do not c
 bit-identity detection of its contents. Do not change the existing generator socket behavior
 or reinterpret missing connections as the previous available field.
 
-Existing post-generation Shape Deform/Generator Flow can still smear scalar outputs through
-bundle remapping. Structural generation does not fix that separate step-6 problem.
+Step 6 now types existing post-generation Shape Deform/Generator Flow companion remapping:
+ID-anchored random, owner/phase-aware bed T and validity-aware distances. It remains raster
+resampling, not exact geological reevaluation; structural outputs are not remapped twice.
 
-## 8. Sol implementation sequence and file ownership
+## 8. Implemented sequence and file ownership
 
-1. Append Structural Warp child/payload and parameter owner registrations, mirroring Height
-   Push's minimal integration. Source/target validation: source before module, module before
-   later same-layer Strata target. Preserve existing enum values and unsupported-owner gates.
-2. Gather source identity, FlowAmount/FlowTraceLength/FlowSteps and target index. Register
-   published-field demand before prefix reuse. Runtime/defaults -> gather -> render data ->
-   GPU binding -> shader -> inspector metadata must all agree.
-3. Reuse the Flow trace binding helper. Add one focused structural-state compose pass which
-   writes periodic D and optionally moves existing B. Keep Height Push's independent type;
-   allow subsequent Height Push rows to add to the resulting B.
-4. Feed the final per-target D/B to Strata. Bind a warp-active flag, coordinate input and
-   direct boundary UAV; add the coordinate/Jacobian evaluation and gradient chain above.
-5. Add only source/target/reference-flow controls and necessary enable/menu hooks. No layout
-   rework, new dependencies, generic graph redesign or support for the other five targets.
-6. Review neutral paths and the math cases below before approved build/runtime validation.
+1. Runtime child/payload and parameter owner registrations are append-only, with own enable
+   and explicit source-before-module/later-enabled-same-layer-Strata target validation.
+2. `GatherGeneratorHeightModuleChild` fills `FGeneratorStructuralWarpRenderData.Source`
+   (identity, kind, FlowAmount/FlowTraceLength/FlowSteps) and `TargetChildIndex`.
+   `EnqueueCompose` registers published-field demand before prefix reuse.
+3. The stage-8 reference Flow trace helper applies amount once; the new compose pass masks
+   displacement after tracing, composes periodic D and transports existing B into fresh outputs.
+   Later Height Push rows add to the resulting B independently.
+4. Strata consumes final per-target D/B, evaluates placement once, chains `g*A*J`, and adds
+   final destination B gradients without another J. Active warp binds the direct boundary;
+   inactive warp retains existing stage-8 construction.
+5. Source/target/reference-flow controls and enable/menu integration are present. Other
+   structural targets and Noise remain gated for step 7; no geological fixes are included.
+6. Evidence here is source review only. The cases below remain acceptance criteria, not
+   executed results; build/runtime validation requires explicit approval.
 
 Primary files (plugin-root-relative):
 - `Source/MixtormatRuntime/Public/MixtormatGeneratorTypes.h`
@@ -225,6 +232,8 @@ Primary files (plugin-root-relative):
 - `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`
 - `Shaders/Private/MixtormatStrataCarver.usf`
 - `Shaders/Private/MixtormatGeneratorHeightPush.usf`
+- `Shaders/Private/MixtormatGeneratorStructuralWarp.usf`
+- `Shaders/Private/MixtormatGeneratorWarp.ush`
 - `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp`
 
 Reuse as references: `MixtormatGeneratorPlacement.ush` (placement gradients),
@@ -232,7 +241,7 @@ Reuse as references: `MixtormatGeneratorPlacement.ush` (placement gradients),
 `MixtormatGeneratorFlow.usf` stage 8 (trace), `MixtormatGeneratorBundle.usf` (existing
 boundary semantics). No need to rewrite the composite or bundle-remap implementation.
 
-## 9. Acceptance examples
+## 9. Acceptance examples (not executed)
 
 - Identity/no module/disabled/zero flow amount: original result and original boundary path.
 - Constant displacement: J = I; geological position moves, footprint does not scale.
