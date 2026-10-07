@@ -551,11 +551,9 @@ void AddIconRole(
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailInset", Preview, "Layout", "Rail Edge Inset", PreviewLayout.LeftRailInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Layout", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftOverlayGap", Preview, "Layout", "Rail-to-Panel Gap", PreviewLayout.LeftOverlayGap, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Left Overlay Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Left Overlay Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Layers Pop-out Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Layers Pop-out Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsGuideAxisLength", Preview, "Layout", "Quick Controls Guide Length", PreviewLayout.QuickControlsGuideAxisLength, 0, 400, 2, 0, EMixtormatThemeRefreshMode::Paint);

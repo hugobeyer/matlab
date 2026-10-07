@@ -518,7 +518,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 {
 	const float ButtonGap = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayButtonGap;
 	TArray<TSharedRef<SWidget>> Buttons;
-	const auto AddPresetButton = [this, &Buttons](
+	const auto AddPresetButton = [this, &Buttons, Layout](
 		const EMixtormatStudioLighting Preset,
 		const FText& ToolTip,
 		const FSlateBrush* Icon)
@@ -527,7 +527,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 			TAttribute<bool>::CreateLambda([this, Preset]() { return StudioLighting == Preset; }),
 			true,
 			ToolTip,
-			FOnCheckStateChanged::CreateLambda([this, Preset](ECheckBoxState) { SetStudioLighting(Preset); }),
+			FOnCheckStateChanged::CreateLambda([this, Preset, Layout](ECheckBoxState)
+							{
+								SetStudioLighting(Preset);
+								if (Layout == EPreviewControlLayout::Grid)
+								{
+									CloseQuickControls();
+								}
+							}),
 			MakeRailGlyph(Icon, TAttribute<FSlateColor>::CreateLambda([this, Preset]()
 			{
 				return GetPreviewOverlayIconColor(false, StudioLighting == Preset);
@@ -578,7 +585,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 	const float ButtonGap = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayButtonGap;
 	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
 	TArray<TSharedRef<SWidget>> Buttons;
-	const auto AddMeshButton = [this, &Buttons](
+	const auto AddMeshButton = [this, &Buttons, Layout](
 		const EMixtormatPreviewMesh MeshType,
 		const FText& ToolTip,
 		const FSlateBrush* Icon)
@@ -615,7 +622,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 				}
 				return ToolTip;
 			}),
-			FOnCheckStateChanged::CreateLambda([this, MeshType](ECheckBoxState) { SetPreviewMesh(MeshType); }),
+			FOnCheckStateChanged::CreateLambda([this, MeshType, Layout](ECheckBoxState)
+							{
+								SetPreviewMesh(MeshType);
+								if (Layout == EPreviewControlLayout::Grid)
+								{
+									CloseQuickControls();
+								}
+							}),
 			SNew(SBox)
 			.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
 				static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
@@ -883,7 +897,9 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
-				SNew(SBox).MinDesiredWidth(PreviewMetrics.QuickControlsCentreGap)
+				SNew(SBox)
+									.Visibility(EVisibility::HitTestInvisible)
+									.MinDesiredWidth(PreviewMetrics.QuickControlsCentreGap)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[

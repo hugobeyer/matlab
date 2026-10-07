@@ -88,8 +88,7 @@ delegating workspace actions back to `SMixtormat`.
 Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 
-Workspace overlays: a viewport-pinned rail uses no shell width and owns one shared
-Layers/Library/Global surface. Layers alone can pop out and return by rail click or
-snap-back drag. The bottom gallery is one resizable MATERIALS/MASKS drawer; it replaces
-both gallery splitters. The Inspector remains dockable. See
-`auditdocs/workspace-layout/overlay-workspace-handoff.md` for validation.
+Workspace layout: Layers/Library/Global occupy a resizable left column; Layers alone can
+pop out and return by rail click or snap-back drag. The gallery is one resizable bottom
+MATERIALS/MASKS drawer over the whole workspace, replacing both gallery splitters. The
+Inspector remains dockable. See the overlay-workspace handoff for validation.

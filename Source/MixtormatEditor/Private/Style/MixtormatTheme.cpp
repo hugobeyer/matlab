@@ -362,9 +362,7 @@ namespace Mixtormat
 		T.PreviewLayout.ResolutionControlWidth = 92.0f;
 		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 232.0f;
-		T.PreviewLayout.LeftRailInset = 4.0f;
 		T.PreviewLayout.LeftRailButtonGap = 2.0f;
-		T.PreviewLayout.LeftOverlayGap = 8.0f;
 		T.PreviewLayout.LeftOverlayWidth = 320.0f;
 		T.PreviewLayout.LeftOverlaySurfaceOpacity = 0.82f;
 		T.PreviewLayout.QuickControlsCentreGap = 210.0f;

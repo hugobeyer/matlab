@@ -457,33 +457,6 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const Mixtormat::FMixtormatGalleryMetrics& Gallery = FMixtormatThemeStore::GetResolved().GalleryLayout;
-	const auto MakeModeButton = [this, &Style](const int32 Mode, const FText& Label)
-	{
-		return SNew(SButton)
-			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
-			.OnClicked_Lambda([this, Mode]()
-			{
-				GalleryModeIndex = Mode;
-				if (GalleryModeSwitcher.IsValid())
-				{
-					GalleryModeSwitcher->SetActiveWidgetIndex(GalleryModeIndex);
-				}
-				return FReply::Handled();
-			})
-			[
-				SNew(STextBlock)
-				.Text(Label)
-				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-				.ColorAndOpacity_Lambda([this, Mode]()
-				{
-					const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
-					return FSlateColor(Resolved.Palette.Get(Mode == GalleryModeIndex
-						? Mixtormat::EMixtormatColorRole::Accent
-						: Mixtormat::EMixtormatColorRole::TextMuted));
-				})
-			];
-	};
 
 	return SNew(SBorder)
 		.Padding(0.0f)
@@ -503,9 +476,18 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag the drawer header to resize it."))
 				[
 					SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth()[MakeModeButton(0, LOCTEXT("MaterialsMode", "MATERIALS"))]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(Gallery.ModeSwitchGap, 0.0f, 0.0f, 0.0f)[MakeModeButton(1, LOCTEXT("MasksMode", "MASKS"))]
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(Gallery.TilePadding, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(Gallery.TilePadding, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("MasksColumn", "MASKS"))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SAssignNew(BottomLibraryToggleButton, SButton)
@@ -520,15 +502,17 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SAssignNew(GalleryModeSwitcher, SWidgetSwitcher)
-				.WidgetIndex(GalleryModeIndex)
-				+ SWidgetSwitcher::Slot()
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()[BuildLibraryPage()]
 					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(Gallery.TilePadding)[BuildSurfaceList()]
 				]
-				+ SWidgetSwitcher::Slot()[BuildMaskBar()]
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					BuildMaskBar()
+				]
 			]
 		];
 }

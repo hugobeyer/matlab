@@ -48,22 +48,13 @@ namespace
 
 FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 {
-	// Clicking the active rail icon collapses its surface but leaves the pinned rail available.
-	// Selecting another page always reopens its shared surface.
+	// Layers is the only page that can pop out; choosing it returns the retained stack home.
 	if (PageIndex == 0 && LeftPanelPlacement != ELeftPanelPlacement::Docked)
 	{
 		LeftPanelPlacement = ELeftPanelPlacement::Docked;
-		bLeftOverlayCollapsed = false;
 		ApplyLeftPanelPlacement();
-		return FReply::Handled();
-	}
-	if (PageIndex == LeftTabIndex)
-	{
-		bLeftOverlayCollapsed = !bLeftOverlayCollapsed;
-		return FReply::Handled();
 	}
 	LeftTabIndex = PageIndex;
-	bLeftOverlayCollapsed = false;
 	if (PageIndex != 0)
 	{
 		LastNonLayersPage = PageIndex;
@@ -407,11 +398,26 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
 		[
-			SNew(SSplitter)
-			.Style(&MixtormatShell::GetSplitterStyle())
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SSplitter)
+				.Style(&MixtormatShell::GetSplitterStyle())
 			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
 			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 
+			+ SSplitter::Slot()
+				.Value_Lambda([this]() { return ShellLeftFraction; })
+				.OnSlotResized_Lambda([this](float Value)
+				{
+					if (!bSuppressSplitWriteBack)
+					{
+						ShellLeftFraction = Value;
+					}
+				})
+			[
+				BuildLeftColumn()
+			]
 			+ SSplitter::Slot()
 						.Value_Lambda([this]()
 						{
@@ -457,21 +463,33 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
 				[InspectorPlacement == EInspectorPlacement::Overlay ? SNullWidget::NullWidget : InspectorPanel.ToSharedRef()]
 			]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
+		[
+			SNew(SBox)
+			.HeightOverride_Lambda([this]()
+			{
+				return GalleryDrawerHeight > 0.0f
+					? GalleryDrawerHeight
+					: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			})
+			.Visibility_Lambda([this]()
+			{
+				return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
+			})
+			[BuildBottomLibrary()]
+		]
 		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 {
-	// The rail and selected page share a viewport overlay; only the Layers stack can pop out.
+	// The rail and selected page form the normal left workspace column; only Layers can pop out.
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]()
-		{
-			FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
-			Background.A *= FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlaySurfaceOpacity;
-			return Background;
-		})
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth()
@@ -491,15 +509,9 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 				]
 			]
-			+ SHorizontalBox::Slot().AutoWidth()
-			.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayGap, 0.0f, 0.0f, 0.0f)
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
 				SNew(SBox)
-				.Visibility_Lambda([this]()
-				{
-					return bLeftOverlayCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
-				})
-				.WidthOverride(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayWidth)
 				[
 					SAssignNew(LeftSwitcher, SWidgetSwitcher)
 					.WidgetIndex(LeftTabIndex)
@@ -627,6 +639,9 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 	{
 		// Presets and the light sliders are one feature: what the surface is lit by.
 		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING"));
+		AddGroupToggle(Card, LOCTEXT("PreviewLightGizmo", "Light Gizmo"),
+			LOCTEXT("PreviewLightGizmoHint", "Show the lighting direction gizmo while rotating lighting with RMB."),
+			bPreviewLightGizmoVisible);
 		AddSliderRow(Card, BuildPreviewLightingControls(EPreviewControlLayout::Inline));
 		AddSliderRow(Card, BuildPreviewSceneControls());
 	}

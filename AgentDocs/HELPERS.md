@@ -41,10 +41,10 @@ workspace focus. The preprocessor yields for focused-widget type names containin
 It has no workspace/tab/window ownership guard (`SMixtormat.cpp` L30–48); verify
 unrelated editor windows and modal/popup focus before extending it.
 
-D30–D32 workspace overlays: the rail is pinned over the viewport; its active icon collapses
-or reopens the shared Layers/Library/Global surface. Layers can pop out and return by rail
-click or snap-back drag. The gallery is one MATERIALS/MASKS bottom drawer. `L` reads Home
-→ Popped Out → Hidden; `G` opens/closes the drawer. See the overlay-workspace handoff.
+Workspace layout: Layers/Library/Global are the normal left-column rail/pages. Layers can
+pop out and return by rail click or snap-back drag. The gallery is one MATERIALS/MASKS
+bottom drawer over the whole workspace. `L` reads Home → Popped Out → Hidden; `G`
+opens/closes the drawer. See the overlay-workspace handoff.
 
 | Key | Action | Advertised where |
 |---|---|---|

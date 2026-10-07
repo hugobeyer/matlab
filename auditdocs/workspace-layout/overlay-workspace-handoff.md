@@ -1,32 +1,27 @@
 # Overlay workspace implementation — new-chat handoff
 
-Status: **design approved; implementation not started**. Read this first, then
-`ui-layout-and-panels-audit.md` §8, `decisions-log.md` D30–D32, and
-`auditdocs/ui-style-token-audit.md` §Approved overlay-workspace additions.
-Source is still the authority for current behavior.
+Status: **implemented in source; rebuild/in-editor validation pending**. The original
+D30–D32 direction was revised during implementation. Read this first, then
+`decisions-log.md` I14 and `auditdocs/ui-style-token-audit.md`.
+Source remains the authority.
 
-## User-approved target
+## Current approved layout
 
-- Remove the left shell splitter cell and the Preview/BottomLibrary vertical
-  splitter. No hidden splitter slots or retained split fractions as compatibility
-  paths.
-- The narrow LAYERS / LIBRARY / GLOBAL icon rail is **glued to the viewport edge**:
-  pinned in place, drawn as an overlay, and consumes no shell width.
-- Clicking a rail icon opens that page in one shared left overlay surface. Clicking
-  another page replaces the current content; do not stack three pages.
-- Layers alone supports an Inspector-style pop-out/return interaction. Drag Layers
-  away from its home beside the rail; clicking LAYERS or dragging it back to the rail
-  returns it. Keep one live Layers widget; preserve selection/scroll/expansion.
-- Library and Global are overlay pages in the same surface, not docked cells and
-  not independently free-floating windows.
-- Replace the gallery split with one bottom overlay drawer. Put MATERIALS / MASKS
-  in a mode switch (tabs or segmented control); remove the internal divider too.
-  Preserve both existing builders and their search/zoom/selection/scroll state.
-- Keep the Inspector's existing right-side Docked / Overlay / Hidden behavior and
-  `P` binding. It is the one remaining shell column beside the Preview.
-- Keep overlay stacking deterministic. Recommended policy: one active left page,
-  one gallery drawer, and the Inspector may coexist; click brings an overlapping
-  floating panel to front. Do not make the rail draggable.
+- LAYERS / LIBRARY / GLOBAL are a normal, resizable **left shell column**.
+- Layers alone can pop out; drag it home-to-overlay, click LAYERS to return it, or
+  snap it back to the column. Keep one live Layers widget and its retained state.
+- Library and Global stay as left-column pages; neither can float.
+- The Inspector keeps its existing right-side Docked / Overlay / Hidden behavior
+  and `P` binding.
+- The gallery is one resizable **bottom overlay drawer over the entire workspace**:
+  it covers the left column, Preview, and Inspector without reserving shell height.
+- MATERIALS and MASKS are simultaneous side-by-side columns, not tabs. Preserve
+  both builders and existing search/zoom/selection/scroll state.
+- Default Preview control rails are removed. `Q` marking menu and GLOBAL controls
+  remain. The light gizmo appears during RMB lighting rotation by default and has a
+  GLOBAL → LIGHTING visibility toggle.
+- Overlay stacking remains deterministic: the full-workspace gallery drawer is above
+  shell columns; Inspector/Layers pop-out behavior remains independent.
 
 ## Current source (before implementation)
 

@@ -92,7 +92,6 @@ void SMixtormat::SyncLeftCellPage()
 	const int32 PageIndex = LeftPanelPlacement == ELeftPanelPlacement::Docked
 		? 0 : LastNonLayersPage;
 	LeftTabIndex = PageIndex;
-	bLeftOverlayCollapsed = false;
 	if (LeftSwitcher.IsValid())
 	{
 		LeftSwitcher->SetActiveWidgetIndex(PageIndex);
@@ -395,7 +394,7 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 	{
 		const float DeltaY = GalleryDrawerResizeOriginScreen.Y - MouseEvent.GetScreenSpacePosition().Y;
 		const float MaximumHeight = FMath::Max(MixtormatTokens::OverlayPanelMinHeight,
-			GetPreviewViewportBounds().Y - FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset * 2.0f);
+			GetCachedGeometry().GetLocalSize().Y - FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset * 2.0f);
 		GalleryDrawerHeight = FMath::Clamp(GalleryDrawerHeightAtResizeStart + DeltaY,
 			MixtormatTokens::OverlayPanelMinHeight, MaximumHeight);
 		return FReply::Handled();

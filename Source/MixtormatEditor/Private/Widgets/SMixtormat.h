@@ -1538,13 +1538,13 @@ private:
 	TWeakPtr<SWindow> LiveThemeWindow;
 	bool bThemeRefreshPending = false;
 	EThemeRefreshMode PendingRefreshMode = EThemeRefreshMode::Reconstruct;
-	float ShellCenterFraction = 0.79f;
+	float ShellLeftFraction = 0.19f;
+	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;
 	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
 	enum class ELeftPanelPlacement : uint8 { Docked, Overlay, Hidden };
 	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
 	ELeftPanelPlacement LeftPanelPlacement = ELeftPanelPlacement::Docked;
-	bool bLeftOverlayCollapsed = false;
 	bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
 	TSharedPtr<SWidget> InspectorPanel;
 	TSharedPtr<SWidget> LeftPanel;
@@ -1567,9 +1567,8 @@ private:
 	TSharedPtr<SWidget> LeftPanelOverlayFrame;
 	bool bLeftPanelInFront = false;
 	bool bAppliedLeftPanelInFront = false;
-	// The gallery is one bottom overlay drawer; the selected mode and open state survive rebuilds.
+	// The gallery is one bottom overlay drawer; its open state and height survive rebuilds.
 	bool bBottomLibraryCollapsed = false;
-	int32 GalleryModeIndex = 0;
 	float GalleryDrawerHeight = 0.0f;
 	bool bGalleryDrawerResizing = false;
 	float GalleryDrawerHeightAtResizeStart = 0.0f;
@@ -1583,7 +1582,6 @@ private:
 	TSharedPtr<IInputProcessor> WorkspaceHotkeyProcessor;
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
-	TSharedPtr<SWidgetSwitcher> GalleryModeSwitcher;
 	TSharedPtr<SBox> GalleryDrawerHeader;
 	TSharedPtr<SButton> BottomLibraryToggleButton;
 	TSharedPtr<SVerticalBox> CategoryListBox;
@@ -1678,6 +1676,7 @@ private:
 	// replacing them, and hidden groups keep their hotkeys.
 	bool bPreviewGroupRenderVisible = true;
 	bool bPreviewGroupLightingVisible = true;
+	bool bPreviewLightGizmoVisible = true;
 	bool bPreviewGroupGeometryVisible = true;
 	bool bPreviewGroupCameraVisible = true;
 	bool bPreviewGroupOutputVisible = true;

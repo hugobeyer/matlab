@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Preview/SMixtormatLightGizmo.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 
@@ -888,6 +889,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 
+
 	const TSharedRef<SMixtormatPreviewViewport> PreviewViewport = bReusingViewport
 		? PreviewViewports[0].ToSharedRef()
 		: SNew(SMixtormatPreviewViewport)
@@ -936,33 +938,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			PreviewViewport
 		]
-		// Pinned navigation lives inside the viewport overlay, so it does not reserve shell width.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
-		.Padding(FMargin(Resolved.PreviewLayout.LeftRailInset, 0.0f, 0.0f, 0.0f))
+		// The gizmo is feedback for RMB lighting rotation, independent of the removed default rails.
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
+		.Padding(Resolved.PreviewLayout.OverlayInset)
 		[
 			SNew(SBox)
-			.HeightOverride_Lambda([this]() { return GetPreviewViewportBounds().Y; })
+			.WidthOverride(MixtormatLightGizmo::Size)
+			.HeightOverride(MixtormatLightGizmo::Size)
+			.Visibility_Lambda([this, PreviewViewport]()
+			{
+				return bPreviewLightGizmoVisible && PreviewViewport->IsRotatingLighting()
+					? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			})
 			[
-				BuildLeftColumn()
+				SNew(SMixtormatLightGizmo)
+				.CameraRotation_Lambda([PreviewViewport]() { return PreviewViewport->GetCameraRotation(); })
+				.LightDirection_Lambda([PreviewViewport]() { return PreviewViewport->GetLightDirection(); })
 			]
 		]
-		// One bottom gallery drawer. It overlays Preview and reserves no shell height.
-		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
-		.Padding(FMargin(Resolved.GalleryLayout.DrawerInset))
-		[
-			SNew(SBox)
-			.HeightOverride_Lambda([this]()
-			{
-				return GalleryDrawerHeight > 0.0f
-					? GalleryDrawerHeight
-					: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
-			})
-			.Visibility_Lambda([this]()
-			{
-				return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
-			})
-			[BuildBottomLibrary()]
-		]
+
+		// The floating panels
 		// The floating panels -- the Inspector and the Layers stack -- share one stack, so a press
 		// can bring either to the front (D25). The stack is self-hit-test-invisible: empty viewport
 		// still reaches the viewport underneath.
