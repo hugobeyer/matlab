@@ -52,12 +52,17 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I8 | Left panel placement: `L` cycles Docked → Overlay → Hidden → Docked; one `LeftPanel` (whole panel incl. tab strip) reparented between dock and viewport hosts; drag by an empty grab margin above the tab strip (no header row); shared drag/resize machinery with independent geometry; symmetric splitter write-back; clicked floating panel comes to front | `SMixtormat_Overlays.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat.h` |
 | I9 | Preview controls extracted into shared builders (`BuildPreview{Render,Lighting,Geometry,Scene,Camera,Output}Controls`); AA/Scale/Default-Lumen/Final/Displacement merged into one Render strip (D27); GLOBAL gains a PREVIEW / VIEWPORT section with five group-visibility switches and the same settings; GLOBAL empty-state opacity tokenized | `SMixtormat_PreviewControls.cpp` (new), `SMixtormat_Preview.cpp` (shrank ~610 lines), `SMixtormat_Shell.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I10 | Side resize grips: left/right edges (width-only, height stays auto and re-measures), corners unchanged; AA / Default-Lumen / displacement removed from the viewport overlay and kept in GLOBAL only, leaving the overlay strip as render Scale + Final | `SMixtormatOverlayPanel.*`, `SMixtormat_Overlays.cpp`, `SMixtormat_Inspector.cpp`, `SMixtormat_Shell.cpp`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp` |
+| I11 | Tab quick controls (D26/D28): bare Tab routed through `FMixtormatPreviewViewportClient::InputKey` (viewport focus only, no modifiers), popup built as an in-viewport overlay around the pointer (render top, lighting left, geometry right, disabled Actions row bottom), centred once measured and clamped to the viewport; dismissed by Escape, an outside click or a rebuild; requires the pointer over exposed viewport content | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 
-I7–I10 are **code-complete and untested**: no build or in-editor run has been made in this
+I7–I11 are **code-complete and untested**: no build or in-editor run has been made in this
 session, and the repo's language-server diagnostics do not resolve engine/plugin include paths,
 so they carry no signal here. Gallery stays bottom-docked; variables, persistence, Auto
-visibility and collapse-to-header remain out of scope. Stage 4 (viewport-scoped Tab and the
-quick-controls overlay) is not started.
+visibility and collapse-to-header remain out of scope.
+
+**Tab delivery is still unproven (B1).** I11 routes bare Tab through the viewport client, which is
+the plan's proposed entry point, not a verified one: Slate may consume Tab for focus navigation
+before the client sees it. If Tab does nothing in-editor, the fallback is a viewport-scoped input
+processor (focus + pointer gated) — never the application-wide L/P preprocessor.
 
 ## Recommended (pending confirmation)
 

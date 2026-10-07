@@ -122,6 +122,10 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
+		// Bare Tab in the viewport: the workspace opens its quick controls. Routed through the
+		// client rather than a global preprocessor, so text entry and Slate's own focus navigation
+		// keep Tab everywhere else.
+		SLATE_EVENT(FSimpleDelegate, OnRequestQuickControls)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -164,6 +168,8 @@ public:
 	void SetCameraFov(float FovDegrees);
 	void ResetCameraAndLighting();
 	void FocusCamera();
+	// Called by the viewport client when bare Tab arrives; the workspace decides what to do.
+	void RequestQuickControls();
 	UTextureRenderTarget2D* GetCompositedBaseColor() const;
 	UTextureRenderTarget2D* GetCompositedNormal() const;
 	UTextureRenderTarget2D* GetCompositedRAM() const;
@@ -254,6 +260,7 @@ private:
 	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
+	FSimpleDelegate OnRequestQuickControls;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;

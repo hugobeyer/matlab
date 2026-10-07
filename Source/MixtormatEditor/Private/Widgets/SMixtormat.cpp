@@ -568,6 +568,13 @@ bool SMixtormat::ResetHoveredNumericControl()
 FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
 	(void)MyGeometry;
+	// Escape closes the quick controls. Text entry keeps its own Escape -- it never reaches here --
+	// so this only fires when the popup itself is the thing on screen.
+	if (InKeyEvent.GetKey() == EKeys::Escape && bQuickControlsOpen)
+	{
+		CloseQuickControls();
+		return FReply::Handled();
+	}
 	const bool bModifierDown = InKeyEvent.IsControlDown() || InKeyEvent.IsCommandDown();
 	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::BackSpace && ResetHoveredNumericControl())
 	{

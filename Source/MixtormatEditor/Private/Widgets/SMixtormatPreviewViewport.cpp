@@ -381,6 +381,15 @@ public:
 			Owner.FocusCamera();
 			return true;
 		}
+		// Bare Tab opens the workspace's quick controls. Shift+Tab and the modifier combinations
+		// keep their Slate meanings, and this client only sees the key while the viewport has
+		// focus -- which is the scoping the marking menu needs.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Tab
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			Owner.RequestQuickControls();
+			return true;
+		}
 		if (EventArgs.Event == IE_Pressed
 			&& (EventArgs.Key == EKeys::SpaceBar || EventArgs.Key == EKeys::H))
 		{
@@ -493,6 +502,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
+	OnRequestQuickControls = InArgs._OnRequestQuickControls;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -1272,6 +1282,11 @@ void SMixtormatPreviewViewport::ResetChannelPreview()
 void SMixtormatPreviewViewport::CycleModulePreview()
 {
 	OnCycleModulePreview.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::RequestQuickControls()
+{
+	OnRequestQuickControls.ExecuteIfBound();
 }
 
 void SMixtormatPreviewViewport::CycleChannelPreview()

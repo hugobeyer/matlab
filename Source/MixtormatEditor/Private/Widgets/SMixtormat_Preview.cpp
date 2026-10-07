@@ -20,17 +20,6 @@
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
-namespace
-{
-	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content)
-	{
-		return SNew(SMixtormatSurfaceBox)
-			.Recipe_Lambda([]() { return Mixtormat::MakePreviewClusterRecipe(FMixtormatThemeStore::GetTheme()); })
-			.Padding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayClusterInset))
-			[Content];
-	}
-}
-
 // The eye always toggles the primary; the chevron (built only when Secondary is non-empty) offers
 // the rest. Derived from GetChildCapabilities rather than hand-authored here a second time: the
 // entry with bPreviewable && !bSecondaryPreview becomes Primary, every bPreviewable &&
@@ -922,6 +911,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnCycleModulePreview(FSimpleDelegate::CreateLambda([this]()
 			{
 				CycleSelectedModulePreview();
+			}))
+			// Bare Tab in the viewport. The delegate is installed once, on creation, and captures the
+			// workspace -- which survives a rebuild -- so it stays valid across theme refreshes.
+			.OnRequestQuickControls(FSimpleDelegate::CreateLambda([this]()
+			{
+				ToggleQuickControls();
 			}));
 
 	// The control clusters themselves live in SMixtormat_PreviewControls.cpp; this function only
@@ -1039,6 +1034,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot()
 		[
 			BuildFloatingPanelStack()
+		]
+		// The Tab quick controls, above the floating panels: it is invoked deliberately, so it takes
+		// the top layer.
+		+ SOverlay::Slot()
+		[
+			BuildQuickControlsOverlay()
 		];
 
 	if (!bReusingViewport)

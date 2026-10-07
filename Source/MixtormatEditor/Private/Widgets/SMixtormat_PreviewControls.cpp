@@ -207,6 +207,14 @@ namespace
 	}
 }
 
+TSharedRef<SWidget> SMixtormat::MakePreviewCluster(const TSharedRef<SWidget>& Content)
+{
+	return SNew(SMixtormatSurfaceBox)
+		.Recipe_Lambda([]() { return Mixtormat::MakePreviewClusterRecipe(FMixtormatThemeStore::GetTheme()); })
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayClusterInset))
+		[Content];
+}
+
 TSharedRef<SWidget> SMixtormat::MakePreviewScaleRow()
 {
 	return MakeSlider(
@@ -683,6 +691,117 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 				})
 			]
 		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
+{
+	// Top: render. Left: lighting. Right: geometry. Bottom: the Actions placeholder. The gap in the
+	// middle row is where the pointer sits, which is what makes this a marking menu rather than a
+	// panel that happens to be near the cursor.
+	QuickControlsPanel = SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+		[
+			MakePreviewCluster(BuildPreviewRenderControls())
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				MakePreviewCluster(BuildPreviewLightingControls())
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			[
+				SNew(SBox).MinDesiredWidth(MixtormatTokens::QuickControlsCentreGap)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				MakePreviewCluster(BuildPreviewGeometryControls())
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+		[
+			// One disabled row: the context actions are a later pass, and a placeholder that says so
+			// is more honest than a menu that does nothing.
+			SNew(SBox)
+			.IsEnabled(false)
+			[
+				MakePreviewCluster(
+					SNew(STextBlock)
+					.Text(LOCTEXT("QuickControlsActionsPlaceholder", "Context actions — later"))
+					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+						Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity))))
+			]
+		];
+
+	// Placed by padding, like the floating panels, so the pointer owns the position and the viewport
+	// owns the clamp. Self-hit-test-invisible: empty viewport must still reach the viewport.
+	return SNew(SBox)
+		.Padding_Lambda([this]()
+		{
+			const FVector2D Bounds = GetPreviewViewportBounds();
+			QuickControlsSize = QuickControlsPanel.IsValid()
+				? QuickControlsPanel->GetDesiredSize()
+				: FVector2D::ZeroVector;
+			if (bQuickControlsNeedsCentre && QuickControlsSize.X > 0.0 && QuickControlsSize.Y > 0.0)
+			{
+				// The pointer belongs in the middle gap, so the popup centres itself on it once its
+				// size is known -- one layout pass after it opens.
+				QuickControlsPosition -= QuickControlsSize * 0.5;
+				bQuickControlsNeedsCentre = false;
+			}
+			// Clamped like the floating panels: a Tab near an edge must not put controls offscreen.
+			QuickControlsPosition.X = FMath::Clamp(QuickControlsPosition.X, 0.0,
+				FMath::Max(0.0, Bounds.X - QuickControlsSize.X));
+			QuickControlsPosition.Y = FMath::Clamp(QuickControlsPosition.Y, 0.0,
+				FMath::Max(0.0, Bounds.Y - QuickControlsSize.Y));
+			return FMargin(QuickControlsPosition.X, QuickControlsPosition.Y, 0.0f, 0.0f);
+		})
+		.HAlign(HAlign_Left)
+		.VAlign(VAlign_Top)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		[
+			SNew(SBox)
+			.Clipping(EWidgetClipping::ClipToBounds)
+			.Visibility_Lambda([this]()
+			{
+				return bQuickControlsOpen ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[QuickControlsPanel.ToSharedRef()]
+		];
+}
+
+void SMixtormat::ToggleQuickControls()
+{
+	if (bQuickControlsOpen)
+	{
+		CloseQuickControls();
+		return;
+	}
+	const FVector2D Local = GetPreviewViewportLocalPosition(FSlateApplication::Get().GetCursorPos());
+	const FVector2D Bounds = GetPreviewViewportBounds();
+	// The pointer has to be over exposed viewport content: a Tab while it sits on a floating panel
+	// belongs to that panel, not to the viewport underneath.
+	if (Local.X < 0.0 || Local.Y < 0.0 || Local.X > Bounds.X || Local.Y > Bounds.Y)
+	{
+		return;
+	}
+	if (InspectorPlacement == EInspectorPlacement::Overlay && MixtormatOverlay::IsHit(InspectorOverlay, Local))
+	{
+		return;
+	}
+	if (LeftPanelPlacement == ELeftPanelPlacement::Overlay && MixtormatOverlay::IsHit(LeftPanelOverlay, Local))
+	{
+		return;
+	}
+	QuickControlsPosition = Local;
+	bQuickControlsNeedsCentre = true;
+	bQuickControlsOpen = true;
+}
+
+void SMixtormat::CloseQuickControls()
+{
+	bQuickControlsOpen = false;
 }
 
 #undef LOCTEXT_NAMESPACE

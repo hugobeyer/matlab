@@ -1470,6 +1470,14 @@ private:
 	TSharedRef<SWidget> BuildPreviewRenderStrip();
 	TSharedRef<SWidget> MakePreviewScaleRow();
 	TSharedRef<SWidget> MakePreviewFinalButton();
+	// Wraps a control cluster in the shared plate. A member rather than a file-local helper because
+	// the viewport composition and the quick-controls popup both build clusters.
+	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content);
+	// The Tab quick controls (D26/D28): an in-viewport overlay opened at the pointer, dismissed by
+	// Escape, an outside click or a rebuild.
+	TSharedRef<SWidget> BuildQuickControlsOverlay();
+	void ToggleQuickControls();
+	void CloseQuickControls();
 	TSharedRef<SWidget> BuildPreviewLightingControls();
 	TSharedRef<SWidget> BuildPreviewGeometryControls();
 	TSharedRef<SWidget> BuildPreviewSceneControls();
@@ -1650,6 +1658,13 @@ private:
 	bool bPreviewGroupGeometryVisible = true;
 	bool bPreviewGroupCameraVisible = true;
 	bool bPreviewGroupOutputVisible = true;
+	// The quick-controls popup: where it was opened, how big it turned out, and whether it still
+	// has to centre itself on the pointer once its size is known.
+	bool bQuickControlsOpen = false;
+	FVector2D QuickControlsPosition = FVector2D::ZeroVector;
+	FVector2D QuickControlsSize = FVector2D::ZeroVector;
+	bool bQuickControlsNeedsCentre = false;
+	TSharedPtr<SWidget> QuickControlsPanel;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;

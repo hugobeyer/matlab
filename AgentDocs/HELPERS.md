@@ -65,7 +65,7 @@ controls, the mode label and/or status bar. Shortcut discoverability is incomple
 | `Shift+V` | Jump straight back to Material (also in the mode label) |
 | `U` or `M` | Cycle module preview — **marked Temporary in source** |
 | Mouse wheel | Zoom camera |
-| `Tab` (bare) | **Planned, not implemented** — open the viewport marking menu. Belongs here (viewport focus), not in the workspace preprocessor, because Slate uses Tab for focus navigation. See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
+| `Tab` (bare) | Open the viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Escape or an outside click dismisses. **Implemented, untested** — routed through `FMixtormatPreviewViewportClient::InputKey`; delivery past Slate's focus navigation is unproven (B1). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
 
 ## Hotkey catalog — controls
 

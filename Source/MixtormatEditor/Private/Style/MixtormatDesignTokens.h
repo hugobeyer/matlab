@@ -645,6 +645,10 @@ namespace MixtormatTokens
 	// An empty state's line -- "No layer selected", "No global variables yet." -- is present but
 	// deliberately quiet: it is a note about the absence of content, not content.
 	inline float EmptyStateOpacity = 0.5f;
+	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting rail
+	// on the left and the geometry rail on the right. Wide enough that the popup reads as arranged
+	// around the cursor rather than as a panel that happens to be near it.
+	inline float QuickControlsCentreGap = 72.0f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;
