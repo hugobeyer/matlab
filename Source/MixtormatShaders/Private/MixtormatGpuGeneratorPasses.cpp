@@ -2450,10 +2450,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
 	}
 	// Color Ramp only publishes Color. The Generator layer owns whether the last valid ordered
-	// Color result becomes this layer's Base Color input.
+	// Color result becomes this layer's Base Color input. When nothing in the stack produced a
+	// colour, bGeneratorColor stays false and the composite keeps the base colour below instead
+	// of painting the resolved neutral input.
 	if (Layer.bGeneratorAlbedo && GeneratedColor)
 	{
 		LayerCtx.LayerInputBC = GeneratedColor;
+		LayerCtx.bGeneratorColor = true;
 	}
 	if (!RunningHeight) { return; }
 	Bundle.Height = RunningHeight;

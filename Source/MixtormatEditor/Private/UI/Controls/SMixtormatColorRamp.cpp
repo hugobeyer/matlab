@@ -52,7 +52,8 @@ void SMixtormatColorRamp::Construct(const FArguments& Args)
 	OnBeginInteractiveEdit = Args._OnBeginInteractiveEdit;
 	OnEndInteractiveEdit = Args._OnEndInteractiveEdit;
 	BuildLayout();
-	// Chrome under the shared toolbar/graph: preset chips + selected-stop swatch/position.
+	// Chrome under the shared toolbar/graph: the selected stop's swatch and position. Presets
+	// live in the owning inspector group's header as a dropdown.
 	ChromeBox = SNew(SVerticalBox);
 	RebuildChrome();
 	const TSharedRef<SWidget> Existing = ChildSlot.GetWidget();
@@ -68,8 +69,8 @@ void SMixtormatColorRamp::Construct(const FArguments& Args)
 FVector2D SMixtormatColorRamp::ComputeDesiredSize(float LayoutScaleMultiplier) const
 {
 	const FVector2D Base = SMixtormatRampEditorBase::ComputeDesiredSize(LayoutScaleMultiplier);
-	// Preset strip (~18px) + stop row (~22px) + gaps stacked under the shared graph.
-	return FVector2D(Base.X, Base.Y + 48.0f);
+	// The stop row (~22px) stacked under the shared graph.
+	return FVector2D(Base.X, Base.Y + 24.0f);
 }
 
 void SMixtormatColorRamp::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime,
@@ -193,16 +194,17 @@ void SMixtormatColorRamp::PaintRampContent(FSlateWindowElementList& Elements, co
 	const float Y1 = Rect.Y1;
 	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
 
-	// The gradient bar, sampled across the domain. One box per sample, so the bar reads the same
-	// interpolation the GPU evaluates.
-	constexpr int32 Samples = 96;
+	// The gradient bar, sampled across the domain. Sample at the pixel rate the bar is drawn at
+	// and evaluate each sample at its left edge, so adjacent boxes meet at the same colour and
+	// the bar reads continuous at any inspector width instead of banding at a fixed count.
+	const int32 Samples = FMath::Clamp(FMath::CeilToInt(Rect.X1 - Rect.X0), 64, 512);
 	for (int32 Index = 0; Index < Samples; ++Index)
 	{
 		const float T0 = static_cast<float>(Index) / static_cast<float>(Samples);
 		const float T1 = static_cast<float>(Index + 1) / static_cast<float>(Samples);
 		const float XA = XToScreen(Size, DomainMin + (DomainMax - DomainMin) * T0);
 		const float XB = XToScreen(Size, DomainMin + (DomainMax - DomainMin) * T1);
-		const float Value = DomainMin + (DomainMax - DomainMin) * (T0 + T1) * 0.5f;
+		const float Value = DomainMin + (DomainMax - DomainMin) * T0;
 		FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(
 			FVector2f(FMath::Max(XB - XA, 1.0f), BarHeight), FSlateLayoutTransform(FVector2f(XA, Y0))),
 			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
@@ -378,37 +380,16 @@ FReply SMixtormatColorRamp::OnSwatchClicked()
 	return FReply::Handled();
 }
 
-TSharedRef<SWidget> SMixtormatColorRamp::BuildPresetStrip()
+int32 SMixtormatColorRamp::GetPresetCount()
+{
+	return MixtormatColorRampPresets::All().Num();
+}
+
+FText SMixtormatColorRamp::GetPresetName(const int32 PresetIndex)
 {
 	const TArray<MixtormatColorRampPresets::FPreset> Presets = MixtormatColorRampPresets::All();
-	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
-	for (int32 Index = 0; Index < Presets.Num(); ++Index)
-	{
-		const int32 PresetIndex = Index;
-		const FMixtormatColorRampStop& Mid = Presets[Index].Stops[Presets[Index].Stops.Num() / 2];
-		Row->AddSlot().AutoWidth().Padding(Index == 0 ? 0.0f : 3.0f, 0.0f)
-		[
-			SNew(SBox).WidthOverride(18.0f).HeightOverride(14.0f)
-			[
-				SNew(SButton)
-				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
-				.ContentPadding(0.0f)
-				.ToolTipText(FText::FromString(Presets[Index].Name))
-				.OnClicked_Lambda([this, PresetIndex]()
-				{
-					ApplyPreset(PresetIndex);
-					return FReply::Handled();
-				})
-				[
-					SNew(SColorBlock)
-					.Color(Mid.Color)
-					.ShowBackgroundForAlpha(false)
-					.Size(FVector2D(18.0, 14.0))
-				]
-			]
-		];
-	}
-	return Row;
+	return Presets.IsValidIndex(PresetIndex)
+		? FText::FromString(Presets[PresetIndex].Name) : FText::GetEmpty();
 }
 
 TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
@@ -472,7 +453,6 @@ void SMixtormatColorRamp::RebuildChrome()
 {
 	if (!ChromeBox.IsValid()) { return; }
 	ChromeBox->ClearChildren();
-	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)[BuildPresetStrip()];
 	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)[BuildSelectedStopRow()];
 }
 

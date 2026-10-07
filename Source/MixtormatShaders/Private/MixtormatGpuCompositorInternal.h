@@ -1489,6 +1489,10 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef LayerInputBC = nullptr;
 		FRDGTextureRef LayerInputN = nullptr;
 		FRDGTextureRef LayerInputRAM = nullptr;
+		// True when the generator stack produced a real colour this layer may paint as albedo
+		// (the last valid ordered Color Ramp result). Without it a GeneratorAlbedo layer must keep
+		// the composite below rather than writing the resolved neutral input.
+		bool bGeneratorColor = false;
 		// Albedo in RGB, roughness in alpha, resolved once per layer by AddLayerValuesPass and
 		// shared by every Layer Values mask on it.
 		FRDGTextureRef LayerValues = nullptr;
@@ -1575,6 +1579,7 @@ namespace MixtormatGpuCompositor
 			ReferencedColor = nullptr;
 
 			bGeneratedHeight = false;
+			bGeneratorColor = false;
 			GeneratorFields.Reset();
 			GeneratorModuleHeights.Reset();
 			PendingLayerBlurs.Reset();

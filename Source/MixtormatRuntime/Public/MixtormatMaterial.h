@@ -3953,8 +3953,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
 
 	// Generator-layer output routing. Color producers remain independent of this destination choice.
+	// On by default: a generator with a Color Ramp is expected to paint it, and the compositor
+	// skips the write entirely when no colour is generated, so the default is safe.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Output", meta = (DisplayName = "Albedo"))
-	bool bGeneratorAlbedo = false;
+	bool bGeneratorAlbedo = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	bool bEnabled = true;

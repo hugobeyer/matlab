@@ -108,6 +108,9 @@ uint CompositionMode;
 uint IsFill;
 uint IsGenerator;
 uint GeneratorAlbedo;
+// A generator layer only writes its albedo when its stack produced a colour (Color Ramp or a
+// referenced colour field); without one the composite below is kept.
+uint HasGeneratorColor;
 uint HasSurface;
 // 0: direct composite, 1: prepare incoming channels, 2: composite prepared channels.
 uint PreparedLayerMode;
@@ -1359,7 +1362,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	OutputBC[DispatchThreadId.xy] = IsGenerator != 0 && GeneratorAlbedo == 0
+	OutputBC[DispatchThreadId.xy] = IsGenerator != 0
+			&& (GeneratorAlbedo == 0 || HasGeneratorColor == 0)
 		? PreviousBaseColor
 		: float4(ResultBaseColor, 1.0f);
 	OutputN[DispatchThreadId.xy] = IsGenerator != 0

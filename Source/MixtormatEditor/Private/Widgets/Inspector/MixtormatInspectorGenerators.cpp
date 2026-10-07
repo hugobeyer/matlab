@@ -988,7 +988,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 	const auto Ramp = [this]() { return GetSelectedHeightColorRamp(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	AddSliderRow(Panel, SNew(SMixtormatColorRamp)
+	TSharedPtr<SMixtormatColorRamp> RampWidget;
+	AddSliderRow(Panel, SAssignNew(RampWidget, SMixtormatColorRamp)
 		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Ramp]()
 		{
 			const FMixtormatGeneratorHeightColorRamp* R = Ramp();
@@ -1012,6 +1013,49 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 			[
 				MakeChildOutputPreviewButton(
 					GetPreviewOutputSetForChildType(EMixtormatLayerChildType::HeightColorRamp))
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f,
+				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+			[
+				// Presets as a compact header dropdown instead of a chip strip under the ramp.
+				SNew(SComboButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+				.HasDownArrow(false)
+				.ContentPadding(FMargin(0.0f))
+				.OnGetMenuContent_Lambda([RampWidget]() -> TSharedRef<SWidget>
+				{
+					MixtormatMenu::FBuilder Menu;
+					Menu.Caption(LOCTEXT("ColorRampPresetsHeading", "PRESETS"));
+					for (int32 Index = 0; Index < SMixtormatColorRamp::GetPresetCount(); ++Index)
+					{
+						const int32 PresetIndex = Index;
+						Menu.Item(SMixtormatColorRamp::GetPresetName(PresetIndex), nullptr,
+							FSimpleDelegate::CreateLambda([RampWidget, PresetIndex]()
+							{
+								if (RampWidget.IsValid()) { RampWidget->ApplyPreset(PresetIndex); }
+							}));
+					}
+					return Menu.Build();
+				})
+				.ButtonContent()
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock).Text(LOCTEXT("ColorRampPresets", "Presets"))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 2.0f, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						[
+							SNew(SImage)
+							.Image(MixtormatIcons::ChevronDown())
+							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+						]
+					]
+				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]()

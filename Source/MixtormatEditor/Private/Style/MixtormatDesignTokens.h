@@ -410,6 +410,11 @@ namespace MixtormatTokens
 	inline float ScalarRampToolbarHeight = 20.0f;
 	inline float ScalarRampViewportPadding = 8.0f;
 
+	// ---- Color Ramp ---------------------------------------------------------------------------
+	// The colour ramp is 1D (X + colour): the gradient bar and its handles are all it draws, so it
+	// sits at roughly half the scalar ramp's height, which reserves room for the curve itself.
+	inline float ColorRampHeight = 56.0f;
+
 	// ---- Blend modes -----------------------------------------------------------------------
 	// The eight `*-blend-mode` tokens the prototype authors, as indices into
 	// MixtormatCompositing::EMixtormatBlendMode: 0 Normal, 1 Additive (plus-lighter), 2 Multiply,

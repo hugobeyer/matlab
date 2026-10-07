@@ -15,7 +15,7 @@ class SMixtormatColorRamp final : public SMixtormatRampEditorBase
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatColorRamp)
-		: _Height(MixtormatTokens::ScalarRampHeight)
+		: _Height(MixtormatTokens::ColorRampHeight)
 		, _DomainMin(-1.0f)
 		, _DomainMax(1.0f)
 	{}
@@ -29,6 +29,12 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+
+	// Built-in presets, exposed so an owner (the inspector group header) can offer them as a
+	// dropdown. Custom saved presets slot in here later by extending the index space.
+	static int32 GetPresetCount();
+	static FText GetPresetName(int32 PresetIndex);
+	void ApplyPreset(int32 PresetIndex);
 
 	virtual void Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) override;
 	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override;
@@ -65,12 +71,10 @@ protected:
 
 private:
 	void OpenStopPicker(int32 StopIndex);
-	void ApplyPreset(int32 PresetIndex);
 	void SetSelectedStopColor(FLinearColor Color);
 	void SetSelectedStopX(float X);
 	FReply OnSwatchClicked();
 	TSharedRef<SWidget> BuildSelectedStopRow();
-	TSharedRef<SWidget> BuildPresetStrip();
 	void RebuildChrome();
 
 	TAttribute<FMixtormatColorRamp> RampAttribute;
