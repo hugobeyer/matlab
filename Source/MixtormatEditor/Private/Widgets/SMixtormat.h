@@ -1384,6 +1384,8 @@ private:
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	FReply ToggleBottomLibraryCollapsed();
+	FReply ToggleLeftPanelCollapsed();
+	FReply ToggleInspectorCollapsed();
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -1472,6 +1474,8 @@ private:
 	float ShellLeftFraction = 0.19f;
 	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;
+	bool bLeftPanelCollapsed = false;
+	bool bInspectorCollapsed = false;
 	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
 	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
 	// derived from this one, so the pair can never disagree or renormalise against each other.

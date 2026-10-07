@@ -119,6 +119,30 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ToolTipText(LOCTEXT("RedoMaterialEditHint", "Redo the last Mixtormat recipe edit (Ctrl+Y or Ctrl+Shift+Z)."))
 					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
 				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.Text_Lambda([this]()
+					{
+						return bLeftPanelCollapsed ? LOCTEXT("ShowLayers", "Show Layers") : LOCTEXT("HideLayers", "Hide Layers");
+					})
+					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Collapse or expand the Layers / Library panel (L)."))
+					.IsEnabled_Lambda([this]() { return !bIsBaking; })
+					.OnClicked(this, &SMixtormat::ToggleLeftPanelCollapsed)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.Text_Lambda([this]()
+					{
+						return bInspectorCollapsed ? LOCTEXT("ShowInspector", "Show Inspector") : LOCTEXT("HideInspector", "Hide Inspector");
+					})
+					.ToolTipText(LOCTEXT("ToggleInspectorHint", "Collapse or expand the Inspector panel (P)."))
+					.IsEnabled_Lambda([this]() { return !bIsBaking; })
+					.OnClicked(this, &SMixtormat::ToggleInspectorCollapsed)
+				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f)
 				[
 					SNew(STextBlock)
@@ -350,14 +374,34 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
 			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 			+ SSplitter::Slot()
-						.Value_Lambda([this]() { return ShellLeftFraction; })
-						.OnSlotResized_Lambda([this](float Value) { ShellLeftFraction = Value; })
+						.Value_Lambda([this]() { return bLeftPanelCollapsed ? 0.01f : ShellLeftFraction; })
+						.OnSlotResized_Lambda([this](float Value)
+						{
+							// Keep expanded widths separate from the temporary collapsed arrangement.
+							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed && !bInspectorCollapsed)
+							{
+								ShellLeftFraction = Value;
+							}
+						})
 			[
-				BuildLeftPanel()
+				SNew(SBox)
+				.Visibility_Lambda([this]() { return bLeftPanelCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
+				[BuildLeftPanel()]
 			]
 			+ SSplitter::Slot()
-						.Value_Lambda([this]() { return ShellCenterFraction; })
-						.OnSlotResized_Lambda([this](float Value) { ShellCenterFraction = Value; })
+						.Value_Lambda([this]()
+						{
+							return ShellCenterFraction
+								+ (bLeftPanelCollapsed ? ShellLeftFraction - 0.01f : 0.0f)
+								+ (bInspectorCollapsed ? ShellRightFraction - 0.01f : 0.0f);
+						})
+						.OnSlotResized_Lambda([this](float Value)
+						{
+							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed && !bInspectorCollapsed)
+							{
+								ShellCenterFraction = Value;
+							}
+						})
 			[
 				SNew(SSplitter)
 				.Style(&MixtormatShell::GetSplitterStyle())
@@ -451,10 +495,18 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 								]
 			]
 + SSplitter::Slot()
-						.Value_Lambda([this]() { return ShellRightFraction; })
-						.OnSlotResized_Lambda([this](float Value) { ShellRightFraction = Value; })
+						.Value_Lambda([this]() { return bInspectorCollapsed ? 0.01f : ShellRightFraction; })
+						.OnSlotResized_Lambda([this](float Value)
+						{
+							if (!bSuppressSplitWriteBack && !bLeftPanelCollapsed && !bInspectorCollapsed)
+							{
+								ShellRightFraction = Value;
+							}
+						})
 			[
-				BuildInspectorPanel()
+				SNew(SBox)
+				.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
+				[BuildInspectorPanel()]
 			]
 		];
 }
@@ -568,6 +620,26 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 FReply SMixtormat::ToggleBottomLibraryCollapsed()
 {
 	bBottomLibraryCollapsed = !bBottomLibraryCollapsed;
+	return FReply::Handled();
+}
+
+FReply SMixtormat::ToggleLeftPanelCollapsed()
+{
+	if (bIsBaking)
+	{
+		return FReply::Handled();
+	}
+	bLeftPanelCollapsed = !bLeftPanelCollapsed;
+	return FReply::Handled();
+}
+
+FReply SMixtormat::ToggleInspectorCollapsed()
+{
+	if (bIsBaking)
+	{
+		return FReply::Handled();
+	}
+	bInspectorCollapsed = !bInspectorCollapsed;
 	return FReply::Handled();
 }
 
