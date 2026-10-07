@@ -270,6 +270,11 @@ namespace MixtormatColorRampPresets
 		TArray<FMixtormatColorRampStop> Stops;
 	};
 
+	static FLinearColor SRGB(const uint8 R, const uint8 G, const uint8 B)
+	{
+		return FLinearColor(FColor(R, G, B, 255));
+	}
+
 	static FPreset Make(const TCHAR* Name, const TArray<FMixtormatColorRampStop>& Stops)
 	{
 		FPreset P;
@@ -283,46 +288,46 @@ namespace MixtormatColorRampPresets
 	{
 		TArray<FPreset> Out;
 		Out.Add(Make(TEXT("Stone"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.12f, 0.12f, 0.13f)},
-			FMixtormatColorRampStop{-0.25f, FLinearColor(0.28f, 0.27f, 0.26f)},
-			FMixtormatColorRampStop{0.35f, FLinearColor(0.48f, 0.46f, 0.43f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.72f, 0.70f, 0.66f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(31, 31, 33)},
+			FMixtormatColorRampStop{-0.25f, SRGB(71, 69, 66)},
+			FMixtormatColorRampStop{0.35f, SRGB(122, 117, 110)},
+			FMixtormatColorRampStop{1.0f, SRGB(184, 179, 168)},
 		}));
 		Out.Add(Make(TEXT("Clay"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.22f, 0.12f, 0.08f)},
-			FMixtormatColorRampStop{-0.2f, FLinearColor(0.42f, 0.24f, 0.16f)},
-			FMixtormatColorRampStop{0.4f, FLinearColor(0.62f, 0.38f, 0.26f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.78f, 0.58f, 0.42f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(56, 31, 20)},
+			FMixtormatColorRampStop{-0.2f, SRGB(107, 61, 41)},
+			FMixtormatColorRampStop{0.4f, SRGB(158, 97, 66)},
+			FMixtormatColorRampStop{1.0f, SRGB(199, 148, 107)},
 		}));
 		Out.Add(Make(TEXT("Oxide"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.08f, 0.05f, 0.04f)},
-			FMixtormatColorRampStop{-0.15f, FLinearColor(0.35f, 0.12f, 0.06f)},
-			FMixtormatColorRampStop{0.3f, FLinearColor(0.65f, 0.22f, 0.08f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.85f, 0.45f, 0.18f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(20, 13, 10)},
+			FMixtormatColorRampStop{-0.15f, SRGB(89, 31, 15)},
+			FMixtormatColorRampStop{0.3f, SRGB(166, 56, 20)},
+			FMixtormatColorRampStop{1.0f, SRGB(217, 115, 46)},
 		}));
 		Out.Add(Make(TEXT("Moss"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.06f, 0.08f, 0.04f)},
-			FMixtormatColorRampStop{-0.2f, FLinearColor(0.12f, 0.22f, 0.08f)},
-			FMixtormatColorRampStop{0.35f, FLinearColor(0.28f, 0.42f, 0.16f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.48f, 0.58f, 0.28f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(15, 20, 10)},
+			FMixtormatColorRampStop{-0.2f, SRGB(31, 56, 20)},
+			FMixtormatColorRampStop{0.35f, SRGB(71, 107, 41)},
+			FMixtormatColorRampStop{1.0f, SRGB(122, 148, 71)},
 		}));
 		Out.Add(Make(TEXT("Mineral"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.10f, 0.12f, 0.18f)},
-			FMixtormatColorRampStop{-0.3f, FLinearColor(0.18f, 0.28f, 0.42f)},
-			FMixtormatColorRampStop{0.2f, FLinearColor(0.35f, 0.55f, 0.62f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.75f, 0.82f, 0.88f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(26, 31, 46)},
+			FMixtormatColorRampStop{-0.3f, SRGB(46, 71, 107)},
+			FMixtormatColorRampStop{0.2f, SRGB(89, 140, 158)},
+			FMixtormatColorRampStop{1.0f, SRGB(191, 209, 224)},
 		}));
 		Out.Add(Make(TEXT("Sand"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.28f, 0.22f, 0.14f)},
-			FMixtormatColorRampStop{-0.15f, FLinearColor(0.55f, 0.45f, 0.28f)},
-			FMixtormatColorRampStop{0.4f, FLinearColor(0.78f, 0.68f, 0.45f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.92f, 0.86f, 0.68f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(71, 56, 36)},
+			FMixtormatColorRampStop{-0.15f, SRGB(140, 115, 71)},
+			FMixtormatColorRampStop{0.4f, SRGB(199, 173, 115)},
+			FMixtormatColorRampStop{1.0f, SRGB(235, 219, 173)},
 		}));
 		Out.Add(Make(TEXT("Split Surface"), {
-			FMixtormatColorRampStop{-1.0f, FLinearColor(0.08f, 0.08f, 0.09f)},
-			FMixtormatColorRampStop{-0.05f, FLinearColor(0.22f, 0.20f, 0.18f)},
-			FMixtormatColorRampStop{0.05f, FLinearColor(0.55f, 0.52f, 0.48f)},
-			FMixtormatColorRampStop{1.0f, FLinearColor(0.88f, 0.86f, 0.82f)},
+			FMixtormatColorRampStop{-1.0f, SRGB(20, 20, 23)},
+			FMixtormatColorRampStop{-0.05f, SRGB(56, 51, 46)},
+			FMixtormatColorRampStop{0.05f, SRGB(140, 133, 122)},
+			FMixtormatColorRampStop{1.0f, SRGB(224, 219, 209)},
 		}));
 		return Out;
 	}

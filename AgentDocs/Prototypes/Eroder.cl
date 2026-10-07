@@ -9,6 +9,7 @@
 #bind layer &sediment float port=sediment border=WRAP
 #bind layer &wear float port=wear border=WRAP
 #bind layer &deposit float port=deposit border=WRAP
+#bind layer &erosion float port=erosion border=WRAP
 
 // SCRATCH PING-PONG
 #bind layer &height_tmp float port=height_tmp border=WRAP
@@ -17,6 +18,7 @@
 #bind layer &sediment_tmp float port=sediment_tmp border=WRAP
 #bind layer &wear_tmp float port=wear_tmp border=WRAP
 #bind layer &deposit_tmp float port=deposit_tmp border=WRAP
+#bind layer &erosion_tmp float port=erosion_tmp border=WRAP
 
 // GRAVITY / SURFACE
 #bind parm gravity float3 val={0,-1,-0.15}
@@ -52,9 +54,16 @@
 #bind parm max_deposit_step float val=0.008
 
 // ROCK / BRICK EDGE WEAR
+// Now a SUBTLE directional modifier only (0.15 x edge_wear), not a peak
+// multiplier. Set edge_wear = 0 to disable convexity entirely.
 #bind parm edge_wear float val=2
 #bind parm edge_threshold float val=0.005
 #bind parm edge_softness float val=0.03
+
+// WEAR / EROSION FIELD DIFFUSION
+// Smooths the erosion field before it is removed from the height, so cuts
+// are rounded chamfers instead of razor incisions. The height is never blurred.
+#bind parm wear_diffusion float val=0.25
 
 // THERMAL / TALUS
 #bind parm thermal float val=0.08
@@ -63,6 +72,15 @@
 
 // RESOLUTION REFERENCE
 #bind parm reference_res float val=2048
+
+
+// One thermal pair transfer, in RAW height units.
+// Symmetric in the height difference, so the outflow from one pixel equals
+// the inflow to its neighbour: material is moved, never created or deleted.
+static float thermal_pair(float d, float talus, float k, float cap)
+{
+    return d > talus ? fmin((d - talus) * k, cap) : 0.0f;
+}
 
 
 @KERNEL
@@ -406,7 +424,9 @@
         );
 
     //----------------------------------------------------------------------
-    // HEIGHT MEASUREMENTS ALONG FLOW
+    // FLOW-DIRECTIONAL HEIGHT SAMPLES
+    //
+    // upstream (-flowDir), current, downstream (+flowDir)
     //----------------------------------------------------------------------
 
     float sampledist =
@@ -428,26 +448,34 @@
             );
     }
 
-    float along_slope =
-        fmax(
-            (hBack - hFront)
-            * 0.5f
-            * @height_scale
-            * resscale,
-            0.0f
-        );
-
     //----------------------------------------------------------------------
-    // CONVEX EDGE / RIDGE DETECTION
+    // FLOW-FACING SHOULDER / DIRECTIONAL RELIEF
+    //
+    // incoming : upstream stands above us  (we sit on a descending face)
+    // outgoing : we stand above downstream  (flow leaves us downhill)
+    // shoulder : both true -> a flow-facing slope. It is ZERO at a crest
+    //            (incoming = 0) and at a valley (outgoing = 0), so the
+    //            exact local maximum is never the erosion target.
+    // relief   : total drop across the sample span.
     //----------------------------------------------------------------------
 
-    float avg4 =
-        (hL + hR + hD + hU)
-        * 0.25f;
+    float incoming = fmax(hBack - hC, 0.0f);
+    float outgoing = fmax(hC - hFront, 0.0f);
+    float shoulder = fmin(incoming, outgoing);
+    float relief   = fmax(hBack - hFront, 0.0f);
 
-    float convex =
+    //----------------------------------------------------------------------
+    // SUBTLE DIRECTIONAL CONVEX-BREAK MODIFIER
+    //
+    // Second derivative ALONG the flow, not the isotropic Laplacian that
+    // used to attack every convex maximum. Kept deliberately weak.
+    //----------------------------------------------------------------------
+
+    float d2 = hBack - 2.0f*hC + hFront;
+
+    float convex_along =
         fmax(
-            (hC - avg4)
+            -d2
             * @height_scale
             * resscale,
             0.0f
@@ -458,19 +486,26 @@
             @edge_threshold,
             @edge_threshold
                 + fmax(@edge_softness, 1e-6f),
-            convex
+            convex_along
         );
 
     //----------------------------------------------------------------------
     // SEDIMENT CAPACITY
+    //
+    // Driven by the flow-facing shoulder, not by convexity.
     //----------------------------------------------------------------------
+
+    float slope_term =
+        (shoulder + relief * 0.25f)
+        * @height_scale
+        * resscale;
 
     float capacity_value =
         water
         * fmax(@capacity, 0.0f)
         * (
             fmax(@base_capacity, 0.0f)
-            + along_slope
+            + slope_term
                 * fmax(@slope_capacity, 0.0f)
         )
         * (
@@ -479,19 +514,21 @@
                 * fmax(@speed_capacity, 0.0f)
         );
 
+    // Convexity is now only a small optional nudge (0.15 x edge_wear).
     capacity_value *=
         1.0f
         + edgefactor
-        * fmax(@edge_wear, 0.0f);
+        * fmax(@edge_wear, 0.0f)
+        * 0.15f;
 
     //----------------------------------------------------------------------
-    // ERODE / DEPOSIT
+    // ERODE / DEPOSIT (raw, before wear diffusion)
     //----------------------------------------------------------------------
 
     float sediment =
         fmax(transported_sed, 0.0f);
 
-    float eroded = 0.0f;
+    float raw_eroded = 0.0f;
     float deposited = 0.0f;
 
     float delta =
@@ -499,19 +536,17 @@
 
     if (delta > 0.0f)
     {
-        eroded =
+        raw_eroded =
             delta
             * fmax(@erosion_rate, 0.0f)
             * fmax(@erodability, 0.0f);
 
         if (@max_erosion_step > 0.0f)
-            eroded =
+            raw_eroded =
                 fmin(
-                    eroded,
+                    raw_eroded,
                     @max_erosion_step
                 );
-
-        sediment += eroded;
     }
     else
     {
@@ -531,55 +566,78 @@
                     deposited,
                     @max_deposit_step
                 );
-
-        sediment -= deposited;
     }
 
     //----------------------------------------------------------------------
-    // THERMAL / TALUS BREAKDOWN
+    // WEAR / EROSION FIELD DIFFUSION
     //
-    // Good for rock and brick edges.
-    // Material removed here becomes sediment.
+    // Smooth the erosion field across the 4-neighbourhood BEFORE it is
+    // removed from the height. The height itself is never blurred. The
+    // field is read from the previous iteration (lagged), which is stable
+    // and cheap; over iterations it turns razor incisions into chamfers.
     //----------------------------------------------------------------------
 
-    float lowest =
-        fmin(
-            fmin(hL, hR),
-            fmin(hD, hU)
-        );
+    float eroded = raw_eroded;
 
-    lowest =
-        fmin(
-            lowest,
-            fmin(
-                fmin(hDL, hDR),
-                fmin(hUL, hUR)
-            )
-        );
+    if (@Iteration > 0 &&
+        @wear_diffusion > 0.0f)
+    {
+        float eL =
+            @erosion.bufferIndex(xy + (int2)(-1, 0));
 
-    float drop =
-        (hC - lowest)
-        * @height_scale
-        * resscale;
+        float eR =
+            @erosion.bufferIndex(xy + (int2)( 1, 0));
 
-    float thermal_removed =
-        fmax(
-            drop - @talus,
-            0.0f
-        )
-        * fmax(@thermal, 0.0f);
+        float eD =
+            @erosion.bufferIndex(xy + (int2)( 0,-1));
 
-    if (@max_thermal_step > 0.0f)
-        thermal_removed =
-            fmin(
-                thermal_removed,
-                @max_thermal_step
+        float eU =
+            @erosion.bufferIndex(xy + (int2)( 0, 1));
+
+        float eavg =
+            (eL + eR + eD + eU) * 0.25f;
+
+        eroded =
+            mix(
+                raw_eroded,
+                eavg,
+                clamp(@wear_diffusion, 0.0f, 1.0f)
             );
+    }
 
-    thermal_removed *=
-        0.25f + edgefactor * 0.75f;
+    //----------------------------------------------------------------------
+    // THERMAL / TALUS — LOCAL REDISTRIBUTION
+    //
+    // Material slides to lower neighbours and arrives from higher ones.
+    // Each pair transfer is counted once as outflow and once as inflow, so
+    // nothing disappears and the total is conserved. No convexity boost.
+    //----------------------------------------------------------------------
 
-    sediment += thermal_removed;
+    float hs =
+        fmax(@height_scale * resscale, 1e-6f);
+
+    float talus =
+        fmax(@talus, 0.0f) / hs;
+
+    float thermal_k =
+        clamp(@thermal, 0.0f, 1.0f) * 0.2f;
+
+    float thermal_cap =
+        @max_thermal_step > 0.0f
+        ? @max_thermal_step
+        : 1e9f;
+
+    float thermal_out =
+        thermal_pair(hC - hL, talus, thermal_k, thermal_cap) +
+        thermal_pair(hC - hR, talus, thermal_k, thermal_cap) +
+        thermal_pair(hC - hD, talus, thermal_k, thermal_cap) +
+        thermal_pair(hC - hU, talus, thermal_k, thermal_cap);
+
+    float thermal_in =
+        thermal_pair(hL - hC, talus, thermal_k, thermal_cap) +
+        thermal_pair(hR - hC, talus, thermal_k, thermal_cap) +
+        thermal_pair(hD - hC, talus, thermal_k, thermal_cap) +
+        thermal_pair(hU - hC, talus, thermal_k, thermal_cap);
 
     //----------------------------------------------------------------------
     // SIGNED HEIGHT UPDATE
@@ -588,8 +646,17 @@
     float hnew =
         hC
         - eroded
-        - thermal_removed
+        - thermal_out
+        + thermal_in
         + deposited;
+
+    //----------------------------------------------------------------------
+    // SEDIMENT BALANCE
+    // Hydraulic erosion adds, deposition removes. Thermal moves material
+    // directly in the height field, so it does not touch sediment.
+    //----------------------------------------------------------------------
+
+    sediment += eroded - deposited;
 
     //----------------------------------------------------------------------
     // CUMULATIVE DEBUG / OUTPUT FIELDS
@@ -598,7 +665,7 @@
     float wear =
         oldwear
         + eroded
-        + thermal_removed;
+        + thermal_out;
 
     float dep =
         olddeposit
@@ -614,6 +681,7 @@
     @sediment_tmp.set(sediment);
     @wear_tmp.set(wear);
     @deposit_tmp.set(dep);
+    @erosion_tmp.set(eroded);
 }
 
 
@@ -643,5 +711,9 @@
 
     @deposit.set(
         @deposit_tmp.bufferIndex(xy)
+    );
+
+    @erosion.set(
+        @erosion_tmp.bufferIndex(xy)
     );
 }
