@@ -985,12 +985,14 @@ namespace MixtormatGpuCompositor
 
 	// Generator-layer Height Color Ramp sublayer, carrying the prepared colour-ramp GPU payload
 	// and the resolved source: Source is an EMixtormatColorRampSource value; SourceChildIndex is
-	// the referenced module resolved to this layer's child index (ModuleRef only).
+	// the referenced module resolved to this layer's child index (ModuleRef only). bHasGate is
+	// compose-resolved: set when a Mask is scoped under the ramp, the Height Blend copy pattern.
 	struct FGeneratorHeightColorRampRenderData
 	{
 		FName OutputName;
 		int32 Source = 0;
 		int32 SourceChildIndex = INDEX_NONE;
+		uint32 bHasGate = 0;
 		uint32 StopCount = 0;
 		uint32 Interpolation = 0;
 		TStaticArray<float, FMixtormatColorRamp::MaxStops> Positions;

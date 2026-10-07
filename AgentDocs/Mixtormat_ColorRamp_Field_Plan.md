@@ -167,15 +167,33 @@ field-agnostic sources are Phase F) and `SourceLayerId` (modules are same-layer)
 - Keep the published field name `"Color"`; defaults = running chain, so existing
   assets are unchanged.
 
-### Phase B — Gate (scoped mask chain)
-- `MixtormatChildScope.cpp` `CanOwnScopedMasks`: add `HeightColorRamp`.
-- Add `MaskInfluence` to the payload + render data.
-- Pass: `HasScopedMasks(Layer, SourceChildIndex)` → `AddScopedFeatureMask(...)`
-  → bind as `Gate`; shader multiplies the ramped colour by
-  `saturate(lerp(1, gate, influence))`.
-- Inspector: reuse the standard scoped-mask vocabulary; no new widget.
-- Acceptance: a Mask child under the ramp confines the colour exactly where
-  the mask says, at influence 1.
+### Phase B — Gate (scoped mask chain) — **implemented**
+
+Landed as: `MixtormatChildScope::CanOwnScopedMasks` accepts `HeightColorRamp`
+(the single rule `CanKeepScopedPlacement` and mask gather already route
+through), so a Mask child drops under a ramp and gathers with
+`ScopeOwnerSourceChildIndex`. The call site resolves it with
+`HasScopedMasks` + `AddScopedFeatureMask(..., bIndependentScope = true)` — the
+generator-flow-tool pattern — and the shader multiplies the ramped RGB by the
+gate, leaving the stops' authored alpha alone.
+
+Decisions made during implementation:
+
+- **No `MaskInfluence` field.** The scoped Mask child's own `Weight` already
+  is the influence — scoped masks blend over a white start, so weight dials
+  how strongly the gate closes. Strata Carver's `MaskInfluence` has no UI
+  reader either; adding a second control would be a second source of truth for
+  the same question.
+- **Gate multiplies RGB, not alpha.** A colour field's alpha stays the ramp's
+  own; coverage composition belongs to whatever consumes the published field.
+- **Fixed a pre-existing fall-through**: the compose child loop had no branch
+  for the three height-module types, so they fell through to the peel default
+  (`Child.Effect` defaults to `EMixtormatEffectType::Peeling`), which would also
+  have re-evaluated a ramp's scoped mask a second time. The loop now skips them
+  next to the Generator skip, with the same reasoning.
+
+- `Ctx.OutputHeight` stand-in when there is no gate: `HasGate 0` and the
+  source texture is bound, the Strata Carver rule; no dummy allocation.
 
 ### Phase C — Blend
 - Add `ColorBlend` (new appended enum — Over / Multiply / Add / Screen /

@@ -743,7 +743,9 @@ public:
 		SHADER_PARAMETER(uint32, Interpolation)
 		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER(uint32, HasGate)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Gate)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -871,9 +873,10 @@ namespace
 	}
 
 	// Generator-layer Height Color Ramp sublayer. SourceHeight is whichever height the module's
-	// resolved source names; the C++ side resolves that, the pass is a pure map.
+	// resolved source names; Gate is the scoped mask under it, or SourceHeight when there is
+	// none (HasGate 0, the Strata Carver stand-in rule). The pass is a pure map.
 	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef SourceHeight,
-		const FGeneratorHeightColorRampRenderData& Ramp)
+		FRDGTextureRef Gate, const FGeneratorHeightColorRampRenderData& Ramp)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -890,7 +893,9 @@ namespace
 			P->Positions[Index] = FVector4f(Ramp.Positions[Index], 0.0f, 0.0f, 0.0f);
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
+		P->HasGate = Ramp.bHasGate;
 		P->SourceHeight = SourceHeight;
+		P->Gate = Gate;
 		P->OutColor = GraphBuilder.CreateUAV(Out);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightColorRamp"), Shader, P,
@@ -2379,7 +2384,16 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			default:
 				break;
 			}
-			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RampSource, Child.HeightColorRamp);
+			// A Mask scoped under this ramp gates where its colour shows, using the same independent
+			// scope the generator flow tools use: the mask says where this module acts, not where
+			// the layer is. The mask's own Weight dials how strongly it gates.
+			const bool bHasGate = HasScopedMasks(Layer, Child.SourceChildIndex);
+			FRDGTextureRef RampGate = bHasGate
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+				: RampSource;
+			FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
+			RampData.bHasGate = bHasGate ? 1u : 0u;
+			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RampSource, RampGate, RampData);
 			const FPublishedField ColorField{
 				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(

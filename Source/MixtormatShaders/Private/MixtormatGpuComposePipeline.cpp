@@ -938,6 +938,15 @@ namespace MixtormatGpuCompositor
 								// never had one.
 								continue;
 							}
+							if (Child.Type == EMixtormatLayerChildType::HeightBlend
+								|| Child.Type == EMixtormatLayerChildType::HeightCurve
+								|| Child.Type == EMixtormatLayerChildType::HeightColorRamp)
+							{
+								// Height modules run inside AddGeneratorLayerPasses, before this loop.
+								// Falling through would read their default Child.Effect -- the peeling
+								// default -- and re-evaluate the mask a ramp scopes under itself.
+								continue;
+							}
 							if (Child.Type == EMixtormatLayerChildType::Filter
 								|| Child.Type == EMixtormatLayerChildType::PatternId
 								|| Child.Type == EMixtormatLayerChildType::HsvFilter

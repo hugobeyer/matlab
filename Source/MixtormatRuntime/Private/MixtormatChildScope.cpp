@@ -45,6 +45,9 @@ namespace MixtormatChildScope
 		case EMixtormatLayerChildType::Craquelure:
 		case EMixtormatLayerChildType::ColorId:
 		case EMixtormatLayerChildType::RandomId:
+		// A Color Ramp module gates where the colour it publishes shows. The mask child's own
+		// Weight is the influence; no separate control is needed.
+		case EMixtormatLayerChildType::HeightColorRamp:
 			return true;
 		default:
 			return false;
