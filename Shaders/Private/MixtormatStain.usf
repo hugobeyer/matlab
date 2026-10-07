@@ -28,8 +28,8 @@
 // fact about the surface rather than a slider on the stain. That surface is also where liquid comes from when nothing authored
 // says otherwise: EvaluateSurfaceSource weighs curvature, occlusion, height and slope into a source
 // field, so a stain can be driven entirely by the geometry it sits on and a Liquid Mask is an
-// option rather than a requirement. On the bottom layer there is no surface below, so the auto
-// source is unavailable there and a Liquid Mask is the only way to place liquid.
+// option rather than a requirement. Same-layer generator curvature can seed a stain even when
+// there is no accumulated surface below it.
 //
 // The solve runs at a fixed solve resolution, not at composition resolution, and the resolve
 // filters it back up. Everything inside the loop is measured in texels -- water crosses at most
@@ -64,6 +64,7 @@ Texture2D<float4> PreviousStateA;
 Texture2D<float4> PreviousStateB;
 Texture2D<float4> StainSurface;
 Texture2D<float4> SourceNormal;
+Texture2D<float4> GeneratorNormal;
 Texture2D<float4> SourceRAM;
 Texture2D<float> SourceHeight;
 Texture2D<float> PreviousMask;
@@ -92,6 +93,7 @@ uint InvertDirtMask;
 uint WriteDebug;
 uint Initialize;
 uint SurfaceValid;
+uint UseGeneratorNormal;
 uint BlendMode;
 
 float SourceMaskTiling;
@@ -201,23 +203,17 @@ float2 SurfaceFlow(float2 UV)
 	return StainSafeDirection(Direction, GravityDirection);
 }
 
-// Where liquid enters the solve when nothing authored says. Every signal is read from the
-// surface accumulated below the layer -- the surface the liquid would land on -- and each is a
-// weight over that signal, the same vocabulary the generated mask node uses. All weights at zero
-// means the stain is driven purely by its Liquid Mask.
+	// Where liquid enters the solve when nothing authored says. Surface response comes from below;
+	// curvature may also come from this layer's formed generator normal. All weights at zero means
+	// the stain is driven purely by its Liquid Mask.
 //
 // Weighted sum rather than a max chain: signals are meant to reinforce. A cavity that is also
 // occluded and also low should collect more liquid than either on its own, and a max would throw
 // half the authoring away.
 float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 {
-	// Every signal here derives from the surface accumulated below the layer. On the bottom layer
-	// there is none, so the auto source is simply unavailable and an authored Liquid Mask is the
-	// only way to place liquid.
-	if (SurfaceValid == 0)
-	{
-		return 0.0f;
-	}
+	// Height, AO and slope come from below. Curvature can additionally read the formed normal
+	// of this layer's generator, which exists before masks and composition run.
 
 	float Raw = 0.0f;
 
@@ -230,26 +226,26 @@ float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 		float Curvature;
 		float Cavity;
 		float Convex;
-		MixtormatEvaluateCurvature(
-			SourceNormal,
-			LinearWrapSampler,
-			UV,
-			SurfaceSize,
-			2,
-			1,
-			6.0f,
-			1.0f,
-			0,
-			Curvature,
-			Cavity,
-			Convex);
-		Raw += Cavity * Concavity + Convex * Convexity;
+		if (SurfaceValid != 0)
+		{
+			MixtormatEvaluateCurvature(
+				SourceNormal, LinearWrapSampler, UV, SurfaceSize,
+				2, 1, 6.0f, 1.0f, 0, Curvature, Cavity, Convex);
+			Raw += Cavity * Concavity + Convex * Convexity;
+		}
+		if (UseGeneratorNormal != 0)
+		{
+			MixtormatEvaluateCurvature(
+				GeneratorNormal, LinearWrapSampler, UV, SurfaceSize,
+				2, 1, 6.0f, 1.0f, 0, Curvature, Cavity, Convex);
+			Raw += Cavity * Concavity + Convex * Convexity;
+		}
 	}
 
 	// Occlusion, from the accumulated AO channel. Distinct from concavity: AO is what the stack
 	// below actually resolved, including contact AO between layers, where curvature is measured
 	// here from the normal alone. Sheltered geometry both collects liquid and keeps it.
-	if (abs(OcclusionWeight) > 0.0f)
+	if (SurfaceValid != 0 && abs(OcclusionWeight) > 0.0f)
 	{
 		const float AO = saturate(SourceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
 		Raw += OcclusionWeight * saturate(1.0f - AO);
@@ -257,7 +253,7 @@ float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 
 	// Height, biased. Positive weight sources from high ground -- runoff starting at a crest --
 	// and a negative one sources from low ground, which is water pooling in the recesses.
-	if (abs(HeightWeight) > 0.0f)
+	if (SurfaceValid != 0 && abs(HeightWeight) > 0.0f)
 	{
 		const float Height = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 		Raw += HeightWeight * saturate(Height + HeightBias);
@@ -273,7 +269,7 @@ float EvaluateSurfaceSource(float2 UV, float2 FlowDirection)
 	// with how strong the normals underneath are: raising a lower layer's Normal Intensity also
 	// raises this term. Normalizing would trade that for a slope response that is identical on a
 	// 5-degree ledge and a 60-degree wall, which is worse.
-	if (abs(SlopeWeight) > 0.0f)
+	if (SurfaceValid != 0 && abs(SlopeWeight) > 0.0f)
 	{
 		const float2 Tilt = MixtormatSampleNormal(
 			SourceNormal, LinearWrapSampler, UV, 0).xy;
@@ -302,13 +298,16 @@ float LiquidSource(float2 UV, float2 FlowDirection)
 		|| abs(OcclusionWeight) > 0.0f
 		|| abs(HeightWeight) > 0.0f
 		|| abs(SlopeWeight) > 0.0f;
+	const bool bAutoAvailable = SurfaceValid != 0 || UseGeneratorNormal != 0;
 	const bool bAuthoredActive = UseSourceMask != 0 || UseLayerMask != 0;
 	if (!bAutoActive && !bAuthoredActive)
 	{
 		return 0.0f;
 	}
 
-	const float Auto = bAutoActive ? EvaluateSurfaceSource(UV, FlowDirection) : 1.0f;
+	const float Auto = bAutoActive && bAutoAvailable
+		? EvaluateSurfaceSource(UV, FlowDirection)
+		: (bAutoActive ? 0.0f : 1.0f);
 	const float Authored = bAuthoredActive ? SampleSource(UV) : 1.0f;
 	return saturate(Auto * Authored);
 }
@@ -538,15 +537,11 @@ void ResolveStain(int2 Pixel, float2 UV)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	// No accumulated surface beneath this layer *and* nothing authored to source from. The auto
-	// source is the only remaining input and it derives entirely from that surface, so there is
-	// nothing to run and the accumulated mask is left untouched.
+	// No accumulated surface, generator curvature or authored source means there is nothing to
+	// run, so the accumulated mask is left untouched.
 	//
-	// Narrower than the generated mask node's guard, deliberately. Every signal that node produces
-	// is derived from the surface below, so with none it has nothing to say. A stain can still be
-	// placed by its own Liquid Mask, and refusing to run one on the bottom layer would make the
-	// mask dropdown silently do nothing there.
-	if (SurfaceValid == 0 && UseSourceMask == 0 && UseLayerMask == 0)
+	// A stain can still be placed by its own Liquid Mask on a bottom layer without a generator.
+	if (SurfaceValid == 0 && UseGeneratorNormal == 0 && UseSourceMask == 0 && UseLayerMask == 0)
 	{
 		// The identity for whichever position this child holds. As a later child that is the
 		// chain unchanged; as the first it is a fully visible layer, because Previous is forced

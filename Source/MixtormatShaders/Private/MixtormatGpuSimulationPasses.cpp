@@ -170,6 +170,7 @@ public:
 		SHADER_PARAMETER(uint32, WriteDebug)
 		SHADER_PARAMETER(uint32, Initialize)
 		SHADER_PARAMETER(uint32, SurfaceValid)
+		SHADER_PARAMETER(uint32, UseGeneratorNormal)
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, SourceMaskTiling)
 		SHADER_PARAMETER(float, DirtMaskTiling)
@@ -193,6 +194,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousStateB)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, StainSurface)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, GeneratorNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
@@ -421,6 +423,8 @@ namespace MixtormatGpuCompositor
 			P->WriteDebug = 0u;
 			P->Initialize = MaskPassIndex == 0 ? 1u : 0u;
 			P->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
+			const bool bUseGeneratorNormal = LayerCtx.bGeneratedHeight;
+			P->UseGeneratorNormal = bUseGeneratorNormal ? 1u : 0u;
 
 			// Replace. Stain exposes no blend mode of its own: it is the shape
 			// of a run, and a run either covers a texel or it does not.
@@ -444,10 +448,12 @@ namespace MixtormatGpuCompositor
 			P->SlopeWeight = Effect.StainSlopeWeight;
 			P->SurfaceResponse = Effect.StainSurfaceResponse;
 
-			// The surface accumulated below this layer, the same one the
-			// generated mask reads. Full resolution throughout -- the solve
-			// samples it by UV rather than having it resampled down first.
+			// Curvature can read below and this layer's formed generator normal. Other surface
+			// signals remain sourced from below.
 			P->SourceNormal = OutputN[LayerReadIndex];
+			P->GeneratorNormal = bUseGeneratorNormal
+				? LayerCtx.LayerInputN
+				: OutputN[LayerReadIndex];
 			P->SourceRAM = OutputRAM[LayerReadIndex];
 			P->SourceHeight = HeightTargets[LayerReadIndex];
 			P->PreviousMask = MaskTargets[MaskReadIndex];

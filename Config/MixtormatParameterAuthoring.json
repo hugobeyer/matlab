@@ -736,7 +736,7 @@
 			"snap": 0.0099999997764825821
 		}
 	},
-	"Height Curve":
+	"Height Remap":
 	{
 		"HeightCurve.Amount":
 		{
@@ -754,6 +754,16 @@
 			"uiMin": 0,
 			"uiMax": 100,
 			"snap": 0
+		}
+	},
+	"Random From IDs":
+	{
+		"RandomId.Seed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 100,
+			"snap": 1
 		}
 	}
 }

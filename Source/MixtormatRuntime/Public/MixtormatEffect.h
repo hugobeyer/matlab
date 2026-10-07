@@ -528,17 +528,17 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Simulation")
 	float StainDirtAmount = 0.35f;
 
-	// Existing surface analysis participates directly in source placement. Positive values add
-	// liquid/dirt at concave or convex detail; zero leaves placement entirely mask-driven.
+	// Curvature below the layer and any same-layer generator normal participate in source
+	// placement. Positive values add liquid/dirt at concave or convex detail.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainConcavityWeight = 0.15f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainConvexityWeight = 0.45f;
 
-	// Occlusion, height and slope complete the auto source. All four surface weights read the
-	// surface accumulated below the layer, so a stain can be driven entirely by geometry with no
-	// Liquid Mask at all. Zero by default: curvature alone is the conservative starting point.
+	// Occlusion, height and slope complete the auto source from the accumulated surface below.
+	// Curvature can also use a same-layer generator normal. Zero by default: curvature alone is
+	// the conservative starting point.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stain|Surface")
 	float StainOcclusionWeight = 0.0f;
 
@@ -668,7 +668,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 
 	// Ping-pong eikonal relaxations. More passes propagate the bounded wear envelope farther;
 	// the original composited height remains the obstacle and is never used as a moving target.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Erosion", meta = (UIMin = "1", UIMax = "128", Delta = "1"))
 	int32 ErosionIterations = 8;
 
 	// Legacy direction bias retained for serialized effects; the inspector now authors the

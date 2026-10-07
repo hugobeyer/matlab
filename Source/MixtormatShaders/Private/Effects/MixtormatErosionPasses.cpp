@@ -363,7 +363,7 @@ namespace MixtormatGpuCompositor
 			}
 
 			// Bound the number of eikonal relaxations to keep dispatch work predictable.
-			const int32 ErosionIterations = FMath::Clamp(Ero.ErosionIterations, 1, 64);
+			const int32 ErosionIterations = FMath::Clamp(Ero.ErosionIterations, 1, 128);
 
 			// Horizon exposure always reads SourceH. Iterations only relax the source-relative
 			// carve offset, so wear cannot feed back into its own exposure or reshape the source.

@@ -301,7 +301,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		MakeMaskRow(
 			LOCTEXT("StainSourceMask", "Liquid Mask"),
 			LOCTEXT("StainSourceFallback", "Child / Auto"),
-			LOCTEXT("StainSourceMaskHint", "Where liquid enters the solve. Unset uses preceding child masks; with none, concavity and convexity generate the source."),
+			LOCTEXT("StainSourceMaskHint", "Where liquid enters the solve. Unset uses preceding child masks; otherwise concavity and convexity source it from the lower surface and any same-layer generator."),
 			&FMixtormatLayerEffect::StainSourceMask,
 			&FMixtormatLayerEffect::StainSourceMaskTexture)
 	];
@@ -339,15 +339,14 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		0.0, 1.0, 0.35, 0.01,
 		LOCTEXT("StainDirtAmountHint", "How much soluble material is available to become a dry deposit.")));
 
-	// Where liquid comes from when nothing authored says. Four weights over the surface
-	// accumulated below the layer, so a stain can be driven entirely by geometry -- the Liquid
-	// Mask above is an option, not a requirement.
+	// Where liquid comes from when nothing authored says. Curvature can include this layer's
+	// generator; AO, height and slope read the surface below. The Liquid Mask remains optional.
 	Panel = AddCard(Cards, LOCTEXT("StainGrpSurface", "Auto Source"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("StainConcavity", "Concavity"), &FMixtormatLayerEffect::StainConcavityWeight, 0.0, 2.0, 0.35, 0.01,
-			LOCTEXT("StainConcavityHint", "Adds source in cavities, using the compositor's existing curvature analysis.")),
+			LOCTEXT("StainConcavityHint", "Adds source in cavities from the lower surface and, when present, this layer's formed generator normal.")),
 		Slider(LOCTEXT("StainConvexity", "Convexity"), &FMixtormatLayerEffect::StainConvexityWeight, 0.0, 2.0, 0.15, 0.01,
-			LOCTEXT("StainConvexityHint", "Adds source on exposed convex detail, where runoff commonly begins."))));
+			LOCTEXT("StainConvexityHint", "Adds source on exposed convex detail from the lower surface and same-layer generator curvature."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("StainOcclusion", "Occlusion"), &FMixtormatLayerEffect::StainOcclusionWeight, -2.0, 2.0, 0.0, 0.01,
 			LOCTEXT("StainOcclusionHint", "Adds source in occluded areas, read from the accumulated AO beneath the layer. Unlike Concavity this includes contact AO between layers, so it sees shelter the normal alone cannot show.")),
@@ -959,8 +958,8 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 			LOCTEXT("EroUnitDistanceHint", "Eikonal slope control: UV distance per unit of height change. Smaller values make steeper, tighter wear; larger values spread the profile farther while preserving its shape.")),
 		MakeErosionSliderInt(LOCTEXT("EroRadius", "Ray Step"), &FMixtormatLayerEffect::ErosionRadius, 1.0, 3.0, 1,
 			LOCTEXT("EroRadiusHint", "Texel spacing for horizon samples and eikonal relaxations. Erosion runs at doubled resolution when available."))));
-	AddSliderRow(Panel, MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 16.0, 8,
-		LOCTEXT("EroIterationsHint", "Min-plus eikonal relaxations. More passes propagate the bounded wear envelope farther from exposed seeds.")));
+	AddSliderRow(Panel, MakeErosionSliderInt(LOCTEXT("EroIterations", "Iterations"), &FMixtormatLayerEffect::ErosionIterations, 1.0, 128.0, 8,
+		LOCTEXT("EroIterationsHint", "Min-plus eikonal relaxations. More passes propagate the bounded wear envelope farther from exposed seeds; high counts increase GPU cost.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeErosionSlider(LOCTEXT("EroDirectionX", "Direction X"), &FMixtormatLayerEffect::ErosionDirectionX, -1.0, 1.0, 0.0, 0.01,
 			LOCTEXT("EroDirectionHint", "Tangent XY points toward the horizon light; Z sets its elevation. The vector is normalized by the solver.")),

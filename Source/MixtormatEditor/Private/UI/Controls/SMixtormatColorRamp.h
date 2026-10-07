@@ -72,7 +72,7 @@ protected:
 private:
 	void OpenStopPicker(int32 StopIndex);
 	void SetSelectedStopColor(FLinearColor Color);
-	void SetSelectedStopX(float X);
+	void SetSelectedStopX(float X, bool bInteractive = false);
 	FReply OnSwatchClicked();
 	TSharedRef<SWidget> BuildSelectedStopRow();
 	void RebuildChrome();
@@ -81,4 +81,5 @@ private:
 	FMixtormatColorRamp Ramp;
 	FOnMixtormatColorRampChanged OnChanged;
 	TSharedPtr<SVerticalBox> ChromeBox;
+	bool bPositionDragging = false;
 };

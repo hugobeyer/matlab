@@ -8,10 +8,10 @@
 #include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Controls/SMixtormatSlider.h"
 #include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Colors/SColorBlock.h"
-#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -355,7 +355,7 @@ void SMixtormatColorRamp::SetSelectedStopColor(const FLinearColor Color)
 	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
-void SMixtormatColorRamp::SetSelectedStopX(const float X)
+void SMixtormatColorRamp::SetSelectedStopX(const float X, const bool bInteractive)
 {
 	if (!Ramp.Stops.IsValidIndex(SelectedPoint)) { return; }
 	// Endpoints stay locked to the domain; interior stops may move and cross via drag.
@@ -373,7 +373,7 @@ void SMixtormatColorRamp::SetSelectedStopX(const float X)
 		Swap(Ramp.Stops[SelectedPoint], Ramp.Stops[SelectedPoint + 1]);
 		++SelectedPoint;
 	}
-	NotifyEdit(false);
+	NotifyEdit(bInteractive);
 }
 
 FReply SMixtormatColorRamp::OnSwatchClicked()
@@ -427,30 +427,43 @@ TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
 				]
 			]
 		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 4.0f, 0.0f)
-		[
-			SNew(STextBlock).Text(FText::FromString(TEXT("Pos")))
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f)))
-		]
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 		[
-			SNew(SSpinBox<float>)
-			.MinValue(DomainMin).MaxValue(DomainMax)
-			.MinSliderValue(DomainMin).MaxSliderValue(DomainMax)
-			.Delta(0.01f)
+			SNew(SMixtormatSlider)
+			.Label(FText::FromString(TEXT("Pos")))
+			.Value_Lambda([this]() -> double
+			{
+				return Ramp.Stops.IsValidIndex(SelectedPoint)
+					? Ramp.Stops[SelectedPoint].X : 0.0;
+			})
+			.MinValue(DomainMin)
+			.MaxValue(DomainMax)
+			.DefaultValue_Lambda([this]() -> double
+			{
+				return Ramp.Stops.IsValidIndex(SelectedPoint)
+					? Ramp.Stops[SelectedPoint].X : 0.0;
+			})
+			.Delta(0.01)
+			.Precision(3)
+			.ToolTip(FText::FromString(TEXT("Drag to position this stop, or click to type.")))
 			.IsEnabled_Lambda([this]()
 			{
 				return Ramp.Stops.IsValidIndex(SelectedPoint) && !IsEndpointLocked(SelectedPoint);
 			})
-			.Value_Lambda([this]()
+			.OnValueChanged(FMixtormatOnSliderValueChanged::CreateLambda([this](const double V)
 			{
-				return Ramp.Stops.IsValidIndex(SelectedPoint) ? Ramp.Stops[SelectedPoint].X : 0.0f;
-			})
-			.OnValueChanged_Lambda([this](const float V) { SetSelectedStopX(V); })
-			.OnValueCommitted_Lambda([this](const float V, ETextCommit::Type)
+				SetSelectedStopX(static_cast<float>(V), bPositionDragging);
+			}))
+			.OnBeginDrag(FSimpleDelegate::CreateLambda([this]()
 			{
-				SetSelectedStopX(V);
-			})
+				bPositionDragging = true;
+				OnBeginInteractiveEdit.ExecuteIfBound();
+			}))
+			.OnEndDrag(FSimpleDelegate::CreateLambda([this]()
+			{
+				bPositionDragging = false;
+				OnEndInteractiveEdit.ExecuteIfBound();
+			}))
 		];
 }
 
