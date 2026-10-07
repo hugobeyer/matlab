@@ -58,12 +58,10 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | I11 | Quick controls (D26/D28): initially Tab, later changed to bare Q (I13), routed through `FMixtormatPreviewViewportClient::InputKey`; in-viewport popup around the pointer -- RENDER top, LIGHTING left, GEOMETRY right, disabled ACTIONS bottom; card reveal animation, centered after measurement and viewport-clamped. Escape/outside click/rebuild dismiss; Q also closes while popup controls own focus, and geometry/light selection auto-dismisses | `SMixtormatPreviewViewport.*`, `SMixtormat_PreviewControls.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.cpp`, `SMixtormat_Theme.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I12 | Left column navigation is a vertical icon rail (LAYERS / LIBRARY / GLOBAL) that stays docked; only the layer stack pops out, so the floating panel is the stack plus its grab margin and grips. The rail's selection follows the cell: docking the stack selects LAYERS, and while it floats or is hidden the cell falls back to the last non-layers page; choosing LAYERS in the rail while it floats docks it back. `SMixtormatTabStrip` is still used by the UI STYLE panel, so nothing became dead | `UI/Controls/SMixtormatIconRail.*` (new), `SMixtormat_Shell.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat.h`, `MixtormatDesignTokens.h` |
 | I13 | Quick controls moved from Tab to `Q`: Tab delivery worked, but Slate's focus navigation runs on Tab regardless of the widget handling it, so the top bar lit up. Popup spacing widened; a theme-tokenized hairline cross fades outward from a soft layered centre bloom behind the cards | `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`, `SMixtormat_PreviewControls.cpp`, `MixtormatDesignTokens.h` |
+| I14 | D30–D32 overlay workspace: the rail is pinned in Preview with no shell width; its shared full-height surface hosts Layers/Library/Global. Layers alone reparent between home and a draggable/resizable pop-out, returning by rail click or snap-back. The gallery is one resizable bottom MATERIALS/MASKS drawer; both gallery splitters and their state were removed. Inspector docking/overlay/hidden behavior remains unchanged. | `SMixtormat_Shell.cpp`, `SMixtormat_Preview.cpp`, `SMixtormat_Overlays.cpp`, `SMixtormat_Library.cpp`, `SMixtormat.h` |
 
-I7–I13 are implemented in source but **not fully validated**: user-reported builds caught
-Slate bracket errors in the icon rail and preview controls; those edits were corrected, but a
-successful rebuild has not yet been reported. Q-close behavior and the marking-menu guide also
-need in-editor verification. D30–D32 document the approved next layout stage; it is not
-implemented. Variables and layout persistence remain separate work.
+I7–I14 are implemented in source and need in-editor validation. Variables and layout
+persistence remain separate work.
 
 **Tab delivery is settled (I13):** the client did receive Tab, but Slate's focus navigation runs
 on Tab regardless of the event being handled, so the key moved to `Q`. Tab is only recoverable

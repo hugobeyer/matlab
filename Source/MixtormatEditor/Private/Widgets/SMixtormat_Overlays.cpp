@@ -74,7 +74,7 @@ void SMixtormat::ApplyLeftPanelPlacement()
 	{
 		// The layer stack travels alone; the pinned rail and selected page remain in the Preview overlay.
 		MixtormatOverlay::Place(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds(),
-			MixtormatTokens::LayerStackWidth, false);
+			FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayWidth, false);
 		MixtormatOverlay::Clamp(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
 	}
 	LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
@@ -326,6 +326,16 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 		// Floating Inspector content can cover the home handle; do not grab through that panel.
 		const bool bInspectorCoversHome = InspectorPlacement == EInspectorPlacement::Overlay
 			&& MixtormatOverlay::IsHit(InspectorOverlay, GetPreviewViewportLocalPosition(ScreenPosition));
+		if (!bIsBaking && !bBottomLibraryCollapsed && GalleryDrawerHeader.IsValid()
+			&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+		{
+			bGalleryDrawerResizing = true;
+			GalleryDrawerResizeOriginScreen = ScreenPosition;
+			GalleryDrawerHeightAtResizeStart = GalleryDrawerHeight > 0.0f
+				? GalleryDrawerHeight
+				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			return FReply::Handled().CaptureMouse(SharedThis(this));
+		}
 		if (!bIsBaking && !bInspectorCoversHome && LeftTabIndex == 0
 			&& LeftPanelPlacement == ELeftPanelPlacement::Docked)
 		{
@@ -380,6 +390,15 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 	{
 		return FReply::Handled();
 	}
+	if (bGalleryDrawerResizing)
+	{
+		const float DeltaY = GalleryDrawerResizeOriginScreen.Y - MouseEvent.GetScreenSpacePosition().Y;
+		const float MaximumHeight = FMath::Max(MixtormatTokens::OverlayPanelMinHeight,
+			GetPreviewViewportBounds().Y - FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset * 2.0f);
+		GalleryDrawerHeight = FMath::Clamp(GalleryDrawerHeightAtResizeStart + DeltaY,
+			MixtormatTokens::OverlayPanelMinHeight, MaximumHeight);
+		return FReply::Handled();
+	}
 	if (InspectorOverlay.bDragging || InspectorOverlay.bResizing)
 	{
 		MixtormatOverlay::UpdateInteraction(InspectorOverlay,
@@ -397,6 +416,11 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 
 FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (bGalleryDrawerResizing)
+	{
+		bGalleryDrawerResizing = false;
+		return FReply::Handled().ReleaseMouseCapture();
+	}
 	if (bLayerHomeDragPending && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		bLayerHomeDragPending = false;
@@ -432,6 +456,7 @@ void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 {
 	// Alt-tab or a modal mid-drag: drop the interaction rather than follow a mouse that is gone.
 	bLayerHomeDragPending = false;
+	bGalleryDrawerResizing = false;
 	MixtormatOverlay::CancelInteraction(InspectorOverlay);
 	MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
@@ -440,6 +465,11 @@ void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const
 {
 	const FVector2D ScreenPosition = CursorEvent.GetScreenSpacePosition();
+	if (!bBottomLibraryCollapsed && GalleryDrawerHeader.IsValid()
+		&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+	{
+		return FCursorReply::Cursor(EMouseCursor::ResizeUpDown);
+	}
 	const int32 Order[2] = { bLeftPanelInFront ? 1 : 0, bLeftPanelInFront ? 0 : 1 };
 	for (const int32 Index : Order)
 	{

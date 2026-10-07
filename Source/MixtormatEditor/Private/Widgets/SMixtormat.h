@@ -1403,8 +1403,7 @@ private:
 	void RebuildMaskList();
 	TSharedRef<SWidget> BuildTopBar();
 	TSharedRef<SWidget> BuildAuthoringPage();
-	// The docked left column: the icon rail plus the cell it selects. Only the layer stack travels,
-	// so the rail stays put and the cell shows a page that can live there.
+	// The viewport-pinned rail and its shared Layers/Library/Global page surface. Only Layers travels.
 	TSharedRef<SWidget> BuildLeftColumn();
 	// What floats when the layer stack pops out: the stack, its grab margin and its grips.
 	TSharedRef<SWidget> BuildFloatingLayerStack();
@@ -1567,23 +1566,24 @@ private:
 	TSharedPtr<SWidget> LeftPanelOverlayFrame;
 	bool bLeftPanelInFront = false;
 	bool bAppliedLeftPanelInFront = false;
-	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
-	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
-	// derived from this one, so the pair can never disagree or renormalise against each other.
-	float PreviewHeightFraction = 0.66f;
+	// The gallery is one bottom overlay drawer; the selected mode and open state survive rebuilds.
 	bool bBottomLibraryCollapsed = false;
-	// SSplitter reports every slot's post-arrangement value, including the ones it computes itself
-	// while laying out. Writing those back discarded the user's split on every LiveTheme refresh and
-	// on the first arrangement after a rebuild, so write-back stays muted until layout has settled.
+	int32 GalleryModeIndex = 0;
+	float GalleryDrawerHeight = 0.0f;
+	bool bGalleryDrawerResizing = false;
+	float GalleryDrawerHeightAtResizeStart = 0.0f;
+	FVector2D GalleryDrawerResizeOriginScreen = FVector2D::ZeroVector;
+	// SSplitter reports every slot's post-arrangement value, so Inspector write-back stays muted
+	// until the first layout has settled after a rebuild.
 	bool bSuppressSplitWriteBack = true;
-	float MaterialLibraryFraction = 0.72f;
-	float MaskLibraryFraction = 0.28f;
 	// One page since the mixer and presets mock-ups were removed. Kept as a switcher rather than
 	// unwound to a bare widget because the live-theme rebuild tears the tree down and re-parents
 	// through it, and the settings window will want the second slot.
 	TSharedPtr<IInputProcessor> WorkspaceHotkeyProcessor;
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
+	TSharedPtr<SWidgetSwitcher> GalleryModeSwitcher;
+	TSharedPtr<SBox> GalleryDrawerHeader;
 	TSharedPtr<SButton> BottomLibraryToggleButton;
 	TSharedPtr<SVerticalBox> CategoryListBox;
 	TSharedPtr<SWrapBox> SurfaceListBox;

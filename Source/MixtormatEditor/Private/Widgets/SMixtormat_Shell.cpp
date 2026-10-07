@@ -429,96 +429,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 							ShellCenterFraction = Value;
 						})
 			[
-				SNew(SSplitter)
-				.Style(&MixtormatShell::GetSplitterStyle())
-				.Orientation(Orient_Vertical)
-				.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
-				.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
-				+ SSplitter::Slot()
-					.Value_Lambda([this]()
-					{
-						return bBottomLibraryCollapsed
-							? 0.99f
-							: FMath::Clamp(PreviewHeightFraction, 0.2f, 0.95f);
-					})
-					.OnSlotResized_Lambda([this](float Value)
-					{
-						// SSplitter reports every slot's computed value, including the ones it works
-						// out for itself while arranging. Echoing those back fought the arrangement
-						// and is what collapsed the gallery on a rebuild; only a settled layout -- or
-						// a real drag, which is the only thing that changes the value afterwards --
-						// is allowed to become the new remembered split.
-						if (!bSuppressSplitWriteBack && !bBottomLibraryCollapsed)
-						{
-							PreviewHeightFraction = FMath::Clamp(Value, 0.2f, 0.95f);
-						}
-					})
-					[BuildPreviewPanel()]
-				+ SSplitter::Slot()
-					// Derived, not stored: the two slots must always sum to 1, and two independent
-					// values are what let them disagree.
-					.Value_Lambda([this]()
-					{
-						return bBottomLibraryCollapsed
-							? 0.01f
-							: 1.0f - FMath::Clamp(PreviewHeightFraction, 0.2f, 0.95f);
-					})
-					.OnSlotResized_Lambda([this](float Value)
-					{
-						// Dragging the lower handle moves this slot; the split is remembered from the
-						// preview side so the stored value stays the one the panel is authored in.
-						if (!bSuppressSplitWriteBack && !bBottomLibraryCollapsed)
-						{
-							PreviewHeightFraction = FMath::Clamp(1.0f - Value, 0.2f, 0.95f);
-						}
-					})
-								[
-									SNew(SOverlay)
-									+ SOverlay::Slot()
-									[
-										SNew(SBox)
-										.Visibility_Lambda([this]()
-										{
-											return bBottomLibraryCollapsed
-												? EVisibility::Collapsed
-												: EVisibility::Visible;
-										})
-										[BuildBottomLibrary()]
-									]
-									+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top)
-									[
-										SNew(SBox)
-										.WidthOverride(MixtormatTokens::BottomLibraryCollapseButtonWidth)
-										.HeightOverride(MixtormatTokens::BottomLibraryCollapseButtonHeight)
-										.HAlign(HAlign_Center)
-										.VAlign(VAlign_Center)
-										[
-											SAssignNew(BottomLibraryToggleButton, SButton)
-											.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-											.ContentPadding(0.0f)
-											.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Collapse or expand the material and mask galleries (G)."))
-											.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
-											[
-												SNew(SBox)
-												.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
-													static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
-												.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
-													static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
-												.HAlign(HAlign_Center)
-												.VAlign(VAlign_Center)
-												[
-													SNew(SImage)
-													.Image_Lambda([this]()
-													{
-														return bBottomLibraryCollapsed
-															? MixtormatIcons::ChevronRight()
-															: MixtormatIcons::ChevronDown();
-													})
-												]
-											]
-										]
-									]
-								]
+				BuildPreviewPanel()
 			]
 + SSplitter::Slot()
 						// Zero, not a sliver: a collapsed slot is skipped by the splitter, so this keeps
@@ -547,7 +458,12 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+		.BorderBackgroundColor_Lambda([]()
+		{
+			FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
+			Background.A *= FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlaySurfaceOpacity;
+			return Background;
+		})
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth()
@@ -567,9 +483,13 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 				]
 			]
-			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			+ SHorizontalBox::Slot().AutoWidth()
+			.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayGap, 0.0f, 0.0f, 0.0f)
 			[
-				SAssignNew(LeftSwitcher, SWidgetSwitcher)
+				SNew(SBox)
+				.WidthOverride(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayWidth)
+				[
+					SAssignNew(LeftSwitcher, SWidgetSwitcher)
 					.WidgetIndex(LeftTabIndex)
 					+ SWidgetSwitcher::Slot()
 					[
@@ -579,9 +499,10 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					]
 					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
 					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
-			]
-		];
-}
+				]
+				]
+			];
+	}
 
 TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 {
@@ -596,12 +517,8 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 			// inspector overlay's square, borderless, translucent surface -- the same tokens.
 			.BorderBackgroundColor_Lambda([this]()
 			{
-				if (LeftPanelPlacement != ELeftPanelPlacement::Overlay)
-				{
-					return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
-				}
 				FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
-				Background.A *= MixtormatTokens::OverlayPanelBackgroundOpacity;
+				Background.A *= FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlaySurfaceOpacity;
 				return Background;
 			})
 			[

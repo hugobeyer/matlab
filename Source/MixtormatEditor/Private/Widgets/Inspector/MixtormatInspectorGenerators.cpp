@@ -986,7 +986,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralWarpControls()
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("StructuralWarpSource", "Source Flow / UV Map"), Connection(false),
 		LOCTEXT("StructuralWarpSourceHint", "Completed Flow or lifted UV Map from an earlier generator scope or earlier layer. Vector2 is not supported.")));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("StructuralWarpTarget", "Target"), Connection(true),
-		LOCTEXT("StructuralWarpTargetHint", "A later enabled Strata generator in this layer. Order: completed source, Structural Warp, target. Other targets remain unavailable for step 7.")));
+		LOCTEXT("StructuralWarpTargetHint", "Any later enabled unscoped generator in this layer. Order: completed source, Structural Warp, target.")));
 	TSharedRef<SVerticalBox> FlowPanel = SNew(SVerticalBox);
 	AddSliderRow(FlowPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("StructuralWarpFlowAmount", "Flow Amount"),

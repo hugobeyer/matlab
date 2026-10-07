@@ -661,8 +661,7 @@ namespace MixtormatTokens
 	inline float QuickControlsRevealSeconds = 0.16f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
-	inline float BottomLibraryCollapseButtonWidth = 120.0f;
-	inline float BottomLibraryCollapseButtonHeight = 24.0f;
+
 	// The mask gallery's starting tile size, and only that -- despite the name, nothing draws a
 	// mask "bar" any more. Zoom lands on 52 + 12n (MaskGalleryTileMinimum + n * step), so a
 	// default on that grid keeps every step after it on the same one.

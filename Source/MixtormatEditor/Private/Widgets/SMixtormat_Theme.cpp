@@ -212,6 +212,7 @@ EActiveTimerReturnType SMixtormat::ApplyPendingTheme(double CurrentTime, float D
 			// about to be replaced. The capture is released on the next mouse-up. The quick controls
 			// go with them -- their widgets, and any menu anchored to them, are rebuilt too.
 			bLayerHomeDragPending = false;
+			bGalleryDrawerResizing = false;
 			MixtormatOverlay::CancelInteraction(InspectorOverlay);
 			MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 			CloseQuickControls();

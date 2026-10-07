@@ -1043,7 +1043,28 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
 		.Padding(FMargin(Resolved.PreviewLayout.LeftRailInset, 0.0f, 0.0f, 0.0f))
 		[
-			BuildLeftColumn()
+			SNew(SBox)
+			.HeightOverride_Lambda([this]() { return GetPreviewViewportBounds().Y; })
+			[
+				BuildLeftColumn()
+			]
+		]
+		// One bottom gallery drawer. It overlays Preview and reserves no shell height.
+		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
+		.Padding(FMargin(Resolved.GalleryLayout.DrawerInset))
+		[
+			SNew(SBox)
+			.HeightOverride_Lambda([this]()
+			{
+				return GalleryDrawerHeight > 0.0f
+					? GalleryDrawerHeight
+					: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			})
+			.Visibility_Lambda([this]()
+			{
+				return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
+			})
+			[BuildBottomLibrary()]
 		]
 		// The floating panels -- the Inspector and the Layers stack -- share one stack, so a press
 		// can bring either to the front (D25). The stack is self-hit-test-invisible: empty viewport

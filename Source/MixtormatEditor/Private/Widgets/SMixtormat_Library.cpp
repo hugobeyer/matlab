@@ -11,9 +11,9 @@
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Atoms/SMixtormatChip.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
-#include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
 #include "ObjectTools.h"
@@ -456,39 +456,79 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatGalleryMetrics& Gallery = FMixtormatThemeStore::GetResolved().GalleryLayout;
+	const auto MakeModeButton = [this, &Style](const int32 Mode, const FText& Label)
+	{
+		return SNew(SButton)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
+			.OnClicked_Lambda([this, Mode]()
+			{
+				GalleryModeIndex = Mode;
+				if (GalleryModeSwitcher.IsValid())
+				{
+					GalleryModeSwitcher->SetActiveWidgetIndex(GalleryModeIndex);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				.ColorAndOpacity_Lambda([this, Mode]()
+				{
+					const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+					return FSlateColor(Resolved.Palette.Get(Mode == GalleryModeIndex
+						? Mixtormat::EMixtormatColorRole::Accent
+						: Mixtormat::EMixtormatColorRole::TextMuted));
+				})
+			];
+	};
+
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+		.BorderBackgroundColor_Lambda([]()
+		{
+			FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
+			Background.A *= FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSurfaceOpacity;
+			return Background;
+		})
 		[
-			SNew(SSplitter)
-			.Style(&MixtormatShell::GetSplitterStyle())
-			.Orientation(Orient_Horizontal)
-			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
-			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
-			+ SSplitter::Slot()
-						.Value_Lambda([this]() { return MaterialLibraryFraction; })
-						.OnSlotResized_Lambda([this](float Value) { MaterialLibraryFraction = Value; })
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding, FMixtormatThemeStore::GetResolved().GalleryLayout.HeaderGap)
+				SAssignNew(GalleryDrawerHeader, SBox)
+				.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
+				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag the drawer header to resize it."))
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+					SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()[MakeModeButton(0, LOCTEXT("MaterialsMode", "MATERIALS"))]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(Gallery.ModeSwitchGap, 0.0f, 0.0f, 0.0f)[MakeModeButton(1, LOCTEXT("MasksMode", "MASKS"))]
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SAssignNew(BottomLibraryToggleButton, SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+					.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Close the material and mask drawer (G)."))
+					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+					[
+						SNew(SImage).Image(MixtormatIcons::ChevronDown())
+					]
 				]
-				+ SVerticalBox::Slot().FillHeight(1.0f)
+				]
+				]
+			+ SVerticalBox::Slot().FillHeight(1.0f)
+			[
+				SAssignNew(GalleryModeSwitcher, SWidgetSwitcher)
+				.WidgetIndex(GalleryModeIndex)
+				+ SWidgetSwitcher::Slot()
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()[BuildLibraryPage()]
-					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)[BuildSurfaceList()]
+					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(Gallery.TilePadding)[BuildSurfaceList()]
 				]
-			]
-			+ SSplitter::Slot()
-						.Value_Lambda([this]() { return MaskLibraryFraction; })
-						.OnSlotResized_Lambda([this](float Value) { MaskLibraryFraction = Value; })
-			[
-				BuildMaskBar()
+				+ SWidgetSwitcher::Slot()[BuildMaskBar()]
 			]
 		];
 }

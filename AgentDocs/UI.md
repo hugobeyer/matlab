@@ -88,8 +88,8 @@ delegating workspace actions back to `SMixtormat`.
 Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 
-Workspace overlay design approved for the next implementation stage: a viewport-pinned
-left rail with no shell width, one shared Layers/Library/Global overlay surface, and a
-bottom gallery drawer replacing the preview/gallery and materials/masks splitters.
-The Inspector remains dockable. See `auditdocs/workspace-layout/overlay-workspace-handoff.md`
-for source ownership, state constraints, UI STYLE token requirements, and testing.
+Workspace overlays: a viewport-pinned rail uses no shell width and owns one shared
+Layers/Library/Global surface. Layers alone can pop out and return by rail click or
+snap-back drag. The bottom gallery is one resizable MATERIALS/MASKS drawer; it replaces
+both gallery splitters. The Inspector remains dockable. See
+`auditdocs/workspace-layout/overlay-workspace-handoff.md` for validation.
