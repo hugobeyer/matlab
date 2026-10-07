@@ -362,8 +362,24 @@ namespace Mixtormat
 		T.PreviewLayout.ResolutionControlWidth = 92.0f;
 		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 232.0f;
+		T.PreviewLayout.LeftRailInset = 4.0f;
+		T.PreviewLayout.LeftRailButtonGap = 2.0f;
+		T.PreviewLayout.LeftOverlayGap = 8.0f;
+		T.PreviewLayout.LeftOverlayWidth = 320.0f;
+		T.PreviewLayout.LeftOverlaySurfaceOpacity = 0.82f;
+		T.PreviewLayout.QuickControlsCentreGap = 210.0f;
+		T.PreviewLayout.QuickControlsRowGap = 22.0f;
+		T.PreviewLayout.QuickControlsGuideAxisLength = 176.0f;
+		T.PreviewLayout.QuickControlsGuideAxisThickness = 1.0f;
+		T.PreviewLayout.QuickControlsGuideAxisOpacity = 0.24f;
+		T.PreviewLayout.QuickControlsGuideGlowDiameter = 112.0f;
+		T.PreviewLayout.QuickControlsGuideGlowOpacity = 0.019f;
 
-		T.GalleryLayout.TileSize = 80.0f;             // --gallery-tile-size
+		T.GalleryLayout.TileSize = 80.0f;
+		T.GalleryLayout.DrawerInset = 8.0f;
+		T.GalleryLayout.DrawerInitialHeight = 256.0f;
+		T.GalleryLayout.ModeSwitchGap = 4.0f;
+		T.GalleryLayout.DrawerSurfaceOpacity = 0.82f;
 		T.GalleryLayout.TileGap = 4.0f;               // --gallery-gap
 
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height

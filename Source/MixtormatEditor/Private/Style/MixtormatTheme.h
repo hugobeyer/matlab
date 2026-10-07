@@ -699,6 +699,18 @@ namespace Mixtormat
 		float ResolutionControlWidth = 92.0f;
 		float TogglePadding = 2.0f;
 		float FinalPopupWidth = 232.0f;
+		float LeftRailInset = 4.0f;
+		float LeftRailButtonGap = 2.0f;
+		float LeftOverlayGap = 8.0f;
+		float LeftOverlayWidth = 320.0f;
+		float LeftOverlaySurfaceOpacity = 0.82f;
+		float QuickControlsCentreGap = 210.0f;
+		float QuickControlsRowGap = 22.0f;
+		float QuickControlsGuideAxisLength = 176.0f;
+		float QuickControlsGuideAxisThickness = 1.0f;
+		float QuickControlsGuideAxisOpacity = 0.24f;
+		float QuickControlsGuideGlowDiameter = 112.0f;
+		float QuickControlsGuideGlowOpacity = 0.019f;
 	};
 
 	struct FMixtormatGalleryMetrics
@@ -719,6 +731,10 @@ namespace Mixtormat
 		float CaptionInset = 4.0f;
 		float OverlayInset = 3.0f;
 		float HeaderGap = 2.0f;
+		float DrawerInset = 8.0f;
+		float DrawerInitialHeight = 256.0f;
+		float ModeSwitchGap = 4.0f;
+		float DrawerSurfaceOpacity = 0.82f;
 	};
 
 	struct FMixtormatShellTheme

@@ -53,14 +53,18 @@ namespace
 				Mixtormat::EMixtormatColorRole::TextMuted) * WidgetStyle.GetColorAndOpacityTint();
 
 			// Stacked rounded discs make a low-contrast centre bloom without a texture dependency.
+			const Mixtormat::FMixtormatPreviewMetrics& Preview = FMixtormatThemeStore::GetResolved().PreviewLayout;
 			for (int32 Ring = 0; Ring < MixtormatTokens::QuickControlsGuideGlowRings; ++Ring)
 			{
-				const float Diameter = MixtormatTokens::QuickControlsGuideGlowDiameter
+				const float Diameter = Preview.QuickControlsGuideGlowDiameter
 					- Ring * MixtormatTokens::QuickControlsGuideGlowRingStep;
 				FSlateRoundedBoxBrush Brush(FLinearColor::White, Diameter * 0.5f);
 				FLinearColor Tint = Base;
-				Tint.A *= MixtormatTokens::QuickControlsGuideGlowOpacityMin
+				const float DefaultMaxOpacity = MixtormatTokens::QuickControlsGuideGlowOpacityMin
+					+ (MixtormatTokens::QuickControlsGuideGlowRings - 1) * MixtormatTokens::QuickControlsGuideGlowOpacityStep;
+				const float RingOpacity = MixtormatTokens::QuickControlsGuideGlowOpacityMin
 					+ Ring * MixtormatTokens::QuickControlsGuideGlowOpacityStep;
+				Tint.A *= Preview.QuickControlsGuideGlowOpacity * RingOpacity / DefaultMaxOpacity;
 				FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(
 					FVector2f(Diameter), FSlateLayoutTransform(Center - FVector2f(Diameter * 0.5f))),
 					&Brush, ESlateDrawEffect::None, Tint);
@@ -68,7 +72,7 @@ namespace
 
 			// Four fine arms, segmented so the guide fades away from the pointer into each card.
 			const int32 SegmentCount = MixtormatTokens::QuickControlsGuideAxisSegments;
-			const float AxisLength = MixtormatTokens::QuickControlsGuideAxisLength;
+			const float AxisLength = Preview.QuickControlsGuideAxisLength;
 			for (const FVector2f Direction : { FVector2f(1.0f, 0.0f), FVector2f(-1.0f, 0.0f),
 				FVector2f(0.0f, 1.0f), FVector2f(0.0f, -1.0f) })
 			{
@@ -78,11 +82,11 @@ namespace
 					const float End = AxisLength * (Segment + 1) / SegmentCount;
 					TArray<FVector2f> Line = { Center + Direction * Start, Center + Direction * End };
 					FLinearColor Tint = Base;
-					Tint.A *= MixtormatTokens::QuickControlsGuideAxisOpacity
+					Tint.A *= Preview.QuickControlsGuideAxisOpacity
 						* (1.0f - static_cast<float>(Segment) / SegmentCount);
 					FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(),
 						Line, ESlateDrawEffect::None, Tint, true,
-						MixtormatTokens::QuickControlsGuideAxisThickness);
+						Preview.QuickControlsGuideAxisThickness);
 				}
 			}
 			return LayerId;
@@ -864,12 +868,13 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 				Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
 		]);
 
+	const Mixtormat::FMixtormatPreviewMetrics& PreviewMetrics = FMixtormatThemeStore::GetResolved().PreviewLayout;
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 		[
 			MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(0.0, -1.0))
 		]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::QuickControlsRowGap, 0.0f, 0.0f)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -878,7 +883,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
-				SNew(SBox).MinDesiredWidth(MixtormatTokens::QuickControlsCentreGap)
+				SNew(SBox).MinDesiredWidth(PreviewMetrics.QuickControlsCentreGap)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
@@ -886,7 +891,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-		.Padding(0.0f, MixtormatTokens::QuickControlsRowGap, 0.0f, 0.0f)
+		.Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			MakeCard(LOCTEXT("QuickControlsActions", "ACTIONS"), ActionRows, FVector2D(0.0, 1.0))
 		];

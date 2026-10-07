@@ -477,7 +477,19 @@
 		"PreviewLayout.ComparisonToggleGap": 12,
 		"PreviewLayout.ResolutionControlWidth": 122,
 		"PreviewLayout.TogglePadding": 0,
-		"PreviewLayout.FinalPopupWidth": 212
+		"PreviewLayout.FinalPopupWidth": 212,
+		"PreviewLayout.LeftRailInset": 4,
+		"PreviewLayout.LeftRailButtonGap": 2,
+		"PreviewLayout.LeftOverlayGap": 8,
+		"PreviewLayout.LeftOverlayWidth": 320,
+		"PreviewLayout.LeftOverlaySurfaceOpacity": 0.82,
+		"PreviewLayout.QuickControlsCentreGap": 210,
+		"PreviewLayout.QuickControlsRowGap": 22,
+		"PreviewLayout.QuickControlsGuideAxisLength": 176,
+		"PreviewLayout.QuickControlsGuideAxisThickness": 1,
+		"PreviewLayout.QuickControlsGuideAxisOpacity": 0.24,
+		"PreviewLayout.QuickControlsGuideGlowDiameter": 112,
+		"PreviewLayout.QuickControlsGuideGlowOpacity": 0.019
 	},
 	"galleryShell":
 	{
@@ -493,6 +505,10 @@
 		"GalleryLayout.CaptionInset": 2,
 		"GalleryLayout.OverlayInset": 3,
 		"GalleryLayout.HeaderGap": 4,
+		"GalleryLayout.DrawerInset": 8,
+		"GalleryLayout.DrawerInitialHeight": 256,
+		"GalleryLayout.ModeSwitchGap": 4,
+		"GalleryLayout.DrawerSurfaceOpacity": 0.82,
 		"ShellTheme.SplitterHoverSource": [
 			0.043674048036336899,
 			0.04943307489156723,

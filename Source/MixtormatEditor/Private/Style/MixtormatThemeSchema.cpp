@@ -551,6 +551,18 @@ void AddIconRole(
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailInset", Preview, "Layout", "Rail Edge Inset", PreviewLayout.LeftRailInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Layout", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftOverlayGap", Preview, "Layout", "Rail-to-Panel Gap", PreviewLayout.LeftOverlayGap, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Left Overlay Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Left Overlay Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsGuideAxisLength", Preview, "Layout", "Quick Controls Guide Length", PreviewLayout.QuickControlsGuideAxisLength, 0, 400, 2, 0, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideAxisThickness", Preview, "Layout", "Quick Controls Guide Thickness", PreviewLayout.QuickControlsGuideAxisThickness, .25, 4, .25, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideAxisOpacity", Preview, "Layout", "Quick Controls Guide Opacity", PreviewLayout.QuickControlsGuideAxisOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideGlowDiameter", Preview, "Layout", "Quick Controls Bloom Size", PreviewLayout.QuickControlsGuideGlowDiameter, 0, 240, 2, 0, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideGlowOpacity", Preview, "Layout", "Quick Controls Bloom Opacity", PreviewLayout.QuickControlsGuideGlowOpacity, 0, 1, .001, 3, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Preview);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
@@ -567,6 +579,10 @@ void AddIconRole(
 				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerInset", GalleryShell, "Gallery Layout", "Drawer Inset", GalleryLayout.DrawerInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerInitialHeight", GalleryShell, "Gallery Layout", "Drawer Initial Height", GalleryLayout.DrawerInitialHeight, 120, 640, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.ModeSwitchGap", GalleryShell, "Gallery Layout", "Mode Switch Gap", GalleryLayout.ModeSwitchGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerSurfaceOpacity", GalleryShell, "Gallery Surface", "Drawer Surface Opacity", GalleryLayout.DrawerSurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Gallery);
 
 				LocateBegin = P.Num();
