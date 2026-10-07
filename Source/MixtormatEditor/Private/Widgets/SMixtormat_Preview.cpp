@@ -1635,17 +1635,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			[MakePreviewCluster(CameraControls)]
 		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Fill)
-		[
-			SAssignNew(InspectorOverlayHost, SBox)
-			.Clipping(EWidgetClipping::ClipToBounds)
-			.Visibility_Lambda([this]()
-			{
-				return InspectorPlacement == EInspectorPlacement::Overlay
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[InspectorPlacement == EInspectorPlacement::Overlay ? InspectorPanel.ToSharedRef() : SNullWidget::NullWidget]
-		];
+		// The floating inspector. Placed by padding rather than by alignment, because the user owns
+	// its corner: the slot is only arranged while Overlay is active, and the geometry it reads is
+	// resolved when the placement is entered.
+	+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
+	.Padding(TAttribute<FMargin>::CreateLambda([this]()
+	{
+		return FMargin(InspectorOverlayPosition.X, InspectorOverlayPosition.Y, 0.0f, 0.0f);
+	}))
+	[
+		SAssignNew(InspectorOverlayHost, SBox)
+		.WidthOverride_Lambda([this]() { return InspectorOverlaySize.X; })
+		.HeightOverride_Lambda([this]() { return InspectorOverlaySize.Y; })
+		.Clipping(EWidgetClipping::ClipToBounds)
+		.Visibility_Lambda([this]()
+		{
+			return InspectorPlacement == EInspectorPlacement::Overlay
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[InspectorPlacement == EInspectorPlacement::Overlay ? InspectorPanel.ToSharedRef() : SNullWidget::NullWidget]
+	];
 
 	if (!bReusingViewport)
 	{

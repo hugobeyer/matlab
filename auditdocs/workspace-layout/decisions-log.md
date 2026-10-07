@@ -25,6 +25,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | D15 | `P` cycles inspector placement: Docked → Overlay → Hidden → Docked | User |
 | D16 | Inspector overlay: no outer border and no rounded corners; inner component styling unchanged | User |
 | D17 | Prototype sync direction for layout geometry is Unreal → HTML/CSS | User |
+| D18 | Inspector overlay is draggable by its header row and resizable by a bottom-left grip, clamped to the viewport | User |
 
 ## Implemented (2026-10)
 
@@ -47,7 +48,7 @@ unresolved. "Rejected" means considered and dropped, with the reason.
 | R5 | Effective value: authored on slider + driven badge; computed result in popover only | Consistent with spatial drivers; no slider write/reset confusion |
 | R6 | Persistence scope: widths, heights, placement mode, collapsed flags only | Minimal; skip selection/scroll |
 | R7 | Auto-hide exception: hide only when no selection AND variables group collapsed | Keeps the variables cell reachable |
-| R8 | Inspector free drag: defer to a later pass | Overlay + dock + hide + resize covers the need; drag is the only new machinery |
+| R8 | ~~Inspector free drag: defer to a later pass~~ — superseded by D18 | Overlay + dock + hide + resize covers the need; drag is the only new machinery |
 
 ## Open
 

@@ -151,6 +151,13 @@ public:
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
+	// The floating inspector's drag and resize. Unhandled unless Overlay is active and the press
+	// landed on the panel's own chrome, so nothing else in the workspace changes.
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
+	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 	bool CanCloseTab();
 
 private:
@@ -1388,6 +1395,12 @@ private:
 	FReply ToggleBottomLibraryCollapsed();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
+	// Overlay placement: geometry, clamping, and the drag/resize interaction behind it.
+	void EnsureInspectorOverlayPlaced();
+	FVector2D GetInspectorOverlayBounds() const;
+	void ClampInspectorOverlay();
+	FReply BeginInspectorOverlayInteraction(const FVector2D& ScreenPosition, bool bResize);
+	void UpdateInspectorOverlayInteraction(const FVector2D& ScreenPosition);
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -1478,11 +1491,25 @@ private:
 	float ShellRightFraction = 0.21f;
 	bool bLeftPanelCollapsed = false;
 	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
-		EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
-		bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
-		TSharedPtr<SWidget> InspectorPanel;
-		TSharedPtr<SBox> InspectorDockHost;
-		TSharedPtr<SBox> InspectorOverlayHost;
+	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
+	bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
+	TSharedPtr<SWidget> InspectorPanel;
+	TSharedPtr<SBox> InspectorDockHost;
+	TSharedPtr<SBox> InspectorOverlayHost;
+	// Overlay geometry (prototype): the floating inspector's top-left corner in preview pixels and
+	// an explicit size, so it can be dragged and resized. Both live here rather than on the widgets
+	// so a theme reconstruction preserves them. Unplaced until the overlay is first entered.
+	FVector2D InspectorOverlayPosition = FVector2D::ZeroVector;
+	FVector2D InspectorOverlaySize = FVector2D::ZeroVector;
+	bool bInspectorOverlayPlaced = false;
+	bool bInspectorOverlayDragging = false;
+	bool bInspectorOverlayResizing = false;
+	FVector2D InspectorOverlayDragOrigin = FVector2D::ZeroVector;
+	FVector2D InspectorOverlayPositionAtDragStart = FVector2D::ZeroVector;
+	FVector2D InspectorOverlaySizeAtDragStart = FVector2D::ZeroVector;
+	// The overlay's own chrome: the header row drags the panel, the corner grip resizes it.
+	TWeakPtr<SWidget> InspectorIdentityRow;
+	TWeakPtr<SWidget> InspectorResizeGrip;
 	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
 	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
 	// derived from this one, so the pair can never disagree or renormalise against each other.

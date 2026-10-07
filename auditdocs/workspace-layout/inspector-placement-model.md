@@ -4,9 +4,12 @@ Extends `ui-layout-and-panels-audit.md` §6. Status: placement-cycle prototype i
 (2026-10) — `P` and the top-bar placement control cycle Docked → Overlay → Hidden.
 One inspector is reparented between dock and viewport hosts; Hidden stays attached
 in the collapsed dock host for theme layout-state transfer. Overlay uses a square,
-borderless shell-colored surface. Right viewport controls shift left by the inspector
-width while Overlay is active. Source wiring checked; Unreal build/UI validation pending.
-Dragging, resizing, persistence and Auto mode remain deferred.
+borderless shell-colored surface, floats at the viewport's right edge, and is dragged
+by its header row and resized by a bottom-left grip, clamped to the viewport. The
+Layers column stays resizable in every placement: while the inspector column is away
+its share is carried by the centre slot, so the splitter still divides the full width.
+Source wiring checked; Unreal build/UI validation pending. Persistence, Auto mode and
+collapse-to-top remain deferred.
 
 ## Goal
 

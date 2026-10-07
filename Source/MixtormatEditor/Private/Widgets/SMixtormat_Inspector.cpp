@@ -5,9 +5,11 @@
 
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Rows/SMixtormatRow.h"
+#include "Widgets/Images/SImage.h"
 
 // The inspector column: every per-selection parameter panel.
 
@@ -351,29 +353,40 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		LOCTEXT("HeightOpHint", "How this layer's height combines with the height below it, weighted by its coverage. Replace cross-fades (the old OVER); Max with Softness merges (the old BLEND, the default). Add and Subtract are signed about 0.5. Min, Max and Difference behave like Replace on bare ground. Height Blend lets the layer run over the stack where its mask is strong and its height is higher: its settings open in the card below."),
 		LOCTEXT("HeightAmountHint", "How much of this op's height reaches the stack."));
 	return SNew(SBox)
-		.WidthOverride(MixtormatTokens::InspectorWidth)
+		// Docked, the column is the authored width. Overlay, the floating host owns the size, so the
+		// panel fills whatever the user has dragged it to.
+		.WidthOverride_Lambda([this]()
+		{
+			return InspectorPlacement == EInspectorPlacement::Overlay
+				? FOptionalSize()
+				: FOptionalSize(MixtormatTokens::InspectorWidth);
+		})
 		[
-			SNew(SBorder)
-			.Padding(FMargin(0.0f))
-			.BorderImage_Lambda([this]()
-							{
-								return InspectorPlacement == EInspectorPlacement::Overlay
-									? FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"))
-									: FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel"));
-							})
-							.BorderBackgroundColor_Lambda([this]()
-							{
-								return InspectorPlacement == EInspectorPlacement::Overlay
-									? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell)
-									: FLinearColor::White;
-							})
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SBorder)
+				.Padding(FMargin(0.0f))
+				.BorderImage_Lambda([this]()
+				{
+					return InspectorPlacement == EInspectorPlacement::Overlay
+						? FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"))
+						: FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel"));
+				})
+				.BorderBackgroundColor_Lambda([this]()
+				{
+					return InspectorPlacement == EInspectorPlacement::Overlay
+						? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell)
+						: FLinearColor::White;
+				})
 			[
 				SNew(SVerticalBox)
 				// The selection header (thumbnail, name, source, badge) takes the inspector's top
 				// margin; it sits above the well, so the well's own padding never reached it.
 				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, MixtormatTokens::InspectorTopMargin, 2.0f, 3.0f)
 				[
-					SNew(SVerticalBox)
+					// The header doubles as the overlay's drag handle. Docked, nothing reads it.
+					SAssignNew(InspectorIdentityRow, SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						// Thumbnail, name, source, badge -- the same four fields in the same order as
@@ -766,7 +779,26 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							BuildHeightBlendControls()
 						]
 					]
-					]
+				]
+			]
+		]
+			]
+			// Overlay only: the corner that resizes the floating panel. Docked mode has no grip --
+			// the column's width is the splitter's business there.
+			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
+			[
+				SAssignNew(InspectorResizeGrip, SBox)
+				.WidthOverride(MixtormatTokens::InspectorOverlayGripSize)
+				.HeightOverride(MixtormatTokens::InspectorOverlayGripSize)
+				.Visibility_Lambda([this]()
+				{
+					return InspectorPlacement == EInspectorPlacement::Overlay
+						? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				[
+					SNew(SImage)
+					.Image(MixtormatIcons::Grip())
+					.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
 				]
 			]
 		];

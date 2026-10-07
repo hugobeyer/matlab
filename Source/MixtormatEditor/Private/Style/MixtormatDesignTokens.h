@@ -624,6 +624,11 @@ namespace MixtormatTokens
 	inline float SplitterHitSize = 6.0f;
 	inline float LayerStackWidth = 423.0f;
 	inline float InspectorWidth = 520.0f;
+	// The floating overlay's corner grip, and the floor a drag can shrink it to. The grip is small
+	// enough to stay out of the content's way and still be a target.
+	inline float InspectorOverlayGripSize = 14.0f;
+	inline float InspectorOverlayMinWidth = 260.0f;
+	inline float InspectorOverlayMinHeight = 160.0f;
 	inline float TopBarHeight = 38.0f;
 	inline float StatusBarHeight = 24.0f;
 	inline float BottomLibraryCollapseButtonWidth = 120.0f;
