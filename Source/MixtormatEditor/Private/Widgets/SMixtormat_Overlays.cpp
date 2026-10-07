@@ -10,6 +10,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SNullWidget.h"
 
 // The floating panels: the placement cycles, the shared stack both panels float in, the fronting
@@ -86,15 +87,15 @@ void SMixtormat::ApplyLeftPanelPlacement()
 
 void SMixtormat::SyncLeftCellPage()
 {
-	// The cell can only show the layer stack while it is docked; otherwise the rail selects the
-	// last page that can live there, so the highlight always matches what the cell holds.
-	if (LeftPanelPlacement == ELeftPanelPlacement::Docked)
+	// Placement changes choose a valid page directly. Do not route through ShowLeftPage: that
+	// method intentionally toggles the active rail icon's collapse state.
+	const int32 PageIndex = LeftPanelPlacement == ELeftPanelPlacement::Docked
+		? 0 : LastNonLayersPage;
+	LeftTabIndex = PageIndex;
+	bLeftOverlayCollapsed = false;
+	if (LeftSwitcher.IsValid())
 	{
-		ShowLeftPage(0);
-	}
-	else if (LeftTabIndex == 0)
-	{
-		ShowLeftPage(LastNonLayersPage);
+		LeftSwitcher->SetActiveWidgetIndex(PageIndex);
 	}
 }
 

@@ -1544,6 +1544,7 @@ private:
 	enum class ELeftPanelPlacement : uint8 { Docked, Overlay, Hidden };
 	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
 	ELeftPanelPlacement LeftPanelPlacement = ELeftPanelPlacement::Docked;
+	bool bLeftOverlayCollapsed = false;
 	bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
 	TSharedPtr<SWidget> InspectorPanel;
 	TSharedPtr<SWidget> LeftPanel;

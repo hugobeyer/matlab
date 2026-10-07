@@ -48,14 +48,22 @@ namespace
 
 FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 {
-	// Selecting LAYERS while it is away brings it back to the cell: the rail is the column's
-	// navigation, and there is only ever one layer stack.
+	// Clicking the active rail icon collapses its surface but leaves the pinned rail available.
+	// Selecting another page always reopens its shared surface.
 	if (PageIndex == 0 && LeftPanelPlacement != ELeftPanelPlacement::Docked)
 	{
 		LeftPanelPlacement = ELeftPanelPlacement::Docked;
+		bLeftOverlayCollapsed = false;
 		ApplyLeftPanelPlacement();
+		return FReply::Handled();
+	}
+	if (PageIndex == LeftTabIndex)
+	{
+		bLeftOverlayCollapsed = !bLeftOverlayCollapsed;
+		return FReply::Handled();
 	}
 	LeftTabIndex = PageIndex;
+	bLeftOverlayCollapsed = false;
 	if (PageIndex != 0)
 	{
 		LastNonLayersPage = PageIndex;
@@ -487,6 +495,10 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 			.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SBox)
+				.Visibility_Lambda([this]()
+				{
+					return bLeftOverlayCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
+				})
 				.WidthOverride(FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayWidth)
 				[
 					SAssignNew(LeftSwitcher, SWidgetSwitcher)

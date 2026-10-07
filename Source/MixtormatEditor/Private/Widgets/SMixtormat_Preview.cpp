@@ -5,7 +5,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
-#include "Preview/SMixtormatLightGizmo.h"
+
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
@@ -887,7 +887,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
 	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
-	const FMargin ViewportOverlayPadding(Resolved.PreviewLayout.OverlayInset);
 
 	const TSharedRef<SMixtormatPreviewViewport> PreviewViewport = bReusingViewport
 		? PreviewViewports[0].ToSharedRef()
@@ -930,114 +929,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 				return true;
 			}));
 
-	// The control clusters themselves live in SMixtormat_PreviewControls.cpp; this function only
-	// decides where each one goes. Every group composes the H/Space master flag with its own GLOBAL
-	// switch, so hiding a group here never disables its hotkeys.
-	//
-	// Viewport controls stay anchored to the full viewport, independently of the Inspector.
+	// Default viewport control clusters live in GLOBAL and the Q marking menu. Keep Preview clear
+	// for the workspace overlays while preserving the shared builders and their existing state.
 	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
 			PreviewViewport
-		]
-		// The render strip, top left: render scale and the Final popup. AA, Default/Lumen and
-		// displacement moved to GLOBAL -- five rows of chrome over the material was too much, and
-		// they are set once and then left alone.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
-		.Padding(Resolved.PreviewLayout.OverlayInset)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupRenderVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewRenderStrip())]
-		]
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Right)
-		.VAlign(VAlign_Top)
-		.Padding(ViewportOverlayPadding)
-		[
-			SNew(SBox)
-			.WidthOverride(MixtormatLightGizmo::Size)
-			.HeightOverride(MixtormatLightGizmo::Size)
-			// Only while the light is being rotated.
-			.Visibility_Lambda([this, PreviewViewport]()
-			{
-				return bPreviewOverlayUiVisible && PreviewViewport->IsRotatingLighting()
-					? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-			})
-			[
-				SNew(SMixtormatLightGizmo)
-				.CameraRotation_Lambda([PreviewViewport]()
-				{
-					return PreviewViewport->GetCameraRotation();
-				})
-				.LightDirection_Lambda([PreviewViewport]()
-				{
-					return PreviewViewport->GetLightDirection();
-				})
-			]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
-		.Padding(Resolved.PreviewLayout.OverlayInset)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupLightingVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewLightingControls())]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
-		.Padding(ViewportOverlayPadding)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupGeometryVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewGeometryControls())]
-		]
-		// Light and skylight bottom left, where the status readout was. That line said Real-time,
-		// SM6 and a layer count, none of which changes in response to anything the user can do
-		// here, so it was three constants and a number already on screen.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
-		.Padding(Resolved.PreviewLayout.OverlayInset)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupLightingVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewSceneControls())]
-		]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		.Padding(ViewportOverlayPadding)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupOutputVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewOutputControls())]
-		]
-		// FOV bottom centre, in the slot the watermark held.
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
-		.Padding(ViewportOverlayPadding)
-		[
-			SNew(SBox)
-			.Visibility_Lambda([this]()
-			{
-				return bPreviewOverlayUiVisible && bPreviewGroupCameraVisible
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[MakePreviewCluster(BuildPreviewCameraControls())]
 		]
 		// Pinned navigation lives inside the viewport overlay, so it does not reserve shell width.
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
