@@ -353,7 +353,14 @@ FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEv
 	}
 	if (LeftPanelOverlay.bDragging || LeftPanelOverlay.bResizing)
 	{
+		const bool bSnapBack = LeftPanelOverlay.bDragging && !LeftPanelOverlay.bResizing
+			&& LeftPanelOverlay.Position.X <= MixtormatTokens::LeftPanelSnapDistance;
 		MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
+		if (bSnapBack)
+		{
+			LeftPanelPlacement = ELeftPanelPlacement::Docked;
+			ApplyLeftPanelPlacement();
+		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}
 	// A gesture cancelled by a rebuild can leave the capture behind; release it here rather than

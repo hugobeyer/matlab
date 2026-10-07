@@ -642,6 +642,7 @@ namespace MixtormatTokens
 	// The floating left panel's drag margin above the tab strip: an empty strip, not a header row.
 	// The panel's identity is the tabs themselves, so this is a grab target and nothing else.
 	inline float OverlayPanelGrabMargin = 8.0f;
+	inline float LeftPanelSnapDistance = 40.0f;
 
 	// An empty state's line -- "No layer selected", "No global variables yet." -- is present but
 	// deliberately quiet: it is a note about the absence of content, not content.

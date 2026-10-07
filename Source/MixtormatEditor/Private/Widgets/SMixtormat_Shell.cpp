@@ -140,12 +140,12 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					{
 						switch (LeftPanelPlacement)
 						{
-						case ELeftPanelPlacement::Docked: return LOCTEXT("LayersDocked", "Layers: Docked");
-						case ELeftPanelPlacement::Overlay: return LOCTEXT("LayersOverlay", "Layers: Overlay");
+						case ELeftPanelPlacement::Docked: return LOCTEXT("LayersHome", "Layers: Home");
+						case ELeftPanelPlacement::Overlay: return LOCTEXT("LayersPoppedOut", "Layers: Popped Out");
 						default: return LOCTEXT("LayersHidden", "Layers: Hidden");
 						}
 					})
-					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Cycle Layers placement: Docked → Overlay → Hidden → Docked (L)."))
+					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Cycle Layers: Home → Popped Out → Hidden → Home (L). Click LAYERS to return it home."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::ToggleLeftPanelCollapsed)
 				]
