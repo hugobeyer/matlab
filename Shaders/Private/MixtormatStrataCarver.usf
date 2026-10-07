@@ -55,7 +55,9 @@ float MaskInfluence;
 float IDInfluence;
 uint HasScopedMask;
 uint HasRegionIds;
+uint HasHeightPush;
 
+Texture2D<float> HeightPushField;
 Texture2D<float> SourceHeight;
 Texture2D<float> ResolveMask;
 Texture2D<uint> ResolveRegionIds;
@@ -233,6 +235,16 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float S = dot(UV, float2(BedWave));
 	float2 SGradient = MixtormatGeneratorDestinationGradient(float2(BedWave));
+	if (HasHeightPush != 0u)
+	{
+		const float2 Texel = 1.0f / float2(OutputSize);
+		S += HeightPushField.Load(int3(P, 0));
+		SGradient += float2(
+			HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV + float2(Texel.x, 0.0f), 0.0f)
+				- HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV - float2(Texel.x, 0.0f), 0.0f),
+			HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV + float2(0.0f, Texel.y), 0.0f)
+				- HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV - float2(0.0f, Texel.y), 0.0f)) / (2.0f * Texel);
+	}
 	if (Bend != 0.0f)
 	{
 		const int Period = max(BendScale, 1) * 2;

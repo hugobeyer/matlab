@@ -327,13 +327,43 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 }
 
 void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
-	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer)
+	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer,
+	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
 {
 	// Sublayers exist only on Generator layers, and a disabled layer must not gather them.
 	if (!bGeneratorLayer || !Layer.bEnabled) { return; }
 
 	switch (LayerChild.Type)
 	{
+	case EMixtormatLayerChildType::HeightPush:
+	{
+		const FMixtormatGeneratorHeightPush& Push = LayerChild.HeightPush;
+		if (!Push.bEnabled || LayerChild.ScopeOwnerChildId.IsValid()) { return; }
+		const int32 SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
+			EffectiveLayers, LayerIndex, SourceChildIndex, Push.Source);
+		if (SourceIndex == INDEX_NONE) { return; }
+		int32 TargetIndex = INDEX_NONE;
+		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Target = Layer.Children[Index];
+			if (Target.ChildId == Push.TargetChildId && Target.Type == EMixtormatLayerChildType::Generator
+				&& Target.Generator.bEnabled && !Target.ScopeOwnerChildId.IsValid()
+				&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver)
+			{
+				TargetIndex = Index;
+				break;
+			}
+		}
+		if (TargetIndex == INDEX_NONE) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::HeightPush;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		ChildData.HeightPush.Source.Source = {Push.Source.SourceLayerId, SourceIndex, Push.Source.OutputName};
+		ChildData.HeightPush.Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
+		ChildData.HeightPush.TargetChildIndex = TargetIndex;
+		ChildData.HeightPush.Amount = FMath::IsFinite(Push.Amount) ? Push.Amount : 0.0f;
+		break;
+	}
 	case EMixtormatLayerChildType::HeightBlend:
 	{
 		const FMixtormatGeneratorHeightBlend& Blend = LayerChild.HeightBlend;

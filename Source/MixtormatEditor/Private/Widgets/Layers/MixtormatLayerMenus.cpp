@@ -1056,7 +1056,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
-	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::Generator(),
+			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
+			.Enabled(TAttribute<bool>(CanCreateChild(Target) && !Target.IsGroup()
+						&& !Target.ScopeOwnerChildId.IsValid()));
+		Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(),

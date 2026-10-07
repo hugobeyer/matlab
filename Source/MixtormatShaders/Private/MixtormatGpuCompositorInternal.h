@@ -976,6 +976,13 @@ namespace MixtormatGpuCompositor
 
 	// Generator-layer Height Blend sublayer. SourceChildIndex is the referenced module resolved to
 	// this layer's child index; INDEX_NONE falls back to the running height.
+	struct FGeneratorHeightPushRenderData
+	{
+		FOutputReferenceRenderData Source;
+		int32 TargetChildIndex = INDEX_NONE;
+		float Amount = 1.0f;
+	};
+
 	struct FGeneratorHeightBlendRenderData
 	{
 		int32 Op = 0;
@@ -1059,6 +1066,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorHeightBlendRenderData HeightBlend;
 		FGeneratorHeightCurveRenderData HeightCurve;
 		FGeneratorHeightColorRampRenderData HeightColorRamp;
+		FGeneratorHeightPushRenderData HeightPush;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
@@ -1548,6 +1556,7 @@ namespace MixtormatGpuCompositor
 		// Blend sublayer can read another module's result.
 		TMap<int32, FRDGTextureRef> GeneratorModuleHeights;
 		TMap<int32, FGeneratorInputFields> GeneratorInputs;
+		TMap<int32, FRDGTextureRef> GeneratorHeightPushFields;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1616,6 +1625,7 @@ namespace MixtormatGpuCompositor
 			GeneratorFields.Reset();
 			GeneratorModuleHeights.Reset();
 			GeneratorInputs.Reset();
+			GeneratorHeightPushFields.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};

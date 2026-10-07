@@ -94,6 +94,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightBlend:     return Child.HeightBlend.bEnabled;
 		case EMixtormatLayerChildType::HeightCurve:     return Child.HeightCurve.bEnabled;
 		case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
+		case EMixtormatLayerChildType::HeightPush:      return Child.HeightPush.bEnabled;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently reporting the Mask payload's flag.
@@ -127,6 +128,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightBlend:     Child.HeightBlend.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightCurve:     Child.HeightCurve.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightColorRamp: Child.HeightColorRamp.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::HeightPush:      Child.HeightPush.bEnabled = bEnabled; break;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently mutating the Mask payload's flag.
@@ -679,6 +681,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
+		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -929,7 +932,8 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			// GetSelectedChildIndex() reports nothing selected for them.
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightPush))
 	{
 		return SelectedMaskIndex;
 	}
@@ -1381,6 +1385,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 	{
 		return LOCTEXT("HeightColorRampChildName", "Color Ramp");
+	}
+	if (Child.Type == EMixtormatLayerChildType::HeightPush)
+	{
+		return LOCTEXT("HeightPushChildName", "Height Push");
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
@@ -1886,6 +1894,18 @@ const FMixtormatGeneratorHeightBlend* SMixtormat::GetSelectedHeightBlend() const
 		return Child->Type == EMixtormatLayerChildType::HeightBlend ? &Child->HeightBlend : nullptr;
 	}
 	return nullptr;
+}
+
+FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush()
+{
+	return const_cast<FMixtormatGeneratorHeightPush*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedHeightPush());
+}
+
+const FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::HeightPush ? &Child->HeightPush : nullptr;
 }
 
 FMixtormatGeneratorHeightCurve* SMixtormat::GetSelectedHeightCurve()

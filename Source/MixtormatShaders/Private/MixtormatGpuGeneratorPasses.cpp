@@ -121,6 +121,8 @@ public:
 		SHADER_PARAMETER(float, IDInfluence)
 		SHADER_PARAMETER(uint32, HasScopedMask)
 		SHADER_PARAMETER(uint32, HasRegionIds)
+		SHADER_PARAMETER(uint32, HasHeightPush)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightPushField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, ResolveRegionIds)
@@ -668,6 +670,31 @@ IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
 
 // Generator-layer Height Blend sublayer: combines the running signed height with another module's.
+class FMixtormatGeneratorHeightPushCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightPushCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(uint32, HasPrevious)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightPush.usf", "MainCS", SF_Compute);
+
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
 public:
@@ -1114,6 +1141,9 @@ namespace
 			P->IDInfluence = Carver.IDInfluence;
 			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
+			const FRDGTextureRef* Push = LayerCtx.GeneratorHeightPushFields.Find(Child.SourceChildIndex);
+			P->HasHeightPush = Push && *Push ? 1u : 0u;
+			P->HeightPushField = Push && *Push ? *Push : SourceHeight;
 			P->SourceHeight = SourceHeight;
 			P->ResolveMask = ScopedMask;
 			P->ResolveRegionIds = RegionIds;
@@ -2349,6 +2379,41 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
+		// Structural input modules run at their own authored position, before a later target.
+		if (Child.Type == EMixtormatLayerChildType::HeightPush)
+		{
+			const FGeneratorHeightPushRenderData& Push = Child.HeightPush;
+			const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Push.Source.Source);
+			if (Push.Amount == 0.0f || Push.TargetChildIndex == INDEX_NONE || !Source
+				|| Source->Kind != EMixtormatPublishedFieldKind::ScalarSigned || !Source->IsComplete()
+				|| Source->Texture->Desc.Extent != Size) { continue; }
+			const FRDGTextureRef Height = Source->Texture;
+			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
+			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const FRDGTextureRef Mask = bHasMask
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Height;
+			const FRDGTextureRef* Found = LayerCtx.GeneratorHeightPushFields.Find(Push.TargetChildIndex);
+			const FRDGTextureRef Previous = Found ? *Found : nullptr;
+			FRDGTextureRef Shift = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.Generator.HeightPush"));
+			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorHeightPushCS::FParameters>();
+			P->OutputSize = Size;
+			P->Amount = Push.Amount;
+			P->HasPrevious = Previous ? 1u : 0u;
+			P->HasMask = bHasMask ? 1u : 0u;
+			P->SourceHeight = Height;
+			P->PreviousShift = Previous ? Previous : Height;
+			P->ScopedMask = Mask;
+			P->OutShift = Ctx.GraphBuilder.CreateUAV(Shift);
+			TShaderMapRef<FMixtormatGeneratorHeightPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.HeightPush.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+			LayerCtx.GeneratorHeightPushFields.Add(Push.TargetChildIndex, Shift);
+			continue;
+		}
 		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
 		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
 		{

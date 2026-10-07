@@ -158,7 +158,9 @@ enum class EMixtormatLayerChildType : uint8
 	// they read and rewrite the running signed generator height. Appended for serialization safety.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
-	HeightColorRamp UMETA(DisplayName = "Color Ramp")
+	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
+	// Appended: a structural input module, independent of height combination and UV warping.
+	HeightPush UMETA(DisplayName = "Height Push")
 };
 
 USTRUCT(BlueprintType)
@@ -265,6 +267,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightColorRamp"))
 	FMixtormatGeneratorHeightColorRamp HeightColorRamp;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightPush"))
+	FMixtormatGeneratorHeightPush HeightPush;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

@@ -99,7 +99,8 @@ namespace MixtormatOutputReferences
 		const FGuid& DestinationChildId,
 		const FMixtormatOutputReference& Reference);
 
-	// Explicit generator sockets only: completed signed Height, Flow or UVMap from an earlier
+	// Explicit generator sockets (or a Height Push child's signed Height source): completed
+	// signed Height, Flow or UVMap from an earlier
 	// generator scope in this layer or an earlier layer. Rejects self/forward scope reads,
 	// disabled owners and wrong output kinds. Legacy layer-wide Flow/UV validation is unchanged.
 	// Strictly decreasing evaluation order makes socket cycles impossible.

@@ -39,7 +39,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	// Appended with the Generator-layer sublayers, so their rows can be bound and driven.
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
-	HeightColorRamp UMETA(DisplayName = "Color Ramp")
+	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
+	HeightPush UMETA(DisplayName = "Height Push")
 };
 
 UENUM(BlueprintType)

@@ -305,15 +305,20 @@ namespace MixtormatOutputReferences
 			return INDEX_NONE;
 		}
 		const FMixtormatLayerChild& Destination = DestinationLayer.Children[DestinationChildIndex];
-		if (Destination.Type != EMixtormatLayerChildType::Generator || !Destination.Generator.bEnabled
-			|| Destination.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
+		const bool bPush = Destination.Type == EMixtormatLayerChildType::HeightPush;
+		if (Destination.ScopeOwnerChildId.IsValid()
+			|| (bPush ? !Destination.HeightPush.bEnabled
+				: Destination.Type != EMixtormatLayerChildType::Generator || !Destination.Generator.bEnabled))
+		{
+			return INDEX_NONE;
+		}
 		const bool bHeight = Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
 			&& Reference.OutputName == FName(TEXT("Height"));
 		const bool bFlow = Reference.Kind == EMixtormatPublishedFieldKind::Flow
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::Flow);
 		const bool bUV = Reference.Kind == EMixtormatPublishedFieldKind::UVMap
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::UVMap);
-		if (!bHeight && !bFlow && !bUV) { return INDEX_NONE; }
+		if ((!bHeight && !bFlow && !bUV) || (bPush && !bHeight)) { return INDEX_NONE; }
 
 		int32 SourceLayerIndex = INDEX_NONE;
 		for (int32 Index = 0; Index < Layers.Num(); ++Index)

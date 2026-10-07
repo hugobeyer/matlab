@@ -48,6 +48,7 @@ namespace MixtormatChildScope
 		// A Color Ramp module gates where the colour it publishes shows. The mask child's own
 		// Weight is the influence; no separate control is needed.
 		case EMixtormatLayerChildType::HeightColorRamp:
+		case EMixtormatLayerChildType::HeightPush:
 			return true;
 		default:
 			return false;

@@ -253,7 +253,8 @@ bool SMixtormat::HasSelectedChildInspector() const
 		// Generator-layer sublayers: each owns its own panel, so each must claim the inspector.
 		|| GetSelectedHeightBlend()
 		|| GetSelectedHeightCurve()
-		|| GetSelectedHeightColorRamp();
+		|| GetSelectedHeightColorRamp()
+		|| GetSelectedHeightPush();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
@@ -496,6 +497,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildHeightBlendModuleControls()]
 					+ SScrollBox::Slot()[BuildHeightCurveControls()]
 					+ SScrollBox::Slot()[BuildHeightColorRampControls()]
+										+ SScrollBox::Slot()[BuildHeightPushControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

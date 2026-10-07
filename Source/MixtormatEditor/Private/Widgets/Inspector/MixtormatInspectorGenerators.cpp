@@ -759,6 +759,124 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 		[Cards]];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildHeightPushConnectionMenu(const bool bTarget)
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	if (Address.OwnerType != EMixtormatChildOwnerType::Layer || !GetSelectedHeightPush()) { return Menu.Build(); }
+	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
+	{
+		return Layer.LayerId == Address.OwnerId;
+	});
+	const int32 ChildIndex = ResolveChildIndexAt(Address);
+	if (!WorkingLayers.IsValidIndex(LayerIndex) || ChildIndex == INDEX_NONE) { return Menu.Build(); }
+	Menu.Item(LOCTEXT("HeightPushConnectionNone", "None"), nullptr,
+		FSimpleDelegate::CreateLambda([this, Address, bTarget]()
+		{
+			FMixtormatLayerChild* Child = ResolveChildAt(Address);
+			if (!Child || Child->Type != EMixtormatLayerChildType::HeightPush || Child->IsInstance()) { return; }
+			if (bTarget) { Child->HeightPush.TargetChildId.Invalidate(); }
+			else
+			{
+				Child->HeightPush.Source.SourceLayerId.Invalidate();
+				Child->HeightPush.Source.SourceChildId.Invalidate();
+			}
+			RefreshLayeredPreview();
+		}));
+	// A disabled module can still be configured; execution keeps its authored enable flag.
+	TArray<FMixtormatLayer> Candidates = WorkingLayers;
+	Candidates[LayerIndex].Children[ChildIndex].HeightPush.bEnabled = true;
+	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& Layer = WorkingLayers[SourceLayerIndex];
+		if (bTarget && SourceLayerIndex != LayerIndex) { continue; }
+		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+			if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
+			FMixtormatOutputReference Reference;
+			Reference.SourceLayerId = Layer.LayerId;
+			Reference.SourceChildId = Candidate.ChildId;
+			Reference.OutputName = FName(TEXT("Height"));
+			Reference.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
+			const bool bAvailable = bTarget
+				? Layer.bEnabled && Layer.Type == EMixtormatLayerType::Generator
+					&& Index > ChildIndex && !Candidate.ScopeOwnerChildId.IsValid()
+					&& Candidate.Generator.bEnabled && Candidate.Generator.Type == EMixtormatGeneratorType::StrataCarver
+				: MixtormatOutputReferences::ResolveGeneratorInputSource(Candidates, LayerIndex, ChildIndex, Reference) != INDEX_NONE;
+			const FGuid TargetId = Candidate.ChildId;
+			Menu.Item(FText::Format(LOCTEXT("HeightPushConnectionEntry", "{0} / {1}"),
+				Layer.DisplayName, GetLayerChildName(Candidate)), MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([this, Address, Reference, TargetId, bTarget]()
+				{
+					FMixtormatLayerChild* Child = ResolveChildAt(Address);
+					if (!Child || Child->Type != EMixtormatLayerChildType::HeightPush || Child->IsInstance()) { return; }
+					if (bTarget) { Child->HeightPush.TargetChildId = TargetId; }
+					else { Child->HeightPush.Source = Reference; }
+					RefreshLayeredPreview();
+				})).Enabled(bAvailable);
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
+{
+	const auto Push = [this]() { return GetSelectedHeightPush(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	const auto Connection = [this, Push](const bool bTarget) -> TSharedRef<SWidget>
+	{
+		return SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Push, bTarget]()
+				{
+					const FMixtormatGeneratorHeightPush* Selected = Push();
+					if (!Selected) { return FText::GetEmpty(); }
+					FMixtormatChildAddress Source = GetSelectedChildAddress();
+					Source.ChildId = bTarget ? Selected->TargetChildId : Selected->Source.SourceChildId;
+					if (!bTarget) { Source.OwnerId = Selected->Source.SourceLayerId; }
+					const FMixtormatLayerChild* Child = ResolveChildAt(Source);
+					return Child ? GetLayerChildName(*Child) : Source.ChildId.IsValid()
+						? LOCTEXT("HeightPushConnectionMissing", "Unavailable") : LOCTEXT("HeightPushConnectionEmpty", "None");
+				}), FOnGetContent::CreateLambda([this, bTarget]() { return BuildHeightPushConnectionMenu(bTarget); }))
+			];
+	};
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("HeightPushSource", "Source Height"), Connection(false),
+		LOCTEXT("HeightPushSourceHint", "Completed signed height from an earlier generator or earlier layer. Zero height causes no push.")));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("HeightPushTarget", "Target"), Connection(true),
+		LOCTEXT("HeightPushTargetHint", "A Strata generator later in this layer. Order: source, Height Push, target. Other generator targets are unavailable.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightPush>(LOCTEXT("HeightPushAmount", "Amount"),
+		Push, &FMixtormatGeneratorHeightPush::Amount, -16.0, 16.0, 1.0, 0.01,
+		LOCTEXT("HeightPushAmountHint", "Bedding-coordinate shift per signed height unit. Negative reverses the push; zero is neutral. A scoped mask gates only this module.")));
+	return SNew(SBox)
+		.Visibility_Lambda([Push]() { return Push() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("HeightPushHeading", "HEIGHT PUSH"))
+			.InitiallyExpanded(true)
+			.HeaderAction(MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Push]()
+				{
+					const FMixtormatGeneratorHeightPush* Selected = Push();
+					return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}), FOnCheckStateChanged::CreateLambda([this, Push](const ECheckBoxState State)
+				{
+					if (FMixtormatGeneratorHeightPush* Selected = Push())
+					{
+						Selected->bEnabled = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				})))
+			[Panel]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
 {
 	MixtormatMenu::FBuilder Menu;
