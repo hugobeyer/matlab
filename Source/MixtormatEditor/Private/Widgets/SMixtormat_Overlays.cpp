@@ -68,7 +68,7 @@ FReply SMixtormat::ToggleLeftPanelCollapsed()
 
 void SMixtormat::ApplyLeftPanelPlacement()
 {
-
+	bLayerHomeDragPending = false;
 	LeftPanelOverlay.bFloating = LeftPanelPlacement == ELeftPanelPlacement::Overlay;
 	if (LeftPanelOverlay.bFloating)
 	{
@@ -323,12 +323,63 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 				return FReply::Handled().CaptureMouse(SharedThis(this));
 			}
 		}
+		// Floating Inspector content can cover the home handle; do not grab through that panel.
+		const bool bInspectorCoversHome = InspectorPlacement == EInspectorPlacement::Overlay
+			&& MixtormatOverlay::IsHit(InspectorOverlay, GetPreviewViewportLocalPosition(ScreenPosition));
+		if (!bIsBaking && !bInspectorCoversHome && LeftTabIndex == 0
+			&& LeftPanelPlacement == ELeftPanelPlacement::Docked)
+		{
+			const TSharedPtr<SWidget> Header = LeftPanelOverlay.Header.Pin();
+			if (Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
+			{
+				bLayerHomeDragPending = true;
+				LayerHomeDragOriginScreen = ScreenPosition;
+				return FReply::Handled().CaptureMouse(SharedThis(this))
+					.DetectDrag(SharedThis(this), EKeys::LeftMouseButton);
+			}
+		}
 	}
 	return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
 }
 
+FReply SMixtormat::OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (!bLayerHomeDragPending)
+	{
+		return SCompoundWidget::OnDragDetected(MyGeometry, MouseEvent);
+	}
+	bLayerHomeDragPending = false;
+	if (bIsBaking || LeftTabIndex != 0 || LeftPanelPlacement != ELeftPanelPlacement::Docked
+		|| !LeftPanel.IsValid())
+	{
+		return FReply::Handled().ReleaseMouseCapture();
+	}
+
+	// Anchor at the actual home geometry rather than the old floating position. Reparent the
+	// existing widget only after Slate's drag threshold; clicks leave it at home.
+	const FGeometry HomeGeometry = LeftPanel->GetCachedGeometry();
+	LeftPanelOverlay.Position = GetPreviewViewportLocalPosition(HomeGeometry.LocalToAbsolute(FVector2D::ZeroVector));
+	if (!LeftPanelOverlay.bPlaced)
+	{
+		LeftPanelOverlay.Size = HomeGeometry.GetLocalSize();
+		LeftPanelOverlay.bPlaced = true;
+	}
+	LeftPanelPlacement = ELeftPanelPlacement::Overlay;
+	ApplyLeftPanelPlacement();
+	MixtormatOverlay::BeginInteraction(LeftPanelOverlay,
+		GetPreviewViewportLocalPosition(LayerHomeDragOriginScreen), INDEX_NONE);
+	MixtormatOverlay::UpdateInteraction(LeftPanelOverlay,
+		GetPreviewViewportLocalPosition(MouseEvent.GetScreenSpacePosition()), GetPreviewViewportBounds());
+	BringFloatingPanelToFront(true);
+	return FReply::Handled().CaptureMouse(SharedThis(this));
+}
+
 FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (bLayerHomeDragPending)
+	{
+		return FReply::Handled();
+	}
 	if (InspectorOverlay.bDragging || InspectorOverlay.bResizing)
 	{
 		MixtormatOverlay::UpdateInteraction(InspectorOverlay,
@@ -346,6 +397,11 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 
 FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (bLayerHomeDragPending && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		bLayerHomeDragPending = false;
+		return FReply::Handled().ReleaseMouseCapture();
+	}
 	if (InspectorOverlay.bDragging || InspectorOverlay.bResizing)
 	{
 		MixtormatOverlay::CancelInteraction(InspectorOverlay);
@@ -375,6 +431,7 @@ FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEv
 void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 {
 	// Alt-tab or a modal mid-drag: drop the interaction rather than follow a mouse that is gone.
+	bLayerHomeDragPending = false;
 	MixtormatOverlay::CancelInteraction(InspectorOverlay);
 	MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);

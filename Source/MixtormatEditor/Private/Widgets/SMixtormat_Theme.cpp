@@ -211,6 +211,7 @@ EActiveTimerReturnType SMixtormat::ApplyPendingTheme(double CurrentTime, float D
 			// A gesture cannot survive the rebuild: the header and grips it was hit-testing are
 			// about to be replaced. The capture is released on the next mouse-up. The quick controls
 			// go with them -- their widgets, and any menu anchored to them, are rebuilt too.
+			bLayerHomeDragPending = false;
 			MixtormatOverlay::CancelInteraction(InspectorOverlay);
 			MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 			CloseQuickControls();

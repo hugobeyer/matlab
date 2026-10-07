@@ -585,8 +585,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 
 TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 {
-	// What travels when the layer stack pops out: the stack itself, an empty grab margin above it
-	// and the resize grips. Docked, the margin and grips are collapsed and this is just the stack.
+	// The same grab margin starts a home pop-out or moves the floating stack; resize grips remain floating-only.
 	return SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -607,17 +606,20 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 			})
 			[
 				SNew(SVerticalBox)
-				// Overlay only: an empty grab margin above the stack. The stack has no header of its
-				// own, so this is a drag target and nothing else.
+				// The home grab area uses Slate drag detection, so an ordinary click does not pop it out.
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SAssignNew(LeftPanelOverlay.Header, SBox)
 					.HeightOverride(MixtormatTokens::OverlayPanelGrabMargin)
-					.Visibility_Lambda([this]()
-					{
-						return LeftPanelPlacement == ELeftPanelPlacement::Overlay
-							? EVisibility::Visible : EVisibility::Collapsed;
-					})
+					.ToolTipText(LOCTEXT("LayersGrabHint", "Drag to pop Layers out or move it. Click LAYERS or drag back to the rail to return it home."))
+					[
+						SNew(SBorder)
+						.Visibility(EVisibility::Visible)
+						.Padding(0.0f)
+						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+						.BorderBackgroundColor(FLinearColor::Transparent)
+						.Cursor(EMouseCursor::GrabHand)
+					]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

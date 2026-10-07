@@ -74,6 +74,7 @@ enum class EMixtormatChildCreation : uint8
 	HeightCurve,
 	HeightColorRamp,
 	Peeling,
+	HeightPush,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -155,6 +156,7 @@ public:
 	// The floating inspector's drag and resize. Unhandled unless Overlay is active and the press
 	// landed on the panel's own chrome, so nothing else in the workspace changes.
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+		virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	// Tunnel phase: a press inside a floating panel brings it to the front before the press is
 	// routed to the control under it (D25).
 	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
@@ -539,6 +541,10 @@ private:
 	FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp();
 	const FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp() const;
 	TSharedRef<SWidget> BuildHeightColorRampControls();
+	FMixtormatGeneratorHeightPush* GetSelectedHeightPush();
+	const FMixtormatGeneratorHeightPush* GetSelectedHeightPush() const;
+	TSharedRef<SWidget> BuildHeightPushControls();
+	TSharedRef<SWidget> BuildHeightPushConnectionMenu(bool bTarget);
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
@@ -1546,6 +1552,8 @@ private:
 	// shared (SMixtormatOverlayPanel.h).
 	FMixtormatOverlayPanelState InspectorOverlay;
 	FMixtormatOverlayPanelState LeftPanelOverlay;
+		bool bLayerHomeDragPending = false;
+		FVector2D LayerHomeDragOriginScreen = FVector2D::ZeroVector;
 	// The two floating panels share one stack of two slots; the front slot paints and hit-tests
 	// last. A press inside a panel brings it forward on the next tick (D25).
 	TSharedPtr<SBox> FloatingPanelBackSlot;
