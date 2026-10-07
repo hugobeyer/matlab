@@ -278,6 +278,16 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 			LOCTEXT("StrataHeightFollowHint", "Shifts bedding with the upstream composite height. 0 makes an independent geological field.")));
 	}
 	{
+		const TSharedRef<SVerticalBox> Influence = AddCard(Panel, LOCTEXT("StrataInfluence", "MASK & ID INFLUENCE"));
+		AddSliderRow(Influence, MixtormatRow::MakePair(
+			Slider(LOCTEXT("StrataMaskInfluence", "Mask Influence"), &FMixtormatStrataCarver::MaskInfluence,
+				0.0, 1.0, Defaults.MaskInfluence, 0.01,
+				LOCTEXT("StrataMaskInfluenceHint", "How much the scoped mask varies the geological relief.")),
+			Slider(LOCTEXT("StrataIDInfluence", "ID Influence"), &FMixtormatStrataCarver::IDInfluence,
+				0.0, 1.0, Defaults.IDInfluence, 0.01,
+				LOCTEXT("StrataIDInfluenceHint", "How much available Region IDs vary the relief per bed or region."))));
+	}
+	{
 		const TSharedRef<SVerticalBox> Shelves = AddCard(Panel, LOCTEXT("StrataShelves", "SHELVES"));
 		AddSliderRow(Shelves, MixtormatRow::MakePair(
 			Slider(LOCTEXT("StrataLedgeWidth", "Ledge Width"), &FMixtormatStrataCarver::LedgeWidth, 0.0, 1.0, Defaults.LedgeWidth, 0.01,

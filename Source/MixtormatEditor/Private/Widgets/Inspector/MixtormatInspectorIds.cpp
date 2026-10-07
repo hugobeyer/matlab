@@ -2091,6 +2091,12 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	const auto Reference = [this]() -> FMixtormatOutputReference*
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return Child && Child->Type == EMixtormatLayerChildType::OutputReference && !Child->IsInstance()
+			? &Child->OutputReference : nullptr;
+	};
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("OutputReferenceSource", "Source"),
 		SNew(SBox)
 		.IsEnabled_Lambda([this]()
@@ -2106,6 +2112,34 @@ TSharedRef<SWidget> SMixtormat::BuildOutputReferenceControls()
 			}), FOnGetContent::CreateLambda([this]() { return BuildOutputReferenceSourceMenu(GetSelectedChildAddress()); }),
 							nullptr, TAttribute<FText>(), 0.0f)
 		], LOCTEXT("OutputReferenceSourceHint", "A live output address, not a copy of the producer.")));
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([Reference]()
+		{
+			const FMixtormatOutputReference* Selected = Reference();
+			return Selected && Selected->Kind == EMixtormatPublishedFieldKind::Flow
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("OutputReferenceFlowAmount", "Flow Amount"),
+					Reference, &FMixtormatOutputReference::FlowAmount, -4.0, 4.0, 1.0, 0.01,
+					LOCTEXT("OutputReferenceFlowAmountHint", "Scales the referenced flow displacement.")),
+				MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("OutputReferenceFlowTraceLength", "Trace Length (UV)"),
+					Reference, &FMixtormatOutputReference::FlowTraceLength, 0.0, 1.0, 0.05, 0.001,
+					LOCTEXT("OutputReferenceFlowTraceLengthHint", "Distance traced through the referenced flow field.")))
+		]);
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([Reference]()
+		{
+			const FMixtormatOutputReference* Selected = Reference();
+			return Selected && Selected->Kind == EMixtormatPublishedFieldKind::Flow
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSliderInt<FMixtormatOutputReference>(LOCTEXT("OutputReferenceFlowSteps", "Flow Steps"),
+				Reference, &FMixtormatOutputReference::FlowSteps, 1.0, 64.0, 16,
+				LOCTEXT("OutputReferenceFlowStepsHint", "Number of integration steps for the flow trace."))
+		]);
 	Panel->AddSlot().AutoHeight()
 	[
 		SNew(SButton)
