@@ -1517,7 +1517,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				CycleSelectedModulePreview();
 			}));
-	TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
+	const auto RightOverlayPadding = [this]()
+			{
+				const float Inset = FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset;
+				return FMargin(Inset, Inset,
+					Inset + (InspectorPlacement == EInspectorPlacement::Overlay ? MixtormatTokens::InspectorWidth : 0.0f), Inset);
+			};
+			TSharedRef<SWidget> PreviewPanel = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
 			PreviewViewport
@@ -1567,7 +1573,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Right)
 		.VAlign(VAlign_Top)
-		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
+		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatLightGizmo::Size)
@@ -1598,7 +1604,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[MakePreviewCluster(LightingControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
-		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
+		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1615,7 +1621,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			[MakePreviewCluster(SceneControls)]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		.Padding(FMixtormatThemeStore::GetResolved().PreviewLayout.OverlayInset)
+		.Padding(TAttribute<FMargin>::CreateLambda(RightOverlayPadding))
 		[
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1628,6 +1634,17 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			SNew(SBox)
 			.Visibility_Lambda([this]() { return bPreviewOverlayUiVisible ? EVisibility::Visible : EVisibility::Collapsed; })
 			[MakePreviewCluster(CameraControls)]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Fill)
+		[
+			SAssignNew(InspectorOverlayHost, SBox)
+			.Clipping(EWidgetClipping::ClipToBounds)
+			.Visibility_Lambda([this]()
+			{
+				return InspectorPlacement == EInspectorPlacement::Overlay
+					? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[InspectorPlacement == EInspectorPlacement::Overlay ? InspectorPanel.ToSharedRef() : SNullWidget::NullWidget]
 		];
 
 	if (!bReusingViewport)

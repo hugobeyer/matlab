@@ -355,7 +355,18 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 		[
 			SNew(SBorder)
 			.Padding(FMargin(0.0f))
-			.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+			.BorderImage_Lambda([this]()
+							{
+								return InspectorPlacement == EInspectorPlacement::Overlay
+									? FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"))
+									: FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel"));
+							})
+							.BorderBackgroundColor_Lambda([this]()
+							{
+								return InspectorPlacement == EInspectorPlacement::Overlay
+									? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell)
+									: FLinearColor::White;
+							})
 			[
 				SNew(SVerticalBox)
 				// The selection header (thumbnail, name, source, badge) takes the inspector's top

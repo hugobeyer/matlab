@@ -13,6 +13,7 @@
 #include "MixtormatEditorSettings.h"
 #include "Services/MixtormatSurfaceImporter.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SNullWidget.h"
 
 
 namespace
@@ -138,9 +139,14 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.Text_Lambda([this]()
 					{
-						return bInspectorCollapsed ? LOCTEXT("ShowInspector", "Show Inspector") : LOCTEXT("HideInspector", "Hide Inspector");
+						switch (InspectorPlacement)
+												{
+												case EInspectorPlacement::Docked: return LOCTEXT("InspectorDocked", "Inspector: Docked");
+												case EInspectorPlacement::Overlay: return LOCTEXT("InspectorOverlay", "Inspector: Overlay");
+												default: return LOCTEXT("InspectorHidden", "Inspector: Hidden");
+												}
 					})
-					.ToolTipText(LOCTEXT("ToggleInspectorHint", "Collapse or expand the Inspector panel (P)."))
+					.ToolTipText(LOCTEXT("ToggleInspectorHint", "Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::ToggleInspectorCollapsed)
 				]
@@ -355,6 +361,10 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 
 TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 {
+	// Detach the old tree before creating the single replacement inspector on theme refresh.
+	if (InspectorDockHost.IsValid()) InspectorDockHost->SetContent(SNullWidget::NullWidget);
+	if (InspectorOverlayHost.IsValid()) InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
+	InspectorPanel = BuildInspectorPanel();
 	// Every rebuild runs a full layout pass, and that pass reports slot values back through
 	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
 	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
@@ -505,9 +515,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 							}
 						})
 			[
-				SNew(SBox)
+				SAssignNew(InspectorDockHost, SBox)
 				.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
-				[BuildInspectorPanel()]
+				[InspectorPlacement == EInspectorPlacement::Overlay ? SNullWidget::NullWidget : InspectorPanel.ToSharedRef()]
 			]
 		];
 }
@@ -666,7 +676,18 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 	{
 		return FReply::Handled();
 	}
-	bInspectorCollapsed = !bInspectorCollapsed;
+	switch (InspectorPlacement)
+		{
+		case EInspectorPlacement::Docked: InspectorPlacement = EInspectorPlacement::Overlay; break;
+		case EInspectorPlacement::Overlay: InspectorPlacement = EInspectorPlacement::Hidden; break;
+		case EInspectorPlacement::Hidden: InspectorPlacement = EInspectorPlacement::Docked; break;
+		}
+		bInspectorCollapsed = InspectorPlacement != EInspectorPlacement::Docked;
+		// Remove the old parent first; no rebuild means scroll and expansion state stay intact.
+		InspectorDockHost->SetContent(SNullWidget::NullWidget);
+		InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
+		(InspectorPlacement == EInspectorPlacement::Overlay ? InspectorOverlayHost : InspectorDockHost)
+			->SetContent(InspectorPanel.ToSharedRef());
 	return FReply::Handled();
 }
 

@@ -1477,7 +1477,12 @@ private:
 	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;
 	bool bLeftPanelCollapsed = false;
-	bool bInspectorCollapsed = false;
+	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
+		EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
+		bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
+		TSharedPtr<SWidget> InspectorPanel;
+		TSharedPtr<SBox> InspectorDockHost;
+		TSharedPtr<SBox> InspectorOverlayHost;
 	// Authored from the prototype's --gallery-height (256px) against the column it lands in, which
 	// is roughly 0.66 / 0.34 rather than a fixed pixel split. One value, not two: the gallery slot is
 	// derived from this one, so the pair can never disagree or renormalise against each other.

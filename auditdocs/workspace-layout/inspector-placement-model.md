@@ -1,9 +1,12 @@
 # Inspector Placement Model
 
-Extends `ui-layout-and-panels-audit.md` §6. Status: partially implemented
-(2026-10) — docked collapse, the `L`/`P` workspace hotkeys and the GLOBAL tab
-exist; the overlay and the `P` cycle are the next build. Handoff:
-`inspector-popover-handoff.md`.
+Extends `ui-layout-and-panels-audit.md` §6. Status: placement-cycle prototype implemented
+(2026-10) — `P` and the top-bar placement control cycle Docked → Overlay → Hidden.
+One inspector is reparented between dock and viewport hosts; Hidden stays attached
+in the collapsed dock host for theme layout-state transfer. Overlay uses a square,
+borderless shell-colored surface. Right viewport controls shift left by the inspector
+width while Overlay is active. Source wiring checked; Unreal build/UI validation pending.
+Dragging, resizing, persistence and Auto mode remain deferred.
 
 ## Goal
 
