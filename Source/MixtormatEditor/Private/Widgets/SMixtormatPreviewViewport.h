@@ -209,6 +209,7 @@ private:
 	void OrbitCamera(float YawDelta, float PitchDelta);
 	void RotateLighting(float YawDelta, float PitchDelta);
 	void ZoomCamera(float ZoomDelta);
+	void PanCamera(float DeltaX, float DeltaY);
 	void HandleCameraWheel(float WheelDelta, bool bControlDown);
 	void ToggleOverlayUi();
 	void ToggleDisplacement();

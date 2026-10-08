@@ -699,6 +699,7 @@ void SMixtormat::RefreshLayeredPreview(const bool bMarkDirty)
 	// the badge and the inspector all read the authored payload to find that out.
 	SyncChildInstances();
 	StructuralIncomingCountLabels.Reset();
+	StructuralConnectionLabelCache.Reset();
 
 	bInteractiveEdit = IsInteractiveEdit() || bInteractiveEdit;
 	bPreviewSubmitPending = true;

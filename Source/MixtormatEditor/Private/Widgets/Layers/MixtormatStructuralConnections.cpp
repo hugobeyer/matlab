@@ -194,14 +194,37 @@ FText SMixtormat::GetStructuralConnectionLabel(
 		if (OutFullLabel) { *OutFullLabel = FText::GetEmpty(); }
 		return FText::GetEmpty();
 	}
+
+	const FString CacheBase = FString::Printf(TEXT("%d_%s_%s_%d"),
+		static_cast<int32>(Address.OwnerType), *Address.OwnerId.ToString(), *Address.ChildId.ToString(),
+		static_cast<int32>(Role));
+	const FString FullCacheKey = CacheBase + TEXT("_Full");
+	const FString CompactCacheKey = CacheBase + TEXT("_Compact");
+	if (const FText* Cached = StructuralConnectionLabelCache.Find(bCompact ? CompactCacheKey : FullCacheKey))
+	{
+		if (OutFullLabel)
+		{
+			if (const FText* Full = StructuralConnectionLabelCache.Find(FullCacheKey)) { *OutFullLabel = *Full; }
+		}
+		return *Cached;
+	}
+
+	const auto CacheLabels = [this, bCompact, OutFullLabel, &FullCacheKey, &CompactCacheKey](
+		const FText& FullLabel, const FText& CompactLabel)
+	{
+		StructuralConnectionLabelCache.Add(FullCacheKey, FullLabel);
+		StructuralConnectionLabelCache.Add(CompactCacheKey, CompactLabel);
+		if (OutFullLabel) { *OutFullLabel = FullLabel; }
+		return bCompact ? CompactLabel : FullLabel;
+	};
+
 	const bool bPush = Module->Type == EMixtormatLayerChildType::HeightPush;
 	const FMixtormatOutputReference& Source = bPush ? Module->HeightPush.Source : Module->StructuralWarp.Source;
 	const FGuid Target = bPush ? Module->HeightPush.TargetChildId : Module->StructuralWarp.TargetChildId;
 	if (Role == ERole::Target ? !Target.IsValid() : !Source.SourceLayerId.IsValid() || !Source.SourceChildId.IsValid())
 	{
 		const FText None = LOCTEXT("StructuralConnectionNone", "None");
-		if (OutFullLabel) { *OutFullLabel = None; }
-		return None;
+		return CacheLabels(None, None);
 	}
 	const FConnectionProjection Projection(WorkingLayers, WorkingLayerGroups, Address);
 	const auto Status = Projection.Evaluate();
@@ -212,8 +235,9 @@ FText SMixtormat::GetStructuralConnectionLabel(
 		const EIssue Issue = ConnectionIssue(Status, Role);
 		const FText FullLabel = FText::Format(LOCTEXT("StructuralUnavailableReason", "{0} — {1}"),
 			LOCTEXT("StructuralUnavailable", "Unavailable"), ConnectionIssueText(Issue));
-		if (OutFullLabel) { *OutFullLabel = FullLabel; }
-		return bCompact ? ConnectionIssueCode(Issue) : FullLabel;
+		const FText CompactLabel = ConnectionIssueCode(Issue).IsEmpty()
+			? LOCTEXT("StructuralCompactUnavailable", "Unavailable") : ConnectionIssueCode(Issue);
+		return CacheLabels(FullLabel, CompactLabel);
 	}
 	const FMixtormatLayer& Layer = Projection.Effective[Edge.LayerIndex];
 	FText Label = GetStructuralChildLabel(Layer, Edge.ChildIndex);
@@ -230,16 +254,13 @@ FText SMixtormat::GetStructuralConnectionLabel(
 	}
 	if (Edge.Issue == EIssue::None)
 	{
-		if (OutFullLabel) { *OutFullLabel = Label; }
-		return Label;
+		return CacheLabels(Label, Label);
 	}
 	const FText FullLabel = FText::Format(LOCTEXT("StructuralConnectionDiagnostic", "{0} · {1} — {2}"),
 		ConnectionIssueCode(Edge.Issue), Label, ConnectionIssueText(Edge.Issue));
-	if (OutFullLabel) { *OutFullLabel = FullLabel; }
-	return bCompact
-		? FText::Format(LOCTEXT("StructuralCompactConnection", "{0} · {1}"),
-			ConnectionIssueCode(Edge.Issue), Label)
-		: FullLabel;
+	const FText CompactLabel = FText::Format(LOCTEXT("StructuralCompactConnection", "{0} · {1}"),
+		ConnectionIssueCode(Edge.Issue), Label);
+	return CacheLabels(FullLabel, CompactLabel);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatChildAddress Address, const ERole Role)
@@ -403,14 +424,22 @@ FText SMixtormat::GetStructuralIncomingCountLabel(const int32 LayerIndex, const 
 		const FMixtormatLayerChild& Module = Resolved.Children[Index];
 		if (!IsStructuralModule(Module)) { continue; }
 		const auto Status = MixtormatOutputReferences::EvaluateStructuralLinkForGather(Effective, LayerIndex, Index, Resolved);
-		const int32 TargetIndex = Status.Target.ChildIndex;
-		if (!Status.bCanExecuteStructurally || !Layer.Children.IsValidIndex(TargetIndex)
-			|| Layer.Children[TargetIndex].Type != EMixtormatLayerChildType::Generator) { continue; }
-		const FGuid TargetId = Module.Type == EMixtormatLayerChildType::HeightPush
-			? Module.HeightPush.TargetChildId : Module.StructuralWarp.TargetChildId;
-		if (TargetId != Layer.Children[TargetIndex].ChildId) { continue; }
-		if (Module.Type == EMixtormatLayerChildType::HeightPush) { ++PushCounts[TargetIndex]; }
-		else { ++WarpCounts[TargetIndex]; }
+		if (!Status.bCanExecuteStructurally || Status.Target.LayerIndex != LayerIndex
+			|| !Effective.IsValidIndex(Status.Target.LayerIndex)
+			|| !Effective[Status.Target.LayerIndex].Children.IsValidIndex(Status.Target.ChildIndex)) { continue; }
+
+		const FMixtormatLayerChild& ResolvedTarget =
+			Effective[Status.Target.LayerIndex].Children[Status.Target.ChildIndex];
+		if (ResolvedTarget.Type != EMixtormatLayerChildType::Generator) { continue; }
+		const int32 AuthoredTargetIndex = Layer.Children.IndexOfByPredicate(
+			[&ResolvedTarget](const FMixtormatLayerChild& Child)
+			{
+				return Child.ChildId == ResolvedTarget.ChildId
+					&& Child.Type == EMixtormatLayerChildType::Generator;
+			});
+		if (!PushCounts.IsValidIndex(AuthoredTargetIndex)) { continue; }
+		if (Module.Type == EMixtormatLayerChildType::HeightPush) { ++PushCounts[AuthoredTargetIndex]; }
+		else { ++WarpCounts[AuthoredTargetIndex]; }
 	}
 	TArray<FText> Labels;
 	Labels.SetNum(Layer.Children.Num());

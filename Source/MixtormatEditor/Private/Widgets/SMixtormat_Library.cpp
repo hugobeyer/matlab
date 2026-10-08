@@ -18,6 +18,7 @@
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatRecipes.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
 #include "ObjectTools.h"
@@ -467,20 +468,40 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 	const Mixtormat::FMixtormatGalleryMetrics& Gallery = FMixtormatThemeStore::GetResolved().GalleryLayout;
 
 	const Mixtormat::FMixtormatControlMetrics& Controls = FMixtormatThemeStore::GetResolved().ControlLayout;
-	return SNew(SMixtormatSurfaceBox)
-		.Recipe_Lambda([]()
-		{
-			Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
-			Recipe.bTranslucent = true;
-			Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
-			Recipe.Base.Opacity = FMixtormatThemeStore::GetTheme().ShellTheme.ColumnShadowOpacity;
-			return Recipe;
-		})
-		.Padding(FMargin(Controls.DragGhostShadowInset, Controls.DragGhostShadowInset,
-			Controls.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
-			Controls.DragGhostShadowInset + Controls.DragGhostShadowOffsetY))
+	const Mixtormat::FMixtormatShellTheme& Shell = FMixtormatThemeStore::GetTheme().ShellTheme;
+	const float ShadowRange = Shell.ColumnShadowRange;
+	const float ShadowFalloff = Shell.ColumnShadowFalloffPower;
+	const float ShadowOpacity = Shell.ColumnShadowOpacity;
+	constexpr int32 ShadowSteps = 8;
+	TSharedRef<SOverlay> Drawer = SNew(SOverlay);
+
+	// Nested translucent plates sample the existing range/falloff into soft, theme-tuned bands.
+	for (int32 Step = 0; Step < ShadowSteps; ++Step)
+	{
+		const float T = static_cast<float>(Step) / static_cast<float>(ShadowSteps);
+		const float Inset = ShadowRange * T;
+		const float LayerOpacity = ShadowOpacity * FMath::Pow(1.0f - T, ShadowFalloff);
+		Drawer->AddSlot().Padding(FMargin(Inset, Inset,
+			Inset + MixtormatTokens::DragGhostShadowOffsetX,
+			Inset + Controls.DragGhostShadowOffsetY))
 		[
 			SNew(SMixtormatSurfaceBox)
+			.Recipe_Lambda([LayerOpacity]()
+			{
+				Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
+				Recipe.bTranslucent = true;
+				Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
+				Recipe.Base.Opacity = LayerOpacity;
+				return Recipe;
+			})
+		];
+	}
+
+	Drawer->AddSlot().Padding(FMargin(ShadowRange, ShadowRange,
+		ShadowRange + MixtormatTokens::DragGhostShadowOffsetX,
+		ShadowRange + Controls.DragGhostShadowOffsetY))
+	[
+		SNew(SMixtormatSurfaceBox)
 			.Recipe_Lambda([]()
 			{
 				Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
@@ -559,8 +580,9 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					BuildMaskBar()
 				]
 			]
-		]
-	];
+	]
+];
+return Drawer;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLibraryPage()

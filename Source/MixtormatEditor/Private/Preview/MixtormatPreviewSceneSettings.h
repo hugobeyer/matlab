@@ -24,6 +24,7 @@ namespace MixtormatPreviewCamera
 	constexpr float FovMinimum = 20.0f;
 	constexpr float FovMaximum = 90.0f;
 	constexpr float FovWheelStep = 1.0f;
+	constexpr float PanSensitivity = 0.35f;
 
 	// The live preview opens wider than a thumbnail: 60 degrees is the working view for judging
 	// relief and silhouette while orbiting, where the tighter 40 keeps a gallery tile's framing

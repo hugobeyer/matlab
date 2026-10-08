@@ -455,6 +455,19 @@ public:
 				&& (Args.Viewport->KeyState(EKeys::LeftControl) || Args.Viewport->KeyState(EKeys::RightControl)));
 			return true;
 		}
+		if (Args.Viewport && Args.Viewport->KeyState(EKeys::MiddleMouseButton))
+		{
+			if (Args.Key == EKeys::MouseX)
+			{
+				Owner.PanCamera(Args.AmountDepressed, 0.0f);
+				return true;
+			}
+			if (Args.Key == EKeys::MouseY)
+			{
+				Owner.PanCamera(0.0f, Args.AmountDepressed);
+				return true;
+			}
+		}
 		if (Args.Viewport && Args.Viewport->KeyState(EKeys::LeftMouseButton))
 		{
 			if (Args.Key == EKeys::MouseX)
@@ -1260,6 +1273,21 @@ void SMixtormatPreviewViewport::RotateLighting(
 	{
 		PreviewViewportClient->Invalidate();
 	}
+}
+
+void SMixtormatPreviewViewport::PanCamera(const float DeltaX, const float DeltaY)
+{
+	const float ViewHeight = GetCachedGeometry().GetLocalSize().Y;
+	if (ViewHeight <= 0.0f) { return; }
+
+	const float WorldUnitsPerPixel = 2.0f * CameraDistance
+		* FMath::Tan(FMath::DegreesToRadians(CameraFov * 0.5f)) / ViewHeight
+		* MixtormatPreviewCamera::PanSensitivity;
+	const FRotationMatrix CameraRotation(FRotator(CameraPitch, CameraYaw, 0.0f));
+	const FVector CameraRight = CameraRotation.GetScaledAxis(EAxis::Y);
+	const FVector CameraUp = CameraRotation.GetScaledAxis(EAxis::Z);
+	PreviewTarget += (-CameraRight * DeltaX + CameraUp * DeltaY) * WorldUnitsPerPixel;
+	UpdateCamera();
 }
 
 void SMixtormatPreviewViewport::HandleCameraWheel(const float WheelDelta, const bool bControlDown)

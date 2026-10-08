@@ -1642,6 +1642,7 @@ private:
 	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
 	// the widgets away and builds new ones on every change.
 	mutable TMap<FGuid, TArray<FText>> StructuralIncomingCountLabels;
+	mutable TMap<FString, FText> StructuralConnectionLabelCache;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
 	TSet<FGuid> ExpandedLayerIds;
