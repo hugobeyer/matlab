@@ -483,6 +483,14 @@
 			"uiMin": 0,
 			"uiMax": 32,
 			"snap": 0.0099999997764825821
+		},
+		"Effect.GeneratorFlowSteps:Int":
+		{
+			"default": 16,
+			"uiMin": 1,
+			"uiMax": 512,
+			"snap": 1,
+			"clampMax": 1000
 		}
 	},
 	"Mask":

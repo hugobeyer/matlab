@@ -19,6 +19,7 @@ public:
 		SHADER_PARAMETER(int32, ResamplePass)
 		SHADER_PARAMETER(int32, ResampleRidge)
 		SHADER_PARAMETER(int32, SmearPass)
+		SHADER_PARAMETER(int32, ResolvePass)
 		SHADER_PARAMETER(int32, SeedPass)
 		SHADER_PARAMETER(uint32, WriteRidge)
 		SHADER_PARAMETER(float, Amount)
@@ -40,8 +41,8 @@ public:
 		SHADER_PARAMETER(uint32, InvertMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SeedHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousVelocity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SeedCarve)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousCarve)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, LayerMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PlacementMaskTexture)
@@ -49,7 +50,7 @@ public:
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputRidge)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputVelocity)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputCarve)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -236,31 +237,17 @@ namespace MixtormatGpuCompositor
 			EroNormalDesc.Extent = EroRes;
 
 			FRDGTextureRef SourceH = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionSrc"));
-			FRDGTextureRef EroH[2] = {
-				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionA")),
-				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionB"))};
+			FRDGTextureRef EroCarve[2] = {
+				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionCarveA")),
+				GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionCarveB"))};
+			FRDGTextureRef Result = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionResolvedHeight"));
 			FRDGTextureRef EroRidge = GraphBuilder.CreateTexture(EroRidgeDesc, TEXT("Mixtormat.ErosionRidge"));
-			FRDGTextureRef EroSeed = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionSeedHeight"));
+			FRDGTextureRef EroSeedCarve = GraphBuilder.CreateTexture(EroDesc, TEXT("Mixtormat.ErosionSeedCarve"));
 			FRDGTextureRef EroN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionN"));
 			// The layer normal every carving pass reads, lifted to erosion resolution.
 			FRDGTextureRef EroSrcN = GraphBuilder.CreateTexture(EroNormalDesc, TEXT("Mixtormat.ErosionSrcN"));
 
-			// Stores the authored downhill tangent for the optional post-solve deposit smear.
-			const FRDGTextureDesc EroVelDesc = FRDGTextureDesc::Create2D(
-				EroRes,
-				PF_FloatRGBA,
-				FClearValueBinding::Black,
-				TexCreate_ShaderResource | TexCreate_UAV);
-			FRDGTextureRef EroVel[2] = {
-				GraphBuilder.CreateTexture(EroVelDesc, TEXT("Mixtormat.ErosionVelA")),
-				GraphBuilder.CreateTexture(EroVelDesc, TEXT("Mixtormat.ErosionVelB"))};
-			FRDGTextureRef EroVelDummy = GraphBuilder.CreateTexture(
-				FRDGTextureDesc::Create2D(
-					FIntPoint(1, 1),
-					PF_FloatRGBA,
-					FClearValueBinding::Black,
-					TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.ErosionVelDummy"));
+			// The smear derives its constant authored direction directly; no velocity state.
 			// Iterations never write normals -- the shared height-derived pass owns them,
 			// after the final iteration -- so they bind this 1x1 stand-in instead of
 			// paying a full-screen normal copy per pass.
@@ -273,8 +260,7 @@ namespace MixtormatGpuCompositor
 				TEXT("Mixtormat.ErosionNormalDummy"));
 
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroRidge), FVector4f(0.0f, 0.0f, 0.0f, 0.0f));
-			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroVel[0]), FVector4f(0.0f));
-			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(EroVelDummy), FVector4f(0.0f));
+
 			AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ErosionNormalDummy), FVector4f(0.0f));
 
 			// Stands in at both ends of the ridge plumbing: the UAV slot on the
@@ -317,14 +303,15 @@ namespace MixtormatGpuCompositor
 				RP->ResamplePass = 1;
 				RP->ResampleRidge = bCarryRidge ? 1 : 0;
 				RP->SmearPass = 0;
+				RP->ResolvePass = 0;
 				RP->SeedPass = 0;
 				RP->WriteRidge = 0u;
 				RP->Stride = 1;
 				RP->PreviousRidge = InRidge;
 				RP->PreviousHeight = InH;
 				RP->SourceHeight = InH;
-				RP->SeedHeight = EroSeed;
-				RP->PreviousVelocity = EroVelDummy;
+				RP->SeedCarve = InH;
+				RP->PreviousCarve = InH;
 				RP->LayerMask = PendingErosion.FeatureMask;
 				RP->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				RP->PlacementMaskTiling = Ero.ErosionMaskTiling;
@@ -335,7 +322,7 @@ namespace MixtormatGpuCompositor
 				RP->OutputHeight = GraphBuilder.CreateUAV(OutH);
 				RP->OutputRidge = GraphBuilder.CreateUAV(
 					bCarryRidge ? OutRidgeTarget : ResampleRidgeDummy);
-				RP->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
+				RP->OutputCarve = GraphBuilder.CreateUAV(ResampleRidgeDummy);
 				RP->OutputNormal = GraphBuilder.CreateUAV(OutN);
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
@@ -373,6 +360,7 @@ namespace MixtormatGpuCompositor
 				Parameters->ResamplePass = 0;
 				Parameters->ResampleRidge = 0;
 				Parameters->SmearPass = 0;
+				Parameters->ResolvePass = 0;
 				Parameters->SeedPass = 0;
 				Parameters->WriteRidge = 1u;
 				Parameters->Amount = Ero.ErosionAmount;
@@ -391,14 +379,16 @@ namespace MixtormatGpuCompositor
 				// Overwritten per iteration below; 1 is the accumulate-at-home stride the
 				// resample lambda and any pass that does not carry a schedule keeps.
 				Parameters->Stride = 1;
-				Parameters->PreviousVelocity = EroVelDummy;
-				Parameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
+				Parameters->PreviousHeight = SourceH;
+				Parameters->PreviousCarve = SourceH;
+				Parameters->OutputHeight = GraphBuilder.CreateUAV(ResampleRidgeDummy);
+				Parameters->OutputCarve = GraphBuilder.CreateUAV(ResampleRidgeDummy);
 				Parameters->UsePlacementMask = bUseLegacyPlacementMask ? 1u : 0u;
 				Parameters->PlacementMaskTiling = Ero.ErosionMaskTiling;
 				Parameters->InvertMask =
 					!PendingErosion.bHasScopedMask && Ero.bErosionInvertMask ? 1u : 0u;
 				Parameters->SourceHeight = SourceH;
-				Parameters->SeedHeight = EroSeed;
+				Parameters->SeedCarve = EroSeedCarve;
 				Parameters->PreviousNormal = EroSrcN;
 				Parameters->LayerMask = PendingErosion.FeatureMask;
 				Parameters->PlacementMaskTexture = ErosionPlacementMask;
@@ -422,10 +412,10 @@ namespace MixtormatGpuCompositor
 			SeedParameters->SeedPass = 1;
 			SeedParameters->WriteRidge = 1u;
 			SeedParameters->PreviousHeight = SourceH;
-			SeedParameters->SeedHeight = SourceH;
-			SeedParameters->OutputHeight = GraphBuilder.CreateUAV(EroSeed);
+			SeedParameters->SeedCarve = SourceH;
+			SeedParameters->OutputCarve = GraphBuilder.CreateUAV(EroSeedCarve);
 			SeedParameters->OutputRidge = GraphBuilder.CreateUAV(EroRidge);
-			SeedParameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
+
 			SeedParameters->OutputNormal = GraphBuilder.CreateUAV(ErosionNormalDummy);
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
@@ -443,16 +433,10 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
 				SetErosionParameters(IterationParameters);
 				IterationParameters->Stride = ErosionJumpStride(Iteration, ErosionJumpStart);
-				IterationParameters->PreviousHeight =
-					Iteration == 0 ? EroSeed : EroH[(Iteration - 1) & 1];
-				IterationParameters->OutputHeight =
-					GraphBuilder.CreateUAV(EroH[Iteration & 1]);
-				// Direction is carried for optional deposit smear. The shared height-derived
-				// pass owns normals.
-				IterationParameters->PreviousVelocity =
-					Iteration == 0 ? EroVel[0] : EroVel[(Iteration - 1) & 1];
-				IterationParameters->OutputVelocity =
-					GraphBuilder.CreateUAV(EroVel[Iteration & 1]);
+				IterationParameters->PreviousCarve =
+					Iteration == 0 ? EroSeedCarve : EroCarve[(Iteration - 1) & 1];
+				IterationParameters->OutputCarve =
+					GraphBuilder.CreateUAV(EroCarve[Iteration & 1]);
 				IterationParameters->WriteRidge = 0u;
 				IterationParameters->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
 				IterationParameters->OutputNormal =
@@ -465,33 +449,23 @@ namespace MixtormatGpuCompositor
 					ErosionGroups);
 			}
 
-			// Optional refill-only downstream smear. It remains capped by SourceH and is skipped
-			// exactly when Deposit is zero.
-			FRDGTextureRef Result = EroH[(ErosionIterations - 1) & 1];
-			if (Ero.ErosionDeposit > 0.0f)
-			{
-				FMixtormatErosionCS::FParameters* SmearParameters =
-					GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
-				SetErosionParameters(SmearParameters);
-				SmearParameters->SmearPass = 1;
-				SmearParameters->SeedPass = 0;
-				SmearParameters->WriteRidge = 0u;
-				SmearParameters->PreviousHeight = Result;
-				SmearParameters->SourceHeight = SourceH;
-				SmearParameters->PreviousVelocity = EroVel[(ErosionIterations - 1) & 1];
-				SmearParameters->OutputHeight =
-					GraphBuilder.CreateUAV(EroH[ErosionIterations & 1]);
-				SmearParameters->OutputVelocity = GraphBuilder.CreateUAV(EroVelDummy);
-				SmearParameters->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
-				SmearParameters->OutputNormal = GraphBuilder.CreateUAV(ErosionNormalDummy);
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Smear", LayerIndex),
-					ErosionShader,
-					SmearParameters,
-					ErosionGroups);
-				Result = EroH[ErosionIterations & 1];
-			}
+			// Resolve absolute height once, fusing optional source-capped refill into that pass.
+			FMixtormatErosionCS::FParameters* ResolveParameters =
+				GraphBuilder.AllocParameters<FMixtormatErosionCS::FParameters>();
+			SetErosionParameters(ResolveParameters);
+			ResolveParameters->ResolvePass = 1;
+			ResolveParameters->SmearPass = Ero.ErosionDeposit > 0.0f ? 1 : 0;
+			ResolveParameters->WriteRidge = 0u;
+			ResolveParameters->PreviousCarve = EroCarve[(ErosionIterations - 1) & 1];
+			ResolveParameters->OutputHeight = GraphBuilder.CreateUAV(Result);
+			ResolveParameters->OutputRidge = GraphBuilder.CreateUAV(ResampleRidgeDummy);
+			ResolveParameters->OutputNormal = GraphBuilder.CreateUAV(ErosionNormalDummy);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.Erosion.L%d.Resolve", LayerIndex),
+				ErosionShader,
+				ResolveParameters,
+				ErosionGroups);
 
 			AddHeightDerivedNormalPass(
 				Ctx,

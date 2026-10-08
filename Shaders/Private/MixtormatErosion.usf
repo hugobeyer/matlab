@@ -8,8 +8,8 @@
 
 Texture2D<float> PreviousHeight;
 Texture2D<float> SourceHeight;
-Texture2D<float> SeedHeight;
-Texture2D<float4> PreviousVelocity;
+Texture2D<float> SeedCarve;
+Texture2D<float> PreviousCarve;
 Texture2D<float4> PreviousNormal;
 Texture2D<float> LayerMask;
 Texture2D<float4> PlacementMaskTexture;
@@ -17,7 +17,7 @@ Texture2D<float> PreviousRidge;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputHeight;
 RWTexture2D<float> OutputRidge;
-RWTexture2D<float4> OutputVelocity;
+RWTexture2D<float> OutputCarve;
 // Resample-only. The wear pass never writes normals -- the shared height-derived pass owns
 // them -- so iterations bind a 1x1 dummy here instead of paying a full-screen copy.
 RWTexture2D<float4> OutputNormal;
@@ -26,6 +26,7 @@ int2 OutputSize;
 int ResamplePass;
 int ResampleRidge;
 int SmearPass;
+int ResolvePass;
 int SeedPass;
 uint WriteRidge;
 float Amount;
@@ -156,6 +157,20 @@ float ErosionReadGate(
 	return saturate(Mask);
 }
 
+float2 ErosionTangentDirection()
+{
+	// Preserve the authored tangent direction and legacy gravity bias in solve and smear.
+	const float2 DirectionXY = Direction.xy + float2(0.0f, -saturate(GravityForce) * 0.1f);
+	return length(DirectionXY) > 1.0e-6f
+		? normalize(DirectionXY) : float2(0.0f, -1.0f);
+}
+
+float ErosionResolvedHeight(float2 UV)
+{
+	return SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f)
+		- PreviousCarve.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -181,8 +196,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	const float Height = PreviousHeight.Load(int3(Pixel, 0));
-	const float Source = SourceHeight.Load(int3(Pixel, 0));
 	const float Gate = ErosionReadGate(
 		UV, LayerMask, PlacementMaskTexture, UsePlacementMask, PlacementMaskTiling, InvertMask);
 
@@ -190,27 +203,27 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// solve converged to. Refill-only -- the blend can only raise toward the upstream
 	// average, and the volume clamp keeps it under what the layer composited -- so tails
 	// and runoff runs form below eroded areas and the pass is an exact no-op at Deposit 0.
-	if (SmearPass != 0)
+	if (ResolvePass != 0)
 	{
-		if (Gate <= 0.0f)
+		const float Source = SourceHeight.Load(int3(Pixel, 0));
+		const float Height = Source - PreviousCarve.Load(int3(Pixel, 0));
+		if (SmearPass == 0 || Gate <= 0.0f)
 		{
 			OutputHeight[Pixel] = Height;
 			return;
 		}
 
-		const float2 Flow = PreviousVelocity.Load(int3(Pixel, 0)).xy;
-		const float FlowLength = length(Flow);
-		const float2 FlowDir = FlowLength > 1.0e-6f ? Flow / FlowLength : float2(0.0f, -1.0f);
+		const float2 FlowDir = -ErosionTangentDirection();
 
 		float SmearSum = 0.0f;
 		float WeightSum = 0.0f;
 		[unroll]
-		for (int Tap = 0; Tap < 6; ++Tap)
+		for (int Tap = 0; Tap < 5; ++Tap)
 		{
 			const float T = (float)Tap / 5.0f;
 			const float2 SampleUV = UV + FlowDir * (ErosionSmearLength * T / Resolution);
 			const float Weight = 1.0f - T;
-			SmearSum += Weight * PreviousHeight.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
+			SmearSum += Weight * ErosionResolvedHeight(SampleUV);
 			WeightSum += Weight;
 		}
 		const float SmearHeight = SmearSum / WeightSum;
@@ -222,17 +235,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	// Direction is authored in tangent XYZ: XY aims the horizon ray and Z sets its elevation.
-	// Keep a small legacy -Y bias so saved effects retain a hint of their previous direction.
-	const float2 LegacyBias = float2(0.0f, -saturate(GravityForce) * 0.1f);
-	const float2 DirectionXY = Direction.xy + LegacyBias;
-	const float2 TangentDir = length(DirectionXY) > 1.0e-6f
-		? normalize(DirectionXY) : float2(0.0f, -1.0f);
-	const float2 DownhillDir = -TangentDir;
+	// Tangent XY aims the horizon ray; authored Z sets its elevation.
+	const float2 TangentDir = ErosionTangentDirection();
 
 	const int Span = clamp((int)Radius, 1, ErosionRadiusBound) * max(Stride, 1);
 	if (SeedPass != 0)
 	{
+		const float Source = SourceHeight.Load(int3(Pixel, 0));
 		const float3 HorizonDirection = normalize(float3(TangentDir, max(Direction.z, 0.01f)));
 		const float HorizonLimit = HorizonDirection.z
 			/ max(length(HorizonDirection.xy), 1.0e-4f) / 256.0f;
@@ -259,33 +268,46 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Angular flow noise is bent by the source height and its slope along the light
 		// tangent. The warp stays periodic with UV, while the horizon band concentrates
 		// secondary eikonal seeds on exposed/sheltered boundaries.
-		const float2 PerpDir = float2(-TangentDir.y, TangentDir.x);
-		const float2 BendStep = TangentDir * ((float)Span / Resolution);
-		const float HeightForward = SourceHeight.SampleLevel(
-			LinearWrapSampler, UV + BendStep, 0.0f);
-		const float HeightBack = SourceHeight.SampleLevel(
-			LinearWrapSampler, UV - BendStep, 0.0f);
-		const float HeightBend = 0.5f * (HeightForward - HeightBack);
-		const float WarpNoise = ErosionVariationField(UV * 3.0f, Seed + 8111u) - 0.5f;
-		const float2 AngularUV = UV
-			+ TangentDir * ((Source - 0.5f) * 0.06f + HeightBend * 0.25f)
-			+ PerpDir * WarpNoise * 0.025f;
-		const float FlowNoise = ErosionVariationField(AngularUV * 3.0f, Seed + 1237u);
-		const float CellDepth = ErosionVoronoiDepth(AngularUV * 2.0f, Seed + 971u);
-		const float SecondaryPattern = smoothstep(0.38f, 0.72f, lerp(FlowNoise, CellDepth, 0.45f));
-		const float HorizonBandWidth = HorizonFeather + (0.10f + 0.35f * saturate(SecondaryAmount)) / 256.0f;
-		const float HorizonBand = 1.0f - smoothstep(
-			HorizonFeather, HorizonBandWidth, abs(MaxHorizonSlope - HorizonLimit));
-		const float SecondarySeed = saturate(SecondaryAmount) * HorizonBand * SecondaryPattern;
+		float CellDepth = 0.5f;
+		float SecondarySeed = 0.0f;
+		if (SecondaryAmount > 0.0f || Variation > 0.0f)
+		{
+			const float2 PerpDir = float2(-TangentDir.y, TangentDir.x);
+			const float2 BendStep = TangentDir * ((float)Span / Resolution);
+			const float HeightForward = SourceHeight.SampleLevel(
+				LinearWrapSampler, UV + BendStep, 0.0f);
+			const float HeightBack = SourceHeight.SampleLevel(
+				LinearWrapSampler, UV - BendStep, 0.0f);
+			const float HeightBend = 0.5f * (HeightForward - HeightBack);
+			const float WarpNoise = ErosionVariationField(UV * 3.0f, Seed + 8111u) - 0.5f;
+			const float2 AngularUV = UV
+				+ TangentDir * ((Source - 0.5f) * 0.06f + HeightBend * 0.25f)
+				+ PerpDir * WarpNoise * 0.025f;
+			CellDepth = ErosionVoronoiDepth(AngularUV * 2.0f, Seed + 971u);
+			if (SecondaryAmount > 0.0f)
+			{
+				const float FlowNoise = ErosionVariationField(AngularUV * 3.0f, Seed + 1237u);
+				const float SecondaryPattern = smoothstep(0.38f, 0.72f, lerp(FlowNoise, CellDepth, 0.45f));
+				const float HorizonBandWidth = HorizonFeather + (0.10f + 0.35f * saturate(SecondaryAmount)) / 256.0f;
+				const float HorizonBand = 1.0f - smoothstep(
+					HorizonFeather, HorizonBandWidth, abs(MaxHorizonSlope - HorizonLimit));
+				SecondarySeed = saturate(SecondaryAmount) * HorizonBand * SecondaryPattern;
+			}
+		}
 		const float CombinedSeed = saturate(SeedExposure + SecondarySeed);
 
-		const float BroadNoise = ErosionVariationField(UV, Seed + 4099u) * 2.0f - 1.0f;
-		const float ChippedDepth = lerp(1.0f, 0.9f + 0.2f * CellDepth, saturate(Variation));
-		const float Hardness = max(0.0f, 1.0f + BroadNoise * Variation * ErosionVariationScale);
+		float ChippedDepth = 1.0f;
+		float Hardness = 1.0f;
+		if (Variation != 0.0f)
+		{
+			const float BroadNoise = ErosionVariationField(UV, Seed + 4099u) * 2.0f - 1.0f;
+			ChippedDepth = lerp(1.0f, 0.9f + 0.2f * CellDepth, saturate(Variation));
+			Hardness = max(0.0f, 1.0f + BroadNoise * Variation * ErosionVariationScale);
+		}
 		const float SeedDepth = max(Depth, 0.0f) * 0.05f
 			* (1.0f - exp(-max(Amount, 0.0f)))
 			* CombinedSeed * ChippedDepth * Hardness * Gate;
-		OutputHeight[Pixel] = Source - SeedDepth;
+		OutputCarve[Pixel] = SeedDepth;
 		if (WriteRidge != 0u)
 		{
 			OutputRidge[Pixel] = CombinedSeed * Gate;
@@ -293,13 +315,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	OutputVelocity[Pixel] = float4(DownhillDir, 0.0f, 0.0f);
-	float NewHeight = min(Source, SeedHeight.Load(int3(Pixel, 0)));
+	float Carve = max(SeedCarve.Load(int3(Pixel, 0)), 0.0f);
 	if (Gate > 0.0f)
 	{
-		// Min-plus eikonal relaxation, like Cliff Strata's Unit Distance sweeps. A carved
-		// seed propagates as a fixed-slope ramp; anisotropic cost stretches the groove along
-		// the authored tangent direction. It can never lower the immutable source elsewhere.
+		// Retain the centre so changing jump strides cannot undo earlier relaxation.
+		Carve = max(Carve, PreviousCarve.Load(int3(Pixel, 0)));
+		// Max-plus relaxation of nonnegative carve depth, equivalent to the min-plus height
+		// envelope. Cost controls the ramp slope; immutable source height is resolved later.
 		const float StepX = (float)Span / Resolution.x;
 		const float StepY = (float)Span / Resolution.y;
 		const float SafeUnitDistance = max(abs(UnitDistance), 1.0e-6f);
@@ -316,16 +338,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				const float Anisotropy = lerp(2.0f, 1.0f, Alignment);
 				const float Cost = length(OffsetUV) / SafeUnitDistance * Anisotropy;
 				const float2 NeighborUV = UV + OffsetUV;
-				const float NeighborSource = SourceHeight.SampleLevel(
+				const float NeighborCarve = PreviousCarve.SampleLevel(
 					LinearWrapSampler, NeighborUV, 0.0f);
-				const float NeighborHeight = PreviousHeight.SampleLevel(
-					LinearWrapSampler, NeighborUV, 0.0f);
-				const float NeighborCarve = max(NeighborSource - NeighborHeight, 0.0f);
-				const float PropagatedCarve = max(NeighborCarve - Cost, 0.0f);
-				NewHeight = min(NewHeight, Source - PropagatedCarve);
+				Carve = max(Carve, max(NeighborCarve - Cost, 0.0f));
 			}
 		}
 	}
 
-	OutputHeight[Pixel] = NewHeight;
+	OutputCarve[Pixel] = Carve;
 }

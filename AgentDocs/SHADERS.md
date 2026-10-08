@@ -116,6 +116,20 @@ separate validity texture; no extra smoothing is implied. Raw Gradient remains
 source-frame Vector2. Noise can own Height-based flow tools, not Signed Distance.
 These integration changes are source-reviewed only; no build/shader/runtime checks run.
 
+## Erosion carve-depth solve
+
+- `MixtormatErosion.usf` seeds and relaxes nonnegative R32F carve depth, not absolute height.
+  Active pixels retain the previous centre carve across the changing jump schedule.
+- `Effects/MixtormatErosionPasses.cpp` binds `SeedCarve`, `PreviousCarve`, and `OutputCarve`;
+  a final `ResolvePass` reconstructs absolute height and optionally fuses source-capped deposit.
+  Height-derived normals and carve shading still consume absolute source/resolved heights.
+- Deposit derives the constant authored direction directly, preserving the legacy gravity bias;
+  no per-iteration velocity textures are needed. Disabled seed noise is skipped and the
+  zero-weight final smear tap is omitted without changing the remaining tap positions.
+- `MixtormatFlowWarp.usf::DownhillSlope` normalizes derivatives by each UV sample spacing,
+  changing directions for unequal kernel radii or non-square outputs.
+- These changes are source-reviewed only; shader compilation, runtime and GPU timing are unverified.
+
 ## Adding a shader parameter
 
 Trace the full path: CPU declaration (the struct's owning runtime header, e.g.

@@ -81,7 +81,10 @@ float2 DownhillSlope(float2 UV, uint Source)
 		SampleSlopeSource(UV - X - Y, Source)
 		+ 2.0f * SampleSlopeSource(UV - Y, Source)
 		+ SampleSlopeSource(UV + X - Y, Source)) * 0.25f;
-	const float2 Gradient = float2(Right - Left, Up - Down);
+	// Compare derivatives in the same UV units even for unequal kernel radii or extents.
+	const float2 Gradient = float2(
+		(Right - Left) / (2.0f * Radius.x),
+		(Up - Down) / (2.0f * Radius.y));
 	const float GradientLength = length(Gradient);
 	return GradientLength > 1.0e-5f ? -Gradient / GradientLength : 0.0f;
 }
