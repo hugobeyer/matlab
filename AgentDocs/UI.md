@@ -34,8 +34,12 @@ Structural connection menus/labels and the atomic setter are shared by explicit 
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
 Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. D1 adds
 optional Source → Target chips only to Height Push/Structural Warp child rows; the reusable
-row keeps other child layouts unchanged. Link highlighting/counts and target-first creation
-remain separate phases. No build/runtime validation has been run.
+row keeps other child layouts unchanged. D2 adds structural source/target highlight roles,
+active valid incoming counts, and a transient marker for collapsed source layers without
+replacing instance-source glow. E1 adds explicit target-row actions in
+`MixtormatLayerMenus.cpp`; `CreateStructuralModuleForTarget` validates and inserts a new
+unscoped module before that target, connects only its target GUID, and leaves its source unset.
+Existing layer-level creation stays unchanged. No build/runtime validation has been run.
 
 ## Inspector builders
 

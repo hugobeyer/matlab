@@ -89,8 +89,12 @@ and explains unavailable choices. One setter revalidates the live GUID address b
 writing, preserves module enable/trace settings, and records a discrete undo step.
 `None` clears only the selected edge's GUIDs; dangling sources are never auto-rebound.
 Readable labels retain existing sources even for disabled references or wrong output kinds.
-D3/D1 evidence is targeted source inspection only; no build, tests or runtime validation.
-D1 adds compact row chips while highlighting/counts and target-first creation remain pending.
+D3/D1/D2/E1 evidence is targeted source inspection only; no build, tests or runtime validation.
+D1 adds compact row chips. D2 adds independent structural source/target highlights,
+active-valid incoming counts, and transient markers for collapsed source layers while preserving
+instance-source glow. E1 adds target-row actions that insert an unscoped module immediately
+before the explicit target, set only its target GUID, and leave source GUIDs unset. Existing
+layer-level creation remains unconnected; no source is inferred or auto-rebound.
 
 ## Defaults / parameter metadata
 
