@@ -7,6 +7,7 @@
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Materials/MaterialInstanceConstant.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -66,6 +67,15 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		this, &SMixtormat::HandleReferencedCompositionUpdated);
 
 	BuildWorkspaceUI();
+
+	// Start with an editable Fill document instead of the inert "Create Material" empty state.
+	// This plugin-content material supplies the neutral preview instance; it is not authored as a
+	// surface layer, so the document still begins with one independent Fill layer.
+	const FSoftObjectPath DefaultPreviewMaterialPath(
+		TEXT("/Mixtormat/Materials/Instances/Preview/MI_Preview_Mixtormat.MI_Preview_Mixtormat"));
+	SelectedPreviewMaterial.Reset(Cast<UMaterialInstanceConstant>(DefaultPreviewMaterialPath.TryLoad()));
+	StartNewMaterialWith(EMixtormatLayerType::Fill);
+
 	const TWeakPtr<SMixtormat> WeakSelf = StaticCastSharedRef<SMixtormat>(AsShared());
 	WorkspaceHotkeyProcessor = MakeShared<FMixtormatWorkspaceHotkeys>([WeakSelf](const FKeyEvent& KeyEvent)
 	{

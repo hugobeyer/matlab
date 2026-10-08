@@ -367,6 +367,8 @@ namespace Mixtormat
 		T.PreviewLayout.LeftOverlaySurfaceOpacity = 0.82f;
 		T.PreviewLayout.QuickControlsCentreGap = 210.0f;
 		T.PreviewLayout.QuickControlsRowGap = 22.0f;
+				T.PreviewLayout.QuickControlsFadeStartDistance = 48.0f;
+				T.PreviewLayout.QuickControlsFadeRange = 220.0f;
 		T.PreviewLayout.QuickControlsGuideAxisLength = 176.0f;
 		T.PreviewLayout.QuickControlsGuideAxisThickness = 1.0f;
 		T.PreviewLayout.QuickControlsGuideAxisOpacity = 0.12f;

@@ -375,6 +375,7 @@ TSharedRef<SWidget> SMixtormat::MakePreviewFinalButton()
 			SNew(SComboButton)
 				.ButtonStyle(&GetPreviewOverlayButtonStyle())
 				.Method(EPopupMethod::UseCurrentWindow)
+				.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsFinalMenuOpen = bOpen; })
 				.ContentPadding(FMargin(Layout.TogglePadding))
 				.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 				.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
@@ -406,7 +407,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderStrip()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
+TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls(const bool bMarkingMenu)
 {
 	const Mixtormat::FMixtormatPreviewMetrics& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
 	const float RowGap = FMixtormatThemeStore::GetResolved().ControlLayout.RowGap;
@@ -452,34 +453,64 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls()
 	[
 		MakePreviewScaleRow()
 	];
-	// Default / Lumen and the Final popup on one row: both answer how the frame is resolved, which
-	// is why they belong to the render strip rather than to the material.
+	if (!bMarkingMenu)
+	{
+		Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SMixtormatSegmentedControl)
+				.Options(QualityOptions)
+				.ToolTips(QualityToolTips)
+				.ActiveIndex_Lambda([this]()
+				{
+					return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
+				})
+				.OnChosen_Lambda([this](const int32 Index)
+				{
+					SetPreviewQuality(Index == 1
+						? EMixtormatPreviewQuality::Lumen
+						: EMixtormatPreviewQuality::Default);
+				})
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(Layout.ToolbarGap, 0.0f, 0.0f, 0.0f)
+			[
+				MakePreviewFinalButton()
+			]
+		];
+		AddSliderRow(Controls, BuildPreviewDisplacementControls());
+		return Controls;
+	}
+
 	Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
 	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-		[
-			SNew(SMixtormatSegmentedControl)
-			.Options(QualityOptions)
-			.ToolTips(QualityToolTips)
-			.ActiveIndex_Lambda([this]()
-			{
-				return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
-			})
-			.OnChosen_Lambda([this](const int32 Index)
-			{
-				SetPreviewQuality(Index == 1
-					? EMixtormatPreviewQuality::Lumen
-					: EMixtormatPreviewQuality::Default);
-			})
-		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-		.Padding(Layout.ToolbarGap, 0.0f, 0.0f, 0.0f)
-		[
-			MakePreviewFinalButton()
-		]
+		MakePreviewFinalButton()
 	];
-	Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
+	TSharedRef<SVerticalBox> QualityColumn = SNew(SVerticalBox);
+	for (const EMixtormatPreviewQuality Quality : { EMixtormatPreviewQuality::Default, EMixtormatPreviewQuality::Lumen })
+	{
+		const int32 Index = Quality == EMixtormatPreviewQuality::Default ? 0 : 1;
+		const TAttribute<bool> Checked = TAttribute<bool>::CreateLambda([this, Quality]() { return PreviewQuality == Quality; });
+		QualityColumn->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, RowGap)
+		[
+			MakePreviewRailButton(Checked, true, QualityToolTips[Index],
+				FOnCheckStateChanged::CreateLambda([this, Quality](ECheckBoxState) { SetPreviewQuality(Quality); }),
+				MakeRailGlyph(Index == 0 ? MixtormatIcons::LightNeutral() : MixtormatIcons::Globe(),
+					TAttribute<FSlateColor>::CreateLambda([Checked]() { return GetPreviewOverlayLabelColor(false, Checked.Get()); })))
+		];
+	}
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, Layout.ToolbarGap, 0.0f)[QualityColumn]
+		+ SHorizontalBox::Slot().AutoWidth()[Controls];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPreviewDisplacementControls()
+{
+	const float RowGap = FMixtormatThemeStore::GetResolved().ControlLayout.RowGap;
+	TSharedRef<SVerticalBox> Controls = SNew(SVerticalBox);
+	Controls->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, RowGap)
 	[
 		MixtormatRow::Make(
 			LOCTEXT("PreviewDisplacement", "Displacement"),
@@ -842,8 +873,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 
 TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 {
-	// Each group is a card, and each card eases out from the centre along its own axis when the
-	// popup opens: top up, left left, right right, bottom down. The gap in the middle row is where
+	// Render and displacement share the top row; lighting/geometry flank the cursor gap.
+	// Each card eases out along its own axis on opening. The gap in the middle row is where
 	// the pointer sits, which is what makes this a marking menu rather than a panel near the cursor.
 	const auto Reveal = [this](const FVector2D& Axis)
 	{
@@ -864,33 +895,41 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 	};
 
 	TSharedRef<SVerticalBox> RenderRows = SNew(SVerticalBox);
-	AddSliderRow(RenderRows, BuildPreviewRenderControls());
+	AddSliderRow(RenderRows, BuildPreviewRenderControls(true));
+	TSharedRef<SVerticalBox> DisplacementRows = SNew(SVerticalBox);
+	AddSliderRow(DisplacementRows, BuildPreviewDisplacementControls());
 	TSharedRef<SVerticalBox> LightingRows = SNew(SVerticalBox);
 	AddSliderRow(LightingRows, BuildPreviewLightingControls(EPreviewControlLayout::Grid));
 	TSharedRef<SVerticalBox> GeometryRows = SNew(SVerticalBox);
 	AddSliderRow(GeometryRows, BuildPreviewGeometryControls(EPreviewControlLayout::Grid));
 	TSharedRef<SVerticalBox> ActionRows = SNew(SVerticalBox);
-	AddSliderRow(ActionRows,
-		// One disabled row: the context actions are a later pass, and a placeholder that says so
-		// is more honest than a menu that does nothing.
-		SNew(SBox)
-		.IsEnabled(false)
-		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("QuickControlsActionsPlaceholder", "Context actions — later"))
-			.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-				Mixtormat::EMixtormatColorRole::TextMuted).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
-		]);
+	AddSliderRow(ActionRows, BuildQuickControlsActions());
 
 	const Mixtormat::FMixtormatPreviewMetrics& PreviewMetrics = FMixtormatThemeStore::GetResolved().PreviewLayout;
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		+ SVerticalBox::Slot().AutoHeight()
 		[
-			MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(0.0, -1.0))
+			SNew(SHorizontalBox)
+			.Visibility(EVisibility::SelfHitTestInvisible)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
+			[
+				MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(-1.0, -1.0))
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			[
+				SNew(SBox).Visibility(EVisibility::HitTestInvisible)
+				.MinDesiredWidth(PreviewMetrics.QuickControlsRowGap)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
+			[
+				MakeCard(LOCTEXT("QuickControlsDisplacement", "DISPLACEMENT"), DisplacementRows, FVector2D(1.0, -1.0))
+			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			SNew(SHorizontalBox)
+			.Visibility(EVisibility::SelfHitTestInvisible)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				MakeCard(LOCTEXT("QuickControlsLighting", "LIGHTING"), LightingRows, FVector2D(-1.0, 0.0))
@@ -954,13 +993,11 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			.Clipping(EWidgetClipping::ClipToBounds)
 			.Visibility_Lambda([this]()
 			{
-				return bQuickControlsOpen ? EVisibility::Visible : EVisibility::Collapsed;
+				return bQuickControlsOpen ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
 			})
 			[QuickControlsPanel.ToSharedRef()]
 		];
-	// The popup fades in with the reveal, so the first frame -- before it has centred itself on the
-	// pointer -- is not a visible jump. Set from the reveal timer rather than as an attribute:
-	// SWidget::SetRenderOpacity takes a plain float.
+	// The open-state timer combines reveal opacity with distance fading.
 	return Frame;
 }
 
@@ -990,29 +1027,60 @@ void SMixtormat::ToggleQuickControls()
 	QuickControlsPosition = Local;
 	bQuickControlsNeedsCentre = true;
 	bQuickControlsOpen = true;
-	// Fast and damped: the cards ease out along their axes from the centre. One timer, not a
-	// per-frame tick -- it stops as soon as the reveal has settled.
+	// A single timer handles reveal and proximity until the menu closes.
 	QuickControlsReveal = 0.0f;
 	if (QuickControlsPanel.IsValid())
 	{
 		QuickControlsPanel->SetRenderOpacity(0.0f);
 	}
-	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float DeltaTime)
+	if (!bQuickControlsTimerActive)
 	{
-		QuickControlsReveal = FMath::Min(1.0f,
-			QuickControlsReveal + DeltaTime / MixtormatTokens::QuickControlsRevealSeconds);
-		if (QuickControlsPanel.IsValid())
+		bQuickControlsTimerActive = true;
+		RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float DeltaTime)
 		{
-			QuickControlsPanel->SetRenderOpacity(EaseOutQuad(QuickControlsReveal));
-		}
-		Invalidate(EInvalidateWidgetReason::Paint);
-		return QuickControlsReveal < 1.0f ? EActiveTimerReturnType::Continue : EActiveTimerReturnType::Stop;
-	}));
+			if (!bQuickControlsOpen)
+			{
+				bQuickControlsTimerActive = false;
+				return EActiveTimerReturnType::Stop;
+			}
+			QuickControlsReveal = FMath::Min(1.0f,
+				QuickControlsReveal + DeltaTime / MixtormatTokens::QuickControlsRevealSeconds);
+			float ProximityOpacity = 1.0f;
+			if (!bQuickControlsNeedsCentre && !bQuickControlsActionMenuOpen && !bQuickControlsFinalMenuOpen)
+			{
+				const FVector2D Cursor = GetPreviewViewportLocalPosition(FSlateApplication::Get().GetCursorPos());
+				const FVector2D Nearest(
+					FMath::Clamp(Cursor.X, QuickControlsPosition.X, QuickControlsPosition.X + QuickControlsSize.X),
+					FMath::Clamp(Cursor.Y, QuickControlsPosition.Y, QuickControlsPosition.Y + QuickControlsSize.Y));
+				const Mixtormat::FMixtormatPreviewMetrics& Metrics = FMixtormatThemeStore::GetResolved().PreviewLayout;
+				const float Distance = static_cast<float>((Cursor - Nearest).Size());
+				ProximityOpacity = 1.0f - FMath::Clamp(
+					(Distance - Metrics.QuickControlsFadeStartDistance) / FMath::Max(Metrics.QuickControlsFadeRange, 1.0f),
+					0.0f, 1.0f);
+				if (ProximityOpacity <= 0.0f)
+				{
+					CloseQuickControls();
+					bQuickControlsTimerActive = false;
+					return EActiveTimerReturnType::Stop;
+				}
+			}
+			if (QuickControlsPanel.IsValid())
+			{
+				QuickControlsPanel->SetRenderOpacity(EaseOutQuad(QuickControlsReveal) * ProximityOpacity);
+			}
+			Invalidate(EInvalidateWidgetReason::Paint);
+			return EActiveTimerReturnType::Continue;
+		}));
+	}
 }
 
 void SMixtormat::CloseQuickControls()
 {
 	bQuickControlsOpen = false;
+	if (bQuickControlsActionMenuOpen || bQuickControlsFinalMenuOpen)
+	{
+		FSlateApplication::Get().DismissAllMenus();
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

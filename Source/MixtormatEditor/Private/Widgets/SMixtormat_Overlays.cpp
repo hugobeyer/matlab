@@ -278,16 +278,8 @@ FReply SMixtormat::OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const F
 		{
 			BringFloatingPanelToFront(bLeftHit);
 		}
-		// A press outside the quick controls dismisses them, and is left unhandled so it still
-		// reaches whatever it landed on.
-		if (bQuickControlsOpen
-			&& (Local.X < QuickControlsPosition.X
-				|| Local.X > QuickControlsPosition.X + QuickControlsSize.X
-				|| Local.Y < QuickControlsPosition.Y
-				|| Local.Y > QuickControlsPosition.Y + QuickControlsSize.Y))
-		{
-			CloseQuickControls();
-		}
+		// Empty marking-menu space passes through for camera orbit. Proximity, Q and Escape
+		// dismiss the menu instead of consuming the start of a viewport drag.
 	}
 	return SCompoundWidget::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
 }

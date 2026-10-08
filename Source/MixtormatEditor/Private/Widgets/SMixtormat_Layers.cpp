@@ -265,8 +265,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						[
 							SNew(SHorizontalBox)
 							.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
-							// The count reads first, on the leading edge; the two creation glyphs
-							// pair up on the trailing edge, same grouping as the text buttons below.
+							// Keep the count above the permanent creation controls.
 							+ SHorizontalBox::Slot().FillWidth(1.0f)
 							.HAlign(HAlign_Left).VAlign(VAlign_Center)
 							.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f)
@@ -280,37 +279,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							]
 						]
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
-					+ SVerticalBox::Slot().FillHeight(1.0f)
-					[
-						// Rows handle their own presses, so a left press that reaches this border
-						// landed on empty space: deselect, and the inspector falls back to globals.
-						SNew(SBorder)
-						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
-						.Padding(0.0f)
-						.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent& MouseEvent)
-						{
-							if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !HasAnySelection())
-							{
-								return FReply::Unhandled();
-							}
-							ClearLayerSelection();
-							return FReply::Handled();
-						})
-						[
-							SNew(SScrollBox)
-							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
-						]
-					]
-					// A hairline like the one above the scroll box, so the permanent controls read
-					// as their own footer rather than as one more row of the stack.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
-					// Permanent creation controls, below the rows rather than inside any one of
-					// them, so they stay put -- and stay reachable -- whether the stack holds
-					// forty layers or none. Same two creations as the header pair above, just
-					// spelled out in text since this is the row a user lands on with an empty
-					// stack and no icon-only glyph to already have learned. Right-aligned to match
-					// the header pair's trailing edge.
+					// Creation controls stay above the scrolling rows.
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
 					[
 						SNew(SHorizontalBox)
@@ -414,6 +383,27 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									]
 								]
 							]
+						]
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
+					+ SVerticalBox::Slot().FillHeight(1.0f)
+					[
+						// Empty-space presses deselect; individual rows handle their own presses.
+						SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
+						.Padding(0.0f)
+						.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent& MouseEvent)
+						{
+							if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !HasAnySelection())
+							{
+								return FReply::Unhandled();
+							}
+							ClearLayerSelection();
+							return FReply::Handled();
+						})
+						[
+							SNew(SScrollBox)
+							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
 						]
 					]
 				]

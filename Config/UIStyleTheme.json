@@ -483,6 +483,8 @@
 		"PreviewLayout.LeftOverlaySurfaceOpacity": 0.82,
 		"PreviewLayout.QuickControlsCentreGap": 210,
 		"PreviewLayout.QuickControlsRowGap": 22,
+				"PreviewLayout.QuickControlsFadeStartDistance": 48,
+				"PreviewLayout.QuickControlsFadeRange": 220,
 		"PreviewLayout.QuickControlsGuideAxisLength": 176,
 		"PreviewLayout.QuickControlsGuideAxisThickness": 1,
 		"PreviewLayout.QuickControlsGuideAxisOpacity": 0.12,

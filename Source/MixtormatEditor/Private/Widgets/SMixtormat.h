@@ -1482,7 +1482,8 @@ private:
 	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /
 	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
 	// caller decides where it goes and how it is wrapped.
-	TSharedRef<SWidget> BuildPreviewRenderControls();
+	TSharedRef<SWidget> BuildPreviewRenderControls(bool bMarkingMenu = false);
+		TSharedRef<SWidget> BuildPreviewDisplacementControls();
 	// The overlay's compact copy of the render strip: render scale and the Final popup only. AA,
 	// Default/Lumen and displacement live in GLOBAL, where there is room for them.
 	TSharedRef<SWidget> BuildPreviewRenderStrip();
@@ -1491,9 +1492,9 @@ private:
 	// Wraps a control cluster in the shared plate. A member rather than a file-local helper because
 	// the viewport composition and the quick-controls popup both build clusters.
 	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content);
-	// The Tab quick controls (D26/D28): an in-viewport overlay opened at the pointer, dismissed by
-	// Escape, an outside click or a rebuild.
+	// Q controls: a cursor-centred overlay with distance fading and pass-through gaps.
 	TSharedRef<SWidget> BuildQuickControlsOverlay();
+		TSharedRef<SWidget> BuildQuickControlsActions();
 	void ToggleQuickControls();
 	void CloseQuickControls();
 	// How a group's buttons are laid out: the viewport's rails stack them down an edge, GLOBAL's
@@ -1570,6 +1571,7 @@ private:
 	// The gallery is one bottom overlay drawer; its open state and height survive rebuilds.
 	bool bBottomLibraryCollapsed = false;
 	float GalleryDrawerHeight = 0.0f;
+		float GalleryColumnFraction = 0.5f;
 	bool bGalleryDrawerResizing = false;
 	float GalleryDrawerHeightAtResizeStart = 0.0f;
 	FVector2D GalleryDrawerResizeOriginScreen = FVector2D::ZeroVector;
@@ -1683,12 +1685,14 @@ private:
 	// The quick-controls popup: where it was opened, how big it turned out, and whether it still
 	// has to centre itself on the pointer once its size is known.
 	bool bQuickControlsOpen = false;
+		bool bQuickControlsActionMenuOpen = false;
+		bool bQuickControlsFinalMenuOpen = false;
+		bool bQuickControlsTimerActive = false;
 	FVector2D QuickControlsPosition = FVector2D::ZeroVector;
 	FVector2D QuickControlsSize = FVector2D::ZeroVector;
 	bool bQuickControlsNeedsCentre = false;
 	TSharedPtr<SWidget> QuickControlsPanel;
-	// The popup's reveal, 0 at the moment it opens and 1 when it has settled. Advanced by a
-	// one-shot active timer rather than a per-frame tick, so a settled popup costs nothing.
+	// One active timer advances the reveal and proximity fade only while the popup is open.
 	float QuickControlsReveal = 1.0f;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = true;

@@ -14,6 +14,10 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
+#include "UI/Controls/MixtormatShellSplitterStyle.h"
+#include "Style/MixtormatRecipes.h"
+#include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Input/SEditableTextBox.h"
 
 #include "ObjectTools.h"
@@ -458,16 +462,35 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const Mixtormat::FMixtormatGalleryMetrics& Gallery = FMixtormatThemeStore::GetResolved().GalleryLayout;
 
-	return SNew(SBorder)
-		.Padding(0.0f)
-		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]()
+	const Mixtormat::FMixtormatControlMetrics& Controls = FMixtormatThemeStore::GetResolved().ControlLayout;
+	return SNew(SMixtormatSurfaceBox)
+		.Recipe_Lambda([]()
 		{
-			FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
-			Background.A *= FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSurfaceOpacity;
-			return Background;
+			Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
+			Recipe.bTranslucent = true;
+			Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
+			return Recipe;
 		})
+		.Padding(FMargin(Controls.DragGhostShadowInset, Controls.DragGhostShadowInset,
+			Controls.DragGhostShadowInset + MixtormatTokens::DragGhostShadowOffsetX,
+			Controls.DragGhostShadowInset + Controls.DragGhostShadowOffsetY))
 		[
+			SNew(SMixtormatSurfaceBox)
+			.Recipe_Lambda([]()
+			{
+				Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
+				Recipe.bTranslucent = true;
+				Recipe.Base.Opacity = FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSurfaceOpacity;
+				Mixtormat::FMixtormatBorderLayer Border;
+				Border.Source.Role = Mixtormat::EMixtormatColorRole::Hairline;
+				Border.Source.Opacity = FMixtormatThemeStore::GetTheme().Menu.BorderOpacity;
+				Border.Width = MixtormatTokens::HairlineThickness;
+				Border.bTop = Border.bBottom = Border.bLeft = Border.bRight = true;
+				Recipe.Borders.Add(Border);
+				return Recipe;
+			})
+			.Padding(FMargin(MixtormatTokens::HairlineThickness))
+			[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -476,17 +499,9 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag the drawer header to resize it."))
 				[
 					SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(Gallery.TilePadding, 0.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("MaterialsColumn", "MATERIALS"))
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(Gallery.TilePadding, 0.0f)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("MasksColumn", "MASKS"))
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+					SNew(SSpacer)
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
@@ -502,19 +517,32 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				SNew(SSplitter)
+				.Style(&MixtormatShell::GetSplitterStyle())
+				.PhysicalSplitterHandleSize(MixtormatTokens::HairlineThickness)
+				.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
+				+ SSplitter::Slot()
+				.Value_Lambda([this]() { return GalleryColumnFraction; })
+				.OnSlotResized_Lambda([this](float Value)
+				{
+					if (!bSuppressSplitWriteBack)
+					{
+						GalleryColumnFraction = Value;
+					}
+				})
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()[BuildLibraryPage()]
 					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(Gallery.TilePadding)[BuildSurfaceList()]
 				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				+ SSplitter::Slot()
+				.Value_Lambda([this]() { return 1.0f - GalleryColumnFraction; })
 				[
 					BuildMaskBar()
 				]
 			]
-		];
+		]
+	];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLibraryPage()

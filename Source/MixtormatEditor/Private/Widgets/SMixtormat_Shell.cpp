@@ -465,7 +465,11 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
-		.Padding(FMargin(FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
+		.Padding(FMargin(
+						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset + FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding * 2.0f,
+						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset,
+						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset + FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding * 2.0f,
+						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
 		[
 			SNew(SBox)
 			.HeightOverride_Lambda([this]()

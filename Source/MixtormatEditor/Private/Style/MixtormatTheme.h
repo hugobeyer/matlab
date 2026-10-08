@@ -704,6 +704,8 @@ namespace Mixtormat
 		float LeftOverlaySurfaceOpacity = 0.82f;
 		float QuickControlsCentreGap = 210.0f;
 		float QuickControlsRowGap = 22.0f;
+				float QuickControlsFadeStartDistance = 48.0f;
+				float QuickControlsFadeRange = 220.0f;
 		float QuickControlsGuideAxisLength = 176.0f;
 		float QuickControlsGuideAxisThickness = 1.0f;
 		float QuickControlsGuideAxisOpacity = 0.12f;
