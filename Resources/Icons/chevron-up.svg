@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-up"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="chevron-up" inkscape:label="chevron-up" data-original-id="path195" transform="translate(-447.926900,-128.437800)"><path id="chevron-up-shape" style="fill:#f9f9f9;stroke-width:1.13213" d="m 464.65718,164.79771 c 5.18159,-4.27588 10.3632,-8.55176 15.54482,-12.82761 5.00586,4.17342 10.11211,8.27161 14.98294,12.54749 0.23071,0.64287 -2.91153,5.42727 -4.00124,3.89921 -3.79731,-2.91725 -7.4415,-5.95899 -11.14836,-8.94951 -3.84698,3.15324 -7.61301,6.3722 -11.56855,9.4384 -1.46245,-0.59535 -2.63215,-3.15109 -3.80961,-4.10798 z" sodipodi:nodetypes="cccsssc" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-up">
+  <title>chevron-up</title>
+  <g id="chevron-up-cell-offset" transform="translate(-576,0)">
+    <g id="icon-chevron-up" inkscape:label="chevron-up" transform="matrix(1.6,0,0,1.6,556.79989,-19.200057)">
+      <g id="chevron-up--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="chevron-up--chevron-up" inkscape:label="chevron-up" data-original-id="path195" transform="translate(-447.9269,-128.4378)">
+          <path id="chevron-up--chevron-up-shape" style="fill:#f9f9f9;stroke-width:1.13213" d="m 464.65718,164.79771 c 5.18159,-4.27588 10.3632,-8.55176 15.54482,-12.82761 5.00586,4.17342 10.11211,8.27161 14.98294,12.54749 0.23071,0.64287 -2.91153,5.42727 -4.00124,3.89921 -3.79731,-2.91725 -7.4415,-5.95899 -11.14836,-8.94951 -3.84698,3.15324 -7.61301,6.3722 -11.56855,9.4384 -1.46245,-0.59535 -2.63215,-3.15109 -3.80961,-4.10798 z" sodipodi:nodetypes="cccsssc" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

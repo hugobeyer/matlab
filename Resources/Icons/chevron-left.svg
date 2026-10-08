@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-left"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="chevron-left" inkscape:label="chevron-left" data-original-id="path291" transform="translate(-254.963650,-383.729400)"><path id="chevron-left-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 291.73644,401.32889 c 0.5496,0 4.97866,4.3169 4.97866,4.84113 -3.50439,3.99911 -5.36998,5.69497 -9.12987,9.45972 l 9.27918,9.35006 -5.14994,5.14993 -14.65136,-14.65136 c 4.98779,-4.58001 9.29928,-10.00666 14.67333,-14.14948 z" sodipodi:nodetypes="ssccccs" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-left">
+  <title>chevron-left</title>
+  <g id="chevron-left-cell-offset" transform="translate(-448,0)">
+    <g id="icon-chevron-left" inkscape:label="chevron-left" transform="matrix(1.6,0,0,1.6,428.79993,-19.199946)">
+      <g id="chevron-left--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="chevron-left--chevron-left" inkscape:label="chevron-left" data-original-id="path291" transform="translate(-254.96365,-383.7294)">
+          <path id="chevron-left--chevron-left-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 291.73644,401.32889 c 0.5496,0 4.97866,4.3169 4.97866,4.84113 -3.50439,3.99911 -5.36998,5.69497 -9.12987,9.45972 l 9.27918,9.35006 -5.14994,5.14993 -14.65136,-14.65136 c 4.98779,-4.58001 9.29928,-10.00666 14.67333,-14.14948 z" sodipodi:nodetypes="ssccccs" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

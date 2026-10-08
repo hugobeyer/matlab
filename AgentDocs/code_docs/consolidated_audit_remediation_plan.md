@@ -1,22 +1,26 @@
 # Mixtormat — Consolidated Audit Remediation Plan
 
 Date: 2026-10-08
-Status: follow-up plan with localized quick-win source changes; runtime validation pending.
+Status: dated implementation snapshot; source edits are not runtime-validated.
 
-## Local quick-win status — 2026-10-08
+## Local implementation status — 2026-10-08
 
-Source edits now include unique structural localization keys, compact chip diagnostics,
-icon-role/HitSize schema exposure, the 33% Masks default and mask-selection header feedback.
-Tile borders now paint above thumbnail content to address the obscured selection-edge path.
+Source edits present: unique structural localization keys, compact chip diagnostics,
+icon-role/HitSize schema exposure, 33% default Masks width, and visible mask-selection feedback.
+Tile borders paint above thumbnail content. Marking-menu 1K/2K/4K controls and Ctrl+wheel FOV
+routing are present. The NavigationRail role is separate and larger than its prior role.
+The gallery header supports click-to-collapse with drag-threshold handling.
 
-The next five source changes are also in place: shared marking-menu 1K/2K/4K controls,
-Ctrl+wheel routed through shared FOV state, an independent larger NavigationRail role,
-click-to-collapse gallery header with drag-threshold handling, and current-state doc updates.
+Further source edits: Inspector structural labels are cached with refresh/rebuild invalidation;
+incoming counts map effective targets back to authored rows; MMB pan uses camera-plane movement
+with reduced sensitivity. A layered translucent gallery shadow approximation was added; it is
+not verified visually and does not establish that the requested soft shadow is achieved.
 
-These are code changes, not verified editor results. No build, tests or Unreal session was run
-by the agent. Camera drift/damping/pan tuning, pin auto-collapse, soft shadows, helper state
-machine, group containment and noise investigation remain outstanding.
-Basis: supplied remote audit (`dbc71fe`) plus targeted local source reads.
+Not implemented/confirmed: 1.5x icon-default scaling (requested, not applied), group containment,
+marking-menu camera drift fix, turn damping, gallery pin/auto-collapse, helper action state machine,
+noise wiring, and group-shared Push compatibility decision.
+No build, tests, profiling or Unreal session was run. Runtime behavior and visual quality remain
+unverified. Basis: supplied remote audit (`dbc71fe`) and targeted local source reads.
 Local commit attribution and working-tree differences remain unverified.
 
 ## Scope and rules
@@ -208,7 +212,8 @@ Starting owners under `Source/MixtormatEditor/Private/`:
 
 Implementation:
 1. Trace the rail's actual glyph, button, hit-area and width settings before changing them.
-2. Increase the left-rail glyph size; increase rail/button space only as needed to avoid clipping.
+1. Increase the left-rail glyph size; the user separately requested 1.5x icon defaults overall.
+   That scaling is not applied yet; confirm its effect on button/hit sizes before changing defaults.
 3. Keep icons centered, with consistent spacing and distinct active/hover/disabled states.
 4. Reuse canonical theme controls; expose rail sizing there if it is not already editable.
 5. Do not enlarge unrelated toolbar icons or reduce existing hit areas.
@@ -433,7 +438,7 @@ These items cannot be closed by static review:
 - Legacy group-shared Push on an actual saved asset.
 - Incoming badges across reorder, paste, disable, group edits and undo/redo.
 - UI Style live sizing, HitSize behavior and save/reset persistence.
-- Larger left-rail icons and group containment/indentation at normal and narrow stack widths.
+- 1.5x icon-default scaling and left-rail/group-containment appearance at normal and narrow widths.
 - Gallery opacity, shadows, splitters and drawer-height persistence across sessions.
 - Keyboard/context-menu helper overlap and SVG appearance at final sizes.
 - Marking-menu 1K/2K/4K resolution actions and no camera movement on open/cancel.

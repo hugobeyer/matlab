@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="plane"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="plane" inkscape:label="plane" data-original-id="path271" transform="translate(-448.335700,-256.064300)"><path id="plane-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 456.21861,287.09685 25.86126,-11.22251 22.37209,6.15538 -0.34418,6.76379 -25.3082,11.46139 -22.28677,-5.96672 z m 19.60362,5.77543 22.25367,-9.67112 -16.13388,-4.32273 -21.69372,9.50038 z" sodipodi:nodetypes="cccccccccccc" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="plane">
+  <title>plane</title>
+  <g id="plane-cell-offset" transform="translate(-704,-128)">
+    <g id="icon-plane" inkscape:label="plane" transform="matrix(1.2181358,0,0,1.973932,697.23911,96.833859)">
+      <g id="plane--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="plane--plane" inkscape:label="plane" data-original-id="path271" transform="translate(-448.3357,-256.0643)">
+          <path id="plane--plane-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 456.21861,288.43043 25.86126,-11.22251 22.37209,6.15538 -0.34418,5.43021 -25.3082,11.46139 -22.28677,-5.96672 z m 19.60362,5.77543 22.25367,-9.67112 -16.13388,-4.32273 -21.69372,9.50038 z" sodipodi:nodetypes="cccccccccccc" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

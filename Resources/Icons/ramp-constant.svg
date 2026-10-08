@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="ramp-constant"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="ramp-constant" inkscape:label="ramp-constant" data-original-id="rect289" transform="translate(-0.335300,-192.398745)"><path id="ramp-constant-shape" style="fill:#f9f9f9;stroke-width:3.04668;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:12.1867;stroke-dashoffset:5.78868" d="m 20.720104,221.16296 h 23.230395 c 1.124848,0 2.030412,0.68148 2.030412,1.52798 v 3.41553 c 0,0.8465 -0.905564,1.52798 -2.030412,1.52798 H 20.720104 c -1.124848,0 -2.030412,-0.68148 -2.030412,-1.52798 v -3.41553 c 0,-0.8465 0.905564,-1.52798 2.030412,-1.52798 z" sodipodi:nodetypes="sssssssss" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="ramp-constant">
+  <title>ramp-constant</title>
+  <g id="ramp-constant-cell-offset" transform="translate(0,-192)">
+    <g id="icon-ramp-constant" inkscape:label="ramp-constant" transform="matrix(1.4,0,0,1.4,-12.800001,179.20002)">
+      <g id="ramp-constant--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="ramp-constant--ramp-constant" inkscape:label="ramp-constant" data-original-id="rect289" transform="translate(-0.3353,-192.39874)">
+          <path id="ramp-constant--ramp-constant-shape" style="fill:#f9f9f9;stroke-width:3.04668;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:12.1867;stroke-dashoffset:5.78868" d="m 20.720104,221.16296 h 23.230395 c 1.124848,0 2.030412,0.68148 2.030412,1.52798 v 3.41553 c 0,0.8465 -0.905564,1.52798 -2.030412,1.52798 H 20.720104 c -1.124848,0 -2.030412,-0.68148 -2.030412,-1.52798 v -3.41553 c 0,-0.8465 0.905564,-1.52798 2.030412,-1.52798 z" sodipodi:nodetypes="sssssssss" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

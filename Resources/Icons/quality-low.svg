@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="quality-low"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="quality-low" inkscape:label="quality-low" data-original-id="path217" transform="translate(-320.498700,-63.608900)"><path id="quality-low-shape" style="fill:#f9f9f9;stroke-width:1.5245" d="m 337.96571,111.4406 -1.39404,-0.71588 -0.34025,-1.34369 c -0.18723,-0.73906 -0.28591,-7.42553 -0.21932,-14.858819 l 0.12088,-13.515118 1.13175,-0.973006 1.13171,-0.972994 h 14.12609 14.12607 l 1.17905,1.179046 1.17905,1.179058 v 14.126055 14.126078 l -0.97304,1.13175 -0.973,1.1317 -13.85041,0.11095 -13.85041,0.11094 z" sodipodi:nodetypes="cccccccccccccccccc" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="quality-low">
+  <title>quality-low</title>
+  <g id="quality-low-cell-offset" transform="translate(-832,-128)">
+    <g id="icon-quality-low" inkscape:label="quality-low" transform="translate(832.000000,128.000000) scale(1.000000000) translate(-0.000000,-0.000000)">
+      <g id="quality-low--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="quality-low--quality-low" inkscape:label="quality-low" data-original-id="path217" transform="translate(-320.498700,-63.608900)">
+          <path id="quality-low--quality-low-shape" style="fill:#f9f9f9;stroke-width:1.5245" d="m 337.96571,111.4406 -1.39404,-0.71588 -0.34025,-1.34369 c -0.18723,-0.73906 -0.28591,-7.42553 -0.21932,-14.858819 l 0.12088,-13.515118 1.13175,-0.973006 1.13171,-0.972994 h 14.12609 14.12607 l 1.17905,1.179046 1.17905,1.179058 v 14.126055 14.126078 l -0.97304,1.13175 -0.973,1.1317 -13.85041,0.11095 -13.85041,0.11094 z" sodipodi:nodetypes="cccccccccccccccccc" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

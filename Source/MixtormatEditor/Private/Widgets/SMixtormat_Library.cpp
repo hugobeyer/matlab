@@ -638,15 +638,35 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				})
 				.OnGetMenuContent_Lambda([this]()
 				{
-					SAssignNew(CategoryListBox, SVerticalBox);
-					RebuildCategoryList();
+					TArray<FName> Families;
+					for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
+					{
+						if (!MixtormatUI::IsUserLibraryAsset(Surface.AssetPath))
+						{
+							Families.AddUnique(Surface.Family);
+						}
+					}
+					Families.Remove(NAME_None);
+					Families.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+
+					MixtormatMenu::FBuilder Menu;
+					Menu.Caption(LOCTEXT("MaterialCategoryMenuCaption", "MATERIALS"));
+					Menu.Item(LOCTEXT("AllCategory", "All Materials"), nullptr,
+						FSimpleDelegate::CreateLambda([this]() { SetCategoryFilter(NAME_None); }))
+						.Checked(TAttribute<bool>::CreateLambda([this]() { return CategoryFilter.IsNone(); }));
+					for (const FName Family : Families)
+					{
+						Menu.Item(FText::FromName(Family), nullptr,
+							FSimpleDelegate::CreateLambda([this, Family]() { SetCategoryFilter(Family); }))
+							.Checked(TAttribute<bool>::CreateLambda([this, Family]() { return CategoryFilter == Family; }));
+					}
 					return SNew(SBox)
 						.MaxDesiredHeight(FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight)
 						[
 							SNew(SScrollBox)
 							.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 							.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
-							+ SScrollBox::Slot()[CategoryListBox.ToSharedRef()]
+							+ SScrollBox::Slot()[Menu.Build()]
 						];
 				})
 				]

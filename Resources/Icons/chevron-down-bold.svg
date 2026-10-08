@@ -1,2 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-down-bold"><g id="layer1" inkscape:label="Layer 1" inkscape:groupmode="layer"><g id="chevron-down-bold" inkscape:label="chevron-down-bold" data-original-id="path292" transform="translate(-0.301900,-383.969650)"><path id="chevron-down-bold-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 46.702325,420.74246 c 0,0.5496 -4.3169,4.97866 -4.84113,4.97866 -3.99911,-3.50439 -5.69497,-5.36998 -9.45972,-9.12987 l -9.35006,9.27918 -5.14993,-5.14994 14.65136,-14.65136 c 4.58001,4.98779 10.00666,9.29928 14.14948,14.67333 z" sodipodi:nodetypes="ssccccs" /></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="chevron-down-bold">
+  <title>chevron-down-bold</title>
+  <g id="chevron-down-bold-cell-offset" transform="translate(-320,0)">
+    <g id="icon-chevron-down-bold" inkscape:label="chevron-down-bold" transform="matrix(1.6,0,0,1.6,300.8,-19.200078)">
+      <g id="chevron-down-bold--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
+        <g id="chevron-down-bold--chevron-down-bold" inkscape:label="chevron-down-bold" data-original-id="path292" transform="translate(-0.3019,-383.96965)">
+          <path id="chevron-down-bold--chevron-down-bold-shape" style="fill:#f9f9f9;stroke-width:1.25865" d="m 46.702325,420.74246 c 0,0.5496 -4.3169,4.97866 -4.84113,4.97866 -3.99911,-3.50439 -5.69497,-5.36998 -9.45972,-9.12987 l -9.35006,9.27918 -5.14993,-5.14994 14.65136,-14.65136 c 4.58001,4.98779 10.00666,9.29928 14.14948,14.67333 z" sodipodi:nodetypes="ssccccs" />
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>
