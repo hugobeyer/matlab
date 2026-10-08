@@ -379,7 +379,7 @@ namespace Mixtormat
 		T.GalleryLayout.DrawerInset = 8.0f;
 		T.GalleryLayout.DrawerInitialHeight = 256.0f;
 		T.GalleryLayout.ModeSwitchGap = 4.0f;
-		T.GalleryLayout.DrawerSurfaceOpacity = 0.82f;
+		T.GalleryLayout.DrawerSurfaceOpacity = 0.68f;
 		T.GalleryLayout.TileGap = 4.0f;               // --gallery-gap
 
 		T.Shell.TopBarHeight = 38.0f;                 // --topbar-height

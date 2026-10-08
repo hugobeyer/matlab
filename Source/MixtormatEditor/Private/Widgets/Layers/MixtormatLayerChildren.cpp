@@ -1550,7 +1550,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor_Lambda([]() { return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground); })
+		.BorderBackgroundColor(FLinearColor::Transparent)
 		.Visibility_Lambda([this]()
 		{
 			return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed;

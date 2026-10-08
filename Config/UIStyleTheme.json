@@ -506,9 +506,12 @@
 		"GalleryLayout.OverlayInset": 3,
 		"GalleryLayout.HeaderGap": 4,
 		"GalleryLayout.DrawerInset": 8,
+		"GalleryLayout.DrawerSideInset": 24,
+		"GalleryLayout.DrawerHeaderHeight": 18,
+		"GalleryLayout.DrawerCollapsedHeight": 18,
 		"GalleryLayout.DrawerInitialHeight": 256,
 		"GalleryLayout.ModeSwitchGap": 4,
-		"GalleryLayout.DrawerSurfaceOpacity": 0.82,
+		"GalleryLayout.DrawerSurfaceOpacity": 0.68,
 		"ShellTheme.SplitterHoverSource": [
 			0.043674048036336899,
 			0.04943307489156723,

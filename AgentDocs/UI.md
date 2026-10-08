@@ -107,5 +107,10 @@ Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 
 Workspace layout: Layers/Library/Global occupy a resizable left column; Layers alone can
 pop out and return by rail click or snap-back drag. The gallery is one resizable bottom
-MATERIALS/MASKS drawer over the whole workspace, replacing both gallery splitters. The
-Inspector remains dockable. See the overlay-workspace handoff for validation.
+MATERIALS/MASKS drawer over the whole workspace, replacing both gallery splitters. Its compact
+header remains draggable; collapse leaves a thin clickable restore strip with the Library icon.
+Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.
+Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
+The category popup populates its family list on opening; `All` clears the category filter.
+Inspector remains dockable. These gallery changes have source review only, not visual validation.
+See the overlay-workspace handoff for validation.

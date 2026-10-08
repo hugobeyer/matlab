@@ -732,9 +732,12 @@ namespace Mixtormat
 		float OverlayInset = 3.0f;
 		float HeaderGap = 2.0f;
 		float DrawerInset = 8.0f;
+		float DrawerSideInset = 24.0f;
+		float DrawerHeaderHeight = 18.0f;
+		float DrawerCollapsedHeight = 18.0f;
 		float DrawerInitialHeight = 256.0f;
 		float ModeSwitchGap = 4.0f;
-		float DrawerSurfaceOpacity = 0.82f;
+		float DrawerSurfaceOpacity = 0.68f;
 	};
 
 	struct FMixtormatShellTheme

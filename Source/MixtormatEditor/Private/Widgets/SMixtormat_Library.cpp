@@ -469,6 +469,7 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 			Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
 			Recipe.bTranslucent = true;
 			Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
+			Recipe.Base.Opacity = FMixtormatThemeStore::GetTheme().ShellTheme.ColumnShadowOpacity;
 			return Recipe;
 		})
 		.Padding(FMargin(Controls.DragGhostShadowInset, Controls.DragGhostShadowInset,
@@ -495,22 +496,35 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SAssignNew(GalleryDrawerHeader, SBox)
-				.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
-				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag the drawer header to resize it."))
+				.HeightOverride(Gallery.DrawerHeaderHeight)
+				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag to resize the gallery."))
 				[
 					SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+					.Padding(Gallery.CaptionInset, 0.0f)
 				[
-					SNew(SSpacer)
+					SNew(STextBlock)
+					.Text(LOCTEXT("GalleryDrawerHeading", "GALLERY"))
+					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SAssignNew(BottomLibraryToggleButton, SButton)
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+										.ContentPadding(FMargin(0.0f))
 					.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Close the material and mask drawer (G)."))
 					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 					[
-						SNew(SImage).Image(MixtormatIcons::ChevronDown())
+						SNew(SBox)
+						.WidthOverride(Gallery.DrawerHeaderHeight)
+						.HeightOverride(Gallery.DrawerHeaderHeight)
+						.HAlign(HAlign_Center).VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)].GlyphSize)
+							.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)].GlyphSize)
+							[SNew(SImage).Image(MixtormatIcons::ChevronDown())]
+						]
 					]
 				]
 				]
@@ -572,9 +586,16 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 	return SNew(SBorder)
 		.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
+		.BorderBackgroundColor(FLinearColor::Transparent)
 		[
 			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, LibraryStyle.ControlLayout.RowLabelGap, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("MaterialGalleryHeading", "MATERIALS"))
+				.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowLabelGap, 0.0f)
 			[
 				SNew(SBox).HeightOverride(LibraryStyle.Buttons.Height)[SearchBox]
@@ -584,16 +605,23 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				SNew(SBox).HeightOverride(LibraryStyle.Buttons.Height)
 				[
 				SNew(SMixtormatChip)
+				.ToolTip(LOCTEXT("MaterialCategoryFilterHint", "Filter materials by category"))
 				.Text_Lambda([this]()
 				{
-					return CategoryFilter.IsNone() ? LOCTEXT("AllCategory", "All Materials") : FText::FromName(CategoryFilter);
+					return CategoryFilter.IsNone() ? LOCTEXT("AllMaterialCategories", "All") : FText::FromName(CategoryFilter);
 				})
 				.OnGetMenuContent_Lambda([this]()
 				{
-					return SNew(SScrollBox)
-						.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
-						.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
-						+ SScrollBox::Slot()[SAssignNew(CategoryListBox, SVerticalBox)];
+					SAssignNew(CategoryListBox, SVerticalBox);
+					RebuildCategoryList();
+					return SNew(SBox)
+						.MaxDesiredHeight(FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight)
+						[
+							SNew(SScrollBox)
+							.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+							.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
+							+ SScrollBox::Slot()[CategoryListBox.ToSharedRef()]
+						];
 				})
 				]
 			]

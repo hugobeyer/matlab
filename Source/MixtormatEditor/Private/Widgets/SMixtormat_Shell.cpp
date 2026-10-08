@@ -466,23 +466,78 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
 		.Padding(FMargin(
-						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset + FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding * 2.0f,
-						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset,
-						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset + FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding * 2.0f,
-						FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
+			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSideInset,
+			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset,
+			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSideInset,
+			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
 		[
 			SNew(SBox)
 			.HeightOverride_Lambda([this]()
 			{
+				if (bBottomLibraryCollapsed)
+				{
+					return FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight;
+				}
 				return GalleryDrawerHeight > 0.0f
 					? GalleryDrawerHeight
 					: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
 			})
-			.Visibility_Lambda([this]()
-			{
-				return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
-			})
-			[BuildBottomLibrary()]
+			[
+				SNew(SOverlay)
+				+ SOverlay::Slot()
+				[
+					SNew(SBox)
+					.Visibility_Lambda([this]()
+					{
+						return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
+					})
+					[BuildBottomLibrary()]
+				]
+				+ SOverlay::Slot()
+				[
+					SNew(SButton)
+					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+					.ContentPadding(FMargin(0.0f))
+					.ToolTipText(LOCTEXT("RestoreGalleryHint", "Open the material and mask gallery (G)."))
+					.Visibility_Lambda([this]()
+					{
+						return bBottomLibraryCollapsed ? EVisibility::Visible : EVisibility::Collapsed;
+					})
+					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[
+							SNew(SBox).HeightOverride(MixtormatTokens::HairlineThickness)
+							[
+								SNew(SImage)
+								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.HeaderGap, 0.0f)
+						[
+							SNew(SBox)
+							.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
+							.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
+							[
+								SNew(SImage).Image(MixtormatIcons::Library())
+								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+							]
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[
+							SNew(SBox).HeightOverride(MixtormatTokens::HairlineThickness)
+							[
+								SNew(SImage)
+								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
+							]
+						]
+					]
+				]
+			]
 		]
 		];
 }
