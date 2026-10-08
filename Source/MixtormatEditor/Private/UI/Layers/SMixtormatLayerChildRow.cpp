@@ -138,12 +138,15 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
-					.Visibility_Lambda([Link = InArgs._StructuralLink.Widget]()
-					{
-						return Link == SNullWidget::NullWidget ? EVisibility::Collapsed : EVisibility::Visible;
-					})
 					[
-						InArgs._StructuralLink.Widget
+						SNew(SBox)
+						.Visibility_Lambda([Link = InArgs._StructuralLink.Widget]()
+						{
+							return Link == SNullWidget::NullWidget ? EVisibility::Collapsed : EVisibility::Visible;
+						})
+						[
+							InArgs._StructuralLink.Widget
+						]
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
