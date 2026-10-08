@@ -55,6 +55,35 @@ namespace
 		return LOCTEXT("StructuralUnsupported", "Unsupported structural connection");
 	}
 
+	FText ConnectionMenuReason(const EIssue Issue)
+	{
+		switch (Issue)
+		{
+		case EIssue::None: return FText::GetEmpty();
+		case EIssue::Unset: return LOCTEXT("StructuralMenuUnset", "Not connected");
+		case EIssue::MissingLayer: return LOCTEXT("StructuralMenuMissingLayer", "Missing layer");
+		case EIssue::MissingChild: return LOCTEXT("StructuralMenuMissingChild", "Missing child");
+		case EIssue::DuplicateIdentity: return LOCTEXT("StructuralMenuDuplicate", "Ambiguous ID");
+		case EIssue::DisabledLayer: return LOCTEXT("StructuralMenuDisabledLayer", "Layer disabled");
+		case EIssue::DisabledSource: return LOCTEXT("StructuralMenuDisabledSource", "Source disabled");
+		case EIssue::DisabledTarget: return LOCTEXT("StructuralMenuDisabledTarget", "Target disabled");
+		case EIssue::DisabledReference: return LOCTEXT("StructuralMenuDisabledReference", "Link disabled");
+		case EIssue::WrongOwnerLayer: return LOCTEXT("StructuralMenuWrongLayer", "Generator layer only");
+		case EIssue::WrongModuleType: return LOCTEXT("StructuralMenuWrongModule", "Wrong module");
+		case EIssue::ScopedModule: return LOCTEXT("StructuralMenuScopedModule", "Module scoped");
+		case EIssue::WrongSourceKind: return LOCTEXT("StructuralMenuSourceKind", "Wrong output");
+		case EIssue::WrongSourceScope: return LOCTEXT("StructuralMenuSourceScope", "Wrong source scope");
+		case EIssue::IncompleteSourceScope: return LOCTEXT("StructuralMenuIncompleteScope", "Scope unfinished");
+		case EIssue::InvalidSourceScope: return LOCTEXT("StructuralMenuInvalidScope", "Invalid scope");
+		case EIssue::ForwardSource: return LOCTEXT("StructuralMenuForwardSource", "After module");
+		case EIssue::ForwardTarget: return LOCTEXT("StructuralMenuForwardTarget", "Before module");
+		case EIssue::WrongTargetKind: return LOCTEXT("StructuralMenuTargetKind", "Wrong target type");
+		case EIssue::ScopedTarget: return LOCTEXT("StructuralMenuScopedTarget", "Target scoped");
+		case EIssue::UnavailableEffectAsset: return LOCTEXT("StructuralMenuMissingEffect", "Missing effect");
+		}
+		return LOCTEXT("StructuralMenuUnsupported", "Unsupported");
+	}
+
 	// Prepare one raw effective projection per menu. Only the destination copy receives
 	// bindings/instances, matching Gather's distinct source/Warp-target and Push-target views.
 	struct FConnectionProjection
@@ -210,6 +239,8 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 	struct FEntry
 	{
 		FText Label;
+		FText LayerLabel;
+		FGuid LayerId;
 		FMixtormatOutputReference Source;
 		FGuid Target;
 		EIssue Issue = EIssue::None;
@@ -221,14 +252,15 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
 		{
 			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
-			const FText Name = FText::Format(LOCTEXT("StructuralMenuOrigin", "{0} / {1}"),
-				Layer.DisplayName, GetStructuralChildLabel(Layer, Index));
+			const FText Name = GetStructuralChildLabel(Layer, Index);
 			const auto AddEntry = [&](const FMixtormatOutputReference& Source, const FGuid Target, const FText& Label)
 			{
 				FEntry Entry;
 				Entry.Source = Source;
 				Entry.Target = Target;
 				Entry.Label = Label;
+				Entry.LayerLabel = Layer.DisplayName;
+				Entry.LayerId = Layer.LayerId;
 				Entry.Issue = ConnectionIssue(Projection.Evaluate(Role == ERole::Source ? &Source : nullptr,
 					Role == ERole::Target ? &Target : nullptr), Role);
 				Entries.Add(MoveTemp(Entry));
@@ -247,7 +279,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 				if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
 				Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
 				Source.OutputName = TEXT("Height");
-				AddEntry(Source, FGuid(), FText::Format(LOCTEXT("StructuralMenuHeight", "{0} · Height"), Name));
+				AddEntry(Source, FGuid(), Name);
 				continue;
 			}
 			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Candidate);
@@ -257,18 +289,34 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 					&& Output.FieldKind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
 				Source.Kind = Output.FieldKind;
 				Source.OutputName = Output.Name;
-				AddEntry(Source, FGuid(), FText::Format(LOCTEXT("StructuralMenuOutput", "{0} · {1}"), Name, Output.Label));
+				const FText OutputLabel = Output.FieldKind == EMixtormatPublishedFieldKind::Flow
+					? LOCTEXT("StructuralMenuFlow", "Flow") : LOCTEXT("StructuralMenuUV", "UV");
+				AddEntry(Source, FGuid(), FText::Format(LOCTEXT("StructuralMenuOutput", "{0} · {1}"), Name, OutputLabel));
 			}
 		}
 	}
-	// Preserve authored order within each partition; unavailable choices explain their reason.
+	// Keep eligible choices first; layer captions avoid repeating long origin paths on every row.
 	for (const bool bAvailable : {true, false})
 	{
+		FGuid LastLayerId;
+		bool bStarted = false;
 		for (const FEntry& Entry : Entries)
 		{
 			if ((Entry.Issue == EIssue::None) != bAvailable) { continue; }
+			if (!bStarted && !bAvailable)
+			{
+				Menu.Separator();
+				Menu.Caption(LOCTEXT("StructuralMenuUnavailable", "Unavailable"));
+			}
+			bStarted = true;
+			if (Role == ERole::Source && Entry.LayerId != LastLayerId)
+			{
+				Menu.Caption(Entry.LayerId == Address.OwnerId
+					? LOCTEXT("StructuralMenuThisLayer", "This layer") : Entry.LayerLabel);
+				LastLayerId = Entry.LayerId;
+			}
 			const FText Label = bAvailable ? Entry.Label : FText::Format(
-				LOCTEXT("StructuralConnectionReason", "{0} — {1}"), Entry.Label, ConnectionIssueText(Entry.Issue));
+				LOCTEXT("StructuralMenuShortReason", "{0} · {1}"), Entry.Label, ConnectionMenuReason(Entry.Issue));
 			Menu.Item(Label, MixtormatIcons::Generator(), FSimpleDelegate::CreateLambda([this, Address, Role, Entry]()
 			{
 				SetStructuralConnection(Address, Role, Role == ERole::Source ? &Entry.Source : nullptr,

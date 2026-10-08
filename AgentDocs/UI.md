@@ -32,7 +32,10 @@ translation units — search the member function, not the header.
 
 Structural connection menus/labels and the atomic setter are shared by explicit child
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
-Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. D1 adds
+Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. Connection
+menus group sources by layer, use child names without repeated origin paths, abbreviate Warp
+outputs to Flow/UV, and show compact unavailable reasons. Full connection-status descriptions
+remain available through the existing connection labels. D1 adds
 optional Source → Target badges only to Height Push/Structural Warp child rows, using the
 same `SMixtormatBadge` dropdown widget as layer blend modes, with bounded label widths and
 full-label tooltips. The reusable row keeps other child layouts unchanged. D2 adds structural source/target highlight roles,
