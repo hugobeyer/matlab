@@ -877,7 +877,7 @@ void FMixtormatStyle::Refresh()
 	};
 
 	SetSvgIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-as"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-as"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/overflow"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/add"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
@@ -927,7 +927,7 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.Ids"), TEXT("Icons/ids"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	// Layer kinds. A square for a material, a circle for a fill -- the shapes the add bar uses.
 	SetSvgIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/layer-material"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/layer-fill"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/layer-fill"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 
 	// Disclosure. These were being borrowed from FAppStyle, which meant the one glyph in the stack
 	// that is not ours changed weight whenever the editor theme did.
