@@ -1373,6 +1373,39 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::StructuralWarp
 		|| bGenerator;
 
+	if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+		const FMixtormatLayerChild& Target = Layer.Children[ChildIndex];
+		const auto AddStructuralAction = [this, &Menu, TargetLayerId = Layer.LayerId, TargetChildId = Target.ChildId](
+			const EMixtormatLayerChildType ModuleType, const FText& Label)
+		{
+			TArray<FMixtormatLayer> ProposedLayers;
+			int32 ProposedLayerIndex = INDEX_NONE;
+			int32 InsertIndex = INDEX_NONE;
+			FText Reason;
+			const bool bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+				ProposedLayers, ProposedLayerIndex, InsertIndex, Reason);
+			const FText EntryLabel = bAvailable ? Label : FText::Format(
+				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Reason);
+			Menu.Item(EntryLabel, MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
+				{
+					CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
+				})).Enabled(bAvailable);
+		};
+		if (Target.Type == EMixtormatLayerChildType::Generator
+			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver)
+		{
+			AddStructuralAction(EMixtormatLayerChildType::HeightPush,
+				LOCTEXT("AddHeightPushForTarget", "Add Height Push"));
+		}
+		AddStructuralAction(EMixtormatLayerChildType::StructuralWarp,
+			LOCTEXT("AddStructuralWarpForTarget", "Add Structural Warp"));
+		Menu.Separator();
+	}
+
 	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
 		&& CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[ChildIndex]);

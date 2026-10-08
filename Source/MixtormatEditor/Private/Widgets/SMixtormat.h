@@ -427,6 +427,11 @@ private:
 	// The one creation path both menus call. Appends the child, applies the defaults that kind
 	// wants, and leaves it selected in whichever container it landed in.
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
+	FReply CreateStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType);
+	bool PrepareStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
+		int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(
