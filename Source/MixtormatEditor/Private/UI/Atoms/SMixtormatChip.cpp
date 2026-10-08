@@ -75,6 +75,7 @@ void SMixtormatChip::Construct(const FArguments& InArgs)
 	[
 		SNew(SMixtormatHelp)
 		.Text(InArgs._ToolTip)
+		.Enabled_Lambda([this]() { return IsEnabled() && (!ComboButton.IsValid() || !ComboButton->IsOpen()); })
 		[
 		SAssignNew(ComboButton, SComboButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))

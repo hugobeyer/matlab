@@ -35,7 +35,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 		.OnGetMenuContent(OnGetMenuContent)
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::BadgeWidth)
+			.WidthOverride(InArgs._bAutoWidth ? FOptionalSize() : FOptionalSize(MixtormatTokens::BadgeWidth))
 			.HeightOverride(MixtormatTokens::BadgeHeight)
 			[
 				SNew(SOverlay)
@@ -69,6 +69,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 					.Font(BadgeTextStyle.Font)
 					.ColorAndOpacity(BadgeTextStyle.ColorAndOpacity)
 					.Text(InArgs._Text)
+					.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 				]
 			]
 		]

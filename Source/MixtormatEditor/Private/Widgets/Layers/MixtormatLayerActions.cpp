@@ -1860,7 +1860,12 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 
 		&& ChildType != EMixtormatLayerChildType::IdGroup
 		&& ChildType != EMixtormatLayerChildType::OutputReference
-		&& ChildType != EMixtormatLayerChildType::Generator)
+		&& ChildType != EMixtormatLayerChildType::Generator
+		&& ChildType != EMixtormatLayerChildType::HeightBlend
+		&& ChildType != EMixtormatLayerChildType::HeightCurve
+		&& ChildType != EMixtormatLayerChildType::HeightColorRamp
+		&& ChildType != EMixtormatLayerChildType::HeightPush
+		&& ChildType != EMixtormatLayerChildType::StructuralWarp)
 	{
 		return FReply::Handled();
 	}

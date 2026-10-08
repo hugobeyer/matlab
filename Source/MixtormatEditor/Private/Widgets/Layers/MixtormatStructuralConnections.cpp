@@ -4,6 +4,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
@@ -382,17 +383,17 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralLinkChips(const FMixtormatChildAd
 		// effective projection and validating/loading a source asset on every Slate attribute tick.
 		const FText Label = GetStructuralConnectionLabel(Address, Role);
 		return SNew(SBox)
+			.MinDesiredWidth(MixtormatTokens::StructuralLinkChipMinWidth)
 			.MaxDesiredWidth(MixtormatTokens::StructuralLinkChipMaxWidth)
 			[
-				MixtormatRow::MakeChip(
-					TAttribute<FText>(Label),
-					FOnGetContent::CreateLambda([this, Address, Role]()
-					{
-						return BuildStructuralConnectionMenu(Address, Role);
-					}),
-					nullptr,
-					TAttribute<FText>(Label),
-					MixtormatTokens::StructuralLinkChipMinWidth)
+				SNew(SMixtormatBadge)
+				.bAutoWidth(true)
+				.Text(Label)
+				.ToolTip(Label)
+				.OnGetMenuContent_Lambda([this, Address, Role]()
+				{
+					return BuildStructuralConnectionMenu(Address, Role);
+				})
 			];
 	};
 	const ERole SourceRole = ERole::Source;

@@ -23,10 +23,12 @@ class SMenuAnchor;
 class SMixtormatBadge final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatBadge) {}
+	SLATE_BEGIN_ARGS(SMixtormatBadge) : _bAutoWidth(false) {}
 		SLATE_ATTRIBUTE(FText, Text)
 		SLATE_ATTRIBUTE(FText, ToolTip)
 		SLATE_EVENT(FOnGetContent, OnGetMenuContent)
+		// Connection badges size to their label within the caller's width budget.
+		SLATE_ARGUMENT(bool, bAutoWidth)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);

@@ -1504,6 +1504,15 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		case EMixtormatLayerChildType::Generator:
 			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
 			break;
+		case EMixtormatLayerChildType::HeightBlend:
+			RemoveLabel = LOCTEXT("RemoveHeightBlendChild", "Remove Height Blend");
+			break;
+		case EMixtormatLayerChildType::HeightCurve:
+			RemoveLabel = LOCTEXT("RemoveHeightCurveChild", "Remove Height Remap");
+			break;
+		case EMixtormatLayerChildType::HeightColorRamp:
+			RemoveLabel = LOCTEXT("RemoveHeightColorRampChild", "Remove Height Color Ramp");
+			break;
 		case EMixtormatLayerChildType::HeightPush:
 			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
 			break;

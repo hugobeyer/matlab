@@ -11,7 +11,7 @@
 
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateImageBrush.h"
-#include "Brushes/SlateVectorImageBrush.h"
+
 #include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 

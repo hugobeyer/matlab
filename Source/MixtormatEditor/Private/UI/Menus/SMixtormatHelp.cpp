@@ -74,6 +74,24 @@ void SMixtormatHelp::OnMouseLeave(const FPointerEvent& MouseEvent)
 	SMenuAnchor::OnMouseLeave(MouseEvent);
 }
 
+FReply SMixtormatHelp::OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	// Cancel hover help before the child opens a dropdown or context menu, without consuming its click.
+	++HelpRequest;
+	SetIsOpen(false, false);
+	return SMenuAnchor::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
+}
+
+void SMixtormatHelp::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+{
+	SMenuAnchor::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	if (IsOpen() && !HelpEnabled.Get(true))
+	{
+		++HelpRequest;
+		SetIsOpen(false, false);
+	}
+}
+
 void SMixtormatHelp::OpenHelp(const uint64 Request)
 {
 	if (Request == HelpRequest && IsHovered() && HelpEnabled.Get(true)
