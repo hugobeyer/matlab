@@ -634,6 +634,11 @@ FText SMixtormat::GetLayerChildSourceText(
 	{
 		return OutputReferenceKindText(Child);
 	}
+	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesNoise())
+	{
+		return Child.ScopeOwnerChildId.IsValid() ? LOCTEXT("NoiseGateSource", "NOISE · GATE")
+			: LOCTEXT("NoiseMaskSource", "NOISE");
+	}
 	if (!Child.ScopeOwnerChildId.IsValid())
 	{
 		return IsFlowWarp(Child)
@@ -692,6 +697,13 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 	if (Child.Type != EMixtormatLayerChildType::Mask)
 	{
 		return nullptr;
+	}
+
+	if (Child.Mask.UsesNoise() || (Child.Mask.HasPublishedSource() && Child.Mask.PublishedSourceOutput == TEXT("Value")))
+	{
+		return SNew(SToolTip)
+			.Text(FText::Format(LOCTEXT("NoiseMaskRowTooltip", "{0}\nCoverage mask; shaping and scoped filters are preserved. Inline Noise uses raw Value, not Height Scale or Normalize. Signed Value maps to 0..1, unsigned Value is clamped. A gate affects only its actual scoped owner."),
+				GetMaskSourceLabel(MakeChildAddress(LayerIndex, ChildIndex))));
 	}
 
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
@@ -797,6 +809,14 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	}
 	const FMixtormatLayerChild& Child = Group->Children[ChildIndex];
 	const FText ChildName = GetLayerChildName(Child);
+	TSharedPtr<IToolTip> NoiseTooltip;
+	if (Child.Type == EMixtormatLayerChildType::Mask && (Child.Mask.UsesNoise()
+		|| (Child.Mask.HasPublishedSource() && Child.Mask.PublishedSourceOutput == TEXT("Value"))))
+	{
+		NoiseTooltip = SNew(SToolTip).Text(FText::Format(LOCTEXT("SharedNoiseMaskHint",
+			"{0}\nShared coverage mask, projected into every member. Signed Noise Value maps to 0..1; unsigned Value is clamped. Shaping and scoped filters apply afterwards."),
+			GetMaskSourceLabel(MakeGroupChildAddress(GroupId, ChildIndex))));
+	}
 	// Doubles as "can leave the group" on the layer-side targets, so it has to match every guard
 	// MoveGroupChildToLayer applies -- otherwise a row lights up for a release that is then
 	// refused. A top-level mask filter is unreachable today (one only ever arrives scoped), but
@@ -816,6 +836,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			[
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
+			.ToolTip(NoiseTooltip)
 			.Icon()[MakeChildTypeIcon(Child)]
 			// The caller paints the branch in the existing scope gutter.
 			// KindForChild rather than GetLayerChildSourceText: that one resolves scope owners through

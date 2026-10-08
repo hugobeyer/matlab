@@ -544,23 +544,51 @@ FText SMixtormat::GetChildPasteReason(
 	}
 }
 
+bool SMixtormat::ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const
+{
+	if (!ChildClipboard.IsSet()) { return false; }
+	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance) { return false; }
+	Payload = Clipboard.Payload;
+	if (Payload.Type == EMixtormatLayerChildType::Mask) { return true; }
+	// Only the gating gesture consumes a typed scalar as coverage. Ordinary Paste keeps
+	// the original typed output reference, including Flow/UV trace and field semantics.
+	if (Clipboard.Mode != EMixtormatChildClipboardMode::PublishedOutput
+		|| Payload.Type != EMixtormatLayerChildType::OutputReference) { return false; }
+	const FMixtormatOutputReference Reference = Payload.OutputReference;
+	const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(
+		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Reference.SourceLayerId, Reference.SourceChildId);
+	if (!Source) { return false; }
+	const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
+	if (!Caps.Outputs.ContainsByPredicate([&Reference](const FMixtormatPublishedOutputDesc& Output)
+		{
+			return Output.Name == Reference.OutputName && Output.bCopyableAsMask
+				&& Output.FieldKind == Reference.Kind;
+		})) { return false; }
+	Payload = FMixtormatLayerChild();
+	Payload.Type = EMixtormatLayerChildType::Mask;
+	Payload.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+	Payload.Mask.PublishedSourceLayerId = Reference.SourceLayerId;
+	Payload.Mask.PublishedSourceChildId = Reference.SourceChildId;
+	Payload.Mask.PublishedSourceOutput = Reference.OutputName;
+	return true;
+}
+
 bool SMixtormat::CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const
 {
 	if (!ChildClipboard.IsSet())
 	{
 		return false;
 	}
-	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
+	FMixtormatLayerChild Payload;
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	const int32 Anchor = ResolveChildIndexAt(Address);
-	if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
-		|| Clipboard.Payload.Type != EMixtormatLayerChildType::Mask
-		|| !Container || !Container->IsValidIndex(Anchor)
+	if (!ResolveGatingMaskPayload(Payload)
+		|| !Container || !Container->IsValidIndex(Anchor) || (*Container)[Anchor].IsInstance()
 		|| !CanOwnScopedMasks((*Container)[Anchor]) || !CanAddScopedChild(*Container, Anchor))
 	{
 		return false;
 	}
-	FMixtormatLayerChild Payload = Clipboard.Payload;
 	Payload.ScopeOwnerChildId = (*Container)[Anchor].ChildId;
 	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
 	return CanReadPublishedOutputAt(Scope, Payload, Address.OwnerId, FindSubtreeEnd(*Container, Anchor))
@@ -577,7 +605,8 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 	const int32 Anchor = ResolveChildIndexAt(Address);
 	// A duplicate, scoped under the row it was pasted on and placed at the end of that row's
 	// subtree -- a copied output keeps reading its source, which is published before the owner runs.
-	FMixtormatLayerChild Pasted = ChildClipboard.GetValue().Payload;
+	FMixtormatLayerChild Pasted;
+	if (!ResolveGatingMaskPayload(Pasted)) { return FReply::Unhandled(); }
 	Pasted.SourceLayerId = FGuid();
 	Pasted.SourceChildId = FGuid();
 	Pasted.ScopeOwnerChildId = (*Container)[Anchor].ChildId;

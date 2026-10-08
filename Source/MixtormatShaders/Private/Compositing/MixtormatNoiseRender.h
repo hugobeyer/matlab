@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Misc/Guid.h"
 
+struct FMixtormatNoise;
+
 namespace MixtormatGpuCompositor
 {
 // The Noise module's settings, resolved from the authored payload to what the GPU pass reads.
@@ -30,6 +32,9 @@ struct FMixtormatNoiseRenderData
 	// Bars only: the direction the stripes advance across, in degrees.
 	float Direction = 0.0f;
 };
+
+// Shared field sanitization for generator gather and inline source-local masks.
+FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise);
 
 // The address one Noise module publishes under, shared by the gather (writer) and the pass
 // (reader). Same shape as the publication keys, so the pass looks settings up by the exact

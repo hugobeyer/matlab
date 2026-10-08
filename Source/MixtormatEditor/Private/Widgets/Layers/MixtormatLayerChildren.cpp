@@ -443,6 +443,57 @@ namespace MixtormatLayersPrivate
 		{
 			return true;
 		}
+		if (Child.Type == EMixtormatLayerChildType::Mask
+			&& Child.Mask.PublishedSourceOutput == TEXT("Value"))
+		{
+			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
+			if (Source && Source->Type == EMixtormatLayerChildType::Generator
+				&& Source->Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				// Validate the actual projected position, including per-member shared identities.
+				TArray<FMixtormatLayer> Proposed = Scope.GetLayers();
+				TArray<FMixtormatLayerGroup> Groups;
+				if (Scope.Groups) { Groups = *Scope.Groups; }
+				TArray<FMixtormatLayerChild>* Destination = nullptr;
+				for (FMixtormatLayer& Layer : Proposed)
+				{
+					if (Layer.LayerId == DestOwnerId) { Destination = &Layer.Children; }
+				}
+				FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, DestOwnerId);
+				if (Group) { Destination = &Group->Children; }
+				if (!Destination || InsertIndex < 0 || InsertIndex > Destination->Num()) { return false; }
+				FMixtormatLayerChild Candidate = Child;
+				// Authoring an inactive mask still validates the connection it would consume.
+				Candidate.Mask.bEnabled = true;
+				if (Destination->IsValidIndex(InsertIndex)
+					&& (*Destination)[InsertIndex].ChildId == Child.ChildId)
+				{
+					(*Destination)[InsertIndex] = Candidate;
+				}
+				else
+				{
+					Candidate.ChildId = FGuid::NewGuid();
+					Destination->Insert(Candidate, InsertIndex);
+				}
+				TArray<FMixtormatLayer> Effective;
+				MixtormatLayerGroups::BuildEffectiveLayers(Proposed, Groups, Effective);
+				bool bFound = false;
+				for (int32 LayerIndex = 0; LayerIndex < Effective.Num(); ++LayerIndex)
+				{
+					const FMixtormatLayer& Layer = Effective[LayerIndex];
+					if (Group ? Layer.GroupId != DestOwnerId : Layer.LayerId != DestOwnerId) { continue; }
+					const FGuid Id = Group ? MixtormatLayerGroups::MakeEffectiveChildId(
+						DestOwnerId, Candidate.ChildId, Layer.LayerId) : Candidate.ChildId;
+					const int32 Index = Layer.Children.IndexOfByPredicate(
+						[Id](const FMixtormatLayerChild& Row) { return Row.ChildId == Id; });
+					if (!Layer.Children.IsValidIndex(Index)
+						|| MixtormatOutputReferences::ResolvePublishedMaskSource(
+							Effective, LayerIndex, Index, Layer.Children[Index].Mask) == INDEX_NONE) { return false; }
+					bFound = true;
+				}
+				return bFound;
+			}
+		}
 		if (IsRegionIdsReference(Child))
 		{
 			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
@@ -710,11 +761,18 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::SurfaceIds:
 			Child.Filter.bSurfaceIds = true;
 			break;
+		case EMixtormatChildCreation::NoiseMask:
+		{
+			FMixtormatLayerChild NoiseDefaults;
+			NoiseDefaults.Type = EMixtormatLayerChildType::Generator;
+			NoiseDefaults.Generator.Type = EMixtormatGeneratorType::Noise;
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(NoiseDefaults);
+			Child.Mask.Noise = NoiseDefaults.Generator.Noise;
+			Child.Mask.Source = EMixtormatMaskSource::Noise;
+			Child.Mask.BlendMode = EMixtormatMaskBlendMode::Replace;
+			break;
+		}
 		case EMixtormatChildCreation::LayerValuesMask:
-			// Fixed at creation and never offered as a switch afterwards. What a mask reads is
-			// its identity -- a Layer Values mask has no asset to name and is told apart from a
-			// Texture mask by exactly this -- so flipping it on a live node would silently turn
-			// one kind of node into another, and an instance of it would change kind with it.
 			Child.Mask.Source = EMixtormatMaskSource::LayerValues;
 			// Replace, whatever is already on the stack. A new mask is added to be looked at, and
 			// Multiply against an existing mask shows nothing wherever that mask is dark -- which
@@ -1208,6 +1266,12 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			GetLayerChildName(Named));
 	}
 
+	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesNoise())
+	{
+		return Child.ScopeOwnerChildId.IsValid()
+			? LOCTEXT("NoiseGateName", "Noise Gate") : LOCTEXT("NoiseMaskName", "Noise Mask");
+	}
+
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesLayerValues())
 	{
 		// Named for the channel, because there is no asset to name it after and two of them on
@@ -1219,6 +1283,16 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.HasPublishedSource())
 	{
+		const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(
+			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+			Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
+		if (Child.Mask.PublishedSourceOutput == TEXT("Value") && Source
+			&& Source->Type == EMixtormatLayerChildType::Generator
+			&& Source->Generator.Type == EMixtormatGeneratorType::Noise)
+		{
+			return Child.ScopeOwnerChildId.IsValid() ? LOCTEXT("NoiseValueGateName", "Noise Value Gate")
+				: LOCTEXT("NoiseValueMaskName", "Noise Value Mask");
+		}
 		return Child.Mask.PublishedSourceOutput == TEXT("Wear")
 			? LOCTEXT("PublishedWearMaskName", "Wear Mask")
 			: FText::Format(

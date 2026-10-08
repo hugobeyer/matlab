@@ -301,6 +301,9 @@ namespace MixtormatGpuCompositor
 		// Reads the layer's own resolved values instead of an authored texture. Texture stays
 		// unset in that case -- there is nothing to register.
 		bool bLayerValues = false;
+		bool bNoise = false;
+		FMixtormatNoise Noise;
+		int32 SourceChildIndex = INDEX_NONE;
 		// EMixtormatLayerValueChannel by value for a Layer Values source, and 1 -- plain red --
 		// for a texture, which is the channel this shader has always read.
 		int32 SourceChannel = 1;
@@ -1549,6 +1552,8 @@ namespace MixtormatGpuCompositor
 		TMap<FGuid, FRDGTextureRef> DriverSnapshots;
 		TMap<FPublishedMaskKey, FRDGTextureRef> PublishedMaskOutputs;
 		TMap<FPublishedFieldKey, FPublishedField> PublishedFieldOutputs;
+		// Coverage conversions and inline noise are graph-local; raw typed fields stay untouched.
+		TMap<FPublishedMaskKey, FRDGTextureRef> NoiseMaskSources;
 		TSet<FPublishedFieldKey> PublishedFieldDemand;
 		// Graph-local identity cache; never retain RDG pointers across compose requests.
 		TArray<FRegionDistanceRecord, TInlineAllocator<2>> RegionDistanceRecords;

@@ -158,6 +158,9 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActions()
 						const FMixtormatLayerChild* Selected = ResolveChildAt(Owner);
 						const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 						const int32 Index = ResolveChildIndexAt(Owner);
+						Gates.Item(LOCTEXT("QuickNoiseGate", "Noise Gate"), MixtormatIcons::Mask(),
+							FSimpleDelegate::CreateLambda([this, Owner]() { CreateNoiseGate(Owner); }))
+							.Enabled(CanCreateNoiseGate(Owner));
 						Gates.Item(LOCTEXT("QuickGalleryGate", "Gallery Mask"), MixtormatIcons::Mask(),
 							FSimpleDelegate::CreateLambda([this, Owner]()
 							{
@@ -417,6 +420,20 @@ void SMixtormat::AddSharedChildMenuItems(
 			return CanPasteChild(Address, ResolveChildIndexAt(Address));
 		}));
 	// Only offered where it can land: a copied mask on a row that can own scoped masks.
+	if (Child && CanOwnScopedMasks(*Child))
+	{
+		Menu.Item(LOCTEXT("CreateNoiseGateContext", "Noise Gate"), MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }))
+			.Enabled(CanCreateNoiseGate(Address));
+	}
+	if (Child && Child->Type == EMixtormatLayerChildType::Mask)
+	{
+		Menu.SubMenu(LOCTEXT("MaskSourceContext", "Source"), nullptr,
+			FOnGetContent::CreateLambda([this, Address]()
+			{
+				return BuildMaskSourceMenuFor(Address);
+			})).Enabled(!bInstance);
+	}
 	if (CanPasteAsGatingMask(Address))
 	{
 		Menu.Item(
@@ -1121,6 +1138,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 		// Beside the other mask producers rather than under the asset picker above, because it
 		// needs no asset: it reads the layer it is added to.
 		{ LOCTEXT("AddLayerValuesChild", "Layer Values Mask"), EMixtormatChildCreation::LayerValuesMask },
+		{ LOCTEXT("AddNoiseMaskChild", "Noise Mask"), EMixtormatChildCreation::NoiseMask },
 		{ LOCTEXT("AddGeneratedChild", "Generated Mask"), EMixtormatChildCreation::GeneratedMask },
 		{ LOCTEXT("AddColorIdChild", "Color ID Mask"), EMixtormatChildCreation::ColorIdMask },
 		// Listed with the mask producers rather than under Filter, because that is what it is: it

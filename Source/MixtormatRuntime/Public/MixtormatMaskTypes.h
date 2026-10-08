@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/SoftObjectPtr.h"
 #include "MixtormatMaskShaping.h"
+#include "MixtormatGeneratorTypes.h"
 #include "MixtormatMaskTypes.generated.h"
 
 class UMixtormatMask;
@@ -38,7 +39,9 @@ UENUM(BlueprintType)
 enum class EMixtormatMaskSource : uint8
 {
 	Texture = 0 UMETA(DisplayName = "Texture"),
-	LayerValues = 1 UMETA(DisplayName = "Layer Values")
+	LayerValues = 1 UMETA(DisplayName = "Layer Values"),
+		// Appended: the same noise field producer, consumed as coverage rather than height.
+		Noise = 2 UMETA(DisplayName = "Noise")
 };
 
 // Which scalar comes out of the layer's resolved values.
@@ -164,6 +167,16 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask", meta = (EditCondition = "Source == EMixtormatMaskSource::LayerValues"))
 	EMixtormatLayerValueChannel LayerValueChannel = EMixtormatLayerValueChannel::Luminance;
+
+	// Local field settings; raw Value is mapped to coverage before ordinary mask shaping.
+	// Height output settings are retained in the shared payload but do not affect this source.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Noise", meta = (EditCondition = "Source == EMixtormatMaskSource::Noise"))
+	FMixtormatNoise Noise;
+
+	bool UsesNoise() const
+	{
+		return Source == EMixtormatMaskSource::Noise && !HasPublishedSource();
+	}
 
 	bool UsesLayerValues() const
 	{

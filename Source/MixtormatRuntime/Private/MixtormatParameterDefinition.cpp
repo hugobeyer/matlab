@@ -262,6 +262,23 @@ namespace
 				Result.bFound = true;
 			}
 		}
+		else if (Owner == EMixtormatParameterOwnerType::MaskNoise)
+		{
+			static const FMixtormatNoise Defaults;
+			if (const FProperty* Property = FMixtormatNoise::StaticStruct()->FindPropertyByName(Parameter))
+			{
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+					Result.bFound = true;
+				}
+				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+					Result.bFound = true;
+				}
+			}
+		}
 		else if (Owner == EMixtormatParameterOwnerType::Generator)
 		{
 			// Generator parameter names are unique across payloads. The owner address remains the
@@ -270,6 +287,7 @@ namespace
 			static const FMixtormatCracks CrackDefaults;
 			static const FMixtormatRockFormation RockDefaults;
 			static const FMixtormatPebbles PebbleDefaults;
+			static const FMixtormatNoise NoiseDefaults;
 			const void* Defaults = &StrataDefaults;
 			const FProperty* Property = FMixtormatStrataCarver::StaticStruct()->FindPropertyByName(Parameter);
 			if (!Property)
@@ -286,6 +304,11 @@ namespace
 			{
 				Property = FMixtormatPebbles::StaticStruct()->FindPropertyByName(Parameter);
 				Defaults = &PebbleDefaults;
+			}
+			if (!Property)
+			{
+				Property = FMixtormatNoise::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &NoiseDefaults;
 			}
 			if (Property)
 			{

@@ -31,6 +31,11 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
 
+// Flow and Coverage use the same file without the field-producer permutation domain.
+#ifndef MIXTORMAT_NOISE_VALUE_ONLY
+#define MIXTORMAT_NOISE_VALUE_ONLY 0
+#endif
+
 // EMixtormatNoiseType, mirrored as plain constants -- the USF cannot include runtime headers.
 #define NOISE_TYPE_GRADIENT    0
 #define NOISE_TYPE_VALUE       1
@@ -55,9 +60,26 @@ float PhaseOffset;
 uint ProducesIds;
 
 RWTexture2D<float> OutValue;
+#if !MIXTORMAT_NOISE_VALUE_ONLY
 RWTexture2D<float> OutHeight;
 RWTexture2D<float2> OutGradient;
 RWTexture2D<uint> OutIds;
+#endif
+
+Texture2D<float> CoverageValue;
+uint CoverageSigned;
+RWTexture2D<float> OutCoverage;
+
+// Never modify the raw/public Value; placement and shaping belong to the mask consumer.
+[numthreads(8, 8, 1)]
+void CoverageCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Value = CoverageValue.Load(int3(Pixel, 0));
+	OutCoverage[Pixel] = isfinite(Value)
+		? saturate(CoverageSigned != 0u ? 0.5f * Value + 0.5f : Value) : 0.0f;
+}
 
 Texture2D<float> CompletedHeight;
 RWTexture2D<float4> OutFlow;
@@ -147,6 +169,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		MixtormatNoiseBars(Domain, Wave, PhaseOffset, Value, Gradient);
 	}
 
+	OutValue[Pixel] = Value;
+#if !MIXTORMAT_NOISE_VALUE_ONLY
 	// The shared signed generator contract: zero-centred, so zero is the neutral height.
 	float Height = Value;
 	if (NoiseType == NOISE_TYPE_RIDGED || NoiseType == NOISE_TYPE_BILLOW)
@@ -160,11 +184,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Height = 1.0f - Value * 2.0f;
 	}
 
-	OutValue[Pixel] = Value;
 	OutHeight[Pixel] = Height;
 	OutGradient[Pixel] = Gradient;
 	if (ProducesIds != 0u)
 	{
 		OutIds[Pixel] = CellId;
 	}
+#endif
 }

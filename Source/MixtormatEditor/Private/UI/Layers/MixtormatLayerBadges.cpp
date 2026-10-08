@@ -279,6 +279,12 @@ namespace MixtormatLayerBadges
 
 	FText KindForChild(const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::Mask)
+		{
+			if (Child.Mask.UsesNoise()) { return LOCTEXT("ChildKindNoiseMask", "NOISE"); }
+			if (Child.Mask.HasPublishedSource() && Child.Mask.PublishedSourceOutput == TEXT("Value"))
+			{ return LOCTEXT("ChildKindNoiseValueMask", "NOISE · VALUE"); }
+		}
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::Effect:    return LOCTEXT("ChildKindEffect", "FX");

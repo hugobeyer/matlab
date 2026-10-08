@@ -664,6 +664,72 @@ namespace MixtormatOutputReferences
 		return Status.Issue == EStructuralLinkIssue::None ? Status.ChildIndex : INDEX_NONE;
 	}
 
+	int32 ResolvePublishedMaskSource(const TArray<FMixtormatLayer>& Layers,
+		const int32 DestinationLayerIndex, const int32 DestinationChildIndex,
+		const FMixtormatMaskLayer& Mask)
+	{
+		if (!Mask.HasPublishedSource() || !Layers.IsValidIndex(DestinationLayerIndex)
+			|| !Layers[DestinationLayerIndex].Children.IsValidIndex(DestinationChildIndex)) { return INDEX_NONE; }
+		const bool bNoiseValue = Mask.PublishedSourceOutput == FName(TEXT("Value"));
+		int32 SourceLayerIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < Layers.Num(); ++Index)
+		{
+			if (Layers[Index].LayerId != Mask.PublishedSourceLayerId) { continue; }
+			if (SourceLayerIndex != INDEX_NONE) { return INDEX_NONE; }
+			SourceLayerIndex = Index;
+			if (!bNoiseValue) { break; }
+		}
+		if (SourceLayerIndex == INDEX_NONE) { return INDEX_NONE; }
+		const FMixtormatLayer& AuthoredSourceLayer = Layers[SourceLayerIndex];
+		const int32 SourceIndex = AuthoredSourceLayer.Children.IndexOfByPredicate(
+			[&](const FMixtormatLayerChild& Child) { return Child.ChildId == Mask.PublishedSourceChildId; });
+		if (SourceIndex == INDEX_NONE || !bNoiseValue) { return SourceIndex; }
+
+		// Value stays a typed field. Only its use as coverage has this mask-specific ordering.
+		if (!Mask.bEnabled || !Layers[DestinationLayerIndex].bEnabled
+			|| SourceLayerIndex > DestinationLayerIndex || !AuthoredSourceLayer.bEnabled
+			|| AuthoredSourceLayer.Type != EMixtormatLayerType::Generator) { return INDEX_NONE; }
+		FMixtormatLayer SourceLayer = AuthoredSourceLayer;
+		MixtormatParameterBinding::ResolveChildInstances(FMixtormatBindingScope{Layers}, SourceLayer);
+		const FMixtormatLayerChild& Source = SourceLayer.Children[SourceIndex];
+		if (Source.Type != EMixtormatLayerChildType::Generator
+			|| Source.Generator.Type != EMixtormatGeneratorType::Noise
+			|| !Source.Generator.bEnabled || Source.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
+
+		// Reject ambiguous identities and malformed scopes before computing completion order.
+		TMap<FGuid, int32> ChildIndices;
+		for (int32 Index = 0; Index < SourceLayer.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Child = SourceLayer.Children[Index];
+			if (!Child.ChildId.IsValid() || ChildIndices.Contains(Child.ChildId)) { return INDEX_NONE; }
+			if (Child.ScopeOwnerChildId.IsValid() && !ChildIndices.Contains(Child.ScopeOwnerChildId)) { return INDEX_NONE; }
+			ChildIndices.Add(Child.ChildId, Index);
+		}
+		if (SourceLayerIndex != DestinationLayerIndex) { return SourceIndex; }
+
+		// A gate is evaluated by its owner, not at the gate row's authored position.
+		int32 ConsumerStart = DestinationChildIndex;
+		FGuid ParentId = Layers[DestinationLayerIndex].Children[DestinationChildIndex].ScopeOwnerChildId;
+		while (ParentId.IsValid())
+		{
+			const int32* ParentIndex = ChildIndices.Find(ParentId);
+			if (!ParentIndex || *ParentIndex >= ConsumerStart) { return INDEX_NONE; }
+			ConsumerStart = *ParentIndex;
+			ParentId = SourceLayer.Children[ConsumerStart].ScopeOwnerChildId;
+		}
+		if (SourceIndex >= ConsumerStart) { return INDEX_NONE; }
+		for (int32 Index = ConsumerStart; Index < SourceLayer.Children.Num(); ++Index)
+		{
+			ParentId = SourceLayer.Children[Index].ScopeOwnerChildId;
+			while (ParentId.IsValid())
+			{
+				if (ParentId == Source.ChildId) { return INDEX_NONE; }
+				ParentId = SourceLayer.Children[ChildIndices.FindChecked(ParentId)].ScopeOwnerChildId;
+			}
+		}
+		return SourceIndex;
+	}
+
 	int32 ResolveSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const int32 DestinationChildIndex,
 		const FMixtormatOutputReference& Reference)

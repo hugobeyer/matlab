@@ -683,6 +683,16 @@ namespace MixtormatGpuCompositor
 						LayerIndexById.Add(Layer.LayerId, LayerIndex);
 						for (const FChildRenderData& Child : Layer.Children)
 						{
+							if (Child.Type == EMixtormatLayerChildType::Mask
+								&& Child.Mask.PublishedSourceChildIndex != INDEX_NONE
+								&& Child.Mask.PublishedSourceOutput == FName(TEXT("Value")))
+							{
+								// Noise.Value masks need the raw typed field and its kind across prefix reuse.
+								Ctx.PublishedFieldDemand.Add(FPublishedFieldKey{
+									Child.Mask.PublishedSourceLayerId,
+									Child.Mask.PublishedSourceChildIndex,
+									Child.Mask.PublishedSourceOutput});
+							}
 							if (Child.Type == EMixtormatLayerChildType::OutputReference
 								&& Child.OutputReference.Source.ChildIndex != INDEX_NONE)
 							{

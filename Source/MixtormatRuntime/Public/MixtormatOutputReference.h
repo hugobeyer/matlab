@@ -6,6 +6,7 @@
 #include "MixtormatOutputReference.generated.h"
 
 struct FMixtormatLayer;
+struct FMixtormatMaskLayer;
 
 // Scalar outputs remain ordinary Mask children with their existing published-source fields.
 //
@@ -176,6 +177,14 @@ namespace MixtormatOutputReferences
 		int32 DestinationLayerIndex,
 		int32 DestinationChildIndex,
 		const FGuid& TargetChildId);
+
+	// Published mask addressing; Noise.Value requires an enabled, completed generator scope.
+	// Other published mask outputs retain their existing address-resolution behavior.
+	MIXTORMATRUNTIME_API int32 ResolvePublishedMaskSource(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 DestinationLayerIndex,
+		int32 DestinationChildIndex,
+		const FMixtormatMaskLayer& Mask);
 
 	// Returns the authored source index only after ValidateDependency succeeds.
 	MIXTORMATRUNTIME_API int32 ResolveSource(

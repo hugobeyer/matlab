@@ -273,16 +273,7 @@ void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		ChildData.Generator.bNormalizeHeight = Noise.bNoiseNormalizeHeight;
 		ChildData.Generator.HeightScale = Finite(Noise.NoiseHeightScale, Defaults.NoiseHeightScale);
 
-		FMixtormatNoiseRenderData Out;
-		Out.Type = static_cast<int32>(Noise.NoiseType);
-		Out.Seed = Noise.NoiseSeed;
-		Out.Scale = FMath::Max(Finite(Noise.NoiseScale, Defaults.NoiseScale), 1.0f);
-		Out.Detail = FMath::Clamp(Noise.NoiseDetail, 1, 8);
-		Out.Roughness = Finite(Noise.NoiseRoughness, Defaults.NoiseRoughness);
-		Out.Lacunarity = FMath::Max(Finite(Noise.NoiseLacunarity, Defaults.NoiseLacunarity), 1.0f);
-		Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
-		Out.OffsetY = Finite(Noise.NoiseOffsetY, Defaults.NoiseOffsetY);
-		Out.Direction = Finite(Noise.NoiseDirection, Defaults.NoiseDirection);
+		const FMixtormatNoiseRenderData Out = ResolveNoiseRenderData(Noise);
 		// The settings ride the store to the pass; see MixtormatNoiseRender.h for why.
 		MixtormatNoiseRenderStore().Set(FMixtormatNoiseRenderKey{Data.LayerId, SourceChildIndex}, Out);
 		break;

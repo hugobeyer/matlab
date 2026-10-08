@@ -67,10 +67,13 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 
 namespace MixtormatParameterBinding
 {
-	// Reflected payload candidates in binding order; generators have four distinct payloads.
+	// Reflected payload candidates in binding order; Generator lists every generator payload.
 	MIXTORMATRUNTIME_API TArray<UScriptStruct*> GetOwnerStructs(EMixtormatParameterOwnerType Owner);
 
 	// Resolves the active child payload using the same owner rules as parameter bindings.
+	MIXTORMATRUNTIME_API const void* GetChildOwnerData(
+		const FMixtormatLayerChild& Child, EMixtormatParameterOwnerType Owner,
+		const UScriptStruct*& OutStruct);
 	MIXTORMATRUNTIME_API void* GetMutableChildOwnerData(
 		FMixtormatLayerChild& Child, EMixtormatParameterOwnerType Owner,
 		const UScriptStruct*& OutStruct);

@@ -61,6 +61,7 @@ enum class EMixtormatChildCreation : uint8
 	ReliefFromIds,
 	BoundaryFromIds,
 	LayerValuesMask,
+	NoiseMask,
 	GeneratedMask,
 	ColorIdMask,
 	RandomFromIds,
@@ -546,6 +547,18 @@ private:
 	FMixtormatNoise* GetSelectedNoise();
 	const FMixtormatNoise* GetSelectedNoise() const;
 	TSharedRef<SWidget> BuildNoiseControls();
+	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise);
+	bool CanCreateNoiseGate(const FMixtormatChildAddress& Owner) const;
+	bool ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const;
+	void CreateNoiseGate(const FMixtormatChildAddress& Owner);
+	TSharedRef<SWidget> BuildMaskNoiseValueMenu(FMixtormatChildAddress Destination);
+	TSharedRef<SWidget> BuildMaskSourceMenuFor(FMixtormatChildAddress Destination);
+	FText GetMaskSourceLabel(const FMixtormatChildAddress& Destination) const;
+	bool CanSelectMaskNoiseValue(const FMixtormatChildAddress& Destination,
+		const FMixtormatChildAddress& Source, FText& Reason) const;
+	void SelectMaskSource(const FMixtormatChildAddress& Destination, EMixtormatMaskSource Source);
+	void SelectMaskNoiseValue(const FMixtormatChildAddress& Destination,
+		const FMixtormatChildAddress& Source);
 	FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend();
 	const FMixtormatGeneratorHeightBlend* GetSelectedHeightBlend() const;
 	TSharedRef<SWidget> BuildHeightBlendModuleControls();

@@ -39,11 +39,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
 			&& MixtormatCanOwnGeneratorFlow(Owner->Generator.Type);
 	};
-	const auto IsNoiseOwner = [ResolveOwner]()
+	const auto IsHeightOnlyOwner = [ResolveOwner]()
 	{
 		const FMixtormatLayerChild* Owner = ResolveOwner();
 		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
-			&& Owner->Generator.Type == EMixtormatGeneratorType::Noise;
+			&& !MixtormatGeneratorHasFlowBoundary(Owner->Generator.Type);
 	};
 	const auto SourceAddress = MakeAddressResolver<FMixtormatLayerEffect>(
 		Flow, &FMixtormatLayerEffect::GeneratorFlowSource);
@@ -98,18 +98,18 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 	});
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox).IsEnabled_Lambda(HasOwner);
 	AddSliderRow(Panel, SNew(SWidgetSwitcher)
-		.WidgetIndex_Lambda([IsNoiseOwner]() { return IsNoiseOwner() ? 1 : 0; })
+		.WidgetIndex_Lambda([IsHeightOnlyOwner]() { return IsHeightOnlyOwner() ? 1 : 0; })
 		+ SWidgetSwitcher::Slot()
 		[
 			MakeMemberEnum<FMixtormatLayerEffect>(
 				bGravity ? LOCTEXT("GravityFlowSteering", "Steering") : LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
 				bGravity ? LOCTEXT("GravityFlowSteeringHint", "Height bends gravity downhill. Signed Distance steers around the owning generator's boundaries; it is not a scene collision solver.")
-					: LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Noise supports Height only; it has no signed boundary field."))
+					: LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Noise and Cliff Strata support Height steering; neither publishes a signed boundary field."))
 		]
 		+ SWidgetSwitcher::Slot()
 		[
 			WrapParameterControl(MixtormatRow::MakeDropdown(bGravity ? LOCTEXT("GravityFlowSteering", "Steering") : LOCTEXT("GeneratorFlowSource", "Source"), NoiseSourceChip,
-				LOCTEXT("NoiseGeneratorFlowSourceHint", "Noise supports Height only. Signed Distance is unavailable because Noise has no boundary field.")), SourceAddress)
+				LOCTEXT("NoiseGeneratorFlowSourceHint", "This generator supports Height steering. Signed Distance is unavailable because Noise and Cliff Strata do not publish signed boundary fields.")), SourceAddress)
 		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
@@ -129,8 +129,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 					&FMixtormatLayerEffect::GravityFlowSurfaceFollow, 0.0, 2.0, 1.0, 0.01,
 					LOCTEXT("GravityFlowSurfaceFollowHint", "Steers texture-space gravity downhill through this generator's height. Zero gives uniform gravity; flat areas still flow."))
 			],
-			SNew(SBox).IsEnabled_Lambda([ActiveSource, IsNoiseOwner]()
-				{ return !IsNoiseOwner() && ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance); })
+			SNew(SBox).IsEnabled_Lambda([ActiveSource, IsHeightOnlyOwner]()
+				{ return !IsHeightOnlyOwner() && ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance); })
 			[
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GravityFlowDeflection", "Boundary Deflection"), Flow,
 					&FMixtormatLayerEffect::GravityFlowDeflection, 0.0, 1.0, 1.0, 0.01,
@@ -182,16 +182,16 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 	{
 		AddSliderRow(Panel, MixtormatRow::MakePair(
 			SNew(SBox)
-			.IsEnabled_Lambda([this, Flow, SourceAddress, IsNoiseOwner]()
+			.IsEnabled_Lambda([this, Flow, SourceAddress, IsHeightOnlyOwner]()
 			{
 				const FMixtormatLayerEffect* Effect = Flow();
-				return Effect && !IsNoiseOwner() && GetEffectiveEnumParameter(SourceAddress(), static_cast<int64>(Effect->GeneratorFlowSource))
+				return Effect && !IsHeightOnlyOwner() && GetEffectiveEnumParameter(SourceAddress(), static_cast<int64>(Effect->GeneratorFlowSource))
 					== static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance);
 			})
 			[
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowShapeOffset", "Shape Offset (UV)"), Flow,
 					&FMixtormatLayerEffect::GeneratorFlowShapeOffset, -0.25, 0.25, 0.0, 0.001,
-					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height or Noise."))
+					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height steering, Noise or Cliff Strata."))
 			],
 			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBulge", "Bulge / Pinch"), Flow,
 				&FMixtormatLayerEffect::GeneratorFlowBulge, -0.25, 0.25, 0.0, 0.001)));
@@ -1648,11 +1648,6 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 {
 	const auto Noise = [this]() { return GetSelectedNoise(); };
-	const auto IsBars = [Noise]()
-	{
-		const FMixtormatNoise* N = Noise();
-		return N && N->NoiseType == EMixtormatNoiseType::Bars;
-	};
 	TArray<EMixtormatNoiseType> NoiseTypes;
 	const UEnum* NoiseEnum = StaticEnum<EMixtormatNoiseType>();
 	for (int32 Index = 0; Index < NoiseEnum->NumEnums(); ++Index)
@@ -1680,21 +1675,6 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 		Outputs->AddSlot()[BuildChildOutputsControls(GetChildCapabilities(Probe))];
 		HeaderPreview->AddSlot()[MakeChildOutputPreviewButton(GetChildPreviewOutputSet(Probe))];
 	}
-	const auto IsMultiOctave = [Noise]()
-	{
-		const FMixtormatNoise* N = Noise();
-		if (!N) { return false; }
-		switch (N->NoiseType)
-		{
-		case EMixtormatNoiseType::FBM:
-		case EMixtormatNoiseType::Ridged:
-		case EMixtormatNoiseType::Billow:
-			return true;
-		default:
-			return false;
-		}
-	};
-
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 	{
 		const TSharedRef<SVerticalBox> Output = AddCard(Cards, LOCTEXT("NoiseOutput", "OUTPUT"));
@@ -1720,11 +1700,68 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 					}),
 					LOCTEXT("NoiseNormalizeHeightHint", "Zero-preserving max-absolute normalize of the module height.")))));
 	}
+	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
+
+	Cards->AddSlot().AutoHeight()[Outputs];
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("NoiseHeading", "NOISE"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
+					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+				[
+					HeaderPreview
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled
+								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("NoiseEnabledHint", "Enable this noise module"))
+				])
+			[
+				Cards
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise)
+{
+	const auto IsBars = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N && N->NoiseType == EMixtormatNoiseType::Bars;
+	};
+	const auto IsMultiOctave = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N && (N->NoiseType == EMixtormatNoiseType::FBM
+			|| N->NoiseType == EMixtormatNoiseType::Ridged
+			|| N->NoiseType == EMixtormatNoiseType::Billow);
+	};
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 	{
 		const TSharedRef<SVerticalBox> Pattern = AddCard(Cards, LOCTEXT("NoisePattern", "PATTERN"));
 		AddSliderRow(Pattern, MakeMemberEnum<FMixtormatNoise, EMixtormatNoiseType>(
 			LOCTEXT("NoiseType", "Type"), Noise, &FMixtormatNoise::NoiseType,
-			LOCTEXT("NoiseTypeHint", "Noise family. Worley types publish Region IDs; Bars uses Direction."),
+			LOCTEXT("NoiseTypeHint", "Noise family. Bars uses Direction; Worley generators also publish Region IDs."),
 			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
 		AddSliderRow(Pattern, MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatNoise>(
@@ -1769,44 +1806,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 			]);
 	}
 
-	Cards->AddSlot().AutoHeight()[Outputs];
-	return SNew(SBox)
-		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
-		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("NoiseHeading", "NOISE"))
-			.InitiallyExpanded(true)
-			.HeaderAction(
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
-					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
-				[
-					HeaderPreview
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					MixtormatRow::MakeCheckbox(
-						TAttribute<ECheckBoxState>::CreateLambda([this]()
-						{
-							const FMixtormatGenerator* Generator = GetSelectedGenerator();
-							return Generator && Generator->bEnabled
-								? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-						}),
-						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
-						{
-							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
-							{
-								Generator->bEnabled = State == ECheckBoxState::Checked;
-								RefreshLayeredPreview();
-								RebuildLayerList();
-							}
-						}),
-						LOCTEXT("NoiseEnabledHint", "Enable this noise module"))
-				])
-			[
-				Cards
-			]
-		];
+	return Cards;
 }
 
 #undef LOCTEXT_NAMESPACE

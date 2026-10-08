@@ -2,6 +2,7 @@
 
 #include "MixtormatGpuCompositorInternal.h"
 #include "MixtormatGpuMaskShaping.h"
+#include "MixtormatGpuNoisePasses.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
@@ -335,12 +336,42 @@ namespace MixtormatGpuCompositor
 			AddLayerValuesPass(Ctx, LayerCtx, Layer);
 			return LayerCtx.LayerValues;
 		}
+		if (Mask.bNoise)
+		{
+			const FPublishedMaskKey Key{Layer.LayerId, Mask.SourceChildIndex, FName(TEXT("InlineNoise"))};
+			if (const FRDGTextureRef* Existing = Ctx.NoiseMaskSources.Find(Key))
+			{
+				return *Existing;
+			}
+			FRDGTextureRef Coverage = AddNoiseMaskPass(Ctx, Mask.Noise);
+			Ctx.NoiseMaskSources.Add(Key, Coverage);
+			return Coverage;
+		}
 		if (!Mask.PublishedSourceOutput.IsNone())
 		{
 			const FPublishedMaskKey Key{
 				Mask.PublishedSourceLayerId,
 				Mask.PublishedSourceChildIndex,
 				Mask.PublishedSourceOutput};
+			if (Mask.PublishedSourceOutput == FName(TEXT("Value")))
+			{
+				if (const FRDGTextureRef* Existing = Ctx.NoiseMaskSources.Find(Key))
+				{
+					return *Existing;
+				}
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(FPublishedFieldKey{
+					Mask.PublishedSourceLayerId, Mask.PublishedSourceChildIndex, Mask.PublishedSourceOutput});
+				if (!Field || !Field->IsComplete()
+					|| (Field->Kind != EMixtormatPublishedFieldKind::ScalarSigned
+						&& Field->Kind != EMixtormatPublishedFieldKind::Scalar01))
+				{
+					return Ctx.EmptyDriverSignal;
+				}
+				FRDGTextureRef Coverage = AddNoiseCoveragePass(Ctx, Field->Texture,
+					Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned);
+				Ctx.NoiseMaskSources.Add(Key, Coverage);
+				return Coverage;
+			}
 			if (const FRDGTextureRef* Published = Ctx.PublishedMaskOutputs.Find(Key))
 			{
 				return *Published;

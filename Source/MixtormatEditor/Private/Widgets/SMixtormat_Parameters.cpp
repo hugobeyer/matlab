@@ -108,6 +108,12 @@ namespace
 		}
 	}
 
+	bool ChildHasParameterOwner(const FMixtormatLayerChild& Child, const EMixtormatParameterOwnerType Owner)
+	{
+		const UScriptStruct* Struct = nullptr;
+		return MixtormatParameterBinding::GetChildOwnerData(Child, Owner, Struct) != nullptr;
+	}
+
 	const void* OwnerPointer(const FMixtormatLayerChild& Child)
 	{
 		switch (Child.Type)
@@ -181,6 +187,14 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 	{
 		for (const FMixtormatLayerChild& Child : Children)
 		{
+			if (Child.Type == EMixtormatLayerChildType::Mask && Owner == &Child.Mask.Noise
+				&& OwnerStruct == FMixtormatNoise::StaticStruct())
+			{
+				Result.LayerId = ContainerId;
+				Result.ChildId = Child.ChildId;
+				Result.Owner = EMixtormatParameterOwnerType::MaskNoise;
+				return true;
+			}
 			if (Owner == OwnerPointer(Child))
 			{
 				Result.LayerId = ContainerId;
@@ -289,7 +303,7 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 		}
 		for (FMixtormatLayerChild& Child : Group.Children)
 		{
-			if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+			if (Child.ChildId == Target.ChildId && ChildHasParameterOwner(Child, Target.Owner))
 			{
 				return FindBindingIn(Child.ParameterBindings, Target, bCreate);
 			}
@@ -311,7 +325,7 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 		{
 			for (FMixtormatLayerChild& Child : Layer.Children)
 			{
-				if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+				if (Child.ChildId == Target.ChildId && ChildHasParameterOwner(Child, Target.Owner))
 				{
 					Bindings = &Child.ParameterBindings;
 					break;
@@ -337,7 +351,7 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 		}
 		for (const FMixtormatLayerChild& Child : Group.Children)
 		{
-			if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+			if (Child.ChildId == Target.ChildId && ChildHasParameterOwner(Child, Target.Owner))
 			{
 				return Child.ParameterBindings.FindByPredicate(
 					[&Target](const FMixtormatParameterBinding& Item)
@@ -364,7 +378,7 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 		{
 			for (const FMixtormatLayerChild& Child : Layer.Children)
 			{
-				if (Child.ChildId == Target.ChildId && OwnerTypeForChild(Child) == Target.Owner)
+				if (Child.ChildId == Target.ChildId && ChildHasParameterOwner(Child, Target.Owner))
 				{
 					Bindings = &Child.ParameterBindings;
 					break;
@@ -821,8 +835,12 @@ namespace
 		}
 
 		const void* OwnerPtr = nullptr;
-		UScriptStruct* OwnerStruct = nullptr;
-		if (Address.Owner == EMixtormatParameterOwnerType::MaskShaping && Child)
+		const UScriptStruct* OwnerStruct = nullptr;
+		if (Address.Owner == EMixtormatParameterOwnerType::MaskNoise && Child)
+		{
+			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
+		}
+		else if (Address.Owner == EMixtormatParameterOwnerType::MaskShaping && Child)
 		{
 			if (Child->Type == EMixtormatLayerChildType::Mask) OwnerPtr = &Child->Mask.Shaping;
 			else if (Child->Type == EMixtormatLayerChildType::Craquelure) OwnerPtr = &Child->Craquelure.Shaping;

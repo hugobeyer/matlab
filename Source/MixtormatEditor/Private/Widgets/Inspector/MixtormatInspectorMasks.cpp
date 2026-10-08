@@ -20,7 +20,8 @@ namespace
 {
 	const EMixtormatMaskSource GMixtormatMaskSources[] = {
 		EMixtormatMaskSource::Texture,
-		EMixtormatMaskSource::LayerValues
+		EMixtormatMaskSource::LayerValues,
+		EMixtormatMaskSource::Noise
 	};
 
 	const EMixtormatLayerValueChannel GMixtormatLayerValueChannels[] = {
@@ -535,30 +536,45 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 TSharedRef<SWidget> SMixtormat::BuildMaskSourceMenu()
 {
+	return BuildMaskSourceMenuFor(GetSelectedChildAddress());
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMaskSourceMenuFor(const FMixtormatChildAddress Destination)
+{
 	MixtormatMenu::FBuilder Menu;
+	const FMixtormatLayerChild* Child = ResolveChildAt(Destination);
+	const bool bEditable = Child && !Child->IsInstance();
 	for (const EMixtormatMaskSource Source : GMixtormatMaskSources)
 	{
 		Menu.Item(
 			MixtormatUI::MaskSourceText(Source),
 			nullptr,
-			FSimpleDelegate::CreateLambda([this, Source]()
+			FSimpleDelegate::CreateLambda([this, Destination, Source]()
 			{
-				if (FMixtormatMaskLayer* M = GetSelectedLayerMask())
-				{
-					M->Source = Source;
-					RefreshLayeredPreview();
-
-					// The row shows the source rather than the asset name once this changes, and
-					// the badge follows it, so the list has to be rebuilt and not just redrawn.
-					RebuildLayerList();
-				}
+				SelectMaskSource(Destination, Source);
 			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, Source]()
+			.Enabled(bEditable)
+			.Checked(TAttribute<bool>::CreateLambda([this, Destination, Source]()
 			{
-				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
-				return M && M->Source == Source;
+				const FMixtormatLayerChild* Target = ResolveChildAt(Destination);
+				return Target && !Target->Mask.HasPublishedSource() && Target->Mask.Source == Source;
 			}));
 	}
+	FMixtormatLayerChild CopiedMask;
+	const bool bCopiedMask = ResolveGatingMaskPayload(CopiedMask);
+	const FMixtormatChildAddress CopiedSource{EMixtormatChildOwnerType::Layer,
+		CopiedMask.Mask.PublishedSourceLayerId, CopiedMask.Mask.PublishedSourceChildId};
+	FMixtormatChildAddress SourceAddress = CopiedSource;
+	if (!ResolveChildAt(SourceAddress)) { SourceAddress.OwnerType = EMixtormatChildOwnerType::Group; }
+	FText PasteReason;
+	const bool bCanPasteValue = bCopiedMask && CopiedMask.Mask.PublishedSourceOutput == TEXT("Value")
+		&& CanSelectMaskNoiseValue(Destination, SourceAddress, PasteReason);
+	Menu.Item(LOCTEXT("PasteCopiedNoiseValue", "Paste Copied Noise Value"), nullptr,
+		FSimpleDelegate::CreateLambda([this, Destination, SourceAddress]()
+		{ SelectMaskNoiseValue(Destination, SourceAddress); })).Enabled(bCanPasteValue);
+	Menu.SubMenu(LOCTEXT("MaskNoiseValueFrom", "Noise Value from…"), nullptr,
+		FOnGetContent::CreateLambda([this, Destination]() { return BuildMaskNoiseValueMenu(Destination); }))
+		.Enabled(bEditable);
 	return Menu.Build();
 }
 
@@ -947,6 +963,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			{
 				return LOCTEXT("NoSelectedMask", "No mask selected");
 			}
+			if (Selected->UsesNoise() || Selected->HasPublishedSource())
+			{
+				return GetMaskSourceLabel(GetSelectedChildAddress());
+			}
 			if (Selected->UsesLayerValues())
 			{
 				// Naming the channel, because that is the whole identity of this mask -- there is
@@ -977,7 +997,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		.Visibility_Lambda([this]()
 		{
 			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
-			return M && !M->UsesLayerValues() && !M->HasPublishedSource()
+			return M && !M->UsesLayerValues() && !M->UsesNoise() && !M->HasPublishedSource()
 				? EVisibility::Visible
 				: EVisibility::Collapsed;
 		})
@@ -1024,15 +1044,31 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 					"from the asset -- so a mask built either way behaves identically."))
 		]);
 
-	// No Source row. What a mask reads is its identity, not a setting on it: a Texture Mask names
-	// an asset and places it, a Layer Values Mask names a channel of the layer it sits on and has
-	// nothing to place. Offering the two as one switchable field meant an instance could change
-	// semantic kind under whoever flipped it, and it put a page of placement controls on a node
-	// that ignores every one of them. Creation fixes the source -- Masks > Texture Mask, or a mask
-	// dragged from the gallery; Masks > Layer Values Mask -- and the rows below follow from it.
-	//
-	// EMixtormatMaskSource and FMixtormatMaskLayer::Source are untouched. The two kinds still
-	// share one serialised struct, so nothing saved needs migrating and no compositor branch moves.
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("MaskSourceLabel", "Source"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]() { return GetMaskSourceLabel(GetSelectedChildAddress()); }),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskSourceMenu), nullptr, TAttribute<FText>(), 0.0f),
+		LOCTEXT("MaskNoiseSourceHint", "Noise is inline coverage, not a height generator. Signed Value maps to 0..1; unsigned Value is clamped. Noise Value from… reads the existing generator's live completed output. Source changes preserve shaping, filters and scope; break an instance to edit its source.")));
+
+	AddSliderRow(Cards, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->UsesNoise() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			return Child && !Child->IsInstance();
+		})
+		[
+			BuildNoisePatternPlacementControls([this]() -> FMixtormatNoise*
+			{
+				FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M && M->UsesNoise() ? &M->Noise : nullptr;
+			})
+		]);
 
 	// Layer Values only, and collapsed on a texture mask where it would be a control over nothing.
 	// UsesLayerValues(), not the raw field: an explicit published source wins over either, and a

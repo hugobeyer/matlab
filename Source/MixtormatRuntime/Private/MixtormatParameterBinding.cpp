@@ -64,7 +64,9 @@ namespace
 	{
 		switch (Owner)
 		{
-		case EMixtormatParameterOwnerType::Mask: return Child.Type == EMixtormatLayerChildType::Mask;
+		case EMixtormatParameterOwnerType::Mask:
+		case EMixtormatParameterOwnerType::MaskNoise:
+			return Child.Type == EMixtormatLayerChildType::Mask;
 		case EMixtormatParameterOwnerType::Effect: return Child.Type == EMixtormatLayerChildType::Effect;
 		case EMixtormatParameterOwnerType::Generated: return Child.Type == EMixtormatLayerChildType::Generated;
 		case EMixtormatParameterOwnerType::Craquelure: return Child.Type == EMixtormatLayerChildType::Craquelure;
@@ -126,6 +128,10 @@ namespace
 			View.ConstData = &Generator.CliffStrata;
 			View.Struct = FMixtormatCliffStrata::StaticStruct();
 			break;
+		case EMixtormatGeneratorType::Noise:
+			View.ConstData = &Generator.Noise;
+			View.Struct = FMixtormatNoise::StaticStruct();
+			break;
 		default: break;
 		}
 		return View;
@@ -166,6 +172,7 @@ namespace
 		switch (Owner)
 		{
 		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; break;
+		case EMixtormatParameterOwnerType::MaskNoise: View.ConstData = &Child.Mask.Noise; break;
 		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
 		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; break;
 		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; break;
@@ -534,6 +541,7 @@ namespace MixtormatParameterBinding
 		{
 		case EMixtormatParameterOwnerType::Layer: return { FMixtormatLayer::StaticStruct() };
 		case EMixtormatParameterOwnerType::Mask: return { FMixtormatMaskLayer::StaticStruct() };
+		case EMixtormatParameterOwnerType::MaskNoise: return { FMixtormatNoise::StaticStruct() };
 		case EMixtormatParameterOwnerType::Effect: return { FMixtormatLayerEffect::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
 		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };
@@ -559,9 +567,18 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Generator:
 			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatCracks::StaticStruct(),
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
-				FMixtormatCliffStrata::StaticStruct() };
+				FMixtormatCliffStrata::StaticStruct(), FMixtormatNoise::StaticStruct() };
 		default: return {};
 		}
+	}
+
+	const void* GetChildOwnerData(
+		const FMixtormatLayerChild& Child, const EMixtormatParameterOwnerType Owner,
+		const UScriptStruct*& OutStruct)
+	{
+		const FOwnerView View = ChildOwner(Child, Owner);
+		OutStruct = View.Struct;
+		return View.ConstData;
 	}
 
 	void* GetMutableChildOwnerData(

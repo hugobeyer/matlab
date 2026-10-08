@@ -3,10 +3,12 @@
 #include "MixtormatGpuNoisePasses.h"
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatGeneratorTypes.h"
 
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
 #include "ShaderParameterStruct.h"
+#include "ShaderPermutation.h"
 
 // The Noise module's GPU pass.
 //
@@ -29,6 +31,9 @@ namespace
 	public:
 		DECLARE_GLOBAL_SHADER(FMixtormatNoiseCS);
 		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseCS, FGlobalShader);
+
+		class FValueOnlyDim : SHADER_PERMUTATION_BOOL("MIXTORMAT_NOISE_VALUE_ONLY");
+		using FPermutationDomain = TShaderPermutationDomain<FValueOnlyDim>;
 
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -63,6 +68,25 @@ namespace
 
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "MainCS", SF_Compute);
+
+	class FMixtormatNoiseCoverageCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatNoiseCoverageCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseCoverageCS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER(uint32, CoverageSigned)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CoverageValue)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseCoverageCS,
+		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "CoverageCS", SF_Compute);
 
 	// Bars: the authored direction snapped to the integer wave vector that tiles.
 	//
@@ -157,6 +181,26 @@ namespace
 	}
 }
 
+FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
+{
+	const FMixtormatNoise Defaults;
+	const auto Finite = [](const float Value, const float Fallback)
+	{
+		return FMath::IsFinite(Value) ? Value : Fallback;
+	};
+	FMixtormatNoiseRenderData Out;
+	Out.Type = static_cast<int32>(Noise.NoiseType);
+	Out.Seed = Noise.NoiseSeed;
+	Out.Scale = FMath::Max(Finite(Noise.NoiseScale, Defaults.NoiseScale), 1.0f);
+	Out.Detail = FMath::Clamp(Noise.NoiseDetail, 1, 8);
+	Out.Roughness = Finite(Noise.NoiseRoughness, Defaults.NoiseRoughness);
+	Out.Lacunarity = FMath::Max(Finite(Noise.NoiseLacunarity, Defaults.NoiseLacunarity), 1.0f);
+	Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
+	Out.OffsetY = Finite(Noise.NoiseOffsetY, Defaults.NoiseOffsetY);
+	Out.Direction = Finite(Noise.NoiseDirection, Defaults.NoiseDirection);
+	return Out;
+}
+
 void FMixtormatNoiseRenderStore::Set(const FMixtormatNoiseRenderKey& Key, const FMixtormatNoiseRenderData& Data)
 {
 	FScopeLock Lock(&Guard);
@@ -208,23 +252,27 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 		FPublishedField{EMixtormatPublishedFieldKind::Flow, Flow, Flow, Validity, false});
 }
 
-void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-	const FLayerRenderData& Layer, const int32 SourceChildIndex, FGeneratorBundle* Bundle)
+namespace
 {
-	FMixtormatNoiseRenderData Noise;
-	// No gathered settings -- the module was disabled or the gather never saw it. Leaving the
-	// module out is the same outcome a disabled generator gets.
-	if (!MixtormatNoiseRenderStore().Find(FMixtormatNoiseRenderKey{Layer.LayerId, SourceChildIndex}, Noise))
-	{
-		return;
-	}
+struct FNoiseFields
+{
+	FRDGTextureRef Value = nullptr;
+	FRDGTextureRef Height = nullptr;
+	FRDGTextureRef Gradient = nullptr;
+	FRDGTextureRef Ids = nullptr;
+};
 
+// Null Layer selects source-local, value-only dispatch, with no generator companion allocations.
+FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNoiseRenderData& Noise,
+	const FLayerRenderData* Layer, const int32 LayerIndex, const int32 SourceChildIndex)
+{
+	const bool bValueOnly = Layer == nullptr;
 	FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 	const FIntPoint Size = Ctx.Request.Resolution;
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
 	const EMixtormatNoiseType NoiseType = static_cast<EMixtormatNoiseType>(Noise.Type);
-	const bool bProducesIds = NoiseProducesIds(NoiseType);
+	const bool bProducesIds = !bValueOnly && NoiseProducesIds(NoiseType);
 
 	// Bars resolves its tileable wave and its seed phase on the CPU; every other family ignores
 	// both uniforms.
@@ -244,28 +292,31 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 			Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 	};
 	FRDGTextureRef Value = MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Noise.Value"));
-	FRDGTextureRef Height = MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Noise.Height"));
-	FRDGTextureRef Gradient = MakeTexture(PF_G32R32F, TEXT("Mixtormat.Noise.Gradient"));
+	FRDGTextureRef Height = bValueOnly ? nullptr : MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Noise.Height"));
+	FRDGTextureRef Gradient = bValueOnly ? nullptr : MakeTexture(PF_G32R32F, TEXT("Mixtormat.Noise.Gradient"));
 	// The ID map exists only where cells exist. The other families bind the context's empty ID
 	// texture instead of leaving the slot null -- the binding has to be satisfied, and the
 	// ProducesIds uniform keeps the write off it.
 	FRDGTextureRef Ids = bProducesIds
 		? MakeTexture(PF_R32_UINT, TEXT("Mixtormat.Noise.Ids"))
-		: Ctx.EmptyRegionIds;
+		: (bValueOnly ? nullptr : Ctx.EmptyRegionIds);
 
 	{
-		TShaderMapRef<FMixtormatNoiseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FMixtormatNoiseCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatNoiseCS::FValueOnlyDim>(bValueOnly);
+		TShaderMapRef<FMixtormatNoiseCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatNoiseCS::FParameters>();
 		P->OutputSize = Size;
 		// The Generator layer's UV placement, the same six values FillGeneratorPlacement writes
 		// for every other module. Kept local: that helper is file-private to the generator-pass
 		// file, and the six lines are the whole of it.
-		P->GeneratorLayer = 1u;
-		P->GeneratorUVScale = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
-		P->GeneratorUVOffset = Layer.UVOffset;
-		P->GeneratorUVRotation = Layer.Rotation;
-		P->GeneratorUVFlipU = Layer.bFlipU ? 1u : 0u;
-		P->GeneratorUVFlipV = Layer.bFlipV ? 1u : 0u;
+		P->GeneratorLayer = bValueOnly ? 0u : 1u;
+		P->GeneratorUVScale = Layer
+			? FVector2f(Layer->Tiling * Layer->UVScaleX, Layer->Tiling * Layer->UVScaleY) : FVector2f(1.0f, 1.0f);
+		P->GeneratorUVOffset = Layer ? Layer->UVOffset : FVector2f(0.0f, 0.0f);
+		P->GeneratorUVRotation = Layer ? Layer->Rotation : 0;
+		P->GeneratorUVFlipU = Layer && Layer->bFlipU ? 1u : 0u;
+		P->GeneratorUVFlipV = Layer && Layer->bFlipV ? 1u : 0u;
 		P->NoiseType = Noise.Type;
 		P->Seed = static_cast<uint32>(Noise.Seed);
 		P->Scale = Noise.Scale;
@@ -277,14 +328,62 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 		P->PhaseOffset = PhaseOffset;
 		P->ProducesIds = bProducesIds ? 1u : 0u;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
-		P->OutHeight = GraphBuilder.CreateUAV(Height);
-		P->OutGradient = GraphBuilder.CreateUAV(Gradient);
-		P->OutIds = GraphBuilder.CreateUAV(Ids);
+		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
+		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
+		P->OutIds = Ids ? GraphBuilder.CreateUAV(Ids) : nullptr;
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.Noise.L%d.C%d", LayerCtx.LayerIndex, SourceChildIndex),
+			RDG_EVENT_NAME("Mixtormat.Noise.L%d.C%d", LayerIndex, SourceChildIndex),
 			Shader, P, Groups);
 	}
+
+	return {Value, Height, Gradient, Ids};
+}
+} // namespace
+
+FRDGTextureRef AddNoiseCoveragePass(FMixtormatComposeContext& Ctx, FRDGTextureRef Value, const bool bSigned)
+{
+	check(Value);
+	const FIntPoint Size = Value->Desc.Extent;
+	FRDGTextureRef Coverage = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.Coverage"));
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseCoverageCS::FParameters>();
+	P->OutputSize = Size;
+	P->CoverageSigned = bSigned ? 1u : 0u;
+	P->CoverageValue = Value;
+	P->OutCoverage = Ctx.GraphBuilder.CreateUAV(Coverage);
+	TShaderMapRef<FMixtormatNoiseCoverageCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.Coverage"),
+		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	return Coverage;
+}
+
+FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatNoise& Noise)
+{
+	const FMixtormatNoiseRenderData Resolved = ResolveNoiseRenderData(Noise);
+	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Resolved, nullptr, INDEX_NONE, INDEX_NONE);
+	const bool bSigned = NoiseValueKind(static_cast<EMixtormatNoiseType>(Resolved.Type))
+		== EMixtormatPublishedFieldKind::ScalarSigned;
+	return AddNoiseCoveragePass(Ctx, Fields.Value, bSigned);
+}
+
+void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+	const FLayerRenderData& Layer, const int32 SourceChildIndex, FGeneratorBundle* Bundle)
+{
+	FMixtormatNoiseRenderData Noise;
+	// Preserve the generator's gathered-settings miss behavior.
+	if (!MixtormatNoiseRenderStore().Find(FMixtormatNoiseRenderKey{Layer.LayerId, SourceChildIndex}, Noise))
+	{
+		return;
+	}
+	const EMixtormatNoiseType NoiseType = static_cast<EMixtormatNoiseType>(Noise.Type);
+	const bool bProducesIds = NoiseProducesIds(NoiseType);
+	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Noise, &Layer, LayerCtx.LayerIndex, SourceChildIndex);
+	FRDGTextureRef Value = Fields.Value;
+	FRDGTextureRef Height = Fields.Height;
+	FRDGTextureRef Gradient = Fields.Gradient;
+	FRDGTextureRef Ids = Fields.Ids;
 
 	if (Bundle)
 	{

@@ -2,6 +2,7 @@
 
 #include "Compositing/MixtormatMaskGather.h"
 #include "MixtormatChildScope.h"
+#include "MixtormatOutputReference.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -29,28 +30,20 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		int32 PublishedSourceChildIndex = INDEX_NONE;
 		if (bPublishedSource)
 		{
-			for (const FMixtormatLayer& SourceLayer : EffectiveLayers)
-			{
-				if (SourceLayer.LayerId != MaskLayer.PublishedSourceLayerId)
-				{
-					continue;
-				}
-				PublishedSourceChildIndex = SourceLayer.Children.IndexOfByPredicate(
-					[&MaskLayer](const FMixtormatLayerChild& Candidate)
-					{
-						return Candidate.ChildId == MaskLayer.PublishedSourceChildId;
-					});
-				break;
-			}
+			const int32 LayerIndex = EffectiveLayers.IndexOfByPredicate(
+				[&Layer](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Layer.LayerId; });
+			PublishedSourceChildIndex = MixtormatOutputReferences::ResolvePublishedMaskSource(
+				EffectiveLayers, LayerIndex, SourceChildIndex, MaskLayer);
 		}
 
 		// A Layer Values mask reads the layer it sits on, so it needs no asset at all --
 		// which is also why it cannot be dropped for the want of one the way a texture
 		// mask is below.
 		const bool bLayerValues = MaskLayer.UsesLayerValues();
+		const bool bNoise = MaskLayer.UsesNoise();
 
 		UTexture2D* MaskTexture = nullptr;
-		if (!bPublishedSource && !bLayerValues)
+		if (!bPublishedSource && !bLayerValues && !bNoise)
 		{
 			MaskTexture = MaskLayer.MaskTexture.LoadSynchronous();
 			if (!MaskTexture)
@@ -86,11 +79,17 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			}
 		}
 		FMaskRenderData& MaskData = ChildData.Mask;
+		MaskData.SourceChildIndex = SourceChildIndex;
 		if (bPublishedSource)
 		{
 			MaskData.PublishedSourceLayerId = MaskLayer.PublishedSourceLayerId;
 			MaskData.PublishedSourceChildIndex = PublishedSourceChildIndex;
 			MaskData.PublishedSourceOutput = MaskLayer.PublishedSourceOutput;
+		}
+		else if (bNoise)
+		{
+			MaskData.bNoise = true;
+			MaskData.Noise = MaskLayer.Noise;
 		}
 		else if (bLayerValues)
 		{

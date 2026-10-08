@@ -1443,7 +1443,16 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		return FReply::Handled();
 	}
 
-	if (!CanCreateChild(Target))
+	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
+	if (bNoiseGate && !CanCreateChild(Target))
+	{
+		const FGuid OwnerId = Target.IsGroup() ? Target.GroupId
+			: (WorkingLayers.IsValidIndex(Target.LayerIndex) ? WorkingLayers[Target.LayerIndex].LayerId : FGuid());
+		if (!CanCreateNoiseGate({Target.IsGroup() ? EMixtormatChildOwnerType::Group
+			: EMixtormatChildOwnerType::Layer, OwnerId, Target.ScopeOwnerChildId}))
+		{ return FReply::Handled(); }
+	}
+	else if (!CanCreateChild(Target))
 	{
 		return FReply::Handled();
 	}
@@ -1458,6 +1467,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	{
 		return FReply::Handled();
 	}
+	// Noise creation is a discrete edit, not part of the previous/next slider scrub.
+	if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
 	if (Target.ScopeOwnerChildId.IsValid())
 	{
 		const FMixtormatChildAddress Owner = Target.IsGroup()
@@ -1484,6 +1495,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			RefreshLayeredPreview();
 			RebuildLayerList();
 		}
+		if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
 		return FReply::Handled();
 	}
 
@@ -1498,6 +1510,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			ApplyLinkDefaults(*Child, Target.GroupId);
 			FinishGroupChildEdit(Target.GroupId);
 		}
+		if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
 		return FReply::Handled();
 	}
 
@@ -1505,11 +1518,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	{
 		return FReply::Handled();
 	}
-	// Note the asymmetry with the group branch above, which is pre-existing rather than a choice
-	// made here: FinishGroupChildEdit records edit history and marks the document dirty, and no
-	// Add*ToLayer creator ever has. Creating a layer child is therefore still not undoable, the
-	// same as before this function collapsed the ten of them into one. Left alone deliberately --
-	// changing it changes the undo stack, which is not this refactor's to move.
+	// RefreshLayeredPreview owns history/dirty state for the layer creation path.
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
 	const int32 CreatedIndex = Layer.Children.AddDefaulted();
 	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
@@ -1518,6 +1527,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
 	RefreshLayeredPreview();
 	RebuildLayerList();
+	if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
 	return FReply::Handled();
 }
 
@@ -2071,7 +2081,7 @@ FReply SMixtormat::AddGeneratorFlow(
 	const FMixtormatLayerChild* ScopeOwner = ResolveChildAt(Owner);
 	if (Type == EMixtormatEffectType::GravityFlow
 		|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator
-			&& ScopeOwner->Generator.Type == EMixtormatGeneratorType::Noise))
+			&& !MixtormatGeneratorHasFlowBoundary(ScopeOwner->Generator.Type)))
 	{
 		Child.Effect.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
 	}

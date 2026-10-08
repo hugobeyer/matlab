@@ -333,6 +333,7 @@ namespace MixtormatUI
 		switch (Source)
 		{
 		case EMixtormatMaskSource::LayerValues: return LOCTEXT("MaskSourceLayerValues", "Layer Values");
+		case EMixtormatMaskSource::Noise: return LOCTEXT("MaskSourceNoise", "Noise");
 		default: return LOCTEXT("MaskSourceTexture", "Texture");
 		}
 	}
