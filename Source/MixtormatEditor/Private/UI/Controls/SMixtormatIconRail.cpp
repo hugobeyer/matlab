@@ -34,7 +34,7 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
 {
 	ActiveIndex = InArgs._ActiveIndex;
 	const Mixtormat::FMixtormatIconStyle& Role = FMixtormatThemeStore::GetResolved().Icons.Roles[
-		static_cast<uint8>(Mixtormat::EMixtormatIconRole::PanelToolbar)];
+		static_cast<uint8>(Mixtormat::EMixtormatIconRole::NavigationRail)];
 
 	TSharedRef<SVerticalBox> Rail = SNew(SVerticalBox);
 	for (int32 Index = 0; Index < InArgs._Options.Num(); ++Index)
@@ -50,8 +50,8 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
 			.Text(InArgs._ToolTips.IsValidIndex(Index) ? InArgs._ToolTips[Index] : FText::GetEmpty())
 			[
 				SNew(SBox)
-				.WidthOverride(Role.ButtonSize)
-				.HeightOverride(Role.ButtonSize)
+				.WidthOverride(FMath::Max(Role.ButtonSize, Role.HitSize))
+				.HeightOverride(FMath::Max(Role.ButtonSize, Role.HitSize))
 				[
 					SNew(SCheckBox)
 					.Style(&GetRailToggleStyle())

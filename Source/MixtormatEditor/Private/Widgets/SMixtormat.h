@@ -1514,6 +1514,7 @@ private:
 	// Default/Lumen and displacement live in GLOBAL, where there is room for them.
 	TSharedRef<SWidget> BuildPreviewRenderStrip();
 	TSharedRef<SWidget> MakePreviewScaleRow();
+	TSharedRef<SWidget> MakeCompositionResolutionControl();
 	TSharedRef<SWidget> MakePreviewFinalButton();
 	// Wraps a control cluster in the shared plate. A member rather than a file-local helper because
 	// the viewport composition and the quick-controls popup both build clusters.
@@ -1599,6 +1600,7 @@ private:
 	float GalleryDrawerHeight = 0.0f;
 	float GalleryColumnFraction = 0.67f;
 	bool bGalleryDrawerResizing = false;
+	bool bGalleryDrawerResizeMoved = false;
 	float GalleryDrawerHeightAtResizeStart = 0.0f;
 	FVector2D GalleryDrawerResizeOriginScreen = FVector2D::ZeroVector;
 	// SSplitter reports every slot's post-arrangement value, so Inspector write-back stays muted

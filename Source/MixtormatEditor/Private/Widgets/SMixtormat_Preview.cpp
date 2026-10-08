@@ -921,6 +921,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				ToggleQuickControls();
 			}))
+			.OnCameraFovChanged(FMixtormatCameraFovChanged::CreateLambda([this](const float Fov)
+			{
+				SetPreviewFov(Fov);
+			}))
 			.OnDismissQuickControls(FMixtormatDismissQuickControls::CreateLambda([this]()
 			{
 				if (!bQuickControlsOpen)

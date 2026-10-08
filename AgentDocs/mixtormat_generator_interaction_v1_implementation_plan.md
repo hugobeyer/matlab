@@ -3,7 +3,24 @@
 **Implementation specification · proposed v1 · read-only plan**  
 **Basis:** seven independent review streams (own audit, Grok, Sonnet, DeepSeek, GLM, Mistral, Qwen), the approved layer-stack visual, and direct source inspection of `hugobeyer/matlab` default branch on **2026-10-07**. The audit set names commit `0e8b6cfc89c5fdfca2c35abb99dc239d2c66b4f9`; exact line positions should be rechecked against the agent's checkout before edits.  
 **Repository:** <https://github.com/hugobeyer/matlab>  
-**Status:** architecture/UX proposal. **Nothing implemented, compiled, tested, or run by this document.**
+**Status:** original architecture/UX proposal retained below; implementation has progressed.
+
+### Current-state overlay — 2026-10-08
+
+The original proposal is not a current completion checklist. The consolidated source audit
+and targeted local reads support the following status; builds and runtime behavior are unverified.
+
+| Phase | Source-level status | Remaining work |
+| --- | --- | --- |
+| A — Runtime link status/predicates | Shared structural status and eligibility exist | Runtime acceptance |
+| B — Push parity/identity | Clipboard remapping and procedural-row paths reported implemented | Group-shared Push compatibility decision |
+| C — Order-safe moves | Guards for previously valid links reported implemented | Runtime gesture acceptance |
+| D — Connection UI | Row chips, highlighting, incoming counts and shared menus exist | Inspector caching, count edge policy and proposed hierarchy indentation |
+| E — Target-first creation | Explicit target GUID; source left unset; insertion before target | Runtime workflow acceptance |
+
+**Hierarchy indentation remains unimplemented:** structural reference edges do not reparent
+modules or alter flat execution order. Retain the proposal below for that outstanding work.
+See `code_docs/consolidated_audit_remediation_plan.md` for the follow-up scope and approval gates.
 
 > **One decision:** Retain the canonical flat `Layer.Children` order. Make Height Push and Structural Warp connections visible and editable in the layer stack; implement target-first creation. Before UI work, centralize structural-link validation and repair confirmed Height Push identity/hierarchy defects. No shader, GPU, serialization or geology changes.
 

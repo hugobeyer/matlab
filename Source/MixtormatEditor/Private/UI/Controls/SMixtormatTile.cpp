@@ -185,9 +185,10 @@ int32 SMixtormatTile::OnPaint(
 	DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
 	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled) ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
 	int32 SurfaceLayer = FMixtormatSurfacePainter::PaintBody(Elements, LayerId, Geometry, Recipe, Samples, DrawStyle);
-	SurfaceLayer = FMixtormatSurfacePainter::PaintBorders(
-		Elements, SurfaceLayer, Geometry, Recipe, Palette, WidgetStyle, Samples, DrawStyle);
-	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, SurfaceLayer + 1, WidgetStyle, bParentEnabled);
+	const int32 ContentLayer = SCompoundWidget::OnPaint(
+		Args, Geometry, CullingRect, Elements, SurfaceLayer + 1, WidgetStyle, bParentEnabled);
+	return FMixtormatSurfacePainter::PaintBorders(
+		Elements, ContentLayer + 1, Geometry, Recipe, Palette, WidgetStyle, Samples, DrawStyle);
 }
 
 FVector2D SMixtormatTile::ComputeDesiredSize(float) const

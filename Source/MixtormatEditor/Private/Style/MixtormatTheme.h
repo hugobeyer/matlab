@@ -799,6 +799,7 @@ namespace Mixtormat
 		CardLeading,
 		Menu,
 		GalleryToolbar,
+		NavigationRail,
 		Count,
 	};
 

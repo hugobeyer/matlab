@@ -28,7 +28,7 @@ namespace Mixtormat
 		}
 
 		// An icon role where the button and hit sizes are simply the glyph plus a fixed inset.
-		// Declared once so the nine roles cannot drift in *how* they pad, only in how much.
+		// Declared once so roles cannot drift in *how* they pad, only in how much.
 		FMixtormatIconStyle Icon(const float GlyphSize, const float RestOpacity,
 			const float Padding = 2.5f, const float HitPadding = 2.5f)
 		{
@@ -440,6 +440,7 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 11.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 22.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 24.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::NavigationRail)] = Icon(18.0f, 0.6f, 6.0f, 6.0f);
 
 		// ---- Typography ----------------------------------------------------------------
 		// Weights below are the ones tokens.css authors, not a guess from a bold flag. Two

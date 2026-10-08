@@ -453,6 +453,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls(const bool bMarkingMe
 	[
 		MakePreviewScaleRow()
 	];
+	if (bMarkingMenu)
+	{
+		Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
+		[
+			MakeCompositionResolutionControl()
+		];
+	}
 	if (!bMarkingMenu)
 	{
 		Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
@@ -771,14 +778,32 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewCameraControls()
 	return Controls;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
+TSharedRef<SWidget> SMixtormat::MakeCompositionResolutionControl()
 {
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
 	const TArray<FText> ResolutionOptions = {
 		LOCTEXT("Resolution1K", "1K"),
 		LOCTEXT("Resolution2K", "2K"),
 		LOCTEXT("Resolution4K", "4K")};
+	return SNew(SBox)
+		.WidthOverride(FMixtormatThemeStore::GetResolved().PreviewLayout.ResolutionControlWidth)
+		[
+			SNew(SMixtormatSegmentedControl)
+			.Options(ResolutionOptions)
+			.ActiveIndex_Lambda([this]()
+			{
+				return CompositionResolution >= 4096 ? 2 : CompositionResolution >= 2048 ? 1 : 0;
+			})
+			.OnChosen_Lambda([this](const int32 Index)
+			{
+				SetCompositionResolution(Index == 2 ? 4096 : Index == 1 ? 2048 : 1024);
+			})
+		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
+{
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
@@ -855,19 +880,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 		+ SHorizontalBox::Slot().AutoWidth().Padding(
 			FMixtormatThemeStore::GetResolved().PreviewLayout.ToolbarGap, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
 		[
-			SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().PreviewLayout.ResolutionControlWidth)
-			[
-				SNew(SMixtormatSegmentedControl)
-				.Options(ResolutionOptions)
-				.ActiveIndex_Lambda([this]()
-				{
-					return CompositionResolution >= 4096 ? 2 : CompositionResolution >= 2048 ? 1 : 0;
-				})
-				.OnChosen_Lambda([this](const int32 Index)
-				{
-					SetCompositionResolution(Index == 2 ? 4096 : Index == 1 ? 2048 : 1024);
-				})
-			]
+			MakeCompositionResolutionControl()
 		];
 }
 

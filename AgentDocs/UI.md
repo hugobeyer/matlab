@@ -107,10 +107,17 @@ Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 
 Workspace layout: Layers/Library/Global occupy a resizable left column; Layers alone can
 pop out and return by rail click or snap-back drag. The gallery is one resizable bottom
-MATERIALS/MASKS drawer over the whole workspace, replacing both gallery splitters. Its compact
-header remains draggable; collapse leaves a thin clickable restore strip with the Library icon.
+drawer over the whole workspace, replacing both gallery splitters. Its header reads `GALLERY`;
+`MATERIALS` and `MASKS` label its two panes. A header click collapses it; dragging past the normal
+Slate drag threshold resizes it. Collapse leaves a thin clickable restore strip with the Library icon.
+Fresh layouts allocate 67% to Materials and 33% to Masks. Tile selection borders paint above
+thumbnails; the Masks header also shows the selected mask name without applying it.
 Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.
 Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
 The category popup populates its family list on opening; `All` clears the category filter.
 Inspector remains dockable. These gallery changes have source review only, not visual validation.
+The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
+independent of toolbar sizing. The Q marking menu shares the existing 1K/2K/4K composition
+resolution control. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
+retains camera zoom. These additions have source review only, not build or runtime validation.
 See the overlay-workspace handoff for validation.

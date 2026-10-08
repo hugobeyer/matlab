@@ -434,12 +434,14 @@ public:
 		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
 		{
-			Owner.ZoomCamera(1.0f);
+			Owner.HandleCameraWheel(1.0f, EventArgs.Viewport
+				&& (EventArgs.Viewport->KeyState(EKeys::LeftControl) || EventArgs.Viewport->KeyState(EKeys::RightControl)));
 			return true;
 		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollDown)
 		{
-			Owner.ZoomCamera(-1.0f);
+			Owner.HandleCameraWheel(-1.0f, EventArgs.Viewport
+				&& (EventArgs.Viewport->KeyState(EKeys::LeftControl) || EventArgs.Viewport->KeyState(EKeys::RightControl)));
 			return true;
 		}
 		return FEditorViewportClient::InputKey(EventArgs);
@@ -449,7 +451,8 @@ public:
 	{
 		if (Args.Key == EKeys::MouseWheelAxis)
 		{
-			Owner.ZoomCamera(Args.AmountDepressed);
+			Owner.HandleCameraWheel(Args.AmountDepressed, Args.Viewport
+				&& (Args.Viewport->KeyState(EKeys::LeftControl) || Args.Viewport->KeyState(EKeys::RightControl)));
 			return true;
 		}
 		if (Args.Viewport && Args.Viewport->KeyState(EKeys::LeftMouseButton))
@@ -511,6 +514,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
 	OnDismissQuickControls = InArgs._OnDismissQuickControls;
+	OnCameraFovChanged = InArgs._OnCameraFovChanged;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);
@@ -1256,6 +1260,18 @@ void SMixtormatPreviewViewport::RotateLighting(
 	{
 		PreviewViewportClient->Invalidate();
 	}
+}
+
+void SMixtormatPreviewViewport::HandleCameraWheel(const float WheelDelta, const bool bControlDown)
+{
+	if (bControlDown)
+	{
+		OnCameraFovChanged.ExecuteIfBound(FMath::Clamp(
+			CameraFov - WheelDelta * MixtormatPreviewCamera::FovWheelStep,
+			MixtormatPreviewCamera::FovMinimum, MixtormatPreviewCamera::FovMaximum));
+		return;
+	}
+	ZoomCamera(WheelDelta);
 }
 
 void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)

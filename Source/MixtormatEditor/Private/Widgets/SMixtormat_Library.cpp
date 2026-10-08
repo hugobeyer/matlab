@@ -501,7 +501,7 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 			[
 				SAssignNew(GalleryDrawerHeader, SBox)
 				.HeightOverride(Gallery.DrawerHeaderHeight)
-				.ToolTipText(LOCTEXT("ResizeGalleryDrawerHint", "Drag to resize the gallery."))
+				.ToolTipText(LOCTEXT("GalleryDrawerHeaderHint", "Click to collapse the gallery. Drag to resize (G toggles)."))
 				[
 					SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)

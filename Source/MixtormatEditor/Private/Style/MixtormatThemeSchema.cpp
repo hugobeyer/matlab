@@ -279,6 +279,7 @@ void AddIconRole(
 				AddIconRole(P, EMixtormatIconRole::CardLeading, TEXT("CardLeading"), TEXT("Card Leading"), ETarget::None);
 				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"), ETarget::Menu);
 				AddIconRole(P, EMixtormatIconRole::GalleryToolbar, TEXT("GalleryToolbar"), TEXT("Gallery Toolbar"), ETarget::Gallery);
+				AddIconRole(P, EMixtormatIconRole::NavigationRail, TEXT("NavigationRail"), TEXT("Navigation Rail"), ETarget::None);
 
 
 // CONTROLS

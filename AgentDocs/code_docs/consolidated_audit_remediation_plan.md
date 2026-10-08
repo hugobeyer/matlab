@@ -1,7 +1,21 @@
 # Mixtormat — Consolidated Audit Remediation Plan
 
 Date: 2026-10-08
-Status: planning only; no implementation or runtime validation performed.
+Status: follow-up plan with localized quick-win source changes; runtime validation pending.
+
+## Local quick-win status — 2026-10-08
+
+Source edits now include unique structural localization keys, compact chip diagnostics,
+icon-role/HitSize schema exposure, the 33% Masks default and mask-selection header feedback.
+Tile borders now paint above thumbnail content to address the obscured selection-edge path.
+
+The next five source changes are also in place: shared marking-menu 1K/2K/4K controls,
+Ctrl+wheel routed through shared FOV state, an independent larger NavigationRail role,
+click-to-collapse gallery header with drag-threshold handling, and current-state doc updates.
+
+These are code changes, not verified editor results. No build, tests or Unreal session was run
+by the agent. Camera drift/damping/pan tuning, pin auto-collapse, soft shadows, helper state
+machine, group containment and noise investigation remain outstanding.
 Basis: supplied remote audit (`dbc71fe`) plus targeted local source reads.
 Local commit attribution and working-tree differences remain unverified.
 

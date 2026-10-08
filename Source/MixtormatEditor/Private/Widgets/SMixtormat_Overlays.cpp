@@ -322,6 +322,7 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 			&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(ScreenPosition))
 		{
 			bGalleryDrawerResizing = true;
+			bGalleryDrawerResizeMoved = false;
 			GalleryDrawerResizeOriginScreen = ScreenPosition;
 			GalleryDrawerHeightAtResizeStart = GalleryDrawerHeight > 0.0f
 				? GalleryDrawerHeight
@@ -384,6 +385,13 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 	}
 	if (bGalleryDrawerResizing)
 	{
+		bGalleryDrawerResizeMoved |= FVector2D::Distance(
+			GalleryDrawerResizeOriginScreen, MouseEvent.GetScreenSpacePosition())
+			>= FSlateApplication::Get().GetDragTriggerDistance();
+		if (!bGalleryDrawerResizeMoved)
+		{
+			return FReply::Handled();
+		}
 		const float DeltaY = GalleryDrawerResizeOriginScreen.Y - MouseEvent.GetScreenSpacePosition().Y;
 		const float MaximumHeight = FMath::Max(MixtormatTokens::OverlayPanelMinHeight,
 			GetCachedGeometry().GetLocalSize().Y - FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset * 2.0f);
@@ -408,9 +416,18 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 
 FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (bGalleryDrawerResizing)
+	if (bGalleryDrawerResizing && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
+		const bool bClick = !bGalleryDrawerResizeMoved
+			&& FVector2D::Distance(GalleryDrawerResizeOriginScreen, MouseEvent.GetScreenSpacePosition())
+				< FSlateApplication::Get().GetDragTriggerDistance();
 		bGalleryDrawerResizing = false;
+		bGalleryDrawerResizeMoved = false;
+		if (bClick && !bIsBaking && GalleryDrawerHeader.IsValid()
+			&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
+		{
+			ToggleBottomLibraryCollapsed();
+		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}
 	if (bLayerHomeDragPending && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
@@ -449,6 +466,7 @@ void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 	// Alt-tab or a modal mid-drag: drop the interaction rather than follow a mouse that is gone.
 	bLayerHomeDragPending = false;
 	bGalleryDrawerResizing = false;
+	bGalleryDrawerResizeMoved = false;
 	MixtormatOverlay::CancelInteraction(InspectorOverlay);
 	MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);

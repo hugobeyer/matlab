@@ -118,6 +118,7 @@ namespace MixtormatPreviewScreenPercentage
 // something, so the client only consumes the key when it had an effect and the viewport's own
 // Escape behaviour is untouched otherwise.
 DECLARE_DELEGATE_RetVal(bool, FMixtormatDismissQuickControls);
+DECLARE_DELEGATE_OneParam(FMixtormatCameraFovChanged, float);
 
 class SMixtormatPreviewViewport final : public SEditorViewport
 {
@@ -133,6 +134,7 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnRequestQuickControls)
 		// Escape in the viewport: the workspace closes them again.
 		SLATE_EVENT(FMixtormatDismissQuickControls, OnDismissQuickControls)
+		SLATE_EVENT(FMixtormatCameraFovChanged, OnCameraFovChanged)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -207,6 +209,7 @@ private:
 	void OrbitCamera(float YawDelta, float PitchDelta);
 	void RotateLighting(float YawDelta, float PitchDelta);
 	void ZoomCamera(float ZoomDelta);
+	void HandleCameraWheel(float WheelDelta, bool bControlDown);
 	void ToggleOverlayUi();
 	void ToggleDisplacement();
 	void CycleChannelPreview();
@@ -271,6 +274,7 @@ private:
 	FSimpleDelegate OnCycleModulePreview;
 	FSimpleDelegate OnRequestQuickControls;
 	FMixtormatDismissQuickControls OnDismissQuickControls;
+	FMixtormatCameraFovChanged OnCameraFovChanged;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
