@@ -71,25 +71,6 @@ namespace MixtormatLayersPrivate
 		return LOCTEXT("OutputReferenceKind", "REF · FIELD");
 	}
 
-	// Tree connector for a scoped row: a tee while another child of the same owner follows it,
-	// an elbow on the last one. Null for a top-level child.
-
-	const FSlateBrush* ScopeConnectorFor(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex)
-	{
-		if (!Children.IsValidIndex(ChildIndex) || !Children[ChildIndex].ScopeOwnerChildId.IsValid())
-		{
-			return nullptr;
-		}
-		const FGuid OwnerId = Children[ChildIndex].ScopeOwnerChildId;
-		for (int32 Later = ChildIndex + 1; Later < Children.Num(); ++Later)
-		{
-			if (Children[Later].ScopeOwnerChildId == OwnerId)
-			{
-				return MixtormatIcons::TreeTee();
-			}
-		}
-		return MixtormatIcons::TreeElbow();
-	}
 
 	// Indentation represents authored scope, not an ID producer-consumer relationship.
 

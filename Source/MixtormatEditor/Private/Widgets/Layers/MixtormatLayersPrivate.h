@@ -69,7 +69,6 @@ namespace MixtormatLayersPrivate
 
 	FText OutputReferenceKindText(const FMixtormatLayerChild& Child);
 
-	const FSlateBrush* ScopeConnectorFor(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex);
 
 	int32 GetDisplayScopeDepth(const TArray<FMixtormatLayerChild>& Children, const int32 ChildIndex);
 

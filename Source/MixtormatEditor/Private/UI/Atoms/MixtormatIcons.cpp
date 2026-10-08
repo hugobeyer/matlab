@@ -52,13 +52,7 @@ namespace MixtormatIcons
 	const FSlateBrush* ChevronUp() { return Get(TEXT("Mixtormat.Icon.ChevronUp")); }
 	const FSlateBrush* ChevronDownBold() { return Get(TEXT("Mixtormat.Icon.ChevronDownBold")); }
 	const FSlateBrush* HierarchyRoot() { return Get(TEXT("Mixtormat.Icon.HierarchyRoot")); }
-	const FSlateBrush* Indent1() { return Get(TEXT("Mixtormat.Icon.Indent1")); }
-	const FSlateBrush* Indent2() { return Get(TEXT("Mixtormat.Icon.Indent2")); }
-	const FSlateBrush* Indent3() { return Get(TEXT("Mixtormat.Icon.Indent3")); }
-	const FSlateBrush* TreeElbow() { return Get(TEXT("Mixtormat.Icon.TreeElbow")); }
-	const FSlateBrush* TreeBranchDotted() { return Get(TEXT("Mixtormat.Icon.TreeBranchDotted")); }
-	const FSlateBrush* TreeTee() { return Get(TEXT("Mixtormat.Icon.TreeTee")); }
-	const FSlateBrush* TreeCross() { return Get(TEXT("Mixtormat.Icon.TreeCross")); }
+
 
 	const FSlateBrush* Eye()          { return Get(TEXT("Mixtormat.Icon.Eye")); }
 	const FSlateBrush* EyeOff()       { return Get(TEXT("Mixtormat.Icon.EyeOff")); }

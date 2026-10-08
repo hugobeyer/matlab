@@ -50,13 +50,7 @@ namespace MixtormatIcons
 	const FSlateBrush* ChevronUp();
 	const FSlateBrush* ChevronDownBold();
 	const FSlateBrush* HierarchyRoot();
-	const FSlateBrush* Indent1();
-	const FSlateBrush* Indent2();
-	const FSlateBrush* Indent3();
-	const FSlateBrush* TreeElbow();
-	const FSlateBrush* TreeBranchDotted();
-	const FSlateBrush* TreeTee();
-	const FSlateBrush* TreeCross();
+
 
 	const FSlateBrush* Eye();
 	const FSlateBrush* EyeOff();

@@ -901,8 +901,8 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/documentation"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/feedback"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
 	SetSvgIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/light-neutral"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/light-soft"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/light-dramatic"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/light-soft"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/light-dramatic"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/light-rim"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
@@ -935,19 +935,13 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 
-	// Hierarchy and indentation glyphs: tree connectors for scoped children and indent levels.
+	// Disclosure and hierarchy-root glyphs. Tree rails and indentation are geometry-painted.
 	{
 		const FVector2D Size(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize);
 		SetSvgIcon(TEXT("Mixtormat.Icon.ChevronUp"), TEXT("Icons/chevron-up"), Size);
 		SetSvgIcon(TEXT("Mixtormat.Icon.ChevronDownBold"), TEXT("Icons/chevron-down-bold"), Size);
 		SetSvgIcon(TEXT("Mixtormat.Icon.HierarchyRoot"), TEXT("Icons/hierarchy-root"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.Indent1"), TEXT("Icons/indent-1"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.Indent2"), TEXT("Icons/indent-2"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.Indent3"), TEXT("Icons/indent-3"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.TreeElbow"), TEXT("Icons/tree-elbow"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.TreeBranchDotted"), TEXT("Icons/tree-branch-dotted"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.TreeTee"), TEXT("Icons/tree-tee"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.TreeCross"), TEXT("Icons/tree-cross"), Size);
+
 	}
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the

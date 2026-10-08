@@ -23,8 +23,7 @@ class SMixtormatLayerChildRow final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerChildRow)
-		: _Connector(nullptr)
-		, _StructuralHighlightRole(EStructuralLinkHighlightRole::None)
+		: _StructuralHighlightRole(EStructuralLinkHighlightRole::None)
 		, _bActive(true)
 		, _bSelected(false)
 		, _bInstanceSource(false)
@@ -36,9 +35,7 @@ public:
 		SLATE_NAMED_SLOT(FArguments, Icon)
 		// Optional compact connection controls, supplied only for structural module rows.
 		SLATE_NAMED_SLOT(FArguments, StructuralLink)
-		// Tree connector drawn before the glyph for a scoped child: a tee while more children of
-		// the same owner follow, an elbow on the last one. Null for a top-level child.
-		SLATE_ARGUMENT(const FSlateBrush*, Connector)
+
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Kind)
 		SLATE_ATTRIBUTE(FText, Badge)

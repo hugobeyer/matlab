@@ -82,13 +82,10 @@ Keys follow the rule above; only the PNG file is listed beside each wrapper.
 - `ChevronUp` · `chevron-up.png`
 - `ChevronDownBold` · `chevron-down-bold.png`
 - `HierarchyRoot` · `hierarchy-root.png`
-- `Indent1` · `indent-1.png`
-- `Indent2` · `indent-2.png`
-- `Indent3` · `indent-3.png`
-- `TreeElbow` · `tree-elbow.png`
-- `TreeBranchDotted` · `tree-branch-dotted.png`
-- `TreeTee` · `tree-tee.png`
-- `TreeCross` · `tree-cross.png`
+Tree/indent brushes are no longer registered or exposed by `MixtormatIcons`.
+`SMixtormatLayerHierarchy` paints the active hierarchy rails and branches from theme metrics.
+The unused brush-based row argument, lookup helper and legacy connector widget were removed;
+existing image assets remain on disk. No tree/indent SVG replacements are needed.
 
 ### Scalar ramp
 

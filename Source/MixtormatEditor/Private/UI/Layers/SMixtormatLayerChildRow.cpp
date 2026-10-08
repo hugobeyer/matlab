@@ -9,8 +9,7 @@
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
-#include "UI/Layers/SMixtormatLayerConnector.h"
-#include "UI/Atoms/MixtormatIcons.h"
+
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -129,21 +128,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.ToolTipText(LOCTEXT("ChildToggleHint", "Enable or disable this child."))
 						.OnClicked(InArgs._OnToggleActive)
 					]
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, Layout.ItemGap, 0.0f)
-					[
-						// Keep the caller's scoped/last-child decision and the original column width.
-						SNew(SBox)
-						.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
-						.HeightOverride(Layout.ChildRowHeight)
-						.Visibility(InArgs._Connector ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
-						[
-							SNew(SMixtormatLayerConnector)
-							.bLast(InArgs._Connector == MixtormatIcons::TreeElbow())
-						]
-					]
+
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
