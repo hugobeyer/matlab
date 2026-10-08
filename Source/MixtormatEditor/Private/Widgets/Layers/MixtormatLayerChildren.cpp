@@ -1433,6 +1433,11 @@ FMixtormatLayerChild* SMixtormat::AppendGroupChild(
 	const FGuid GroupId,
 	const EMixtormatLayerChildType ChildType)
 {
+	if (ChildType == EMixtormatLayerChildType::HeightPush
+		|| ChildType == EMixtormatLayerChildType::StructuralWarp)
+	{
+		return nullptr;
+	}
 	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
 	if (!Group)
 	{

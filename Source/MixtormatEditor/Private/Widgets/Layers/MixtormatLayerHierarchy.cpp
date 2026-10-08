@@ -30,6 +30,7 @@ namespace MixtormatLayersPrivate
 		// because it can name a Flow or UV field as readily as an ID map.
 		return SNew(SImage)
 			.Image(Child.Type == EMixtormatLayerChildType::Generator
+				|| Child.Type == EMixtormatLayerChildType::HeightPush
 				|| Child.Type == EMixtormatLayerChildType::StructuralWarp
 				? MixtormatIcons::Generator()
 				: Child.Type == EMixtormatLayerChildType::Effect
@@ -1086,7 +1087,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::HeightBlend
 			|| Child.Type == EMixtormatLayerChildType::HeightCurve
 			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp
-						|| Child.Type == EMixtormatLayerChildType::StructuralWarp;
+		|| Child.Type == EMixtormatLayerChildType::HeightPush
+		|| Child.Type == EMixtormatLayerChildType::StructuralWarp;
 		const FText ChildName = GetLayerChildName(Child);
 
 		Container->AddChild(

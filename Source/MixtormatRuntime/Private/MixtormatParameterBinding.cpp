@@ -624,6 +624,11 @@ namespace MixtormatParameterBinding
 	{
 		const FGuid OldLayerId = Layer.LayerId;
 		const FGuid NewLayerId = FGuid::NewGuid();
+		TSet<FGuid> OriginalChildIds;
+		for (const FMixtormatLayerChild& Child : Layer.Children)
+		{
+			OriginalChildIds.Add(Child.ChildId);
+		}
 		TMap<FGuid, FGuid> ChildIdRemap;
 		if (bRegenerateChildren)
 		{
@@ -692,7 +697,21 @@ namespace MixtormatParameterBinding
 					Child.BoundaryId.RegionIdsSource.SourceChildId = *NewSourceChildId;
 				}
 			}
-			if (Child.StructuralWarp.Source.SourceLayerId == OldLayerId)
+			if (Child.HeightPush.Source.SourceLayerId == OldLayerId
+				&& OriginalChildIds.Contains(Child.HeightPush.Source.SourceChildId))
+			{
+				Child.HeightPush.Source.SourceLayerId = NewLayerId;
+				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.HeightPush.Source.SourceChildId))
+				{
+					Child.HeightPush.Source.SourceChildId = *NewSourceChildId;
+				}
+			}
+			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.HeightPush.TargetChildId))
+			{
+				Child.HeightPush.TargetChildId = *NewTargetChildId;
+			}
+			if (Child.StructuralWarp.Source.SourceLayerId == OldLayerId
+				&& OriginalChildIds.Contains(Child.StructuralWarp.Source.SourceChildId))
 			{
 				Child.StructuralWarp.Source.SourceLayerId = NewLayerId;
 				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.StructuralWarp.Source.SourceChildId))
@@ -735,23 +754,26 @@ namespace MixtormatParameterBinding
 
 		TMap<FGuid, FGuid> OwnerIdRemap;
 		TMap<FGuid, FGuid> ChildIdRemap;
+		TMap<FGuid, TSet<FGuid>> OriginalOwnerChildIds;
 		const auto AddOwner = [&OwnerIdRemap](const FGuid& Id) { OwnerIdRemap.Add(Id, FGuid::NewGuid()); };
-		const auto AddChildren = [&ChildIdRemap](TArray<FMixtormatLayerChild>& Children)
+		const auto AddChildren = [&ChildIdRemap, &OriginalOwnerChildIds](const FGuid& OwnerId,
+			TArray<FMixtormatLayerChild>& Children)
 		{
 			for (FMixtormatLayerChild& Child : Children)
 			{
 				ChildIdRemap.Add(Child.ChildId, FGuid::NewGuid());
+				OriginalOwnerChildIds.FindOrAdd(OwnerId).Add(Child.ChildId);
 			}
 		};
 		for (FMixtormatLayer& Layer : Layers)
 		{
 			AddOwner(Layer.LayerId);
-			AddChildren(Layer.Children);
+			AddChildren(Layer.LayerId, Layer.Children);
 		}
 		for (FMixtormatLayerGroup& Group : Groups)
 		{
 			AddOwner(Group.GroupId);
-			AddChildren(Group.Children);
+			AddChildren(Group.GroupId, Group.Children);
 		}
 
 		const auto RemapGuid = [](FGuid& Id, const TMap<FGuid, FGuid>& Remap)
@@ -768,7 +790,8 @@ namespace MixtormatParameterBinding
 			RemapGuid(Binding.Driver.SourceLayerId, OwnerIdRemap);
 			RemapGuid(Binding.Driver.SourceChildId, ChildIdRemap);
 		};
-		const auto RemapChildren = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap, &RemapBinding](TArray<FMixtormatLayerChild>& Children)
+		const auto RemapChildren = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap, &RemapBinding,
+			&OriginalOwnerChildIds](const FGuid& OldOwnerId, TArray<FMixtormatLayerChild>& Children)
 		{
 			for (FMixtormatLayerChild& Child : Children)
 			{
@@ -782,9 +805,31 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.OutputReference.SourceChildId, ChildIdRemap);
 				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.StructuralWarp.Source.SourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.StructuralWarp.Source.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.StructuralWarp.TargetChildId, ChildIdRemap);
+				// Structural sources are owner/child pairs: a coincident child GUID in another
+				// owner must not make an external or dangling address follow this copied set.
+				const auto RemapStructuralSource = [&](FMixtormatOutputReference& Source)
+				{
+					const TSet<FGuid>* SourceChildren = OriginalOwnerChildIds.Find(Source.SourceLayerId);
+					if (SourceChildren && SourceChildren->Contains(Source.SourceChildId))
+					{
+						RemapGuid(Source.SourceLayerId, OwnerIdRemap);
+						RemapGuid(Source.SourceChildId, ChildIdRemap);
+					}
+				};
+				RemapStructuralSource(Child.HeightPush.Source);
+				RemapStructuralSource(Child.StructuralWarp.Source);
+				const TSet<FGuid>* OwnerChildren = OriginalOwnerChildIds.Find(OldOwnerId);
+				if (OwnerChildren)
+				{
+					if (OwnerChildren->Contains(Child.HeightPush.TargetChildId))
+					{
+						RemapGuid(Child.HeightPush.TargetChildId, ChildIdRemap);
+					}
+					if (OwnerChildren->Contains(Child.StructuralWarp.TargetChildId))
+					{
+						RemapGuid(Child.StructuralWarp.TargetChildId, ChildIdRemap);
+					}
+				}
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapBinding(Binding);
@@ -794,18 +839,20 @@ namespace MixtormatParameterBinding
 
 		for (FMixtormatLayer& Layer : Layers)
 		{
+			const FGuid OldOwnerId = Layer.LayerId;
 			RemapGuid(Layer.LayerId, OwnerIdRemap);
 			RemapGuid(Layer.GroupId, OwnerIdRemap);
 			for (FMixtormatParameterBinding& Binding : Layer.ParameterBindings)
 			{
 				RemapBinding(Binding);
 			}
-			RemapChildren(Layer.Children);
+			RemapChildren(OldOwnerId, Layer.Children);
 		}
 		for (FMixtormatLayerGroup& Group : Groups)
 		{
+			const FGuid OldOwnerId = Group.GroupId;
 			RemapGuid(Group.GroupId, OwnerIdRemap);
-			RemapChildren(Group.Children);
+			RemapChildren(OldOwnerId, Group.Children);
 		}
 	}
 
@@ -1137,6 +1184,11 @@ namespace MixtormatParameterBinding
 				&& Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
 			{
 				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
+			}
+			if (Child.HeightPush.Source.SourceChildId == ChildId
+				&& Child.HeightPush.Source.SourceLayerId == OldLayerId)
+			{
+				Child.HeightPush.Source.SourceLayerId = NewLayerId;
 			}
 			if (Child.StructuralWarp.Source.SourceChildId == ChildId
 				&& Child.StructuralWarp.Source.SourceLayerId == OldLayerId)

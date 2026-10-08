@@ -639,8 +639,8 @@ FReply SMixtormat::MoveChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
-	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp
-		&& WorkingLayers[DestLayerIndex].Type != EMixtormatLayerType::Generator)
+	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::HeightPush
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp)
 	{
 		return FReply::Unhandled();
 	}
@@ -713,7 +713,8 @@ FReply SMixtormat::MoveChildToGroup(
 	{
 		return FReply::Unhandled();
 	}
-	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp)
+	if (SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::HeightPush
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::StructuralWarp)
 	{
 		return FReply::Unhandled();
 	}
@@ -772,6 +773,17 @@ bool SMixtormat::CanMovePublishedOutputs(
 		return false;
 	}
 	const int32 Count = FindSubtreeEnd(*SourceChildren, SourceIndex) - SourceIndex;
+	for (int32 Index = SourceIndex; Index < SourceIndex + Count; ++Index)
+	{
+		const EMixtormatLayerChildType Type = (*SourceChildren)[Index].Type;
+		if ((Type == EMixtormatLayerChildType::HeightPush || Type == EMixtormatLayerChildType::StructuralWarp)
+			&& (Source.OwnerType != Dest.OwnerType || Source.OwnerId != Dest.OwnerId || Dest.ChildId.IsValid()))
+		{
+			// Structural targets are layer-local. A containing subtree cannot carry a module
+			// across owners or turn it into a scoped child behind the direct move guards.
+			return false;
+		}
+	}
 	if (InsertIndex < 0 || InsertIndex > DestChildren->Num()
 		|| (SourceChildren == DestChildren && InsertIndex > SourceIndex && InsertIndex < SourceIndex + Count))
 	{

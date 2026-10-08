@@ -233,8 +233,8 @@ TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex
 				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
 			})).Enabled(!WorkingLayers.IsValidIndex(LayerIndex)
 				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-				|| ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::StructuralWarp
-				|| WorkingLayers[DestIndex].Type == EMixtormatLayerType::Generator);
+				|| (ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::HeightPush
+					&& ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::StructuralWarp));
 	}
 	if (Menu.IsEmpty())
 	{
@@ -1369,6 +1369,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
+		|| RowType == EMixtormatLayerChildType::HeightPush
 		|| RowType == EMixtormatLayerChildType::StructuralWarp
 		|| bGenerator;
 
@@ -1469,6 +1470,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::Generator:
 			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
+			break;
+		case EMixtormatLayerChildType::HeightPush:
+			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
 			break;
 		case EMixtormatLayerChildType::StructuralWarp:
 			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");

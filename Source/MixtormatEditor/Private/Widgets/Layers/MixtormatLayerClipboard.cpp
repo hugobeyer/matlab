@@ -45,6 +45,11 @@ namespace MixtormatLayersPrivate
 			RemapPair(Copy.OutputReference.SourceLayerId, Copy.OutputReference.SourceChildId);
 			RemapPair(Copy.BoundaryId.RegionIdsSource.SourceLayerId, Copy.BoundaryId.RegionIdsSource.SourceChildId);
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
+			RemapPair(Copy.HeightPush.Source.SourceLayerId, Copy.HeightPush.Source.SourceChildId);
+			if (const FGuid* Target = ChildIdRemap.Find(Copy.HeightPush.TargetChildId))
+			{
+				Copy.HeightPush.TargetChildId = *Target;
+			}
 			RemapPair(Copy.StructuralWarp.Source.SourceLayerId, Copy.StructuralWarp.Source.SourceChildId);
 			if (const FGuid* Target = ChildIdRemap.Find(Copy.StructuralWarp.TargetChildId))
 			{
@@ -207,7 +212,19 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return INDEX_NONE;
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
-	if (Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp)
+	if (Clipboard.Mode == EMixtormatChildClipboardMode::Copy
+		&& Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup
+		&& ChildClipboardScopedRows.ContainsByPredicate([](const FMixtormatLayerChild& Child)
+		{
+			return Child.Type == EMixtormatLayerChildType::HeightPush
+				|| Child.Type == EMixtormatLayerChildType::StructuralWarp;
+		}))
+	{
+		// Legacy invalid subtrees remain authored, but a paste must not create new scoped modules.
+		return INDEX_NONE;
+	}
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
+		|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp)
 	{
 		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
 		{
@@ -239,7 +256,8 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			? Clipboard.Source.ChildId : FGuid();
 		FGuid PublishedOwnerId, PublishedChildId;
 		const bool bPublished = GetPublishedOutputSource(Payload, PublishedOwnerId, PublishedChildId);
-		if (!bScoped && (bPublished || Payload.Type == EMixtormatLayerChildType::StructuralWarp)
+		if (!bScoped && (bPublished || Payload.Type == EMixtormatLayerChildType::HeightPush
+			|| Payload.Type == EMixtormatLayerChildType::StructuralWarp)
 			&& DestContainer->IsValidIndex(Insert)
 			&& (*DestContainer)[Insert].ScopeOwnerChildId.IsValid())
 		{
@@ -269,6 +287,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
 		}
 		else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			&& Payload.Type != EMixtormatLayerChildType::HeightPush
 			&& Payload.Type != EMixtormatLayerChildType::StructuralWarp
 			&& DestContainer->IsValidIndex(AnchorChildIndex)
 			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
@@ -407,6 +426,13 @@ FText SMixtormat::GetChildPasteReason(
 	}
 	const FMixtormatChildClipboard& Clipboard = ChildClipboard.GetValue();
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Dest);
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
+		|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp)
+	{
+		return CanPasteChild(Dest, AnchorChildIndex)
+			? LOCTEXT("StructuralPasteReady", "Place a layer-local structural module. Saved connections are retained; no source or target is chosen automatically.")
+			: LOCTEXT("StructuralPasteBlocked", "Requires an unscoped placement in a Generator layer and valid instance ordering; shared groups are unsupported.");
+	}
 	if (Container->IsValidIndex(AnchorChildIndex)
 		&& (*Container)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
 	{
