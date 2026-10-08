@@ -650,7 +650,7 @@ namespace MixtormatTokens
 	// The quick-controls popup's centre gap: the hole the pointer sits in, between the lighting card
 	// Structural guide tessellation and bloom falloff; user-retunable presentation values live in Preview metrics.
 	inline int32 QuickControlsGuideAxisSegments = 7;
-	inline int32 QuickControlsGuideGlowRings = 7;
+	inline int32 QuickControlsGuideGlowRings = 48;
 	inline float QuickControlsGuideGlowRingStep = 14.0f;
 	inline float QuickControlsGuideGlowOpacityMin = 0.004f;
 	inline float QuickControlsGuideGlowOpacityStep = 0.0025f;

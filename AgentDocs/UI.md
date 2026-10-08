@@ -119,6 +119,8 @@ The category popup populates its family list on opening; `All` clears the catego
 Inspector remains dockable. These gallery changes have source review only, not visual validation.
 The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
 independent of toolbar sizing. The Q marking menu shares the existing 1K/2K/4K composition
-resolution control. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
+resolution control. Its backdrop is a centre-dark, edge-transparent vignette behind the cards;
+UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
+IDs remain unchanged for theme compatibility, but no longer describe a light bloom. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
 retains camera zoom. These additions have source review only, not build or runtime validation.
 See the overlay-workspace handoff for validation.

@@ -52,22 +52,26 @@ namespace
 			const FLinearColor Base = FMixtormatThemeStore::GetResolved().Palette.Get(
 				Mixtormat::EMixtormatColorRole::TextMuted) * WidgetStyle.GetColorAndOpacityTint();
 
-			// Stacked rounded discs make a low-contrast centre bloom without a texture dependency.
+			// Black source-over is destination * (1 - alpha): it darkens the viewport without
+			// needing to sample it. Normalize overlapping discs to the authored centre opacity.
 			const Mixtormat::FMixtormatPreviewMetrics& Preview = FMixtormatThemeStore::GetResolved().PreviewLayout;
-			for (int32 Ring = 0; Ring < MixtormatTokens::QuickControlsGuideGlowRings; ++Ring)
+			const int32 RingCount = MixtormatTokens::QuickControlsGuideGlowRings;
+			const float CenterOpacity = FMath::Clamp(Preview.QuickControlsGuideGlowOpacity
+				* WidgetStyle.GetColorAndOpacityTint().A, 0.0f, 1.0f);
+			float PreviousOpacity = 0.0f;
+			for (int32 Ring = 0; Ring < RingCount && Preview.QuickControlsGuideGlowDiameter > 0.0f; ++Ring)
 			{
+				const float T = static_cast<float>(Ring + 1) / RingCount;
 				const float Diameter = Preview.QuickControlsGuideGlowDiameter
-					- Ring * MixtormatTokens::QuickControlsGuideGlowRingStep;
+					* (1.0f - static_cast<float>(Ring) / RingCount);
+				const float Opacity = CenterOpacity * T * T * (3.0f - 2.0f * T);
+				const float RingOpacity = (Opacity - PreviousOpacity)
+					/ FMath::Max(1.0f - PreviousOpacity, SMALL_NUMBER);
+				PreviousOpacity = Opacity;
 				FSlateRoundedBoxBrush Brush(FLinearColor::White, Diameter * 0.5f);
-				FLinearColor Tint = Base;
-				const float DefaultMaxOpacity = MixtormatTokens::QuickControlsGuideGlowOpacityMin
-					+ (MixtormatTokens::QuickControlsGuideGlowRings - 1) * MixtormatTokens::QuickControlsGuideGlowOpacityStep;
-				const float RingOpacity = MixtormatTokens::QuickControlsGuideGlowOpacityMin
-					+ Ring * MixtormatTokens::QuickControlsGuideGlowOpacityStep;
-				Tint.A *= Preview.QuickControlsGuideGlowOpacity * RingOpacity / DefaultMaxOpacity;
 				FSlateDrawElement::MakeBox(Elements, LayerId, Geometry.ToPaintGeometry(
 					FVector2f(Diameter), FSlateLayoutTransform(Center - FVector2f(Diameter * 0.5f))),
-					&Brush, ESlateDrawEffect::None, Tint);
+					&Brush, ESlateDrawEffect::None, FLinearColor(0.0f, 0.0f, 0.0f, RingOpacity));
 			}
 
 			// Four fine arms, segmented so the guide fades away from the pointer into each card.
