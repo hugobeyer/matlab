@@ -342,18 +342,8 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		const int32 SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
 			EffectiveLayers, LayerIndex, SourceChildIndex, Push.Source);
 		if (SourceIndex == INDEX_NONE) { return; }
-		int32 TargetIndex = INDEX_NONE;
-		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
-		{
-			const FMixtormatLayerChild& Target = Layer.Children[Index];
-			if (Target.ChildId == Push.TargetChildId && Target.Type == EMixtormatLayerChildType::Generator
-				&& Target.Generator.bEnabled && !Target.ScopeOwnerChildId.IsValid()
-				&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver)
-			{
-				TargetIndex = Index;
-				break;
-			}
-		}
+		const int32 TargetIndex = MixtormatOutputReferences::ResolveHeightPushTarget(
+			Layer, SourceChildIndex, Push.TargetChildId);
 		if (TargetIndex == INDEX_NONE) { return; }
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::HeightPush;

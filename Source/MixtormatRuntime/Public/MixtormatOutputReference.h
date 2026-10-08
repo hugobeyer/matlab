@@ -70,6 +70,57 @@ struct MIXTORMATRUNTIME_API FMixtormatOutputReference
 
 namespace MixtormatOutputReferences
 {
+	// Transient structural eligibility only; never serialized or a guarantee of GPU availability.
+	enum class EStructuralLinkIssue : uint8
+	{
+		None, Unset, MissingLayer, MissingChild, DuplicateIdentity,
+		DisabledLayer, DisabledSource, DisabledTarget, DisabledReference,
+		WrongOwnerLayer, WrongModuleType, ScopedModule, WrongSourceKind,
+		WrongSourceScope, IncompleteSourceScope, InvalidSourceScope,
+		ForwardSource, ForwardTarget, WrongTargetKind, ScopedTarget,
+		UnavailableEffectAsset
+	};
+
+	struct FStructuralEdgeStatus
+	{
+		EStructuralLinkIssue Issue = EStructuralLinkIssue::Unset;
+		int32 LayerIndex = INDEX_NONE;
+		int32 ChildIndex = INDEX_NONE;
+	};
+
+	struct FStructuralLinkStatus
+	{
+		FStructuralEdgeStatus Source;
+		FStructuralEdgeStatus Target;
+		EStructuralLinkIssue ModuleIssue = EStructuralLinkIssue::None;
+		bool bModuleEnabled = false;
+		bool bCanExecuteStructurally = false;
+	};
+
+	// Pass effective, instance-resolved layers. Indices address that projection, not authored
+	// group rows. Group provenance cannot be inferred here; Editor must gate group authoring.
+	// Candidate overrides never mutate the arrays. Disabled modules retain independent edges.
+	MIXTORMATRUNTIME_API FStructuralLinkStatus EvaluateStructuralLink(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 ModuleLayerIndex,
+		int32 ModuleChildIndex,
+		const FMixtormatOutputReference* ProposedSource = nullptr,
+		const FGuid* ProposedTarget = nullptr);
+
+	// Preserves Gather's first eligible later Strata target rule, including duplicate GUIDs.
+	MIXTORMATRUNTIME_API int32 ResolveHeightPushTarget(
+		const TArray<FMixtormatLayer>& Layers,
+		int32 DestinationLayerIndex,
+		int32 DestinationChildIndex,
+		const FGuid& TargetChildId);
+
+	// Gather's binding/instance-resolved layer may differ from the effective array entry.
+	// Use that exact layer for target eligibility without copying the entire projection.
+	MIXTORMATRUNTIME_API int32 ResolveHeightPushTarget(
+		const FMixtormatLayer& Layer,
+		int32 DestinationChildIndex,
+		const FGuid& TargetChildId);
+
 	// True for every kind the reference system understands. Exhaustive over the enum, so an
 	// unrecognised (future) value can never silently pass reference validation.
 	MIXTORMATRUNTIME_API bool IsValidFieldKind(EMixtormatPublishedFieldKind Kind);
