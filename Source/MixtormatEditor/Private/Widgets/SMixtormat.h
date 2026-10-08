@@ -569,7 +569,8 @@ private:
 		EMixtormatStructuralConnectionRole Role, const FMixtormatOutputReference* Source = nullptr,
 		const FGuid* TargetId = nullptr);
 	FText GetStructuralConnectionLabel(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role) const;
+		EMixtormatStructuralConnectionRole Role, bool bCompact = false,
+		FText* OutFullLabel = nullptr) const;
 	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
 	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
@@ -1596,7 +1597,7 @@ private:
 	// The gallery is one bottom overlay drawer; its open state and height survive rebuilds.
 	bool bBottomLibraryCollapsed = false;
 	float GalleryDrawerHeight = 0.0f;
-		float GalleryColumnFraction = 0.5f;
+	float GalleryColumnFraction = 0.67f;
 	bool bGalleryDrawerResizing = false;
 	float GalleryDrawerHeightAtResizeStart = 0.0f;
 	FVector2D GalleryDrawerResizeOriginScreen = FVector2D::ZeroVector;

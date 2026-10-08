@@ -91,6 +91,10 @@ FReply SMixtormat::SelectMask(FText DisplayName, FSoftObjectPath AssetPath)
 {
 	SelectedMaskPath = AssetPath;
 	SelectedLibraryMaskName = DisplayName;
+	if (MaskListBox.IsValid())
+	{
+		MaskListBox->Invalidate(EInvalidateWidgetReason::Paint);
+	}
 	return FReply::Handled();
 }
 

@@ -117,6 +117,9 @@ Closed set, append-only — each role authors `GlyphSize`, `ButtonSize`,
 - `Menu`
 - `GalleryToolbar`
 
+UI Style exposes per-role glyph, button and hit sizes plus rest/hover/disabled opacity.
+`CardLeading` and `GalleryToolbar` are registered alongside the other roles.
+
 ## Missing — to add later
 
 Requested (bring the art over when ready):

@@ -1576,6 +1576,24 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
 						.ToolTipText(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
 					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(Resolved.GalleryLayout.HeaderGap, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(112.0f)
+						[
+							SNew(STextBlock)
+							.Visibility_Lambda([this]()
+							{
+								return SelectedMaskPath.IsNull() ? EVisibility::Collapsed : EVisibility::HitTestInvisible;
+							})
+							.Text_Lambda([this]() { return SelectedLibraryMaskName; })
+							.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+							.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+						]
+					]
 
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

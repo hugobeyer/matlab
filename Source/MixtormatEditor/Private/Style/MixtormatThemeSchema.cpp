@@ -160,6 +160,9 @@ void AddIconRole(
 			Out.Add(Number(*Id(TEXT("ButtonSize")), ETab::Global, *Section, TEXT("Button Size"), 4.0f, 96.0f, 1.0f, 0,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].ButtonSize; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].ButtonSize = V; }, TEXT(""), RefreshMode));
+			Out.Add(Number(*Id(TEXT("HitSize")), ETab::Global, *Section, TEXT("Hit Size"), 4.0f, 128.0f, 1.0f, 0,
+				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].HitSize; },
+				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].HitSize = V; }, TEXT(""), RefreshMode));
 
 			Out.Add(Number(*Id(TEXT("RestOpacity")), ETab::Global, *Section, TEXT("Rest Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].RestOpacity; },
@@ -273,8 +276,9 @@ void AddIconRole(
 				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"), ETarget::Foldout);
-
+				AddIconRole(P, EMixtormatIconRole::CardLeading, TEXT("CardLeading"), TEXT("Card Leading"), ETarget::None);
 				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"), ETarget::Menu);
+				AddIconRole(P, EMixtormatIconRole::GalleryToolbar, TEXT("GalleryToolbar"), TEXT("Gallery Toolbar"), ETarget::Gallery);
 
 
 // CONTROLS

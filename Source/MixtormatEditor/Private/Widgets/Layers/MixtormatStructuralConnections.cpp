@@ -184,16 +184,24 @@ FText SMixtormat::GetStructuralChildLabel(const FMixtormatLayer& Layer, const in
 	return Matches > 1 ? FText::Format(LOCTEXT("StructuralChildOrdinal", "{0} {1}"), Name, FText::AsNumber(Ordinal)) : Name;
 }
 
-FText SMixtormat::GetStructuralConnectionLabel(const FMixtormatChildAddress Address, const ERole Role) const
+FText SMixtormat::GetStructuralConnectionLabel(
+	const FMixtormatChildAddress Address, const ERole Role, const bool bCompact,
+	FText* const OutFullLabel) const
 {
 	const FMixtormatLayerChild* Module = ResolveChildAt(Address);
-	if (!Module || !IsStructuralModule(*Module)) { return FText::GetEmpty(); }
+	if (!Module || !IsStructuralModule(*Module))
+	{
+		if (OutFullLabel) { *OutFullLabel = FText::GetEmpty(); }
+		return FText::GetEmpty();
+	}
 	const bool bPush = Module->Type == EMixtormatLayerChildType::HeightPush;
 	const FMixtormatOutputReference& Source = bPush ? Module->HeightPush.Source : Module->StructuralWarp.Source;
 	const FGuid Target = bPush ? Module->HeightPush.TargetChildId : Module->StructuralWarp.TargetChildId;
 	if (Role == ERole::Target ? !Target.IsValid() : !Source.SourceLayerId.IsValid() || !Source.SourceChildId.IsValid())
 	{
-		return LOCTEXT("StructuralConnectionNone", "None");
+		const FText None = LOCTEXT("StructuralConnectionNone", "None");
+		if (OutFullLabel) { *OutFullLabel = None; }
+		return None;
 	}
 	const FConnectionProjection Projection(WorkingLayers, WorkingLayerGroups, Address);
 	const auto Status = Projection.Evaluate();
@@ -202,8 +210,10 @@ FText SMixtormat::GetStructuralConnectionLabel(const FMixtormatChildAddress Addr
 		|| !Projection.Effective[Edge.LayerIndex].Children.IsValidIndex(Edge.ChildIndex))
 	{
 		const EIssue Issue = ConnectionIssue(Status, Role);
-		return FText::Format(LOCTEXT("StructuralConnectionReason", "{0} — {1}"),
+		const FText FullLabel = FText::Format(LOCTEXT("StructuralUnavailableReason", "{0} — {1}"),
 			LOCTEXT("StructuralUnavailable", "Unavailable"), ConnectionIssueText(Issue));
+		if (OutFullLabel) { *OutFullLabel = FullLabel; }
+		return bCompact ? ConnectionIssueCode(Issue) : FullLabel;
 	}
 	const FMixtormatLayer& Layer = Projection.Effective[Edge.LayerIndex];
 	FText Label = GetStructuralChildLabel(Layer, Edge.ChildIndex);
@@ -218,9 +228,18 @@ FText SMixtormat::GetStructuralConnectionLabel(const FMixtormatChildAddress Addr
 			: StaticEnum<EMixtormatPublishedFieldKind>()->GetDisplayNameTextByValue(static_cast<int64>(Source.Kind));
 		Label = FText::Format(LOCTEXT("StructuralOutputLabel", "{0} · {1}"), Label, Output);
 	}
-	return Edge.Issue == EIssue::None ? Label : FText::Format(
-		LOCTEXT("StructuralConnectionReason", "{0} · {1} — {2}"),
+	if (Edge.Issue == EIssue::None)
+	{
+		if (OutFullLabel) { *OutFullLabel = Label; }
+		return Label;
+	}
+	const FText FullLabel = FText::Format(LOCTEXT("StructuralConnectionDiagnostic", "{0} · {1} — {2}"),
 		ConnectionIssueCode(Edge.Issue), Label, ConnectionIssueText(Edge.Issue));
+	if (OutFullLabel) { *OutFullLabel = FullLabel; }
+	return bCompact
+		? FText::Format(LOCTEXT("StructuralCompactConnection", "{0} · {1}"),
+			ConnectionIssueCode(Edge.Issue), Label)
+		: FullLabel;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatChildAddress Address, const ERole Role)
@@ -429,7 +448,8 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralLinkChips(const FMixtormatChildAd
 	{
 		// The list is rebuilt on authored edits, so resolve once here rather than copying the
 		// effective projection and validating/loading a source asset on every Slate attribute tick.
-		const FText Label = GetStructuralConnectionLabel(Address, Role);
+		FText FullLabel;
+		const FText Label = GetStructuralConnectionLabel(Address, Role, true, &FullLabel);
 		return SNew(SBox)
 			.MinDesiredWidth(MixtormatTokens::StructuralLinkChipMinWidth)
 			.MaxDesiredWidth(MixtormatTokens::StructuralLinkChipMaxWidth)
@@ -437,7 +457,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralLinkChips(const FMixtormatChildAd
 				SNew(SMixtormatBadge)
 				.bAutoWidth(true)
 				.Text(Label)
-				.ToolTip(Label)
+				.ToolTip(FullLabel)
 				.OnGetMenuContent_Lambda([this, Address, Role]()
 				{
 					return BuildStructuralConnectionMenu(Address, Role);

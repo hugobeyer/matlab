@@ -16,8 +16,8 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
 		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 	Filled = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius);
-	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, IconStyle.MarkRadius,
-		FLinearColor::White, FMath::Max(1.0f, IconStyle.MarkOutlineWidth));
+	Hollow = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius,
+		FLinearColor::Transparent, 0.0f);
 	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
 		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
 	ChildSlot[SNew(SBox).WidthOverride(TargetSize).HeightOverride(TargetSize)];
@@ -34,8 +34,10 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	const FVector2f Size(IconStyle.GlyphSize, IconStyle.GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
 	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
-	FLinearColor Color = Palette.Get((bActive.Get(false) || IsHovered()) && Enabled
-		? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
+	FLinearColor Color = bVisibility && !On
+		? Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
+		: Palette.Get((bActive.Get(false) || IsHovered()) && Enabled
+			? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
 	Color.A = !Enabled
 		? IconStyle.DisabledOpacity
 		: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
