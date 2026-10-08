@@ -10,9 +10,10 @@ icon-role/HitSize schema exposure, 33% default Masks width, and visible mask-sel
 Tile borders paint above thumbnail content. Marking-menu 1K/2K/4K controls and Ctrl+wheel FOV
 routing are present. The NavigationRail role is separate and larger than its prior role.
 The gallery header supports click-to-collapse with drag-threshold handling. GalleryToolbar glyphs
-are now 18px; the Masks heading has a 12px leading inset. Splitter hit width is 14px by default,
-and the left rail now uses the shared hover/pressed/checked button style. A resize grip and pin
-button are visible, and an unpinned pointer exit starts an eased collapse animation.
+are now 18px; the Masks heading inset and auto-collapse distance are UI Style properties.
+Splitter hit width is 14px by default and remains UI Style-editable. The left rail uses the shared
+hover/pressed/checked button style. A resize grip and pin button are visible; unpinned exit starts
+an eased collapse after a short 6px distance, with no timed wait.
 
 Further source edits: Inspector structural labels are cached with refresh/rebuild invalidation;
 incoming counts map effective targets back to authored rows; MMB pan uses camera-plane movement

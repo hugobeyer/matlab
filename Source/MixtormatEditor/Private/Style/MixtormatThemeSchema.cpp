@@ -584,6 +584,8 @@ void AddIconRole(
 				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.MaskHeaderInset", GalleryShell, "Gallery Layout", "Masks Header Inset", GalleryLayout.MaskHeaderInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerAutoCollapseDistance", GalleryShell, "Gallery Layout", "Drawer Auto-Collapse Distance", GalleryLayout.DrawerAutoCollapseDistance, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerInset", GalleryShell, "Gallery Layout", "Drawer Inset", GalleryLayout.DrawerInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerSideInset", GalleryShell, "Gallery Layout", "Drawer Side Inset", GalleryLayout.DrawerSideInset, 0, 96, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerHeaderHeight", GalleryShell, "Gallery Layout", "Drawer Header Height", GalleryLayout.DrawerHeaderHeight, 14, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);

@@ -784,6 +784,8 @@ namespace Mixtormat
 		T.GalleryLayout.CaptionInset = 2.0f;
 		T.GalleryLayout.OverlayInset = 3.0f;
 		T.GalleryLayout.HeaderGap = 4.0f;
+		T.GalleryLayout.MaskHeaderInset = 12.0f;
+		T.GalleryLayout.DrawerAutoCollapseDistance = 6.0f;
 		T.ShellTheme.SplitterHoverSource = FLinearColor(0.043674048f, 0.0494330749f, 0.0520833321f, 1.0f);
 		T.ShellTheme.SplitterOpacity = 0.159999996f;
 		T.ShellTheme.SplitterHoverOpacity = 0.569999993f;
@@ -1033,6 +1035,8 @@ namespace Mixtormat
 		ClampMin(TEXT("GalleryLayout.CaptionInset"), InOutTheme.GalleryLayout.CaptionInset, 0.0f);
 		ClampMin(TEXT("GalleryLayout.OverlayInset"), InOutTheme.GalleryLayout.OverlayInset, 0.0f);
 		ClampMin(TEXT("GalleryLayout.HeaderGap"), InOutTheme.GalleryLayout.HeaderGap, 0.0f);
+				ClampMin(TEXT("GalleryLayout.MaskHeaderInset"), InOutTheme.GalleryLayout.MaskHeaderInset, 0.0f);
+				ClampMin(TEXT("GalleryLayout.DrawerAutoCollapseDistance"), InOutTheme.GalleryLayout.DrawerAutoCollapseDistance, 0.0f);
 		ClampMin(TEXT("Shell.TopBarHeight"), InOutTheme.Shell.TopBarHeight, 1.0f);
 		ClampMin(TEXT("Shell.StatusBarHeight"), InOutTheme.Shell.StatusBarHeight, 1.0f);
 		ClampMin(TEXT("Shell.PanelPadding"), InOutTheme.Shell.PanelPadding, 0.0f);

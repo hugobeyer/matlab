@@ -1560,7 +1560,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(FMargin(12.0f, Resolved.GalleryLayout.HeaderGap,
+			.Padding(FMargin(Resolved.GalleryLayout.MaskHeaderInset, Resolved.GalleryLayout.HeaderGap,
 				Resolved.GalleryLayout.TilePadding, 0.0f))
 			[
 				SNew(SBox)

@@ -413,7 +413,8 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 			const FSlateRect Bounds = GalleryGeometry.GetLayoutBoundingRect();
 			const float DistanceX = FMath::Max(FMath::Max(Bounds.Left - ScreenPosition.X, 0.0f), ScreenPosition.X - Bounds.Right);
 			const float DistanceY = FMath::Max(FMath::Max(Bounds.Top - ScreenPosition.Y, 0.0f), ScreenPosition.Y - Bounds.Bottom);
-			if (FMath::Sqrt(FMath::Square(DistanceX) + FMath::Square(DistanceY)) > 24.0f)
+			if (FMath::Sqrt(FMath::Square(DistanceX) + FMath::Square(DistanceY))
+							> FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerAutoCollapseDistance)
 			{
 				bGalleryPointerInside = false;
 				ToggleBottomLibraryCollapsed();

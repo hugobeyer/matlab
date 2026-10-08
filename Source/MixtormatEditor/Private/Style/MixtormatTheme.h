@@ -731,6 +731,8 @@ namespace Mixtormat
 		float CaptionInset = 4.0f;
 		float OverlayInset = 3.0f;
 		float HeaderGap = 2.0f;
+		float MaskHeaderInset = 12.0f;
+		float DrawerAutoCollapseDistance = 6.0f;
 		float DrawerInset = 8.0f;
 		float DrawerSideInset = 24.0f;
 		float DrawerHeaderHeight = 18.0f;
