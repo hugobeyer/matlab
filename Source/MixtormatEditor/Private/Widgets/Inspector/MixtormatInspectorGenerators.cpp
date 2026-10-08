@@ -22,7 +22,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		FMixtormatLayerEffect* Effect = GetSelectedGeneratorFlow();
 		return Effect && Effect->ProceduralType == Type ? Effect : nullptr;
 	};
-	const auto HasOwner = [this]()
+	const auto ResolveOwner = [this]() -> const FMixtormatLayerChild*
 	{
 		const FMixtormatChildAddress Address = GetSelectedChildAddress();
 		const FMixtormatLayerChild* Child = ResolveChildAt(Address);
@@ -30,13 +30,85 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		const FMixtormatLayerChild* Owner = Child && Children
 			? Children->FindByPredicate([Child](const FMixtormatLayerChild& Candidate)
 				{ return Candidate.ChildId == Child->ScopeOwnerChildId; }) : nullptr;
+		return Owner;
+	};
+	const auto HasOwner = [ResolveOwner]()
+	{
+		const FMixtormatLayerChild* Owner = ResolveOwner();
 		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
 			&& MixtormatCanOwnGeneratorFlow(Owner->Generator.Type);
 	};
+	const auto IsNoiseOwner = [ResolveOwner]()
+	{
+		const FMixtormatLayerChild* Owner = ResolveOwner();
+		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
+			&& Owner->Generator.Type == EMixtormatGeneratorType::Noise;
+	};
+	const auto SourceAddress = MakeAddressResolver<FMixtormatLayerEffect>(
+		Flow, &FMixtormatLayerEffect::GeneratorFlowSource);
+	const UEnum* SourceEnum = StaticEnum<EMixtormatGeneratorFlowSource>();
+	const auto ActiveSource = [this, Flow, SourceAddress]() -> int64
+	{
+		const FMixtormatLayerEffect* Effect = Flow();
+		return GetEffectiveEnumParameter(SourceAddress(), Effect ? static_cast<int64>(Effect->GeneratorFlowSource) : 0);
+	};
+	const auto WriteNoiseSource = [this, Flow, SourceAddress](const int64 Value)
+	{
+		if (Value != static_cast<int64>(EMixtormatGeneratorFlowSource::Height)) { return; }
+		if (FMixtormatLayerEffect* Effect = Flow())
+		{
+			const FMixtormatParameterAddress Address = SourceAddress();
+			if (IsParameterLocked(Address)) { return; }
+			if (!TryWriteLinkedEnum(Address, Value))
+			{
+				Effect->GeneratorFlowSource = static_cast<EMixtormatGeneratorFlowSource>(Value);
+				if (FMixtormatParameterBinding* Binding = FindParameterBinding(Address, false))
+				{
+					Binding->Reference.bEnabled = false;
+				}
+			}
+			RefreshLayeredPreview();
+		}
+	};
+	TSharedRef<SWidget> NoiseSourceChip = MixtormatRow::MakeChip(
+		TAttribute<FText>::CreateLambda([SourceEnum, ActiveSource]()
+		{
+			return SourceEnum->GetDisplayNameTextByValue(ActiveSource());
+		}),
+		FOnGetContent::CreateLambda([SourceEnum, ActiveSource, WriteNoiseSource]()
+		{
+			MixtormatMenu::FBuilder Menu;
+			for (int32 Index = 0; Index < SourceEnum->NumEnums(); ++Index)
+			{
+				const int64 Value = SourceEnum->GetValueByIndex(Index);
+				if (Value == INDEX_NONE || SourceEnum->HasMetaData(TEXT("Hidden"), Index)) { continue; }
+				Menu.Item(SourceEnum->GetDisplayNameTextByIndex(Index), nullptr,
+					FSimpleDelegate::CreateLambda([WriteNoiseSource, Value]() { WriteNoiseSource(Value); }))
+					.Checked(TAttribute<bool>::CreateLambda([ActiveSource, Value]() { return ActiveSource() == Value; }))
+					.Enabled(Value == static_cast<int64>(EMixtormatGeneratorFlowSource::Height));
+			}
+			return Menu.Build();
+		}), nullptr, TAttribute<FText>(), 0.0f);
+	FEnumResetBinding& NoiseSourceReset = EnumResetBindings.AddDefaulted_GetRef();
+	NoiseSourceReset.Widget = NoiseSourceChip;
+	NoiseSourceReset.Reset = FSimpleDelegate::CreateLambda([WriteNoiseSource]()
+	{
+		WriteNoiseSource(static_cast<int64>(EMixtormatGeneratorFlowSource::Height));
+	});
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox).IsEnabled_Lambda(HasOwner);
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
-		LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
-		LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Generator layers support every kind; existing generator-child scope eligibility is unchanged.")));
+	AddSliderRow(Panel, SNew(SWidgetSwitcher)
+		.WidgetIndex_Lambda([IsNoiseOwner]() { return IsNoiseOwner() ? 1 : 0; })
+		+ SWidgetSwitcher::Slot()
+		[
+			MakeMemberEnum<FMixtormatLayerEffect>(
+				LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
+				LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Noise supports Height only; it has no signed boundary field."))
+		]
+		+ SWidgetSwitcher::Slot()
+		[
+			WrapParameterControl(MixtormatRow::MakeDropdown(LOCTEXT("GeneratorFlowSource", "Source"), NoiseSourceChip,
+				LOCTEXT("NoiseGeneratorFlowSourceHint", "Noise supports Height only. Signed Distance is unavailable because Noise has no boundary field.")), SourceAddress)
+		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowAmount, 0.0, 1.0, 1.0, 0.01),
@@ -70,20 +142,18 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 
 	if (Type == EMixtormatEffectType::ShapeDeform)
 	{
-		const auto SourceAddress = MakeAddressResolver<FMixtormatLayerEffect>(
-			Flow, &FMixtormatLayerEffect::GeneratorFlowSource);
 		AddSliderRow(Panel, MixtormatRow::MakePair(
 			SNew(SBox)
-			.IsEnabled_Lambda([this, Flow, SourceAddress]()
+			.IsEnabled_Lambda([this, Flow, SourceAddress, IsNoiseOwner]()
 			{
 				const FMixtormatLayerEffect* Effect = Flow();
-				return Effect && GetEffectiveEnumParameter(SourceAddress(), static_cast<int64>(Effect->GeneratorFlowSource))
+				return Effect && !IsNoiseOwner() && GetEffectiveEnumParameter(SourceAddress(), static_cast<int64>(Effect->GeneratorFlowSource))
 					== static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance);
 			})
 			[
 				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowShapeOffset", "Shape Offset (UV)"), Flow,
 					&FMixtormatLayerEffect::GeneratorFlowShapeOffset, -0.25, 0.25, 0.0, 0.001,
-					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height."))
+					LOCTEXT("GeneratorFlowShapeOffsetHint", "Signed boundary expansion or erosion. Requires Signed Distance; unavailable with Height or Noise."))
 			],
 			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBulge", "Bulge / Pinch"), Flow,
 				&FMixtormatLayerEffect::GeneratorFlowBulge, -0.25, 0.25, 0.0, 0.001)));
@@ -1543,6 +1613,33 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 		const FMixtormatNoise* N = Noise();
 		return N && N->NoiseType == EMixtormatNoiseType::Bars;
 	};
+	TArray<EMixtormatNoiseType> NoiseTypes;
+	const UEnum* NoiseEnum = StaticEnum<EMixtormatNoiseType>();
+	for (int32 Index = 0; Index < NoiseEnum->NumEnums(); ++Index)
+	{
+		const int64 Value = NoiseEnum->GetValueByIndex(Index);
+		if (Value != INDEX_NONE && !NoiseEnum->HasMetaData(TEXT("Hidden"), Index))
+		{
+			NoiseTypes.Add(static_cast<EMixtormatNoiseType>(Value));
+		}
+	}
+	const auto NoiseWidgetIndex = [Noise, NoiseTypes]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N ? NoiseTypes.IndexOfByKey(N->NoiseType) : INDEX_NONE;
+	};
+	TSharedRef<SWidgetSwitcher> Outputs = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
+	TSharedRef<SWidgetSwitcher> HeaderPreview = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
+	// The inspector persists across selections; choose outputs from the current Noise family.
+	for (const EMixtormatNoiseType NoiseType : NoiseTypes)
+	{
+		FMixtormatLayerChild Probe;
+		Probe.Type = EMixtormatLayerChildType::Generator;
+		Probe.Generator.Type = EMixtormatGeneratorType::Noise;
+		Probe.Generator.Noise.NoiseType = NoiseType;
+		Outputs->AddSlot()[BuildChildOutputsControls(GetChildCapabilities(Probe))];
+		HeaderPreview->AddSlot()[MakeChildOutputPreviewButton(GetChildPreviewOutputSet(Probe))];
+	}
 	const auto IsMultiOctave = [Noise]()
 	{
 		const FMixtormatNoise* N = Noise();
@@ -1632,6 +1729,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 			]);
 	}
 
+	Cards->AddSlot().AutoHeight()[Outputs];
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
@@ -1643,13 +1741,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
-					MakeChildOutputPreviewButton([]()
-					{
-						FMixtormatLayerChild Probe;
-						Probe.Type = EMixtormatLayerChildType::Generator;
-						Probe.Generator.Type = EMixtormatGeneratorType::Noise;
-						return GetChildPreviewOutputSet(Probe);
-					}())
+					HeaderPreview
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[

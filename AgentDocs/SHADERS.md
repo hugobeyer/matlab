@@ -106,6 +106,16 @@ Broken StructuralWarp tests were removed at user request; no agent build, shader
 runtime or test results are claimed. Raster derivatives/distances remain approximations;
 legacy centre/orientation inverse handling and geological defects are not fixed here.
 
+Noise preview/copy/flow integration: typed scalar and Vector2 debug blits now read
+completed published fields. Signed values are display-remapped only. Noise Value and
+Gradient support full-precision storage as well as the default half-precision contracts.
+`MixtormatNoise.usf::FlowCS` derives explicit destination-UV downhill Flow from completed
+signed Height after scoped tools/structural pullback, with zero validity at flat or
+non-finite slopes. It publishes the same resolved field as raw/smoothed Flow plus a
+separate validity texture; no extra smoothing is implied. Raw Gradient remains
+source-frame Vector2. Noise can own Height-based flow tools, not Signed Distance.
+These integration changes are source-reviewed only; no build/shader/runtime checks run.
+
 ## Adding a shader parameter
 
 Trace the full path: CPU declaration (the struct's owning runtime header, e.g.

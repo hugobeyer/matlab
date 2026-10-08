@@ -20,8 +20,9 @@ Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`) live in
 `EMixtormatEffectType` (`MixtormatEffect.h`), not here. They are valid only
 scoped under a generator that can own them (`MixtormatCanOwnGeneratorFlow`:
-Strata Carver, Rock Formation, Pebbles, Cracks) and rewrite its height before
-combine. See `code_docs/generator_flow_interaction_audit.md`.
+Strata Carver, Rock Formation, Pebbles, Cracks, Noise) and rewrite its height before
+combine. Noise supports Height only: it has no signed boundary field. Newly authored
+Noise-scoped tools start with Height; Signed Distance remains visible but unavailable. See `code_docs/generator_flow_interaction_audit.md`.
 
 ## Height Push (structural module)
 
@@ -49,7 +50,11 @@ Ordered Structural Warp integration is now present; see below.
 
 `StructuralWarp` is an append-only Runtime child with its own enable flag and
 `FMixtormatGeneratorStructuralWarp` payload. `Source` is an `FMixtormatOutputReference`:
-Flow or UVMap only, never generic Vector2. It requires a completed earlier source and an
+Flow or UVMap only, never generic Vector2. Noise publishes an explicit `FlowDirection`
+from its completed signed Height: a unit downhill direction in destination tile UV,
+with zero influence/validity at flat or non-finite slopes. It does not reinterpret the
+heterogeneous raw `Gradient`. Flow Amount and Trace Length control travel; Height Scale
+zero yields no flow, and negative Height Scale reverses direction. It requires a completed earlier source and an
 explicit later, enabled, unscoped same-layer generator target: Strata, Rock Formation, Pebbles,
 Cracks, Cliff Strata, or Noise. Group targets remain gated.
 
@@ -147,6 +152,14 @@ layer-level creation remains unconnected; no source is inferred or auto-rebound.
 
 `Editor/Private/Widgets/MixtormatChildCapabilities.cpp` — `GetChildCapabilities`
 is the single place a generator's previewable/copyable outputs are declared.
+Noise has Value (primary), Gradient (Vector2), Flow and Worley-only IDs. Copy preserves
+typed Value/Gradient payloads. Value's kind follows the family (signed lattice/Bars;
+0..1 Ridged/Billow/Worley). Value and Gradient retain full precision; field validation
+accepts those formats alongside default half precision. Scalar previews map signed
+values to display gray only; vector previews show direction. Scoped coordinate tools
+and Structural Warp remap Value, Gradient and IDs together; Flow is derived afterwards.
+Flow Carve changes Height, not the raw Value/Gradient field. Source review only; builds,
+shader compilation and runtime preview/copy/warp checks have not been run.
 
 ## Sol review checklist — steps 1–7
 

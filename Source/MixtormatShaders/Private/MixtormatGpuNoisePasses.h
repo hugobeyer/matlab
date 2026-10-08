@@ -13,4 +13,8 @@ namespace MixtormatGpuCompositor
 // leaves the module out, the same as a disabled generator.
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 	const FLayerRenderData& Layer, int32 SourceChildIndex, FGeneratorBundle* Bundle);
+
+// Explicit downhill transport from completed destination-space height, with flat-slope validity.
+void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
+	int32 SourceChildIndex, FRDGTextureRef Height);
 }

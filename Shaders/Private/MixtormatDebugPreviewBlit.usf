@@ -64,13 +64,13 @@ void MainVectorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 	const float2 Vector = SourceVector.Load(int3(Pixel, 0));
-	if (all(Vector == float2(0.0f, 0.0f)))
+	if (!all(isfinite(Vector)) || all(Vector == float2(0.0f, 0.0f)))
 	{
 		OutputDebug[Pixel] = float4(MixtormatDebugColor(float3(0.12f, 0.12f, 0.12f)), 1.0f);
 		return;
 	}
 	// Direction alone determines hue, independent of the producer's vector units.
-	const float Hue = frac(atan2(Vector.y, Vector.x) / 6.28318530718f + 1.0f);
+	const float Hue = frac(atan2(Vector.y, Vector.x) / 6.28318530718f + 0.5f);
 	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
 	const float3 Colour = 0.8f * lerp(float3(1.0f, 1.0f, 1.0f), Rgb, 0.85f);
 	OutputDebug[Pixel] = float4(MixtormatDebugColor(Colour), 1.0f);

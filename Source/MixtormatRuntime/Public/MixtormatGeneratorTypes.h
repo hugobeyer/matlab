@@ -30,14 +30,16 @@ enum class EMixtormatGeneratorType : uint8
 };
 
 // How a pebble's cut planes are oriented.
-// Generators that publish a signed boundary field and can own Shape Deform / Generator Flow /
-// Flow Carve. One list for runtime gather, GPU passes and editor placement.
+// Generators that can own Shape Deform / Generator Flow / Flow Carve.
+// Noise supports Height only; boundary-based controls require a signed boundary field.
+// One list for runtime gather, GPU passes and editor placement.
 inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 {
 	return Type == EMixtormatGeneratorType::StrataCarver
 		|| Type == EMixtormatGeneratorType::RockFormation
 		|| Type == EMixtormatGeneratorType::Pebbles
-		|| Type == EMixtormatGeneratorType::Cracks;
+		|| Type == EMixtormatGeneratorType::Cracks
+				|| Type == EMixtormatGeneratorType::Noise;
 }
 
 UENUM(BlueprintType)

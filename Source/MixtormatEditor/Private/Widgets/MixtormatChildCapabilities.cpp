@@ -68,7 +68,7 @@ namespace
 			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputScalar", "Scalar");
 			break;
 		case EMixtormatPublishedFieldKind::Vector2:
-			OutPreview = EMixtormatPreviewOutputKind::Mask;
+			OutPreview = EMixtormatPreviewOutputKind::FlowDirection;
 			OutLabel = NSLOCTEXT("SMixtormat", "CopyOutputVector2", "Vector");
 			break;
 		case EMixtormatPublishedFieldKind::RegionIds:
@@ -236,22 +236,30 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
-			// Value + Gradient always. Region IDs only for Worley families (matches GPU publish).
+			const EMixtormatNoiseType NoiseType = Child.Generator.Noise.NoiseType;
+			const bool bUnsignedValue = NoiseType == EMixtormatNoiseType::Ridged
+				|| NoiseType == EMixtormatNoiseType::Billow
+				|| NoiseType == EMixtormatNoiseType::WorleyF1
+				|| NoiseType == EMixtormatNoiseType::WorleyF2
+				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2;
 			Result.Outputs.Add({FName(TEXT("Value")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseValue", "Value"),
-				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None,
-				true, EMixtormatPublishedFieldKind::ScalarSigned});
+				EMixtormatPreviewOutputKind::Mask, true, true, false, NAME_None,
+				true, bUnsignedValue ? EMixtormatPublishedFieldKind::Scalar01 : EMixtormatPublishedFieldKind::ScalarSigned});
 			Result.Outputs.Add({FName(TEXT("Gradient")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGradient", "Gradient"),
-				EMixtormatPreviewOutputKind::FlowDirection, false, true, false, NAME_None,
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Vector2});
-			const EMixtormatNoiseType NoiseType = Child.Generator.Noise.NoiseType;
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
 			if (NoiseType == EMixtormatNoiseType::WorleyF1
 				|| NoiseType == EMixtormatNoiseType::WorleyF2
 				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2)
 			{
 				Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
-					false, true, false, NAME_None, true, EMixtormatPublishedFieldKind::RegionIds});
+					false, true, true, NAME_None, true, EMixtormatPublishedFieldKind::RegionIds});
 			}
 		}
 		break;

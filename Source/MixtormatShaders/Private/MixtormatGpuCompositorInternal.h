@@ -259,13 +259,15 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Validity = nullptr;
 		bool bHashedIds = false;
 
-		// Explicit per-kind validation. The primary texture must exist and carry the canonical format
-		// for the kind (GetPublishedFieldFormat); Flow must additionally carry its smoothing and
-		// validity payload at the same extent. Every kind is represented, and an unknown kind -- one
-		// whose canonical format is PF_Unknown -- is never complete.
+		// Scalar01 and Vector2 producers may retain full precision as well as their default
+		// half-precision storage. Flow also requires same-sized smoothing and validity payloads.
 		bool IsComplete() const
 		{
-			if (!Texture || Texture->Desc.Format != GetPublishedFieldFormat(Kind)) { return false; }
+			if (!Texture) { return false; }
+						const EPixelFormat Format = Texture->Desc.Format;
+						const bool bFullPrecision = (Kind == EMixtormatPublishedFieldKind::Scalar01 && Format == PF_R32_FLOAT)
+							|| (Kind == EMixtormatPublishedFieldKind::Vector2 && Format == PF_G32R32F);
+						if (Format != GetPublishedFieldFormat(Kind) && !bFullPrecision) { return false; }
 			if (Kind != EMixtormatPublishedFieldKind::Flow) { return true; }
 			return FlowSmooth && Validity
 				&& FlowSmooth->Desc.Format == PF_FloatRGBA && Validity->Desc.Format == PF_R16F

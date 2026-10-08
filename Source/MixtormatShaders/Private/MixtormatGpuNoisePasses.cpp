@@ -105,6 +105,25 @@ namespace
 		return FVector2f(Best.X * Cycles, Best.Y * Cycles);
 	}
 
+	class FMixtormatNoiseFlowCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatNoiseFlowCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseFlowCS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CompletedHeight)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowCS,
+		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowCS", SF_Compute);
+
 	// The value contract each family publishes. The lattice families and Bars are zero-centred
 	// and signed; Ridged, Billow and the Worley distances are 0..1 magnitudes. The module height
 	// is the signed remap of whichever of these the family defines -- see the USF header.
@@ -163,6 +182,30 @@ FMixtormatNoiseRenderStore& MixtormatNoiseRenderStore()
 {
 	static FMixtormatNoiseRenderStore Store;
 	return Store;
+}
+
+void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
+	const int32 SourceChildIndex, FRDGTextureRef Height)
+{
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Flow = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.Flow"));
+	FRDGTextureRef Validity = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.FlowValidity"));
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseFlowCS::FParameters>();
+	P->OutputSize = Size;
+	P->CompletedHeight = Height;
+	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
+	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
+	TShaderMapRef<FMixtormatNoiseFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.Flow.C%d", SourceChildIndex),
+		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	// No extra smoothing is authored on this output; the resolved field fills both Flow slots.
+	Ctx.PublishedFieldOutputs.Add(
+		FPublishedFieldKey{Layer.LayerId, SourceChildIndex, FName(TEXT("FlowDirection"))},
+		FPublishedField{EMixtormatPublishedFieldKind::Flow, Flow, Flow, Validity, false});
 }
 
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,

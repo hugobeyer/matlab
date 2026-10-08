@@ -2068,6 +2068,12 @@ FReply SMixtormat::AddGeneratorFlow(
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = Type;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	const FMixtormatLayerChild* ScopeOwner = ResolveChildAt(Owner);
+	if (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator
+		&& ScopeOwner->Generator.Type == EMixtormatGeneratorType::Noise)
+	{
+		Child.Effect.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
+	}
 	const int32 InsertAt = Owner.ChildId.IsValid()
 		? InsertScopedChild(*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child))
 		: ResolveContainer(Owner)->Add(MoveTemp(Child));

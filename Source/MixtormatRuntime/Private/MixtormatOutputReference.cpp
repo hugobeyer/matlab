@@ -397,14 +397,20 @@ namespace MixtormatOutputReferences
 			Status.Issue = EStructuralLinkIssue::None;
 			return SourceIndex;
 		}
-		if (Source.Type != EMixtormatLayerChildType::Effect) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
-		if (!Source.Effect.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
-		if (!Source.ScopeOwnerChildId.IsValid()) { return Reject(EStructuralLinkIssue::WrongSourceScope); }
-		const int32 OwnerIndex = SourceLayer.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
+		// Noise's explicit Flow is derived from its completed height, not its raw Vector2 Gradient.
+		const bool bNoiseFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
+			&& Source.Generator.Type == EMixtormatGeneratorType::Noise;
+		if (!bNoiseFlow && Source.Type != EMixtormatLayerChildType::Effect) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+		if (bNoiseFlow ? !Source.Generator.bEnabled : !Source.Effect.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
+		if (bNoiseFlow ? Source.ScopeOwnerChildId.IsValid() : !Source.ScopeOwnerChildId.IsValid())
+		{
+			return Reject(EStructuralLinkIssue::WrongSourceScope);
+		}
+		const int32 OwnerIndex = bNoiseFlow ? SourceIndex : SourceLayer.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
 		{
 			return Child.ChildId == Source.ScopeOwnerChildId;
 		});
-		if (OwnerIndex == INDEX_NONE || OwnerIndex >= SourceIndex) { return INDEX_NONE; }
+		if (OwnerIndex == INDEX_NONE || (!bNoiseFlow && OwnerIndex >= SourceIndex)) { return INDEX_NONE; }
 		const FMixtormatLayerChild& Owner = SourceLayer.Children[OwnerIndex];
 		if (Owner.Type == EMixtormatLayerChildType::Generator && !Owner.Generator.bEnabled)
 		{
@@ -441,6 +447,11 @@ namespace MixtormatOutputReferences
 				if (ParentId.IsValid()) { return INDEX_NONE; }
 			}
 		}
+		if (bNoiseFlow)
+		{
+			Status.Issue = EStructuralLinkIssue::None;
+			return SourceIndex;
+		}
 		EMixtormatEffectType Type = Source.Effect.ProceduralType;
 		if (!Source.Effect.Effect.IsNull())
 		{
@@ -449,7 +460,9 @@ namespace MixtormatOutputReferences
 			if (!Asset) { return Reject(EStructuralLinkIssue::UnavailableEffectAsset); }
 			Type = Asset->EffectType;
 		}
-		if (!MixtormatIsGeneratorFlowEffect(Type) || (bUV && Type == EMixtormatEffectType::FlowCarve))
+		if (!MixtormatIsGeneratorFlowEffect(Type) || (bUV && Type == EMixtormatEffectType::FlowCarve)
+					|| (Owner.Generator.Type == EMixtormatGeneratorType::Noise
+						&& Source.Effect.GeneratorFlowSource != EMixtormatGeneratorFlowSource::Height))
 		{
 			return Reject(EStructuralLinkIssue::WrongSourceKind);
 		}

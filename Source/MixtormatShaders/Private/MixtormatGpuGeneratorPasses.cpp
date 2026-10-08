@@ -1581,6 +1581,8 @@ namespace
 				continue;
 			}
 			const FEffectRenderData& Flow = FlowChild.Effect;
+			// Height-only producers must never bind a null boundary or invent an SDF.
+			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
 			const bool bNeutral = IsNeutralFlowTool(Flow);
@@ -1628,7 +1630,7 @@ namespace
 				P->Falloff = Flow.GeneratorFlowFalloff;
 				P->LinearWrapSampler = Sampler;
 				P->RockHeight = Current;
-				P->BoundaryField = BoundaryField;
+				P->BoundaryField = BoundaryField ? BoundaryField : Ctx.EmptyPatternUV;
 				P->FlowMask = Mask;
 				P->HasCoverage = InOutCoverage ? 1u : 0u;
 				P->GeneratorLayer = Bundle ? 1u : 0u;
@@ -1812,6 +1814,17 @@ namespace
 					{
 						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
 						BoundaryField = Bundle->BoundaryField;
+						// Noise's raw outputs are published separately from the shared generator bundle.
+						for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient"))})
+						{
+							const FPublishedFieldKey Key{Layer.LayerId, OwnerSourceChildIndex, Name};
+							const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Key);
+							if (!Published || !Published->IsComplete()) { continue; }
+							FPublishedField Moved = *Published;
+							Moved.Texture = RemapBundleField(Ctx, Moved.Texture, WarpedUV,
+								Moved.Kind == EMixtormatPublishedFieldKind::Vector2 ? 4 : 0);
+							Ctx.PublishedFieldOutputs.Add(Key, Moved);
+						}
 					}
 					if (Bundle->NamedMasks.Contains(FName(TEXT("PebbleCoverage"))))
 					{
@@ -2537,6 +2550,46 @@ namespace
 
 }
 
+static void AddPublishedFieldPreview(FMixtormatComposeContext& Ctx,
+	const FMixtormatLayerPassContext& LayerCtx, const int32 ChildIndex,
+	const FName OutputName, const FPublishedField& Field)
+{
+	if (!Field.IsComplete()) { return; }
+	const bool bScalar = Field.Kind == EMixtormatPublishedFieldKind::Scalar01
+		|| Field.Kind == EMixtormatPublishedFieldKind::ScalarSigned;
+	const bool bVector = Field.Kind == EMixtormatPublishedFieldKind::Vector2;
+	const bool bFlow = Field.Kind == EMixtormatPublishedFieldKind::Flow;
+	if (!bScalar && !bVector && !bFlow) { return; }
+	const EMixtormatPreviewOutputKind PreviewKind = bScalar
+		? EMixtormatPreviewOutputKind::Mask : EMixtormatPreviewOutputKind::FlowDirection;
+	if (!IsChildOutputPreviewTarget(Ctx.Request, PreviewKind, OutputName, LayerCtx.LayerIndex, ChildIndex)) { return; }
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
+	if (bScalar)
+	{
+		AddDebugPreviewScalarBlitPass(Ctx.GraphBuilder, Field.Texture,
+			Field.Kind == EMixtormatPublishedFieldKind::ScalarSigned, Debug, Size);
+	}
+	else if (bVector)
+	{
+		AddDebugPreviewVectorBlitPass(Ctx.GraphBuilder, Field.Texture, Debug, Size);
+	}
+	else
+	{
+		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(4);
+		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		P->OutputSize = Size;
+		P->FlowField = Field.FlowSmooth;
+		P->FlowValidity = Field.Validity;
+		P->OutputDebug = Ctx.GraphBuilder.CreateUAV(Debug);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.PublishedFlow.Preview.C%d", ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	}
+}
+
 void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
 {
@@ -2556,6 +2609,7 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		const FPublishedField Field = *Source;
 		Ctx.PublishedFieldOutputs.Add(
 			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Reference.Source.Output}, Field);
+		AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Reference.Source.Output, Field);
 		if (Reference.Kind == EMixtormatPublishedFieldKind::UVMap)
 		{
 			LayerCtx.ReferencedUV = Field.Texture;
@@ -2867,6 +2921,22 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
 						GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
 						nullptr, nullptr, false});
+				}
+			}
+		}
+		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+		{
+			AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection"))})
+			{
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
+					FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Name});
+				if (!Field) { continue; }
+				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, *Field);
+				// Keep authored mask references to Value working, while Copy preserves its typed payload.
+				if (Name == FName(TEXT("Value")))
+				{
+					Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Name}, Field->Texture);
 				}
 			}
 		}
