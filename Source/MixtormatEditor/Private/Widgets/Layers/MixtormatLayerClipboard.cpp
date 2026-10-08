@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatOutputReference.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -96,7 +97,9 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 		Clipboard.Source = Address;
 	}
 	ChildClipboardScopedRows.Reset();
-	if (!bAsInstance && Child->Type == EMixtormatLayerChildType::IdGroup)
+	if (!bAsInstance && (Child->Type == EMixtormatLayerChildType::IdGroup
+		|| Child->Type == EMixtormatLayerChildType::HeightPush
+		|| Child->Type == EMixtormatLayerChildType::StructuralWarp))
 	{
 		Clipboard.Source = Address;
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
@@ -309,7 +312,9 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			return INDEX_NONE;
 		}
 		if (Clipboard.Mode == EMixtormatChildClipboardMode::Copy
-			&& Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup)
+			&& (Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup
+				|| Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
+				|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp))
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(Clipboard.Payload);
@@ -429,9 +434,61 @@ FText SMixtormat::GetChildPasteReason(
 	if (Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
 		|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp)
 	{
-		return CanPasteChild(Dest, AnchorChildIndex)
-			? LOCTEXT("StructuralPasteReady", "Place a layer-local structural module. Saved connections are retained; no source or target is chosen automatically.")
-			: LOCTEXT("StructuralPasteBlocked", "Requires an unscoped placement in a Generator layer and valid instance ordering; shared groups are unsupported.");
+		const int32 Insert = ResolvePasteInsertIndex(Dest, AnchorChildIndex);
+		if (Insert == INDEX_NONE)
+		{
+			return LOCTEXT("StructuralPasteBlocked", "Requires an unscoped placement in a Generator layer and valid instance ordering; shared groups are unsupported.");
+		}
+		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+			[&Dest](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Dest.OwnerId; });
+		if (!Layer) { return FText::GetEmpty(); }
+		TArray<FMixtormatLayer> ProjectedLayers;
+		ProjectedLayers.Add(*Layer);
+		FMixtormatLayerChild Module = Clipboard.Payload;
+		Module.ChildId = FGuid::NewGuid();
+		Module.ScopeOwnerChildId.Invalidate();
+		Module.SourceLayerId = Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			? Clipboard.Source.OwnerId : FGuid();
+		Module.SourceChildId = Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			? Clipboard.Source.ChildId : FGuid();
+		ProjectedLayers[0].Children.Insert(MoveTemp(Module), Insert);
+		MixtormatParameterBinding::ApplyDirectReferences(
+			FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, ProjectedLayers[0]);
+		if (ProjectedLayers[0].Children[Insert].Type == EMixtormatLayerChildType::StructuralWarp)
+		{
+			// Gather resolves Push targets on its binding-resolved copy, but Warp targets
+			// still use the effective authored payloads. Preserve that existing distinction.
+			FMixtormatLayerChild ResolvedModule = ProjectedLayers[0].Children[Insert];
+			ProjectedLayers[0] = *Layer;
+			ProjectedLayers[0].Children.Insert(MoveTemp(ResolvedModule), Insert);
+		}
+		// Only diagnose the saved target here, not source availability or GPU execution.
+		// An empty source override avoids resolving/loading Flow assets merely for a paste hint.
+		const FMixtormatOutputReference NoSource;
+		using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
+		const EIssue TargetIssue = MixtormatOutputReferences::EvaluateStructuralLink(
+			ProjectedLayers, 0, Insert, &NoSource).Target.Issue;
+		switch (TargetIssue)
+		{
+		case EIssue::Unset:
+			return LOCTEXT("StructuralPasteTargetUnset", "Paste with no target connected. Choose an explicit later target in the Inspector; no target is chosen automatically.");
+		case EIssue::MissingChild:
+			return LOCTEXT("StructuralPasteTargetMissing", "Paste with an unavailable target: its saved GUID does not identify a child in this layer. The connection is retained; reconnect explicitly in the Inspector.");
+		case EIssue::ForwardTarget:
+			return LOCTEXT("StructuralPasteTargetOrder", "Paste with an invalid target order: the saved target must follow the module. The connection is retained; paste before that target or reconnect explicitly.");
+		case EIssue::WrongTargetKind:
+			return LOCTEXT("StructuralPasteTargetType", "Paste with an incompatible target: Height Push requires Strata Carver; Structural Warp requires a generator. The connection is retained; reconnect explicitly.");
+		case EIssue::DisabledTarget:
+			return LOCTEXT("StructuralPasteTargetDisabled", "Paste with a disabled target. The connection is retained; it cannot contribute until the target is enabled.");
+		case EIssue::ScopedTarget:
+			return LOCTEXT("StructuralPasteTargetScoped", "Paste with an unsupported scoped target. The connection is retained; choose a later unscoped generator.");
+		case EIssue::DuplicateIdentity:
+			return LOCTEXT("StructuralPasteTargetDuplicate", "Paste with an ambiguous target GUID. The connection is retained; repair duplicate identities before reconnecting.");
+		case EIssue::None:
+			return LOCTEXT("StructuralPasteReady", "Place a layer-local structural module with its saved target. Source eligibility is separate; no source or target is chosen automatically.");
+		default:
+			return LOCTEXT("StructuralPasteTargetInvalid", "Paste with an invalid retained target connection. Repair it explicitly in the Inspector; no target is chosen automatically.");
+		}
 	}
 	if (Container->IsValidIndex(AnchorChildIndex)
 		&& (*Container)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
@@ -555,6 +612,9 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		return FReply::Unhandled();
 	}
 	const FMixtormatChildClipboard Clipboard = ChildClipboard.GetValue();
+	const bool bStructural = Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
+		|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp;
+	const FText StructuralPasteReason = bStructural ? GetChildPasteReason(Dest, AnchorChildIndex) : FText::GetEmpty();
 	int32 FinalInsert = Insert;
 
 	const bool bIntoIdGroup = DestContainer->IsValidIndex(AnchorChildIndex)
@@ -597,7 +657,9 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
 		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
-		if (Pasted.Type == EMixtormatLayerChildType::IdGroup)
+		if (Pasted.Type == EMixtormatLayerChildType::IdGroup
+			|| Pasted.Type == EMixtormatLayerChildType::HeightPush
+			|| Pasted.Type == EMixtormatLayerChildType::StructuralWarp)
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(MoveTemp(Pasted));
@@ -630,6 +692,10 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	RebuildMaskList();
+	if (bStructural)
+	{
+		WorkingStatusText = StructuralPasteReason.ToString();
+	}
 	return FReply::Handled();
 }
 
