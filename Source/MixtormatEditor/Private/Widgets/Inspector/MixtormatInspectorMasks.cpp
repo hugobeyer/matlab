@@ -1126,8 +1126,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	//
 	// Texture masks only. A Layer Values mask reads the layer it is on at the composition's own
 	// resolution -- there is no map to tile, offset, flip or turn -- so the whole block is
-	// collapsed rather than shown inert. This is the other half of removing the Source dropdown:
-	// the inspector is now specific to what the mask actually reads.
+	// collapsed rather than shown inert. Published and inline-Noise coverage are still sampled
+	// maps, so their placement stays meaningful. This is the other half of removing the Source
+	// dropdown: the inspector is now specific to what the mask actually reads.
 	const TSharedRef<SVerticalBox> PlacementCard = SNew(SVerticalBox)
 		.Visibility_Lambda([this]()
 		{

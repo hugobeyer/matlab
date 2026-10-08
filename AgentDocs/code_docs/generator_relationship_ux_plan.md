@@ -4,6 +4,21 @@ Status: implementation specification, 2026-10-08. **Documentation only; not impl
 
 Primary decision: **target-first source picker + target-owned connection rows**. This replaces the confusing primary workflow, not merely its labels. Existing advanced authoring, serialized data, evaluation semantics, and unrelated UI remain intact.
 
+Implementation baseline updated 2026-10-08: Noise Mask/Noise Gate and live `Noise Value from…`
+source authoring now exist; all six generators can own deformation tools, including Cliff Strata.
+The target-first Structural Warp picker, projected relationship rows, generator-local collapse,
+and `LayerConnections` style fields in this plan **still do not exist**. Do not conflate the mask
+source workflow with completion of this plan. See `noise_gate_flow_handoff.md` for delivered code,
+UI availability findings, and source-review limitations.
+
+**Availability requirement:** do not hide supported features through generator-name whitelists,
+label simplification, or narrow-panel cleanup. Disable unavailable actions with a specific reason.
+Valid reasons include missing compatible fields, unresolved/disabled producers, execution order,
+instance ownership, or unsupported group authoring. If no concrete reason can be traced to the
+current contract/reader, treat the gate as an issue to investigate, not a design requirement.
+Retired parameters with no runtime reader may remain absent only with their retirement documented;
+showing an inert slider is not restored functionality.
+
 This document is the textual handoff. Implementation agents must not open, read, or interpret concept images. No screenshot interpretation is required. No tests, test harnesses, diagnostics, builds, commands, or Unreal launches are included or authorized by this plan. Completion is assessed through targeted source reading and manual static review only; that is not a claim of runtime correctness.
 
 ## 1. Authority, scope, and concept decisions
@@ -170,7 +185,7 @@ All paths below are relative to the repository root. Symbols, rather than line n
 | `Source/MixtormatShaders/Private/Compositing/MixtormatGeneratorGather.cpp` | Actual gather projection and ordered structural execution |
 | `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp` | Existing GPU behavior; no UX-driven execution rewrite |
 
-No new Runtime dependency on Editor, enum reordering, asset migration, or shader dispatch changes belong to this task.
+No new Runtime dependency on Editor, enum reordering, asset migration, or shader dispatch changes belong to this relationship-presentation task. Preserve separately delivered Noise mask fields and the appended `MaskNoise` parameter owner; this boundary does not authorize reverting them or prohibit separately requested runtime/shader work.
 
 ### 4.2 Editor orchestration and behavior
 
@@ -348,6 +363,16 @@ Later Rock / Flow Carve · Flow — runs later
 - Closing, activating, rebuilding, changing document, or destroying the picker clears its temporary highlight.
 
 `FBuilder` currently exposes captions, items, submenus, separators, and arbitrary widgets, not search/candidate APIs. Add the source picker as focused composition; do not claim search already exists. `SMixtormatMenuItem` currently has no explicit picker hover/focus delegates. Any such hooks are new optional APIs with unchanged defaults for current callers.
+
+### Delivered precedent to align with — Noise-valued mask sources
+
+The noise/mask authoring work (`Widgets/Layers/MixtormatMaskSources.cpp`, `UI.md`) already implements a
+smaller version of this pattern: `Noise Value from…` lists owner-qualified compatible existing
+sources, disables the rest with a reason, revalidates GUID addresses at click time, and commits one
+edit. Reuse its conventions for the relationship pickers rather than inventing a second vocabulary:
+same disabled-with-reason style, same stable-address revalidation, same single-history commit. The
+mask path covers a source *value* only; it does not project ownership rows, does not move authored
+children, and does not replace this plan's target-owned display, which remains unimplemented.
 
 ## 8. Atomic preparation and commit
 

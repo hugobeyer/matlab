@@ -45,6 +45,7 @@ void SMixtormat::SelectMaskSource(const FMixtormatChildAddress& Destination, con
 	RecordEditHistory();
 	LastHistoryRecordTime = 0.0;
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 	RebuildLayerList();
 }
 
@@ -110,7 +111,11 @@ void SMixtormat::SelectMaskNoiseValue(const FMixtormatChildAddress& Destination,
 	const FMixtormatChildAddress& Source)
 {
 	FText Reason;
-	if (!CanSelectMaskNoiseValue(Destination, Source, Reason)) { return; }
+	if (!CanSelectMaskNoiseValue(Destination, Source, Reason))
+	{
+		WorkingStatusText = Reason.ToString();
+		return;
+	}
 	FMixtormatMaskLayer& Mask = ResolveChildAt(Destination)->Mask;
 	Mask.PublishedSourceLayerId = Source.OwnerId;
 	Mask.PublishedSourceChildId = Source.ChildId;
@@ -120,6 +125,7 @@ void SMixtormat::SelectMaskNoiseValue(const FMixtormatChildAddress& Destination,
 	RecordEditHistory();
 	LastHistoryRecordTime = 0.0;
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 	RebuildLayerList();
 }
 

@@ -39,8 +39,8 @@ inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 		|| Type == EMixtormatGeneratorType::RockFormation
 		|| Type == EMixtormatGeneratorType::Pebbles
 		|| Type == EMixtormatGeneratorType::Cracks
-	|| Type == EMixtormatGeneratorType::CliffStrata
-	|| Type == EMixtormatGeneratorType::Noise;
+		|| Type == EMixtormatGeneratorType::CliffStrata
+		|| Type == EMixtormatGeneratorType::Noise;
 }
 
 inline bool MixtormatGeneratorHasFlowBoundary(const EMixtormatGeneratorType Type)

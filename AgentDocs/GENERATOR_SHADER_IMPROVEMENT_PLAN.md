@@ -1,6 +1,66 @@
 # Generator and Erosion Shader Improvement Plan
 
-Status: proposal, not implemented. Date: 2026-10-07.
+Status: **partially implemented; not a completion record**. Original date: 2026-10-07.
+Source-status review: 2026-10-08. No tests, commands, builds, profiling, or visual comparisons run.
+
+## 0. Current source status and cross-plan boundaries
+
+The former blanket “not implemented” header conflicted with C1's own implemented status.
+The following is based on targeted source reads, not runtime acceptance:
+
+| Item | Current source evidence | Status |
+|---|---|---|
+| A1 Strata zero-work gates | `MixtormatStrataCarver.usf`: Bend, Lamination and Breakup blocks are conditional | Present in the redesigned shader; not evidence of old-output equivalence |
+| A1 Erosion dependency gates | `MixtormatErosion.usf`: secondary/variation-dependent fields are gated | Present |
+| A1 Cracks gates | `MixtormatCracks.usf`: push-band FBMs and Width/Region variation samples still execute without the proposed local guards | Incomplete |
+| A1 Noise zero-amplitude octave exit | `MixtormatNoise.ush`: octave loops stop on invalid period, not zero amplitude | Not implemented as proposed |
+| A2 uniform-scale distance acceleration | Pebbles and Rock shader paths still differentiate outlines with four extra samples | Not implemented as proposed |
+| A3 Cliff sweep dispatch | Shader still uses 8×8 threads and serial row/column predicates; C++ dispatch has no dedicated 1D permutation | Not implemented as proposed |
+| A3 Cliff endpoint | Stage 4 reads its last `OutSweep` row after a forward loop beginning at row 1; row 0 has no initial write in that stage. C++ binds a fresh SweepB texture without an explicit clear | Source-level initialization risk remains; do not describe it as fixed |
+| A4 Rock facet prebuild | `RockFacetCut` still computes per-round plane work in the field path | Not implemented as proposed |
+| A5 carve-depth state | `PreviousCarve`/`SeedCarve`, R32 carve ping-pong, retained centre and final height resolve exist; constant velocity textures are removed | Implemented, but numerical equivalence/performance is unconfirmed |
+| B shared contracts | Typed Noise fields, completed bundle remap, structural-link validation and shared Noise mask production exist | Partial integration; not completion of every architectural proposal |
+| C1 geological Strata | Ordered interfaces, hard shelves, soft recesses and joint slabs exist; inspector exposes their controls | Implemented as a replacement, not opt-in; faults/pinch-outs remain future |
+| C2 weathering/water simulation | Existing Erosion remains directional carving; Gravity Flow is a generator deformation tool, not water/sediment transport | Proposed, not delivered by the Noise/Gravity work |
+| C3 new generator algorithms | Proposed hierarchical fractures, packing, cliff faults and footprint filtering are not established by this review | Do not mark complete |
+
+### Compatibility conflict to keep explicit
+
+C1 says the Strata shader was replaced; §§2/5 originally require opt-in visual changes and
+retaining old behavior. Those statements are not simultaneously satisfied by the current
+replacement. `RampShape` is serialized/deprecated and no longer drives shader output; making
+its old control visible would not restore the old algorithm. No legacy mode or migration was
+added during this review. A future restoration/migration needs an explicit decision, not a
+UI-only re-enable or a claim that the old appearance is preserved.
+
+### Relationship UI and noise masks do not conflict with shader optimization
+
+`code_docs/generator_relationship_ux_plan.md` remains an unimplemented authoring/display plan.
+Its editor-only target-row projection must preserve the currently authored execution array and
+runtime compatibility. That is not a ban on separately authorized shader improvements or
+Noise mask routing; it prevents a UI refactor from silently changing execution semantics.
+
+The implemented Noise mask source reuses raw field evaluation and converts only the consumer's
+coverage view. It does not force raw Value/Gradient/Height into 0..1 and therefore preserves the
+Track B field-contract separation. Its value-only shader permutation skips outputs only on the
+inline-mask path; the generator still produces its existing fields. This is not C3 footprint
+filtering and should not be reported as it.
+
+All current generators now allow the four generator-owned flow tools, including Cliff Strata
+and Noise. Their Height-only steering is a real missing-boundary-field constraint; Signed
+Distance must remain discoverable but disabled with an explanation there. No arbitrary
+per-generator menu whitelist should hide the tools again.
+
+### UI availability rule for follow-up work
+
+Supported authored operations stay accessible. Context-inapplicable or unsupported operations
+must identify the missing contract/prerequisite; prefer disabled-with-reason over disappearance.
+Preview-only outputs are not evidence of reusable publication. Retired no-reader parameters
+need documented retirement, not fake enabled controls. Do not reduce output demand or remove
+an authoring feature to make a shader optimization appear faster.
+
+The older measurement/validation proposals below are not authorization to run tests, commands,
+builds, captures, or diagnostics; current repository/user no-testing instructions take priority.
 
 ## 1. Scope and evidence
 

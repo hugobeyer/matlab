@@ -36,10 +36,10 @@ the range, not the file.
 |---|---|
 | `FMixtormatLayer`, `FMixtormatLayerChild`, `FMixtormatLayerGroup`, `EMixtormatLayerChildType`, layer enums | `Runtime/Public/MixtormatLayerTypes.h` |
 | `UMixtormatMaterial`, `FMixtormatFinalSettings`, `MixtormatCompositionReferences` | `Runtime/Public/MixtormatMaterial.h` |
-| `EMixtormatGeneratorType`, `FMixtormatGenerator`, generator payloads, `MixtormatCanOwnGeneratorFlow` | `Runtime/Public/MixtormatGeneratorTypes.h` |
+| `EMixtormatGeneratorType`, `FMixtormatGenerator`, generator payloads, `MixtormatCanOwnGeneratorFlow`, `MixtormatGeneratorHasFlowBoundary` | `Runtime/Public/MixtormatGeneratorTypes.h` |
 | `EMixtormatParameterOwnerType`, `FMixtormatParameterAddress`, `FMixtormatParameterBinding`, driver/reference types | `Runtime/Public/MixtormatParameterTypes.h` |
 | `EMixtormatHeightOp`, `FMixtormatHeightBlend` | `Runtime/Public/MixtormatHeightTypes.h` |
-| `FMixtormatMaskLayer`, `FMixtormatGeneratedMask`, `FMixtormatColorIdMask`, `FMixtormatRandomIdMask`, `FMixtormatCraquelure` | `Runtime/Public/MixtormatMaskTypes.h` |
+| `FMixtormatMaskLayer`, `FMixtormatGeneratedMask`, `FMixtormatColorIdMask`, `FMixtormatRandomIdMask`, `FMixtormatCraquelure`, `EMixtormatMaskSource` (incl. inline `Noise`) | `Runtime/Public/MixtormatMaskTypes.h` |
 | `FMixtormatClusterFilter`, `FMixtormatHsvIdFilter`, `FMixtormatPatternFilter`, `FMixtormatIdGroup`, `FMixtormatRampIdFilter`, `FMixtormatUvIdFilter`, `FMixtormatReliefIdFilter`, `FMixtormatBoundaryIdFilter`, `FMixtormatCombineIdFilter` | `Runtime/Public/MixtormatIdTypes.h` |
 | `FMixtormatLayerEffect`, `EMixtormatGradeTonemap`, `EMixtormatStainMode`, `EMixtormatPeelType` | `Runtime/Public/MixtormatEffect.h` |
 | `EMixtormatEffectType`, `MixtormatEffectClassOf` | `Runtime/Public/MixtormatEffect.h` |
@@ -47,7 +47,7 @@ the range, not the file.
 | `MixtormatParameterBinding::*` | `Runtime/Public/MixtormatParameterBinding.h` |
 | `MixtormatLayerGroups::*` | `Runtime/Public/MixtormatLayerGroups.h` |
 | `MixtormatChildScope::*` | `Runtime/Public/MixtormatChildScope.h` |
-| `MixtormatOutputReferences::*` | `Runtime/Public/MixtormatOutputReference.h` |
+| `MixtormatOutputReferences::*` (incl. `ResolvePublishedMaskSource`) | `Runtime/Public/MixtormatOutputReference.h` |
 | `FMixtormatMaskShaping` | `Runtime/Public/MixtormatMaskShaping.h` |
 | `FMixtormatScalarRamp`, `FMixtormatColorRamp` | `Runtime/Public/MixtormatScalarRamp.h`, `MixtormatColorRamp.h` |
 | `FMixtormatGpuCompositor` | `Shaders/Public/MixtormatGpuCompositor.h` |
@@ -55,6 +55,8 @@ the range, not the file.
 | `AddGeneratorLayerPasses` | `Shaders/Private/MixtormatGpuGeneratorPasses.cpp` |
 | `GatherGeneratorChild` | `Shaders/Private/Compositing/MixtormatGeneratorGather.cpp` |
 | `GetChildCapabilities` | `Editor/Private/Widgets/MixtormatChildCapabilities.cpp` |
+| Mask sources / Noise gate (`CreateNoiseGate`, `SelectMaskNoiseValue`, `BuildMaskNoiseValueMenu`) | `Editor/Private/Widgets/Layers/MixtormatMaskSources.cpp` |
+| `AddNoiseMaskPass`, `AddNoiseCoveragePass` | `Shaders/Private/MixtormatGpuNoisePasses.cpp` |
 | `SMixtormat` | `Editor/Private/Widgets/SMixtormat.h` |
 | `MixtormatParameterUi` | `Editor/Private/UI/Parameters/MixtormatParameterUiMeta.h` |
 | `MixtormatParameterAuthoring` | `Editor/Private/UI/Parameters/MixtormatParameterAuthoring.h` |

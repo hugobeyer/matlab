@@ -83,10 +83,14 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 			{
 				const int64 Value = SourceEnum->GetValueByIndex(Index);
 				if (Value == INDEX_NONE || SourceEnum->HasMetaData(TEXT("Hidden"), Index)) { continue; }
-				Menu.Item(SourceEnum->GetDisplayNameTextByIndex(Index), nullptr,
+				const bool bAvailable = Value == static_cast<int64>(EMixtormatGeneratorFlowSource::Height);
+				const FText Label = bAvailable ? SourceEnum->GetDisplayNameTextByIndex(Index)
+					: FText::Format(LOCTEXT("FlowSourceMissingBoundary", "{0} — no signed boundary field"),
+						SourceEnum->GetDisplayNameTextByIndex(Index));
+				Menu.Item(Label, nullptr,
 					FSimpleDelegate::CreateLambda([WriteNoiseSource, Value]() { WriteNoiseSource(Value); }))
 					.Checked(TAttribute<bool>::CreateLambda([ActiveSource, Value]() { return ActiveSource() == Value; }))
-					.Enabled(Value == static_cast<int64>(EMixtormatGeneratorFlowSource::Height));
+					.Enabled(bAvailable);
 			}
 			return Menu.Build();
 		}), nullptr, TAttribute<FText>(), 0.0f);

@@ -59,6 +59,18 @@ FlowWarp,Grade,LayerBlur,WornEdges}Passes.cpp`, `MixtormatEffectCommon.cpp`.
   producer; shader maths is one `MixtormatShapeMask` in `MixtormatMaskOps.ush`.
 - Scoped masks: `MixtormatChildScope::CanOwnScopedMasks` (Runtime) gates who may
   own a scoped Mask child; gather and editor share it.
+- Mask sources: Texture, Layer Values, appended inline `Noise` (`FMixtormatMaskLayer::Noise`,
+  `UsesNoise()`), or a live published output. `MixtormatMaskGather` stores
+  `FMaskRenderData.bNoise/Noise/SourceChildIndex` for the inline path and resolves published
+  sources through `MixtormatOutputReferences::ResolvePublishedMaskSource`, the canonical
+  same-layer completed-earlier-scope check for Noise `Value`.
+- Noise masks reuse the producer: `AddNoiseMaskPass` (identity placement, no Height/Gradient/ID
+  allocation) writes R32 coverage; `AddNoiseCoveragePass` maps typed `ScalarSigned`
+  (`saturate(0.5*Value+0.5)`) / `Scalar01` to coverage. Converted coverage is cached per source
+  in `FMixtormatComposeContext::NoiseMaskSources`; raw typed Value publication is untouched.
+  The typed conversion takes precedence over legacy scalar aliases in `PublishedMaskOutputs`,
+  which must not bypass signed-to-coverage conversion. Mask placement/shaping/blur run
+  afterwards in the ordinary mask shader.
 
 ## IDs
 

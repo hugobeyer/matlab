@@ -23,12 +23,14 @@ translation units — search the member function, not the header.
 - `UI/Layers/SMixtormatLayerHierarchy.*` — the tree.
 - `UI/Layers/SMixtormatLayerRow.*`, `SMixtormatLayerGroupRow.*`,
   `SMixtormatLayerChildRow.*`, `SMixtormatLayerContainer.*`,
-  `SMixtormatLayerGroupContainer.*`, `SMixtormatLayerConnector.*`,
+  `SMixtormatLayerGroupContainer.*`,
   `SMixtormatLayerIcon.*`, `SMixtormatLayerSurface.*`, `MixtormatLayerBadges.*`.
+  (`SMixtormatLayerConnector.*` was removed with the brush-based tree — see `ICONS.md`;
+  hierarchy rails are painted by `SMixtormatLayerHierarchy` from theme metrics now.)
 - Behaviour: `Widgets/Layers/MixtormatLayerActions.cpp`,
   `MixtormatLayerChildren.cpp`, `MixtormatLayerDragDrop.cpp`,
   `MixtormatLayerMenus.cpp`, `MixtormatLayerHierarchy.cpp`,
-  `MixtormatLayerClipboard.cpp`, `MixtormatLayersPrivate.h`.
+  `MixtormatLayerClipboard.cpp`, `MixtormatMaskSources.cpp`, `MixtormatLayersPrivate.h`.
 
 Structural connection menus/labels and the atomic setter are shared by explicit child
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
@@ -46,6 +48,24 @@ unscoped module before that target, connects only its target GUID, and leaves it
 Existing layer-level creation stays unchanged. The shared procedural removal handler accepts
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
 No build/runtime validation has been run.
+
+Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
+picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
+`Noise Value from…`, wires the mask to a completed earlier Noise generator's live published
+`Value` (with `Paste Copied Noise Value` when the clipboard holds such a mask). Inline selection
+clears published GUIDs first, because a published source otherwise wins; `UsesNoise()` mirrors
+`UsesLayerValues()` precedence. Source changes preserve blending, shaping, filters and scope, and
+instances stay locked (they mirror their source child). The inline Noise controls reuse the
+generator inspector's PATTERN/PLACEMENT rows via `BuildNoisePatternPlacementControls`; generator
+Height-only settings do not appear because masks read Value coverage. Mask Tiling/UV/Rotation
+stay visible for Texture, published and inline-noise sources and stay hidden for Layer Values.
+Right-click a scoped-mask owner (generators and effects, including Gravity Flow) → `Noise Gate`
+(`CreateNoiseGate`) to author one scoped Mask child with Source=Noise in a single edit. This UI
+half is source-reviewed only; the GPU half is `AddNoiseMaskPass`/`AddNoiseCoveragePass` plus the
+mask-resolver conversion in `MixtormatGpuMaskPasses.cpp` (see `COMPOSITION.md`).
+Delivered files, UI availability findings, and integration rules for later UI agents:
+`code_docs/noise_gate_flow_handoff.md`. All six generators now expose the flow-tool menu;
+Noise and Cliff use Height steering and explicitly explain why Signed Distance is disabled.
 
 ## Generator relationship UX plan
 

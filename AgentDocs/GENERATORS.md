@@ -20,15 +20,51 @@ Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`, `GravityFlow`) live in
 `EMixtormatEffectType` (`MixtormatEffect.h`), not here. They are valid only
 scoped under a generator that can own them (`MixtormatCanOwnGeneratorFlow`:
-Strata Carver, Rock Formation, Pebbles, Cracks, Noise) and rewrite its height before
-combine. Noise supports Height only: it has no signed boundary field. Newly authored
-Noise-scoped tools start with Height; Signed Distance remains visible but unavailable. See `code_docs/generator_flow_interaction_audit.md`.
+Strata Carver, Rock Formation, Pebbles, Cracks, Cliff Strata, Noise) and rewrite its height before
+combine. Noise and Cliff Strata support Height steering only: neither publishes a signed boundary
+field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBoundary` names that
+distinction for the inspector and authoring defaults). Every other eligible generator keeps both
+source modes. See `code_docs/generator_flow_interaction_audit.md`.
+
+## Noise as a mask source (inline or live)
+
+Every Mask child can now read noise directly; the same producer family is reused rather than
+re-implemented:
+
+- **Inline (`EMixtormatMaskSource::Noise`, appended value 2).** `FMixtormatMaskLayer` carries a
+  local `FMixtormatNoise Noise` (`UsesNoise()` is true only while no published source is set, the
+  same precedence Layer Values uses). GPU-side, `AddNoiseMaskPass` dispatches the shared
+  `MixtormatNoise.usf` families with identity placement and produces R32 coverage: signed Value
+  maps through `saturate(0.5 * Value + 0.5)`, unsigned families clamp unchanged
+  (`AddNoiseCoveragePass`). Mask placement/shaping/blur run afterwards in the ordinary mask
+  shader, so Tiling/UV/Rotation stay meaningful and cost no extra pass when untouched.
+- **Live (`Noise Value from…`).** A mask can instead reference an existing Noise generator's
+  completed published `Value` through the normal `PublishedSourceLayerId/ChildId/Output` fields.
+  `MixtormatOutputReferences::ResolvePublishedMaskSource` is the canonical same-layer ordering
+  check (completed earlier scope, no self/owner feedback); GPU resolution converts the typed
+  `ScalarSigned`/`Scalar01` field to coverage (`Ctx.NoiseMaskSources` graph-local cache). The mask
+  resolver checks typed Value before any legacy `PublishedMaskOutputs` alias, so raw signed
+  Value is never consumed directly as coverage.
+- The raw typed `Value` publication is unchanged, so Height Push/Warp/reference consumers keep
+  full precision. The Noise Gate and mask-source menu/form live in
+  `Widgets/Layers/MixtormatMaskSources.cpp`; the inline controls reuse the generator inspector's
+  PATTERN/PLACEMENT rows (`BuildNoisePatternPlacementControls`). Height-only generator settings
+  (`NoiseHeightScale`, `bNoiseNormalizeHeight`) intentionally do not appear for mask noise,
+  because they shape module Height, not the Value coverage a mask reads.
+- Right-click an eligible scoped-mask owner (generators and effects, including Gravity Flow) →
+  **Noise Gate** to create one scoped Mask child with Source=Noise in a single edit. Evidence is
+  source review only; no build, shader compile, runtime or visual validation has been run.
+- Canonical nested parameter ownership is the appended `EMixtormatParameterOwnerType::MaskNoise`
+  (25), with actual owner/child GUIDs. Reflected defaults, binding/introspection and instance
+  inheritance share the normal parameter pipeline. Exact files and later-UI integration rules:
+  `code_docs/noise_gate_flow_handoff.md`.
 
 ## Gravity Flow (texture-space generator child)
 
 - Right-click an eligible generator → **Gravity Flow**. It uses the same ownership rules as
-  existing flow tools: Strata Carver, Rock Formation, Pebbles, Cracks and Noise. Cliff Strata
-  remains unavailable under the existing generator-flow ownership contract.
+  existing flow tools: Strata Carver, Rock Formation, Pebbles, Cracks, Cliff Strata and Noise.
+  Noise- and Cliff-scoped tools start with Height steering; Signed Distance is unavailable there
+  because neither publishes a signed boundary field.
 - `GravityFlow = 12` is appended to `EMixtormatEffectType`. New children start with Height
   steering. `GeneratorFlowAngle` rotates `(0,-1)`: 0 degrees = -V, 90 = +U, 180 = +V.
 - Height steering is local, keeps gravity active on flat texels and avoids seed/JFA passes.
