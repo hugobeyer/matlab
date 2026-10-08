@@ -36,6 +36,55 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainMaskCS",
 	SF_Compute);
 
+class FMixtormatDebugPreviewScalarCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatDebugPreviewScalarCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatDebugPreviewScalarCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, SourceIsSigned)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceScalar)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatDebugPreviewScalarCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf",
+	"MainScalarCS",
+	SF_Compute);
+
+class FMixtormatDebugPreviewVectorCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatDebugPreviewVectorCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatDebugPreviewVectorCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceVector)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatDebugPreviewVectorCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf",
+	"MainVectorCS",
+	SF_Compute);
+
 class FMixtormatDebugPreviewSignedDistanceCS final : public FGlobalShader
 {
 public:
@@ -184,6 +233,56 @@ namespace MixtormatGpuCompositor
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.DebugPreview.Mask"),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8),
+				1));
+	}
+
+	void AddDebugPreviewScalarBlitPass(
+		FRDGBuilder& GraphBuilder,
+		const FRDGTextureRef SourceScalar,
+		const bool bSigned,
+		const FRDGTextureRef OutputDebug,
+		const FIntPoint Resolution)
+	{
+		FMixtormatDebugPreviewScalarCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatDebugPreviewScalarCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->SourceIsSigned = bSigned ? 1u : 0u;
+		Parameters->SourceScalar = SourceScalar;
+		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
+
+		TShaderMapRef<FMixtormatDebugPreviewScalarCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.DebugPreview.Scalar"),
+			Shader,
+			Parameters,
+			FIntVector(
+				FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8),
+				1));
+	}
+
+	void AddDebugPreviewVectorBlitPass(
+		FRDGBuilder& GraphBuilder,
+		const FRDGTextureRef SourceVector,
+		const FRDGTextureRef OutputDebug,
+		const FIntPoint Resolution)
+	{
+		FMixtormatDebugPreviewVectorCS::FParameters* Parameters =
+			GraphBuilder.AllocParameters<FMixtormatDebugPreviewVectorCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->SourceVector = SourceVector;
+		Parameters->OutputDebug = GraphBuilder.CreateUAV(OutputDebug);
+
+		TShaderMapRef<FMixtormatDebugPreviewVectorCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.DebugPreview.Vector"),
 			Shader,
 			Parameters,
 			FIntVector(

@@ -36,6 +36,46 @@ void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
 }
 
+Texture2D<float> SourceScalar;
+uint SourceIsSigned;
+
+[numthreads(8, 8, 1)]
+void MainScalarCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float SourceValue = SourceScalar.Load(int3(Pixel, 0));
+	const float DisplayValue = SourceIsSigned != 0 ? 0.5f * SourceValue + 0.5f : SourceValue;
+	const float Value = MixtormatSrgbToLinearChannel(DisplayValue);
+	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
+}
+
+Texture2D<float2> SourceVector;
+
+[numthreads(8, 8, 1)]
+void MainVectorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float2 Vector = SourceVector.Load(int3(Pixel, 0));
+	if (all(Vector == float2(0.0f, 0.0f)))
+	{
+		OutputDebug[Pixel] = float4(MixtormatDebugColor(float3(0.12f, 0.12f, 0.12f)), 1.0f);
+		return;
+	}
+	// Direction alone determines hue, independent of the producer's vector units.
+	const float Hue = frac(atan2(Vector.y, Vector.x) / 6.28318530718f + 1.0f);
+	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
+	const float3 Colour = 0.8f * lerp(float3(1.0f, 1.0f, 1.0f), Rgb, 0.85f);
+	OutputDebug[Pixel] = float4(MixtormatDebugColor(Colour), 1.0f);
+}
+
 // A signed distance (negative inside) as two colours with iso-lines, for a field whose range has
 // nothing to do with 0..1 -- a mask blit of one is black on the inside and white a few texels out.
 //

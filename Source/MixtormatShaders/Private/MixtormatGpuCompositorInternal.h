@@ -2038,6 +2038,21 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputDebug,
 		FIntPoint Resolution);
 
+	// A float scalar as unclamped grayscale; signed values map through 0.5 * v + 0.5.
+	void AddDebugPreviewScalarBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceScalar,
+		bool bSigned,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
+
+	// A float2 vector as direction hue, with zero shown as neutral dark gray.
+	void AddDebugPreviewVectorBlitPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef SourceVector,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution);
+
 	// A published colour field (a Generator-layer Height Color Ramp), shown as authored.
 	void AddDebugPreviewColorBlitPass(
 		FRDGBuilder& GraphBuilder,
