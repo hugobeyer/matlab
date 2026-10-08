@@ -87,7 +87,7 @@
 			0.0047769532538950443,
 			0
 		],
-		"Icons.TopBar.GlyphSize": 20,
+		"Icons.TopBar.GlyphSize": 16,
 		"Icons.TopBar.ButtonSize": 16,
 		"Icons.TopBar.HitSize": 23,
 		"Icons.TopBar.RestOpacity": 0.60000002384185791,
@@ -530,6 +530,8 @@
 		"GalleryLayout.CaptionInset": 2,
 		"GalleryLayout.OverlayInset": 3,
 		"GalleryLayout.HeaderGap": 4,
+		"GalleryLayout.MaskHeaderInset": 12,
+		"GalleryLayout.DrawerAutoCollapseDistance": 6,
 		"GalleryLayout.DrawerInset": 8,
 		"GalleryLayout.DrawerSideInset": 24,
 		"GalleryLayout.DrawerHeaderHeight": 18,
@@ -553,7 +555,7 @@
 		"Shell.ScrollbarThumbOpacity": 0.27000001072883606,
 		"Shell.ScrollbarHoverOpacity": 0.38999998569488525,
 		"Shell.SplitterVisualWidth": 1,
-		"Shell.SplitterHitWidth": 8
+		"Shell.SplitterHitWidth": 24
 	},
 	"typography":
 	{
