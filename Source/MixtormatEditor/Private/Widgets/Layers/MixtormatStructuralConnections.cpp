@@ -278,6 +278,92 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 	return Menu.Build();
 }
 
+EStructuralLinkHighlightRole SMixtormat::GetStructuralHighlightRole(const FMixtormatChildAddress Address) const
+{
+	const FMixtormatChildAddress SelectedAddress = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Module = ResolveChildAt(SelectedAddress);
+	if (!Module || !IsStructuralModule(*Module)) { return EStructuralLinkHighlightRole::None; }
+	const bool bPush = Module->Type == EMixtormatLayerChildType::HeightPush;
+	const FMixtormatOutputReference& Source = bPush ? Module->HeightPush.Source : Module->StructuralWarp.Source;
+	const FGuid TargetId = bPush ? Module->HeightPush.TargetChildId : Module->StructuralWarp.TargetChildId;
+	const bool bSource = Source.SourceLayerId.IsValid() && Source.SourceChildId.IsValid()
+		&& Address.OwnerId == Source.SourceLayerId && Address.ChildId == Source.SourceChildId;
+	const bool bTarget = TargetId.IsValid() && Address.OwnerType == SelectedAddress.OwnerType
+		&& Address.OwnerId == SelectedAddress.OwnerId && Address.ChildId == TargetId;
+	if (bSource && bTarget) { return EStructuralLinkHighlightRole::Both; }
+	if (bSource) { return EStructuralLinkHighlightRole::Source; }
+	return bTarget ? EStructuralLinkHighlightRole::Target : EStructuralLinkHighlightRole::None;
+}
+
+bool SMixtormat::IsSelectedStructuralSourceLayer(const FGuid LayerId, const FGuid GroupId) const
+{
+	const FMixtormatLayerChild* Module = ResolveChildAt(GetSelectedChildAddress());
+	if (!Module || !IsStructuralModule(*Module)) { return false; }
+	const FMixtormatOutputReference& Source = Module->Type == EMixtormatLayerChildType::HeightPush
+		? Module->HeightPush.Source : Module->StructuralWarp.Source;
+	FMixtormatChildAddress SourceAddress;
+	SourceAddress.OwnerId = Source.SourceLayerId;
+	SourceAddress.ChildId = Source.SourceChildId;
+	SourceAddress.OwnerType = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Source.SourceLayerId)
+		? EMixtormatChildOwnerType::Group : EMixtormatChildOwnerType::Layer;
+	return SourceAddress.IsValid() && ResolveChildAt(SourceAddress)
+		&& (Source.SourceLayerId == LayerId || (GroupId.IsValid() && Source.SourceLayerId == GroupId));
+}
+
+FText SMixtormat::GetStructuralIncomingCountLabel(const int32 LayerIndex, const int32 ChildIndex) const
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex) || !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Generator)
+	{
+		return FText::GetEmpty();
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	if (const TArray<FText>* Cached = StructuralIncomingCountLabels.Find(Layer.LayerId))
+	{
+		return Cached->IsValidIndex(ChildIndex) ? (*Cached)[ChildIndex] : FText::GetEmpty();
+	}
+	TArray<FMixtormatLayer> Effective;
+	MixtormatLayerGroups::BuildEffectiveLayers(WorkingLayers, WorkingLayerGroups, Effective);
+	FMixtormatLayer Resolved = Effective[LayerIndex];
+	MixtormatParameterBinding::ApplyDirectReferences(FMixtormatBindingScope{Effective, WorkingLayerGroups}, Resolved);
+	TArray<int32> PushCounts;
+	TArray<int32> WarpCounts;
+	PushCounts.Init(0, Layer.Children.Num());
+	WarpCounts.Init(0, Layer.Children.Num());
+	for (int32 Index = 0; Index < Resolved.Children.Num(); ++Index)
+	{
+		const FMixtormatLayerChild& Module = Resolved.Children[Index];
+		if (!IsStructuralModule(Module)) { continue; }
+		const auto Status = MixtormatOutputReferences::EvaluateStructuralLinkForGather(Effective, LayerIndex, Index, Resolved);
+		const int32 TargetIndex = Status.Target.ChildIndex;
+		if (!Status.bCanExecuteStructurally || !Layer.Children.IsValidIndex(TargetIndex)
+			|| Layer.Children[TargetIndex].Type != EMixtormatLayerChildType::Generator) { continue; }
+		const FGuid TargetId = Module.Type == EMixtormatLayerChildType::HeightPush
+			? Module.HeightPush.TargetChildId : Module.StructuralWarp.TargetChildId;
+		if (TargetId != Layer.Children[TargetIndex].ChildId) { continue; }
+		if (Module.Type == EMixtormatLayerChildType::HeightPush) { ++PushCounts[TargetIndex]; }
+		else { ++WarpCounts[TargetIndex]; }
+	}
+	TArray<FText> Labels;
+	Labels.SetNum(Layer.Children.Num());
+	for (int32 Index = 0; Index < Labels.Num(); ++Index)
+	{
+		const int32 PushCount = PushCounts[Index];
+		const int32 WarpCount = WarpCounts[Index];
+		if (PushCount == 0 && WarpCount == 0) { continue; }
+		if (PushCount == 0) { Labels[Index] = FText::Format(LOCTEXT("StructuralWarpCount", "{0} WARP"), FText::AsNumber(WarpCount)); }
+		else if (WarpCount == 0) { Labels[Index] = FText::Format(LOCTEXT("StructuralPushCount", "{0} PUSH"), FText::AsNumber(PushCount)); }
+		else
+		{
+			Labels[Index] = FText::Format(LOCTEXT("StructuralBothCount", "{0} PUSH · {1} WARP"),
+				FText::AsNumber(PushCount), FText::AsNumber(WarpCount));
+		}
+	}
+	const FText Label = Labels[ChildIndex];
+	StructuralIncomingCountLabels.Add(Layer.LayerId, MoveTemp(Labels));
+	return Label;
+}
+
 TSharedRef<SWidget> SMixtormat::BuildStructuralLinkChips(const FMixtormatChildAddress Address)
 {
 	const FMixtormatLayerChild* Module = ResolveChildAt(Address);

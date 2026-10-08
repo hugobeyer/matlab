@@ -92,6 +92,23 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 					]
 				]
 				+ SOverlay::Slot()
+				.HAlign(HAlign_Left)
+				.Padding(FMargin(MixtormatTokens::LayerSourceBarWidth + MixtormatTokens::StructuralLinkHighlightGap, 0.0f, 0.0f, 0.0f))
+				[
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::StructuralLinkHighlightWidth)
+					.Visibility_Lambda([bStructuralSource = InArgs._bStructuralSource]()
+					{
+						return bStructuralSource.Get(false)
+							? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					})
+					[
+						SNew(SImage)
+						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
+					]
+				]
+				+ SOverlay::Slot()
 				[
 					SNew(SBox)
 					.HeightOverride(Layout.RowHeight)

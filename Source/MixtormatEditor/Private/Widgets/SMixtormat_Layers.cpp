@@ -19,6 +19,7 @@ void SMixtormat::RebuildLayerList()
 	}
 
 	LayerListBox->ClearChildren();
+	StructuralIncomingCountLabels.Reset();
 	LayerThumbnails.Reset();
 	LayerRowWidgets.Reset();
 	GroupRowWidgets.Reset();

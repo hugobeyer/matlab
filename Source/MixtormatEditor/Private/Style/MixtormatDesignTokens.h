@@ -783,6 +783,8 @@ namespace MixtormatTokens
 	inline float StructuralLinkChipMaxWidth = 92.0f;
 	inline float StructuralLinkChipMinWidth = 24.0f;
 	inline float StructuralLinkArrowGap = 2.0f;
+	inline float StructuralLinkHighlightWidth = 2.0f;
+	inline float StructuralLinkHighlightGap = 2.0f;
 	// The name sits closer to its thumbnail than the standard gap, so the two read as one unit
 	// against the source text on the far side.
 	constexpr float LayerNameInset = 4.0f;

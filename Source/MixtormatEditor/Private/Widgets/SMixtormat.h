@@ -567,6 +567,9 @@ private:
 		EMixtormatStructuralConnectionRole Role) const;
 	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
+	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
+	bool IsSelectedStructuralSourceLayer(FGuid LayerId, FGuid GroupId) const;
+	FText GetStructuralIncomingCountLabel(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
@@ -1630,6 +1633,7 @@ private:
 	// whichever layer landed on its old row.
 	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
 	// the widgets away and builds new ones on every change.
+	mutable TMap<FGuid, TArray<FText>> StructuralIncomingCountLabels;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
 	TSet<FGuid> ExpandedLayerIds;

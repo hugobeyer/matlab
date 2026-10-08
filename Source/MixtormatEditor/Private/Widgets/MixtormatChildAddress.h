@@ -16,6 +16,14 @@ enum class EMixtormatChildOwnerType : uint8
 	Group
 };
 
+enum class EStructuralLinkHighlightRole : uint8
+{
+	None,
+	Source,
+	Target,
+	Both
+};
+
 // A child's address, stable across a reorder within its own container (it is never an index).
 // LayerIndex/ChildIndex pairs, which most of SMixtormat still uses, only ever named a layer child;
 // this is their generalization to "layer or group". A layer producer uses OwnerId with an invalid

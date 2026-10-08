@@ -842,6 +842,10 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			.Kind(Child.Type == EMixtormatLayerChildType::OutputReference
 				? OutputReferenceKindText(Child) : MixtormatLayerBadges::KindForChild(Child))
 			.Badge(MixtormatLayerBadges::ForChild(Child))
+			.StructuralHighlightRole_Lambda([this, GroupId, ChildIndex]()
+			{
+				return GetStructuralHighlightRole(MakeGroupChildAddress(GroupId, ChildIndex));
+			})
 			.bActive_Lambda([this, GroupId, ChildIndex]()
 			{
 				const FMixtormatLayerGroup* Current =
@@ -995,6 +999,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						? Selected->SourceLayerId == WorkingLayers[LayerIndex].LayerId
 						: SelectedLayerIndex == LayerIndex);
 			})
+			.bStructuralSource_Lambda([this, LayerIndex]()
+			{
+				return WorkingLayers.IsValidIndex(LayerIndex) && !IsLayerExpanded(LayerIndex)
+					&& IsSelectedStructuralSourceLayer(WorkingLayers[LayerIndex].LayerId, WorkingLayers[LayerIndex].GroupId);
+			})
 			.Source(GetLayerSourceText(LayerIndex))
 			.Badge(MixtormatLayerBadges::ForLayer(Layer))
 			.ColorBadge_Lambda([this, LayerIndex]()
@@ -1113,6 +1122,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Name(ChildName)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
+				.StructuralCount_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return GetStructuralIncomingCountLabel(LayerIndex, ChildIndex);
+				})
+				.StructuralHighlightRole_Lambda([this, LayerIndex, ChildIndex]()
+				{
+					return GetStructuralHighlightRole(MakeChildAddress(LayerIndex, ChildIndex));
+				})
 				.StructuralLink()[BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.

@@ -70,11 +70,43 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						SNew(SImage)
 						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
+						]
 					]
-				]
-				+ SOverlay::Slot()
-				[
-				SNew(SBox)
+					+ SOverlay::Slot()
+					.HAlign(HAlign_Left)
+					.Padding(FMargin(MixtormatTokens::LayerSourceBarWidth + MixtormatTokens::StructuralLinkHighlightGap, 0.0f, 0.0f, 0.0f))
+					[
+						SNew(SBox)
+						.WidthOverride(MixtormatTokens::StructuralLinkHighlightWidth)
+						.Visibility_Lambda([Role = InArgs._StructuralHighlightRole]()
+						{
+							return Role.Get(EStructuralLinkHighlightRole::None) == EStructuralLinkHighlightRole::None
+								? EVisibility::Collapsed : EVisibility::HitTestInvisible;
+						})
+						[
+							SNew(SImage)
+							.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+							.ColorAndOpacity_Lambda([Role = InArgs._StructuralHighlightRole]()
+							{
+								const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+								const EStructuralLinkHighlightRole Value = Role.Get(EStructuralLinkHighlightRole::None);
+								if (Value == EStructuralLinkHighlightRole::Source)
+								{
+									return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
+								}
+								if (Value == EStructuralLinkHighlightRole::Target)
+								{
+									return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::Modified));
+								}
+								return FSlateColor(FLinearColor::LerpUsingHSV(
+									Palette.Get(Mixtormat::EMixtormatColorRole::Accent),
+									Palette.Get(Mixtormat::EMixtormatColorRole::Modified), 0.5f));
+							})
+						]
+					]
+					+ SOverlay::Slot()
+					[
+					SNew(SBox)
 				.HeightOverride(Layout.ChildRowHeight)
 				// Same leading/trailing insets as a layer row, plus the child indent, so both
 				// follow the Leading/Trailing inset tokens together.
@@ -133,6 +165,22 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.ColorAndOpacity(NameTextStyle.ColorAndOpacity)
 						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 						.Text(InArgs._Name)
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
+					[
+						SNew(STextBlock)
+						.Font(SourceTextStyle.Font)
+						.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
+						.Text(InArgs._StructuralCount)
+						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+						.Visibility_Lambda([Count = InArgs._StructuralCount]()
+						{
+							return Count.Get(FText::GetEmpty()).IsEmpty()
+								? EVisibility::Collapsed : EVisibility::Visible;
+						})
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

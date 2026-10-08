@@ -6,6 +6,7 @@
 #include "Framework/SlateDelegates.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/MixtormatChildAddress.h"
 
 class SMenuAnchor;
 
@@ -23,6 +24,7 @@ class SMixtormatLayerChildRow final : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerChildRow)
 		: _Connector(nullptr)
+		, _StructuralHighlightRole(EStructuralLinkHighlightRole::None)
 		, _bActive(true)
 		, _bSelected(false)
 		, _bInstanceSource(false)
@@ -40,6 +42,8 @@ public:
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Kind)
 		SLATE_ATTRIBUTE(FText, Badge)
+		SLATE_ATTRIBUTE(FText, StructuralCount)
+		SLATE_ATTRIBUTE(EStructuralLinkHighlightRole, StructuralHighlightRole)
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		// This child is the source of the selected instance: it glows so the link is visible.
