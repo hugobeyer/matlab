@@ -9,16 +9,20 @@ Source edits present: unique structural localization keys, compact chip diagnost
 icon-role/HitSize schema exposure, 33% default Masks width, and visible mask-selection feedback.
 Tile borders paint above thumbnail content. Marking-menu 1K/2K/4K controls and Ctrl+wheel FOV
 routing are present. The NavigationRail role is separate and larger than its prior role.
-The gallery header supports click-to-collapse with drag-threshold handling.
+The gallery header supports click-to-collapse with drag-threshold handling. GalleryToolbar glyphs
+are now 18px; the Masks heading has a 12px leading inset. Splitter hit width is 14px by default,
+and the left rail now uses the shared hover/pressed/checked button style. A resize grip and pin
+button are visible, and an unpinned pointer exit starts an eased collapse animation.
 
 Further source edits: Inspector structural labels are cached with refresh/rebuild invalidation;
 incoming counts map effective targets back to authored rows; MMB pan uses camera-plane movement
 with reduced sensitivity. A layered translucent gallery shadow approximation was added; it is
 not verified visually and does not establish that the requested soft shadow is achieved.
 
-Not implemented/confirmed: 1.5x icon-default scaling (requested, not applied), group containment,
-marking-menu camera drift fix, turn damping, gallery pin/auto-collapse, helper action state machine,
-noise wiring, and group-shared Push compatibility decision.
+Not implemented/confirmed: broad 1.5x icon-default scaling (only GalleryToolbar was enlarged),
+group containment, marking-menu camera drift fix, turn damping, helper action state machine, noise
+wiring, and group-shared Push compatibility decision. Gallery pin/auto-collapse and hover feedback
+are source edits only; runtime interaction still needs validation.
 No build, tests, profiling or Unreal session was run. Runtime behavior and visual quality remain
 unverified. Basis: supplied remote audit (`dbc71fe`) and targeted local source reads.
 Local commit attribution and working-tree differences remain unverified.

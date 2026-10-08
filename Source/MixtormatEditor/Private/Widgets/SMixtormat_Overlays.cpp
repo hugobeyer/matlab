@@ -399,6 +399,28 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 			MixtormatTokens::OverlayPanelMinHeight, MaximumHeight);
 		return FReply::Handled();
 	}
+	if (!bBottomLibraryCollapsed && !bGalleryDrawerAnimating && !bGalleryDrawerResizing
+		&& !MouseEvent.IsMouseButtonDown(EKeys::LeftMouseButton) && GalleryDrawerHost.IsValid())
+	{
+		const FVector2D ScreenPosition = MouseEvent.GetScreenSpacePosition();
+		const FGeometry& GalleryGeometry = GalleryDrawerHost->GetCachedGeometry();
+		if (GalleryGeometry.IsUnderLocation(ScreenPosition))
+		{
+			bGalleryPointerInside = true;
+		}
+		else if (bGalleryPointerInside && !bGalleryPinned)
+		{
+			const FSlateRect Bounds = GalleryGeometry.GetLayoutBoundingRect();
+			const float DistanceX = FMath::Max(FMath::Max(Bounds.Left - ScreenPosition.X, 0.0f), ScreenPosition.X - Bounds.Right);
+			const float DistanceY = FMath::Max(FMath::Max(Bounds.Top - ScreenPosition.Y, 0.0f), ScreenPosition.Y - Bounds.Bottom);
+			if (FMath::Sqrt(FMath::Square(DistanceX) + FMath::Square(DistanceY)) > 24.0f)
+			{
+				bGalleryPointerInside = false;
+				ToggleBottomLibraryCollapsed();
+				return FReply::Handled();
+			}
+		}
+	}
 	if (InspectorOverlay.bDragging || InspectorOverlay.bResizing)
 	{
 		MixtormatOverlay::UpdateInteraction(InspectorOverlay,

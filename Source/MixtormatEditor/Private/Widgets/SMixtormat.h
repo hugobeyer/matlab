@@ -1612,8 +1612,13 @@ private:
 	TSharedPtr<IInputProcessor> WorkspaceHotkeyProcessor;
 	TSharedPtr<SWidgetSwitcher> MainSwitcher;
 	TSharedPtr<SWidgetSwitcher> LeftSwitcher;
+	TSharedPtr<SBox> GalleryDrawerHost;
 	TSharedPtr<SBox> GalleryDrawerHeader;
 	TSharedPtr<SButton> BottomLibraryToggleButton;
+	bool bGalleryPinned = false;
+	bool bGalleryDrawerAnimating = false;
+	bool bGalleryPointerInside = false;
+	float GalleryDrawerAnimatedHeight = 0.0f;
 	TSharedPtr<SVerticalBox> CategoryListBox;
 	TSharedPtr<SWrapBox> SurfaceListBox;
 	TSharedPtr<SVerticalBox> UserLibraryListBox;

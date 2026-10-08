@@ -390,7 +390,7 @@ namespace Mixtormat
 		T.Shell.ScrollbarThumbOpacity = 0.180f;
 		T.Shell.ScrollbarHoverOpacity = 0.340f;
 		T.Shell.SplitterVisualWidth = 1.0f;           // --splitter-size
-		T.Shell.SplitterHitWidth = 6.0f;              // --splitter-hit-size
+		T.Shell.SplitterHitWidth = 14.0f;             // --splitter-hit-size
 		T.ShellTheme.SplitterHoverSource = SRGB(127, 196, 219); // --hairline-hover-rgb
 		T.ShellTheme.SplitterOpacity = 0.46f;         // --foldout-hairline-opacity
 		T.ShellTheme.SplitterHoverOpacity = 0.85f;    // --hairline-hover-opacity
@@ -436,8 +436,8 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].RestOpacity = 0.600f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].HoverOpacity = 1.000f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::Menu)].DisabledOpacity = 0.320f;             // --menu-icon-*
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(11.0f, 0.62f);
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 11.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)] = Icon(18.0f, 0.62f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 18.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 22.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 24.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::NavigationRail)] = Icon(18.0f, 0.6f, 6.0f, 6.0f);
@@ -795,7 +795,7 @@ namespace Mixtormat
 		T.Shell.ScrollbarThumbOpacity = 0.219999999f;
 		T.Shell.ScrollbarHoverOpacity = 0.419999987f;
 		T.Shell.SplitterVisualWidth = 1.0f;
-		T.Shell.SplitterHitWidth = 8.0f;
+		T.Shell.SplitterHitWidth = 14.0f;
 		T.Typography.Roles[static_cast<uint8>(EMixtormatTextRole::Body)].Size = 9.0f;
 		T.Typography.Roles[static_cast<uint8>(EMixtormatTextRole::Body)].Weight = EMixtormatFontWeight::Regular;
 		T.Typography.Roles[static_cast<uint8>(EMixtormatTextRole::Body)].TrackingPx = 0.0f;

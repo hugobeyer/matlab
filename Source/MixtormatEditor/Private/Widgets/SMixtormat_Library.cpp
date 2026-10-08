@@ -443,7 +443,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SMixtormatIconButton)
-					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
 					.Icon(MixtormatIcons::Folder())
 					.ToolTip(LOCTEXT("ChooseUserTextureFolderHint", "Import a texture folder into the user library"))
 					.OnClicked(FSimpleDelegate::CreateLambda([this]() { ImportSurfaces(); }))
@@ -531,6 +531,44 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					SNew(STextBlock)
 					.Text(LOCTEXT("GalleryDrawerHeading", "GALLERY"))
 					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					.Padding(Gallery.CaptionInset, 0.0f)
+				[
+					SNew(SBox)
+					.WidthOverride(18.0f)
+					.HeightOverride(18.0f)
+					.ToolTipText(LOCTEXT("GalleryResizeHint", "Drag the gallery header to resize"))
+					[
+						SNew(SImage)
+						.Image(MixtormatIcons::Grip())
+						.Visibility(EVisibility::HitTestInvisible)
+						.ColorAndOpacity_Lambda([this]()
+						{
+							const bool bHovered = GalleryDrawerHeader.IsValid() && GalleryDrawerHeader->IsHovered();
+							const FLinearColor Color = FMixtormatThemeStore::GetResolved().Palette.Get(
+								bHovered ? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::TextMuted);
+							return FSlateColor(Color.CopyWithNewOpacity(bHovered ? 0.9f : 0.35f));
+						})
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatIconButton)
+					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
+					.Icon(MixtormatIcons::Pin())
+					.bActive_Lambda([this]() { return bGalleryPinned; })
+					.ToolTip_Lambda([this]()
+					{
+						return bGalleryPinned
+							? LOCTEXT("UnpinGalleryHint", "Unpin gallery; it will collapse when the pointer leaves")
+							: LOCTEXT("PinGalleryHint", "Pin gallery open");
+					})
+					.OnClicked(FSimpleDelegate::CreateLambda([this]()
+											{
+												bGalleryPinned = !bGalleryPinned;
+												Invalidate(EInvalidateWidgetReason::Paint);
+											}))
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
@@ -679,7 +717,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				[
 					SNew(SMixtormatIconButton)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
-					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
 					.Icon(MixtormatIcons::Refresh())
 					.ToolTip(LOCTEXT("RefreshLibraryHint", "Refresh Library"))
 					.OnClicked(FSimpleDelegate::CreateLambda([this]() { RefreshSurfaceList(); }))
@@ -688,7 +726,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 				[
 					SNew(SMixtormatIconButton)
 					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
-					.Role(Mixtormat::EMixtormatIconRole::PanelToolbar)
+					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
 					.Icon(MixtormatIcons::Settings())
 					.ToolTip(LOCTEXT("RebuildBuiltInLibraryHint", "Developer only: rebuild built-in assets from plugin source PNGs"))
 					.OnClicked(FSimpleDelegate::CreateLambda([this]() { RebuildBuiltInLibrary(); }))

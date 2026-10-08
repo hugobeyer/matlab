@@ -471,16 +471,20 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSideInset,
 			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
 		[
-			SNew(SBox)
+			SAssignNew(GalleryDrawerHost, SBox)
 			.HeightOverride_Lambda([this]()
 			{
+				if (bGalleryDrawerAnimating)
+				{
+					return GalleryDrawerAnimatedHeight;
+				}
 				if (bBottomLibraryCollapsed)
 				{
 					return FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight;
 				}
-				return GalleryDrawerHeight > 0.0f
-					? GalleryDrawerHeight
-					: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			return GalleryDrawerHeight > 0.0f
+				? GalleryDrawerHeight
+				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
 			})
 			[
 				SNew(SOverlay)
@@ -489,7 +493,8 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					SNew(SBox)
 					.Visibility_Lambda([this]()
 					{
-						return bBottomLibraryCollapsed ? EVisibility::Collapsed : EVisibility::Visible;
+						return bBottomLibraryCollapsed && !bGalleryDrawerAnimating
+							? EVisibility::Collapsed : EVisibility::Visible;
 					})
 					[BuildBottomLibrary()]
 				]
@@ -501,7 +506,8 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					.ToolTipText(LOCTEXT("RestoreGalleryHint", "Open the material and mask gallery (G)."))
 					.Visibility_Lambda([this]()
 					{
-						return bBottomLibraryCollapsed ? EVisibility::Visible : EVisibility::Collapsed;
+						return bBottomLibraryCollapsed && !bGalleryDrawerAnimating
+							? EVisibility::Visible : EVisibility::Collapsed;
 					})
 					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 					[
@@ -829,7 +835,39 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 
 FReply SMixtormat::ToggleBottomLibraryCollapsed()
 {
+	if (!bGalleryDrawerAnimating)
+	{
+		GalleryDrawerAnimatedHeight = bBottomLibraryCollapsed
+			? FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight
+			: (GalleryDrawerHeight > 0.0f
+				? GalleryDrawerHeight
+				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight);
+	}
 	bBottomLibraryCollapsed = !bBottomLibraryCollapsed;
+	bGalleryPointerInside = !bBottomLibraryCollapsed;
+
+	if (!bGalleryDrawerAnimating)
+	{
+		bGalleryDrawerAnimating = true;
+		RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, const float DeltaTime)
+		{
+			const Mixtormat::FMixtormatGalleryMetrics& Layout = FMixtormatThemeStore::GetResolved().GalleryLayout;
+			const float TargetHeight = bBottomLibraryCollapsed
+				? Layout.DrawerCollapsedHeight
+				: (GalleryDrawerHeight > 0.0f ? GalleryDrawerHeight : Layout.DrawerInitialHeight);
+			GalleryDrawerAnimatedHeight = FMath::FInterpTo(
+				GalleryDrawerAnimatedHeight, TargetHeight, DeltaTime, 14.0f);
+			if (FMath::Abs(GalleryDrawerAnimatedHeight - TargetHeight) <= 0.5f)
+			{
+				GalleryDrawerAnimatedHeight = TargetHeight;
+				bGalleryDrawerAnimating = false;
+				Invalidate(EInvalidateWidgetReason::Layout);
+				return EActiveTimerReturnType::Stop;
+			}
+			Invalidate(EInvalidateWidgetReason::Layout);
+			return EActiveTimerReturnType::Continue;
+		}));
+	}
 	return FReply::Handled();
 }
 
