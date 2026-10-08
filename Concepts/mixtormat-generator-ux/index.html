@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mixtormat — Generator Relationship UX Mockups</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Pure HTML/CSS. No JS, external fonts, icons, SVG, screenshot embeds, or dependency. -->
+  <input class="view-radio" type="radio" id="view-1" name="concept" checked>
+  <input class="view-radio" type="radio" id="view-2" name="concept">
+  <input class="view-radio" type="radio" id="view-3" name="concept">
+  <input class="view-radio" type="radio" id="view-4" name="concept">
+
+  <div class="workspace">
+    <header class="top-head">
+      <div>
+        <div class="eyebrow">Mixtormat / Agent implementation reference</div>
+        <h1>Generator relationships — HTML/CSS UX concepts</h1>
+        <p>Four proposed behaviors using the existing compact dark editor language. These are interaction mockups, not evidence of implemented features.</p>
+      </div>
+      <div class="top-aside">Text-only interface, no iconography. Native checkboxes and text labels are deliberate. Measurements are proposed, not measurements of the shipped UI.</div>
+    </header>
+
+    <nav class="tabs" aria-label="Switch concept">
+      <label class="tab" for="view-1">01 / Target-owned rows</label>
+      <label class="tab" for="view-2">02 / Collapsed summary</label>
+      <label class="tab" for="view-3">03 / Target-first popup</label>
+      <label class="tab" for="view-4">04 / Two-selection menu</label>
+    </nav>
+
+    <!-- CONCEPT 1: Persistent incoming connections displayed under their target. -->
+    <section class="concept concept-1" aria-label="Target-owned connection rows">
+      <div class="concept-header">
+        <div>
+          <h2>01 — Target-owned connection rows</h2>
+          <p>Generators remain siblings. Owned tools and incoming operations share vertical space but use different row structures.</p>
+        </div>
+        <div class="concept-tag">Recommended display pattern</div>
+      </div>
+      <div class="mockup-shell">
+        <div class="app-top"><span class="brand">Mixtormat</span><span>Untitled Mixtormat Material</span><span class="grow"></span><span class="dim">NEW</span><span class="dim">LOAD</span><span class="dim">SAVE</span><span class="dim">BAKE</span><span class="dim">SETTINGS</span></div>
+        <div class="toolbar"><span>Layers: Home</span><span class="divider-v"></span><span>Inspector: Docked</span><span class="grow"></span><span>Concept 01 / Persistent incoming connections</span></div>
+        <div class="app-main">
+          <aside class="hierarchy" aria-label="Hierarchy, concept 1">
+            <div class="panel-caption"><span>3 LAYERS</span><span class="grow"></span><span class="secondary">Every connection is explicit</span></div>
+            <div class="row-toolbar"><span>Layer</span><span>Group</span><span>Fill Layer</span></div>
+            <div class="tree">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Generator Layer 1"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation"></span><span class="row-label">Rock Formation</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="tree-row depth-1 selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles"></span><span class="row-label">Pebbles</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Surface Noise"></span><span class="row-label">Surface Noise</span><span class="row-meta">OWNED</span></div>
+              <div class="tree-row depth-2 connection selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Warp connection"></span><span class="row-label" title="Warp: Source = Generator Layer 1 / Rock Formation / Flow Carve / Flow; Target = Generator Layer 1 / Pebbles">Warp ← Rock Formation / Flow Carve</span><span class="row-meta">FLOW</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Generator Layer 2"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Field Noise"></span><span class="row-label">Field Noise</span><span class="row-meta">GEN</span></div>
+            </div>
+          </aside>
+          <div class="viewport" aria-label="Preview placeholder, unchanged by these proposals">
+            <div class="viewport-top"><span>Material Preview</span><span>Default / Studio / Sphere</span></div>
+            <div class="preview-platform"></div><div class="preview-sphere"></div>
+            <div class="preview-note">PREVIEW UNCHANGED — RELATIONSHIP UX IS IN THE HIERARCHY AND INSPECTOR</div>
+          </div>
+          <aside class="inspector" aria-label="Inspector, concept 1">
+            <div class="inspector-header"><span>Warp / Pebbles</span><span class="tiny-text">CONNECTION</span></div>
+            <div class="inspector-section-title">Connection / Source → Operation → Target</div>
+            <div class="connection-path">Rock Formation / Flow Carve <span class="path-muted">→</span> Warp <span class="path-muted">→</span> Pebbles</div>
+            <div class="inspector-fields">
+              <div class="field"><span class="name">Source</span><span class="value editable" title="Generator Layer 1 / Rock Formation / Flow Carve">Rock Formation / Flow Carve</span></div>
+              <div class="field"><span class="name">Source output</span><span class="value">Flow</span></div>
+              <div class="field"><span class="name">Operation</span><span class="value">Structural Warp</span></div>
+              <div class="field"><span class="name">Target</span><span class="value editable">Pebbles</span></div>
+              <div class="field"><span class="name">Enabled</span><span class="value"><input type="checkbox" checked aria-label="Connection enabled"></span></div>
+            </div>
+            <div class="inspector-actions"><button type="button" class="small-btn">Go to source</button><button type="button" class="small-btn">Change source</button></div>
+            <div class="inspector-section-title">Warp settings / Advanced</div>
+            <div class="inspector-fields">
+              <div class="field"><span class="name">Flow Amount</span><span class="value editable">1.000</span></div>
+              <div class="field"><span class="name">Flow Steps</span><span class="value editable">8</span></div>
+              <div class="field"><span class="name">Sampling</span><span class="value">Flow / UV</span></div>
+              <div class="field"><span class="name">Falloff</span><span class="value editable">1.000</span></div>
+            </div>
+            <div class="inspector-summary"><p>Source and target are separate objects.</p><p>Displaying a connection below Pebbles never changes the ownership of Flow Carve.</p></div>
+          </aside>
+        </div>
+        <div class="mockup-foot"><span>Selection or hover may temporarily highlight both endpoints; no permanent lines.</span><span>01 / Target-owned rows</span></div>
+      </div>
+      <div class="spec-strip">
+        <div class="spec"><strong>27 px</strong><span>Proposed row height</span></div>
+        <div class="spec"><strong>16 / 32 px</strong><span>Generator / owned-tool indent per layer</span></div>
+        <div class="spec"><strong>32 + 6 px</strong><span>Connection indent + inset band</span></div>
+        <div class="spec"><strong>20 px</strong><span>Minimum clickable control target</span></div>
+        <div class="spec"><strong>8 px</strong><span>Horizontal padding / labels truncate</span></div>
+        <div class="spec"><strong>No pictograms</strong><span>Operation + full source is written in text</span></div>
+      </div>
+      <div class="insets">
+        <article class="inset"><h3>One connection / ownership</h3><div class="sample"><div class="sample-row">Rock Formation <span>GEN</span></div><div class="sample-row inset-owned">Flow Carve <span>OWNED</span></div><div class="sample-row">Pebbles <span>GEN</span></div><div class="sample-row inset-connection">Warp ← Rock Formation / Flow Carve <span>FLOW</span></div><div class="sample-row">Cliff Strata <span>GEN</span></div></div><p>Only the Warp receives Flow. Sibling order alone has no meaning.</p></article>
+        <article class="inset"><h3>Several incoming / other layer</h3><div class="sample"><div class="sample-row">Pebbles <span>GEN</span></div><div class="sample-row inset-connection">Warp ← Rock Formation / Flow Carve <span>FLOW</span></div><div class="sample-row inset-connection">Warp ← Layer 0 / Field Noise <span>FLOW</span></div><div class="sample-row inset-connection">Height Push ← Layer 0 / Shape <span>HEIGHT</span></div></div><p>Each explicit incoming operation adds one row, including cross-layer sources.</p></article>
+        <article class="inset"><h3>Missing / disabled / invalid order</h3><div class="sample"><div class="sample-row connection warning"><span>Warp ← Missing source</span><span>UNRESOLVED</span></div><div class="sample-row disabled"><span>Warp ← Disabled Field Noise</span><span>INACTIVE</span></div><div class="sample-row warning"><span>Warp ← Cliff Strata / Flow</span><span>ORDER</span></div></div><p>Invalid order: “Source executes after target — inactive until reordered.” No automatic reordering.</p></article>
+        <article class="inset"><h3>Same name / copy / linked instance</h3><div class="sample"><div class="sample-row"><span>Noise (Copy)</span><span>INDEPENDENT</span></div><div class="sample-row"><span>Noise (Instance)</span><span>LINKED SETTINGS</span></div><div class="sample-row inset-connection" title="Generator Layer 2 / Noise / Flow"><span>Warp ← Layer 2 / Noise</span><span>FLOW</span></div></div><p>A linked-settings instance is not a field connection. Duplicate names require a layer breadcrumb and full-path tooltip.</p></article>
+        <article class="inset"><h3>Narrow hierarchy / truncation</h3><div class="sample mini-narrow"><div class="sample-row"><span>Pebbles</span><span>GEN</span></div><div class="sample-row inset-connection" title="Warp ← Generator Layer 1 / Rock Formation / Flow Carve"><span>Warp ← Rock Form...</span><span>FLOW</span></div></div><p>Operation stays first. Native title tooltip exposes the complete source path.</p></article>
+        <article class="inset"><h3>Row states / interaction</h3><div class="sample"><div class="sample-row hover"><span>Hovered connection</span><span>HOVER</span></div><div class="sample-row selected"><span>Selected connection</span><span>SELECTED</span></div><div class="sample-row disabled"><span>Disabled source</span><span>INACTIVE</span></div><div class="sample-row warning"><span>Missing source</span><span>UNRESOLVED</span></div></div><p>Enable checkboxes align left. Source navigation is in the inspector; context actions are on right-click.</p></article>
+        <article class="inset"><h3>Collapsed generator</h3><div class="sample"><div class="sample-row"><span>Pebbles / Hide child rows</span><span>GEN</span></div><div class="sample-row"><span>Pebbles / Show 1 connection</span><span>GEN</span></div></div><p>Generator disclosure controls its local contents, never unrelated siblings or layers.</p></article>
+        <article class="inset"><h3>Layout behavior</h3><p>The hierarchy width and inspector width remain fixed; the viewport takes remaining space. Expanding child rows scrolls only the hierarchy. Advanced settings scroll only the inspector. Keep the top app toolbar unchanged.</p></article>
+      </div>
+      <div class="analysis-note"><strong>Tradeoff:</strong> Clearest display of source/operation/target, but many connections increase stack height. Preferred as the persistent relationship language.</div>
+    </section>
+
+    <!-- CONCEPT 2: Locally expandable incoming-connection summary. -->
+    <section class="concept concept-2" aria-label="Collapsed connection summary and details">
+      <div class="concept-header">
+        <div><h2>02 — Collapsed summary + local details</h2><p>Resting row remains compact. Expanding a generator exposes its owned tools and each incoming connection.</p></div>
+        <div class="concept-tag">Recommended density option</div>
+      </div>
+      <div class="mockup-shell">
+        <div class="app-top"><span class="brand">Mixtormat</span><span>Untitled Mixtormat Material</span><span class="grow"></span><span class="dim">NEW</span><span class="dim">LOAD</span><span class="dim">SAVE</span><span class="dim">BAKE</span><span class="dim">SETTINGS</span></div>
+        <div class="toolbar"><span>Layers: Home</span><span class="divider-v"></span><span>Inspector: Docked</span><span class="grow"></span><span>Concept 02 / Toggle Pebbles via its row</span></div>
+        <div class="app-main">
+          <aside class="hierarchy" aria-label="Hierarchy, concept 2">
+            <div class="panel-caption"><span>3 LAYERS</span><span class="grow"></span><span class="secondary">Click Pebbles to expand/collapse</span></div>
+            <div class="row-toolbar"><span>Layer</span><span>Group</span><span>Fill Layer</span></div>
+            <div class="tree">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Generator Layer 1"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation"></span><span class="row-label">Rock Formation</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <details class="tree-details" open>
+                <summary class="tree-row depth-1 selected"><span class="enable-area"><span class="summary-state" aria-label="Expand or collapse"></span></span><span class="row-label">Pebbles <span class="summary-label"> / 2 incoming · 1 unresolved</span></span><span class="row-meta">GEN</span></summary>
+                <div class="detail-group-title">Owned tools / Affect only Pebbles</div>
+                <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Surface Noise"></span><span class="row-label">Surface Noise</span><span class="row-meta">OWNED</span></div>
+                <div class="detail-group-title">Incoming connections / Explicit relationships</div>
+                <div class="connection-detail"><span class="detail-copy" title="Warp ← Generator Layer 1 / Rock Formation / Flow Carve (Flow)"><span class="bold">Warp</span> ← Rock Formation / Flow Carve</span><label><input type="checkbox" checked aria-label="Enable first incoming Warp"></label><span class="detail-actions" title="Edit from Inspector">Edit</span></div>
+                <div class="connection-detail"><span class="detail-copy" title="Warp ← Layer 0 / Field Noise (Flow)"><span class="bold">Warp</span> ← Layer 0 / Field Noise</span><label><input type="checkbox" checked aria-label="Enable second incoming Warp"></label><span class="detail-actions" title="Edit from Inspector">Edit</span></div>
+                <div class="connection-detail error"><span class="detail-copy" title="Height Push source no longer exists"><span class="bold">Height Push</span> ← Missing source</span><label><input type="checkbox" aria-label="Unresolved incoming Height Push" disabled></label><span class="detail-actions" title="Choose replacement or remove">Fix</span></div>
+              </details>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata"></span><span class="row-label">Cliff Strata <span class="sub muted"> / Unconnected</span></span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Generator Layer 2"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Field Noise"></span><span class="row-label">Field Noise</span><span class="row-meta">GEN</span></div>
+            </div>
+          </aside>
+          <div class="viewport" aria-label="Preview placeholder, unchanged"><div class="viewport-top"><span>Material Preview</span><span>Default / Studio / Sphere</span></div><div class="preview-platform"></div><div class="preview-sphere"></div><div class="preview-note">PREVIEW UNCHANGED — EXPANSION IS LOCAL TO THE HIERARCHY</div></div>
+          <aside class="inspector" aria-label="Inspector, concept 2">
+            <div class="inspector-header"><span>Pebbles</span><span class="tiny-text">GEN</span></div>
+            <div class="inspector-section-title">Incoming / 2 connected · 1 unresolved</div>
+            <div class="inspector-summary"><p>Rock Formation / Flow Carve → Warp → Pebbles</p><p>Flow input · Enabled</p></div>
+            <div class="inspector-summary"><p>Layer 0 / Field Noise → Warp → Pebbles</p><p>Flow input · Enabled</p></div>
+            <div class="warning-box">Height Push / Missing source — unresolved. Assign another source or remove connection.</div>
+            <div class="inspector-section-title">Selected connection</div>
+            <div class="inspector-fields">
+              <div class="field"><span class="name">Source</span><span class="value editable">Rock Formation / Flow Carve</span></div>
+              <div class="field"><span class="name">Operation</span><span class="value">Warp</span></div>
+              <div class="field"><span class="name">Target</span><span class="value">Pebbles</span></div>
+              <div class="field"><span class="name">Enabled</span><span class="value"><input type="checkbox" checked aria-label="Selected connection enabled"></span></div>
+            </div>
+            <div class="inspector-actions"><button class="small-btn" type="button">Go to source</button><button class="small-btn" type="button">Edit source</button></div>
+            <div class="inspector-section-title">Advanced / Warp</div>
+            <div class="inspector-fields"><div class="field"><span class="name">Flow Amount</span><span class="value editable">1.000</span></div><div class="field"><span class="name">Flow Steps</span><span class="value editable">8</span></div></div>
+          </aside>
+        </div>
+        <div class="mockup-foot"><span>Click generator label to expand; each connection has independent enable state and edit action.</span><span>02 / Collapsed summary</span></div>
+      </div>
+      <div class="spec-strip">
+        <div class="spec"><strong>27 px</strong><span>Proposed generator row</span></div>
+        <div class="spec"><strong>27 px</strong><span>Expanded connection detail row</span></div>
+        <div class="spec"><strong>16 / 32 px</strong><span>Generator / connection indents</span></div>
+        <div class="spec"><strong>20 px</strong><span>Checkbox / disclosure text hit area</span></div>
+        <div class="spec"><strong>8 px</strong><span>Text/control spacing</span></div>
+        <div class="spec"><strong>Plain text</strong><span>Summary is not an unexplained badge</span></div>
+      </div>
+      <div class="insets">
+        <article class="inset"><h3>Collapsed / one connection</h3><div class="sample"><div class="sample-row"><span>Pebbles / 1 incoming</span><span>Show</span></div></div><p>The generator stays one row. Expand only when inspection is needed.</p></article>
+        <article class="inset"><h3>Several incoming / cross-layer</h3><div class="sample"><div class="sample-row"><span>Pebbles / 3 incoming</span><span>Hide</span></div><div class="sample-row inset-connection"><span>Warp ← Layer 1 / Rock</span><span>ON</span></div><div class="sample-row inset-connection"><span>Warp ← Layer 0 / Noise</span><span>ON</span></div><div class="sample-row inset-connection"><span>Height Push ← Shape</span><span>ON</span></div></div><p>Only incoming connections populate this group. Owned tools have their own group.</p></article>
+        <article class="inset"><h3>Missing / disabled / invalid order</h3><div class="sample"><div class="sample-row warning"><span>1 unresolved / Missing source</span><span>FIX</span></div><div class="sample-row disabled"><span>Warp ← Disabled Noise</span><span>OFF</span></div><div class="sample-row warning"><span>Warp ← Layer 3 / Noise</span><span>ORDER</span></div></div><p>“Source executes after Pebbles — inactive until reordered.” No silent stack changes.</p></article>
+        <article class="inset"><h3>Copy / instance / available output</h3><div class="sample"><div class="sample-row"><span>Rock Formation (Copy)</span><span>INDEPENDENT</span></div><div class="sample-row"><span>Rock Formation (Instance)</span><span>LINKED SETTINGS</span></div><div class="sample-row"><span>Flow Carve / Flow</span><span>AVAILABLE</span></div><div class="sample-row inset-connection"><span>Warp ← Rock Formation / Flow</span><span>CONNECTED</span></div></div><p>“Available output” means exposed data, not proof of a connection.</p></article>
+        <article class="inset"><h3>Same-name disambiguation</h3><div class="sample"><div class="sample-row inset-connection" title="Generator Layer 1 / Noise / Flow"><span>Warp ← Layer 1 / Noise</span><span>FLOW</span></div><div class="sample-row inset-connection" title="Generator Layer 3 / Noise / Flow"><span>Warp ← Layer 3 / Noise</span><span>FLOW</span></div></div><p>Full layer path shown in title tooltip, never rely on labels alone.</p></article>
+        <article class="inset"><h3>Narrow hierarchy panel</h3><div class="sample mini-narrow"><div class="sample-row"><span>Pebbles / 2 incoming</span><span>Show</span></div><div class="sample-row inset-connection" title="Warp ← Generator Layer 1 / Rock Formation / Flow Carve"><span>Warp ← Rock Forma...</span><span>ON</span></div></div><p>Summaries remain legible. Expanded source breadcrumbs ellipsize, with full-name tooltip.</p></article>
+        <article class="inset"><h3>Selected / hovered / collapsed states</h3><div class="sample"><div class="sample-row selected"><span>Selected / 2 incoming</span><span>GEN</span></div><div class="sample-row hover"><span>Hovered / 2 incoming</span><span>GEN</span></div><div class="sample-row disabled"><span>Disabled generator</span><span>GEN</span></div><div class="sample-row"><span>Collapsed / 2 incoming</span><span>Show</span></div></div><p>Hover is subtle; selection follows the existing teal row treatment.</p></article>
+        <article class="inset"><h3>What expands / what stays fixed</h3><p>The expandable list occupies only the Pebbles portion of the hierarchy. The inspector stays docked with a source → operation → target summary above detailed parameters. No rails or persistent lines are drawn.</p></article>
+      </div>
+      <div class="analysis-note"><strong>Tradeoff:</strong> Best vertical density with many connections. More efficient for experienced users, but requires an extra expand action to see individual sources.</div>
+    </section>
+
+    <!-- CONCEPT 3: A source choice directly creates the selected target's incoming operation. -->
+    <section class="concept concept-3" aria-label="Target-first popup workflow">
+      <input class="state-control" id="c3-created" type="checkbox">
+      <div class="concept-header"><div><h2>03 — Target-first popup workflow</h2><p>Start from Pebbles: “Warp using…” → choose a compatible Flow source. No empty Warp or separate endpoint setup.</p></div><div class="concept-tag">Recommended creation pattern</div></div>
+      <div class="mockup-shell">
+        <div class="app-top"><span class="brand">Mixtormat</span><span>Untitled Mixtormat Material</span><span class="grow"></span><span class="dim">NEW</span><span class="dim">LOAD</span><span class="dim">SAVE</span><span class="dim">BAKE</span><span class="dim">SETTINGS</span></div>
+        <div class="toolbar"><span>Layers: Home</span><span class="divider-v"></span><span>Inspector: Docked</span><span class="grow"></span><span>Concept 03 / Select “Flow Carve / Flow” in the open menu</span></div>
+        <div class="prototype-hint c3-before">Prototype state A / Context menu is shown already open. Select the compatible “Flow Carve / Flow” option to create the connection.</div>
+        <div class="prototype-hint c3-after">Prototype state B / Warp created on Pebbles with source and target connected. <label class="text-action" for="c3-created">Reset prototype</label></div>
+        <div class="app-main">
+          <aside class="hierarchy" aria-label="Hierarchy, concept 3">
+            <div class="panel-caption"><span>3 LAYERS</span><span class="grow"></span><span class="secondary">Target-first connection creation</span></div>
+            <div class="row-toolbar"><span>Layer</span><span>Group</span><span>Fill Layer</span></div>
+            <div class="tree c3-before">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 1"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation"></span><span class="row-label">Rock Formation</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2 source-focus"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="popup-anchor">
+                <div class="tree-row depth-1 selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles"></span><span class="row-label">Pebbles</span><span class="row-meta">GEN</span></div>
+                <div class="popup-surface" role="group" aria-label="Pebbles context menu mockup">
+                  <div class="popup-row"><span>Add owned tool…</span></div>
+                  <div class="popup-row active"><span class="menu-label">Warp using…</span><span class="status">CHOOSE SOURCE</span></div>
+                  <div class="popup-separator"></div>
+                  <div class="popup-row"><span>Height Push using…</span></div>
+                  <div class="popup-row"><span>Duplicate</span></div>
+                  <div class="popup-row"><span>Copy as instance</span></div>
+                  <div class="sub-popup" role="group" aria-label="Compatible source picker">
+                    <div class="popup-heading">Generator Layer 1 / Rock Formation</div>
+                    <label class="popup-row stack clickable simulate-source" for="c3-created" title="Creates: Rock Formation / Flow Carve / Flow → Warp → Pebbles">
+                      <strong>Flow Carve / Flow</strong><span class="reason">Compatible · select to create Warp on Pebbles</span>
+                    </label>
+                    <div class="popup-row stack disabled"><strong>Rock Formation / Height</strong><span class="reason">Unavailable: Warp requires Flow or UV output</span></div>
+                    <div class="popup-separator"></div>
+                    <div class="popup-heading">Generator Layer 2 / Cliff Strata</div>
+                    <div class="popup-row stack disabled"><strong>Cliff Strata</strong><span class="reason">Unavailable: no compatible Flow output</span></div>
+                    <div class="popup-row stack disabled"><strong>Layer 2 / Field Noise / Flow</strong><span class="reason">Unavailable: source executes after target; move it earlier</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 2"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Field Noise"></span><span class="row-label">Field Noise</span><span class="row-meta">GEN</span></div>
+            </div>
+            <div class="tree c3-after">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 1 after"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1 source-focus"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation after"></span><span class="row-label">Rock Formation</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2 source-focus"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve after"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="tree-row depth-1 selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles after"></span><span class="row-label">Pebbles</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2 connection selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable created Warp"></span><span class="row-label" title="Generator Layer 1 / Rock Formation / Flow Carve / Flow → Warp → Generator Layer 1 / Pebbles">Warp ← Rock Formation / Flow Carve</span><span class="row-meta">FLOW</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata after"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 2 after"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Field Noise after"></span><span class="row-label">Field Noise</span><span class="row-meta">GEN</span></div>
+            </div>
+          </aside>
+          <div class="viewport" aria-label="Preview placeholder, unchanged"><div class="viewport-top"><span>Material Preview</span><span>Default / Studio / Sphere</span></div><div class="preview-platform"></div><div class="preview-sphere"></div><div class="preview-note">NO PERMANENT CONNECTION LINES — ONLY TEMPORARY ENDPOINT HIGHLIGHTS</div></div>
+          <aside class="inspector" aria-label="Inspector, concept 3">
+            <div class="c3-before">
+              <div class="inspector-header"><span>Pebbles</span><span class="tiny-text">TARGET · GEN</span></div>
+              <div class="inspector-section-title">No incoming Warp yet</div>
+              <div class="inspector-summary"><p>Right-click Pebbles → Warp using…</p><p>Select Rock Formation / Flow Carve / Flow. The modifier and both references will be created together.</p></div>
+              <div class="inspector-section-title">Pebbles / Parameters</div>
+              <div class="inspector-fields"><div class="field"><span class="name">Seed</span><span class="value editable">1</span></div><div class="field"><span class="name">Density</span><span class="value editable">2.000</span></div><div class="field"><span class="name">Size</span><span class="value editable">0.300</span></div></div>
+            </div>
+            <div class="c3-after">
+              <div class="inspector-header"><span>Warp / Pebbles</span><span class="tiny-text">CREATED</span></div>
+              <div class="inspector-section-title">Connection / Source → Operation → Target</div>
+              <div class="connection-path">Rock Formation / Flow Carve <span class="path-muted">→</span> Warp <span class="path-muted">→</span> Pebbles</div>
+              <div class="inspector-fields">
+                <div class="field"><span class="name">Source</span><span class="value">Rock Formation / Flow Carve</span></div>
+                <div class="field"><span class="name">Source output</span><span class="value">Flow</span></div>
+                <div class="field"><span class="name">Operation</span><span class="value">Structural Warp</span></div>
+                <div class="field"><span class="name">Target</span><span class="value">Pebbles</span></div>
+                <div class="field"><span class="name">Enabled</span><span class="value"><input type="checkbox" checked aria-label="New Warp enabled"></span></div>
+              </div>
+              <div class="inspector-section-title">Warp settings</div>
+              <div class="inspector-fields"><div class="field"><span class="name">Flow Amount</span><span class="value editable">1.000</span></div><div class="field"><span class="name">Flow Steps</span><span class="value editable">8</span></div></div>
+              <div class="inspector-actions"><button class="small-btn" type="button">Go to source</button><button class="small-btn" type="button">Change source</button></div>
+            </div>
+          </aside>
+        </div>
+        <div class="mockup-foot"><span>Picker hides incompatible outputs behind disabled explanation rows rather than allowing broken connections.</span><span>03 / Target-first popup</span></div>
+      </div>
+      <div class="spec-strip"><div class="spec"><strong>27 px</strong><span>Proposed hierarchy row</span></div><div class="spec"><strong>28 px</strong><span>Popup choice minimum row</span></div><div class="spec"><strong>244 / 285 px</strong><span>Context / source chooser widths</span></div><div class="spec"><strong>16 / 32 px</strong><span>Generator / resulting connection indent</span></div><div class="spec"><strong>20 px</strong><span>Minimum click area, larger on choices</span></div><div class="spec"><strong>Text labels only</strong><span>No connector icons or floating badges</span></div></div>
+      <div class="insets">
+        <article class="inset"><h3>Creation sequence</h3><div class="sample"><div class="sample-row"><span>1. Select Pebbles</span><span>TARGET</span></div><div class="sample-row"><span>2. Warp using…</span><span>MENU</span></div><div class="sample-row"><span>3. Rock Formation / Flow Carve</span><span>FLOW</span></div><div class="sample-row inset-connection"><span>4. Warp ← Rock Formation</span><span>CREATED</span></div></div><p>One source choice produces a fully bound Warp. No separate “None → None” step.</p></article>
+        <article class="inset"><h3>Several incoming / other layer</h3><div class="sample"><div class="sample-row">Pebbles <span>GEN</span></div><div class="sample-row inset-connection"><span>Warp ← Rock Formation / Flow</span><span>ON</span></div><div class="sample-row inset-connection"><span>Warp ← Layer 0 / Field Noise</span><span>ON</span></div></div><p>The menu is repeatable; each chosen source creates its own connection row beneath the target.</p></article>
+        <article class="inset"><h3>Missing / disabled / order invalid</h3><div class="sample"><div class="sample-row warning"><span>Missing source / Fix source…</span><span>UNRESOLVED</span></div><div class="sample-row disabled"><span>Cliff Strata / No Flow output</span><span>DISABLED</span></div><div class="sample-row warning"><span>Layer 2 / Flow (after target)</span><span>ORDER</span></div></div><p>Disabled chooser row explains why. An existing invalid-order connection is inactive until manually reordered.</p></article>
+        <article class="inset"><h3>Same names / copy / instance</h3><div class="sample"><div class="sample-row"><span>Layer 1 / Noise / Flow</span><span>AVAILABLE</span></div><div class="sample-row"><span>Layer 2 / Noise / Flow</span><span>AVAILABLE</span></div><div class="sample-row"><span>Noise (Copy)</span><span>INDEPENDENT</span></div><div class="sample-row"><span>Noise (Instance)</span><span>LINKED SETTINGS</span></div></div><p>The chooser displays a full layer breadcrumb. Settings-linked instances are not connections.</p></article>
+        <article class="inset"><h3>Narrow panel</h3><div class="sample mini-narrow"><div class="sample-row"><span>Pebbles</span><span>GEN</span></div><div class="sample-row inset-connection" title="Warp ← Generator Layer 1 / Rock Formation / Flow Carve"><span>Warp ← Rock For...</span><span>FLOW</span></div></div><p>The popup overlays the viewport, rather than making the hierarchy wider.</p></article>
+        <article class="inset"><h3>Selected / hovered / unresolved</h3><div class="sample"><div class="sample-row selected"><span>Pebbles / Selected</span><span>GEN</span></div><div class="sample-row hover"><span>Flow Carve / Hover</span><span>FLOW</span></div><div class="sample-row disabled"><span>Cliff Strata / Disabled choice</span><span>NONE</span></div><div class="sample-row warning"><span>Missing source / Existing Warp</span><span>FIX</span></div></div><p>Source and target rows may be highlighted while picking. No permanent relationship rails.</p></article>
+        <article class="inset"><h3>Collapsed target / placement</h3><div class="sample"><div class="sample-row"><span>Pebbles / 1 incoming</span><span>Show</span></div><div class="sample-row"><span>Cliff Strata / Unconnected</span><span>GEN</span></div></div><p>Creation does not require expanding Pebbles, and does not imply a relationship to Cliff Strata.</p></article>
+        <article class="inset"><h3>Inspector / source navigation</h3><p>The newly created connection becomes selected. A single strip confirms source → Warp → Pebbles, before the original advanced Warp parameters. Clicking “Go to source” should focus Flow Carve; “Change source” reopens the filtered chooser.</p></article>
+      </div>
+      <div class="analysis-note"><strong>Tradeoff:</strong> Lowest-friction creation and strong compatibility feedback. Must be paired with an understandable persistent connection-row display, preferably Concept 01.</div>
+    </section>
+
+    <!-- CONCEPT 4: Deliberate two-selection with explicit directional actions. -->
+    <section class="concept concept-4" aria-label="Two-selection marking menu workflow">
+      <input class="state-control" id="c4-before" type="radio" name="c4-state" checked>
+      <input class="state-control" id="c4-menu" type="radio" name="c4-state">
+      <input class="state-control" id="c4-after" type="radio" name="c4-state">
+      <div class="concept-header"><div><h2>04 — Two-selection relationship menu</h2><p>Pick Rock Formation and Pebbles together, then choose an explicit direction and compatible operation.</p></div><div class="concept-tag">Optional expert workflow</div></div>
+      <div class="mockup-shell">
+        <div class="app-top"><span class="brand">Mixtormat</span><span>Untitled Mixtormat Material</span><span class="grow"></span><span class="dim">NEW</span><span class="dim">LOAD</span><span class="dim">SAVE</span><span class="dim">BAKE</span><span class="dim">SETTINGS</span></div>
+        <div class="toolbar"><span>Layers: Home</span><span class="divider-v"></span><span>Inspector: Docked</span><span class="grow"></span><span>Concept 04 / Step through three states</span></div>
+        <div class="workflow-controls"><div class="stage">PROTOTYPE FLOW — SELECTED PAIR: ROCK FORMATION + PEBBLES</div><div class="flow-step"><label for="c4-before">1. Selected</label><label for="c4-menu">2. Menu open</label><label for="c4-after">3. Connected</label></div></div>
+        <div class="app-main">
+          <aside class="hierarchy" aria-label="Hierarchy, concept 4">
+            <div class="panel-caption"><span>3 LAYERS</span><span class="grow"></span><span class="secondary">Selection alone creates no connection</span></div>
+            <div class="row-toolbar"><span>Layer</span><span>Group</span><span>Fill Layer</span></div>
+            <div class="tree stage-before">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable layer before"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1 two-selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation before"></span><span class="row-label">Rock Formation <span class="summary-label"> / selected 1</span></span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve before"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="tree-row depth-1 two-selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles before"></span><span class="row-label">Pebbles <span class="summary-label"> / selected 2</span></span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata before"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 2 before"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+            </div>
+            <div class="tree stage-menu">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable layer during menu"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1 two-selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation during menu"></span><span class="row-label">Rock Formation <span class="summary-label"> / selected 1</span></span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve during menu"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="tree-row depth-1 two-selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles during menu"></span><span class="row-label">Pebbles <span class="summary-label"> / selected 2</span></span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata during menu"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Layer 2 during menu"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+            </div>
+            <div class="tree stage-after">
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable layer after"></span><span class="row-label">Generator Layer 1</span><span class="row-meta">GEN · REPLACE</span></div>
+              <div class="tree-row depth-1 source-focus"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Rock Formation after selection"></span><span class="row-label">Rock Formation</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2 source-focus"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Flow Carve after selection"></span><span class="row-label">Flow Carve</span><span class="row-meta">OWNED · FLOW</span></div>
+              <div class="tree-row depth-1 selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Pebbles after selection"></span><span class="row-label">Pebbles</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row depth-2 connection selected"><span class="enable-area"><input type="checkbox" checked aria-label="Enable two-selection Warp"></span><span class="row-label" title="Generator Layer 1 / Rock Formation / Flow Carve / Flow → Warp → Generator Layer 1 / Pebbles">Warp ← Rock Formation / Flow Carve</span><span class="row-meta">FLOW</span></div>
+              <div class="tree-row depth-1"><span class="enable-area"><input type="checkbox" checked aria-label="Enable Cliff Strata after selection"></span><span class="row-label">Cliff Strata</span><span class="row-meta">GEN</span></div>
+              <div class="tree-row group-row"><span class="enable-area"><input type="checkbox" checked aria-label="Enable layer 2 after"></span><span class="row-label">Generator Layer 2</span><span class="row-meta">GEN · REPLACE</span></div>
+            </div>
+          </aside>
+          <div class="viewport" aria-label="Preview and relationship menu"><div class="viewport-top"><span>Material Preview</span><span>Default / Studio / Sphere</span></div><div class="preview-platform"></div><div class="preview-sphere"></div>
+            <div class="popover-outline stage-before">Two generators selected. Invoke “Connect selected…” via context menu or marking-menu shortcut. Selection itself does not connect them.</div>
+            <div class="marking-menu stage-menu" role="group" aria-label="Directional relationship choices">
+              <label class="mark-option" for="c4-after" title="Create Rock Formation / Flow Carve / Flow → Warp → Pebbles"><strong>Warp Pebbles</strong><span>using Rock Formation / Flow Carve</span><span>Rock Formation → Pebbles / Flow</span></label>
+              <div class="mark-option unavailable" title="Rock Formation does not accept Pebbles' outputs as a Structural Warp source"><strong>Warp Rock Formation</strong><span>using Pebbles</span><span>Unavailable: Pebbles has no compatible Flow output</span></div>
+              <div class="mark-option unavailable"><strong>Height Push Pebbles</strong><span>using Rock Formation</span><span>Unavailable in this pair: output or operation unsupported</span></div>
+              <label class="mark-option" for="c4-before"><strong>Cancel selection</strong><span>Return without creating a connection</span><span>Nothing is reordered</span></label>
+            </div>
+            <div class="popover-outline stage-after">Connected: Rock Formation / Flow Carve → Warp → Pebbles. Cliff Strata remains unconnected. <label for="c4-before" class="text-action">Reset prototype</label></div>
+            <div class="preview-note">TEXT-ONLY FOUR-WAY MENU / NO PICTOGRAMS OR PERMANENT STACK LINES</div>
+          </div>
+          <aside class="inspector" aria-label="Inspector, concept 4">
+            <div class="stage-before"><div class="inspector-header"><span>2 generators selected</span><span class="tiny-text">NO CONNECTION</span></div><div class="inspector-section-title">Selection / Not an execution edge</div><div class="inspector-summary"><p>Rock Formation + Pebbles</p><p>Pick a relationship and its direction. Two selected rows do not imply a connection.</p></div><div class="inspector-actions"><label class="small-btn" for="c4-menu">Connect selected…</label></div></div>
+            <div class="stage-menu"><div class="inspector-header"><span>Connect selected generators</span><span class="tiny-text">CHOOSE DIRECTION</span></div><div class="inspector-section-title">Compatible operations</div><div class="inspector-summary"><p>Rock Formation / Flow Carve → Warp → Pebbles</p><p>Available: Flow output, legal execution order.</p></div><div class="warning-box">Reverse direction is not compatible with this pair. Unsupported choices stay disabled with explicit reasons.</div><div class="inspector-actions"><label class="small-btn" for="c4-after">Create Warp</label></div></div>
+            <div class="stage-after"><div class="inspector-header"><span>Warp / Pebbles</span><span class="tiny-text">CONNECTION</span></div><div class="inspector-section-title">Source → Operation → Target</div><div class="connection-path">Rock Formation / Flow Carve <span class="path-muted">→</span> Warp <span class="path-muted">→</span> Pebbles</div><div class="inspector-fields"><div class="field"><span class="name">Source</span><span class="value">Rock Formation / Flow Carve</span></div><div class="field"><span class="name">Source output</span><span class="value">Flow</span></div><div class="field"><span class="name">Target</span><span class="value">Pebbles</span></div><div class="field"><span class="name">Enabled</span><span class="value"><input type="checkbox" checked aria-label="Warp selected enabled"></span></div></div><div class="inspector-section-title">Warp settings</div><div class="inspector-fields"><div class="field"><span class="name">Flow Amount</span><span class="value editable">1.000</span></div><div class="field"><span class="name">Flow Steps</span><span class="value editable">8</span></div></div></div>
+          </aside>
+        </div>
+        <div class="mockup-foot"><span>Menu choice explicitly names source, target, operation, and output; direction is never inferred from selection order.</span><span>04 / Two-selection menu</span></div>
+      </div>
+      <div class="spec-strip"><div class="spec"><strong>27 px</strong><span>Proposed hierarchy row</span></div><div class="spec"><strong>340 × 190 px</strong><span>Proposed compact four-choice surface</span></div><div class="spec"><strong>16 / 32 px</strong><span>Generator / created connection indent</span></div><div class="spec"><strong>20 px</strong><span>Min control hit target; choices larger</span></div><div class="spec"><strong>8 px</strong><span>Padding / action spacing</span></div><div class="spec"><strong>Text menu</strong><span>Radial semantics without iconography</span></div></div>
+      <div class="insets">
+        <article class="inset"><h3>Before → menu → after</h3><div class="sample"><div class="sample-row selected"><span>Rock Formation + Pebbles</span><span>SELECTED</span></div><div class="sample-row"><span>Warp Pebbles using Rock / Flow</span><span>ACTION</span></div><div class="sample-row inset-connection"><span>Warp ← Rock / Flow</span><span>RESULT</span></div></div><p>The menu presents explicit direction, not a guessed relationship from selected order.</p></article>
+        <article class="inset"><h3>Standard popup alternative</h3><div class="normal-menu"><div class="popup-row">Connect selected…</div><div class="popup-row active">Warp Pebbles using Rock / Flow</div><div class="popup-row disabled">Warp Rock Formation using Pebbles</div><div class="popup-row disabled">Height Push / No compatible output</div></div><p>Provides keyboard and context-menu discoverability alongside the expert menu.</p></article>
+        <article class="inset"><h3>Several incoming / other layer</h3><div class="sample"><div class="sample-row"><span>Pebbles</span><span>GEN</span></div><div class="sample-row inset-connection"><span>Warp ← Layer 1 / Rock / Flow</span><span>ON</span></div><div class="sample-row inset-connection"><span>Warp ← Layer 0 / Noise / Flow</span><span>ON</span></div></div><p>Every successful relationship uses the same target-owned row presentation.</p></article>
+        <article class="inset"><h3>Invalid / missing / disabled</h3><div class="sample"><div class="sample-row disabled"><span>Warp ← Disabled Noise</span><span>OFF</span></div><div class="sample-row warning"><span>Warp ← Missing source</span><span>FIX</span></div><div class="sample-row warning"><span>Warp ← Later Layer / Flow</span><span>ORDER</span></div></div><p>Source after target: connection inactive with explicit error. Never silently reorder.</p></article>
+        <article class="inset"><h3>Same names / copy / instance</h3><div class="sample"><div class="sample-row"><span>Layer 1 / Noise / Flow</span><span>SOURCE A</span></div><div class="sample-row"><span>Layer 3 / Noise / Flow</span><span>SOURCE B</span></div><div class="sample-row"><span>Noise (Copy)</span><span>INDEPENDENT</span></div><div class="sample-row"><span>Noise (Instance)</span><span>LINKED SETTINGS</span></div></div><p>Disambiguate with breadcrumb paths. Duplicates and shared settings are not directed field inputs.</p></article>
+        <article class="inset"><h3>Narrow hierarchy panel</h3><div class="sample mini-narrow"><div class="sample-row"><span>Rock Formation</span><span>GEN</span></div><div class="sample-row"><span>Pebbles</span><span>GEN</span></div><div class="sample-row inset-connection" title="Warp ← Generator Layer 1 / Rock Formation / Flow Carve"><span>Warp ← Rock Forma...</span><span>FLOW</span></div></div><p>Selection and resulting row still work with truncation; full names on hover.</p></article>
+        <article class="inset"><h3>States / collapsing</h3><div class="sample"><div class="sample-row selected"><span>Selected generator</span><span>GEN</span></div><div class="sample-row hover"><span>Hovered menu target</span><span>GEN</span></div><div class="sample-row disabled"><span>Disabled relationship</span><span>N/A</span></div><div class="sample-row warning"><span>Unresolved relationship</span><span>FIX</span></div><div class="sample-row"><span>Collapsed Pebbles</span><span>1 incoming</span></div></div><p>The right inspector expands with details; the viewport itself stays fixed.</p></article>
+        <article class="inset"><h3>Explicit direction when both are legal</h3><div class="sample"><div class="sample-row"><span>Warp A using B / Flow</span><span>B → A</span></div><div class="sample-row"><span>Warp B using A / Flow</span><span>A → B</span></div></div><p>Present both choices with full actual names if both operations are supported. Never assume first-picked is source.</p></article>
+      </div>
+      <div class="analysis-note"><strong>Tradeoff:</strong> Efficient expert shortcut, but higher discovery and selection complexity. The normal text popup is necessary for accessibility; not recommended as the default creation path.</div>
+    </section>
+
+    <footer class="footer">Agent note: proposals only. Check existing Mixtormat data flow, connection validity, ownership, layer ordering, and editor components before implementation. Do not remove current features or parameters without approval. See AGENT_HANDOFF.md.</footer>
+  </div>
+</body>
+</html>

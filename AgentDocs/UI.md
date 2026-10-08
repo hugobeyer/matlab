@@ -47,6 +47,13 @@ Existing layer-level creation stays unchanged. The shared procedural removal han
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
 No build/runtime validation has been run.
 
+## Generator relationship UX plan
+
+`code_docs/generator_relationship_ux_plan.md` specifies the proposed target-first source picker,
+atomic connected creation, target-owned display projection, repair/collapse behavior, and complete
+UI STYLE integration. It is a textual implementation handoff, not delivered behavior; no concept
+image reads or testing are required or authorized. Existing runtime ownership/order remains intact.
+
 ## Inspector builders
 
 `Widgets/Inspector/`: `MixtormatInspectorLayer.cpp`, `MixtormatInspectorMasks.cpp`,
