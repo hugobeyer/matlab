@@ -502,9 +502,9 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 				[
 					SNew(SMixtormatIconRail)
 					.Options({
-						MixtormatIcons::HierarchyRoot(),
-						MixtormatIcons::Folder(),
-						MixtormatIcons::Globe() })
+						MixtormatIcons::Layers(),
+						MixtormatIcons::Library(),
+						MixtormatIcons::Global() })
 					.ToolTips({
 						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
 						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),

@@ -14,6 +14,17 @@ struct FSlateBrush;
 namespace MixtormatIcons
 {
 	const FSlateBrush* Save();
+	const FSlateBrush* Layers();
+	const FSlateBrush* Library();
+	const FSlateBrush* Global();
+	const FSlateBrush* Close();
+	const FSlateBrush* Minimize();
+	const FSlateBrush* ChevronLeft();
+	const FSlateBrush* Pin();
+	const FSlateBrush* Dock();
+	const FSlateBrush* VariableLink();
+	const FSlateBrush* VariableUnlink();
+	const FSlateBrush* Squircle();
 	const FSlateBrush* SaveAs();
 	const FSlateBrush* Settings();
 	const FSlateBrush* Grip();

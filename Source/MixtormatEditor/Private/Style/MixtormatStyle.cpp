@@ -11,6 +11,7 @@
 
 #include "Brushes/SlateColorBrush.h"
 #include "Brushes/SlateImageBrush.h"
+#include "Brushes/SlateVectorImageBrush.h"
 #include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 
@@ -855,8 +856,16 @@ void FMixtormatStyle::Refresh()
 				FSlateColor(Icon)));
 	};
 
-	// UI glyphs: 64 px white-on-transparent PNGs sliced from one sheet at a uniform scale, so
-	// every icon shares a stroke weight. White so the brush tint colours them.
+	// SVG glyphs remain vector-backed and use the same theme tint and authored dimensions.
+	const auto SetSvgIcon = [&Icon](const FName Key, const TCHAR* FileName, const FVector2D Size)
+	{
+		StyleInstance->Set(
+			Key,
+			new FSlateVectorImageBrush(
+				StyleInstance->RootToContentDir(FileName, TEXT(".svg")),
+				Size,
+				FSlateColor(Icon)));
+	};
 	const auto SetPngIcon = [&Icon](const FName Key, const TCHAR* FileName, const FVector2D Size)
 	{
 		StyleInstance->Set(
@@ -867,71 +876,71 @@ void FMixtormatStyle::Refresh()
 				FSlateColor(Icon)));
 	};
 
-	SetPngIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Save"), TEXT("Icons/save"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.SaveAs"), TEXT("Icons/save-as"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/overflow"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/add"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/duplicate"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/cube"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/sphere"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/plane"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Cylinder"), TEXT("Icons/cylinder"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
-	SetPngIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/nodes"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
-	SetPngIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
-	SetPngIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/documentation"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
-	SetPngIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/feedback"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
-	SetPngIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/light-neutral"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Overflow"), TEXT("Icons/overflow"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Add"), TEXT("Icons/add"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Settings"), TEXT("Icons/settings"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Eye"), TEXT("Icons/eye"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.EyeOff"), TEXT("Icons/eye-off"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/duplicate"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ArrowDown"), TEXT("Icons/arrow-down"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Cube"), TEXT("Icons/cube"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Sphere"), TEXT("Icons/sphere"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Plane"), TEXT("Icons/plane"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Cylinder"), TEXT("Icons/cylinder"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Globe"), TEXT("Icons/globe"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Nodes"), TEXT("Icons/nodes"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Camera"), TEXT("Icons/camera"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Search"), TEXT("Icons/search"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Documentation"), TEXT("Icons/documentation"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Feedback"), TEXT("Icons/feedback"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSizeLarge));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LightNeutral"), TEXT("Icons/light-neutral"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.LightSoft"), TEXT("Icons/light-soft"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.LightDramatic"), TEXT("Icons/light-dramatic"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/light-rim"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/quality-high"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampConstant"), TEXT("Icons/ramp-constant"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LightRim"), TEXT("Icons/light-rim"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.QualityLow"), TEXT("Icons/quality-low"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.QualityMedium"), TEXT("Icons/quality-medium"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.QualityHigh"), TEXT("Icons/quality-high"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampConstant"), TEXT("Icons/ramp-constant"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something
 	// that shapes coverage, a bolt for an effect, a mountain for a procedural generator,
 	// a shoot for generated masks, and a cluster for IDs and data producers.
-	SetPngIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/mask"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/mask"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	// IDs and ID-derived data are their own category, not Generated Mask. They were borrowing that
 	// glyph only because there was no icon for them yet.
-	SetPngIcon(TEXT("Mixtormat.Icon.Ids"), TEXT("Icons/ids"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Ids"), TEXT("Icons/ids"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	// Layer kinds. A square for a material, a circle for a fill -- the shapes the add bar uses.
-	SetPngIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/layer-material"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.LayerMaterial"), TEXT("Icons/layer-material"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetPngIcon(TEXT("Mixtormat.Icon.LayerFill"), TEXT("Icons/layer-fill"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 
 	// Disclosure. These were being borrowed from FAppStyle, which meant the one glyph in the stack
 	// that is not ours changed weight whenever the editor theme did.
-	SetPngIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetPngIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ChevronDown"), TEXT("Icons/chevron-down"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ChevronRight"), TEXT("Icons/chevron-right"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Check"), TEXT("Icons/check"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 
 	// Hierarchy and indentation glyphs: tree connectors for scoped children and indent levels.
 	{
 		const FVector2D Size(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize);
-		SetPngIcon(TEXT("Mixtormat.Icon.ChevronUp"), TEXT("Icons/chevron-up"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.ChevronDownBold"), TEXT("Icons/chevron-down-bold"), Size);
-		SetPngIcon(TEXT("Mixtormat.Icon.HierarchyRoot"), TEXT("Icons/hierarchy-root"), Size);
+		SetSvgIcon(TEXT("Mixtormat.Icon.ChevronUp"), TEXT("Icons/chevron-up"), Size);
+		SetSvgIcon(TEXT("Mixtormat.Icon.ChevronDownBold"), TEXT("Icons/chevron-down-bold"), Size);
+		SetSvgIcon(TEXT("Mixtormat.Icon.HierarchyRoot"), TEXT("Icons/hierarchy-root"), Size);
 		SetPngIcon(TEXT("Mixtormat.Icon.Indent1"), TEXT("Icons/indent-1"), Size);
 		SetPngIcon(TEXT("Mixtormat.Icon.Indent2"), TEXT("Icons/indent-2"), Size);
 		SetPngIcon(TEXT("Mixtormat.Icon.Indent3"), TEXT("Icons/indent-3"), Size);
@@ -943,6 +952,18 @@ void FMixtormatStyle::Refresh()
 
 	// Brand marks. The source art is 53.46 x 58.07 for the icon and 297.14 x 58.07 for the
 	// logo, so every size below holds those ratios rather than squashing the glyph.
+	const FVector2D IconSize(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Layers"), TEXT("Icons/layers"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Library"), TEXT("Icons/library"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Global"), TEXT("Icons/global"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Close"), TEXT("Icons/close"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Minimize"), TEXT("Icons/minimize"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.ChevronLeft"), TEXT("Icons/chevron-left"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Pin"), TEXT("Icons/pin"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Dock"), TEXT("Icons/dock"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.VariableLink"), TEXT("Icons/variable-link"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.VariableUnlink"), TEXT("Icons/variable-unlink"), IconSize);
+	SetSvgIcon(TEXT("Mixtormat.Icon.Squircle"), TEXT("Icons/squircle"), IconSize);
 	SetBrandArtwork(TEXT("Mixtormat.Brand.Icon"), TEXT("Icons/mixtormat-icon"), FVector2D(MixtormatTokens::BrandIconWidth, MixtormatTokens::BrandIconHeight));
 	SetBrandArtwork(TEXT("Mixtormat.Brand.Logo"), TEXT("Icons/mixtormat-logo"), FVector2D(MixtormatTokens::BrandLogoWidth, MixtormatTokens::BrandLogoHeight));
 

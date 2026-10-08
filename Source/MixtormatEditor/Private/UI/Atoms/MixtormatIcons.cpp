@@ -16,6 +16,17 @@ namespace
 namespace MixtormatIcons
 {
 	const FSlateBrush* Save() { return Get(TEXT("Mixtormat.Icon.Save")); }
+	const FSlateBrush* Layers() { return Get(TEXT("Mixtormat.Icon.Layers")); }
+	const FSlateBrush* Library() { return Get(TEXT("Mixtormat.Icon.Library")); }
+	const FSlateBrush* Global() { return Get(TEXT("Mixtormat.Icon.Global")); }
+	const FSlateBrush* Close() { return Get(TEXT("Mixtormat.Icon.Close")); }
+	const FSlateBrush* Minimize() { return Get(TEXT("Mixtormat.Icon.Minimize")); }
+	const FSlateBrush* ChevronLeft() { return Get(TEXT("Mixtormat.Icon.ChevronLeft")); }
+	const FSlateBrush* Pin() { return Get(TEXT("Mixtormat.Icon.Pin")); }
+	const FSlateBrush* Dock() { return Get(TEXT("Mixtormat.Icon.Dock")); }
+	const FSlateBrush* VariableLink() { return Get(TEXT("Mixtormat.Icon.VariableLink")); }
+	const FSlateBrush* VariableUnlink() { return Get(TEXT("Mixtormat.Icon.VariableUnlink")); }
+	const FSlateBrush* Squircle() { return Get(TEXT("Mixtormat.Icon.Squircle")); }
 	const FSlateBrush* SaveAs() { return Get(TEXT("Mixtormat.Icon.SaveAs")); }
 	const FSlateBrush* Settings() { return Get(TEXT("Mixtormat.Icon.Settings")); }
 	const FSlateBrush* Grip() { return Get(TEXT("Mixtormat.Icon.Grip")); }
