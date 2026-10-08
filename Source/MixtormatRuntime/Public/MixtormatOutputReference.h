@@ -107,6 +107,14 @@ namespace MixtormatOutputReferences
 		const FMixtormatOutputReference* ProposedSource = nullptr,
 		const FGuid* ProposedTarget = nullptr);
 
+	// Mirrors Gather's mixed projection without changing its render predicates: effective
+	// layers for sources/Warp targets, binding-resolved destination for module/Push targets.
+	MIXTORMATRUNTIME_API FStructuralLinkStatus EvaluateStructuralLinkForGather(
+		const TArray<FMixtormatLayer>& EffectiveLayers,
+		int32 ModuleLayerIndex,
+		int32 ModuleChildIndex,
+		const FMixtormatLayer& ResolvedModuleLayer);
+
 	// Preserves Gather's first eligible later Strata target rule, including duplicate GUIDs.
 	MIXTORMATRUNTIME_API int32 ResolveHeightPushTarget(
 		const TArray<FMixtormatLayer>& Layers,

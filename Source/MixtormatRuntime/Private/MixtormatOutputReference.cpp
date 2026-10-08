@@ -546,6 +546,50 @@ namespace MixtormatOutputReferences
 		return Status;
 	}
 
+	FStructuralLinkStatus EvaluateStructuralLinkForGather(const TArray<FMixtormatLayer>& EffectiveLayers,
+		const int32 ModuleLayerIndex, const int32 ModuleChildIndex, const FMixtormatLayer& ResolvedModuleLayer)
+	{
+		FStructuralLinkStatus Status;
+		if (!EffectiveLayers.IsValidIndex(ModuleLayerIndex))
+		{
+			Status.ModuleIssue = EStructuralLinkIssue::MissingLayer;
+			return Status;
+		}
+		if (!ResolvedModuleLayer.Children.IsValidIndex(ModuleChildIndex)
+			|| !EffectiveLayers[ModuleLayerIndex].Children.IsValidIndex(ModuleChildIndex))
+		{
+			Status.ModuleIssue = EStructuralLinkIssue::MissingChild;
+			return Status;
+		}
+		const FMixtormatLayerChild& Module = ResolvedModuleLayer.Children[ModuleChildIndex];
+		const bool bPush = Module.Type == EMixtormatLayerChildType::HeightPush;
+		if (!bPush && Module.Type != EMixtormatLayerChildType::StructuralWarp)
+		{
+			Status.ModuleIssue = EStructuralLinkIssue::WrongModuleType;
+			return Status;
+		}
+		const FMixtormatOutputReference& Source = bPush ? Module.HeightPush.Source : Module.StructuralWarp.Source;
+		const FGuid& TargetId = bPush ? Module.HeightPush.TargetChildId : Module.StructuralWarp.TargetChildId;
+		Status = EvaluateStructuralLink(EffectiveLayers, ModuleLayerIndex, ModuleChildIndex, &Source, &TargetId);
+		Status.bModuleEnabled = bPush ? Module.HeightPush.bEnabled : Module.StructuralWarp.bEnabled;
+		if (!ResolvedModuleLayer.bEnabled) { Status.ModuleIssue = EStructuralLinkIssue::DisabledLayer; }
+		else if (ResolvedModuleLayer.Type != EMixtormatLayerType::Generator) { Status.ModuleIssue = EStructuralLinkIssue::WrongOwnerLayer; }
+		else if (Module.ScopeOwnerChildId.IsValid()) { Status.ModuleIssue = EStructuralLinkIssue::ScopedModule; }
+		if (bPush && TargetId.IsValid())
+		{
+			Status.Target = EvaluateStructuralTarget(ResolvedModuleLayer, ModuleLayerIndex, ModuleChildIndex, TargetId, true);
+		}
+		// Source gathering still gates the authored destination's enabled/type/scope flags.
+		// Do not turn an inherited UI payload into a newly supported render connection.
+		FStructuralEdgeStatus GatherSource;
+		const int32 SourceIndex = EvaluateGeneratorInputSource(EffectiveLayers, ModuleLayerIndex,
+			ModuleChildIndex, Source, GatherSource, false);
+		Status.bCanExecuteStructurally = Status.ModuleIssue == EStructuralLinkIssue::None
+			&& Status.bModuleEnabled && SourceIndex != INDEX_NONE
+			&& Status.Source.Issue == EStructuralLinkIssue::None && Status.Target.Issue == EStructuralLinkIssue::None;
+		return Status;
+	}
+
 	int32 ResolveHeightPushTarget(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const int32 DestinationChildIndex, const FGuid& TargetChildId)
 	{

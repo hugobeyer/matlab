@@ -257,14 +257,16 @@ FReply SMixtormat::CreateGroupFromSelection()
 	const FGuid InspectorLayerId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		? WorkingLayers[SelectedLayerIndex].LayerId : FGuid();
 
+	TArray<FMixtormatLayer> ProposedLayers = WorkingLayers;
+	TArray<FMixtormatLayerGroup> ProposedGroups = WorkingLayerGroups;
 	const int32 DroppedReferences =
-		MixtormatUI::ReorderLayersByPermutation(WorkingLayers, NewOrder);
+		MixtormatUI::ReorderLayersByPermutation(ProposedLayers, NewOrder);
 
-	FMixtormatLayerGroup& Group = WorkingLayerGroups.AddDefaulted_GetRef();
+	FMixtormatLayerGroup& Group = ProposedGroups.AddDefaulted_GetRef();
 	Group.DisplayName = MakeUniqueGroupName();
 	for (int32 Index = InsertAt; Index < InsertAt + Selected.Num(); ++Index)
 	{
-		WorkingLayers[Index].GroupId = Group.GroupId;
+		ProposedLayers[Index].GroupId = Group.GroupId;
 	}
 	const FGuid NewGroupId = Group.GroupId;
 
@@ -274,20 +276,28 @@ FReply SMixtormat::CreateGroupFromSelection()
 	int32 StrandedCount = 0;
 	{
 		TArray<FGuid> MembershipBefore;
-		MembershipBefore.Reserve(WorkingLayers.Num());
-		for (const FMixtormatLayer& Layer : WorkingLayers)
+		MembershipBefore.Reserve(ProposedLayers.Num());
+		for (const FMixtormatLayer& Layer : ProposedLayers)
 		{
 			MembershipBefore.Add(Layer.GroupId);
 		}
-		MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
-		for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
+		MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
+		for (int32 Index = 0; Index < ProposedLayers.Num(); ++Index)
 		{
-			if (MembershipBefore[Index].IsValid() && !WorkingLayers[Index].GroupId.IsValid())
+			if (MembershipBefore[Index].IsValid() && !ProposedLayers[Index].GroupId.IsValid())
 			{
 				++StrandedCount;
 			}
 		}
 	}
+	FText MoveReason;
+	if (!StructuralLinksPreserved(ProposedLayers, ProposedGroups, MoveReason))
+	{
+		WorkingStatusText = MoveReason.ToString();
+		return FReply::Handled();
+	}
+	WorkingLayers = MoveTemp(ProposedLayers);
+	WorkingLayerGroups = MoveTemp(ProposedGroups);
 
 	const auto FindLayerIndex = [this](const FGuid& LayerId)
 	{

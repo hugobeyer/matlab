@@ -292,7 +292,8 @@ private:
 	FReply AddWorkingLayer(EMixtormatLayerType LayerType);
 	FReply DuplicateSelectedLayer();
 	FReply DeleteSelectedLayer();
-	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex, bool bRecordHistory = true);
+	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex, bool bRecordHistory = true,
+			const FGuid* ExplicitGroupId = nullptr);
 	FReply SelectWorkingLayer(int32 LayerIndex);
 	FReply SelectWorkingChild(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignMaskToLayer(int32 LayerIndex, FSoftObjectPath MaskPath);
@@ -351,8 +352,12 @@ private:
 	FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address);
 	const FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address) const;
 	int32 ResolveChildIndexAt(const FMixtormatChildAddress& Address) const;
-	bool CanMovePublishedOutputs(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest, int32 InsertIndex) const;
-	bool CanMoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest) const;
+	bool StructuralLinksPreserved(const TArray<FMixtormatLayer>& ProposedLayers,
+		const TArray<FMixtormatLayerGroup>& ProposedGroups, FText& OutReason) const;
+	bool CanMovePublishedOutputs(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
+		int32 InsertIndex, FText* OutReason = nullptr) const;
+	bool CanMoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
+		FText* OutReason = nullptr) const;
 	FReply MoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
 	FMixtormatChildAddress GetDraggedChildAddress(const FMixtormatChildDragDropOp& Operation) const;
 	bool CanDropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest) const;
