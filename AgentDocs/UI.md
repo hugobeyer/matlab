@@ -92,9 +92,10 @@ Use the token/theme system; do not introduce local styling. `MixtormatStyle`
 
 Two systems, one rule: structural constants go in `MixtormatTokens`
 (`Style/MixtormatDesignTokens.h`); anything retunable live goes in `FMixtormatTheme`
-plus `MixtormatThemeSchema.cpp`. Widgets read them through
-`FMixtormatThemeStore::GetResolved()` and never inline a value. Known local-literal
-gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
+plus `MixtormatThemeSchema.cpp`. Every UI STYLE registration needs a current reader;
+the schema is the editable/save contract, and loading merges it over non-schema state.
+Widgets read them through `FMixtormatThemeStore::GetResolved()` and never inline a
+value. Known local-literal gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
 
 ## Viewport overlays / toolbars
 

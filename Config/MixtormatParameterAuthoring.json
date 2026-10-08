@@ -345,6 +345,15 @@
 			"uiMin": 1,
 			"uiMax": 12,
 			"snap": 0.0099999997764825821
+		},
+		"Generator.RockFacetIterations:Int":
+		{
+			"default": 3,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0,
+			"clampMin": 0,
+			"clampMax": 16
 		}
 	},
 	"Pebbles":

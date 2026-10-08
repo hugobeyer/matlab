@@ -380,7 +380,9 @@ void FMixtormatStyle::Refresh()
 
 	// Viewport rail buttons: each on its own rounded plate. Hover and press add the accent to the
 	// plate; the glyph is dimmed at rest and full on hover (rail icons draw in the foreground).
-	const FLinearColor OverlayPlate = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	FLinearColor OverlayPlate = Resolved.Preview.OverlayPlate;
+	OverlayPlate.A *= Resolved.Preview.OverlayPlateOpacity;
 	const auto AccentAdded = [&OverlayPlate](const float Amount)
 	{
 		FLinearColor Lit = OverlayPlate + FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent) * Amount;
@@ -389,9 +391,9 @@ void FMixtormatStyle::Refresh()
 	};
 	const float PlateRadius = FMixtormatThemeStore::GetResolved().ControlLayout.CornerRadius;
 	const FSlateRoundedBoxBrush PlateRest(OverlayPlate, PlateRadius);
-	const FSlateRoundedBoxBrush PlateHover(AccentAdded(MixtormatTokens::OverlayHoverAccent), PlateRadius);
-	const FSlateRoundedBoxBrush PlatePress(AccentAdded(MixtormatTokens::OverlayPressAccent), PlateRadius);
-	const FSlateRoundedBoxBrush PlateChecked(AccentAdded(MixtormatTokens::OverlayHoverAccent * 0.6f), PlateRadius);
+	const FSlateRoundedBoxBrush PlateHover(AccentAdded(Resolved.Preview.HoverAccent), PlateRadius);
+	const FSlateRoundedBoxBrush PlatePress(AccentAdded(Resolved.Preview.PressAccent), PlateRadius);
+	const FSlateRoundedBoxBrush PlateChecked(AccentAdded(Resolved.Preview.HoverAccent * 0.6f), PlateRadius);
 	FCheckBoxStyle ViewportOverlayToggle = FCheckBoxStyle()
 		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
 		.SetUncheckedImage(PlateRest)
@@ -403,13 +405,13 @@ void FMixtormatStyle::Refresh()
 		.SetUndeterminedImage(PlateRest)
 		.SetUndeterminedHoveredImage(PlateHover)
 		.SetUndeterminedPressedImage(PlatePress)
-		.SetForegroundColor(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
+		.SetForegroundColor(FSlateColor(WithOpacity(Text, Resolved.Preview.IconRestOpacity)))
 		.SetHoveredForegroundColor(FSlateColor(Text))
 		.SetPressedForegroundColor(FSlateColor(Text))
 		.SetCheckedForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 		.SetCheckedHoveredForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 		.SetCheckedPressedForegroundColor(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
-		.SetPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
+		.SetPadding(FMargin(Resolved.PreviewLayout.TogglePadding));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayToggle"), ViewportOverlayToggle);
 
 	// The inspector's boolean. Every image is empty on purpose: SMixtormatToggle paints the well
@@ -450,12 +452,12 @@ void FMixtormatStyle::Refresh()
 		.SetHovered(PlateHover)
 		.SetPressed(PlatePress)
 		.SetDisabled(PlateRest)
-		.SetNormalForeground(FSlateColor(WithOpacity(Text, MixtormatTokens::OverlayIconRestOpacity)))
+		.SetNormalForeground(FSlateColor(WithOpacity(Text, Resolved.Preview.IconRestOpacity)))
 		.SetHoveredForeground(FSlateColor(Text))
 		.SetPressedForeground(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 		.SetDisabledForeground(FSlateColor(DisabledText))
-		.SetNormalPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding))
-		.SetPressedPadding(FMargin(MixtormatTokens::ViewportOverlayTogglePadding));
+		.SetNormalPadding(FMargin(Resolved.PreviewLayout.TogglePadding))
+		.SetPressedPadding(FMargin(Resolved.PreviewLayout.TogglePadding));
 	StyleInstance->Set(TEXT("Mixtormat.ViewportOverlayButton"), ViewportOverlayButton);
 
 	FButtonStyle CompactRowButton = FButtonStyle()

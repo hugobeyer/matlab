@@ -41,6 +41,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatGeneratorType::RockFormation},
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatGeneratorType::Pebbles},
 		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatGeneratorType::CliffStrata},
+		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatGeneratorType::Noise},
 	};
 	for (const auto& Entry : Entries)
 	{
@@ -1185,6 +1186,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
+		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
 		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();

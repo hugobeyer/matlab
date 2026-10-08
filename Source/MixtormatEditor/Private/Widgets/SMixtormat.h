@@ -69,6 +69,7 @@ enum class EMixtormatChildCreation : uint8
 	RockFormation,
 	Pebbles,
 	CliffStrata,
+	Noise,
 	// Generator-layer sublayers.
 	HeightBlend,
 	HeightCurve,

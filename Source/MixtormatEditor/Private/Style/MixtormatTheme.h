@@ -191,8 +191,7 @@ namespace Mixtormat
 		// How far past the row's bounds the halo is allowed to bleed.
 		float Reach = 0.0f;
 
-		float HairlineWidth = 0.0f;
-		float HairlineOpacity = 0.0f;
+
 	};
 
 	// The shared power curve, ported once from the prototype's falloff.js:
@@ -377,9 +376,7 @@ namespace Mixtormat
 		float HairlineSaturation = 2.0f;
 		float HairlineHoverSaturation = 1.4f;
 
-		float ShadowOpacity = 0.055f;
-		float ShadowRange = 12.0f;
-		float ShadowFalloffPower = 1.8f;
+
 	};
 
 	// Header and body are one continuous gradient over Ground, not two stacked surfaces: the seam
@@ -648,12 +645,6 @@ namespace Mixtormat
 
 		float Padding = 7.0f;
 		float Gap = 0.0f;
-		float TitleHeight = 0.0f;
-		float HorizontalPadding = 0.0f;
-		float HeaderPaddingLeft = 0.0f;
-		float HeaderPaddingTop = 0.0f;
-		float HeaderPaddingRight = 0.0f;
-		float HeaderPaddingBottom = 0.0f;
 	};
 
 	struct FMixtormatLayerMetrics
@@ -882,7 +873,6 @@ namespace Mixtormat
 		float TrackingPx = 0.0f;
 		float Opacity = 1.0f;
 
-		bool bUppercase = false;
 		bool bMonospacedNumbers = false;
 	};
 
@@ -905,9 +895,6 @@ namespace Mixtormat
 		FMixtormatWellTheme Well;
 		FMixtormatFillTheme Fill;
 		FMixtormatToggleTheme Toggle;
-		float SliderTrackHeight = 0.0f;
-		float SliderHandleSize = 0.0f;
-		float SliderZeroTickOpacity = 0.16f;
 
 		FMixtormatControlMetrics ControlLayout;
 

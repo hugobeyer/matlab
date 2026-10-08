@@ -148,7 +148,6 @@ namespace Mixtormat
 		T.Toggle.DisabledShadeTop = 0.3f;
 		T.Toggle.DisabledShadeBottom = 0.12f;
 
-		T.SliderZeroTickOpacity = 0.16f;              // --zero-tick-opacity
 
 		// ---- Control layout ------------------------------------------------------------
 		T.ControlLayout.RowHeight = 18.0f;            // --row-height
@@ -281,8 +280,7 @@ namespace Mixtormat
 		T.Layer.ActiveGlow.Opacity = 0.18f;           // --layer-active-glow-opacity
 		T.Layer.ActiveGlow.Saturation = 1.5f;         // --layer-active-glow-saturation
 		T.Layer.ActiveGlow.Reach = 32.0f;             // --layer-active-glow-reach
-		T.Layer.ActiveGlow.HairlineWidth = 1.0f;      // --layer-active-hairline-width
-		T.Layer.ActiveGlow.HairlineOpacity = 0.6f;    // --layer-active-hairline-opacity
+
 
 		T.Layer.ActiveHairlineWidth = 1.0f;
 		T.Layer.ActiveHairlineOpacity = 0.55f;
@@ -933,7 +931,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Card.HeaderOpacity"), InOutTheme.Card.HeaderOpacity);
 		Clamp01(TEXT("Card.BodyOpacity"), InOutTheme.Card.BodyOpacity);
 		Clamp01(TEXT("Layer.ActiveGlow.Opacity"), InOutTheme.Layer.ActiveGlow.Opacity);
-		Clamp01(TEXT("Layer.ActiveGlow.HairlineOpacity"), InOutTheme.Layer.ActiveGlow.HairlineOpacity);
+
 		Clamp01(TEXT("Layer.ActiveHairlineOpacity"), InOutTheme.Layer.ActiveHairlineOpacity);
 		Clamp01(TEXT("Layer.GroupStrength"), InOutTheme.Layer.GroupStrength);
 				Clamp01(TEXT("Layer.RestStrength"), InOutTheme.Layer.RestStrength);

@@ -213,6 +213,9 @@ void AddIconRole(
 			Out.Add(Number(*Id(TEXT("Opacity")), ETab::Typography, *Section, TEXT("Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Typography.Roles[Index].Opacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Typography.Roles[Index].Opacity = V; }, TEXT(""), RefreshMode));
+			Out.Add(Bool(*Id(TEXT("MonospacedNumbers")), ETab::Typography, *Section, TEXT("Monospaced Numbers"),
+				[Index](const FMixtormatTheme& T) { return T.Typography.Roles[Index].bMonospacedNumbers; },
+				[Index](FMixtormatTheme& T, bool V) { T.Typography.Roles[Index].bMonospacedNumbers = V; }, TEXT(""), RefreshMode));
 		}
 
 		const TArray<FMixtormatThemeProperty>& BuildProperties()
@@ -394,6 +397,7 @@ void AddIconRole(
 		NUM_DEF("Foldout.LiftFalloff.Start", Foldouts, "Falloff", "Start", Foldout.LiftFalloff.Start, 0, 1, .01, 2);
 		NUM_DEF("Foldout.LiftFalloff.End", Foldouts, "Falloff", "End", Foldout.LiftFalloff.End, 0, 1, .01, 2);
 		NUM_DEF("Foldout.LiftFalloff.Power", Foldouts, "Falloff", "Power", Foldout.LiftFalloff.Power, .01, 4, .05, 2);
+			NUM("Foldout.LiftFalloff.Samples", Foldouts, "Falloff", "Samples", Foldout.LiftFalloff.Samples, 2, 16, 1, 0, EMixtormatThemeRefreshMode::Paint);
 		NUM("FoldoutLayout.Height", Foldouts, "Layout", "Height", FoldoutLayout.Height, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("FoldoutLayout.Gutter", Foldouts, "Layout", "Gutter", FoldoutLayout.Gutter, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("FoldoutLayout.BodyTop", Foldouts, "Layout", "Body Top", FoldoutLayout.BodyTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
@@ -417,7 +421,9 @@ void AddIconRole(
 		NUM_DEF("Card.Radius", Cards, "Surface", "Radius", Card.Radius, 0, 12, .5, 1);
 		NUM("CardLayout.HeaderHeight", Cards, "Layout", "Header Height", CardLayout.HeaderHeight, 8, 48, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.HeaderLeft", Cards, "Layout", "Header Left", CardLayout.HeaderLeft, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+			NUM("CardLayout.HeaderTop", Cards, "Layout", "Header Top", CardLayout.HeaderTop, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.HeaderRight", Cards, "Layout", "Header Right", CardLayout.HeaderRight, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+			NUM("CardLayout.HeaderBottom", Cards, "Layout", "Header Bottom", CardLayout.HeaderBottom, 0, 32, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.HeaderMarginTop", Cards, "Layout", "Header Margin Top", CardLayout.HeaderMarginTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.HeaderMarginBottom", Cards, "Layout", "Header Margin Bottom", CardLayout.HeaderMarginBottom, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("CardLayout.OuterTop", Cards, "Layout", "Outer Top", CardLayout.OuterTop, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
@@ -437,9 +443,9 @@ void AddIconRole(
 		NUM_DEF("Layer.RestSaturation", Layers, "Rows", "Rest Saturation", Layer.RestSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.HoverSaturation", Layers, "Rows", "Hover Saturation", Layer.HoverSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.SelectedSaturation", Layers, "Rows", "Selected Saturation", Layer.SelectedSaturation, 0, 4, .05, 2);
-		NUM_DEF("Layer.RestStrength", Layers, "Rows", "Rest Strength", Layer.RestStrength, 0, 2, .01, 2);
-		NUM_DEF("Layer.HoverStrength", Layers, "Rows", "Hover Strength", Layer.HoverStrength, 0, 2, .01, 2);
-		NUM_DEF("Layer.SelectedStrength", Layers, "Rows", "Selected Strength", Layer.SelectedStrength, 0, 2, .01, 2);
+		NUM_DEF("Layer.RestStrength", Layers, "Rows", "Rest Strength", Layer.RestStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.HoverStrength", Layers, "Rows", "Hover Strength", Layer.HoverStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.SelectedStrength", Layers, "Rows", "Selected Strength", Layer.SelectedStrength, 0, 1, .01, 2);
 		COL_DEF("Layer.RowBottom", Layers, "Row Colors", "Row Bottom", Layer.RowBottom);
 		COL_DEF("Layer.HoverTop", Layers, "Row Colors", "Hover Top", Layer.HoverTop);
 		COL_DEF("Layer.HoverBottom", Layers, "Row Colors", "Hover Bottom", Layer.HoverBottom);
@@ -463,16 +469,16 @@ void AddIconRole(
 		NUM_DEF("Layer.HairlineWidth", Layers, "Rows", "Hairline Width", Layer.HairlineWidth, 0, 4, .25, 2);
 		NUM_DEF("Layer.HairlineOpacity", Layers, "Rows", "Hairline Opacity", Layer.HairlineOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.GroupSaturation", Layers, "Group", "Group Saturation", Layer.GroupSaturation, 0, 4, .05, 2);
-		NUM_DEF("Layer.GroupStrength", Layers, "Group", "Group Strength", Layer.GroupStrength, 0, 2, .01, 2);
+		NUM_DEF("Layer.GroupStrength", Layers, "Group", "Group Strength", Layer.GroupStrength, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildSaturation", Layers, "Child", "Child Saturation", Layer.ChildSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ChildHoverSaturation", Layers, "Child", "Child Hover Saturation", Layer.ChildHoverSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ChildSelectedSaturation", Layers, "Child", "Child Selected Saturation", Layer.ChildSelectedSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ChildLeftOpacity", Layers, "Child", "Child Left Opacity", Layer.ChildLeftOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildHoverLeftOpacity", Layers, "Child", "Hover Left Opacity", Layer.ChildHoverLeftOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildSelectedLeftOpacity", Layers, "Child", "Selected Left Opacity", Layer.ChildSelectedLeftOpacity, 0, 1, .01, 2);
-		NUM_DEF("Layer.ChildStrength", Layers, "Child", "Child Strength", Layer.ChildStrength, 0, 2, .01, 2);
-		NUM_DEF("Layer.ChildHoverStrength", Layers, "Child", "Child Hover Strength", Layer.ChildHoverStrength, 0, 2, .01, 2);
-		NUM_DEF("Layer.ChildSelectedStrength", Layers, "Child", "Child Selected Strength", Layer.ChildSelectedStrength, 0, 2, .01, 2);
+		NUM_DEF("Layer.ChildStrength", Layers, "Child", "Child Strength", Layer.ChildStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.ChildHoverStrength", Layers, "Child", "Child Hover Strength", Layer.ChildHoverStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.ChildSelectedStrength", Layers, "Child", "Child Selected Strength", Layer.ChildSelectedStrength, 0, 1, .01, 2);
 		NUM_DEF("Layer.ActiveGlow.Opacity", Layers, "Active", "Glow Opacity", Layer.ActiveGlow.Opacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ActiveGlow.Saturation", Layers, "Active", "Glow Saturation", Layer.ActiveGlow.Saturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ActiveGlow.Reach", Layers, "Active", "Glow Reach", Layer.ActiveGlow.Reach, 0, 128, 1, 0);
@@ -543,12 +549,13 @@ void AddIconRole(
 
 				// PREVIEW
 				LocateBegin = P.Num();
-				COL_DEF("Preview.PlateSource", Preview, "Overlay Plate", "Plate Source", Preview.PlateSource);
-				NUM_DEF("Preview.PlateOpacity", Preview, "Overlay Plate", "Plate Opacity", Preview.PlateOpacity, 0, 1, .01, 2);
-				NUM_DEF("Preview.IconRestOpacity", Preview, "Overlay Plate", "Label Rest Opacity", Preview.IconRestOpacity, 0, 1, .01, 2);
-				NUM_DEF("Preview.HoverAccent", Preview, "Overlay Plate", "Hover Accent", Preview.HoverAccent, 0, 1, .01, 2);
-				NUM_DEF("Preview.PressAccent", Preview, "Overlay Plate", "Press Accent", Preview.PressAccent, 0, 1, .01, 2);
+				COL("Preview.PlateSource", Preview, "Overlay Plate", "Plate Source", Preview.PlateSource, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Preview.PlateOpacity", Preview, "Overlay Plate", "Plate Opacity", Preview.PlateOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Preview.IconRestOpacity", Preview, "Overlay Plate", "Icon / Label Rest Opacity", Preview.IconRestOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Preview.HoverAccent", Preview, "Overlay Plate", "Hover Accent", Preview.HoverAccent, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Preview.PressAccent", Preview, "Overlay Plate", "Press Accent", Preview.PressAccent, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.OverlayInset", Preview, "Layout", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.OverlayClusterInset", Preview, "Layout", "Cluster Inset", PreviewLayout.OverlayClusterInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 
 				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
@@ -599,6 +606,9 @@ void AddIconRole(
 				COL_DEF("ShellTheme.SplitterHoverSource", GalleryShell, "Shell / Splitter", "Hover Source", ShellTheme.SplitterHoverSource);
 				NUM_DEF("ShellTheme.SplitterOpacity", GalleryShell, "Shell / Splitter", "Rest Opacity", ShellTheme.SplitterOpacity, 0, 1, .01, 2);
 				NUM_DEF("ShellTheme.SplitterHoverOpacity", GalleryShell, "Shell / Splitter", "Hover Opacity", ShellTheme.SplitterHoverOpacity, 0, 1, .01, 2);
+			NUM("ShellTheme.ColumnShadowOpacity", GalleryShell, "Shell / Shadow", "Opacity", ShellTheme.ColumnShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+			NUM("ShellTheme.ColumnShadowRange", GalleryShell, "Shell / Shadow", "Range", ShellTheme.ColumnShadowRange, 0, 64, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+			NUM("ShellTheme.ColumnShadowFalloffPower", GalleryShell, "Shell / Shadow", "Falloff Power", ShellTheme.ColumnShadowFalloffPower, .01, 4, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.TopBarHeight", GalleryShell, "Shell / Layout", "Top Bar Height", Shell.TopBarHeight, 20, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.TopBarActionInset", GalleryShell, "Shell / Layout", "Top Bar Action Inset", Shell.TopBarActionInset, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.StatusBarHeight", GalleryShell, "Shell / Layout", "Status Bar Height", Shell.StatusBarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
@@ -701,6 +711,27 @@ void AddIconRole(
 	{
 		OutError.Reset();
 		const FMixtormatTheme& Theme = FMixtormatThemeStore::GetTheme();
+		const FString Path = SavePath();
+
+		// Retain unrecognized properties from a previously saved compatible theme. This lets a
+		// newer or temporarily unavailable schema survive a save from this build unchanged.
+		TSharedPtr<FJsonObject> ExistingRoot;
+		FString ExistingText;
+		if (!Path.IsEmpty() && FFileHelper::LoadFileToString(ExistingText, *Path))
+		{
+			FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ExistingText), ExistingRoot);
+			double ExistingVersion = 0.0;
+			FString ExistingSchema;
+			if (!ExistingRoot.IsValid()
+				|| !ExistingRoot->TryGetNumberField(TEXT("version"), ExistingVersion)
+				|| ExistingVersion != 1.0
+				|| !ExistingRoot->TryGetStringField(TEXT("schema"), ExistingSchema)
+				|| ExistingSchema != TEXT("MixtormatUIStyle"))
+			{
+				ExistingRoot.Reset();
+			}
+		}
+
 		const TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 		Root->SetNumberField(TEXT("version"), 1);
 		Root->SetStringField(TEXT("schema"), TEXT("MixtormatUIStyle"));
@@ -709,7 +740,14 @@ void AddIconRole(
 		for (uint8 I = 0; I < static_cast<uint8>(ETab::Count); ++I)
 		{
 			const ETab Tab = static_cast<ETab>(I);
-			const TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+			TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+			const TSharedPtr<FJsonObject>* ExistingSection = nullptr;
+			if (ExistingRoot.IsValid()
+				&& ExistingRoot->TryGetObjectField(TabKey(Tab), ExistingSection)
+				&& ExistingSection && ExistingSection->IsValid())
+			{
+				Obj = *ExistingSection;
+			}
 			Sections.Add(Tab, Obj);
 			Root->SetObjectField(TabKey(Tab), Obj);
 		}
@@ -752,7 +790,6 @@ void AddIconRole(
 
 		FString Text;
 		FJsonSerializer::Serialize(Root, TJsonWriterFactory<>::Create(&Text));
-		const FString Path = SavePath();
 		if (Path.IsEmpty())
 		{
 			OutError = TEXT("Could not resolve the Mixtormat plugin directory.");
@@ -802,7 +839,9 @@ void AddIconRole(
 			return false;
 		}
 
-		FMixtormatTheme Pending = MakeDefaultTheme();
+		// Merge saved schema values over the current theme so properties intentionally outside the
+		// editable/save schema are not silently reset when loading an older theme file.
+		FMixtormatTheme Pending = FMixtormatThemeStore::GetTheme();
 		for (const FMixtormatThemeProperty& P : Properties())
 		{
 			const TSharedPtr<FJsonObject>* Section = nullptr;

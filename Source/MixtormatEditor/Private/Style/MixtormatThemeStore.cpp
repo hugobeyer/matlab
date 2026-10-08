@@ -36,12 +36,15 @@ void FMixtormatThemeStore::EnsureInitialised()
 
 void FMixtormatThemeStore::LoadSavedThemeOrDefaults()
 {
+	// Schema loading merges recognized saved values over the current theme. Seed it first so
+	// themes written before a later schema addition inherit the authored defaults for that field.
+	GTheme = Mixtormat::MakeDefaultTheme();
+	Mixtormat::ValidateTheme(GTheme, GValidationIssues);
+	Mixtormat::ResolveTheme(GTheme, GResolved);
+
 	const FString SavePath = Mixtormat::FMixtormatThemeSchema::SavePath();
 	if (!IFileManager::Get().FileExists(*SavePath))
 	{
-		GTheme = Mixtormat::MakeDefaultTheme();
-		Mixtormat::ValidateTheme(GTheme, GValidationIssues);
-		Mixtormat::ResolveTheme(GTheme, GResolved);
 		GStartupLoadResult = EStartupLoadResult::UsingCompiledDefaults;
 		return;
 	}

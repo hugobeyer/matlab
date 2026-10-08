@@ -85,10 +85,6 @@ namespace Mixtormat
 		return Typography.Roles[Index];
 	}
 
-	FText FMixtormatTypography::ApplyCase(const FText& In, const FMixtormatTextSpec& Spec)
-	{
-		return Spec.bUppercase ? FText::AsCultureInvariant(In.ToString().ToUpper()) : In;
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

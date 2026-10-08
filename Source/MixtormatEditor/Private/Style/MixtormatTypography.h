@@ -43,10 +43,6 @@ namespace Mixtormat
 		// mean a second path to the same data the moment that wiring lands.
 		static FMixtormatTextSpec GetSpec(const FMixtormatResolvedTypography& Typography, EMixtormatTextRole Role);
 
-		// Applies a spec's casing. Slate has no uppercase flag -- case is a property of the text,
-		// not of the font -- so bUppercase is honoured here rather than being dropped, which is
-		// what would have made it a dead control.
-		static FText ApplyCase(const FText& In, const FMixtormatTextSpec& Spec);
 
 		// CSS pixels to Slate's 1/1000 em, in one place.
 		//

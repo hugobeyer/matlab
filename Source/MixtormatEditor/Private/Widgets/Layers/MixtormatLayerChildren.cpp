@@ -654,7 +654,8 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
-		default:                                     return EMixtormatChildCreation::StrataCarver;
+		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
+		default:                                      return EMixtormatChildCreation::StrataCarver;
 		}
 	}
 
@@ -680,6 +681,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
@@ -740,6 +742,9 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::CliffStrata:
 			Child.Generator.Type = EMixtormatGeneratorType::CliffStrata;
+			break;
+		case EMixtormatChildCreation::Noise:
+			Child.Generator.Type = EMixtormatGeneratorType::Noise;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -1285,6 +1290,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("PebblesChildName", "Pebbles");
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
+		case EMixtormatGeneratorType::Noise:
+			return LOCTEXT("NoiseChildName", "Noise");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}
