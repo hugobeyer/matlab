@@ -80,6 +80,18 @@ unconfirmed. Broken StructuralWarp tests were removed at user request; no agent 
 build, runtime or test results are claimed. Raster composition/filtering and legacy local
 inverse centre/orientation approximations remain; no geological fixes are included.
 
+## Structural connection authoring (interaction v1, D3)
+
+Inspector Push/Warp menus now delegate to the address-based
+`Widgets/Layers/MixtormatStructuralConnections.cpp` adapter. It checks Runtime status
+against Gather's mixed effective/resolved projection, lists eligible choices first,
+and explains unavailable choices. One setter revalidates the live GUID address before
+writing, preserves module enable/trace settings, and records a discrete undo step.
+`None` clears only the selected edge's GUIDs; dangling sources are never auto-rebound.
+Readable labels retain existing sources even for disabled references or wrong output kinds.
+D3 evidence is targeted source inspection only; no build, tests or runtime validation.
+Row chips/highlighting and target-first creation remain separate pending phases.
+
 ## Defaults / parameter metadata
 
 - Compiled defaults: the struct initializers in `MixtormatGeneratorTypes.h`.

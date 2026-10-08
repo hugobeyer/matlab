@@ -30,6 +30,12 @@ translation units — search the member function, not the header.
   `MixtormatLayerMenus.cpp`, `MixtormatLayerHierarchy.cpp`,
   `MixtormatLayerClipboard.cpp`, `MixtormatLayersPrivate.h`.
 
+Structural connection menus/labels and the atomic setter are shared by explicit child
+address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
+Inspector Push/Warp wrappers use this adapter; existing sliders remain in place.
+Row chips, link highlighting/counts and target-first creation are not implemented by D3.
+No build/runtime validation has been run for this phase.
+
 ## Inspector builders
 
 `Widgets/Inspector/`: `MixtormatInspectorLayer.cpp`, `MixtormatInspectorMasks.cpp`,

@@ -761,63 +761,8 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 
 TSharedRef<SWidget> SMixtormat::BuildHeightPushConnectionMenu(const bool bTarget)
 {
-	MixtormatMenu::FBuilder Menu;
-	const FMixtormatChildAddress Address = GetSelectedChildAddress();
-	if (Address.OwnerType != EMixtormatChildOwnerType::Layer || !GetSelectedHeightPush()) { return Menu.Build(); }
-	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
-	{
-		return Layer.LayerId == Address.OwnerId;
-	});
-	const int32 ChildIndex = ResolveChildIndexAt(Address);
-	if (!WorkingLayers.IsValidIndex(LayerIndex) || ChildIndex == INDEX_NONE) { return Menu.Build(); }
-	Menu.Item(LOCTEXT("HeightPushConnectionNone", "None"), nullptr,
-		FSimpleDelegate::CreateLambda([this, Address, bTarget]()
-		{
-			FMixtormatLayerChild* Child = ResolveChildAt(Address);
-			if (!Child || Child->Type != EMixtormatLayerChildType::HeightPush || Child->IsInstance()) { return; }
-			if (bTarget) { Child->HeightPush.TargetChildId.Invalidate(); }
-			else
-			{
-				Child->HeightPush.Source.SourceLayerId.Invalidate();
-				Child->HeightPush.Source.SourceChildId.Invalidate();
-			}
-			RefreshLayeredPreview();
-		}));
-	// A disabled module can still be configured; execution keeps its authored enable flag.
-	TArray<FMixtormatLayer> Candidates = WorkingLayers;
-	Candidates[LayerIndex].Children[ChildIndex].HeightPush.bEnabled = true;
-	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
-	{
-		const FMixtormatLayer& Layer = WorkingLayers[SourceLayerIndex];
-		if (bTarget && SourceLayerIndex != LayerIndex) { continue; }
-		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
-		{
-			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
-			if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
-			FMixtormatOutputReference Reference;
-			Reference.SourceLayerId = Layer.LayerId;
-			Reference.SourceChildId = Candidate.ChildId;
-			Reference.OutputName = FName(TEXT("Height"));
-			Reference.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
-			const bool bAvailable = bTarget
-				? Layer.bEnabled && Layer.Type == EMixtormatLayerType::Generator
-					&& Index > ChildIndex && !Candidate.ScopeOwnerChildId.IsValid()
-					&& Candidate.Generator.bEnabled && Candidate.Generator.Type == EMixtormatGeneratorType::StrataCarver
-				: MixtormatOutputReferences::ResolveGeneratorInputSource(Candidates, LayerIndex, ChildIndex, Reference) != INDEX_NONE;
-			const FGuid TargetId = Candidate.ChildId;
-			Menu.Item(FText::Format(LOCTEXT("HeightPushConnectionEntry", "{0} / {1}"),
-				Layer.DisplayName, GetLayerChildName(Candidate)), MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([this, Address, Reference, TargetId, bTarget]()
-				{
-					FMixtormatLayerChild* Child = ResolveChildAt(Address);
-					if (!Child || Child->Type != EMixtormatLayerChildType::HeightPush || Child->IsInstance()) { return; }
-					if (bTarget) { Child->HeightPush.TargetChildId = TargetId; }
-					else { Child->HeightPush.Source = Reference; }
-					RefreshLayeredPreview();
-				})).Enabled(bAvailable);
-		}
-	}
-	return Menu.Build();
+	return BuildStructuralConnectionMenu(GetSelectedChildAddress(), bTarget
+		? EMixtormatStructuralConnectionRole::Target : EMixtormatStructuralConnectionRole::Source);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
@@ -833,16 +778,10 @@ TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
 				return Child && !Child->IsInstance();
 			})
 			[
-				MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Push, bTarget]()
+				MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, bTarget]()
 				{
-					const FMixtormatGeneratorHeightPush* Selected = Push();
-					if (!Selected) { return FText::GetEmpty(); }
-					FMixtormatChildAddress Source = GetSelectedChildAddress();
-					Source.ChildId = bTarget ? Selected->TargetChildId : Selected->Source.SourceChildId;
-					if (!bTarget) { Source.OwnerId = Selected->Source.SourceLayerId; }
-					const FMixtormatLayerChild* Child = ResolveChildAt(Source);
-					return Child ? GetLayerChildName(*Child) : Source.ChildId.IsValid()
-						? LOCTEXT("HeightPushConnectionMissing", "Unavailable") : LOCTEXT("HeightPushConnectionEmpty", "None");
+					return GetStructuralConnectionLabel(GetSelectedChildAddress(), bTarget
+						? EMixtormatStructuralConnectionRole::Target : EMixtormatStructuralConnectionRole::Source);
 				}), FOnGetContent::CreateLambda([this, bTarget]() { return BuildHeightPushConnectionMenu(bTarget); }))
 			];
 	};
@@ -879,81 +818,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralWarpConnectionMenu(const bool bTarget)
 {
-	MixtormatMenu::FBuilder Menu;
-	const FMixtormatChildAddress Address = GetSelectedChildAddress();
-	const FMixtormatGeneratorStructuralWarp* Warp = GetSelectedStructuralWarp();
-	if (Address.OwnerType != EMixtormatChildOwnerType::Layer || !Warp) { return Menu.Build(); }
-	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
-	{
-		return Layer.LayerId == Address.OwnerId;
-	});
-	const int32 ChildIndex = ResolveChildIndexAt(Address);
-	if (!WorkingLayers.IsValidIndex(LayerIndex) || ChildIndex == INDEX_NONE) { return Menu.Build(); }
-	Menu.Item(LOCTEXT("StructuralWarpConnectionNone", "None"), nullptr,
-		FSimpleDelegate::CreateLambda([this, Address, bTarget]()
-		{
-			FMixtormatLayerChild* Child = ResolveChildAt(Address);
-			if (!Child || Child->Type != EMixtormatLayerChildType::StructuralWarp || Child->IsInstance()) { return; }
-			if (bTarget) { Child->StructuralWarp.TargetChildId.Invalidate(); }
-			else
-			{
-				Child->StructuralWarp.Source.SourceLayerId.Invalidate();
-				Child->StructuralWarp.Source.SourceChildId.Invalidate();
-			}
-			RefreshLayeredPreview();
-		}));
-	// Configure a disabled module without changing its authored execution flag.
-	TArray<FMixtormatLayer> Candidates = WorkingLayers;
-	Candidates[LayerIndex].Children[ChildIndex].StructuralWarp.bEnabled = true;
-	for (int32 SourceLayerIndex = 0; SourceLayerIndex < WorkingLayers.Num(); ++SourceLayerIndex)
-	{
-		const FMixtormatLayer& Layer = WorkingLayers[SourceLayerIndex];
-		if (bTarget && SourceLayerIndex != LayerIndex) { continue; }
-		for (const FMixtormatLayerChild& Candidate : Layer.Children)
-		{
-			if (bTarget)
-			{
-				if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
-				const bool bAvailable = MixtormatOutputReferences::ResolveStructuralWarpTarget(
-					Candidates, LayerIndex, ChildIndex, Candidate.ChildId) != INDEX_NONE;
-				Menu.Item(FText::Format(LOCTEXT("StructuralWarpTargetEntry", "{0} / {1}"),
-					Layer.DisplayName, GetLayerChildName(Candidate)), MixtormatIcons::Generator(),
-					FSimpleDelegate::CreateLambda([this, Address, TargetId = Candidate.ChildId]()
-					{
-						FMixtormatLayerChild* Child = ResolveChildAt(Address);
-						if (!Child || Child->Type != EMixtormatLayerChildType::StructuralWarp || Child->IsInstance()) { return; }
-						Child->StructuralWarp.TargetChildId = TargetId;
-						RefreshLayeredPreview();
-					})).Enabled(bAvailable);
-				continue;
-			}
-			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Candidate);
-			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
-			{
-				if (!Output.bCopyableAsField
-					|| (Output.FieldKind != EMixtormatPublishedFieldKind::Flow
-						&& Output.FieldKind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
-				FMixtormatOutputReference Reference = Warp->Source;
-				Reference.bEnabled = true;
-				Reference.SourceLayerId = Layer.LayerId;
-				Reference.SourceChildId = Candidate.ChildId;
-				Reference.Kind = Output.FieldKind;
-				Reference.OutputName = Output.Name;
-				const bool bAvailable = MixtormatOutputReferences::ResolveGeneratorInputSource(
-					Candidates, LayerIndex, ChildIndex, Reference) != INDEX_NONE;
-				Menu.Item(FText::Format(LOCTEXT("StructuralWarpSourceEntry", "{0} / {1} / {2}"),
-					Layer.DisplayName, GetLayerChildName(Candidate), Output.Label), MixtormatIcons::Generator(),
-					FSimpleDelegate::CreateLambda([this, Address, Reference]()
-					{
-						FMixtormatLayerChild* Child = ResolveChildAt(Address);
-						if (!Child || Child->Type != EMixtormatLayerChildType::StructuralWarp || Child->IsInstance()) { return; }
-						Child->StructuralWarp.Source = Reference;
-						RefreshLayeredPreview();
-					})).Enabled(bAvailable);
-			}
-		}
-	}
-	return Menu.Build();
+	return BuildStructuralConnectionMenu(GetSelectedChildAddress(), bTarget
+		? EMixtormatStructuralConnectionRole::Target : EMixtormatStructuralConnectionRole::Source);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralWarpControls()
@@ -967,20 +833,10 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralWarpControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	const auto Connection = [this, Warp](const bool bTarget) -> TSharedRef<SWidget>
 	{
-		return MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Warp, bTarget]()
+		return MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, bTarget]()
 		{
-			const FMixtormatGeneratorStructuralWarp* Selected = Warp();
-			if (!Selected) { return FText::GetEmpty(); }
-			FMixtormatChildAddress Source = GetSelectedChildAddress();
-			Source.ChildId = bTarget ? Selected->TargetChildId : Selected->Source.SourceChildId;
-			if (!Source.ChildId.IsValid()) { return LOCTEXT("StructuralWarpConnectionEmpty", "None"); }
-			if (!bTarget) { Source.OwnerId = Selected->Source.SourceLayerId; }
-			const FMixtormatLayerChild* Child = ResolveChildAt(Source);
-			if (!Child) { return LOCTEXT("StructuralWarpConnectionMissing", "Unavailable"); }
-			if (bTarget) { return GetLayerChildName(*Child); }
-			return FText::Format(LOCTEXT("StructuralWarpSourceLabel", "{0} / {1}"), GetLayerChildName(*Child),
-				Selected->Source.Kind == EMixtormatPublishedFieldKind::Flow
-					? LOCTEXT("StructuralWarpFlowLabel", "Flow") : LOCTEXT("StructuralWarpUVLabel", "UV Map"));
+			return GetStructuralConnectionLabel(GetSelectedChildAddress(), bTarget
+				? EMixtormatStructuralConnectionRole::Target : EMixtormatStructuralConnectionRole::Source);
 		}), FOnGetContent::CreateLambda([this, bTarget]() { return BuildStructuralWarpConnectionMenu(bTarget); }));
 	};
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("StructuralWarpSource", "Source Flow / UV Map"), Connection(false),

@@ -78,6 +78,9 @@ enum class EMixtormatChildCreation : uint8
 	StructuralWarp,
 };
 
+// Editor-only connection role; the existing payload remains the serialized truth.
+enum class EMixtormatStructuralConnectionRole : uint8 { Source, Target };
+
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
 //
 // The whole reason the layer and group Add menus can share a taxonomy. Everything above the
@@ -555,6 +558,14 @@ private:
 	const FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp() const;
 	TSharedRef<SWidget> BuildStructuralWarpControls();
 	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
+	TSharedRef<SWidget> BuildStructuralConnectionMenu(FMixtormatChildAddress Address,
+		EMixtormatStructuralConnectionRole Role);
+	FReply SetStructuralConnection(FMixtormatChildAddress Address,
+		EMixtormatStructuralConnectionRole Role, const FMixtormatOutputReference* Source = nullptr,
+		const FGuid* TargetId = nullptr);
+	FText GetStructuralConnectionLabel(FMixtormatChildAddress Address,
+		EMixtormatStructuralConnectionRole Role) const;
+	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;

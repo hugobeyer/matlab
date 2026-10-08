@@ -309,6 +309,32 @@ namespace MixtormatOutputReferences
 		{
 			return Reject(EStructuralLinkIssue::Unset);
 		}
+		// Resolve presentation indices independently of eligibility. Keep the rejection order
+		// below unchanged, including disabled references and unsupported output kinds.
+		int32 LayerMatches = 0;
+		for (int32 Index = 0; Index < Layers.Num(); ++Index)
+		{
+			if (Layers[Index].LayerId == Reference.SourceLayerId)
+			{
+				Status.LayerIndex = Index;
+				++LayerMatches;
+			}
+		}
+		if (LayerMatches != 1) { Status.LayerIndex = INDEX_NONE; }
+		if (Layers.IsValidIndex(Status.LayerIndex))
+		{
+			const TArray<FMixtormatLayerChild>& Children = Layers[Status.LayerIndex].Children;
+			int32 ChildMatches = 0;
+			for (int32 Index = 0; Index < Children.Num(); ++Index)
+			{
+				if (Children[Index].ChildId == Reference.SourceChildId)
+				{
+					Status.ChildIndex = Index;
+					++ChildMatches;
+				}
+			}
+			if (ChildMatches != 1) { Status.ChildIndex = INDEX_NONE; }
+		}
 		if (!Reference.bEnabled) { return Reject(EStructuralLinkIssue::DisabledReference); }
 		if (!Reference.HasSource()) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 		const FMixtormatLayer& DestinationLayer = Layers[DestinationLayerIndex];
