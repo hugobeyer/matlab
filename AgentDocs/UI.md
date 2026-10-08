@@ -32,9 +32,10 @@ translation units — search the member function, not the header.
 
 Structural connection menus/labels and the atomic setter are shared by explicit child
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
-Inspector Push/Warp wrappers use this adapter; existing sliders remain in place.
-Row chips, link highlighting/counts and target-first creation are not implemented by D3.
-No build/runtime validation has been run for this phase.
+Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. D1 adds
+optional Source → Target chips only to Height Push/Structural Warp child rows; the reusable
+row keeps other child layouts unchanged. Link highlighting/counts and target-first creation
+remain separate phases. No build/runtime validation has been run.
 
 ## Inspector builders
 

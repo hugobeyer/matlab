@@ -1113,6 +1113,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Name(ChildName)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
+				.StructuralLink()[BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.
 				// Only children that have a blend mode get a badge menu: masks, and generated

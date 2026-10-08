@@ -780,6 +780,9 @@ namespace MixtormatTokens
 	// Between every element within a row -- eye to thumbnail, name to source, badge to chevron.
 	// One value, so the row reads as evenly spaced rather than as clusters.
 	inline float LayerItemGap = 3.0f;
+	inline float StructuralLinkChipMaxWidth = 92.0f;
+	inline float StructuralLinkChipMinWidth = 24.0f;
+	inline float StructuralLinkArrowGap = 2.0f;
 	// The name sits closer to its thumbnail than the standard gap, so the two read as one unit
 	// against the source text on the far side.
 	constexpr float LayerNameInset = 4.0f;

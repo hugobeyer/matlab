@@ -32,6 +32,8 @@ public:
 		// A glyph saying what kind of child this is. A slot rather than a brush so the row does not
 		// have to know how the glyph is tinted -- which mask it is, is a hover away, not in here.
 		SLATE_NAMED_SLOT(FArguments, Icon)
+		// Optional compact connection controls, supplied only for structural module rows.
+		SLATE_NAMED_SLOT(FArguments, StructuralLink)
 		// Tree connector drawn before the glyph for a scoped child: a tee while more children of
 		// the same owner follow, an elbow on the last one. Null for a top-level child.
 		SLATE_ARGUMENT(const FSlateBrush*, Connector)

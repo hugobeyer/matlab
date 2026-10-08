@@ -5,6 +5,12 @@
 #include "MixtormatParameterBinding.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "Style/MixtormatTypography.h"
+#include "Style/MixtormatThemeStore.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -99,6 +105,29 @@ namespace
 		}
 	};
 
+	FText ConnectionIssueCode(const EIssue Issue)
+	{
+		switch (Issue)
+		{
+		case EIssue::ForwardSource:
+		case EIssue::ForwardTarget: return LOCTEXT("StructuralOrderCode", "ORDER");
+		case EIssue::WrongSourceKind:
+		case EIssue::WrongTargetKind: return LOCTEXT("StructuralTypeCode", "TYPE");
+		case EIssue::WrongSourceScope:
+		case EIssue::IncompleteSourceScope:
+		case EIssue::InvalidSourceScope:
+		case EIssue::ScopedModule:
+		case EIssue::ScopedTarget: return LOCTEXT("StructuralScopeCode", "SCOPE");
+		case EIssue::DisabledLayer:
+		case EIssue::DisabledReference:
+		case EIssue::DisabledSource:
+		case EIssue::DisabledTarget: return LOCTEXT("StructuralOffCode", "OFF");
+		case EIssue::None:
+		case EIssue::Unset: return FText::GetEmpty();
+		default: return LOCTEXT("StructuralBrokenCode", "BROKEN");
+		}
+	}
+
 	EIssue ConnectionIssue(const MixtormatOutputReferences::FStructuralLinkStatus& Status, const ERole Role)
 	{
 		// Disabled modules/layers can still be configured. Producer inactivity is an edge issue.
@@ -160,7 +189,8 @@ FText SMixtormat::GetStructuralConnectionLabel(const FMixtormatChildAddress Addr
 		Label = FText::Format(LOCTEXT("StructuralOutputLabel", "{0} · {1}"), Label, Output);
 	}
 	return Edge.Issue == EIssue::None ? Label : FText::Format(
-		LOCTEXT("StructuralConnectionReason", "{0} — {1}"), Label, ConnectionIssueText(Edge.Issue));
+		LOCTEXT("StructuralConnectionReason", "{0} · {1} — {2}"),
+		ConnectionIssueCode(Edge.Issue), Label, ConnectionIssueText(Edge.Issue));
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatChildAddress Address, const ERole Role)
@@ -246,6 +276,56 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 		}
 	}
 	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildStructuralLinkChips(const FMixtormatChildAddress Address)
+{
+	const FMixtormatLayerChild* Module = ResolveChildAt(Address);
+	if (!Module || (Module->Type != EMixtormatLayerChildType::HeightPush
+		&& Module->Type != EMixtormatLayerChildType::StructuralWarp))
+	{
+		return SNullWidget::NullWidget;
+	}
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle ArrowStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const auto MakeConnectionChip = [this, Address](const ERole Role)
+	{
+		// The list is rebuilt on authored edits, so resolve once here rather than copying the
+		// effective projection and validating/loading a source asset on every Slate attribute tick.
+		const FText Label = GetStructuralConnectionLabel(Address, Role);
+		return SNew(SBox)
+			.MaxDesiredWidth(MixtormatTokens::StructuralLinkChipMaxWidth)
+			[
+				MixtormatRow::MakeChip(
+					TAttribute<FText>(Label),
+					FOnGetContent::CreateLambda([this, Address, Role]()
+					{
+						return BuildStructuralConnectionMenu(Address, Role);
+					}),
+					nullptr,
+					TAttribute<FText>(Label),
+					MixtormatTokens::StructuralLinkChipMinWidth)
+			];
+	};
+	const ERole SourceRole = ERole::Source;
+	const ERole TargetRole = ERole::Target;
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+		[
+			MakeConnectionChip(SourceRole)
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					.Padding(MixtormatTokens::StructuralLinkArrowGap, 0.0f)
+		[
+			SNew(STextBlock).Text(FText::FromString(TEXT("→"))).Font(ArrowStyle.Font)
+				.ColorAndOpacity(ArrowStyle.ColorAndOpacity)
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+		[
+			MakeConnectionChip(TargetRole)
+		];
 }
 
 FReply SMixtormat::SetStructuralConnection(const FMixtormatChildAddress Address, const ERole Role,

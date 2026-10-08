@@ -17,6 +17,7 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SNullWidget.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
 
@@ -132,6 +133,17 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.ColorAndOpacity(NameTextStyle.ColorAndOpacity)
 						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 						.Text(InArgs._Name)
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
+					.Visibility_Lambda([Link = InArgs._StructuralLink.Widget]()
+					{
+						return Link == SNullWidget::NullWidget ? EVisibility::Collapsed : EVisibility::Visible;
+					})
+					[
+						InArgs._StructuralLink.Widget
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

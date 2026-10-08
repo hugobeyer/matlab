@@ -566,6 +566,7 @@ private:
 	FText GetStructuralConnectionLabel(FMixtormatChildAddress Address,
 		EMixtormatStructuralConnectionRole Role) const;
 	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
+	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;

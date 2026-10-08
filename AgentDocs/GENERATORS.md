@@ -89,8 +89,8 @@ and explains unavailable choices. One setter revalidates the live GUID address b
 writing, preserves module enable/trace settings, and records a discrete undo step.
 `None` clears only the selected edge's GUIDs; dangling sources are never auto-rebound.
 Readable labels retain existing sources even for disabled references or wrong output kinds.
-D3 evidence is targeted source inspection only; no build, tests or runtime validation.
-Row chips/highlighting and target-first creation remain separate pending phases.
+D3/D1 evidence is targeted source inspection only; no build, tests or runtime validation.
+D1 adds compact row chips while highlighting/counts and target-first creation remain pending.
 
 ## Defaults / parameter metadata
 
