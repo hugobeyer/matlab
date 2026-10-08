@@ -57,7 +57,9 @@ enum class EMixtormatEffectType : uint8
 	// field before its combine -- see Docs/flow_generation_core.md.
 	ShapeDeform = 9 UMETA(DisplayName = "Shape Deform"),
 	GeneratorFlow = 10 UMETA(DisplayName = "Generator Flow"),
-	FlowCarve = 11 UMETA(DisplayName = "Flow Carve")
+	FlowCarve = 11 UMETA(DisplayName = "Flow Carve"),
+		// Texture-space gravity, optionally steered by the owner's height or signed boundary.
+		GravityFlow = 12 UMETA(DisplayName = "Gravity Flow")
 };
 
 // Which field of the owning generator seeds the flow direction.
@@ -137,6 +139,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::ShapeDeform:
 	case EMixtormatEffectType::GeneratorFlow:
 	case EMixtormatEffectType::FlowCarve:
+	case EMixtormatEffectType::GravityFlow:
 		return EMixtormatEffectClass::Filter;
 	default:
 		return EMixtormatEffectClass::Surface;
@@ -147,7 +150,8 @@ inline bool MixtormatIsGeneratorFlowEffect(const EMixtormatEffectType Type)
 {
 	return Type == EMixtormatEffectType::ShapeDeform
 		|| Type == EMixtormatEffectType::GeneratorFlow
-		|| Type == EMixtormatEffectType::FlowCarve;
+		|| Type == EMixtormatEffectType::FlowCarve
+				|| Type == EMixtormatEffectType::GravityFlow;
 }
 
 UCLASS(BlueprintType)
@@ -1089,6 +1093,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	// Constant rotation of the seeded direction, in degrees.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
 	float GeneratorFlowAngle = 0.0f;
+
+	// Gravity Flow: bounded downhill steering of texture-space gravity by the owner's height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Gravity", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float GravityFlowSurfaceFollow = 1.0f;
+
+	// Gravity Flow, Signed Distance source: remove incoming motion near the owner's boundary.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Gravity", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GravityFlowDeflection = 1.0f;
 
 	// Peak rotation from low-frequency periodic noise, in degrees.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))

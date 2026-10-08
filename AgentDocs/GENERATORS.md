@@ -17,12 +17,37 @@ effect (post-composite filter) nor a mask (0..1 coverage).
 Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 `CliffStrata`, `Noise`. Enum is serialized by value — **append, never reorder**.
 
-Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`) live in
+Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`, `GravityFlow`) live in
 `EMixtormatEffectType` (`MixtormatEffect.h`), not here. They are valid only
 scoped under a generator that can own them (`MixtormatCanOwnGeneratorFlow`:
 Strata Carver, Rock Formation, Pebbles, Cracks, Noise) and rewrite its height before
 combine. Noise supports Height only: it has no signed boundary field. Newly authored
 Noise-scoped tools start with Height; Signed Distance remains visible but unavailable. See `code_docs/generator_flow_interaction_audit.md`.
+
+## Gravity Flow (texture-space generator child)
+
+- Right-click an eligible generator → **Gravity Flow**. It uses the same ownership rules as
+  existing flow tools: Strata Carver, Rock Formation, Pebbles, Cracks and Noise. Cliff Strata
+  remains unavailable under the existing generator-flow ownership contract.
+- `GravityFlow = 12` is appended to `EMixtormatEffectType`. New children start with Height
+  steering. `GeneratorFlowAngle` rotates `(0,-1)`: 0 degrees = -V, 90 = +U, 180 = +V.
+- Height steering is local, keeps gravity active on flat texels and avoids seed/JFA passes.
+  `GravityFlowSurfaceFollow` controls bounded downhill steering; zero gives uniform gravity
+  when Bend is also zero. Surface steering retains a positive component along gravity.
+- Signed Distance steering optionally projects incoming gravity along trusted owner outlines.
+  `GravityFlowDeflection`, Reach and Feather control this; known interiors remain unmoved.
+  This is approximate owner-boundary steering, not an external obstacle-mask/scene collision
+  solver. Head-on flows can stop; invalid or unsampled outlines cannot guarantee collision.
+- The owned RK2 trace checks potentially crossed outlines with half-texel segment samples;
+  near-boundary segments exceeding 32 output texels stop. Increase Steps or reduce Trace
+  Length/Warp Strength. The nearest-seed distance limits checks to the boundary neighbourhood.
+  Published Flow references use the existing generic trace and do not carry that boundary check.
+- Stage 9 in `MixtormatGeneratorFlow.usf` resolves gravity; stage 3 mode 3 uses the existing
+  RK2/apply and aligned bundle remap. FlowDirection, WarpedUV, Influence and Validity outputs
+  remain available through existing publication/preview plumbing. Masks gate only this child.
+- Existing flow types and serialized enum values are unchanged. New parameters use reflected
+  runtime metadata and the shared gather/inspector path; layer-prefix hashing includes them.
+- Source review only: no build, shader compile, tests or visual/performance validation run.
 
 ## Height Push (structural module)
 

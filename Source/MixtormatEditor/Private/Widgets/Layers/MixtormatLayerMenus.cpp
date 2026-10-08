@@ -1885,7 +1885,7 @@ void SMixtormat::AddGeneratorFlowMenuItems(
 	MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
 {
 	for (const EMixtormatEffectType Type : {EMixtormatEffectType::ShapeDeform,
-		EMixtormatEffectType::GeneratorFlow, EMixtormatEffectType::FlowCarve})
+		EMixtormatEffectType::GeneratorFlow, EMixtormatEffectType::GravityFlow, EMixtormatEffectType::FlowCarve})
 	{
 		FMixtormatLayerChild Probe;
 		Probe.Type = EMixtormatLayerChildType::Effect;

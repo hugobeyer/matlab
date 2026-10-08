@@ -275,7 +275,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				Result.Outputs.Add({FName(TEXT("WarpedUVGrid")),
 					NSLOCTEXT("SMixtormat", "PreviewOutputWarpedUVGrid", "Warped UV Grid"),
 					EMixtormatPreviewOutputKind::WarpedUVGrid, false, true,
-										EffectType != EMixtormatEffectType::GeneratorFlow, NAME_None});
+										EffectType != EMixtormatEffectType::GeneratorFlow
+																&& EffectType != EMixtormatEffectType::GravityFlow, NAME_None});
 			}
 			Result.Outputs.Add({FName(TEXT("Influence")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputInfluence", "Influence"),

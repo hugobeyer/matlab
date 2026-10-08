@@ -213,6 +213,8 @@ void GatherGeneratorFlow(FEffectRenderData& EffectData, const FMixtormatLayerEff
 	EffectData.GeneratorFlowAmount = EffectFloat(TEXT("GeneratorFlowAmount"), LayerEffect.GeneratorFlowAmount);
 	EffectData.GeneratorFlowTangent = EffectFloat(TEXT("GeneratorFlowTangent"), LayerEffect.GeneratorFlowTangent);
 	EffectData.GeneratorFlowAngle = EffectFloat(TEXT("GeneratorFlowAngle"), LayerEffect.GeneratorFlowAngle);
+		EffectData.GravityFlowSurfaceFollow = EffectFloat(TEXT("GravityFlowSurfaceFollow"), LayerEffect.GravityFlowSurfaceFollow);
+		EffectData.GravityFlowDeflection = EffectFloat(TEXT("GravityFlowDeflection"), LayerEffect.GravityFlowDeflection);
 	EffectData.GeneratorFlowBend = EffectFloat(TEXT("GeneratorFlowBend"), LayerEffect.GeneratorFlowBend);
 	EffectData.GeneratorFlowSeed = static_cast<uint32>(
 		EffectInt(TEXT("GeneratorFlowSeed"), LayerEffect.GeneratorFlowSeed));

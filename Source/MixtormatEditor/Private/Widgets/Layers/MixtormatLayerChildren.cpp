@@ -1242,6 +1242,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
 			case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
+			case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
 			case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
@@ -1257,6 +1258,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 				: LOCTEXT("WetStainEffectName", "Wet Stain");
 		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
 		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
+		case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
 		case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");

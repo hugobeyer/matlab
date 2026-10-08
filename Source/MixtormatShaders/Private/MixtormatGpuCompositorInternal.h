@@ -545,6 +545,8 @@ namespace MixtormatGpuCompositor
 		float GeneratorFlowAmount = 1.0f;
 		float GeneratorFlowTangent = 0.0f;
 		float GeneratorFlowAngle = 0.0f;
+		float GravityFlowSurfaceFollow = 1.0f;
+		float GravityFlowDeflection = 1.0f;
 		float GeneratorFlowBend = 0.0f;
 		uint32 GeneratorFlowSeed = 1;
 		int32 GeneratorFlowRadius = 2;

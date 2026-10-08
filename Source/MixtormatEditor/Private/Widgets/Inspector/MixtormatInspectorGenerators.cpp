@@ -17,6 +17,7 @@
 
 TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffectType Type)
 {
+	const bool bGravity = Type == EMixtormatEffectType::GravityFlow;
 	const auto Flow = [this, Type]() -> FMixtormatLayerEffect*
 	{
 		FMixtormatLayerEffect* Effect = GetSelectedGeneratorFlow();
@@ -101,22 +102,45 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 		+ SWidgetSwitcher::Slot()
 		[
 			MakeMemberEnum<FMixtormatLayerEffect>(
-				LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
-				LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Noise supports Height only; it has no signed boundary field."))
+				bGravity ? LOCTEXT("GravityFlowSteering", "Steering") : LOCTEXT("GeneratorFlowSource", "Source"), Flow, &FMixtormatLayerEffect::GeneratorFlowSource,
+				bGravity ? LOCTEXT("GravityFlowSteeringHint", "Height bends gravity downhill. Signed Distance steers around the owning generator's boundaries; it is not a scene collision solver.")
+					: LOCTEXT("GeneratorFlowSourceHint", "Uses the owning generator's signed distance or height field. Noise supports Height only; it has no signed boundary field."))
 		]
 		+ SWidgetSwitcher::Slot()
 		[
-			WrapParameterControl(MixtormatRow::MakeDropdown(LOCTEXT("GeneratorFlowSource", "Source"), NoiseSourceChip,
+			WrapParameterControl(MixtormatRow::MakeDropdown(bGravity ? LOCTEXT("GravityFlowSteering", "Steering") : LOCTEXT("GeneratorFlowSource", "Source"), NoiseSourceChip,
 				LOCTEXT("NoiseGeneratorFlowSourceHint", "Noise supports Height only. Signed Distance is unavailable because Noise has no boundary field.")), SourceAddress)
 		]);
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAmount", "Amount"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowAmount, 0.0, 1.0, 1.0, 0.01),
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowTangent", "Normal / Tangent"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowTangent, 0.0, 1.0, 0.0, 0.01)));
+		SNew(SBox).IsEnabled(!bGravity)
+		[
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowTangent", "Normal / Tangent"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowTangent, 0.0, 1.0, 0.0, 0.01)
+		]));
+	if (bGravity)
+	{
+		AddSliderRow(Panel, MixtormatRow::MakePair(
+			SNew(SBox).IsEnabled_Lambda([ActiveSource]()
+				{ return ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::Height); })
+			[
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GravityFlowSurfaceFollow", "Surface Follow"), Flow,
+					&FMixtormatLayerEffect::GravityFlowSurfaceFollow, 0.0, 2.0, 1.0, 0.01,
+					LOCTEXT("GravityFlowSurfaceFollowHint", "Steers texture-space gravity downhill through this generator's height. Zero gives uniform gravity; flat areas still flow."))
+			],
+			SNew(SBox).IsEnabled_Lambda([ActiveSource, IsNoiseOwner]()
+				{ return !IsNoiseOwner() && ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance); })
+			[
+				MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GravityFlowDeflection", "Boundary Deflection"), Flow,
+					&FMixtormatLayerEffect::GravityFlowDeflection, 0.0, 1.0, 1.0, 0.01,
+					LOCTEXT("GravityFlowDeflectionHint", "Removes motion into the owner's signed boundary within Reach. Known interiors stay unmoved. Head-on flow can stop; this is approximate boundary steering, not fluid simulation."))
+			]));
+	}
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAngle", "Angle"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowAngle, -180.0, 180.0, 0.0, 1.0),
+		MakeMemberSlider<FMixtormatLayerEffect>(bGravity ? LOCTEXT("GravityFlowAngle", "Gravity Angle") : LOCTEXT("GeneratorFlowAngle", "Angle"), Flow,
+			&FMixtormatLayerEffect::GeneratorFlowAngle, -180.0, 180.0, 0.0, 1.0,
+			bGravity ? LOCTEXT("GravityFlowAngleHint", "Texture-space gravity: 0 degrees is -V, 90 is +U, and 180 is +V. Warping backtraces against this direction.") : FText::GetEmpty()),
 		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowBend", "Bend"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowBend, -180.0, 180.0, 0.0, 1.0)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -126,15 +150,29 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 			&FMixtormatLayerEffect::GeneratorFlowSmooth, 0.0, 64.0, 8.0, 0.5,
 			LOCTEXT("GeneratorFlowSmoothHint", "Blurs the flow direction. Removes the stepping of the raw field; collisions between opposing flows stay sharp."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowReach", "Reach (UV)"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowReach, 0.0, 1.0, 0.1, 0.001),
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFeather", "Feather"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowFeather, 0.0, 1.0, 0.5, 0.01)));
+		SNew(SBox).IsEnabled_Lambda([bGravity, ActiveSource]()
+			{ return !bGravity || ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance); })
+		[
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowReach", "Reach (UV)"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowReach, 0.0, 1.0, 0.1, 0.001)
+		],
+		SNew(SBox).IsEnabled_Lambda([bGravity, ActiveSource]()
+			{ return !bGravity || ActiveSource() == static_cast<int64>(EMixtormatGeneratorFlowSource::SignedDistance); })
+		[
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowFeather", "Feather"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowFeather, 0.0, 1.0, 0.5, 0.01)
+		]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAlong", "Offset Along"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowOffsetAlong, -1.0, 1.0, 0.0, 0.01),
-		MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAcross", "Offset Across"), Flow,
-			&FMixtormatLayerEffect::GeneratorFlowOffsetAcross, -1.0, 1.0, 0.0, 0.01)));
+		SNew(SBox).IsEnabled(!bGravity)
+		[
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAlong", "Offset Along"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowOffsetAlong, -1.0, 1.0, 0.0, 0.01)
+		],
+		SNew(SBox).IsEnabled(!bGravity)
+		[
+			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowAcross", "Offset Across"), Flow,
+				&FMixtormatLayerEffect::GeneratorFlowOffsetAcross, -1.0, 1.0, 0.0, 0.01)
+		]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSeed", "Seed"), Flow,
 			&FMixtormatLayerEffect::GeneratorFlowSeed, 0.0, 1024.0, 1),
@@ -165,8 +203,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 			MakeMemberSlider<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowTraceLength", "Trace Length (UV)"), Flow,
 				&FMixtormatLayerEffect::GeneratorFlowTraceLength, 0.0, 1.0, 0.1, 0.001),
 			MakeMemberSliderInt<FMixtormatLayerEffect>(LOCTEXT("GeneratorFlowSteps", "Steps"), Flow,
-				&FMixtormatLayerEffect::GeneratorFlowSteps, 1.0, 64.0, 16)));
-		if (Type == EMixtormatEffectType::GeneratorFlow)
+				&FMixtormatLayerEffect::GeneratorFlowSteps, 1.0, 64.0, 16,
+				bGravity ? LOCTEXT("GravityFlowStepsHint", "RK2 trace steps. Near boundaries, deflected segments longer than 32 output texels stop rather than skip obstacles. Increase Steps for longer traces or higher resolutions.") : FText::GetEmpty())));
+		if (Type == EMixtormatEffectType::GeneratorFlow || bGravity)
 		{
 			// Half width like every other slider in the panel; the empty half is intentional.
 			AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -192,7 +231,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorFlowControls(const EMixtormatEffec
 	const FText Title = Type == EMixtormatEffectType::ShapeDeform
 		? LOCTEXT("ShapeDeformHeading", "SHAPE DEFORM")
 		: Type == EMixtormatEffectType::FlowCarve
-			? LOCTEXT("FlowCarveHeading", "FLOW CARVE") : LOCTEXT("GeneratorFlowHeading", "GENERATOR FLOW");
+			? LOCTEXT("FlowCarveHeading", "FLOW CARVE") : bGravity
+				? LOCTEXT("GravityFlowHeading", "GRAVITY FLOW") : LOCTEXT("GeneratorFlowHeading", "GENERATOR FLOW");
 	return SNew(SBox)
 		.Visibility_Lambda([Flow]() { return Flow() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[

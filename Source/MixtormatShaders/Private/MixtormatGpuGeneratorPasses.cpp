@@ -564,8 +564,9 @@ public:
 
 	// 0 seed, 1 jump flood, 2 resolve, 3 apply, 4 direction preview, 5 UV grid preview,
 	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
-	// 7 one axis of the direction blur, 8 trace a published field into destination UVs.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 9);
+	// 7 one axis of the direction blur, 8 trace a published field into destination UVs,
+	// 9 texture-space gravity with local height or boundary steering.
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 10);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -575,6 +576,8 @@ public:
 		SHADER_PARAMETER(uint32, Source)
 		SHADER_PARAMETER(float, Tangent)
 		SHADER_PARAMETER(float, Angle)
+		SHADER_PARAMETER(float, GravitySurfaceFollow)
+		SHADER_PARAMETER(float, GravityDeflection)
 		SHADER_PARAMETER(float, Bend)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(int32, Radius)
@@ -1451,6 +1454,7 @@ namespace
 		case EMixtormatEffectType::ShapeDeform:
 			return Flow.GeneratorFlowShapeOffset == 0.0f && Flow.GeneratorFlowBulge == 0.0f;
 		case EMixtormatEffectType::GeneratorFlow:
+		case EMixtormatEffectType::GravityFlow:
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowWarpStrength == 0.0f;
 		case EMixtormatEffectType::FlowCarve:
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
@@ -1579,6 +1583,7 @@ namespace
 				continue;
 			}
 			const FEffectRenderData& Flow = FlowChild.Effect;
+			const bool bGravity = Flow.Type == EMixtormatEffectType::GravityFlow;
 			// Height-only producers must never bind a null boundary or invent an SDF.
 			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
@@ -1604,6 +1609,8 @@ namespace
 				P->Source = Flow.GeneratorFlowSource;
 				P->Tangent = Flow.GeneratorFlowTangent;
 				P->Angle = Flow.GeneratorFlowAngle;
+				P->GravitySurfaceFollow = Flow.GravityFlowSurfaceFollow;
+				P->GravityDeflection = Flow.GravityFlowDeflection;
 				P->Bend = Flow.GeneratorFlowBend;
 				P->Seed = Flow.GeneratorFlowSeed;
 				P->Radius = Flow.GeneratorFlowRadius;
@@ -1615,8 +1622,8 @@ namespace
 				P->OffsetAlong = Flow.GeneratorFlowOffsetAlong;
 				P->OffsetAcross = Flow.GeneratorFlowOffsetAcross;
 				P->HasMask = bHasMask ? 1u : 0u;
-				P->Mode = Flow.Type == EMixtormatEffectType::ShapeDeform ? 0u
-					: (Flow.Type == EMixtormatEffectType::GeneratorFlow ? 1u : 2u);
+				P->Mode = bGravity ? 3u : (Flow.Type == EMixtormatEffectType::ShapeDeform ? 0u
+					: (Flow.Type == EMixtormatEffectType::GeneratorFlow ? 1u : 2u));
 				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
 				P->Bulge = Flow.GeneratorFlowBulge;
 				P->TraceLength = Flow.GeneratorFlowTraceLength;
@@ -1635,52 +1642,57 @@ namespace
 				P->Coverage = InOutCoverage ? InOutCoverage : Current;
 			};
 
-			// Seed.
-			FRDGTextureRef SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
-			FRDGTextureRef Jump[2] = {
-				MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpA")),
-				MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpB"))};
+			// Gravity + Height is evaluated directly at full resolution, including flat texels.
+			FRDGTextureRef SeedData = Ctx.EmptyPatternUV;
+			FRDGTextureRef JumpResult = Ctx.EmptyPatternUV;
+			if (!bGravity || Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance))
 			{
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(0);
-				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-				Fill(P);
-				P->OutSeedData = GraphBuilder.CreateUAV(SeedData);
-				P->OutJump = GraphBuilder.CreateUAV(Jump[0]);
-				ClearUnusedGraphResources(Shader, P);
-				FComputeShaderUtils::AddPass(GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Seed.L%d.C%d", LayerIndex, FlowIndex),
-					Shader, P, SolveGroups);
-			}
-
-			// Jump flood: halving strides from the largest power of two within half the grid,
-			// then one extra stride-1 pass to repair the usual JFA misses.
-			int32 Read = 0;
-			{
-				int32 Stride = 1;
-				while (Stride * 2 <= FMath::Max(SolveSize.X, SolveSize.Y) / 2)
+				SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
+				FRDGTextureRef Jump[2] = {
+					MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpA")),
+					MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpB"))};
 				{
-					Stride *= 2;
-				}
-				TArray<int32, TInlineAllocator<16>> Strides;
-				for (; Stride >= 1; Stride /= 2)
-				{
-					Strides.Add(Stride);
-				}
-				Strides.Add(1);
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(1);
-				for (const int32 Step : Strides)
-				{
+					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(0);
 					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
 					Fill(P);
-					P->JumpStep = Step;
-					P->JumpIn = Jump[Read];
-					P->OutJump = GraphBuilder.CreateUAV(Jump[1 - Read]);
+					P->OutSeedData = GraphBuilder.CreateUAV(SeedData);
+					P->OutJump = GraphBuilder.CreateUAV(Jump[0]);
 					ClearUnusedGraphResources(Shader, P);
 					FComputeShaderUtils::AddPass(GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Jump%d.L%d.C%d", Step, LayerIndex, FlowIndex),
+						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Seed.L%d.C%d", LayerIndex, FlowIndex),
 						Shader, P, SolveGroups);
-					Read = 1 - Read;
 				}
+
+				// Halving strides plus one extra stride-1 pass to repair the usual JFA misses.
+				int32 Read = 0;
+				{
+					int32 Stride = 1;
+					while (Stride * 2 <= FMath::Max(SolveSize.X, SolveSize.Y) / 2)
+					{
+						Stride *= 2;
+					}
+					TArray<int32, TInlineAllocator<16>> Strides;
+					for (; Stride >= 1; Stride /= 2)
+					{
+						Strides.Add(Stride);
+					}
+					Strides.Add(1);
+					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(1);
+					for (const int32 Step : Strides)
+					{
+						auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+						Fill(P);
+						P->JumpStep = Step;
+						P->JumpIn = Jump[Read];
+						P->OutJump = GraphBuilder.CreateUAV(Jump[1 - Read]);
+						ClearUnusedGraphResources(Shader, P);
+						FComputeShaderUtils::AddPass(GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Jump%d.L%d.C%d", Step, LayerIndex, FlowIndex),
+							Shader, P, SolveGroups);
+						Read = 1 - Read;
+					}
+				}
+				JumpResult = Jump[Read];
 			}
 
 			// Resolve at full resolution. Half precision holds a unit direction, a UV distance
@@ -1689,11 +1701,11 @@ namespace
 			FRDGTextureRef Influence = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Influence"));
 			FRDGTextureRef Validity = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Validity"));
 			{
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(2);
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(bGravity ? 9 : 2);
 				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
 				Fill(P);
 				P->SeedData = SeedData;
-				P->JumpIn = Jump[Read];
+				P->JumpIn = JumpResult;
 				P->OutFlowField = GraphBuilder.CreateUAV(FlowField);
 				P->OutInfluence = GraphBuilder.CreateUAV(Influence);
 				P->OutValidity = GraphBuilder.CreateUAV(Validity);

@@ -468,6 +468,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]
 										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::ShapeDeform)]
 										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::GeneratorFlow)]
++ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::GravityFlow)]
 										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::FlowCarve)]
 					+ SScrollBox::Slot()[BuildLayerBlurControls()]
 					+ SScrollBox::Slot()[BuildBreakupControls()]
