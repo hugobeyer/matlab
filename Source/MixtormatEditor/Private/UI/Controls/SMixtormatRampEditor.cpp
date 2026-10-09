@@ -119,7 +119,7 @@ FVector2f SMixtormatRampEditorBase::ScreenToGraph(const FVector2D& Size, const F
 int32 SMixtormatRampEditorBase::HitPoint(const FVector2D& Size, const FVector2D& Position) const
 {
 	// 2D hit testing against each marker's actual screen position (curve point or colour handle).
-	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.3f;
+	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.2f;
 	int32 Best = INDEX_NONE;
 	float BestDistSq = Radius * Radius;
 	for (int32 Index = 0; Index < GetPointCount(); ++Index)

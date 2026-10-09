@@ -401,7 +401,7 @@ namespace MixtormatTokens
 	inline float ScalarRampHeight = 112.0f;
 	inline float ScalarRampCurveThickness = 1.6f;
 	inline float ScalarRampGridThickness = 0.7f;
-	inline float ScalarRampMajorGridThickness = 1.2f;
+	inline float ScalarRampMajorGridThickness = 1.0f;
 	inline float ScalarRampPointSize = 7.0f;
 	inline float ScalarRampIconSize = 13.0f;
 	inline float ScalarRampIconGap = 2.0f;
