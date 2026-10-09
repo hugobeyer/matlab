@@ -64,12 +64,12 @@ Right-click a scoped-mask owner (generators and effects, including Gravity Flow)
 half is source-reviewed only; the GPU half is `AddNoiseMaskPass`/`AddNoiseCoveragePass` plus the
 mask-resolver conversion in `MixtormatGpuMaskPasses.cpp` (see `COMPOSITION.md`).
 Delivered files, UI availability findings, and integration rules for later UI agents:
-`code_docs/noise_gate_flow_handoff.md`. All six generators now expose the flow-tool menu;
+`old_docs/noise_gate_flow_handoff.md` (archived delivery history). All six generators now expose the flow-tool menu;
 Noise and Cliff use Height steering and explicitly explain why Signed Distance is disabled.
 
 ## Generator relationship UX plan
 
-`code_docs/generator_relationship_ux_plan.md` has its primary UI implementation delivered. Generator RMB now offers
+The archived `old_docs/generator_relationship_ux_plan.md` records the delivered primary UI implementation. Generator RMB now offers
 `Warp using…` and `Height Push from…` through the searchable, grouped
 `UI/Menus/SMixtormatStructuralSourcePicker.*`. Unavailable rows retain canonical reasons and full
 tooltips; keyboard Up/Down selects eligible rows, Enter activates, and Escape dismisses without edits.
@@ -134,6 +134,13 @@ Builders are `SMixtormat::Build*Panel` members.
 types: `Runtime/Public/MixtormatScalarRamp.h`, `MixtormatColorRamp.h`; math in
 `MixtormatScalarRampMath.*`, `MixtormatColorRampMath.*`.
 
+The shared editor paints canvas background/shade, grid, major grid and a separate canvas
+border from `GetResolved().ControlLayout`. Both scalar and colour ramps use the shared ramp
+toolbar. Its icon buttons opt into `ScalarRampButton`: an Accent gradient, preblended against
+`Palette.Ground` when `BodyBlend` is non-Normal. This is a Ground-based approximation, not
+sampling the containing surface. State precedence is Active → Hover → Rest; Auto Zoom is active.
+The plate currently does not apply inherited tint/opacity or a disabled-specific plate state.
+
 ## Theme / style / tokens
 
 - Layout + palette tokens: `Style/MixtormatDesignTokens.h` (`MixtormatTokens`).
@@ -151,7 +158,25 @@ Two systems, one rule: structural constants go in `MixtormatTokens`
 plus `MixtormatThemeSchema.cpp`. Every UI STYLE registration needs a current reader;
 the schema is the editable/save contract, and loading merges it over non-schema state.
 Widgets read them through `FMixtormatThemeStore::GetResolved()` and never inline a
-value. Known local-literal gaps and the new-UI checklist: `auditdocs/ui-style-token-audit.md`.
+value. Ramp layout includes height, curve/grid/major-grid thickness, point size, toolbar gap,
+colour-ramp height, canvas/grid/border opacity and border thickness. Layer layout includes
+`LayerIndent` for group members and separate group/child hairline width and opacity.
+
+Themes save recognized schema properties and retain unrecognized properties only inside known
+sections of an existing compatible v1 theme file. Unknown roots/tabs, incompatible files, and
+unreadable files are not preserved. Missing recognized keys retain the current in-memory theme
+(startup seeds defaults first). Known local-literal gaps and the new-UI checklist:
+`auditdocs/ui-style-token-audit.md`.
+
+## UI STYLE locator
+
+`Style/MixtormatStyleLocator.*` selects the visible matching widget nearest the UI STYLE panel,
+then `SMixtormatLocatorOutline` paints exact bounds in the shell-root `SOverlay`. The marker is
+a two-pulse, 1.2-second outline using `Palette.Modified` with 0.12 fill and 0.5 border opacity.
+Targets include shell, controls, foldouts, cards, layers, buttons, menus, preview, gallery,
+`TopBar`, `NavigationRail`, `SSplitter`, and `SScrollBox`. The theme panel itself is excluded.
+The outline paints only in its target window, so popup/menu targets can locate but are skipped
+when their target is in another window. Typography `Body` deliberately has no live target.
 
 ## Viewport overlays / toolbars
 
@@ -179,4 +204,4 @@ resolution control. Its backdrop is a centre-dark, edge-transparent vignette beh
 UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
 IDs remain unchanged for theme compatibility, but no longer describe a light bloom. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
 retains camera zoom. These additions have source review only, not build or runtime validation.
-See the overlay-workspace handoff for validation.
+The validation checklist is retained in the archived `old_docs/overlay-workspace-handoff.md`; runtime validation is not implied.

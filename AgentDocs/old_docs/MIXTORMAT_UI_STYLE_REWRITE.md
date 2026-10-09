@@ -8,6 +8,9 @@
 **Migration policy:** **none**  
 **Primary source of truth:** `Docs/ui-prototype/`
 
+> **Historical rewrite plan.** Current implementation retains ignored legacy theme keys within
+> compatible known sections on save. Source and `AgentDocs/UI.md` supersede this plan where they differ.
+
 **Pre-Stage-6 typography amendment:** The runtime Inter backend requirements below are superseded.
 Keep semantic typography, sizes, authored weights, tracking and casing; use Unreal's native default
 font centrally through `FMixtormatTypography` (Regular / Medium / Bold). See the verified engine

@@ -90,7 +90,7 @@ Expose new visible style controls in existing UI STYLE groups, not a new styling
 | Preview → Layout | `PreviewLayout.QuickControlsGuideAxisLength`, `GuideAxisThickness`, `GuideAxisOpacity`, `GuideGlowDiameter`, `GuideGlowOpacity` | Live tuning for the faded hairline cross and soft center bloom; use the palette TextMuted role. |
 | Gallery → Gallery Layout | `GalleryLayout.DrawerInset` | Drawer offset from the viewport edge; use only if existing gallery inset is not semantically identical. |
 | Gallery → Gallery Layout | `GalleryLayout.DrawerInitialHeight` | First-use height only; subsequent drag size stays runtime state. |
-| Gallery → Gallery Layout | `GalleryLayout.ModeSwitchGap` | Spacing around MATERIALS/MASKS switch; reuse `HeaderGap` if it truly matches. |
+| Gallery → Gallery Layout | ~~`GalleryLayout.ModeSwitchGap`~~ | Removed. Reuse `HeaderGap` where appropriate; do not add a duplicate metric. |
 | Gallery → Gallery Surface | `Gallery.DrawerSurfaceOpacity` | Only add if existing palette/surface metrics cannot express it. |
 
 The candidate names are a schema plan, **not fields implemented yet**. The recent

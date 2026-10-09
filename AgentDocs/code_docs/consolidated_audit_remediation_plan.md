@@ -150,6 +150,10 @@ Keep this Runtime guard separate from the safe Editor-only count-mapping patch.
 
 ## Step 4 — P3: Expose missing UI Style icon controls
 
+> **Superseded.** The current schema exposes `HitSize` through `AddIconRole`; removed
+> `CardLeading` and `PanelToolbar` must not be reintroduced. `LayerVisToggle` now owns
+> state blend controls. Trace current source before reusing the remaining historical notes.
+
 Primary owner: `Style/MixtormatThemeSchema.cpp::AddIconRole`.
 Reference defaults: `Style/MixtormatTheme.cpp`; consumers: existing icon widgets and theme store.
 

@@ -70,7 +70,7 @@ controls, the mode label and/or status bar. Shortcut discoverability is incomple
 | `Shift+V` | Jump straight back to Material (also in the mode label) |
 | `U` or `M` | Cycle module preview — **marked Temporary in source** |
 | Mouse wheel | Zoom camera |
-| `Q` (bare) | Toggle viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Q again, Escape, an outside click, or choosing a mesh/light preset dismisses. Opening remains viewport-scoped; Q closes while the popup has focus. **Implemented, needs in-editor verification** — opening is routed through `FMixtormatPreviewViewportClient::InputKey`; closing while a control has focus uses the workspace input processor. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). See `auditdocs/workspace-layout/viewport-quick-controls-plan.md` |
+| `Q` (bare) | Toggle viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Q again, Escape, an outside click, or choosing a mesh/light preset dismisses. Opening remains viewport-scoped; Q closes while the popup has focus. **Implemented, needs in-editor verification** — opening is routed through `FMixtormatPreviewViewportClient::InputKey`; closing while a control has focus uses the workspace input processor. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). Archived delivery history: `AgentDocs/old_docs/viewport-quick-controls-plan.md` |
 
 ## Hotkey catalog — controls
 
@@ -122,13 +122,10 @@ table in as surfaces land; add a "Help text" section to the mandated
   tooltips plus the status bar. If a hover/help overlay is wanted (e.g. a
   viewport-key cheat sheet), extend `SMixtormatHelp` rather than inventing a
   second tooltip system.
-- **Viewport shortcuts lack a consolidated help surface.** The planned `Tab` marking menu
-  (`auditdocs/workspace-layout/viewport-quick-controls-plan.md`) is the candidate
-  answer: it can list the viewport keys and the controls they act on, supplementing
-  existing feedback. Decide whether the menu also advertises `F`/`H`/`Z`/`V`.
-- **`Tab` collides with Slate focus navigation.** If the marking menu ships, bare
-  Tab must be consumed only while the viewport has focus, and text entry must keep
-  priority — the same rule the `L`/`P` preprocessor already follows.
+- **Viewport shortcuts lack a consolidated help surface.** The implemented `Q` marking menu
+  could also advertise `F`/`H`/`Z`/`V`; that help extension remains a proposal.
+  Its delivery history is archived in `AgentDocs/old_docs/viewport-quick-controls-plan.md`.
+- **`Tab` remains Slate focus navigation.** The marking menu uses `Q`, not Tab.
 - **Temporary keys.** `U`/`M` module preview says "Temporary" in source.
   Preserve them in this work; removal needs explicit approval.
 - **Empty-state copy** lives inline per panel; if a help pass comes, collect

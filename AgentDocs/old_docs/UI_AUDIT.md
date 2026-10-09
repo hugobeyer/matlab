@@ -1,3 +1,7 @@
+> **Historical audit — superseded in part.** This predates the current resolved-style
+> migration, `LayerVisToggle`, scalar-ramp tokens, and semantic locator. Do not action its
+> findings without tracing current source; `UI.md` and source are authoritative.
+
 I’ll trace the authored schema through actual Slate paint/layout consumers, without edits or commands.
 
 I’ve confirmed the refresh currently rebuilds the workspace on every edit; next I’m tracing the consumers and legacy bypasses.

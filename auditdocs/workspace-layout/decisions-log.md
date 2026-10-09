@@ -117,8 +117,8 @@ the viewport — not worth it for a viewport menu.
 2. Implement D30: remove left shell slot; pin rail over viewport with no reserved width.
 3. Implement D31: single shared left overlay; Layers drag-out/return; preserve all page state.
 4. Implement D32: bottom gallery overlay and MATERIALS/MASKS mode switch; remove both gallery splitters.
-5. Add the approved UI STYLE metrics in `overlay-workspace-handoff.md` to the existing Preview/Gallery theme groups; structural limits remain tokens.
+5. The original UI STYLE metric checklist is archived in `AgentDocs/old_docs/overlay-workspace-handoff.md`; trace the current schema before adding metrics.
 6. Re-test Inspector placement/fronting and workspace reconstruction; persistence is separate.
 
 Variables data-model work and persistence are independent. See
-`overlay-workspace-handoff.md` for source paths, migration details and the test matrix.
+the archived `AgentDocs/old_docs/overlay-workspace-handoff.md` for historical source paths, migration details and the test matrix.

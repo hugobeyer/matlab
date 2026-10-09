@@ -35,8 +35,8 @@ UI-only re-enable or a claim that the old appearance is preserved.
 
 ### Relationship UI and noise masks do not conflict with shader optimization
 
-`code_docs/generator_relationship_ux_plan.md` remains an unimplemented authoring/display plan.
-Its editor-only target-row projection must preserve the currently authored execution array and
+`old_docs/generator_relationship_ux_plan.md` is archived delivery history for the implemented UI.
+Its editor-only target-row projection preserves the currently authored execution array and
 runtime compatibility. That is not a ban on separately authorized shader improvements or
 Noise mask routing; it prevents a UI refactor from silently changing execution semantics.
 

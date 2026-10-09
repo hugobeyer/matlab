@@ -273,7 +273,7 @@ path remains unchanged; do not route uniform globals through texture slots.
 
 - GLOBAL currently exists as the third `LeftSwitcher` page in `SMixtormat_Shell.cpp`.
   D31 moves that existing page into the shared Layers/Library/Global overlay; do not
-  add another cell or splitter slot. See `overlay-workspace-handoff.md`.
+  add another cell or splitter slot. Historical workspace handoff: `AgentDocs/old_docs/overlay-workspace-handoff.md` (archived).
 - The existing active-page/rail state should continue to select GLOBAL; preserve the
   page widget and scroll state while the shared overlay is hidden or another page is active.
 - New translation unit `Widgets/SMixtormat_Variables.cpp` (follows the

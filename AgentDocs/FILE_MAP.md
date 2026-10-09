@@ -21,8 +21,9 @@ the range, not the file.
 | Change a hard bound / sanitize | `Runtime/Public/MixtormatParameterDefinition.h` |
 | Change preview behaviour | `Widgets/SMixtormatPreviewViewport.*`, `Widgets/SMixtormat_Preview.cpp`, `MixtormatGpuDebugPreviewPasses.cpp` |
 | Change bake | `Compositing/MixtormatBakeService.*`, `Widgets/Dialogs/SMixtormatBake*Dialog.*` |
-| Change theme/style | `Style/MixtormatDesignTokens.h`, `Style/MixtormatThemeStore.*`, `Config/UIStyleTheme.json` |
-| Add/change an icon | `AgentDocs/ICONS.md` → `UI/Atoms/MixtormatIcons.*` → `Style/MixtormatStyle.cpp` (`SetPngIcon`) → `Resources/Icons/` |
+| Change theme/style | `Style/MixtormatTheme.h`, `MixtormatThemeSchema.cpp`, `MixtormatResolvedStyle.*`, `MixtormatThemeStore.*`, `MixtormatDesignTokens.h`, `Config/UIStyleTheme.json` |
+| Change UI STYLE locator | `Style/MixtormatStyleLocator.*`, `MixtormatLocatorOutline.*`, `MixtormatThemeSchema.cpp` |
+| Add/change an icon | `AgentDocs/ICONS.md` → `UI/Atoms/MixtormatIcons.*` → `Style/MixtormatStyle.cpp` (`SetSvgIcon` / `SetPngIcon`) → `Resources/Icons/` |
 | Add/change a tooltip, hint or hotkey text | `AgentDocs/HELPERS.md` → the widget's `.ToolTipText`, menu `.Shortcut`, or the key handler (`SMixtormat.cpp::OnKeyDown`, viewport `InputKey`) |
 | Change layer hierarchy UI | `UI/Layers/*`, `Widgets/Layers/*` |
 | Change clipboard / copy output | `Widgets/Layers/MixtormatLayerClipboard.cpp`, `Widgets/MixtormatChildCapabilities.*` |
@@ -61,6 +62,9 @@ the range, not the file.
 | `MixtormatParameterUi` | `Editor/Private/UI/Parameters/MixtormatParameterUiMeta.h` |
 | `MixtormatParameterAuthoring` | `Editor/Private/UI/Parameters/MixtormatParameterAuthoring.h` |
 | `MixtormatTokens` | `Editor/Private/Style/MixtormatDesignTokens.h` |
+| `FMixtormatTheme`, `EMixtormatIconRole` | `Editor/Private/Style/MixtormatTheme.h` |
+| `FMixtormatThemeSchema` | `Editor/Private/Style/MixtormatThemeSchema.*` |
+| `FMixtormatStyleLocator`, `SMixtormatLocatorOutline` | `Editor/Private/Style/MixtormatStyleLocator.*`, `MixtormatLocatorOutline.*` |
 
 ## Large files — read by section
 

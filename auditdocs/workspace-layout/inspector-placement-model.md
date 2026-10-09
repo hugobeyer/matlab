@@ -3,7 +3,8 @@
 Extends `ui-layout-and-panels-audit.md` §6. The Inspector remains a docked right
 column or viewport overlay under the new D30–D32 plan; old references below to a
 resizable Layers column / left shell splitter describe pre-D30 source only. See
-`overlay-workspace-handoff.md` for the approved pinned-rail and shared-left-overlay model.
+`AgentDocs/UI.md` for the current pinned-rail and shared-left-overlay model; the original
+handoff is archived in `AgentDocs/old_docs/overlay-workspace-handoff.md`.
 
 Status: placement-cycle prototype implemented
 (2026-10) — `P` and the top-bar placement control cycle Docked → Overlay → Hidden.
@@ -151,7 +152,7 @@ Consequences to plan for:
   loss. The current handlers capture `SMixtormat` and retain interaction flags
   (Shell L766–855), so retained state alone does not make a mid-drag rebuild safe.
 - Viewport controls stay anchored to the full viewport (see
-  `viewport-quick-controls-plan.md`), so a floating Layers panel may cover the left rail.
+  `AgentDocs/old_docs/viewport-quick-controls-plan.md` (archived)), so a floating Layers panel may cover the left rail.
   That is accepted: controls do not move to avoid overlays.
 - Out of scope: dragging a panel between columns, docking to the opposite side,
   persistence and gallery-popover/auto-collapse changes. D25 keeps the existing

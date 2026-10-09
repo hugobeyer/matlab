@@ -8,7 +8,7 @@ shared signed normalization; the layer's delta normal then rebuilds normals from
 Code: `Shaders/Private/MixtormatGeneratorFlow.usf`, `AddGeneratorFlowToolPasses` in
 `MixtormatGpuGeneratorPasses.cpp`, `GatherGeneratorFlow`.
 
-See also: `generator_flow_interaction_audit.md` — historical baseline audit; its original
+See also: `../old_docs/generator_flow_interaction_audit.md` — archived historical baseline audit; its original
 implementation-gap statements predate steps 1–7. Current generator interaction status is in
 `../GENERATORS.md` and `generator_warp_output_alignment_design.md` (targeted source review only).
 
@@ -41,7 +41,7 @@ As built:
 - Limitations: Depth is in the owner's native field units (before Height Scale); non-square
   outputs measure distance in UV, not texels. BedPosition/BedRandom use bilinear scalar
   remapping, and separately published Noise fields are outside this path. See
-  `generator_flow_interaction_audit.md` §2/§8.
+  `../old_docs/generator_flow_interaction_audit.md` §2/§8 (archived).
 
 ## Historical proposal (not a current implementation checklist)
 

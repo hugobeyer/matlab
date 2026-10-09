@@ -1,6 +1,7 @@
 # UI style token audit
 
-Status: audit, 2026-10-07. Source wins; verify line numbers before acting.
+Status: audit, 2026-10-07; partially superseded by the current UI STYLE implementation.
+Source wins; verify line numbers before acting. The tables below are not implementation tasks.
 Scope: `Source/MixtormatEditor/Private` — spacing, padding, sizing, opacity, colour,
 typography/boldness, icons, gradients, borders and corner radius.
 
@@ -33,7 +34,8 @@ values unless a design change is separately approved.
 | Opacity | `ControlLabelOpacity`, `ControlValueOpacity`, `TextDisabledOpacity`, `ZeroTickOpacity`, `SegmentShadeAlpha`, `FillDisabledSaturation`, `ToggleDisabledShadeTop/Bottom`, `FoldoutTitleDisabledOpacity`, `ScrollbarThumbOpacity` / `HoverOpacity`, `Well.BorderOpacity`, `Preview.PlateOpacity`, `MixtormatTokens::InspectorOverlayBackgroundOpacity` |
 | Colour | `EMixtormatColorRole` (14 roles) via `Palette.Get(...)`; `FMixtormatColorRef` adds opacity, saturation and a per-channel multiplier without inventing a palette entry |
 | Typography / boldness | `EMixtormatTextRole` (15 roles) + `FMixtormatTextSpec` through `FMixtormatTypography`. Weight lives in the spec, never per widget |
-| Icons | `EMixtormatIconRole` for size, `MixtormatIcons::*` for the brush. A widget never spells a style key |
+| Icons | `EMixtormatIconRole` for size, `MixtormatIcons::*` for the brush. `LayerVisToggle` additionally owns state blend controls; removed roles are not candidates for reuse. |
+| Ramp canvases | Resolved `ControlLayout.ScalarRamp*` metrics for geometry, grid/background/shade/border paint; `ScalarRampButton.*` styles shared ramp-toolbar plates. |
 | Gradients | `MixtormatTokens` gradient block (`GradientSamples`, `MultiplyMidPosition`, …) consumed by `MixtormatGradientPainter`, `MixtormatSurfacePainter`, `MixtormatWell` |
 | Borders / radius | `ControlLayout.CornerRadius`, `MixtormatTokens::CornerRadius` / inner-corner value, `Well.BorderWidth` / `BorderOpacity`, `Gallery.BorderWidth`, `MixtormatTokens::InspectorHairlineThickness` |
 
@@ -66,7 +68,7 @@ Use `EMixtormatThemeRefreshMode::Reconstruct` for dimensions that require rebuil
 use live refresh only for values the painter can safely re-read. Keep structural
 constraints (min resize sizes, grip target sizes, snap threshold, layout bounds) in
 `MixtormatTokens`, not UI STYLE. Keep rail glyph/button size sourced from the existing
-`PanelToolbar` icon role unless the design explicitly requires a separate role.
+`NavigationRail` icon role; `PanelToolbar` was removed.
 The existing shell splitter style remains for the docked Inspector and must not be
 removed merely because the left/gallery splitters disappear.
 
@@ -122,4 +124,4 @@ Do not treat these as local widget-styling gaps:
 
 - `AgentDocs/UI.md` — theme/style/tokens section and the widget map.
 - `Style/MixtormatDesignTokens.h` — the token blocks, each with its rationale.
-- `auditdocs/workspace-layout/viewport-quick-controls-plan.md` — the pending viewport work must follow this rule.
+- `AgentDocs/old_docs/viewport-quick-controls-plan.md` — archived quick-controls delivery history.

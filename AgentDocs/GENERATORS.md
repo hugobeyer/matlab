@@ -24,7 +24,7 @@ Strata Carver, Rock Formation, Pebbles, Cracks, Cliff Strata, Noise) and rewrite
 combine. Noise and Cliff Strata support Height steering only: neither publishes a signed boundary
 field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBoundary` names that
 distinction for the inspector and authoring defaults). Every other eligible generator keeps both
-source modes. See `code_docs/generator_flow_interaction_audit.md`.
+source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md` (archived).
 
 ## Noise as a mask source (inline or live)
 
@@ -57,7 +57,7 @@ re-implemented:
 - Canonical nested parameter ownership is the appended `EMixtormatParameterOwnerType::MaskNoise`
   (25), with actual owner/child GUIDs. Reflected defaults, binding/introspection and instance
   inheritance share the normal parameter pipeline. Exact files and later-UI integration rules:
-  `code_docs/noise_gate_flow_handoff.md`.
+  `old_docs/noise_gate_flow_handoff.md` (archived delivery history).
 
 ## Gravity Flow (texture-space generator child)
 

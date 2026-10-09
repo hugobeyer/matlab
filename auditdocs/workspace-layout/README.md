@@ -16,9 +16,9 @@ decision log, and the diagrams.
 | `global_variables_plan.md` | Implementation plan: document-scope variable table driving float parameters |
 | `inspector-placement-model.md` | Inspector as overlay / docked / hidden / auto, draggable popover, collapse-to-top |
 | `decisions-log.md` | Decided / recommended / open / rejected / implemented, with reasons |
-| `inspector-popover-handoff.md` | Handoff prompt: inspector Docked → Overlay → Hidden cycle |
-| `viewport-quick-controls-plan.md` | Source audit and quick-controls popup behavior / GLOBAL visibility plan |
-| `overlay-workspace-handoff.md` | Next-chat implementation brief, source map, UI STYLE token checklist, and test matrix |
+| `AgentDocs/old_docs/inspector-popover-handoff.md` | Archived implemented inspector-cycle handoff |
+| `AgentDocs/old_docs/viewport-quick-controls-plan.md` | Archived quick-controls delivery history |
+| `AgentDocs/old_docs/overlay-workspace-handoff.md` | Archived implemented workspace brief and validation checklist |
 | `mixtormat_mermaid_concepts.md` | Original hybrid-workspace concept diagrams + codebase reconciliation |
 | `mermaid-diagrams.md` | Decision flowcharts and the inspector visibility state model |
 
@@ -65,8 +65,8 @@ decision log, and the diagrams.
 - Hotkeys: `G` exists; `L` and `P` implemented workspace-wide (D14) via a
   Slate input preprocessor.
 - Implemented in source: GLOBAL page, `L`/`P`, Inspector placement, left-layer overlay,
-  and viewport quick controls. **Next approved stage:** D30–D32 remove left and gallery
-  splitter cells; see `overlay-workspace-handoff.md` before implementation.
+  and viewport quick controls. The D30–D32 workspace implementation is now described in
+  `AgentDocs/UI.md`; the original handoff is archived in `AgentDocs/old_docs/overlay-workspace-handoff.md`.
 
 ## Implementation readiness
 
@@ -90,7 +90,7 @@ guide need viewport verification.
   reconstruction. Agent-side build/editor runs still require authorization.
 
 Implementation details, token checklist, test matrix and handoff are in
-`overlay-workspace-handoff.md`. Keep GLOBAL's existing document variables/settings;
+the archived `AgentDocs/old_docs/overlay-workspace-handoff.md`. Keep GLOBAL's existing document variables/settings;
 this stage changes their surface placement, not their data model. Persistence remains
 separate and must not be silently added.
 

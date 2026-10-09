@@ -9,10 +9,11 @@ lesson is why this set exists).
 
 - Wrapper API — widgets call this: `UI/Atoms/MixtormatIcons.h` / `.cpp`
 - Brush registration: `Style/MixtormatStyle.cpp` — `SetSvgIcon` / `SetPngIcon` / `SetBrandArtwork`
-- Art: `Resources/Icons/*.png` — 64 px, white-on-transparent, one sheet, uniform stroke weight
-- Brand art: `Resources/Icons/mixtormat-icon.svg`, `mixtormat-logo.svg` — vector, ratio-locked
-- Per-role sizing/opacity: `EMixtormatIconRole` + `FMixtormatIconStyle` (`MixtormatTheme.h`)
-- Brush sizes: `ControlLayout.IconBrushSize` (20), `IconBrushSizeLarge` (28), `ScalarRampIconSize`
+- Art: `Resources/Icons/*.png` — historical inventory; current registrations are owned SVGs.
+- Brand art: `Resources/Icons/mixtormat-icon.svg`, `mixtormat-logo.svg` — vector, ratio-locked.
+- Per-role sizing/opacity: `EMixtormatIconRole` + `FMixtormatIconStyle` (`MixtormatTheme.h`).
+- Ramp toolbar plates: `FMixtormatScalarRampButtonTheme` via `SMixtormatIconButton`.
+- Brush sizes: `ControlLayout.IconBrushSize` (20), `IconBrushSizeLarge` (28), `ScalarRampIconSize`.
 
 ## Rules
 
@@ -110,18 +111,20 @@ Closed set, append-only — each role authors `GlyphSize`, `ButtonSize`,
 `HitSize`, `RestOpacity`, `HoverOpacity`, `DisabledOpacity`:
 
 - `TopBar`
-- `PanelToolbar`
 - `PreviewToolbar`
-- `LayerEye`
+- `LayerVisToggle`
 - `LayerDisclosure`
 - `FoldoutDisclosure`
-- `CardLeading`
 - `Menu`
 - `GalleryToolbar`
 - `NavigationRail` — left-column icons, independent of toolbar sizes
 
 UI Style exposes per-role glyph, button and hit sizes plus rest/hover/disabled opacity.
-`CardLeading` and `GalleryToolbar` are registered alongside the other roles.
+`LayerVisToggle` additionally exposes rest, hover and disabled blend modes. It paints the
+owned `Squircle()` SVG: hidden/off is a muted squircle, while disabled uses black coverage
+with its disabled blend (Soft Light by default). `DisabledOpacity` does not affect this role
+or `LayerDisclosure`; their disabled paint path is blend-driven. Non-Normal layer-mark blends
+use an approximate resolved row backdrop, not the fully painted row surface.
 
 ## Previously missing — now registered in source
 
@@ -153,6 +156,6 @@ These previously suggested icons are also registered in source:
 - Declare + define the wrapper in `MixtormatIcons.h` / `.cpp` (one line each).
 - Use the wrapper; pick the matching `EMixtormatIconRole` for size/opacity. If
   no role fits, append a role (never reorder) and add theme defaults + a schema
-  entry.
+  entry. `PanelToolbar` and `CardLeading` were removed; do not revive them.
 - Keys and files are append-only in spirit: removing one means updating every
   callsite, so grep the key first.

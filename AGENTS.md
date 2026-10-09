@@ -91,6 +91,7 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
 
 ## 8. Stale docs
 
-`AgentDocs/old_docs/`, `AgentDocs/grok_audit.md`, `AgentDocs/UI_AUDIT.md` are
-point-in-time audits. Treat as historical; source wins. `AgentDocs/code_docs/`
-holds plans — verify against source before acting.
+`AgentDocs/old_docs/` holds archived audits, superseded proposals and implemented
+handoffs. It is excluded from agent reads/searches; use current subsystem docs and
+source instead. `AgentDocs/code_docs/` still holds active or mixed plans — verify
+against source before acting. Archiving does not imply runtime validation.
