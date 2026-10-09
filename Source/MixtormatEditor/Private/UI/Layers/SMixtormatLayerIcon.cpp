@@ -37,14 +37,26 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	const FVector2f Size(GlyphSize, GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
 	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+	// A disabled EYE recesses like SMixtormatWellBox's disabled shade: pure black at full
+	// strength -- the same recess the wells sink with -- not a faded mark and not the Shade
+	// role, which reads gray over the row. The disclosure glyph keeps its ordinary fade.
+	const bool bRecessed = !Enabled && bVisibility;
 	FLinearColor Color = bVisibility && !On
 		? Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
-		: Palette.Get((bActive.Get(false) || IsHovered()) && Enabled
+		: Palette.Get((bActive.Get(false) || IsHovered())
 			? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
-	Color.A = !Enabled
-		? IconStyle.DisabledOpacity
-		: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
-		: IconStyle.RestOpacity;
+	if (bRecessed)
+	{
+		Color = FLinearColor::Black;
+		Color.A = 1.0f;
+	}
+	else
+	{
+		Color.A = !Enabled
+			? IconStyle.DisabledOpacity
+			: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
+			: IconStyle.RestOpacity;
+	}
 	// A visibility square owns its brush; every other use borrows the caller's, and an unbound
 	// Icon attribute resolves to null. MakeBox dereferences the brush, so a non-visibility caller
 	// that omits .Icon(...) would fault here rather than draw nothing.
