@@ -478,4 +478,19 @@ namespace MixtormatUI
 
 }
 
+// Locator identity for the UI STYLE eye: the top bar is assembled from generic icon buttons
+// with no type of its own, so this thin marker gives the whole bar a widget type the style
+// locator can outline exactly.
+class SMixtormatTopBar final : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SMixtormatTopBar) {}
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs, const TSharedRef<SWidget>& InContent)
+	{
+		ChildSlot[InContent];
+	}
+};
+
 #undef LOCTEXT_NAMESPACE

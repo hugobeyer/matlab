@@ -5,6 +5,7 @@
 #include "Style/MixtormatThemeSchema.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformTime.h"
 #include "Layout/Children.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/SWindow.h"
@@ -16,10 +17,19 @@ namespace Mixtormat
 		struct FLocatedWidget
 		{
 			TWeakPtr<SWidget> Widget;
-			float RenderOpacity = 1.0f;
+			TWeakPtr<SWindow> Window;
+			double BeginTime = 0.0;
+			// Distance from the locating panel's centre; the smallest wins, so the eye outlines
+			// the control the artist is actually tuning rather than the first type match in the
+			// tree. Zero when no anchor was supplied, which keeps the historical first match.
+			float Score = 0.0f;
 		};
 
 		TOptional<FLocatedWidget> GLocated;
+
+		// Two 0.6s triangle pulses, then the outline expires on its own.
+		constexpr double LocateDuration = 1.2;
+		constexpr double PulsePeriod = 0.6;
 
 		bool Is(const FName Type, const TCHAR* Name)
 		{
@@ -84,19 +94,35 @@ namespace Mixtormat
 			case EMixtormatStyleTarget::Gallery:
 				return Is(Type, TEXT("SMixtormatTile"));
 
+			case EMixtormatStyleTarget::TopBar:
+				return Is(Type, TEXT("SMixtormatTopBar"));
+
+			case EMixtormatStyleTarget::NavigationRail:
+				return Is(Type, TEXT("SMixtormatIconRail"));
+
+			case EMixtormatStyleTarget::Splitter:
+				return Is(Type, TEXT("SSplitter"));
+
+			case EMixtormatStyleTarget::ScrollArea:
+				return Is(Type, TEXT("SScrollBox"));
+
 			case EMixtormatStyleTarget::None:
 			default:
 				return false;
 			}
 		}
 
-		bool CollectFirst(const TSharedRef<SWidget>& Widget, const EMixtormatStyleTarget Target)
+		// Depth-first over every top-level window, keeping the visible match nearest the anchor
+		// rather than the first one found: type matches are not unique, and the first widget in
+		// the tree is often a control on an unrelated panel.
+		void CollectBest(const TSharedRef<SWidget>& Widget, const EMixtormatStyleTarget Target,
+			const TOptional<FVector2f>& AnchorCenter)
 		{
 			const FName Type = Widget->GetType();
 
 			if (Is(Type, TEXT("SMixtormatThemePanel")))
 			{
-				return false;
+				return;
 			}
 
 			const FVector2f Size = Widget->GetCachedGeometry().GetLocalSize();
@@ -104,26 +130,30 @@ namespace Mixtormat
 				&& Widget->GetVisibility().IsVisible()
 				&& Size.X > 1.0f && Size.Y > 1.0f)
 			{
-				FLocatedWidget Entry;
-				Entry.Widget = Widget;
-				Entry.RenderOpacity = Widget->GetRenderOpacity();
-				GLocated = Entry;
-				return true;
+				const FVector2D Center = Widget->GetCachedGeometry().GetAbsolutePosition()
+					+ FVector2D(Size) * 0.5;
+				const float Score = AnchorCenter.IsSet()
+					? static_cast<float>(FVector2D::Distance(
+						FVector2D(AnchorCenter.GetValue()), Center))
+					: 0.0f;
+				if (!GLocated.IsSet() || Score < GLocated.GetValue().Score)
+				{
+					FLocatedWidget Entry;
+					Entry.Widget = Widget;
+					Entry.Score = Score;
+					GLocated = Entry;
+				}
 			}
 
 			FChildren* Children = Widget->GetChildren();
 			if (!Children)
 			{
-				return false;
+				return;
 			}
 			for (int32 Index = 0; Index < Children->Num(); ++Index)
 			{
-				if (CollectFirst(Children->GetChildAt(Index), Target))
-				{
-					return true;
-				}
+				CollectBest(Children->GetChildAt(Index), Target, AnchorCenter);
 			}
-			return false;
 		}
 	}
 
@@ -149,12 +179,17 @@ namespace Mixtormat
 		case EMixtormatStyleTarget::Preview: return NSLOCTEXT("MixtormatStyleLocator", "Preview", "Preview controls");
 		case EMixtormatStyleTarget::Gallery: return NSLOCTEXT("MixtormatStyleLocator", "Gallery", "Gallery tiles");
 		case EMixtormatStyleTarget::Shell: return NSLOCTEXT("MixtormatStyleLocator", "Shell", "Editor shell");
+		case EMixtormatStyleTarget::TopBar: return NSLOCTEXT("MixtormatStyleLocator", "TopBar", "Top bar");
+		case EMixtormatStyleTarget::NavigationRail: return NSLOCTEXT("MixtormatStyleLocator", "NavigationRail", "Left navigation rail");
+		case EMixtormatStyleTarget::Splitter: return NSLOCTEXT("MixtormatStyleLocator", "Splitter", "Column splitter");
+		case EMixtormatStyleTarget::ScrollArea: return NSLOCTEXT("MixtormatStyleLocator", "ScrollArea", "Scroll areas");
 		case EMixtormatStyleTarget::None:
 		default: return NSLOCTEXT("MixtormatStyleLocator", "None", "No live target");
 		}
 	}
 
-	bool FMixtormatStyleLocator::Begin(const EMixtormatStyleTarget Target)
+	bool FMixtormatStyleLocator::Begin(const EMixtormatStyleTarget Target,
+		const TOptional<FVector2f>& AnchorCenter)
 	{
 		End();
 		if (Target == EMixtormatStyleTarget::None || !FSlateApplication::IsInitialized())
@@ -164,10 +199,7 @@ namespace Mixtormat
 
 		for (const TSharedRef<SWindow>& Window : FSlateApplication::Get().GetTopLevelWindows())
 		{
-			if (CollectFirst(Window, Target))
-			{
-				break;
-			}
+			CollectBest(Window, Target, AnchorCenter);
 		}
 
 		if (!GLocated.IsSet())
@@ -175,38 +207,65 @@ namespace Mixtormat
 			return false;
 		}
 
-		SetDimmed(true);
+		FLocatedWidget& Entry = GLocated.GetValue();
+		Entry.BeginTime = FPlatformTime::Seconds();
+		if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
+		{
+			Entry.Window = FSlateApplication::Get().FindWidgetWindow(Widget.ToSharedRef());
+		}
 		return true;
 	}
 
-	void FMixtormatStyleLocator::SetDimmed(const bool bDimmed)
+	bool FMixtormatStyleLocator::Tick()
 	{
 		if (!GLocated.IsSet())
 		{
-			return;
+			return false;
 		}
-
-		const FLocatedWidget& Entry = GLocated.GetValue();
-		if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
+		if (FPlatformTime::Seconds() - GLocated.GetValue().BeginTime >= LocateDuration)
 		{
-			// SWidget has a generic render-opacity API in UE 5.8, but no generic tint API.
-			// Pulse only the exact located widget instead of dimming every widget in its category.
-			Widget->SetRenderOpacity(bDimmed ? Entry.RenderOpacity * 0.18f : Entry.RenderOpacity);
-			Widget->Invalidate(EInvalidateWidgetReason::Paint);
+			End();
+			return false;
 		}
+		return true;
+	}
+
+	float FMixtormatStyleLocator::GetPulseAlpha()
+	{
+		if (!GLocated.IsSet())
+		{
+			return 0.0f;
+		}
+		const double Elapsed = FPlatformTime::Seconds() - GLocated.GetValue().BeginTime;
+		const double Phase = FMath::Fmod(Elapsed, PulsePeriod) / PulsePeriod;
+		return static_cast<float>(1.0 - FMath::Abs(Phase * 2.0 - 1.0));
+	}
+
+	bool FMixtormatStyleLocator::GetTargetRect(FSlateRect& OutRect)
+	{
+		if (!GLocated.IsSet())
+		{
+			return false;
+		}
+		const TSharedPtr<SWidget> Widget = GLocated.GetValue().Widget.Pin();
+		if (!Widget.IsValid())
+		{
+			return false;
+		}
+		const FGeometry& Geometry = Widget->GetCachedGeometry();
+		const FVector2D TopLeft = Geometry.GetAbsolutePosition();
+		const FVector2D Size(Geometry.GetLocalSize());
+		OutRect = FSlateRect(TopLeft.X, TopLeft.Y, TopLeft.X + Size.X, TopLeft.Y + Size.Y);
+		return true;
+	}
+
+	TWeakPtr<SWindow> FMixtormatStyleLocator::GetTargetWindow()
+	{
+		return GLocated.IsSet() ? GLocated.GetValue().Window : TWeakPtr<SWindow>();
 	}
 
 	void FMixtormatStyleLocator::End()
 	{
-		if (GLocated.IsSet())
-		{
-			const FLocatedWidget& Entry = GLocated.GetValue();
-			if (const TSharedPtr<SWidget> Widget = Entry.Widget.Pin())
-			{
-				Widget->SetRenderOpacity(Entry.RenderOpacity);
-				Widget->Invalidate(EInvalidateWidgetReason::Paint);
-			}
-		}
 		GLocated.Reset();
 	}
 }

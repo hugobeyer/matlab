@@ -50,6 +50,14 @@ namespace Mixtormat
 		Preview,
 		Gallery,
 		Shell,
+		// Dedicated chrome identities: the top bar carries a marker widget and the left rail is
+		// its own widget type, so the eye can outline each precisely instead of the whole shell.
+		TopBar,
+		NavigationRail,
+		// Generic Slate widgets the shell composes from; nearest-to-panel matching picks the
+		// one the artist is actually tuning.
+		Splitter,
+		ScrollArea,
 	};
 
 	// Refresh mode for a theme property change. Strongest wins when coalescing.

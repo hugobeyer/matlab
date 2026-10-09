@@ -40,7 +40,7 @@ namespace
 		{
 			if (IsHovered())
 			{
-				const float Thickness = MixtormatTokens::InspectorHairlineThickness;
+				const float Thickness = FMixtormatThemeStore::GetResolved().ControlLayout.InspectorHairlineThickness;
 				const FVector2f Size(AllottedGeometry.GetLocalSize());
 				TArray<FVector2f> Outline;
 				switch (Grip)

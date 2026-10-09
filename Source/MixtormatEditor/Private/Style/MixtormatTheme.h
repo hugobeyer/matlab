@@ -630,6 +630,8 @@ namespace Mixtormat
 		float BadgeCornerRadius = 1.0f;
 		float BadgeTextInset = 3.0f;
 		float InspectorTopMargin = 8.0f;
+		// Thin separators inside the inspector; 0 turns them all off.
+		float InspectorHairlineThickness = 1.0f;
 		// The curve canvas viewport outline. Split from the grid's boundary lines so the canvas
 		// edge can be tuned without retuning the grid it encloses.
 		float ScalarRampBorderThickness = 1.0f;

@@ -640,7 +640,12 @@ void SMixtormatThemePanel::LocateTarget(const Mixtormat::EMixtormatStyleTarget T
 		return;
 	}
 
-	if (!Mixtormat::FMixtormatStyleLocator::Begin(Target))
+	// Anchor the search on this panel: type matches are not unique, and the nearest visible
+	// one is the control the artist is actually tuning.
+	const FGeometry PanelGeometry = GetCachedGeometry();
+	const TOptional<FVector2f> Anchor(FVector2f(
+		PanelGeometry.GetAbsolutePosition() + FVector2D(PanelGeometry.GetLocalSize()) * 0.5));
+	if (!Mixtormat::FMixtormatStyleLocator::Begin(Target, Anchor))
 	{
 		Status = FString::Printf(
 			TEXT("Target is not currently visible: %s."),
@@ -672,23 +677,14 @@ EActiveTimerReturnType SMixtormatThemePanel::AdvanceLocateFlash(
 		return EActiveTimerReturnType::Stop;
 	}
 
-	++LocateFlashPhase;
-	switch (LocateFlashPhase)
+	// The outline overlay paints the pulse itself; this timer only owns the lifecycle and status.
+	if (!Mixtormat::FMixtormatStyleLocator::Tick())
 	{
-	case 1:
-		Mixtormat::FMixtormatStyleLocator::SetDimmed(false);
-		return EActiveTimerReturnType::Continue;
-
-	case 2:
-		Mixtormat::FMixtormatStyleLocator::SetDimmed(true);
-		return EActiveTimerReturnType::Continue;
-
-	default:
-		Mixtormat::FMixtormatStyleLocator::End();
 		LocatedTarget = Mixtormat::EMixtormatStyleTarget::None;
 		LocateFlashPhase = INDEX_NONE;
 		return EActiveTimerReturnType::Stop;
 	}
+	return EActiveTimerReturnType::Continue;
 }
 
 void SMixtormatThemePanel::UpdateStatus(const FString& Prefix)

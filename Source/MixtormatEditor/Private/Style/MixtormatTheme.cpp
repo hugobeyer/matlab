@@ -201,6 +201,7 @@ namespace Mixtormat
 		T.ControlLayout.BadgeCornerRadius = 1.0f;
 		T.ControlLayout.BadgeTextInset = 3.0f;
 		T.ControlLayout.InspectorTopMargin = 8.0f;
+		T.ControlLayout.InspectorHairlineThickness = 1.0f;
 		T.ControlLayout.ScalarRampBorderThickness = 1.0f;
 		T.ControlLayout.ScalarRampBorderOpacity = 0.5f;
 		T.ControlLayout.DragGhostOpacity = 0.93f;
@@ -1066,6 +1067,7 @@ namespace Mixtormat
 		ClampMin(TEXT("ControlLayout.BadgeCornerRadius"), InOutTheme.ControlLayout.BadgeCornerRadius, 0.0f);
 		ClampMin(TEXT("ControlLayout.BadgeTextInset"), InOutTheme.ControlLayout.BadgeTextInset, 0.0f);
 		ClampMin(TEXT("ControlLayout.InspectorTopMargin"), InOutTheme.ControlLayout.InspectorTopMargin, 0.0f);
+		ClampMin(TEXT("ControlLayout.InspectorHairlineThickness"), InOutTheme.ControlLayout.InspectorHairlineThickness, 0.0f);
 		ClampMin(TEXT("Layer.HairlineWidth"), InOutTheme.Layer.HairlineWidth, 0.0f);
 		ClampMin(TEXT("Layer.GroupHairlineWidth"), InOutTheme.Layer.GroupHairlineWidth, 0.0f);
 		ClampMin(TEXT("Layer.ChildHairlineWidth"), InOutTheme.Layer.ChildHairlineWidth, 0.0f);

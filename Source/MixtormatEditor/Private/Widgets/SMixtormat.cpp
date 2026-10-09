@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Style/MixtormatLocatorOutline.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Menus/SMixtormatHelp.h"
@@ -129,23 +130,36 @@ void SMixtormat::BuildWorkspaceUI()
 {
 	ChildSlot
 	[
-		SNew(SBorder)
-		.Padding(0.0f)
-		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
+		SNew(SOverlay)
+		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Fill)
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()[BuildTopBar()]
-			+ SVerticalBox::Slot().FillHeight(1.0f)
+			SNew(SBorder)
+			.Padding(0.0f)
+			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+			.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
 			[
-				SNew(SBox)
-				.Clipping(EWidgetClipping::ClipToBounds)
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
 				[
-					SAssignNew(MainSwitcher, SWidgetSwitcher)
-					+ SWidgetSwitcher::Slot()[BuildAuthoringPage()]
+					// Locator identity marker: lets the UI STYLE eye outline the top bar itself.
+					SNew(SMixtormatTopBar, BuildTopBar())
 				]
+				+ SVerticalBox::Slot().FillHeight(1.0f)
+				[
+					SNew(SBox)
+					.Clipping(EWidgetClipping::ClipToBounds)
+					[
+						SAssignNew(MainSwitcher, SWidgetSwitcher)
+						+ SWidgetSwitcher::Slot()[BuildAuthoringPage()]
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight()[BuildStatusBar()]
 			]
-			+ SVerticalBox::Slot().AutoHeight()[BuildStatusBar()]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Fill)
+		[
+			// The eye's outline overlay: hit-test-invisible, paints only while a locate is live.
+			SNew(SMixtormatLocatorOutline)
 		]
 	];
 

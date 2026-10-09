@@ -169,10 +169,15 @@ TSharedRef<SWidget> MakeInspectorHairline(const TAttribute<bool>& bShown)
 	return SNew(SBox)
 		.Visibility_Lambda([bShown]()
 		{
-			return bShown.Get(true) && MixtormatTokens::InspectorHairlineThickness > 0.0f
+			return bShown.Get(true)
+				&& FMixtormatThemeStore::GetResolved().ControlLayout.InspectorHairlineThickness > 0.0f
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})
-		.HeightOverride_Lambda([]() { return FOptionalSize(MixtormatTokens::InspectorHairlineThickness); })
+		.HeightOverride_Lambda([]()
+		{
+			return FOptionalSize(
+				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorHairlineThickness);
+		})
 		.Padding_Lambda([]() { return FMargin(MixtormatTokens::InspectorHairlineInset, 0.0f); })
 		[
 			SNew(SImage)

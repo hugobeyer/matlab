@@ -782,5 +782,26 @@
 			"uiMax": 100,
 			"snap": 1
 		}
+	},
+	"Craquelure":
+	{
+		"Craquelure.Iterations:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 32,
+			"snap": 0,
+			"clampMin": 1,
+			"clampMax": 50
+		},
+		"Craquelure.WarpScale:Int":
+		{
+			"default": 64,
+			"uiMin": 0,
+			"uiMax": 75,
+			"snap": 0.10000000149011612,
+			"clampMin": 0,
+			"clampMax": 512
+		}
 	}
 }

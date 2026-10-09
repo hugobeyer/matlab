@@ -565,8 +565,7 @@ namespace MixtormatTokens
 	inline float GroupHeaderAlign = 0.0f;
 	inline float SubgroupHeaderAlign = 0.0f;
 	// Thin separators inside the inspector, inset on both sides so they never reach the panel
-	// edges. Thickness 0 turns them all off; the two switches (0/1) pick where they appear.
-	inline float InspectorHairlineThickness = 1.0f;
+	// edges; the thickness lives in the theme.
 	inline float InspectorHairlineInset = 12.0f;
 	inline float InspectorHairlineUnderHeader = 0.0f;
 
