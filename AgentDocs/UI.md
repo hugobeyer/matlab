@@ -32,6 +32,11 @@ translation units — search the member function, not the header.
   `MixtormatLayerMenus.cpp`, `MixtormatLayerHierarchy.cpp`,
   `MixtormatLayerClipboard.cpp`, `MixtormatMaskSources.cpp`, `MixtormatLayersPrivate.h`.
 
+Published child outputs have one `Outputs` context submenu, populated from
+`GetCopyableOutputs(GetChildCapabilities(...))` with semantic labels and output-kind icons.
+The formerly duplicated flattened Copy rows were removed; children without copyable outputs
+omit the submenu. `Widgets/Layers/MixtormatLayerMenus.cpp` owns this menu construction.
+
 Structural connection menus/labels and the atomic setter are shared by explicit child
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
 Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. Connection

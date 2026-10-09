@@ -1,8 +1,9 @@
 # Workspace Layout & Global Variables — Design Folder
 
-Status: design and planning only. Source wins over every document here;
-verify line numbers before acting. See `decisions-log.md` §Implemented for
-what has since landed in source.
+Status: mixed planning and historical notes. Implemented handoffs, old layout audits,
+and concept diagrams are archived in `AgentDocs/old_docs/`. Current UI behavior is
+recorded in `AgentDocs/UI.md`; the older source/readiness claims below are historical,
+not a current implementation checklist. Global-variable and deferred-work plans remain.
 
 This folder consolidates the workspace-layout and global-variables design work:
 the audits, the implementation plan, the inspector placement model, the
@@ -12,15 +13,15 @@ decision log, and the diagrams.
 
 | File | What it is |
 |---|---|
-| `ui-layout-and-panels-audit.md` | Current audit/decision for pinned left rail, shared left overlays, bottom gallery drawer, and Inspector coexistence |
+| `AgentDocs/old_docs/ui-layout-and-panels-audit.md` | Archived pre-redesign shell/layout audit |
 | `global_variables_plan.md` | Implementation plan: document-scope variable table driving float parameters |
 | `inspector-placement-model.md` | Inspector as overlay / docked / hidden / auto, draggable popover, collapse-to-top |
 | `decisions-log.md` | Decided / recommended / open / rejected / implemented, with reasons |
 | `AgentDocs/old_docs/inspector-popover-handoff.md` | Archived implemented inspector-cycle handoff |
 | `AgentDocs/old_docs/viewport-quick-controls-plan.md` | Archived quick-controls delivery history |
 | `AgentDocs/old_docs/overlay-workspace-handoff.md` | Archived implemented workspace brief and validation checklist |
-| `mixtormat_mermaid_concepts.md` | Original hybrid-workspace concept diagrams + codebase reconciliation |
-| `mermaid-diagrams.md` | Decision flowcharts and the inspector visibility state model |
+| `AgentDocs/old_docs/mixtormat_mermaid_concepts.md` | Archived original hybrid-workspace concepts |
+| `AgentDocs/old_docs/mermaid-diagrams.md` | Archived decision diagrams and old state models |
 
 ## Key facts (verified against source)
 
@@ -96,8 +97,7 @@ separate and must not be silently added.
 
 ## Provenance
 
-- `ui-layout-and-panels-audit.md` — moved from `auditdocs/`.
+- `AgentDocs/old_docs/ui-layout-and-panels-audit.md` — archived after the workspace redesign.
 - `global_variables_plan.md` — moved from `AgentDocs/code_docs/` (it was the
   plan of record there; this folder is now its home).
-- `mixtormat_mermaid_concepts.md` — moved from `auditdocs/`, with a
-  reconciliation section appended.
+- `AgentDocs/old_docs/mixtormat_mermaid_concepts.md` — archived original concepts and reconciliation.

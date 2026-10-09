@@ -1,6 +1,6 @@
 # Inspector Placement Model
 
-Extends `ui-layout-and-panels-audit.md` §6. The Inspector remains a docked right
+Historical basis: `AgentDocs/old_docs/ui-layout-and-panels-audit.md` §6 (archived). The Inspector remains a docked right
 column or viewport overlay under the new D30–D32 plan; old references below to a
 resizable Layers column / left shell splitter describe pre-D30 source only. See
 `AgentDocs/UI.md` for the current pinned-rail and shared-left-overlay model; the original
