@@ -11,6 +11,8 @@
 #include "Style/MixtormatTypography.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SToolTip.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -182,6 +184,206 @@ namespace
 		}
 		return Paint;
 	}
+}
+
+bool SMixtormat::ResolveHierarchyChildAddress(const FMixtormatChildAddress Address,
+	int32& OutOwnerIndex, int32& OutChildIndex) const
+{
+	OutOwnerIndex = INDEX_NONE;
+	OutChildIndex = INDEX_NONE;
+	if (!Address.IsValid()) { return false; }
+	const TArray<FMixtormatLayerChild>* Children = nullptr;
+	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
+	{
+		for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
+		{
+			if (WorkingLayers[Index].LayerId != Address.OwnerId) { continue; }
+			if (Children) { return false; }
+			OutOwnerIndex = Index;
+			Children = &WorkingLayers[Index].Children;
+		}
+	}
+	else
+	{
+		for (int32 Index = 0; Index < WorkingLayerGroups.Num(); ++Index)
+		{
+			if (WorkingLayerGroups[Index].GroupId != Address.OwnerId) { continue; }
+			if (Children) { return false; }
+			OutOwnerIndex = Index;
+			Children = &WorkingLayerGroups[Index].Children;
+		}
+	}
+	if (!Children) { return false; }
+	for (int32 Index = 0; Index < Children->Num(); ++Index)
+	{
+		if ((*Children)[Index].ChildId != Address.ChildId) { continue; }
+		if (OutChildIndex != INDEX_NONE) { return false; }
+		OutChildIndex = Index;
+	}
+	return OutChildIndex != INDEX_NONE;
+}
+
+TArray<FMixtormatProjectedChildRow> SMixtormat::BuildGroupHierarchyRows(const FGuid GroupId) const
+{
+	TArray<FMixtormatProjectedChildRow> Rows;
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group) { return Rows; }
+	// Shared structural payloads retain their authored home; only actual ownership is nested.
+	for (int32 Index = 0; Index < Group->Children.Num(); ++Index)
+	{
+		FMixtormatProjectedChildRow Row;
+		Row.Address = {EMixtormatChildOwnerType::Group, GroupId, Group->Children[Index].ChildId};
+		Row.AuthoredChildIndex = Index;
+		Row.AuthoredScopeDepth = GetDisplayScopeDepth(Group->Children, Index);
+		const FGuid ParentId = Group->Children[Index].ScopeOwnerChildId;
+		if (ParentId.IsValid())
+		{
+			int32 ParentIndex = INDEX_NONE;
+			for (int32 Parent = 0; Parent < Group->Children.Num(); ++Parent)
+			{
+				if (Group->Children[Parent].ChildId != ParentId) { continue; }
+				if (ParentIndex != INDEX_NONE) { ParentIndex = INDEX_NONE; break; }
+				ParentIndex = Parent;
+			}
+			Row.VisualParentRowIndex = ParentIndex;
+		}
+		Rows.Add(Row);
+	}
+	return Rows;
+}
+
+FMixtormatLayerHierarchyPaint SMixtormat::BuildGroupHierarchyPaint(
+	const TArray<FMixtormatProjectedChildRow>& VisibleRows, const int32 DisplayIndex) const
+{
+	FMixtormatLayerHierarchyPaint Paint = ProjectedHierarchyPaint(VisibleRows, DisplayIndex);
+	// Shared roots continue on the group trunk to its member layers.
+	if (VisibleRows[DisplayIndex].VisualParentRowIndex == INDEX_NONE) { Paint.bLast = false; }
+	return Paint;
+}
+
+TArray<FMixtormatProjectedChildRow> SMixtormat::FilterVisibleHierarchyRows(
+	const TArray<FMixtormatProjectedChildRow>& Rows) const
+{
+	TArray<FMixtormatProjectedChildRow> Visible;
+	TArray<int32> Remap;
+	Remap.Init(INDEX_NONE, Rows.Num());
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		bool bHidden = false;
+		int32 Parent = Rows[Index].VisualParentRowIndex;
+		for (int32 Step = 0; Rows.IsValidIndex(Parent) && Step < Rows.Num(); ++Step)
+		{
+			if (CollapsedGeneratorAddresses.Contains(Rows[Parent].Address)) { bHidden = true; break; }
+			Parent = Rows[Parent].VisualParentRowIndex;
+		}
+		if (bHidden) { continue; }
+		Remap[Index] = Visible.Num();
+		Visible.Add(Rows[Index]);
+	}
+	for (FMixtormatProjectedChildRow& Row : Visible)
+	{
+		Row.VisualParentRowIndex = Remap.IsValidIndex(Row.VisualParentRowIndex)
+			? Remap[Row.VisualParentRowIndex] : INDEX_NONE;
+	}
+	return Visible;
+}
+
+bool SMixtormat::RevealChildInHierarchy(const FMixtormatChildAddress Address)
+{
+	int32 OwnerIndex, ChildIndex;
+	if (!ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex)) { return false; }
+	const bool bLayer = Address.OwnerType == EMixtormatChildOwnerType::Layer;
+	const TArray<FMixtormatProjectedChildRow> Rows = bLayer
+		? MixtormatStructuralConnections::BuildChildProjection(WorkingLayers, WorkingLayerGroups, OwnerIndex)
+		: BuildGroupHierarchyRows(Address.OwnerId);
+	int32 RowIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		if (!(Rows[Index].Address == Address)) { continue; }
+		if (RowIndex != INDEX_NONE) { return false; }
+		RowIndex = Index;
+	}
+	if (RowIndex == INDEX_NONE) { return false; }
+	bool bChanged = false;
+	if (bLayer)
+	{
+		bChanged = !ExpandedLayerIds.Contains(Address.OwnerId);
+		ExpandedLayerIds.Add(Address.OwnerId);
+		bChanged |= CollapsedGroupIds.Remove(WorkingLayers[OwnerIndex].GroupId) > 0;
+	}
+	else { bChanged = CollapsedGroupIds.Remove(Address.OwnerId) > 0; }
+	int32 Parent = Rows[RowIndex].VisualParentRowIndex;
+	for (int32 Step = 0; Rows.IsValidIndex(Parent) && Step < Rows.Num(); ++Step)
+	{
+		bChanged |= CollapsedGeneratorAddresses.Remove(Rows[Parent].Address) > 0;
+		Parent = Rows[Parent].VisualParentRowIndex;
+	}
+	return bChanged;
+}
+
+FReply SMixtormat::ToggleGeneratorExpanded(const FMixtormatChildAddress Address)
+{
+	int32 OwnerIndex, ChildIndex;
+	if (!ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex)) { return FReply::Unhandled(); }
+	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
+		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
+	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { return FReply::Unhandled(); }
+	if (!CollapsedGeneratorAddresses.Remove(Address)) { CollapsedGeneratorAddresses.Add(Address); }
+	RebuildLayerList();
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildGeneratorDisclosure(const FMixtormatChildAddress Address,
+	const bool bHasChildren, const FText ToolTip)
+{
+	int32 OwnerIndex, ChildIndex;
+	if (!bHasChildren || !ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex))
+	{ return SNullWidget::NullWidget; }
+	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
+		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
+	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { return SNullWidget::NullWidget; }
+	return SNew(SMixtormatLayerIcon)
+		.MaxSize(FMixtormatThemeStore::GetResolved().LayerLayout.ChildRowHeight)
+		.ToolTipText(ToolTip.IsEmpty() ? LOCTEXT("GeneratorDisclosure", "Show or hide this generator's displayed children.") : ToolTip)
+		.Icon_Lambda([this, Address]()
+		{
+			return CollapsedGeneratorAddresses.Contains(Address) ? MixtormatIcons::ChevronRight() : MixtormatIcons::ChevronDown();
+		})
+		.OnClicked_Lambda([this, Address]() { ToggleGeneratorExpanded(Address); });
+}
+
+void SMixtormat::RegisterChildRowWidget(const FMixtormatChildAddress Address, TSharedRef<SWidget> Widget)
+{
+	if (AmbiguousChildRowAddresses.Contains(Address)) { return; }
+	if (ChildRowWidgets.Contains(Address))
+	{
+		ChildRowWidgets.Remove(Address);
+		AmbiguousChildRowAddresses.Add(Address);
+		return;
+	}
+	ChildRowWidgets.Add(Address, Widget);
+}
+
+FReply SMixtormat::NavigateToChild(const FMixtormatChildAddress Address)
+{
+	int32 OwnerIndex, ChildIndex;
+	if (!LayerScrollBox.IsValid() || !ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex)
+		|| AmbiguousChildRowAddresses.Contains(Address)) { return FReply::Unhandled(); }
+	const bool bRevealed = RevealChildInHierarchy(Address);
+	const TWeakPtr<SWidget>* ExistingRow = ChildRowWidgets.Find(Address);
+	if (bRevealed || !ExistingRow || !ExistingRow->IsValid()) { RebuildLayerList(); }
+	const TWeakPtr<SWidget>* Row = ChildRowWidgets.Find(Address);
+	const TSharedPtr<SWidget> Widget = Row ? Row->Pin() : nullptr;
+	if (!Widget.IsValid() || AmbiguousChildRowAddresses.Contains(Address)) { return FReply::Unhandled(); }
+	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
+	{
+		SelectedGroupId.Invalidate();
+		SelectedGroupChildIndex = INDEX_NONE;
+		SelectWorkingChild(OwnerIndex, ChildIndex);
+	}
+	else { SelectGroupChild(Address.OwnerId, ChildIndex); }
+	LayerScrollBox->ScrollDescendantIntoView(Widget, true, EDescendantScrollDestination::IntoView);
+	return FReply::Handled();
 }
 
 bool SMixtormat::IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const
@@ -386,7 +588,8 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
-	// No RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
+	if (RevealChildInHierarchy(MakeChildAddress(LayerIndex, ChildIndex))) { RebuildLayerList(); }
+	// No unconditional RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
 	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
 	// its context menu on, closing it before it could show.
 	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
@@ -856,6 +1059,7 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	SelectedMaskIndex = (Child && !bEffect) ? ChildIndex : INDEX_NONE;
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }
 	return FReply::Handled();
 }
 
@@ -879,6 +1083,11 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			"{0}\nShared coverage mask, projected into every member. Signed Noise Value maps to 0..1; unsigned Value is clamped. Shaping and scoped filters apply afterwards."),
 			GetMaskSourceLabel(MakeGroupChildAddress(GroupId, ChildIndex))));
 	}
+	else if (Child.Type == EMixtormatLayerChildType::HeightPush || Child.Type == EMixtormatLayerChildType::StructuralWarp)
+	{
+		NoiseTooltip = SNew(SToolTip).Text(LOCTEXT("SharedStructuralUnsupported",
+			"Shared-group structural endpoint authoring is unsupported: ordered target/reference provenance is not generalized to member projections. This authored operation remains at its group location; no per-layer copies are created."));
+	}
 	// Doubles as "can leave the group" on the layer-side targets, so it has to match every guard
 	// MoveGroupChildToLayer applies -- otherwise a row lights up for a release that is then
 	// refused. A top-level mask filter is unreachable today (one only ever arrives scoped), but
@@ -886,7 +1095,12 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	const bool bCanReorder = IsIdGroupChild(Child)
 		|| (!Child.ScopeOwnerChildId.IsValid() && !IsMaskFilter(Child));
 
-	return SNew(SMixtormatGroupChildDropTarget)
+	const FMixtormatChildAddress Address = MakeGroupChildAddress(GroupId, ChildIndex);
+	const bool bHasOwnedChildren = Group->Children.ContainsByPredicate([&Child](const FMixtormatLayerChild& Candidate)
+	{
+		return Candidate.ScopeOwnerChildId.IsValid() && Candidate.ScopeOwnerChildId == Child.ChildId;
+	});
+	const TSharedRef<SWidget> Widget = SNew(SMixtormatGroupChildDropTarget)
 		.GroupId(GroupId)
 		.ChildIndex(ChildIndex)
 		.OnChildReordered(this, &SMixtormat::ReorderGroupChild)
@@ -898,6 +1112,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			[
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
+			.Disclosure()[BuildGeneratorDisclosure(Address, bHasOwnedChildren)]
 			.ToolTip(NoiseTooltip)
 			.Icon()[MakeChildTypeIcon(Child)]
 			// The caller paints the branch in the existing scope gutter.
@@ -960,6 +1175,8 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			})
 			]
 		];
+	RegisterChildRowWidget(Address, Widget);
+	return Widget;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
@@ -1128,8 +1345,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 	LayerRowWidgets.Add(LayerId, Row);
 
-	const TArray<FMixtormatProjectedChildRow> ProjectedRows =
+	const TArray<FMixtormatProjectedChildRow> AllRows =
 		MixtormatStructuralConnections::BuildChildProjection(WorkingLayers, WorkingLayerGroups, LayerIndex);
+	const TArray<FMixtormatProjectedChildRow> ProjectedRows = FilterVisibleHierarchyRows(AllRows);
 	for (int32 DisplayIndex = 0; DisplayIndex < ProjectedRows.Num(); ++DisplayIndex)
 	{
 		const FMixtormatProjectedChildRow& ProjectedRow = ProjectedRows[DisplayIndex];
@@ -1142,11 +1360,19 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		const TSharedPtr<IToolTip> RowToolTip = bConnection ? SNew(SToolTip).Text(ConnectionToolTip) : BuildMaskPreviewTooltip(LayerIndex, ChildIndex);
 		const FMixtormatChildAddress RowAddress = ProjectedRow.Address;
 		// New relation actions resolve the authored address at activation, never the visual index.
-		const auto ResolveRow = [this, RowAddress, LayerIndex, ChildIndex, bConnection](int32& OutLayer, int32& OutChild)
+		const bool bAddressedConnection = bConnection && RowAddress.IsValid()
+			&& ProjectedRow.Status.ModuleIssue != MixtormatOutputReferences::EStructuralLinkIssue::DuplicateIdentity;
+		const auto ResolveRow = [this, RowAddress, LayerIndex, ChildIndex, bAddressedConnection](int32& OutLayer, int32& OutChild)
 		{
 			OutLayer = LayerIndex;
 			OutChild = ChildIndex;
-			if (!bConnection) { return WorkingLayers.IsValidIndex(OutLayer) && WorkingLayers[OutLayer].Children.IsValidIndex(OutChild); }
+			// Ambiguous repair rows keep their exact authored lane, never the first GUID match.
+			if (!bAddressedConnection)
+			{
+				return WorkingLayers.IsValidIndex(OutLayer) && WorkingLayers[OutLayer].LayerId == RowAddress.OwnerId
+					&& WorkingLayers[OutLayer].Children.IsValidIndex(OutChild)
+					&& WorkingLayers[OutLayer].Children[OutChild].ChildId == RowAddress.ChildId;
+			}
 			OutLayer = INDEX_NONE;
 			OutChild = INDEX_NONE;
 			for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
@@ -1196,6 +1422,33 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		|| Child.Type == EMixtormatLayerChildType::HeightPush
 		|| Child.Type == EMixtormatLayerChildType::StructuralWarp;
 		const FText ChildName = GetLayerChildName(Child);
+		const int32 FullIndex = AllRows.IndexOfByPredicate([ChildIndex](const FMixtormatProjectedChildRow& Candidate)
+		{
+			return Candidate.AuthoredChildIndex == ChildIndex;
+		});
+		int32 StoredIncoming = 0;
+		int32 ActiveIncoming = 0;
+		int32 IncomingIssues = 0;
+		TSet<FMixtormatChildAddress> CountedIncoming;
+		bool bHasChildren = false;
+		for (const FMixtormatProjectedChildRow& Candidate : AllRows)
+		{
+			if (Candidate.VisualParentRowIndex != FullIndex) { continue; }
+			bHasChildren = true;
+			if (Candidate.Kind != EMixtormatProjectedChildKind::IncomingConnection
+				|| CountedIncoming.Contains(Candidate.Address)) { continue; }
+			CountedIncoming.Add(Candidate.Address);
+			++StoredIncoming;
+			if (Candidate.Status.bCanExecuteStructurally) { ++ActiveIncoming; }
+			if (!Candidate.PresentationReason.IsEmpty()
+				|| Candidate.Status.ModuleIssue != MixtormatOutputReferences::EStructuralLinkIssue::None
+				|| Candidate.Status.Source.Issue != MixtormatOutputReferences::EStructuralLinkIssue::None
+				|| Candidate.Status.Target.Issue != MixtormatOutputReferences::EStructuralLinkIssue::None) { ++IncomingIssues; }
+		}
+		const FText IncomingToolTip = StoredIncoming > 0 ? FText::Format(
+			LOCTEXT("GeneratorIncomingSummary", "{0} stored incoming; {1} active-valid; {2} with issues."),
+			FText::AsNumber(StoredIncoming), FText::AsNumber(ActiveIncoming), FText::AsNumber(IncomingIssues)) : FText::GetEmpty();
+		TSharedPtr<SMixtormatLayerChildRow> ChildRow;
 
 		Container->AddChild(
 			SNew(SMixtormatLayerHierarchy)
@@ -1213,7 +1466,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
 				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 				[
-				SNew(SMixtormatLayerChildRow)
+				SAssignNew(ChildRow, SMixtormatLayerChildRow)
+				.Disclosure()[BuildGeneratorDisclosure(RowAddress, bHasChildren, IncomingToolTip)]
 				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
 				.bConnectionPresentation(bConnection)
 				.ConnectionContent()[ConnectionContent]
@@ -1221,10 +1475,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Name(ChildName)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
-				.StructuralCount_Lambda([this, LayerIndex, ChildIndex]()
+				.StructuralCount_Lambda([this, RowAddress, StoredIncoming]()
 				{
-					return GetStructuralIncomingCountLabel(LayerIndex, ChildIndex);
+					return StoredIncoming > 0 && CollapsedGeneratorAddresses.Contains(RowAddress)
+						? FText::Format(LOCTEXT("CollapsedGeneratorIncoming", "{0} incoming"), FText::AsNumber(StoredIncoming))
+						: FText::GetEmpty();
 				})
+				.StructuralCountToolTip(IncomingToolTip)
 				.StructuralHighlightRole_Lambda([this, LayerIndex, ChildIndex]()
 				{
 					return GetStructuralHighlightRole(MakeChildAddress(LayerIndex, ChildIndex));
@@ -1357,9 +1614,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				]
 			]
 		]);
-}
+		RegisterChildRowWidget(RowAddress, ChildRow.ToSharedRef());
+	}
 
-return SNew(SMixtormatLayerRowDropTarget)
+	return SNew(SMixtormatLayerRowDropTarget)
 		.TargetLayerIndex(LayerIndex)
 		.OnLayerInsertedAt(this, &SMixtormat::HandleLayerInsertedAt)
 		.OnGroupInsertedAt(this, &SMixtormat::HandleGroupInsertedAt)

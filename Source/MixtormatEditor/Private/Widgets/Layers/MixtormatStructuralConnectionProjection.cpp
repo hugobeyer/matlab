@@ -43,20 +43,17 @@ namespace
 	// Binding resolution uses first-match lookups. Never use an ambiguous instance chain
 	// to justify display ownership, even if that lookup happened to produce a target.
 	bool HasUniqueInstanceMapping(const TArray<FMixtormatLayer>& Effective,
-		const TArray<FMixtormatLayerGroup>& Groups, const FMixtormatChildAddress& Address,
-		const FMixtormatLayerChild& Child)
+		const TArray<FMixtormatLayerGroup>& Groups, const FMixtormatLayerChild& Child)
 	{
 		const FMixtormatLayerChild* Current = &Child;
-		TArray<FMixtormatChildAddress> Visited;
-		Visited.Add(Address);
+		TSet<FGuid> Visited;
+		Visited.Add(Child.ChildId);
 		while (Current->IsInstance())
 		{
 			// ResolveChildInstances calls FindChild with the explicit owner. An invalid
 			// SourceLayerId is unresolved, not shorthand for the current container.
 			if (!Current->SourceLayerId.IsValid()) { return false; }
-			FMixtormatChildAddress SourceAddress;
-			SourceAddress.OwnerId = Current->SourceLayerId;
-			SourceAddress.ChildId = Current->SourceChildId;
+
 			const TArray<FMixtormatLayerChild>* SourceChildren = nullptr;
 			int32 OwnerCount = 0;
 			for (const FMixtormatLayer& Layer : Effective)
@@ -69,14 +66,19 @@ namespace
 			{
 				if (Group.GroupId != Current->SourceLayerId) { continue; }
 				SourceChildren = &Group.Children;
-				SourceAddress.OwnerType = EMixtormatChildOwnerType::Group;
+
 				++OwnerCount;
 			}
 			if (OwnerCount != 1 || !SourceChildren) { return false; }
 			const int32 SourceIndex = FindUnique(IndexChildren(*SourceChildren), Current->SourceChildId);
-			if (SourceIndex == INDEX_NONE || Visited.Contains(SourceAddress)) { return false; }
-			Visited.Add(SourceAddress);
-			Current = &(*SourceChildren)[SourceIndex];
+			if (SourceIndex == INDEX_NONE) { return false; }
+			const FMixtormatLayerChild& Source = (*SourceChildren)[SourceIndex];
+			// Mirror ResolveChildInstances: instance cycles use child GUIDs, and a terminal
+			// source with this instance's GUID cannot supply a resolved payload.
+			if (Source.IsInstance() && Visited.Contains(Source.ChildId)) { return false; }
+			if (!Source.IsInstance() && Source.ChildId == Child.ChildId) { return false; }
+			Visited.Add(Source.ChildId);
+			Current = &Source;
 		}
 		return true;
 	}
@@ -221,6 +223,10 @@ TArray<FMixtormatProjectedChildRow> MixtormatStructuralConnections::BuildChildPr
 		if (!IsModule(Children[Index])) { continue; }
 		FMixtormatProjectedChildRow& Row = Authored[Index];
 		Row.Kind = EMixtormatProjectedChildKind::AuthoredRepair;
+		const bool bAuthoredPush = Children[Index].Type == EMixtormatLayerChildType::HeightPush;
+		Row.ResolvedSource = bAuthoredPush ? Children[Index].HeightPush.Source : Children[Index].StructuralWarp.Source;
+		Row.ResolvedTargetId = bAuthoredPush ? Children[Index].HeightPush.TargetChildId : Children[Index].StructuralWarp.TargetChildId;
+		Row.bModuleEnabled = bAuthoredPush ? Children[Index].HeightPush.bEnabled : Children[Index].StructuralWarp.bEnabled;
 		const FMixtormatStructuralConnectionContext Context(Layers, Groups, Row.Address);
 		Row.Status = Context.Evaluate();
 		const FMixtormatLayer* Resolved = Context.GetResolvedDestination();
@@ -230,6 +236,8 @@ TArray<FMixtormatProjectedChildRow> MixtormatStructuralConnections::BuildChildPr
 			? &Resolved->Children[ResolvedStart] : nullptr;
 		if (Module && IsModule(*Module))
 		{
+			Row.bHasResolvedPayload = Module->Type == Children[Index].Type;
+			Row.bModuleEnabled = Row.Status.bModuleEnabled;
 			const bool bPush = Module->Type == EMixtormatLayerChildType::HeightPush;
 			Row.ResolvedSource = bPush ? Module->HeightPush.Source : Module->StructuralWarp.Source;
 			Row.ResolvedTargetId = bPush ? Module->HeightPush.TargetChildId : Module->StructuralWarp.TargetChildId;
@@ -274,15 +282,19 @@ TArray<FMixtormatProjectedChildRow> MixtormatStructuralConnections::BuildChildPr
 				|| ResolvedIndex != ResolvedStart + (ChildIndex - Index)
 				|| EffectiveChildren[EffectiveIndex].ScopeOwnerChildId != Child.ScopeOwnerChildId
 				|| Resolved->Children[ResolvedIndex].ScopeOwnerChildId != Child.ScopeOwnerChildId
-				|| !HasUniqueInstanceMapping(Context.Effective, Groups, Authored[ChildIndex].Address,
-					EffectiveChildren[EffectiveIndex]))
+				|| !HasUniqueInstanceMapping(Context.Effective, Groups, EffectiveChildren[EffectiveIndex]))
 			{
+				Row.bHasResolvedPayload = false;
 				bSafeMapping = false;
 				break;
 			}
 		}
 		if (!bSafeMapping)
 		{
+			Row.bHasResolvedPayload = false;
+			Row.ResolvedSource = bAuthoredPush ? Children[Index].HeightPush.Source : Children[Index].StructuralWarp.Source;
+			Row.ResolvedTargetId = bAuthoredPush ? Children[Index].HeightPush.TargetChildId : Children[Index].StructuralWarp.TargetChildId;
+			Row.bModuleEnabled = bAuthoredPush ? Children[Index].HeightPush.bEnabled : Children[Index].StructuralWarp.bEnabled;
 			Row.PresentationReason = LOCTEXT("BlockMapping", "Operation subtree has ambiguous effective, group or instance mapping");
 			continue;
 		}

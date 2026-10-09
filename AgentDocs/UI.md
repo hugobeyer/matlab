@@ -69,7 +69,7 @@ Noise and Cliff use Height steering and explicitly explain why Signed Distance i
 
 ## Generator relationship UX plan
 
-`code_docs/generator_relationship_ux_plan.md` is partially implemented. Generator RMB now offers
+`code_docs/generator_relationship_ux_plan.md` has its primary UI implementation delivered. Generator RMB now offers
 `Warp using…` and `Height Push from…` through the searchable, grouped
 `UI/Menus/SMixtormatStructuralSourcePicker.*`. Unavailable rows retain canonical reasons and full
 tooltips; keyboard Up/Down selects eligible rows, Enter activates, and Escape dismisses without edits.
@@ -78,9 +78,30 @@ shared with existing endpoint menus. `PrepareConnectedStructuralModuleForTarget`
 real insertion boundary; the connected creator commits source and target in one history/preview edit.
 `Advanced → Add unconnected…` and layer-level creation remain available. Generator add menus now
 match the creator's layer/unscoped ownership gates instead of offering clickable no-ops.
-Target-owned display projection, generator-local collapse, inspector summary/navigation, temporary
-picker endpoint highlights, and `LayerConnections` style integration remain proposed. No runtime
-ownership/order migration was made. Source review only; no tests, diagnostics, builds or commands.
+`MixtormatStructuralConnectionProjection.*` now generates target-owned display rows for safe local
+Warp/Push blocks. Every authored child remains represented once; owned masks/tools stay beneath the
+actual operation, while unset/missing/ambiguous target data remains an authored repair row. Incoming
+labels retain source breadcrumbs, typed-output/status tooltips and authored execution-position text.
+Visible descriptors supply scope paint metadata; relation direction is a local chevron, not a permanent
+source-to-target rail. The existing child-row shell gains optional connection content and local halo
+suppression; ordinary rows keep their anatomy and instance-source markers. Selection/menu/enable/drag
+of relation rows resolves the real address; ambiguous repairs keep their precise authored lane.
+Connection RMB exposes Change source/target and Disconnect source without resetting trace controls.
+Layers → Connections now owns Indent, Inset, TextGap, PickerWidth and PickerListMaxHeight through the
+schema/resolved theme and existing persistence/refresh routes; prior authored theme values stay intact.
+Generator-local collapse uses transient address-keyed `CollapsedGeneratorAddresses`; collapsed rows
+show stored incoming counts with active-valid/issue details in tooltips. `RevealChildInHierarchy` and
+`NavigateToChild` reveal ancestors and scroll uniquely addressed rows; ambiguous identities are rejected.
+`BuildStructuralRelationshipHeader()` resolves the live inspector selection and exposes Go to source,
+including uniquely mapped shared-group producers. Existing endpoint editors and instance gates remain.
+Picker-owned `FMixtormatStructuralEndpointPreview` supplies temporary endpoint highlights through a weak
+editor reference, without selection/history/compose edits. Activation, Escape, dismissal, rebuild and
+document/history-baseline changes invalidate previews. Collapse is pruned on rebuild and reset for a
+new document/history baseline. Generator disclosure hit/glyph dimensions are bounded by ChildRowHeight;
+ordinary layer icons retain their default dimensions. No runtime ownership/order migration was made.
+The user confirmed compilation through phase 4; this latest collapse/navigation/highlight slice is
+source-reviewed only. No agent tests, diagnostics, builds or commands, or runtime/visual/performance
+validation, were performed.
 
 ## Inspector builders
 

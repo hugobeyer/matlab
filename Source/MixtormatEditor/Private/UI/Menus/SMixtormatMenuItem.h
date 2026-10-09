@@ -48,6 +48,8 @@ public:
 		SLATE_ARGUMENT(bool, bDestructive)
 
 		SLATE_EVENT(FSimpleDelegate, OnActivate)
+		SLATE_EVENT(FSimpleDelegate, OnHovered)
+		SLATE_EVENT(FSimpleDelegate, OnUnhovered)
 
 		// Bound for a row that opens a submenu instead of acting. The chevron appears, and the
 		// row waits for a click before opening the child menu.
@@ -56,6 +58,8 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
@@ -69,5 +73,7 @@ private:
 	TAttribute<bool> bRowEnabled;
 	bool bDestructive = false;
 	FSimpleDelegate OnActivate;
+	FSimpleDelegate OnHovered;
+	FSimpleDelegate OnUnhovered;
 	TSharedPtr<SMenuAnchor> SubMenuAnchor;
 };

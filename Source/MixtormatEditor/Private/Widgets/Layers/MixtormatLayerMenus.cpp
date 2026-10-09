@@ -5,6 +5,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatThemeStore.h"
 
@@ -1400,6 +1401,44 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::HeightPush
 		|| RowType == EMixtormatLayerChildType::StructuralWarp
 		|| bGenerator;
+
+	if ((RowType == EMixtormatLayerChildType::HeightPush || RowType == EMixtormatLayerChildType::StructuralWarp)
+		&& WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		const FMixtormatChildAddress Address = MakeChildAddress(LayerIndex, ChildIndex);
+		const FMixtormatLayerChild& Module = WorkingLayers[LayerIndex].Children[ChildIndex];
+		const FMixtormatStructuralConnectionContext Context(WorkingLayers, WorkingLayerGroups, Address);
+		const auto Status = Context.Evaluate();
+		using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
+		const FText Reason = Module.IsInstance()
+			? LOCTEXT("StructuralConnectionInstanceEdit", "Break the instance to edit its endpoints")
+			: Module.ScopeOwnerChildId.IsValid() ? MixtormatStructuralConnections::IssueText(EIssue::ScopedModule)
+			: Status.ModuleIssue != EIssue::None && Status.ModuleIssue != EIssue::DisabledLayer
+				? MixtormatStructuralConnections::IssueText(Status.ModuleIssue) : FText::GetEmpty();
+		const bool bEditable = Reason.IsEmpty();
+		FMixtormatChildAddress SourceAddress;
+		FText NavigationReason;
+		const bool bCanNavigate = ResolveStructuralSourceAddress(Address, SourceAddress, NavigationReason);
+		Menu.Item(LOCTEXT("StructuralGoToSource", "Go to source"), MixtormatIcons::Generator(),
+			FSimpleDelegate::CreateLambda([this, Address]() { GoToStructuralSource(Address); }))
+			.Enabled(bCanNavigate).ToolTip(NavigationReason);
+		Menu.SubMenu(LOCTEXT("StructuralChangeSource", "Change source…"), MixtormatIcons::Generator(),
+			FOnGetContent::CreateLambda([this, Address]()
+			{
+				return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Source);
+			})).Enabled(bEditable).ToolTip(Reason);
+		Menu.SubMenu(LOCTEXT("StructuralChangeTarget", "Change target…"), MixtormatIcons::Generator(),
+			FOnGetContent::CreateLambda([this, Address]()
+			{
+				return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Target);
+			})).Enabled(bEditable).ToolTip(Reason);
+		Menu.Item(LOCTEXT("StructuralDisconnectSource", "Disconnect source"), nullptr,
+			FSimpleDelegate::CreateLambda([this, Address]()
+			{
+				SetStructuralConnection(Address, EMixtormatStructuralConnectionRole::Source);
+			})).Enabled(bEditable).ToolTip(Reason);
+		Menu.Separator();
+	}
 
 	if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))

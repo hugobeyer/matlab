@@ -225,6 +225,9 @@ bool SMixtormat::HaveSameLayerStructure(
 
 void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 {
+	// A fresh history baseline also begins a fresh document-local disclosure session.
+	CollapsedGeneratorAddresses.Reset();
+	StructuralEndpointPreview.Reset();
 	UndoHistory.Reset();
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;

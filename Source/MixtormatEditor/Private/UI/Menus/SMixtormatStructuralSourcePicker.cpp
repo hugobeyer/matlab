@@ -22,6 +22,9 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 {
 	Entries = InArgs._Entries;
 	OnSourcePicked = InArgs._OnSourcePicked;
+	EndpointPreview = InArgs._EndpointPreview;
+	OnPreviewChanged = InArgs._OnPreviewChanged;
+	bPreviewCurrent = InArgs._bPreviewCurrent;
 	const auto& Resolved = FMixtormatThemeStore::GetResolved();
 	const auto& Layout = Resolved.MenuLayout;
 	ChildSlot
@@ -63,6 +66,11 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 				.MaxDesiredHeight(Resolved.LayerConnections.PickerListMaxHeight)
 				[
 					SAssignNew(Scroll, SScrollBox)
+					.OnUserScrolled_Lambda([this](float)
+					{
+						HoveredSource = {};
+						RefreshEndpointPreview();
+					})
 					+ SScrollBox::Slot()
 					[
 						SAssignNew(Rows, SVerticalBox)
@@ -75,14 +83,58 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 
 	// The popup must be attached before Slate can resolve a focus path to its search field.
 	const TWeakPtr<SMixtormatStructuralSourcePicker> WeakThis = SharedThis(this);
-	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([WeakThis](double, float)
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([WeakThis, bFocusSet = false](double, float) mutable
 	{
 		if (const auto Picker = WeakThis.Pin())
 		{
-			FSlateApplication::Get().SetKeyboardFocus(Picker->Search, EFocusCause::SetDirectly);
+			if (!bFocusSet)
+			{
+				FSlateApplication::Get().SetKeyboardFocus(Picker->Search, EFocusCause::SetDirectly);
+				bFocusSet = true;
+			}
+			// Menu anchors may retain content after dismissal: lifetime alone is not enough.
+			FWidgetPath Path;
+			if (Picker->EndpointPreview.IsValid() && Picker->bPreviewCurrent.Get(true)
+				&& FSlateApplication::Get().GeneratePathToWidgetUnchecked(Picker.ToSharedRef(), Path))
+			{
+				return EActiveTimerReturnType::Continue;
+			}
+			Picker->ReleaseEndpointPreview();
 		}
 		return EActiveTimerReturnType::Stop;
 	}));
+}
+
+SMixtormatStructuralSourcePicker::~SMixtormatStructuralSourcePicker()
+{
+	ReleaseEndpointPreview();
+}
+
+void SMixtormatStructuralSourcePicker::Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	if (!bPreviewCurrent.Get(true)) { ReleaseEndpointPreview(); }
+	RefreshEndpointPreview();
+}
+
+void SMixtormatStructuralSourcePicker::RefreshEndpointPreview()
+{
+	if (!EndpointPreview.IsValid()) { return; }
+	const FMixtormatChildAddress Source = HoveredSource.IsValid() ? HoveredSource
+		: HasKeyboardFocus() && EligibleEntries.Contains(ActiveEntry)
+			? Entries[ActiveEntry].SourceAddress : FMixtormatChildAddress();
+	if (!(EndpointPreview->Source == Source))
+	{
+		EndpointPreview->Source = Source;
+		OnPreviewChanged.ExecuteIfBound();
+	}
+}
+
+void SMixtormatStructuralSourcePicker::ReleaseEndpointPreview()
+{
+	if (!EndpointPreview.IsValid()) { return; }
+	EndpointPreview.Reset();
+	OnPreviewChanged.ExecuteIfBound();
 }
 
 TSharedRef<SWidget> SMixtormatStructuralSourcePicker::MakeCaption(const TAttribute<FText>& Text) const
@@ -105,10 +157,12 @@ TSharedRef<SWidget> SMixtormatStructuralSourcePicker::MakeCaption(const TAttribu
 
 void SMixtormatStructuralSourcePicker::RebuildList()
 {
+	HoveredSource = {};
+	ActiveEntry = INDEX_NONE;
+	RefreshEndpointPreview();
 	Rows->ClearChildren();
 	EligibleEntries.Reset();
 	EligibleOffsets.Reset();
-	ActiveEntry = INDEX_NONE;
 	Scroll->ScrollToStart();
 	float Offset = 0.0f;
 	const auto AddCaption = [this, &Offset](const FText& Text)
@@ -142,10 +196,12 @@ void SMixtormatStructuralSourcePicker::RebuildList()
 				EligibleOffsets.Add(Offset);
 			}
 			// Disabled rows deliberately have no delegate, in addition to the menu item's guard.
+			const TWeakPtr<SMixtormatStructuralSourcePicker> WeakThis = SharedThis(this);
 			const FSimpleDelegate Action = bAvailable
-				? FSimpleDelegate::CreateLambda([OnPicked = OnSourcePicked, Source = Entry.Source]()
+				? FSimpleDelegate::CreateLambda([WeakThis, OnPicked = OnSourcePicked, Source = Entry.Source]()
 				{
 					// The menu item dismisses first; activation must not depend on a live picker.
+					if (const auto Picker = WeakThis.Pin()) { Picker->ReleaseEndpointPreview(); }
 					OnPicked.ExecuteIfBound(Source);
 				})
 				: FSimpleDelegate();
@@ -157,6 +213,22 @@ void SMixtormatStructuralSourcePicker::RebuildList()
 				.ToolTipText(Entry.ToolTip)
 				.bEnabled(bAvailable)
 				.bChecked_Lambda([this, Index]() { return HasKeyboardFocus() && ActiveEntry == Index; })
+				.OnHovered(bAvailable ? FSimpleDelegate::CreateLambda([WeakThis, Source = Entry.SourceAddress]()
+				{
+					if (const auto Picker = WeakThis.Pin())
+					{
+						Picker->HoveredSource = Source;
+						Picker->RefreshEndpointPreview();
+					}
+				}) : FSimpleDelegate())
+				.OnUnhovered(bAvailable ? FSimpleDelegate::CreateLambda([WeakThis, Source = Entry.SourceAddress]()
+				{
+					if (const auto Picker = WeakThis.Pin(); Picker && Picker->HoveredSource == Source)
+					{
+						Picker->HoveredSource = {};
+						Picker->RefreshEndpointPreview();
+					}
+				}) : FSimpleDelegate())
 				.OnActivate(Action)
 			];
 			Offset += FMixtormatThemeStore::GetResolved().MenuLayout.RowHeight;
@@ -176,6 +248,7 @@ void SMixtormatStructuralSourcePicker::Activate(const FMixtormatOutputReference&
 	// Keep the delegate and identity alive if dismissal destroys this popup.
 	const FOnMixtormatStructuralSourcePicked Action = OnSourcePicked;
 	const FMixtormatOutputReference Identity = Source;
+	ReleaseEndpointPreview();
 	FSlateApplication::Get().DismissAllMenus();
 	Action.ExecuteIfBound(Identity);
 }
@@ -186,15 +259,18 @@ void SMixtormatStructuralSourcePicker::Navigate(const int32 Direction)
 	const int32 Current = EligibleEntries.IndexOfByKey(ActiveEntry);
 	const int32 Next = Current == INDEX_NONE ? (Direction > 0 ? 0 : EligibleEntries.Num() - 1)
 		: FMath::Clamp(Current + Direction, 0, EligibleEntries.Num() - 1);
+	HoveredSource = {};
 	ActiveEntry = EligibleEntries[Next];
 	FSlateApplication::Get().SetKeyboardFocus(SharedThis(this), EFocusCause::SetDirectly);
 	Scroll->SetScrollOffset(EligibleOffsets[Next]);
+	RefreshEndpointPreview();
 }
 
 FReply SMixtormatStructuralSourcePicker::OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 {
 	if (Event.GetKey() == EKeys::Escape)
 	{
+		ReleaseEndpointPreview();
 		FSlateApplication::Get().DismissAllMenus();
 		return FReply::Handled();
 	}

@@ -10,9 +10,11 @@ class SMixtormatLayerIcon final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerIcon)
-		: _bVisibility(false), _bOn(true), _bActive(false)
+		: _bVisibility(false), _MaxSize(0.0f), _bOn(true), _bActive(false)
 	{}
 		SLATE_ARGUMENT(bool, bVisibility)
+		// Optional row-local geometry bound; ordinary layer icons keep their role dimensions.
+		SLATE_ARGUMENT(float, MaxSize)
 		SLATE_ATTRIBUTE(bool, bOn)
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(const FSlateBrush*, Icon)
@@ -31,6 +33,7 @@ public:
 
 private:
 	bool bVisibility = false;
+	float MaxSize = 0.0f;
 	bool bPressed = false;
 	TAttribute<bool> bOn, bActive;
 	TAttribute<const FSlateBrush*> Icon;

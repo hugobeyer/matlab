@@ -173,6 +173,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 									.Font(SourceTextStyle.Font)
 									.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
 									.Text(InArgs._StructuralCount)
+									.ToolTipText(InArgs._StructuralCountToolTip)
 									.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 									.Visibility_Lambda([Count = InArgs._StructuralCount]()
 									{
@@ -235,6 +236,14 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 									})
 								]
 							)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(SBox)
+						.Visibility(InArgs._Disclosure.Widget == SNullWidget::NullWidget
+							? EVisibility::Collapsed : EVisibility::Visible)
+						.Padding(Layout.ItemGap, 0.0f, 0.0f, 0.0f)
+						[InArgs._Disclosure.Widget]
 					]
 
 				]

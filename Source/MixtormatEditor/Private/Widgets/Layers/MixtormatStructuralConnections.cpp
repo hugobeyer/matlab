@@ -9,6 +9,8 @@
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatStructuralSourcePicker.h"
+#include "UI/Controls/SMixtormatGroupAction.h"
+#include "UI/Rows/SMixtormatRow.h"
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
@@ -17,6 +19,17 @@
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+struct FMixtormatStructuralRelationshipPresentation
+{
+	FText Operation;
+	FText Source;
+	FText Target;
+	FText Output;
+	FText Summary;
+	FText ToolTip;
+	bool bHasIssue = false;
+};
 
 namespace
 {
@@ -218,17 +231,16 @@ FText SMixtormat::GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, co
 	return Label;
 }
 
-TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
-	const EMixtormatLayerChildType Type, FText& OutToolTip) const
+FMixtormatStructuralRelationshipPresentation SMixtormat::DescribeStructuralConnection(const FMixtormatProjectedChildRow& Row,
+	const EMixtormatLayerChildType Type) const
 {
 	const bool bPush = Type == EMixtormatLayerChildType::HeightPush;
-	const bool bIncoming = Row.Kind == EMixtormatProjectedChildKind::IncomingConnection;
 	const FText Operation = bPush ? LOCTEXT("StructuralRowPush", "Height Push") : LOCTEXT("StructuralRowWarp", "Warp");
 	const FMixtormatStructuralConnectionContext Context(WorkingLayers, WorkingLayerGroups, Row.Address);
 	const auto& SourceEdge = Row.Status.Source;
 	FText SourceLabel;
 	FText FullSourceLabel;
-	if (SourceEdge.Issue != EIssue::DuplicateIdentity && Context.Effective.IsValidIndex(SourceEdge.LayerIndex)
+	if (Row.bHasResolvedPayload && SourceEdge.Issue != EIssue::DuplicateIdentity && Context.Effective.IsValidIndex(SourceEdge.LayerIndex)
 		&& Context.Effective[SourceEdge.LayerIndex].Children.IsValidIndex(SourceEdge.ChildIndex))
 	{
 		const FMixtormatLayer& SourceLayer = Context.Effective[SourceEdge.LayerIndex];
@@ -238,15 +250,17 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 	}
 	else
 	{
-		SourceLabel = SourceEdge.Issue == EIssue::Unset ? LOCTEXT("StructuralRowChooseSource", "Choose source…")
+		SourceLabel = !Row.bHasResolvedPayload ? LOCTEXT("StructuralRowSourceUnavailable", "Source evaluation unavailable")
+			: SourceEdge.Issue == EIssue::Unset ? LOCTEXT("StructuralRowChooseSource", "Choose source…")
 			: SourceEdge.Issue == EIssue::MissingLayer ? LOCTEXT("StructuralRowSourceLayerMissing", "Source layer missing")
 			: SourceEdge.Issue == EIssue::DuplicateIdentity ? LOCTEXT("StructuralRowSourceAmbiguous", "Source identity ambiguous")
 			: LOCTEXT("StructuralRowSourceMissing", "Source missing");
 		FullSourceLabel = SourceLabel;
 	}
-	FText TargetLabel = !Row.ResolvedTargetId.IsValid() ? LOCTEXT("StructuralRowChooseTarget", "Choose target…")
+	FText TargetLabel = !Row.bHasResolvedPayload ? LOCTEXT("StructuralRowTargetUnavailable", "Target evaluation unavailable")
+		: !Row.ResolvedTargetId.IsValid() ? LOCTEXT("StructuralRowChooseTarget", "Choose target…")
 		: LOCTEXT("StructuralRowTargetMissing", "Target missing");
-	if (Context.Effective.IsValidIndex(Context.LayerIndex))
+	if (Row.bHasResolvedPayload && Context.Effective.IsValidIndex(Context.LayerIndex))
 	{
 		const FMixtormatLayer& Layer = Context.Effective[Context.LayerIndex];
 		int32 TargetIndex = INDEX_NONE;
@@ -266,19 +280,37 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 	const FText OutputKind = StaticEnum<EMixtormatPublishedFieldKind>()->GetDisplayNameTextByValue(
 		static_cast<int64>(Row.ResolvedSource.Kind));
 	const FText Detail = Row.PresentationReason.IsEmpty() ? ConnectionIssueText(Issue) : Row.PresentationReason;
-	OutToolTip = FText::Format(LOCTEXT("StructuralRowTooltip",
+	FText ToolTip = FText::Format(LOCTEXT("StructuralRowTooltip",
 		"{0} → {1} → {2}\nOutput: {3} ({4})\n{5}\nAuthored execution position: {6}. Visual nesting does not change order or ownership."),
 		FullSourceLabel, Operation, TargetLabel, Output, OutputKind, Detail, FText::AsNumber(Row.AuthoredChildIndex + 1));
-	if (!Row.Status.bModuleEnabled)
+	if (!Row.bModuleEnabled)
 	{
-		OutToolTip = FText::Format(LOCTEXT("StructuralRowDisabledTooltip", "{0}\nOperation disabled; configured endpoints are retained."), OutToolTip);
+		ToolTip = FText::Format(LOCTEXT("StructuralRowDisabledTooltip", "{0}\nOperation disabled; configured endpoints are retained."), ToolTip);
 	}
 	if (Context.Effective.IsValidIndex(Context.LayerIndex)
 		&& Context.Effective[Context.LayerIndex].Children.IsValidIndex(Context.ChildIndex)
 		&& Context.Effective[Context.LayerIndex].Children[Context.ChildIndex].IsInstance())
 	{
-		OutToolTip = FText::Format(LOCTEXT("StructuralRowInstanceTooltip", "{0}\nSettings instance: break the instance to edit its endpoints."), OutToolTip);
+		ToolTip = FText::Format(LOCTEXT("StructuralRowInstanceTooltip", "{0}\nSettings instance: break the instance to edit its endpoints."), ToolTip);
 	}
+	FMixtormatStructuralRelationshipPresentation Presentation;
+	Presentation.Operation = Operation;
+	Presentation.Source = SourceLabel;
+	Presentation.Target = TargetLabel;
+	Presentation.Output = Output;
+	Presentation.ToolTip = ToolTip;
+	Presentation.Summary = FText::Format(LOCTEXT("StructuralRelationshipSummary", "{0} · {1} → {2} → {3}"),
+		FullSourceLabel, Output, Operation, TargetLabel);
+	Presentation.bHasIssue = Issue != EIssue::None || !Row.PresentationReason.IsEmpty();
+	return Presentation;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
+	const EMixtormatLayerChildType Type, FText& OutToolTip) const
+{
+	const auto Presentation = DescribeStructuralConnection(Row, Type);
+	OutToolTip = Presentation.ToolTip;
+	const bool bIncoming = Row.Kind == EMixtormatProjectedChildKind::IncomingConnection;
 	const auto& Resolved = FMixtormatThemeStore::GetResolved();
 	const auto NameStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
@@ -287,8 +319,8 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 	const FText Prefix = FText::Format(bIncoming ? LOCTEXT("StructuralRowIncoming", "{0} ←")
-		: LOCTEXT("StructuralRowRepair", "{0} →"), Operation);
-	const FText Suffix = bIncoming && !Row.ResolvedSource.OutputName.IsNone() ? Output : FText::GetEmpty();
+		: LOCTEXT("StructuralRowRepair", "{0} →"), Presentation.Operation);
+	const FText Suffix = bIncoming && !Row.ResolvedSource.OutputName.IsNone() ? Presentation.Output : FText::GetEmpty();
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, Resolved.LayerConnections.TextGap, 0.0f)
 		[
@@ -297,7 +329,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 		[
 			SNew(STextBlock).Font(NameStyle.Font).ColorAndOpacity(NameStyle.ColorAndOpacity)
-				.Text(bIncoming ? SourceLabel : TargetLabel).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+				.Text(bIncoming ? Presentation.Source : Presentation.Target).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(Resolved.LayerConnections.TextGap, 0.0f, 0.0f, 0.0f)
 		[
@@ -308,7 +340,181 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 		[
 			SNew(STextBlock).Font(SourceStyle.Font).ColorAndOpacity(SourceStyle.ColorAndOpacity)
 				.Text(LOCTEXT("StructuralRowIssue", "!"))
-				.Visibility(Issue != EIssue::None || !Row.PresentationReason.IsEmpty() ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
+				.Visibility(Presentation.bHasIssue ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
+		];
+}
+
+bool SMixtormat::GetStructuralRelationshipRow(const FMixtormatChildAddress Address,
+	FMixtormatProjectedChildRow& OutRow, EMixtormatLayerChildType& OutType, FText& OutReason) const
+{
+	OutReason = LOCTEXT("StructuralRelationshipUnavailable", "Structural operation is unavailable or ambiguous");
+	if (Address.OwnerType != EMixtormatChildOwnerType::Layer)
+	{
+		OutReason = LOCTEXT("StructuralRelationshipGroup", "Shared-group structural endpoint provenance is unsupported");
+		return false;
+	}
+	int32 LayerIndex, ChildIndex;
+	if (!ResolveHierarchyChildAddress(Address, LayerIndex, ChildIndex)) { return false; }
+	const FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+	if (!IsStructuralModule(Child)) { return false; }
+	const auto Rows = MixtormatStructuralConnections::BuildChildProjection(WorkingLayers, WorkingLayerGroups, LayerIndex);
+	const FMixtormatProjectedChildRow* Row = Rows.FindByPredicate([ChildIndex](const FMixtormatProjectedChildRow& Candidate)
+		{ return Candidate.AuthoredChildIndex == ChildIndex; });
+	if (!Row) { return false; }
+	OutRow = *Row;
+	OutType = Child.Type;
+	OutReason = FText::GetEmpty();
+	return true;
+}
+
+FText SMixtormat::GetStructuralRelationshipText(const FMixtormatChildAddress Address, const bool bToolTip) const
+{
+	const FString Key = FString::Printf(TEXT("Relationship_%d_%s_%s_%d"), static_cast<int32>(Address.OwnerType),
+		*Address.OwnerId.ToString(), *Address.ChildId.ToString(), bToolTip ? 1 : 0);
+	if (const FText* Cached = StructuralConnectionLabelCache.Find(Key)) { return *Cached; }
+	FMixtormatProjectedChildRow Row;
+	EMixtormatLayerChildType Type;
+	FText Reason;
+	FText Text;
+	if (GetStructuralRelationshipRow(Address, Row, Type, Reason))
+	{
+		const auto Presentation = DescribeStructuralConnection(Row, Type);
+		Text = bToolTip ? Presentation.ToolTip : Presentation.Summary;
+	}
+	else { Text = Reason; }
+	StructuralConnectionLabelCache.Add(Key, Text);
+	return Text;
+}
+
+bool SMixtormat::ResolveStructuralSourceAddress(const FMixtormatChildAddress ModuleAddress,
+	FMixtormatChildAddress& OutSource, FText& OutReason) const
+{
+	OutSource = {};
+	FMixtormatProjectedChildRow Row;
+	EMixtormatLayerChildType Type;
+	if (!GetStructuralRelationshipRow(ModuleAddress, Row, Type, OutReason)) { return false; }
+	if (!Row.bHasResolvedPayload)
+	{
+		OutReason = Row.PresentationReason.IsEmpty() ? ConnectionIssueText(Row.Status.ModuleIssue) : Row.PresentationReason;
+		if (OutReason.IsEmpty()) { OutReason = LOCTEXT("StructuralSourceEvaluationUnavailable", "Source evaluation is unavailable"); }
+		return false;
+	}
+	const FMixtormatOutputReference& Source = Row.ResolvedSource;
+	if (!Source.SourceLayerId.IsValid() || !Source.SourceChildId.IsValid())
+	{
+		OutReason = LOCTEXT("StructuralRowChooseSource", "Choose source…");
+		return false;
+	}
+	if (Row.Status.Source.Issue == EIssue::DuplicateIdentity)
+	{
+		OutReason = ConnectionIssueText(EIssue::DuplicateIdentity);
+		return false;
+	}
+	int32 OwnerCount = 0;
+	const FMixtormatLayer* SourceLayer = nullptr;
+	const FMixtormatLayerGroup* SourceGroup = nullptr;
+	for (const auto& Layer : WorkingLayers)
+	{
+		if (Layer.LayerId != Source.SourceLayerId) { continue; }
+		SourceLayer = &Layer;
+		++OwnerCount;
+	}
+	for (const auto& Group : WorkingLayerGroups)
+	{
+		if (Group.GroupId != Source.SourceLayerId) { continue; }
+		SourceGroup = &Group;
+		++OwnerCount;
+	}
+	if (OwnerCount != 1)
+	{
+		OutReason = ConnectionIssueText(OwnerCount == 0 ? EIssue::MissingLayer : EIssue::DuplicateIdentity);
+		return false;
+	}
+	TArray<FMixtormatChildAddress> Candidates;
+	if (SourceLayer)
+	{
+		for (const auto& Child : SourceLayer->Children)
+		{
+			if (Child.ChildId == Source.SourceChildId)
+			{ Candidates.Add({EMixtormatChildOwnerType::Layer, SourceLayer->LayerId, Child.ChildId}); }
+		}
+		// An effective shared child navigates to its authored group row, never a fabricated local copy.
+		if (SourceLayer->GroupId.IsValid())
+		{
+			for (const auto& Group : WorkingLayerGroups)
+			{
+				if (Group.GroupId != SourceLayer->GroupId) { continue; }
+				for (const auto& Child : Group.Children)
+				{
+					if (MixtormatLayerGroups::MakeEffectiveChildId(Group.GroupId, Child.ChildId, SourceLayer->LayerId) == Source.SourceChildId)
+					{ Candidates.Add({EMixtormatChildOwnerType::Group, Group.GroupId, Child.ChildId}); }
+				}
+			}
+		}
+	}
+	else if (SourceGroup)
+	{
+		for (const auto& Child : SourceGroup->Children)
+		{
+			if (Child.ChildId == Source.SourceChildId)
+			{ Candidates.Add({EMixtormatChildOwnerType::Group, SourceGroup->GroupId, Child.ChildId}); }
+		}
+	}
+	int32 OwnerIndex, ChildIndex;
+	if (Candidates.Num() != 1 || !ResolveHierarchyChildAddress(Candidates[0], OwnerIndex, ChildIndex))
+	{
+		OutReason = ConnectionIssueText(Candidates.IsEmpty() ? EIssue::MissingChild : EIssue::DuplicateIdentity);
+		return false;
+	}
+	OutSource = Candidates[0];
+	OutReason = FText::GetEmpty();
+	return true;
+}
+
+FReply SMixtormat::GoToStructuralSource(const FMixtormatChildAddress ModuleAddress)
+{
+	FMixtormatChildAddress Source;
+	FText Reason;
+	if (!ResolveStructuralSourceAddress(ModuleAddress, Source, Reason))
+	{
+		WorkingStatusText = Reason.ToString();
+		return FReply::Handled();
+	}
+	return NavigateToChild(Source);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildStructuralRelationshipHeader()
+{
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const auto TextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, Resolved.LayerConnections.TextGap)
+		[
+			SNew(STextBlock).Font(TextStyle.Font).ColorAndOpacity(TextStyle.ColorAndOpacity).AutoWrapText(true)
+				.Text_Lambda([this]() { return GetStructuralRelationshipText(GetSelectedChildAddress(), false); })
+				.ToolTipText_Lambda([this]() { return GetStructuralRelationshipText(GetSelectedChildAddress(), true); })
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SMixtormatGroupAction)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+				.Text(LOCTEXT("StructuralGoToSource", "Go to source"))
+				.IsEnabled_Lambda([this]()
+				{
+					FMixtormatChildAddress Source;
+					FText Reason;
+					return ResolveStructuralSourceAddress(GetSelectedChildAddress(), Source, Reason);
+				})
+				.ToolTipText_Lambda([this]()
+				{
+					FMixtormatChildAddress Source;
+					FText Reason;
+					return ResolveStructuralSourceAddress(GetSelectedChildAddress(), Source, Reason)
+						? LOCTEXT("StructuralGoToSourceHint", "Select and reveal the authored source; connection endpoints remain unchanged") : Reason;
+				})
+				.OnClicked_Lambda([this]() { return GoToStructuralSource(GetSelectedChildAddress()); })
 		];
 }
 
@@ -335,28 +541,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralSourcePickerForTarget(const FGuid
 	for (const FMixtormatStructuralSourceCandidate& Candidate : Context.CollectSources(ProposedLayers, ModuleSource))
 	{
 		const FMixtormatLayer& Layer = ProposedLayers[Candidate.LayerIndex];
-		const FMixtormatLayerChild& Child = Layer.Children[Candidate.ChildIndex];
-		FText Breadcrumb = GetStructuralChildLabel(Layer, Candidate.ChildIndex);
-		// Resolve each scope owner by a unique GUID, never by a name or first matching child.
-		FGuid OwnerId = Child.ScopeOwnerChildId;
-		TSet<FGuid> Visited;
-		Visited.Add(Child.ChildId);
-		while (OwnerId.IsValid() && !Visited.Contains(OwnerId))
-		{
-			Visited.Add(OwnerId);
-			int32 OwnerIndex = INDEX_NONE;
-			int32 Matches = 0;
-			for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
-			{
-				if (Layer.Children[Index].ChildId != OwnerId) { continue; }
-				OwnerIndex = Index;
-				++Matches;
-			}
-			if (Matches != 1) { break; }
-			Breadcrumb = FText::Format(LOCTEXT("StructuralPickerBreadcrumb", "{0} / {1}"),
-				GetStructuralChildLabel(Layer, OwnerIndex), Breadcrumb);
-			OwnerId = Layer.Children[OwnerIndex].ScopeOwnerChildId;
-		}
+		const FText Breadcrumb = GetStructuralSourceBreadcrumb(Layer, Candidate.ChildIndex);
 		const FText OutputKind = StaticEnum<EMixtormatPublishedFieldKind>()->GetDisplayNameTextByValue(
 			static_cast<int64>(Candidate.Source.Kind));
 		const FText Output = FText::Format(LOCTEXT("StructuralPickerTypedOutput", "{0} ({1})"),
@@ -366,6 +551,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralSourcePickerForTarget(const FGuid
 		const EIssue Issue = Candidate.Status.ModuleIssue != EIssue::None ? Candidate.Status.ModuleIssue
 			: Candidate.Status.Target.Issue != EIssue::None ? Candidate.Status.Target.Issue : Candidate.Issue;
 		FMixtormatStructuralSourcePickerEntry Entry;
+		Entry.SourceAddress = Candidate.SourceAddress;
 		Entry.Source.SourceLayerId = Candidate.SourceAddress.OwnerId;
 		Entry.Source.SourceChildId = Candidate.SourceAddress.ChildId;
 		Entry.Source.OutputName = Candidate.Source.OutputName;
@@ -392,7 +578,27 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralSourcePickerForTarget(const FGuid
 		: LOCTEXT("StructuralPickerWarpCaption", "Warp {0} using…"),
 		GetStructuralChildLabel(ProposedLayers[LayerIndex], TargetIndex));
 	const TWeakPtr<SMixtormat> WeakThis = SharedThis(this);
+	const TSharedRef<FMixtormatStructuralEndpointPreview> Preview = MakeShared<FMixtormatStructuralEndpointPreview>();
+	Preview->Target = {EMixtormatChildOwnerType::Layer, TargetLayerId, TargetChildId};
+	StructuralEndpointPreview = Preview;
+	const TWeakPtr<FMixtormatStructuralEndpointPreview> WeakPreview = Preview;
+	const FMixtormatChildAddress TargetAddress = Preview->Target;
+	const TWeakPtr<SWidget> TargetRow = ChildRowWidgets.FindRef(TargetAddress);
+	Invalidate(EInvalidateWidgetReason::Paint);
 	Menu.Widget(SNew(SMixtormatStructuralSourcePicker)
+		.EndpointPreview(Preview)
+		.bPreviewCurrent_Lambda([WeakThis, WeakPreview, TargetAddress, TargetRow]()
+		{
+			const auto Editor = WeakThis.Pin();
+			// A new row for the same GUID is a rebuild, not the picker session's original row.
+			return Editor && WeakPreview.IsValid() && TargetRow.IsValid()
+				&& Editor->StructuralEndpointPreview.Pin() == WeakPreview.Pin()
+				&& Editor->ChildRowWidgets.FindRef(TargetAddress).Pin() == TargetRow.Pin();
+		})
+		.OnPreviewChanged(FSimpleDelegate::CreateLambda([WeakThis]()
+		{
+			if (const auto Editor = WeakThis.Pin()) { Editor->Invalidate(EInvalidateWidgetReason::Paint); }
+		}))
 		.Caption(Caption)
 		.Entries(MoveTemp(Entries))
 		.OnSourcePicked(FOnMixtormatStructuralSourcePicked::CreateLambda(
@@ -504,6 +710,14 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 
 EStructuralLinkHighlightRole SMixtormat::GetStructuralHighlightRole(const FMixtormatChildAddress Address) const
 {
+	if (const auto Preview = StructuralEndpointPreview.Pin())
+	{
+		const bool bSource = Preview->Source.IsValid() && Address == Preview->Source && ResolveChildAt(Address);
+		const bool bTarget = Preview->Target.IsValid() && Address == Preview->Target && ResolveChildAt(Address);
+		if (bSource && bTarget) { return EStructuralLinkHighlightRole::Both; }
+		if (bSource) { return EStructuralLinkHighlightRole::Source; }
+		return bTarget ? EStructuralLinkHighlightRole::Target : EStructuralLinkHighlightRole::None;
+	}
 	const FMixtormatChildAddress SelectedAddress = GetSelectedChildAddress();
 	const FMixtormatLayerChild* Module = ResolveChildAt(SelectedAddress);
 	if (!Module || !IsStructuralModule(*Module)) { return EStructuralLinkHighlightRole::None; }
@@ -521,6 +735,11 @@ EStructuralLinkHighlightRole SMixtormat::GetStructuralHighlightRole(const FMixto
 
 bool SMixtormat::IsSelectedStructuralSourceLayer(const FGuid LayerId, const FGuid GroupId) const
 {
+	if (const auto Preview = StructuralEndpointPreview.Pin())
+	{
+		return Preview->Source.IsValid() && ResolveChildAt(Preview->Source)
+			&& (Preview->Source.OwnerId == LayerId || (GroupId.IsValid() && Preview->Source.OwnerId == GroupId));
+	}
 	const FMixtormatLayerChild* Module = ResolveChildAt(GetSelectedChildAddress());
 	if (!Module || !IsStructuralModule(*Module)) { return false; }
 	const FMixtormatOutputReference& Source = Module->Type == EMixtormatLayerChildType::HeightPush

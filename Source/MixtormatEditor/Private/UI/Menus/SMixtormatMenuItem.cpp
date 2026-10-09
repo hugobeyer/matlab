@@ -22,6 +22,8 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 	bRowEnabled = InArgs._bEnabled;
 	bDestructive = InArgs._bDestructive;
 	OnActivate = InArgs._OnActivate;
+	OnHovered = InArgs._OnHovered;
+	OnUnhovered = InArgs._OnUnhovered;
 
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 	const Mixtormat::FMixtormatTextSpec MenuSpec = Mixtormat::FMixtormatTypography::GetSpec(
@@ -182,6 +184,18 @@ FSlateColor SMixtormatMenuItem::GetIconColor() const
 		Color.A *= FMixtormatThemeStore::GetResolved().Menus.ItemDisabled.A;
 	}
 	return FSlateColor(Color);
+}
+
+void SMixtormatMenuItem::OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
+	if (IsRowEnabled()) { OnHovered.ExecuteIfBound(); }
+}
+
+void SMixtormatMenuItem::OnMouseLeave(const FPointerEvent& MouseEvent)
+{
+	SCompoundWidget::OnMouseLeave(MouseEvent);
+	OnUnhovered.ExecuteIfBound();
 }
 
 FCursorReply SMixtormatMenuItem::OnCursorQuery(const FGeometry&, const FPointerEvent&) const

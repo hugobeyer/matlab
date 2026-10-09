@@ -8,6 +8,7 @@
 void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 {
 	bVisibility = InArgs._bVisibility;
+	MaxSize = InArgs._MaxSize;
 	bOn = InArgs._bOn;
 	bActive = InArgs._bActive;
 	Icon = InArgs._Icon;
@@ -20,7 +21,8 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 		FLinearColor::Transparent, 0.0f);
 	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
 		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
-	ChildSlot[SNew(SBox).WidthOverride(TargetSize).HeightOverride(TargetSize)];
+	const float BoundedTargetSize = MaxSize > 0.0f ? FMath::Min(TargetSize, MaxSize) : TargetSize;
+	ChildSlot[SNew(SBox).WidthOverride(BoundedTargetSize).HeightOverride(BoundedTargetSize)];
 }
 
 int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geometry,
@@ -31,7 +33,8 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	const bool Enabled = IsEnabled() && bParentEnabled;
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
 		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
-	const FVector2f Size(IconStyle.GlyphSize, IconStyle.GlyphSize);
+	const float GlyphSize = MaxSize > 0.0f ? FMath::Min(IconStyle.GlyphSize, MaxSize) : IconStyle.GlyphSize;
+	const FVector2f Size(GlyphSize, GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
 	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
 	FLinearColor Color = bVisibility && !On

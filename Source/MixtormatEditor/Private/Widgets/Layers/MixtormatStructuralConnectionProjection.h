@@ -23,6 +23,9 @@ struct FMixtormatProjectedChildRow
 	int32 ScopeDepthWithinIncoming = 0;
 	int32 ModuleAuthoredIndex = INDEX_NONE;
 	MixtormatOutputReferences::FStructuralLinkStatus Status;
+	// Missing/ambiguous evaluation retains authored endpoints, without claiming they resolved.
+	bool bHasResolvedPayload = false;
+	bool bModuleEnabled = true;
 	FMixtormatOutputReference ResolvedSource;
 	FGuid ResolvedTargetId;
 	FText PresentationReason;

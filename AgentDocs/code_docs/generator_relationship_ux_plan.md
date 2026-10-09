@@ -1,22 +1,50 @@
 # Generator relationships — target-first implementation plan
 
-Status: partially implemented, 2026-10-08. **Phases 1–2 and the phase-3 picker are source-reviewed only; no build/runtime validation.**
+Status: primary UI implementation delivered, 2026-10-08. **Phases 1–5 and the five-field style
+contract are implemented.** The user confirmed compilation through phase 4, including the earlier
+compiler fixes. The latest collapse/navigation/highlight slice is source-reviewed only; its compilation
+is unconfirmed. No runtime/visual/performance validation or broader validation is claimed.
 
 Delivered: owned gather-equivalent context, shared typed source collection, revalidated atomic connected
 creation, searchable/grouped target-first Warp/Push menus, canonical disabled reasons/tooltips, keyboard
 navigation/dismissal, preserved advanced unconnected paths, and generator add-menu gate alignment.
-Still pending: phase-3 temporary endpoint highlighting and phases 4–6 (display projection/connection rows,
-inspector summary/navigation, generator-local collapse/lifecycle, and `LayerConnections` style contract).
-No tests, diagnostics, commands, builds, Unreal launches, or image reads were performed.
+Also delivered: target-owned safe-block projection, authored repair rows, visible-topology scope paint,
+connection content in the existing child-row shell, local selected-halo suppression, stable addressed
+relation actions, real-boundary drag behavior, Change source/target/Disconnect source context actions,
+and the complete five-field `LayerConnections` definition/schema/resolution/readers/JSON contract.
+Also delivered: temporary picker endpoint highlighting, live-selection inspector summary/source
+navigation, generator-local collapse/stored-count summaries, ancestor reveal/scrolling and their
+document/selection lifecycle integration. Generator disclosure sizing uses existing ChildRowHeight.
+No agent tests, diagnostics, commands, builds, Unreal launches, or image reads were performed.
 
 Primary decision: **target-first source picker + target-owned connection rows**. This replaces the confusing primary workflow, not merely its labels. Existing advanced authoring, serialized data, evaluation semantics, and unrelated UI remain intact.
 
 Implementation baseline updated 2026-10-08: Noise Mask/Noise Gate and live `Noise Value from…`
 source authoring now exist; all six generators can own deformation tools, including Cliff Strata.
-The target-first Warp/Push picker and atomic creation now exist. Projected relationship rows,
-generator-local collapse, and `LayerConnections` style fields **still do not exist**. Do not conflate the mask
-source workflow with completion of this plan. See `noise_gate_flow_handoff.md` for delivered code,
-UI availability findings, and source-review limitations.
+The target-first Warp/Push picker, atomic creation, projected relationship rows and `LayerConnections`
+style fields now exist, as do generator-local collapse, live inspector relationships and temporary
+picker highlights. Noise source authoring remains a separate delivered workflow. See
+`noise_gate_flow_handoff.md` for delivered code, UI availability findings, and source-review limitations.
+The specification below records design requirements; actual source APIs take precedence over proposed
+names/file splits. Delivery does not establish build/runtime/visual correctness.
+
+### Delivered phase-5 APIs and lifecycle
+
+- `CollapsedGeneratorAddresses` is transient and keyed by owner type/owner GUID/child GUID.
+  Rebuild prunes stale addresses; a new document/history baseline clears the set.
+- `ToggleGeneratorExpanded` affects presentation only. Collapsed incoming counts include stored
+  relationships; full tooltips distinguish active-valid and issue counts.
+- `RevealChildInHierarchy` expands visual ancestors; `NavigateToChild` selects and scrolls through
+  `LayerScrollBox`. `ChildRowWidgets` excludes addresses recorded in `AmbiguousChildRowAddresses`.
+- `BuildStructuralRelationshipHeader()` resolves live selection because inspector panels are reused.
+  `ResolveStructuralSourceAddress` / `GoToStructuralSource` reject missing/ambiguous identities and
+  map uniquely resolved effective shared-group sources back to authored group rows.
+- `FMixtormatStructuralEndpointPreview` is picker-owned and weakly observed by the editor. Eligible
+  hover/keyboard focus uses existing endpoint bars without selection, history or compose changes.
+  Activation/Escape/dismissal, document/history-baseline changes and hierarchy rebuild invalidate
+  the preview; retained menu content checks session/target-row identity and menu widget-path lifetime.
+- `SMixtormatLayerIcon::MaxSize` defaults to zero, preserving existing callers. Generator disclosure
+  alone bounds hit/glyph size to the resolved child-row height.
 
 **Availability requirement:** do not hide supported features through generator-name whitelists,
 label simplification, or narrow-panel cleanup. Disable unavailable actions with a specific reason.
@@ -246,8 +274,10 @@ These paths are integration touchpoints, not a demand to edit every file. If a g
 
 ## 5. Proposed files and responsibility split
 
-The model and picker pairs below now exist. The projection and connection-row pairs remain
-**proposed and unimplemented**; their names/types are not claims about current APIs.
+The model, picker and projection pairs below now exist. Connection presentation is composed through
+optional `bConnectionPresentation`/`ConnectionContent` arguments on the existing child-row shell plus
+`BuildStructuralConnectionContent` in the adapter; no duplicate connection-row wrapper was introduced.
+The separate connection-row pair listed below is still a proposal, not an existing API.
 
 | Proposed files | Single responsibility |
 |---|---|

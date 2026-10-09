@@ -6,6 +6,7 @@
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
+#include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -13,6 +14,17 @@ using namespace MixtormatLayersPrivate;
 
 void SMixtormat::RebuildLayerList()
 {
+	StructuralEndpointPreview.Reset();
+	for (auto It = CollapsedGeneratorAddresses.CreateIterator(); It; ++It)
+	{
+		int32 OwnerIndex, ChildIndex;
+		if (!ResolveHierarchyChildAddress(*It, OwnerIndex, ChildIndex)) { It.RemoveCurrent(); continue; }
+		const auto& Children = It->OwnerType == EMixtormatChildOwnerType::Layer
+			? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
+		if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { It.RemoveCurrent(); }
+	}
+	ChildRowWidgets.Reset();
+	AmbiguousChildRowAddresses.Reset();
 	if (!LayerListBox.IsValid())
 	{
 		return;
@@ -88,12 +100,15 @@ void SMixtormat::RebuildLayerList()
 		// which is exactly what it is: one authored copy, applied to each of them at compose time.
 		if (bFirstMember)
 		{
-			for (int32 ChildIndex = 0; ChildIndex < Group->Children.Num(); ++ChildIndex)
+			const TArray<FMixtormatProjectedChildRow> VisibleRows = FilterVisibleHierarchyRows(BuildGroupHierarchyRows(GroupId));
+
+			for (int32 DisplayIndex = 0; DisplayIndex < VisibleRows.Num(); ++DisplayIndex)
 			{
+				const int32 ChildIndex = VisibleRows[DisplayIndex].AuthoredChildIndex;
 				// One indent for being inside the group, plus one per scope level -- the same
 				// depth-times-indent a layer's own children get, so a blur under a shared mask
 				// reads as being under it rather than beside it.
-				const FMixtormatLayerHierarchyPaint Hierarchy = ChildHierarchyPaint(Group->Children, ChildIndex, true);
+				const FMixtormatLayerHierarchyPaint Hierarchy = BuildGroupHierarchyPaint(VisibleRows, DisplayIndex);
 				GroupBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 				[
 					SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
@@ -149,10 +164,13 @@ void SMixtormat::RebuildLayerList()
 			];
 		if (IsGroupExpanded(Group.GroupId))
 		{
-			for (int32 ChildIndex = 0; ChildIndex < Group.Children.Num(); ++ChildIndex)
+			const TArray<FMixtormatProjectedChildRow> VisibleRows = FilterVisibleHierarchyRows(BuildGroupHierarchyRows(Group.GroupId));
+
+			for (int32 DisplayIndex = 0; DisplayIndex < VisibleRows.Num(); ++DisplayIndex)
 			{
+				const int32 ChildIndex = VisibleRows[DisplayIndex].AuthoredChildIndex;
 				const FMixtormatLayerHierarchyPaint Hierarchy =
-					ChildHierarchyPaint(Group.Children, ChildIndex, true);
+					BuildGroupHierarchyPaint(VisibleRows, DisplayIndex);
 				EmptyBody->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 				[
 					SNew(SMixtormatLayerHierarchy).Hierarchy(Hierarchy)
@@ -404,7 +422,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							return FReply::Handled();
 						})
 						[
-							SNew(SScrollBox)
+							SAssignNew(LayerScrollBox, SScrollBox)
 							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
 						]
 					]

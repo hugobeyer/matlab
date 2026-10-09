@@ -151,19 +151,30 @@ No broad feature enablement, Cluster-ID redesign, group structural authoring, le
 
 ## 5. Cross-plan status
 
-`generator_relationship_ux_plan.md` is now **partially implemented**, not completed by this Noise work.
+`generator_relationship_ux_plan.md` now has its **primary UI implementation delivered** by the
+subsequent relationship passes, not by this Noise work alone.
 The subsequent relationship pass delivered the owned structural context/shared source collector,
 connected Warp/Push atomic proposal/commit APIs, searchable target-first picker, canonical disabled
 reasons/tooltips, keyboard navigation, and advanced unconnected creation. Generator add-menu gates
 now match the creator. Source review only; no validation commands were run.
 
-Still proposed:
+The subsequent projection pass delivered `MixtormatStructuralConnectionProjection.*`, target-owned
+safe-block connection rows, authored repair rows, visible-topology scope painting, addressed relation
+actions, preserved real-subtree drag/copy behavior, endpoint context actions and the five-field
+`LayerConnections` style/schema/readers/JSON contract. Noise Gates remain in their true owned scopes.
+The user confirmed compilation through phase 4, including projection compiler fixes. The latest
+collapse/navigation/highlight slice remains source-reviewed only; its compilation is unconfirmed.
+No runtime/visual/performance result or passing latest build is claimed.
 
-- Temporary picker endpoint highlighting and its lifecycle cleanup.
-- Structural display projection files and target-owned connection rows.
-- Inspector relationship summary/source navigation.
-- Generator-local collapse.
-- LayerConnections style metrics/schema/readers.
+The subsequent phase-5 pass also delivered:
+
+- Picker-owned temporary endpoint highlights with dismissal/rebuild/document lifecycle cleanup.
+- Live-selection inspector relationship summary and uniquely addressed source navigation.
+- Transient generator-local collapse, stored/active-valid/issue counts, ancestor reveal and scrolling.
+- Generator disclosure sizing bounded by existing child-row height; ordinary icon defaults preserved.
+
+These UI changes do not alter authored execution arrays, scope ownership, clipboard/instance behavior
+or Noise Gate placement. Actual APIs and lifecycle are recorded in the relationship plan and `UI.md`.
 
 Integrate this delivered mask workflow into that UI plan:
 

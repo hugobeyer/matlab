@@ -906,8 +906,10 @@ TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightPush>(LOCTEXT("HeightPushAmount", "Amount"),
 		Push, &FMixtormatGeneratorHeightPush::Amount, -16.0, 16.0, 1.0, 0.01,
 		LOCTEXT("HeightPushAmountHint", "Bedding-coordinate shift per signed height unit. Negative reverses the push; zero is neutral. A scoped mask gates only this module.")));
-	return SNew(SBox)
+	return SNew(SVerticalBox)
 		.Visibility_Lambda([Push]() { return Push() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()[BuildStructuralRelationshipHeader()]
+		+ SVerticalBox::Slot().AutoHeight()
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(LOCTEXT("HeightPushHeading", "HEIGHT PUSH"))
@@ -976,8 +978,12 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralWarpControls()
 			return Selected && Selected->Kind == EMixtormatPublishedFieldKind::Flow;
 		})[FlowPanel]
 	];
-	return SNew(SBox)
+	return SNew(SVerticalBox)
 		.Visibility_Lambda([Warp]() { return Warp() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()[BuildStructuralRelationshipHeader()]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+		SNew(SBox)
 		.IsEnabled_Lambda([this]()
 		{
 			const FMixtormatChildAddress Address = GetSelectedChildAddress();
@@ -1003,7 +1009,8 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralWarpControls()
 					}
 				})))
 			[Panel]
-		];
+		]
+	];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()

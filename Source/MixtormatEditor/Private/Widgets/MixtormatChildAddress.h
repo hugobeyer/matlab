@@ -39,10 +39,23 @@ struct FMixtormatChildAddress
 		return OwnerId.IsValid() && ChildId.IsValid();
 	}
 
+	friend uint32 GetTypeHash(const FMixtormatChildAddress& Address)
+	{
+		return HashCombine(HashCombine(::GetTypeHash(static_cast<uint8>(Address.OwnerType)),
+			::GetTypeHash(Address.OwnerId)), ::GetTypeHash(Address.ChildId));
+	}
+
 	bool operator==(const FMixtormatChildAddress& Other) const
 	{
 		return OwnerType == Other.OwnerType && OwnerId == Other.OwnerId && ChildId == Other.ChildId;
 	}
+};
+
+// Picker-owned, editor-only endpoints; never serialized or added to selection/history.
+struct FMixtormatStructuralEndpointPreview
+{
+	FMixtormatChildAddress Source;
+	FMixtormatChildAddress Target;
 };
 
 // What the clipboard is holding and what a paste should do with it.

@@ -31,6 +31,7 @@ class SBox;
 class SButton;
 class SHorizontalBox;
 class SMenuAnchor;
+class SScrollBox;
 class STextBlock;
 class SVerticalBox;
 class SWrapBox;
@@ -40,6 +41,8 @@ class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatProjectedChildRow;
+struct FMixtormatStructuralRelationshipPresentation;
+struct FMixtormatLayerHierarchyPaint;
 struct FMixtormatSurfaceEntry;
 
 // What an Add-menu entry creates.
@@ -600,6 +603,29 @@ private:
 		FText* OutFullLabel = nullptr) const;
 	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
+	TSharedRef<SWidget> BuildStructuralRelationshipHeader();
+	bool GetStructuralRelationshipRow(FMixtormatChildAddress Address, FMixtormatProjectedChildRow& OutRow,
+		EMixtormatLayerChildType& OutType, FText& OutReason) const;
+	FMixtormatStructuralRelationshipPresentation DescribeStructuralConnection(const FMixtormatProjectedChildRow& Row,
+		EMixtormatLayerChildType Type) const;
+	FText GetStructuralRelationshipText(FMixtormatChildAddress Address, bool bToolTip) const;
+	bool ResolveStructuralSourceAddress(FMixtormatChildAddress ModuleAddress,
+		FMixtormatChildAddress& OutSource, FText& OutReason) const;
+	FReply GoToStructuralSource(FMixtormatChildAddress ModuleAddress);
+	FReply NavigateToChild(FMixtormatChildAddress Address);
+	// Mutates expansion only; the caller rebuilds if this returns true.
+	bool RevealChildInHierarchy(FMixtormatChildAddress Address);
+	FReply ToggleGeneratorExpanded(FMixtormatChildAddress Address);
+	bool ResolveHierarchyChildAddress(FMixtormatChildAddress Address, int32& OutOwnerIndex,
+		int32& OutChildIndex) const;
+	TArray<FMixtormatProjectedChildRow> BuildGroupHierarchyRows(FGuid GroupId) const;
+	FMixtormatLayerHierarchyPaint BuildGroupHierarchyPaint(
+		const TArray<FMixtormatProjectedChildRow>& VisibleRows, int32 DisplayIndex) const;
+	TArray<FMixtormatProjectedChildRow> FilterVisibleHierarchyRows(
+		const TArray<FMixtormatProjectedChildRow>& Rows) const;
+	TSharedRef<SWidget> BuildGeneratorDisclosure(FMixtormatChildAddress Address, bool bHasChildren,
+		FText ToolTip = FText::GetEmpty());
+	void RegisterChildRowWidget(FMixtormatChildAddress Address, TSharedRef<SWidget> Widget);
 	FText GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
 		EMixtormatLayerChildType Type, FText& OutToolTip) const;
@@ -1653,6 +1679,7 @@ private:
 	TSharedPtr<SWrapBox> SurfaceListBox;
 	TSharedPtr<SVerticalBox> UserLibraryListBox;
 	TSharedPtr<SVerticalBox> LayerListBox;
+	TSharedPtr<SScrollBox> LayerScrollBox;
 	TSharedPtr<SWrapBox> MaskListBox;
 	TSharedPtr<STextBlock> SelectedSurfaceText;
 	TSharedPtr<STextBlock> SelectedIdentityText;
@@ -1681,6 +1708,10 @@ private:
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
 	TSet<FGuid> ExpandedLayerIds;
+	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
+	TWeakPtr<FMixtormatStructuralEndpointPreview> StructuralEndpointPreview;
+	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;
+	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
 	TSet<FGuid> CollapsedGroupIds;
 	// Selecting a group clears the layer selection and the other way round, so the inspector

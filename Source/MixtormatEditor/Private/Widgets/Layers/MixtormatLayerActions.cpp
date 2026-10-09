@@ -1710,6 +1710,8 @@ FReply SMixtormat::CommitStructuralModuleForTarget(const FGuid TargetLayerId, co
 		return FReply::Handled();
 	}
 	WorkingLayers = MoveTemp(ProposedLayers);
+	CollapsedGeneratorAddresses.Remove({EMixtormatChildOwnerType::Layer, TargetLayerId, TargetChildId});
+	RevealChildInHierarchy(MakeChildAddress(LayerIndex, InsertIndex));
 	SetLayerExpanded(LayerIndex, true);
 	// Commit selection here: SelectWorkingChild can submit a second preview refresh in debug mode.
 	bBypassSelectedChild = false;

@@ -36,6 +36,7 @@ public:
 		SLATE_NAMED_SLOT(FArguments, Icon)
 		// Optional compact connection controls, supplied only for structural module rows.
 		SLATE_NAMED_SLOT(FArguments, StructuralLink)
+		SLATE_NAMED_SLOT(FArguments, Disclosure)
 		// Replaces ordinary text/badge columns; the adapter owns typography and endpoint status.
 		SLATE_NAMED_SLOT(FArguments, ConnectionContent)
 		// Retains the enable/icon shell and input routing, without the selected active halo.
@@ -45,6 +46,7 @@ public:
 		SLATE_ATTRIBUTE(FText, Kind)
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(FText, StructuralCount)
+		SLATE_ATTRIBUTE(FText, StructuralCountToolTip)
 		SLATE_ATTRIBUTE(EStructuralLinkHighlightRole, StructuralHighlightRole)
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(bool, bSelected)
