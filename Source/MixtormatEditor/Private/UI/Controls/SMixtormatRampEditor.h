@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/SlateBrush.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -22,7 +23,7 @@ class SMixtormatRampEditorBase : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatRampEditorBase)
-		: _Height(MixtormatTokens::ScalarRampHeight)
+		: _Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
 		, _DomainMin(0.0f)
 		, _DomainMax(1.0f)
 	{}
@@ -123,7 +124,7 @@ protected:
 	void ResetRamp();
 	void BuildLayout();
 
-	float Height = MixtormatTokens::ScalarRampHeight;
+	float Height = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight;
 	float DomainMin = 0.0f;
 	float DomainMax = 1.0f;
 	bool bDragging = false;

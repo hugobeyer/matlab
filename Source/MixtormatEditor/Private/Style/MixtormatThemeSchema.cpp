@@ -372,6 +372,19 @@ void AddIconRole(
 		NUM("ControlLayout.ScalarRampGridMajorOpacity", Controls, "Layout", "Scalar Ramp Grid Major Opacity", ControlLayout.ScalarRampGridMajorOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.ScalarRampBackgroundOpacity", Controls, "Layout", "Scalar Ramp Background Opacity", ControlLayout.ScalarRampBackgroundOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.ScalarRampShadeOpacity", Controls, "Layout", "Scalar Ramp Shade Opacity", ControlLayout.ScalarRampShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampHeight", Controls, "Layout", "Scalar Ramp Height", ControlLayout.ScalarRampHeight, 48, 256, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampCurveThickness", Controls, "Layout", "Scalar Ramp Curve Thickness", ControlLayout.ScalarRampCurveThickness, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampGridThickness", Controls, "Layout", "Scalar Ramp Grid Thickness", ControlLayout.ScalarRampGridThickness, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampMajorGridThickness", Controls, "Layout", "Scalar Ramp Major Grid Thickness", ControlLayout.ScalarRampMajorGridThickness, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampPointSize", Controls, "Layout", "Scalar Ramp Point Size", ControlLayout.ScalarRampPointSize, 2, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampToolbarGroupGap", Controls, "Layout", "Scalar Ramp Toolbar Group Gap", ControlLayout.ScalarRampToolbarGroupGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorRampHeight", Controls, "Layout", "Color Ramp Height", ControlLayout.ColorRampHeight, 24, 128, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.HairlineThickness", Controls, "Layout", "Hairline Thickness", ControlLayout.HairlineThickness, 0, 4, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ModifiedStripeWidth", Controls, "Layout", "Modified Stripe Width", ControlLayout.ModifiedStripeWidth, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ModifiedStripeOpacity", Controls, "Layout", "Modified Stripe Opacity", ControlLayout.ModifiedStripeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.BadgeCornerRadius", Controls, "Layout", "Badge Corner Radius", ControlLayout.BadgeCornerRadius, 0, 8, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BadgeTextInset", Controls, "Layout", "Badge Text Inset", ControlLayout.BadgeTextInset, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.InspectorTopMargin", Controls, "Layout", "Inspector Top Margin", ControlLayout.InspectorTopMargin, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ScalarRampBorderThickness", Controls, "Layout", "Scalar Ramp Border Thickness", ControlLayout.ScalarRampBorderThickness, 0, 4, .05, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.ScalarRampBorderOpacity", Controls, "Layout", "Scalar Ramp Border Opacity", ControlLayout.ScalarRampBorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.DragGhostOpacity", Controls, "Layout", "Drag Ghost Opacity", ControlLayout.DragGhostOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
@@ -474,6 +487,8 @@ void AddIconRole(
 		NUM_DEF("Layer.HairlineOpacity", Layers, "Rows", "Hairline Opacity", Layer.HairlineOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.GroupSaturation", Layers, "Group", "Group Saturation", Layer.GroupSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.GroupStrength", Layers, "Group", "Group Strength", Layer.GroupStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.GroupHairlineWidth", Layers, "Group", "Hairline Width", Layer.GroupHairlineWidth, 0, 4, .25, 2);
+		NUM_DEF("Layer.GroupHairlineOpacity", Layers, "Group", "Hairline Opacity", Layer.GroupHairlineOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildSaturation", Layers, "Child", "Child Saturation", Layer.ChildSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ChildHoverSaturation", Layers, "Child", "Child Hover Saturation", Layer.ChildHoverSaturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ChildSelectedSaturation", Layers, "Child", "Child Selected Saturation", Layer.ChildSelectedSaturation, 0, 4, .05, 2);
@@ -483,6 +498,8 @@ void AddIconRole(
 		NUM_DEF("Layer.ChildStrength", Layers, "Child", "Child Strength", Layer.ChildStrength, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildHoverStrength", Layers, "Child", "Child Hover Strength", Layer.ChildHoverStrength, 0, 1, .01, 2);
 		NUM_DEF("Layer.ChildSelectedStrength", Layers, "Child", "Child Selected Strength", Layer.ChildSelectedStrength, 0, 1, .01, 2);
+		NUM_DEF("Layer.ChildHairlineWidth", Layers, "Child", "Hairline Width", Layer.ChildHairlineWidth, 0, 4, .25, 2);
+		NUM_DEF("Layer.ChildHairlineOpacity", Layers, "Child", "Hairline Opacity", Layer.ChildHairlineOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ActiveGlow.Opacity", Layers, "Active", "Glow Opacity", Layer.ActiveGlow.Opacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.ActiveGlow.Saturation", Layers, "Active", "Glow Saturation", Layer.ActiveGlow.Saturation, 0, 4, .05, 2);
 		NUM_DEF("Layer.ActiveGlow.Reach", Layers, "Active", "Glow Reach", Layer.ActiveGlow.Reach, 0, 128, 1, 0);
@@ -568,7 +585,6 @@ void AddIconRole(
 
 				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.ComparisonToggleGap", Preview, "Layout", "Comparison Gap", PreviewLayout.ComparisonToggleGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);

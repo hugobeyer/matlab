@@ -44,7 +44,7 @@ void SMixtormatRampEditorBase::BuildLayout()
 	AddButton(MixtormatIcons::ScalarRampFrame(), FText::FromString(TEXT("Auto Zoom")),
 		FSimpleDelegate::CreateLambda([this]() { FrameView(); }),
 		TAttribute<bool>::CreateLambda([this]() { return true; }),
-		MixtormatTokens::ScalarRampToolbarGroupGap);
+		FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGroupGap);
 	AddButton(MixtormatIcons::ScalarRampReset(), FText::FromString(TEXT("Reset Curve")),
 		FSimpleDelegate::CreateLambda([this]() { ResetRamp(); }), false,
 		FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
@@ -119,7 +119,7 @@ FVector2f SMixtormatRampEditorBase::ScreenToGraph(const FVector2D& Size, const F
 int32 SMixtormatRampEditorBase::HitPoint(const FVector2D& Size, const FVector2D& Position) const
 {
 	// 2D hit testing against each marker's actual screen position (curve point or colour handle).
-	const float Radius = MixtormatTokens::ScalarRampPointSize * 1.2f;
+	const float Radius = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize * 1.2f;
 	int32 Best = INDEX_NONE;
 	float BestDistSq = Radius * Radius;
 	for (int32 Index = 0; Index < GetPointCount(); ++Index)
@@ -212,12 +212,14 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 	Grid.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampGridOpacity;
 	FLinearColor Major = Grid;
 	Major.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampGridMajorOpacity;
+	const float GridThickness = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampGridThickness;
+	const float MajorGridThickness = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampMajorGridThickness;
 	for (int32 Index = 0; Index <= 4; ++Index)
 	{
 		const float X = X0 + GraphSize.X * static_cast<float>(Index) / 4.0f;
 		const TArray<FVector2f> Line = { FVector2f(X, Y0), FVector2f(X, Y1) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, Grid, false, MixtormatTokens::ScalarRampGridThickness);
+			ESlateDrawEffect::None, Grid, false, GridThickness);
 	}
 	// Zero is the neutral line for a signed domain; emphasise it when the domain straddles zero.
 	if (DomainMin < 0.0f && DomainMax > 0.0f)
@@ -225,7 +227,7 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 		const float ZeroX = XToScreen(Size, 0.0f);
 		const TArray<FVector2f> Line = { FVector2f(ZeroX, Y0), FVector2f(ZeroX, Y1) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, Major, false, MixtormatTokens::ScalarRampMajorGridThickness);
+			ESlateDrawEffect::None, Major, false, MajorGridThickness);
 	}
 	for (int32 Index = 0; Index <= 4; ++Index)
 	{
@@ -233,7 +235,7 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 		const float Y = YToScreen(Size, V);
 		const TArray<FVector2f> Line = { FVector2f(X0, Y), FVector2f(X1, Y) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, Grid, false, MixtormatTokens::ScalarRampGridThickness);
+			ESlateDrawEffect::None, Grid, false, GridThickness);
 	}
 
 	// The canvas outline is its own theme token so the viewport edge can be tuned (or removed)

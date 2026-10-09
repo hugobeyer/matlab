@@ -292,7 +292,7 @@ void SMixtormatScalarRamp::PaintRampContent(FSlateWindowElementList& Elements, c
 			GraphToScreen(Size, Curve[Index + 1].X, Curve[Index + 1].Y) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 1, Geometry.ToPaintGeometry(), Segment,
 			ESlateDrawEffect::None, Pal.Get(Mixtormat::EMixtormatColorRole::Accent), true,
-			MixtormatTokens::ScalarRampCurveThickness);
+			FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampCurveThickness);
 	}
 }
 
@@ -302,7 +302,7 @@ void SMixtormatScalarRamp::PaintPointMarker(FSlateWindowElementList& Elements, c
 {
 	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
 	const FVector2f P = GraphToScreen(Size, Ramp.Points[Index].X, Ramp.Points[Index].Y);
-	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	const float R = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize * 0.5f;
 	const bool bSelected = Index == SelectedPoint;
 	// Selected point gets a clear accent outline/ring so it stays visible while not being dragged.
 	if (bSelected)

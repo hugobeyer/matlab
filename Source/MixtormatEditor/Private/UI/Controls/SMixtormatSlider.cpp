@@ -561,12 +561,12 @@ int32 SMixtormatSlider::OnPaint(
 	if (bModified && bEnabled)
 	{
 		FLinearColor Marker = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Modified);
-		Marker.A *= MixtormatTokens::ModifiedStripeOpacity;
+		Marker.A *= FMixtormatThemeStore::GetResolved().ControlLayout.ModifiedStripeOpacity;
 		FSlateDrawElement::MakeBox(
 			OutDrawElements,
 			LayerId + 3,
 			AllottedGeometry.ToPaintGeometry(
-				FVector2f(MixtormatTokens::ModifiedStripeWidth, LocalSize.Y),
+				FVector2f(FMixtormatThemeStore::GetResolved().ControlLayout.ModifiedStripeWidth, LocalSize.Y),
 				FSlateLayoutTransform(FVector2f::ZeroVector)),
 			FAppStyle::GetBrush("WhiteBrush"),
 			ESlateDrawEffect::None,

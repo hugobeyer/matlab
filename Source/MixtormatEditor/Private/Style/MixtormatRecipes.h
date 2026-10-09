@@ -57,8 +57,8 @@ namespace Mixtormat
 		FMixtormatSurfaceRecipe MakeLayerGroupCrossRecipe(
 			const FMixtormatTheme& Theme, const FMixtormatLayerRecipeContext& Context);
 		FMixtormatSurfaceRecipe MakeLayerGlowRecipe(const FMixtormatTheme& Theme, float ReachFraction);
-		// Non-selected hairlines are for Layer/Group only; selected hairlines apply to every kind.
-		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(const FMixtormatTheme& Theme, bool bSelected);
+		// Non-selected hairlines are per row kind; selected hairlines apply to every kind.
+		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(const FMixtormatTheme& Theme, bool bSelected, EMixtormatLayerKind Kind);
 
 		// Ground only, for container margins and gaps between separately arranged bands.
 	FMixtormatSurfaceRecipe MakeGroundRecipe();

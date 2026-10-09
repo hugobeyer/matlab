@@ -1258,7 +1258,7 @@ void SMixtormat::AddMaskShapingRows(
 			const FMixtormatMaskShaping* Shaping = Resolve();
 			return Shaping ? Shaping->CurveBias : FMixtormatScalarRamp();
 		})
-		.Height(MixtormatTokens::ScalarRampHeight)
+		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
 		.CanonicalYMin(0.0f)
 		.CanonicalYMax(1.0f)
 		.SoftYMin(-1.5f)

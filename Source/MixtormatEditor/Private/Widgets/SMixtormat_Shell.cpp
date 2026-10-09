@@ -514,7 +514,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 						[
-							SNew(SBox).HeightOverride(MixtormatTokens::HairlineThickness)
+							SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 							[
 								SNew(SImage)
 								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
@@ -534,7 +534,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 						]
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 						[
-							SNew(SBox).HeightOverride(MixtormatTokens::HairlineThickness)
+							SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 							[
 								SNew(SImage)
 								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))

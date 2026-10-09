@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MixtormatScalarRamp.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatRampEditor.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
@@ -15,7 +16,7 @@ class SMixtormatScalarRamp final : public SMixtormatRampEditorBase
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatScalarRamp)
-		: _Height(MixtormatTokens::ScalarRampHeight)
+		: _Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
 		, _CanonicalXMin(0.0f)
 		, _CanonicalXMax(1.0f)
 		, _CanonicalYMin(0.0f)

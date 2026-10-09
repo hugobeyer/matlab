@@ -123,8 +123,11 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 	}
 	if (Context.bSelected || !Child)
 	{
+		const float RestWidth = Kind == EMixtormatLayerKind::Group ? Theme.Layer.GroupHairlineWidth
+			: Kind == EMixtormatLayerKind::Child ? Theme.Layer.ChildHairlineWidth
+			: Theme.Layer.HairlineWidth;
 		const float Width = FMath::Clamp(Context.bSelected
-			? Theme.Layer.ActiveHairlineWidth : Theme.Layer.HairlineWidth, 0.0f, Size.Y);
+			? Theme.Layer.ActiveHairlineWidth : RestWidth, 0.0f, Size.Y);
 		if (Width > 0.0f)
 		{
 			FMixtormatSurfaceSamples Backdrop;
@@ -136,7 +139,7 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 				Backdrop = WithGlow;
 			}
 			FMixtormatSurfacePainter::PaintOverlay(Elements, ++PaintLayer,
-				BandGeometry(0.0f, Width), MakeLayerHairlineRecipe(Theme, Context.bSelected),
+				BandGeometry(0.0f, Width), MakeLayerHairlineRecipe(Theme, Context.bSelected, Kind),
 				Palette, Backdrop, 0.0f, DrawStyle);
 		}
 	}

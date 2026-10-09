@@ -207,7 +207,7 @@ TSharedRef<SWidget> MakeCaption(const FText& Caption)
 TSharedRef<SWidget> MakeHairline()
 {
 	return SNew(SBox)
-		.HeightOverride(MixtormatTokens::HairlineThickness)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 		.Padding(FMargin(0.0f, MixtormatTokens::HairlineMargin))
 		[
 			SNew(SImage)

@@ -175,17 +175,11 @@ namespace MixtormatTokens
 	// caption costs more height, so it is for groupings the labels do not already imply.
 	constexpr float CaptionHeightAbove = 6.0f;
 	constexpr float CaptionHeightBelow = 2.0f;
-	constexpr float HairlineThickness = 1.0f;
 	constexpr float HairlineMargin = 2.0f;
 
 	// ---- Slider -----------------------------------------------------------------------------
 	// Leading stripe marking a value that differs from its default.
-	// Width and intensity of the leading stripe marking a value that differs from its default.
-		// The prototype authors these separately because the weight is a geometry decision and the
-		// intensity is a paint one, and it is free to do so -- it has no persisted themes to break.
-		inline float ModifiedStripeWidth = 2.0f;
-		inline float ModifiedStripeOpacity = 0.8f;
-	// The label shifts right by this much when the stripe is showing, so text never sits on it.
+// The label shifts right by this much when the stripe is showing, so text never sits on it.
 	constexpr float ModifiedLabelInset = 5.0f;
 	// ---- Well --------------------------------------------------------------------------------
 	// The recess every control sits in. Its three authored parts, in the order they composite:
@@ -370,14 +364,6 @@ namespace MixtormatTokens
 	// Centre tick on a range that spans zero: TickInsetY, TickWidth and ZeroTickOpacity live in
 	// the Well block above, with the rest of the control's own paint values.
 
-	// ---- Segmented control ------------------------------------------------------------------
-	inline float SegmentHeight = 18.0f;
-	// Hairline *between* cells -- the one border the design allows, because it divides rather
-	// than encloses.
-	constexpr float SegmentSeamWidth = 1.0f;
-	// Multiply pass darkening the trailing edge of an active cell.
-	constexpr float SegmentShadeAlpha = 0.1f;
-
 	// ---- Icons ------------------------------------------------------------------------------
 	// Sized per role, not per pixel budget: the eye is the only thing in a layer row a user aims
 	// at, so it is the largest; a disclosure chevron is read, not clicked, and stays small.
@@ -396,24 +382,6 @@ namespace MixtormatTokens
 	constexpr float IconBrushSize = 20.0f;
 	// Menu and toolbar glyphs, which sit alone rather than inside a dense row.
 	constexpr float IconBrushSizeLarge = 28.0f;
-
-	// ---- Scalar Ramp / Curve Editor -----------------------------------------------------------
-	inline float ScalarRampHeight = 112.0f;
-	inline float ScalarRampCurveThickness = 1.6f;
-	inline float ScalarRampGridThickness = 0.7f;
-	inline float ScalarRampMajorGridThickness = 1.0f;
-	inline float ScalarRampPointSize = 7.0f;
-	inline float ScalarRampIconSize = 13.0f;
-	inline float ScalarRampIconGap = 2.0f;
-	inline float ScalarRampToolbarGap = 3.0f;
-	inline float ScalarRampToolbarGroupGap = 8.0f;
-	inline float ScalarRampToolbarHeight = 20.0f;
-	inline float ScalarRampViewportPadding = 8.0f;
-
-	// ---- Color Ramp ---------------------------------------------------------------------------
-	// The colour ramp is 1D (X + colour): the gradient bar and its handles are all it draws, so it
-	// sits at roughly half the scalar ramp's height, which reserves room for the curve itself.
-	inline float ColorRampHeight = 56.0f;
 
 	// ---- Blend modes -----------------------------------------------------------------------
 	// The eight `*-blend-mode` tokens the prototype authors, as indices into
@@ -498,22 +466,15 @@ namespace MixtormatTokens
 	// Fixed width, not hugging its text: the badges form a column down the right edge, and the
 	// word changes without the column moving.
 	inline float BadgeWidth = 44.0f;
-	// Matches the badge's old flat brush radius.
-	inline float BadgeCornerRadius = 1.0f;
 	constexpr float BadgeHeight = 16.0f;
 	// Longest word a badge is allowed to carry, and what BadgeWidth is sized for. The box does not
 	// grow to fit its text -- that is the point, the marks have to form a straight column -- so a
 	// longer word clips instead of widening, and the derivation tables are written against this.
 	constexpr int32 BadgeMaxCharacters = 6;
-	// Horizontal breathing room inside the fixed box, between the glyph and the edge it clips
-	// against -- text was sitting flush on the box's own bounds.
-	constexpr float BadgeTextInset = 3.0f;
 
 	// ---- Thumbnails -------------------------------------------------------------------------
 	// One tile widget serves the library, the mask replacement grid and the mask picker; only the
 	// size differs. The name strip is an overlay, so it costs image rather than layout height.
-	constexpr float SurfaceTileSize = 90.0f;
-	constexpr float SurfaceTileSizeDense = 68.0f;
 	constexpr float MaskTileSize = 96.0f;
 	constexpr float MaskPickerTileSize = 76.0f;
 	constexpr float MaskPickerTileSizeDense = 52.0f;
@@ -593,10 +554,6 @@ namespace MixtormatTokens
 	// against the edge of the thing containing it, not to space the rows out.
 	inline float HeaderContentGap = 2.0f;
 
-	// The column's own top margin, above the first group. The panel header sits directly over
-	// it and without this the first group reads as attached to that bar rather than as the
-	// first thing in the column.
-	inline float InspectorTopMargin = 8.0f;
 	// Viewport rail buttons: accent added to the plate on hover / press, and the icon's opacity
 	// at rest (full on hover).
 	inline float OverlayHoverAccent = 0.18f;
@@ -620,8 +577,6 @@ namespace MixtormatTokens
 
 	// ---- Shell and dialogs ------------------------------------------------------------------
 	inline float PanelPadding = 7.0f;
-	inline float SplitterHandleSize = 1.0f;
-	inline float SplitterHitSize = 6.0f;
 	inline float LayerStackWidth = 423.0f;
 	inline float InspectorWidth = 520.0f;
 	// ---- Floating panels ---------------------------------------------------------------------
@@ -678,7 +633,6 @@ namespace MixtormatTokens
 	inline float ToolbarButtonMargin = 2.0f;
 	inline float ToolbarLabelPadding = 5.0f;
 	constexpr float LibraryBrowseButtonGap = 4.0f;
-	constexpr float PreviewComparisonToggleGap = 4.0f;
 	inline float DialogPadding = 12.0f;
 	inline float DialogButtonGap = 6.0f;
 	inline float DialogActionsTopMargin = 10.0f;

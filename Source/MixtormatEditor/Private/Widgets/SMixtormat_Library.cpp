@@ -510,12 +510,12 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				Mixtormat::FMixtormatBorderLayer Border;
 				Border.Source.Role = Mixtormat::EMixtormatColorRole::Hairline;
 				Border.Source.Opacity = FMixtormatThemeStore::GetTheme().Menu.BorderOpacity;
-				Border.Width = MixtormatTokens::HairlineThickness;
+				Border.Width = FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness;
 				Border.bTop = Border.bBottom = Border.bLeft = Border.bRight = true;
 				Recipe.Borders.Add(Border);
 				return Recipe;
 			})
-			.Padding(FMargin(MixtormatTokens::HairlineThickness))
+			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness))
 			[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
@@ -596,7 +596,7 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 			[
 				SNew(SSplitter)
 				.Style(&MixtormatShell::GetSplitterStyle())
-				.PhysicalSplitterHandleSize(MixtormatTokens::HairlineThickness)
+				.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 				.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 				+ SSplitter::Slot()
 				.Value_Lambda([this]() { return GalleryColumnFraction; })

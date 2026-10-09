@@ -192,7 +192,7 @@ void SMixtormatColorRamp::PaintRampContent(FSlateWindowElementList& Elements, co
 	const FGraphRect Rect = GetGraphRect(Size);
 	const float Y0 = Rect.Y0;
 	const float Y1 = Rect.Y1;
-	const float BarHeight = FMath::Max((Y1 - Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
+	const float BarHeight = FMath::Max((Y1 - Y0) - FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize, 4.0f);
 
 	// The gradient bar, sampled across the domain. Sample at the pixel rate the bar is drawn at
 	// and evaluate each sample at its left edge, so adjacent boxes meet at the same colour and
@@ -220,7 +220,7 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 	const FVector2f Marker = GetMarkerScreenPosition(Size, Index);
 	const float SX = Marker.X;
 	const float HandleY = Marker.Y;
-	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	const float R = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize * 0.5f;
 	const bool bSelected = Index == SelectedPoint;
 	// Selected stop gets a clear accent outline/ring so it stays visible while not being dragged.
 	if (bSelected)
@@ -248,8 +248,8 @@ void SMixtormatColorRamp::PaintPointMarker(FSlateWindowElementList& Elements, co
 float SMixtormatColorRamp::GetHandleScreenY(const FVector2D& Size) const
 {
 	const FGraphRect Rect = GetGraphRect(Size);
-	const float BarHeight = FMath::Max((Rect.Y1 - Rect.Y0) - MixtormatTokens::ScalarRampPointSize, 4.0f);
-	const float R = MixtormatTokens::ScalarRampPointSize * 0.5f;
+	const float BarHeight = FMath::Max((Rect.Y1 - Rect.Y0) - FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize, 4.0f);
+	const float R = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampPointSize * 0.5f;
 	return Rect.Y0 + BarHeight + R;
 }
 

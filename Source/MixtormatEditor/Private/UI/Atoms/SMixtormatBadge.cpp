@@ -45,15 +45,15 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 					.StartColor(this, &SMixtormatBadge::GetTop)
 					.EndColor(this, &SMixtormatBadge::GetBottom)
 					.Orientation(Orient_Vertical)
-					.CornerRadius(MixtormatTokens::BadgeCornerRadius)
+					.CornerRadius(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeCornerRadius)
 				]
 				// The lip along the top edge, like the layer rows carry.
 				+ SOverlay::Slot()
 				.VAlign(VAlign_Top)
-				.Padding(FMargin(MixtormatTokens::BadgeCornerRadius, 0.0f))
+				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeCornerRadius, 0.0f))
 				[
 					SNew(SBox)
-					.HeightOverride(MixtormatTokens::HairlineThickness)
+					.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 					[
 						SNew(SImage)
 						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
@@ -61,7 +61,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 					]
 				]
 				+ SOverlay::Slot()
-				.Padding(FMargin(MixtormatTokens::BadgeTextInset, 0.0f))
+				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeTextInset, 0.0f))
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
 				[

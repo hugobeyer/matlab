@@ -397,7 +397,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				SNew(SVerticalBox)
 				// The selection header (thumbnail, name, source, badge) takes the inspector's top
 				// margin; it sits above the well, so the well's own padding never reached it.
-				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, MixtormatTokens::InspectorTopMargin, 2.0f, 3.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(2.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorTopMargin, 2.0f, 3.0f)
 				[
 					// The header doubles as the overlay's drag handle. Docked, nothing reads it.
 					SAssignNew(InspectorOverlay.Header, SVerticalBox)

@@ -434,8 +434,13 @@ namespace Mixtormat
 		float ReferenceRestTint = 0.22f;
 		float InstanceSourceLeftTint = 0.55f;
 		float InstanceSourceRightTint = 0.10f;
+		// Resting top hairline per row kind; the selected row keeps its own Active pair below.
+		float GroupHairlineWidth = 1.0f;
+		float GroupHairlineOpacity = 0.46f;
 		float HairlineWidth = 1.0f;
 		float HairlineOpacity = 0.46f;
+		float ChildHairlineWidth = 1.0f;
+		float ChildHairlineOpacity = 0.46f;
 
 		float GroupSaturation = 1.0f;
 		float GroupStrength = 0.5f;
@@ -611,6 +616,20 @@ namespace Mixtormat
 		// Canvas ground and the outside-0..1 shade bands, over the Ground/Shade palette hues.
 		float ScalarRampBackgroundOpacity = 1.0f;
 		float ScalarRampShadeOpacity = 1.0f;
+		// Migrated from MixtormatTokens: ramp canvas geometry, hairlines, modified stripe, badges.
+		float ScalarRampHeight = 112.0f;
+		float ScalarRampCurveThickness = 1.6f;
+		float ScalarRampGridThickness = 0.7f;
+		float ScalarRampMajorGridThickness = 1.0f;
+		float ScalarRampPointSize = 7.0f;
+		float ScalarRampToolbarGroupGap = 8.0f;
+		float ColorRampHeight = 56.0f;
+		float HairlineThickness = 1.0f;
+		float ModifiedStripeWidth = 2.0f;
+		float ModifiedStripeOpacity = 0.8f;
+		float BadgeCornerRadius = 1.0f;
+		float BadgeTextInset = 3.0f;
+		float InspectorTopMargin = 8.0f;
 		// The curve canvas viewport outline. Split from the grid's boundary lines so the canvas
 		// edge can be tuned without retuning the grid it encloses.
 		float ScalarRampBorderThickness = 1.0f;
@@ -671,6 +690,9 @@ namespace Mixtormat
 		float ThumbnailSize = 20.0f;
 		float ItemGap = 0.0f;
 
+		// Indent applied to a layer when nested inside a group, so member layers step in
+		// from the group header instead of sitting at the same left edge.
+		float LayerIndent = 14.0f;
 		float ChildIndent = 28.0f;
 	};
 
@@ -706,7 +728,6 @@ namespace Mixtormat
 		float OverlayLabelGap = 5.0f;
 		float ToolbarGap = 5.0f;
 		float OverlayButtonGap = 4.0f;
-		float ComparisonToggleGap = 4.0f;
 		float ResolutionControlWidth = 92.0f;
 		float TogglePadding = 2.0f;
 		float FinalPopupWidth = 232.0f;

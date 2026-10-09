@@ -234,13 +234,17 @@ namespace Mixtormat
 			return Recipe;
 		}
 
-		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(const FMixtormatTheme& Theme, bool bSelected)
+		FMixtormatSurfaceRecipe MakeLayerHairlineRecipe(
+			const FMixtormatTheme& Theme, const bool bSelected, const EMixtormatLayerKind Kind)
 		{
 			FMixtormatSurfaceRecipe Recipe;
 			FMixtormatPaintLayer Hairline;
 			Hairline.Source = MakeColorRef(bSelected ? EMixtormatColorRole::Accent : EMixtormatColorRole::Hairline);
 			Hairline.Source.Saturation = bSelected ? Theme.Layer.ActiveGlow.Saturation : 1.0f;
-			Hairline.Strength = bSelected ? Theme.Layer.ActiveHairlineOpacity : Theme.Layer.HairlineOpacity;
+			Hairline.Strength = bSelected ? Theme.Layer.ActiveHairlineOpacity
+				: Kind == EMixtormatLayerKind::Group ? Theme.Layer.GroupHairlineOpacity
+				: Kind == EMixtormatLayerKind::Child ? Theme.Layer.ChildHairlineOpacity
+				: Theme.Layer.HairlineOpacity;
 			Hairline.Blend = bSelected ? MixtormatCompositing::EMixtormatBlendMode::Additive : MixtormatCompositing::EMixtormatBlendMode::Normal;
 			Hairline.OpacityRamp = MakeLinearRamp(EMixtormatAxis::Horizontal, 1.0f, 1.0f, 2);
 			Recipe.Layers.Add(Hairline);

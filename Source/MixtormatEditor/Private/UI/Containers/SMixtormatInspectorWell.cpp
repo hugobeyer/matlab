@@ -14,7 +14,7 @@ void SMixtormatInspectorWell::Construct(const FArguments& InArgs)
 	[
 		SNew(SBorder)
 		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InspectorWell")))
-		.Padding(FMargin(0.0f, MixtormatTokens::InspectorTopMargin, 0.0f, 0.0f))
+		.Padding(FMargin(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorTopMargin, 0.0f, 0.0f))
 		[
 			SAssignNew(Stack, SVerticalBox)
 		]

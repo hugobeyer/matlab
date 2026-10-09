@@ -188,6 +188,19 @@ namespace Mixtormat
 		T.ControlLayout.ScalarRampGridMajorOpacity = 1.0f;
 		T.ControlLayout.ScalarRampBackgroundOpacity = 1.0f;
 		T.ControlLayout.ScalarRampShadeOpacity = 1.0f;
+		T.ControlLayout.ScalarRampHeight = 112.0f;
+		T.ControlLayout.ScalarRampCurveThickness = 1.6f;
+		T.ControlLayout.ScalarRampGridThickness = 0.7f;
+		T.ControlLayout.ScalarRampMajorGridThickness = 1.0f;
+		T.ControlLayout.ScalarRampPointSize = 7.0f;
+		T.ControlLayout.ScalarRampToolbarGroupGap = 8.0f;
+		T.ControlLayout.ColorRampHeight = 56.0f;
+		T.ControlLayout.HairlineThickness = 1.0f;
+		T.ControlLayout.ModifiedStripeWidth = 2.0f;
+		T.ControlLayout.ModifiedStripeOpacity = 0.8f;
+		T.ControlLayout.BadgeCornerRadius = 1.0f;
+		T.ControlLayout.BadgeTextInset = 3.0f;
+		T.ControlLayout.InspectorTopMargin = 8.0f;
 		T.ControlLayout.ScalarRampBorderThickness = 1.0f;
 		T.ControlLayout.ScalarRampBorderOpacity = 0.5f;
 		T.ControlLayout.DragGhostOpacity = 0.93f;
@@ -264,6 +277,10 @@ namespace Mixtormat
 		T.Layer.SelectedStrength = 1.0f;
 		T.Layer.HairlineWidth = 1.0f;
 		T.Layer.HairlineOpacity = 0.22f;
+		T.Layer.GroupHairlineWidth = 1.0f;
+		T.Layer.GroupHairlineOpacity = 0.22f;
+		T.Layer.ChildHairlineWidth = 1.0f;
+		T.Layer.ChildHairlineOpacity = 0.22f;
 		T.Layer.RowBottom = SRGB(20, 22, 23);
 		T.Layer.HoverTop = SRGB(45, 49, 52);
 		T.Layer.HoverBottom = SRGB(34, 38, 41);
@@ -305,6 +322,7 @@ namespace Mixtormat
 		T.LayerLayout.Gap = 1.0f;                     // --layer-gap
 		T.LayerLayout.ColumnGutter = 4.0f;
 		T.LayerLayout.ThumbnailSize = 18.0f;          // --thumbnail-size
+		T.LayerLayout.LayerIndent = 14.0f;
 		T.LayerLayout.ChildIndent = 22.0f;            // --layer-indent
 
 		// ---- Button --------------------------------------------------------------------
@@ -362,7 +380,6 @@ namespace Mixtormat
 		T.PreviewLayout.OverlayClusterInset = 2.0f;
 		T.PreviewLayout.ToolbarGap = 5.0f;
 		T.PreviewLayout.OverlayButtonGap = 4.0f;
-		T.PreviewLayout.ComparisonToggleGap = 4.0f;
 		T.PreviewLayout.ResolutionControlWidth = 92.0f;
 		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 232.0f;
@@ -694,6 +711,10 @@ namespace Mixtormat
 		T.Layer.InstanceSourceRightTint = 0.100000001f;
 		T.Layer.HairlineWidth = 0.75f;
 		T.Layer.HairlineOpacity = 0.179999992f;
+		T.Layer.GroupHairlineWidth = 0.75f;
+		T.Layer.GroupHairlineOpacity = 0.179999992f;
+		T.Layer.ChildHairlineWidth = 0.75f;
+		T.Layer.ChildHairlineOpacity = 0.179999992f;
 		T.Layer.GroupSaturation = 1.25f;
 		T.Layer.GroupStrength = 1.0f;
 		T.Layer.ChildSaturation = 0.949999988f;
@@ -723,6 +744,7 @@ namespace Mixtormat
 		T.LayerLayout.PaddingX = 8.0f;
 		T.LayerLayout.ThumbnailSize = 20.0f;
 		T.LayerLayout.ItemGap = 7.0f;
+		T.LayerLayout.LayerIndent = 14.0f;
 		T.LayerLayout.ChildIndent = 28.0f;
 		T.Button.Height = 20.0f;
 		T.Button.HorizontalPadding = 8.0f;
@@ -771,7 +793,6 @@ namespace Mixtormat
 		T.PreviewLayout.OverlayInset = 10.0f;
 		T.PreviewLayout.ToolbarGap = 6.0f;
 		T.PreviewLayout.OverlayButtonGap = 4.0f;
-		T.PreviewLayout.ComparisonToggleGap = 12.0f;
 		T.PreviewLayout.ResolutionControlWidth = 122.0f;
 		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 256.0f;
@@ -938,6 +959,8 @@ namespace Mixtormat
 		Clamp01(TEXT("Layer.ActiveGlow.Opacity"), InOutTheme.Layer.ActiveGlow.Opacity);
 
 		Clamp01(TEXT("Layer.ActiveHairlineOpacity"), InOutTheme.Layer.ActiveHairlineOpacity);
+		Clamp01(TEXT("Layer.GroupHairlineOpacity"), InOutTheme.Layer.GroupHairlineOpacity);
+		Clamp01(TEXT("Layer.ChildHairlineOpacity"), InOutTheme.Layer.ChildHairlineOpacity);
 		Clamp01(TEXT("Layer.GroupStrength"), InOutTheme.Layer.GroupStrength);
 				Clamp01(TEXT("Layer.RestStrength"), InOutTheme.Layer.RestStrength);
 				Clamp01(TEXT("Layer.HoverStrength"), InOutTheme.Layer.HoverStrength);
@@ -980,6 +1003,7 @@ namespace Mixtormat
 			Clamp01(TEXT("ControlLayout.ScalarRampGridMajorOpacity"), InOutTheme.ControlLayout.ScalarRampGridMajorOpacity);
 			Clamp01(TEXT("ControlLayout.ScalarRampBackgroundOpacity"), InOutTheme.ControlLayout.ScalarRampBackgroundOpacity);
 			Clamp01(TEXT("ControlLayout.ScalarRampShadeOpacity"), InOutTheme.ControlLayout.ScalarRampShadeOpacity);
+			Clamp01(TEXT("ControlLayout.ModifiedStripeOpacity"), InOutTheme.ControlLayout.ModifiedStripeOpacity);
 		Clamp01(TEXT("Menu.LipTintOpacity"), InOutTheme.Menu.LipTintOpacity);
 		Clamp01(TEXT("Menu.BorderOpacity"), InOutTheme.Menu.BorderOpacity);
 		Clamp01(TEXT("Menu.ItemDisabledOpacity"), InOutTheme.Menu.ItemDisabledOpacity);
@@ -1030,12 +1054,28 @@ namespace Mixtormat
 		ClampMin(TEXT("Button.Height"), InOutTheme.Button.Height, 1.0f);
 		ClampMin(TEXT("Button.HairlineWidth"), InOutTheme.Button.HairlineWidth, 0.0f);
 		ClampMin(TEXT("ControlLayout.ScalarRampBorderThickness"), InOutTheme.ControlLayout.ScalarRampBorderThickness, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampCurveThickness"), InOutTheme.ControlLayout.ScalarRampCurveThickness, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampGridThickness"), InOutTheme.ControlLayout.ScalarRampGridThickness, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampMajorGridThickness"), InOutTheme.ControlLayout.ScalarRampMajorGridThickness, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampPointSize"), InOutTheme.ControlLayout.ScalarRampPointSize, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampToolbarGroupGap"), InOutTheme.ControlLayout.ScalarRampToolbarGroupGap, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampHeight"), InOutTheme.ControlLayout.ScalarRampHeight, 1.0f);
+		ClampMin(TEXT("ControlLayout.ColorRampHeight"), InOutTheme.ControlLayout.ColorRampHeight, 1.0f);
+		ClampMin(TEXT("ControlLayout.HairlineThickness"), InOutTheme.ControlLayout.HairlineThickness, 0.0f);
+		ClampMin(TEXT("ControlLayout.ModifiedStripeWidth"), InOutTheme.ControlLayout.ModifiedStripeWidth, 0.0f);
+		ClampMin(TEXT("ControlLayout.BadgeCornerRadius"), InOutTheme.ControlLayout.BadgeCornerRadius, 0.0f);
+		ClampMin(TEXT("ControlLayout.BadgeTextInset"), InOutTheme.ControlLayout.BadgeTextInset, 0.0f);
+		ClampMin(TEXT("ControlLayout.InspectorTopMargin"), InOutTheme.ControlLayout.InspectorTopMargin, 0.0f);
 		ClampMin(TEXT("Layer.HairlineWidth"), InOutTheme.Layer.HairlineWidth, 0.0f);
+		ClampMin(TEXT("Layer.GroupHairlineWidth"), InOutTheme.Layer.GroupHairlineWidth, 0.0f);
+		ClampMin(TEXT("Layer.ChildHairlineWidth"), InOutTheme.Layer.ChildHairlineWidth, 0.0f);
 				ClampMin(TEXT("Layer.ActiveHairlineWidth"), InOutTheme.Layer.ActiveHairlineWidth, 0.0f);
 				ClampMin(TEXT("Layer.ActiveGlow.Reach"), InOutTheme.Layer.ActiveGlow.Reach, 0.0f);
 				ClampMin(TEXT("LayerLayout.RowHeight"), InOutTheme.LayerLayout.RowHeight, 1.0f);
 		ClampMin(TEXT("LayerLayout.GroupRowHeight"), InOutTheme.LayerLayout.GroupRowHeight, 1.0f);
 		ClampMin(TEXT("LayerLayout.ChildRowHeight"), InOutTheme.LayerLayout.ChildRowHeight, 1.0f);
+		ClampMin(TEXT("LayerLayout.LayerIndent"), InOutTheme.LayerLayout.LayerIndent, 0.0f);
+		ClampMin(TEXT("LayerLayout.ChildIndent"), InOutTheme.LayerLayout.ChildIndent, 0.0f);
 		ClampMin(TEXT("LayerHierarchy.Width"), InOutTheme.LayerHierarchy.Width, 0.0f);
 		ClampMin(TEXT("GalleryLayout.TileSize"), InOutTheme.GalleryLayout.TileSize, 1.0f);
 		ClampMin(TEXT("GalleryLayout.TileGap"), InOutTheme.GalleryLayout.TileGap, 0.0f);
