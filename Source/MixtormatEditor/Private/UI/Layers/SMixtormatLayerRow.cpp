@@ -55,8 +55,8 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 		.bOn(bLayerEnabled)
 		.bActive(bSolo)
 		.ToolTipText(bCanDisable
-			? LOCTEXT("LayerEyeHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
-			: LOCTEXT("LayerEyeLockedHint", "This layer's visibility is locked."))
+			? LOCTEXT("LayerVisToggleHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
+			: LOCTEXT("LayerVisToggleLockedHint", "This layer's visibility is locked."))
 		.OnClickedWithModifiers(bCanDisable
 			? FOnMixtormatIconClicked::CreateSP(this, &SMixtormatLayerRow::HandleEyeClicked)
 			: FOnMixtormatIconClicked());

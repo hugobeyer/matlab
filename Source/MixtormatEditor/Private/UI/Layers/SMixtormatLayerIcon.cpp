@@ -3,6 +3,7 @@
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Layout/SBox.h"
 
 void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
@@ -15,10 +16,7 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 	OnClicked = InArgs._OnClicked;
 	OnClickedWithModifiers = InArgs._OnClickedWithModifiers;
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
-		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
-	Filled = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius);
-	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, IconStyle.MarkRadius,
-		FLinearColor::White, IconStyle.MarkOutlineWidth);
+		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerVisToggle : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
 		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
 	const float BoundedTargetSize = MaxSize > 0.0f ? FMath::Min(TargetSize, MaxSize) : TargetSize;
@@ -32,37 +30,46 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	const bool On = bOn.Get(true);
 	const bool Enabled = IsEnabled() && bParentEnabled;
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
-		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
+		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerVisToggle : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 	const float GlyphSize = MaxSize > 0.0f ? FMath::Min(IconStyle.GlyphSize, MaxSize) : IconStyle.GlyphSize;
 	const FVector2f Size(GlyphSize, GlyphSize);
 	const FVector2f Offset = (FVector2f(Geometry.GetLocalSize()) - Size) * 0.5f;
 	const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
-	// A disabled EYE recesses like SMixtormatWellBox's disabled shade: pure black at full
-	// strength -- the same recess the wells sink with -- not a faded mark and not the Shade
-	// role, which reads gray over the row. The disclosure glyph keeps its ordinary fade.
-	const bool bRecessed = !Enabled && bVisibility;
-	FLinearColor Color = bVisibility && !On
+
+	// State colour and coverage, then the state's blend against the row body the mark sits on.
+	// Normal skips the composite, so the default path is the plain tint it always was.
+	const bool bHot = IsHovered() || bActive.Get(false);
+	FLinearColor Source = bVisibility && !On
 		? Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
-		: Palette.Get((bActive.Get(false) || IsHovered())
+		: Palette.Get(bHot && Enabled
 			? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::Text);
-	if (bRecessed)
+	MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+	if (!Enabled)
 	{
-		Color = FLinearColor::Black;
-		Color.A = 1.0f;
+		// A disabled mark recesses: black at full coverage, and the role's Disabled blend decides
+		// how it darkens the row -- Soft Light by default, which deepens rather than replacing.
+		Source = FLinearColor::Black;
+		Source.A = 1.0f;
+		Blend = IconStyle.DisabledBlend;
 	}
 	else
 	{
-		Color.A = !Enabled
-			? IconStyle.DisabledOpacity
-			: (IsHovered() || bActive.Get(false)) ? IconStyle.HoverOpacity
-			: IconStyle.RestOpacity;
+		Source.A = bHot ? IconStyle.HoverOpacity : IconStyle.RestOpacity;
+		Blend = bHot ? IconStyle.HoverBlend : IconStyle.RestBlend;
 	}
-	// A visibility square owns its brush; every other use borrows the caller's, and an unbound
-	// Icon attribute resolves to null. MakeBox dereferences the brush, so a non-visibility caller
-	// that omits .Icon(...) would fault here rather than draw nothing.
-	const FSlateBrush* Brush = bVisibility
-		? (On ? &Filled : &Hollow)
-		: Icon.Get();
+	if (Blend != MixtormatCompositing::EMixtormatBlendMode::Normal)
+	{
+		// The row body under the mark: the resolved row ramp's mid colour over the row's base.
+		const Mixtormat::FMixtormatResolvedLayerStyle& LayerStyle = FMixtormatThemeStore::GetResolved().Layers;
+		const Mixtormat::FMixtormatResolvedRamp& RowRamp = bHot ? LayerStyle.RowHover : LayerStyle.Row;
+		const FLinearColor RowMid = RowRamp.Colors.IsEmpty()
+			? LayerStyle.Base : RowRamp.Colors[RowRamp.Colors.Num() / 2];
+		Source = MixtormatCompositing::ApplyBlend(Blend,
+			MixtormatCompositing::Normal(LayerStyle.Base, RowMid), Source);
+		Source.A = 1.0f;
+	}
+
+	const FSlateBrush* Brush = bVisibility ? MixtormatIcons::Squircle() : Icon.Get();
 
 	if (Brush)
 	{
@@ -72,7 +79,7 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 			Geometry.ToPaintGeometry(Size, FSlateLayoutTransform(Offset)),
 			Brush,
 			ESlateDrawEffect::None,
-			Color * WidgetStyle.GetColorAndOpacityTint());
+			Source * WidgetStyle.GetColorAndOpacityTint());
 	}
 
 	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId + 1,

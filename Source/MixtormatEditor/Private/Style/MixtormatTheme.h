@@ -820,19 +820,21 @@ namespace Mixtormat
 		float RestOpacity = 0.6f;
 		float HoverOpacity = 1.0f;
 		float DisabledOpacity = 0.32f;
-		float MarkRadius = 0.0f;
-		float MarkOutlineWidth = 0.0f;
+		// How the mark composites with the row body it sits on. Normal is the plain tint; the
+		// other modes resolve against the row's own colour, so a disabled mark can deepen the
+		// row (Soft Light) instead of replacing it.
+		MixtormatCompositing::EMixtormatBlendMode RestBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		MixtormatCompositing::EMixtormatBlendMode HoverBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+		MixtormatCompositing::EMixtormatBlendMode DisabledBlend = MixtormatCompositing::EMixtormatBlendMode::SoftLight;
 	};
 
 	enum class EMixtormatIconRole : uint8
 	{
 		TopBar,
-		PanelToolbar,
 		PreviewToolbar,
-		LayerEye,
+		LayerVisToggle,
 		LayerDisclosure,
 		FoldoutDisclosure,
-		CardLeading,
 		Menu,
 		GalleryToolbar,
 		NavigationRail,

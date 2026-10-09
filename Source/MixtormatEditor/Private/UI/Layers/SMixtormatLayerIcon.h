@@ -3,7 +3,6 @@
 #pragma once
 
 #include "UI/Atoms/SMixtormatIconButton.h"
-#include "Brushes/SlateRoundedBoxBrush.h"
 
 // Layer-only glyph paint; the legacy icon button's hit box and click contract are retained.
 class SMixtormatLayerIcon final : public SCompoundWidget
@@ -39,6 +38,4 @@ private:
 	TAttribute<const FSlateBrush*> Icon;
 	FSimpleDelegate OnClicked;
 	FOnMixtormatIconClicked OnClickedWithModifiers;
-	FSlateRoundedBoxBrush Filled{FLinearColor::White, 0.0f};
-	FSlateRoundedBoxBrush Hollow{FLinearColor::Transparent, 0.0f, FLinearColor::White, 1.0f};
 };

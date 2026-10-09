@@ -173,14 +173,23 @@ void AddIconRole(
 			Out.Add(Number(*Id(TEXT("DisabledOpacity")), ETab::Global, *Section, TEXT("Disabled Opacity"), 0.0f, 1.0f, 0.01f, 2,
 				[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].DisabledOpacity; },
 				[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].DisabledOpacity = V; }, TEXT(""), OpacityRefreshMode));
-			if (Role == EMixtormatIconRole::LayerEye)
+			if (Role == EMixtormatIconRole::LayerVisToggle)
 			{
-				Out.Add(Number(*Id(TEXT("Radius")), ETab::Global, *Section, TEXT("Mark Radius"), 0, 12, .25f, 2,
-					[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].MarkRadius; },
-					[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].MarkRadius = V; }, TEXT(""), RefreshMode));
-				Out.Add(Number(*Id(TEXT("OutlineWidth")), ETab::Global, *Section, TEXT("Outline Width"), 0, 4, .25f, 2,
-					[Index](const FMixtormatTheme& T) { return T.Icons.Roles[Index].MarkOutlineWidth; },
-					[Index](FMixtormatTheme& T, float V) { T.Icons.Roles[Index].MarkOutlineWidth = V; }, TEXT(""), RefreshMode));
+				// How the mark composites with the row body it sits on. Normal is the plain tint; the
+				// other modes resolve against the row's own colour, so a disabled mark can deepen the
+				// row (Soft Light) instead of replacing it.
+				Out.Add(Choice(*Id(TEXT("RestBlend")), ETab::Global, *Section, TEXT("Rest Blend"), BlendOptions(),
+					[Index](const FMixtormatTheme& T) { return static_cast<int32>(T.Icons.Roles[Index].RestBlend); },
+					[Index](FMixtormatTheme& T, int32 V) { T.Icons.Roles[Index].RestBlend = MixtormatCompositing::BlendModeOf(V); },
+					TEXT(""), EMixtormatThemeRefreshMode::Paint));
+				Out.Add(Choice(*Id(TEXT("HoverBlend")), ETab::Global, *Section, TEXT("Hover Blend"), BlendOptions(),
+					[Index](const FMixtormatTheme& T) { return static_cast<int32>(T.Icons.Roles[Index].HoverBlend); },
+					[Index](FMixtormatTheme& T, int32 V) { T.Icons.Roles[Index].HoverBlend = MixtormatCompositing::BlendModeOf(V); },
+					TEXT(""), EMixtormatThemeRefreshMode::Paint));
+				Out.Add(Choice(*Id(TEXT("DisabledBlend")), ETab::Global, *Section, TEXT("Disabled Blend"), BlendOptions(),
+					[Index](const FMixtormatTheme& T) { return static_cast<int32>(T.Icons.Roles[Index].DisabledBlend); },
+					[Index](FMixtormatTheme& T, int32 V) { T.Icons.Roles[Index].DisabledBlend = MixtormatCompositing::BlendModeOf(V); },
+					TEXT(""), EMixtormatThemeRefreshMode::Paint));
 			}
 			SetLocateTarget(Out, LocateBegin, LocateTarget);
 		}
@@ -277,7 +286,7 @@ void AddIconRole(
 				// outline the bar itself rather than blinking unrelated icon buttons.
 				AddIconRole(P, EMixtormatIconRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"), ETarget::TopBar);
 				AddIconRole(P, EMixtormatIconRole::PreviewToolbar, TEXT("PreviewToolbar"), TEXT("Preview Toolbar"), ETarget::Preview);
-				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"), ETarget::Layer);
+				AddIconRole(P, EMixtormatIconRole::LayerVisToggle, TEXT("LayerVisToggle"), TEXT("Layer Vis Toggle"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"), ETarget::Foldout);
 				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"), ETarget::Menu);

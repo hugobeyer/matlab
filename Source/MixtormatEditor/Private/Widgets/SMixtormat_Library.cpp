@@ -643,8 +643,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
 
 	// The two developer actions beside the category dropdown. Their gaps come from the gallery's own
-	// spacing rather than the legacy 3px RowGap, which left two 30px buttons almost touching, and their
-	// glyphs read the PanelToolbar icon role for size and resting opacity like every other icon.
+	// spacing rather than the legacy 3px RowGap, which left two 30px buttons almost touching.
 	const Mixtormat::FMixtormatResolvedStyle& LibraryStyle = FMixtormatThemeStore::GetResolved();
 
 	return SNew(SBorder)

@@ -721,7 +721,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 	// above. It always targets the primary -- clicking it while a secondary is active (chosen from
 	// the chevron) switches back to the default view; clicking it while lit turns the preview off.
 	TSharedRef<SWidget> Eye = SNew(SMixtormatIconButton)
-		.Size(MixtormatTokens::LayerEyeSize)
+		.Size(MixtormatTokens::PreviewEyeSize)
 		.ToolTipText(Primary.Label)
 		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
 		.bActive_Lambda(IsAnyActive)
@@ -766,8 +766,8 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::LayerEyeSize)
-				.HeightOverride(MixtormatTokens::LayerEyeSize)
+				.WidthOverride(MixtormatTokens::PreviewEyeSize)
+				.HeightOverride(MixtormatTokens::PreviewEyeSize)
 				[
 					SNew(SImage)
 					.Image(MixtormatIcons::Mask())

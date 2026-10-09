@@ -128,10 +128,6 @@ namespace MixtormatTokens
 	inline float TabUnderlineThickness = 1.0f;
 	constexpr float TabLabelBottomInset = 0.0f;
 	inline float ToolbarIconSize = 18.0f;
-		// Panel toolbars (library search row, Add-layer strip, inspector toolbar) are a separate role:
-		// the prototype authors --toolbar-icon-size independently of --topbar-icon-size, and the top
-		// bar's 18px glyphs are far too loud inside a dense panel toolbar.
-		inline float PanelToolbarIconSize = 14.0f;
 		// Resting opacity for top-bar action glyphs (.top-actions .asset-icon).
 		inline float TopBarIconOpacity = 0.6f;
 		// A shared action's horizontal padding. components.css gives every button `padding: 0 8px`,
@@ -743,7 +739,9 @@ namespace MixtormatTokens
 	constexpr float LayerNameInset = 4.0f;
 	// Between stacked rows. One pixel: enough to separate, not enough to break the column.
 	inline float LayerRowGap = 2.0f;
-	inline float LayerEyeSize = 15.0f;
+	// The preview eye buttons' glyph size; the layer stack's mark sizes itself from the
+	// LayerVisToggle icon role.
+	inline float PreviewEyeSize = 15.0f;
 	inline float LayerChildIconSize = 16.0f;
 	// Opacity of the tree connector (tee / elbow) before a scoped child's glyph.
 	inline float LayerConnectorOpacity = 0.24f;
