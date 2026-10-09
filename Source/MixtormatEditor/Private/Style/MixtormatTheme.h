@@ -604,6 +604,17 @@ namespace Mixtormat
 		float ScalarRampToolbarGap = 3.0f;
 		float ScalarRampViewportPadding = 8.0f;
 		float ScalarRampIconGap = 2.0f;
+		// Grid line opacities over the Hairline hue; regular and major (zero-line emphasis) are
+		// tuned independently of every other hairline in the UI.
+		float ScalarRampGridOpacity = 0.63f;
+		float ScalarRampGridMajorOpacity = 1.0f;
+		// Canvas ground and the outside-0..1 shade bands, over the Ground/Shade palette hues.
+		float ScalarRampBackgroundOpacity = 1.0f;
+		float ScalarRampShadeOpacity = 1.0f;
+		// The curve canvas viewport outline. Split from the grid's boundary lines so the canvas
+		// edge can be tuned without retuning the grid it encloses.
+		float ScalarRampBorderThickness = 1.0f;
+		float ScalarRampBorderOpacity = 0.5f;
 		float DragGhostOpacity = 0.93f;
 		float DragGhostThumbnailSize = 56.0f;
 		float DragGhostPadding = 7.0f;

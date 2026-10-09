@@ -176,9 +176,15 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 	const float X0 = Rect.X0, X1 = Rect.X1, Y0 = Rect.Y0, Y1 = Rect.Y1;
 	const Mixtormat::FMixtormatResolvedPalette& Pal = FMixtormatThemeStore::GetResolved().Palette;
 	const FVector2f GraphSize(X1 - X0, Y1 - Y0);
+	// Canvas ground and the outside-0..1 shade bands take their own opacity tokens so the
+	// viewport backdrop can be tuned independently of the shared palette roles.
+	FLinearColor Background = Pal.Get(Mixtormat::EMixtormatColorRole::Ground);
+	Background.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampBackgroundOpacity;
+	FLinearColor Shade = Pal.Get(Mixtormat::EMixtormatColorRole::Shade);
+	Shade.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampShadeOpacity;
 	FSlateDrawElement::MakeBox(Elements, Layer, Geometry.ToPaintGeometry(GraphSize,
 		FSlateLayoutTransform(FVector2f(X0, Y0))), FCoreStyle::Get().GetBrush("WhiteBrush"),
-		ESlateDrawEffect::None, Pal.Get(Mixtormat::EMixtormatColorRole::Ground));
+		ESlateDrawEffect::None, Background);
 
 	const float ViewMin = GetViewYMin(), ViewMax = GetViewYMax();
 	if (ViewMin < 0.0f)
@@ -188,7 +194,7 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 		FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
 			FVector2f(GraphSize.X, Y1 - Top), FSlateLayoutTransform(FVector2f(X0, Top))),
 			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
-			Pal.Get(Mixtormat::EMixtormatColorRole::Shade));
+			Shade);
 	}
 	if (ViewMax > 1.0f)
 	{
@@ -197,20 +203,21 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 		FSlateDrawElement::MakeBox(Elements, Layer + 1, Geometry.ToPaintGeometry(
 			FVector2f(GraphSize.X, Bottom - Y0), FSlateLayoutTransform(FVector2f(X0, Y0))),
 			FCoreStyle::Get().GetBrush("WhiteBrush"), ESlateDrawEffect::None,
-			Pal.Get(Mixtormat::EMixtormatColorRole::Shade));
+			Shade);
 	}
 
-	const FLinearColor Grid = Pal.Get(Mixtormat::EMixtormatColorRole::Hairline);
+	// Grid lines take the Hairline hue with their own opacity tokens so the canvas grid can be
+	// tuned independently of every other hairline in the UI.
+	FLinearColor Grid = Pal.Get(Mixtormat::EMixtormatColorRole::Hairline);
+	Grid.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampGridOpacity;
 	FLinearColor Major = Grid;
-	Major.A = FMath::Min(Major.A * 2.0f, 1.0f);
+	Major.A = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampGridMajorOpacity;
 	for (int32 Index = 0; Index <= 4; ++Index)
 	{
 		const float X = X0 + GraphSize.X * static_cast<float>(Index) / 4.0f;
 		const TArray<FVector2f> Line = { FVector2f(X, Y0), FVector2f(X, Y1) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, Index == 0 || Index == 4 ? Major : Grid, false,
-			Index == 0 || Index == 4 ? MixtormatTokens::ScalarRampMajorGridThickness
-				: MixtormatTokens::ScalarRampGridThickness);
+			ESlateDrawEffect::None, Grid, false, MixtormatTokens::ScalarRampGridThickness);
 	}
 	// Zero is the neutral line for a signed domain; emphasise it when the domain straddles zero.
 	if (DomainMin < 0.0f && DomainMax > 0.0f)
@@ -224,12 +231,24 @@ void SMixtormatRampEditorBase::PaintGrid(FSlateWindowElementList& Elements, cons
 	{
 		const float V = ViewMin + (ViewMax - ViewMin) * static_cast<float>(Index) / 4.0f;
 		const float Y = YToScreen(Size, V);
-		const bool bBoundary = Index == 0 || Index == 4;
 		const TArray<FVector2f> Line = { FVector2f(X0, Y), FVector2f(X1, Y) };
 		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Line,
-			ESlateDrawEffect::None, bBoundary ? Major : Grid, false,
-			bBoundary ? MixtormatTokens::ScalarRampMajorGridThickness
-				: MixtormatTokens::ScalarRampGridThickness);
+			ESlateDrawEffect::None, Grid, false, MixtormatTokens::ScalarRampGridThickness);
+	}
+
+	// The canvas outline is its own theme token so the viewport edge can be tuned (or removed)
+	// without retuning the grid it encloses. Defaults reproduce the old boundary-line look.
+	const float BorderThickness = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampBorderThickness;
+	const float BorderOpacity = FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampBorderOpacity;
+	if (BorderThickness > 0.0f && BorderOpacity > 0.0f)
+	{
+		FLinearColor Border = Pal.Get(Mixtormat::EMixtormatColorRole::Hairline);
+		Border.A = BorderOpacity;
+		const TArray<FVector2f> Outline = {
+			FVector2f(X0, Y0), FVector2f(X1, Y0),
+			FVector2f(X1, Y1), FVector2f(X0, Y1), FVector2f(X0, Y0) };
+		FSlateDrawElement::MakeLines(Elements, Layer + 2, Geometry.ToPaintGeometry(), Outline,
+			ESlateDrawEffect::None, Border, false, BorderThickness);
 	}
 }
 

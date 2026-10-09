@@ -184,6 +184,12 @@ namespace Mixtormat
 		T.ControlLayout.ScalarRampToolbarGap = 3.0f;
 		T.ControlLayout.ScalarRampViewportPadding = 8.0f;
 		T.ControlLayout.ScalarRampIconGap = 2.0f;
+		T.ControlLayout.ScalarRampGridOpacity = 0.63f;
+		T.ControlLayout.ScalarRampGridMajorOpacity = 1.0f;
+		T.ControlLayout.ScalarRampBackgroundOpacity = 1.0f;
+		T.ControlLayout.ScalarRampShadeOpacity = 1.0f;
+		T.ControlLayout.ScalarRampBorderThickness = 1.0f;
+		T.ControlLayout.ScalarRampBorderOpacity = 0.5f;
 		T.ControlLayout.DragGhostOpacity = 0.93f;
 		T.ControlLayout.DragGhostThumbnailSize = 56.0f;
 		T.ControlLayout.DragGhostPadding = 7.0f;
@@ -970,6 +976,11 @@ namespace Mixtormat
 		Clamp01(TEXT("Button.SeparatorOpacity"), InOutTheme.Button.SeparatorOpacity);
 				Clamp01(TEXT("Button.TextOpacity"), InOutTheme.Button.TextOpacity);
 						Clamp01(TEXT("ControlLayout.DisabledLabelOpacity"), InOutTheme.ControlLayout.DisabledLabelOpacity);
+			Clamp01(TEXT("ControlLayout.ScalarRampBorderOpacity"), InOutTheme.ControlLayout.ScalarRampBorderOpacity);
+			Clamp01(TEXT("ControlLayout.ScalarRampGridOpacity"), InOutTheme.ControlLayout.ScalarRampGridOpacity);
+			Clamp01(TEXT("ControlLayout.ScalarRampGridMajorOpacity"), InOutTheme.ControlLayout.ScalarRampGridMajorOpacity);
+			Clamp01(TEXT("ControlLayout.ScalarRampBackgroundOpacity"), InOutTheme.ControlLayout.ScalarRampBackgroundOpacity);
+			Clamp01(TEXT("ControlLayout.ScalarRampShadeOpacity"), InOutTheme.ControlLayout.ScalarRampShadeOpacity);
 		Clamp01(TEXT("Menu.LipTintOpacity"), InOutTheme.Menu.LipTintOpacity);
 		Clamp01(TEXT("Menu.BorderOpacity"), InOutTheme.Menu.BorderOpacity);
 		Clamp01(TEXT("Menu.ItemDisabledOpacity"), InOutTheme.Menu.ItemDisabledOpacity);
@@ -1019,6 +1030,7 @@ namespace Mixtormat
 				ClampMin(TEXT("Card.Reach"), InOutTheme.Card.Reach, 0.0f);
 		ClampMin(TEXT("Button.Height"), InOutTheme.Button.Height, 1.0f);
 		ClampMin(TEXT("Button.HairlineWidth"), InOutTheme.Button.HairlineWidth, 0.0f);
+		ClampMin(TEXT("ControlLayout.ScalarRampBorderThickness"), InOutTheme.ControlLayout.ScalarRampBorderThickness, 0.0f);
 		ClampMin(TEXT("Layer.HairlineWidth"), InOutTheme.Layer.HairlineWidth, 0.0f);
 				ClampMin(TEXT("Layer.ActiveHairlineWidth"), InOutTheme.Layer.ActiveHairlineWidth, 0.0f);
 				ClampMin(TEXT("Layer.ActiveGlow.Reach"), InOutTheme.Layer.ActiveGlow.Reach, 0.0f);

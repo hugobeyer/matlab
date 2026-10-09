@@ -370,6 +370,12 @@ void AddIconRole(
 		NUM("ControlLayout.ScalarRampToolbarGap", Controls, "Layout", "Scalar Ramp Toolbar Gap", ControlLayout.ScalarRampToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ScalarRampViewportPadding", Controls, "Layout", "Scalar Ramp Viewport Padding", ControlLayout.ScalarRampViewportPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ScalarRampIconGap", Controls, "Layout", "Scalar Ramp Icon Gap", ControlLayout.ScalarRampIconGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ScalarRampGridOpacity", Controls, "Layout", "Scalar Ramp Grid Opacity", ControlLayout.ScalarRampGridOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampGridMajorOpacity", Controls, "Layout", "Scalar Ramp Grid Major Opacity", ControlLayout.ScalarRampGridMajorOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampBackgroundOpacity", Controls, "Layout", "Scalar Ramp Background Opacity", ControlLayout.ScalarRampBackgroundOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampShadeOpacity", Controls, "Layout", "Scalar Ramp Shade Opacity", ControlLayout.ScalarRampShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampBorderThickness", Controls, "Layout", "Scalar Ramp Border Thickness", ControlLayout.ScalarRampBorderThickness, 0, 4, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ControlLayout.ScalarRampBorderOpacity", Controls, "Layout", "Scalar Ramp Border Opacity", ControlLayout.ScalarRampBorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.DragGhostOpacity", Controls, "Layout", "Drag Ghost Opacity", ControlLayout.DragGhostOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.DragGhostThumbnailSize", Controls, "Layout", "Drag Ghost Thumbnail", ControlLayout.DragGhostThumbnailSize, 16, 128, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.DragGhostPadding", Controls, "Layout", "Drag Ghost Padding", ControlLayout.DragGhostPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
