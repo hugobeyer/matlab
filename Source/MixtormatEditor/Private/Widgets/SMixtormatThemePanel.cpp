@@ -223,6 +223,14 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() { return FText::FromString(Status); })
+				.ColorAndOpacity_Lambda([this]()
+				{
+					// Validation issues are warnings, not errors: the theme still loads and applies,
+					// so they read in the palette's Warning colour rather than Error red.
+					const bool bHasIssues = !FMixtormatThemeStore::GetValidationIssues().IsEmpty();
+					return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+						bHasIssues ? Mixtormat::EMixtormatColorRole::Warning : Mixtormat::EMixtormatColorRole::Text));
+				})
 				.AutoWrapText(true)
 			]
 			+ SVerticalBox::Slot().AutoHeight()

@@ -123,18 +123,6 @@ namespace Mixtormat
 		float DisabledShadeBottom = 0.0f;
 	};
 
-	struct FMixtormatResolvedFoldoutStyle
-	{
-		FLinearColor Base;
-		FMixtormatResolvedRamp Lift;
-		FMixtormatResolvedRamp LiftHover;
-		FMixtormatResolvedRamp Accent;
-		FMixtormatResolvedRamp AccentHover;
-
-		FLinearColor Hairline;
-		FLinearColor HairlineHover;
-		float HairlineWidth = 1.0f;
-	};
 
 	struct FMixtormatResolvedCardStyle
 	{
@@ -274,7 +262,6 @@ namespace Mixtormat
 		FMixtormatResolvedFillStyle Fill;
 		FMixtormatResolvedToggleStyle Toggles;
 
-		FMixtormatResolvedFoldoutStyle Foldouts;
 		FMixtormatResolvedCardStyle Cards;
 		FMixtormatResolvedLayerStyle Layers;
 		FMixtormatResolvedButtonStyle Buttons;

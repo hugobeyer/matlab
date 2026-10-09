@@ -382,7 +382,6 @@ namespace Mixtormat
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
 		T.GalleryLayout.DrawerInitialHeight = 256.0f;
-		T.GalleryLayout.ModeSwitchGap = 4.0f;
 		T.GalleryLayout.DrawerSurfaceOpacity = 0.68f;
 		T.GalleryLayout.TileGap = 4.0f;               // --gallery-gap
 
@@ -522,7 +521,7 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].HoverOpacity = 0.939999998f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].DisabledOpacity = 0.099999994f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkRadius = 2.0f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 0.0f;
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerEye)].MarkOutlineWidth = 1.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].GlyphSize = 13.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].ButtonSize = 19.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::LayerDisclosure)].RestOpacity = 0.579999983f;

@@ -746,11 +746,10 @@ namespace Mixtormat
 		float MaskHeaderInset = 12.0f;
 		float DrawerAutoCollapseDistance = 6.0f;
 		float DrawerInset = 8.0f;
-		float DrawerSideInset = 24.0f;
-		float DrawerHeaderHeight = 18.0f;
+		float DrawerSideInset = 4.0f;
+		float DrawerHeaderHeight = 22.0f;
 		float DrawerCollapsedHeight = 18.0f;
 		float DrawerInitialHeight = 256.0f;
-		float ModeSwitchGap = 4.0f;
 		float DrawerSurfaceOpacity = 0.68f;
 	};
 

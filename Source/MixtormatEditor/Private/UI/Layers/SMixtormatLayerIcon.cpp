@@ -17,8 +17,8 @@ void SMixtormatLayerIcon::Construct(const FArguments& InArgs)
 	const Mixtormat::FMixtormatIconStyle& IconStyle = FMixtormatThemeStore::GetResolved().Icons.Roles[
 		static_cast<uint8>(bVisibility ? Mixtormat::EMixtormatIconRole::LayerEye : Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 	Filled = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius);
-	Hollow = FSlateRoundedBoxBrush(FLinearColor::White, IconStyle.MarkRadius,
-		FLinearColor::Transparent, 0.0f);
+	Hollow = FSlateRoundedBoxBrush(FLinearColor::Transparent, IconStyle.MarkRadius,
+		FLinearColor::White, IconStyle.MarkOutlineWidth);
 	const float TargetSize = IconStyle.HitSize > 0.0f ? IconStyle.HitSize
 		: IconStyle.ButtonSize > 0.0f ? IconStyle.ButtonSize : IconStyle.GlyphSize;
 	const float BoundedTargetSize = MaxSize > 0.0f ? FMath::Min(TargetSize, MaxSize) : TargetSize;

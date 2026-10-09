@@ -274,12 +274,10 @@ void AddIconRole(
 				// so locating either would blink unrelated controls. Leave them disabled until
 				// those consumers expose a semantic locator identity.
 				AddIconRole(P, EMixtormatIconRole::TopBar, TEXT("TopBar"), TEXT("Top Bar"), ETarget::None);
-				AddIconRole(P, EMixtormatIconRole::PanelToolbar, TEXT("PanelToolbar"), TEXT("Panel Toolbar"), ETarget::None);
 				AddIconRole(P, EMixtormatIconRole::PreviewToolbar, TEXT("PreviewToolbar"), TEXT("Preview Toolbar"), ETarget::Preview);
 				AddIconRole(P, EMixtormatIconRole::LayerEye, TEXT("LayerEye"), TEXT("Layer Eye"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::LayerDisclosure, TEXT("LayerDisclosure"), TEXT("Layer Disclosure"), ETarget::Layer);
 				AddIconRole(P, EMixtormatIconRole::FoldoutDisclosure, TEXT("FoldoutDisclosure"), TEXT("Foldout Disclosure"), ETarget::Foldout);
-				AddIconRole(P, EMixtormatIconRole::CardLeading, TEXT("CardLeading"), TEXT("Card Leading"), ETarget::None);
 				AddIconRole(P, EMixtormatIconRole::Menu, TEXT("Menu"), TEXT("Menu"), ETarget::Menu);
 				AddIconRole(P, EMixtormatIconRole::GalleryToolbar, TEXT("GalleryToolbar"), TEXT("Gallery Toolbar"), ETarget::Gallery);
 				AddIconRole(P, EMixtormatIconRole::NavigationRail, TEXT("NavigationRail"), TEXT("Navigation Rail"), ETarget::None);
@@ -609,7 +607,6 @@ void AddIconRole(
 				NUM("GalleryLayout.DrawerHeaderHeight", GalleryShell, "Gallery Layout", "Drawer Header Height", GalleryLayout.DrawerHeaderHeight, 14, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerCollapsedHeight", GalleryShell, "Gallery Layout", "Drawer Collapsed Height", GalleryLayout.DrawerCollapsedHeight, 14, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerInitialHeight", GalleryShell, "Gallery Layout", "Drawer Initial Height", GalleryLayout.DrawerInitialHeight, 120, 640, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("GalleryLayout.ModeSwitchGap", GalleryShell, "Gallery Layout", "Mode Switch Gap", GalleryLayout.ModeSwitchGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerSurfaceOpacity", GalleryShell, "Gallery Surface", "Drawer Surface Opacity", GalleryLayout.DrawerSurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Gallery);
 
