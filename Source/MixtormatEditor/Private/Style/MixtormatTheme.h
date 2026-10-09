@@ -663,6 +663,15 @@ namespace Mixtormat
 		float ChildIndent = 28.0f;
 	};
 
+	struct FMixtormatLayerConnectionMetrics
+	{
+		float Indent = 16.0f;
+		float Inset = 4.0f;
+		float TextGap = 3.0f;
+		float PickerWidth = 300.0f;
+		float PickerListMaxHeight = 260.0f;
+	};
+
 	struct FMixtormatMenuMetrics
 	{
 		float Width = 190.0f;
@@ -908,6 +917,7 @@ namespace Mixtormat
 		FMixtormatLayerTheme Layer;
 		FMixtormatHierarchyTheme LayerHierarchy;
 		FMixtormatLayerMetrics LayerLayout;
+		FMixtormatLayerConnectionMetrics LayerConnections;
 
 		FMixtormatButtonTheme Button;
 

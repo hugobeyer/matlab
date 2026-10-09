@@ -70,7 +70,18 @@ FMixtormatStructuralConnectionContext::FMixtormatStructuralConnectionContext(
 		}
 		ChildIndex = Index;
 	}
-	if (ChildIndex != INDEX_NONE) { AddressIssue = EIssue::None; }
+	if (ChildIndex != INDEX_NONE)
+	{
+		AddressIssue = EIssue::None;
+		ResolvedDestination = Effective[LayerIndex];
+		MixtormatParameterBinding::ApplyDirectReferences(
+			FMixtormatBindingScope{Effective, Groups}, ResolvedDestination);
+	}
+}
+
+const FMixtormatLayer* FMixtormatStructuralConnectionContext::GetResolvedDestination() const
+{
+	return AddressIssue == MixtormatStructuralConnections::EIssue::None ? &ResolvedDestination : nullptr;
 }
 
 MixtormatOutputReferences::FStructuralLinkStatus FMixtormatStructuralConnectionContext::Evaluate(
@@ -81,6 +92,11 @@ MixtormatOutputReferences::FStructuralLinkStatus FMixtormatStructuralConnectionC
 		MixtormatOutputReferences::FStructuralLinkStatus Status;
 		Status.ModuleIssue = AddressIssue;
 		return Status;
+	}
+	if (!Source && !Target)
+	{
+		return MixtormatOutputReferences::EvaluateStructuralLinkForGather(
+			Effective, LayerIndex, ChildIndex, ResolvedDestination);
 	}
 	// Only the destination copy receives bindings/instances. Sources and Warp targets
 	// retain the raw effective view, while Push targets use the resolved destination.

@@ -7,6 +7,9 @@
 #include "MixtormatParameterBinding.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
+#include "Style/MixtormatTypography.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SToolTip.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -117,6 +120,65 @@ namespace MixtormatLayersPrivate
 			{
 				Paint.AncestorIndents.Add(Level * Hierarchy.Indent);
 			}
+		}
+		return Paint;
+	}
+}
+
+namespace
+{
+	float ProjectedScopeIndent(const FMixtormatProjectedChildRow& Row)
+	{
+		const auto& Style = FMixtormatThemeStore::GetResolved();
+		return Row.bInIncomingBlock
+			? Style.LayerConnections.Indent + Style.LayerConnections.Inset + Row.ScopeDepthWithinIncoming * Style.LayerHierarchy.Indent
+			: Row.AuthoredScopeDepth * Style.LayerHierarchy.Indent;
+	}
+
+	FMixtormatLayerHierarchyPaint ProjectedHierarchyPaint(const TArray<FMixtormatProjectedChildRow>& Rows, const int32 RowIndex)
+	{
+		const auto& Style = FMixtormatThemeStore::GetResolved();
+		const auto BranchIndent = [&Rows, &Style](const int32 Index)
+		{
+			return Rows[Index].Kind == EMixtormatProjectedChildKind::IncomingConnection
+				? 0.0f : Style.LayerHierarchy.Indent + ProjectedScopeIndent(Rows[Index]);
+		};
+		const auto HasLaterSibling = [&Rows](const int32 Index)
+		{
+			for (int32 Later = Index + 1; Later < Rows.Num(); ++Later)
+			{
+				if (Rows[Later].Kind != EMixtormatProjectedChildKind::IncomingConnection
+					&& Rows[Later].VisualParentRowIndex == Rows[Index].VisualParentRowIndex) { return true; }
+			}
+			return false;
+		};
+		const auto FirstOwnedChild = [&Rows](const int32 Index) -> int32
+		{
+			for (int32 Child = Index + 1; Child < Rows.Num(); ++Child)
+			{
+				if (Rows[Child].VisualParentRowIndex == Index && Rows[Child].Kind != EMixtormatProjectedChildKind::IncomingConnection)
+				{ return Child; }
+			}
+			return INDEX_NONE;
+		};
+		FMixtormatLayerHierarchyPaint Paint;
+		Paint.RowHeight = Style.LayerLayout.ChildRowHeight;
+		Paint.BranchInset = Style.LayerLayout.PaddingX;
+		Paint.Indent = BranchIndent(RowIndex);
+		Paint.bLast = !HasLaterSibling(RowIndex);
+		const int32 OwnedChild = FirstOwnedChild(RowIndex);
+		Paint.bHasChildren = OwnedChild != INDEX_NONE;
+		if (Paint.bHasChildren) { Paint.ChildStemIndent = BranchIndent(OwnedChild); }
+		int32 Parent = Rows[RowIndex].VisualParentRowIndex;
+		for (int32 Step = 0; Rows.IsValidIndex(Parent) && Step < Rows.Num(); ++Step)
+		{
+			const float Indent = BranchIndent(Parent);
+			if (Indent > 0.0f && HasLaterSibling(Parent)) { Paint.AncestorIndents.AddUnique(Indent); }
+			// Carry only a real ownership stem across incoming display rows to the target's
+			// subsequent owned children. The incoming relation itself never receives a trunk.
+			const int32 FirstChild = FirstOwnedChild(Parent);
+			if (FirstChild > RowIndex) { Paint.AncestorIndents.AddUnique(BranchIndent(FirstChild)); }
+			Parent = Rows[Parent].VisualParentRowIndex;
 		}
 		return Paint;
 	}
@@ -1066,9 +1128,42 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 	LayerRowWidgets.Add(LayerId, Row);
 
-	for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+	const TArray<FMixtormatProjectedChildRow> ProjectedRows =
+		MixtormatStructuralConnections::BuildChildProjection(WorkingLayers, WorkingLayerGroups, LayerIndex);
+	for (int32 DisplayIndex = 0; DisplayIndex < ProjectedRows.Num(); ++DisplayIndex)
 	{
+		const FMixtormatProjectedChildRow& ProjectedRow = ProjectedRows[DisplayIndex];
+		const int32 ChildIndex = ProjectedRow.AuthoredChildIndex;
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+		const bool bConnection = ProjectedRow.Kind != EMixtormatProjectedChildKind::Ordinary;
+		FText ConnectionToolTip;
+		const TSharedRef<SWidget> ConnectionContent = bConnection
+			? BuildStructuralConnectionContent(ProjectedRow, Child.Type, ConnectionToolTip) : SNullWidget::NullWidget;
+		const TSharedPtr<IToolTip> RowToolTip = bConnection ? SNew(SToolTip).Text(ConnectionToolTip) : BuildMaskPreviewTooltip(LayerIndex, ChildIndex);
+		const FMixtormatChildAddress RowAddress = ProjectedRow.Address;
+		// New relation actions resolve the authored address at activation, never the visual index.
+		const auto ResolveRow = [this, RowAddress, LayerIndex, ChildIndex, bConnection](int32& OutLayer, int32& OutChild)
+		{
+			OutLayer = LayerIndex;
+			OutChild = ChildIndex;
+			if (!bConnection) { return WorkingLayers.IsValidIndex(OutLayer) && WorkingLayers[OutLayer].Children.IsValidIndex(OutChild); }
+			OutLayer = INDEX_NONE;
+			OutChild = INDEX_NONE;
+			for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
+			{
+				if (WorkingLayers[Index].LayerId != RowAddress.OwnerId) { continue; }
+				if (OutLayer != INDEX_NONE) { return false; }
+				OutLayer = Index;
+			}
+			if (!WorkingLayers.IsValidIndex(OutLayer)) { return false; }
+			for (int32 Index = 0; Index < WorkingLayers[OutLayer].Children.Num(); ++Index)
+			{
+				if (WorkingLayers[OutLayer].Children[Index].ChildId != RowAddress.ChildId) { continue; }
+				if (OutChild != INDEX_NONE) { return false; }
+				OutChild = Index;
+			}
+			return OutChild != INDEX_NONE;
+		};
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
 		const bool bBlur = Child.Type == EMixtormatLayerChildType::Blur;
 		const bool bCurvature = Child.Type == EMixtormatLayerChildType::Curvature;
@@ -1104,7 +1199,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 		Container->AddChild(
 			SNew(SMixtormatLayerHierarchy)
-			.Hierarchy(ChildHierarchyPaint(Layer.Children, ChildIndex))
+			.Hierarchy(ProjectedHierarchyPaint(ProjectedRows, DisplayIndex))
 			[
 			SNew(SMixtormatChildDropTarget)
 			.LayerIndex(LayerIndex)
@@ -1119,8 +1214,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 				[
 				SNew(SMixtormatLayerChildRow)
-				.ExtraIndent(GetDisplayScopeDepth(Layer.Children, ChildIndex) * FMixtormatThemeStore::GetResolved().LayerHierarchy.Indent)
-				.ToolTip(BuildMaskPreviewTooltip(LayerIndex, ChildIndex))
+				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
+				.bConnectionPresentation(bConnection)
+				.ConnectionContent()[ConnectionContent]
+				.ToolTip(RowToolTip)
 				.Name(ChildName)
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
@@ -1132,8 +1229,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				{
 					return GetStructuralHighlightRole(MakeChildAddress(LayerIndex, ChildIndex));
 				})
-				.StructuralLink()[BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
-				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
+				.StructuralLink()[bConnection ? SNullWidget::NullWidget : BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
+				.Icon()[bConnection ? SNew(SImage).Image(MixtormatIcons::ChevronLeft())
+					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+					: BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.
 				// Only children that have a blend mode get a badge menu: masks, and generated
 				// masks that emit coverage (not filters, ID nodes or generators).
@@ -1184,12 +1283,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 							WorkingLayers[LayerIndex].LayerId,
 							WorkingLayers[LayerIndex].Children[ChildIndex].ChildId);
 				})
-				.OnSelected_Lambda([this, LayerIndex, ChildIndex]()
+				.OnSelected_Lambda([this, ResolveRow]()
 				{
-					SelectWorkingChild(LayerIndex, ChildIndex);
+					int32 LayerIndex, ChildIndex;
+					if (ResolveRow(LayerIndex, ChildIndex)) { SelectWorkingChild(LayerIndex, ChildIndex); }
 				})
-				.OnToggleActive_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated]()
+				.OnToggleActive_Lambda([this, ResolveRow, bEffect, bGenerated]()
 				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex)) { return; }
 					const ECheckBoxState Next = IsLayerChildEnabled(LayerIndex, ChildIndex)
 						? ECheckBoxState::Unchecked
 						: ECheckBoxState::Checked;
@@ -1206,8 +1308,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						SetMaskEnabled(Next, LayerIndex, ChildIndex);
 					}
 				})
-				.OnGetContextMenu_Lambda([this, LayerIndex, ChildIndex, bEffect, bGenerated, bBlur, bCurvature]()
+				.OnGetContextMenu_Lambda([this, ResolveRow, bEffect, bGenerated, bBlur, bCurvature]() -> TSharedRef<SWidget>
 				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex)) { return SNullWidget::NullWidget; }
 					if (bBlur || bCurvature)
 					{
 						// One menu: a blur and a curvature offer the same actions, because what
@@ -1226,9 +1330,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Shift + right button opens the published outputs directly, through the same builder
 				// the full menu nests under "Outputs". Gated by whether this child publishes anything,
 				// so a child with no copyable output keeps the normal menu instead of an empty popup.
-				.OnGetOutputMenu_Lambda([this, LayerIndex, ChildIndex]()
+				.OnGetOutputMenu_Lambda([this, ResolveRow]() -> TSharedRef<SWidget>
 				{
-					return BuildCopyChildOutputMenu(MakeChildAddress(LayerIndex, ChildIndex));
+					int32 LayerIndex, ChildIndex;
+					return ResolveRow(LayerIndex, ChildIndex) ? BuildCopyChildOutputMenu(MakeChildAddress(LayerIndex, ChildIndex)) : SNullWidget::NullWidget;
 				})
 				.bHasOutputMenu_Lambda([this, LayerIndex, ChildIndex]()
 				{
@@ -1238,13 +1343,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
-					[this, LayerIndex, ChildIndex, ChildName,
+					[this, ResolveRow, ChildName, bConnection,
 										 bCanLeaveLayer = !IsMaskFilter(Child) && !IsGeneratorFlow(Child)]
 					(const FGeometry&, const FPointerEvent&)
 				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex)) { return FReply::Unhandled(); }
+					const FText DragLabel = bConnection ? FText::Format(LOCTEXT("StructuralExecutionDrag", "{0} — Move execution operation; target unchanged"), ChildName) : ChildName;
 					return FReply::Handled().BeginDragDrop(
 						FMixtormatChildDragDropOp::New(
-							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
+							LayerIndex, ChildIndex, DragLabel, bCanLeaveLayer));
 				})
 				]
 			]

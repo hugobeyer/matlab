@@ -38,11 +38,15 @@ struct FMixtormatStructuralConnectionContext
 	TArray<FMixtormatStructuralSourceCandidate> CollectSources(
 		const TArray<FMixtormatLayer>& AuthoredLayers, const FMixtormatOutputReference& CurrentSource) const;
 
+	// The same binding-resolved destination used by Evaluate() without candidate overrides.
+	const FMixtormatLayer* GetResolvedDestination() const;
+
 	TArray<FMixtormatLayer> Effective;
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
 
 private:
 	TArray<FMixtormatLayerGroup> Groups;
+	FMixtormatLayer ResolvedDestination;
 	MixtormatStructuralConnections::EIssue AddressIssue = MixtormatStructuralConnections::EIssue::MissingLayer;
 };

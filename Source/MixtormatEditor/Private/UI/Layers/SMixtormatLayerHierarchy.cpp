@@ -57,7 +57,9 @@ int32 SMixtormatLayerHierarchy::OnPaint(const FPaintArgs& Args, const FGeometry&
 	if (Hierarchy.bHasChildren)
 		{
 			// Start below the parent's glyph; meet the first scoped child's stem across the row gap.
-			const float X = Hierarchy.BranchInset + Hierarchy.Indent + HalfIndent + Weight * 0.5f;
+			const float X = Hierarchy.BranchInset
+								+ (Hierarchy.ChildStemIndent > 0.0f ? Hierarchy.ChildStemIndent - HalfIndent : Hierarchy.Indent + HalfIndent)
+								+ Weight * 0.5f;
 			const Mixtormat::FMixtormatIconStyle& ChildIcon = FMixtormatThemeStore::GetResolved().Icons.Roles[
 				static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)];
 			const float Start = Mid + ChildIcon.GlyphSize * 0.5f + HierarchyStyle.ParentJoinOffset;

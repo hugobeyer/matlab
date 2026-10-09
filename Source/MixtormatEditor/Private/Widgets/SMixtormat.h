@@ -39,6 +39,7 @@ class SWindow;
 class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
+struct FMixtormatProjectedChildRow;
 struct FMixtormatSurfaceEntry;
 
 // What an Add-menu entry creates.
@@ -599,6 +600,9 @@ private:
 		FText* OutFullLabel = nullptr) const;
 	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
+	FText GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, int32 ChildIndex) const;
+	TSharedRef<SWidget> BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
+		EMixtormatLayerChildType Type, FText& OutToolTip) const;
 	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
 	bool IsSelectedStructuralSourceLayer(FGuid LayerId, FGuid GroupId) const;
 	FText GetStructuralIncomingCountLabel(int32 LayerIndex, int32 ChildIndex) const;

@@ -3,7 +3,7 @@
 #include "UI/Menus/SMixtormatStructuralSourcePicker.h"
 
 #include "Framework/Application/SlateApplication.h"
-#include "Style/MixtormatDesignTokens.h"
+
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -22,12 +22,12 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 {
 	Entries = InArgs._Entries;
 	OnSourcePicked = InArgs._OnSourcePicked;
-	const auto& Layout = FMixtormatThemeStore::GetResolved().MenuLayout;
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const auto& Layout = Resolved.MenuLayout;
 	ChildSlot
 	[
 		SNew(SBox)
-		.WidthOverride(Layout.Width)
-		.MaxDesiredHeight(MixtormatTokens::MaskPickerMaxHeight)
+		.WidthOverride(Resolved.LayerConnections.PickerWidth)
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
@@ -59,13 +59,18 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SAssignNew(Scroll, SScrollBox)
-				+ SScrollBox::Slot()
+				SNew(SBox)
+				.MaxDesiredHeight(Resolved.LayerConnections.PickerListMaxHeight)
 				[
-					SAssignNew(Rows, SVerticalBox)
+					SAssignNew(Scroll, SScrollBox)
+					+ SScrollBox::Slot()
+					[
+						SAssignNew(Rows, SVerticalBox)
+					]
 				]
 			]
-		];
+		]
+	];
 	RebuildList();
 
 	// The popup must be attached before Slate can resolve a focus path to its search field.

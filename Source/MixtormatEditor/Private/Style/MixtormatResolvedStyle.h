@@ -292,6 +292,7 @@ namespace Mixtormat
 		FMixtormatFoldoutMetrics FoldoutLayout;
 		FMixtormatCardMetrics CardLayout;
 		FMixtormatLayerMetrics LayerLayout;
+		FMixtormatLayerConnectionMetrics LayerConnections;
 		FMixtormatHierarchyTheme LayerHierarchy;
 		FMixtormatMenuMetrics MenuLayout;
 		FMixtormatPreviewMetrics PreviewLayout;

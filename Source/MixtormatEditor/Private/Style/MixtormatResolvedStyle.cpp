@@ -503,6 +503,12 @@ namespace Mixtormat
 		OutStyle.CardLayout = Theme.CardLayout;
 		OutStyle.LayerLayout = Theme.LayerLayout;
 		OutStyle.LayerHierarchy = Theme.LayerHierarchy;
+		OutStyle.LayerConnections = Theme.LayerConnections;
+		OutStyle.LayerConnections.Indent = FMath::Clamp(Theme.LayerConnections.Indent, 0.0f, 40.0f);
+		OutStyle.LayerConnections.Inset = FMath::Clamp(Theme.LayerConnections.Inset, 0.0f, 12.0f);
+		OutStyle.LayerConnections.TextGap = FMath::Clamp(Theme.LayerConnections.TextGap, 0.0f, 12.0f);
+		OutStyle.LayerConnections.PickerWidth = FMath::Clamp(Theme.LayerConnections.PickerWidth, 220.0f, 480.0f);
+		OutStyle.LayerConnections.PickerListMaxHeight = FMath::Clamp(Theme.LayerConnections.PickerListMaxHeight, 100.0f, 600.0f);
 		OutStyle.MenuLayout = Theme.MenuLayout;
 
 		OutStyle.PreviewLayout = Theme.PreviewLayout;

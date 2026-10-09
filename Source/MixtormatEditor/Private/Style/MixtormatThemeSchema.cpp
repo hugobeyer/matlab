@@ -498,6 +498,11 @@ void AddIconRole(
 		NUM("LayerLayout.ThumbnailSize", Layers, "Layout", "Thumbnail Size", LayerLayout.ThumbnailSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ItemGap", Layers, "Layout", "Item Gap", LayerLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ChildIndent", Layers, "Layout", "Child Indent", LayerLayout.ChildIndent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerConnections.Indent", Layers, "Connections", "Indent", LayerConnections.Indent, 0, 40, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerConnections.Inset", Layers, "Connections", "Inset", LayerConnections.Inset, 0, 12, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerConnections.TextGap", Layers, "Connections", "Text Gap", LayerConnections.TextGap, 0, 12, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerConnections.PickerWidth", Layers, "Connections", "Picker Width", LayerConnections.PickerWidth, 220, 480, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerConnections.PickerListMaxHeight", Layers, "Connections", "Picker List Max Height", LayerConnections.PickerListMaxHeight, 100, 600, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		SetLocateTarget(P, LocateBegin, ETarget::Layer);
 
 // BUTTONS

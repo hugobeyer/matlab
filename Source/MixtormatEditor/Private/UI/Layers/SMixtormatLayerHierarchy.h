@@ -12,6 +12,8 @@ struct FMixtormatLayerHierarchyPaint
 	float Indent = 0.0f;
 	float RowHeight = 0.0f;
 	float BranchInset = 0.0f;
+	// Explicit stem for a projected operation's real owned children; zero keeps ordinary geometry.
+	float ChildStemIndent = 0.0f;
 	bool bLast = false;
 	bool bHasChildren = false;
 	TArray<float> AncestorIndents;

@@ -14,6 +14,7 @@ void SMixtormatLayerSurface::Construct(const FArguments& InArgs)
 	bVisible = InArgs._bVisible;
 	bReference = InArgs._bReference;
 	bInstanceSource = InArgs._bInstanceSource;
+	bSuppressActiveHalo = InArgs._bSuppressActiveHalo;
 	ChildSlot[InArgs._Content.Widget];
 }
 
@@ -48,7 +49,8 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 	// Body -> group cross -> selected glow -> selected/general hairline -> foreground content.
 	const FMixtormatSurfaceRecipe Body = MakeLayerBodyRecipe(Theme, Context);
 	const FMixtormatSurfaceRecipe Cross = MakeLayerGroupCrossRecipe(Theme, Context);
-	const float Reach = FMath::Min(Size.Y, FMath::Max(0.0f, Theme.Layer.ActiveGlow.Reach));
+	const float Reach = bSuppressActiveHalo.Get(false)
+		? 0.0f : FMath::Min(Size.Y, FMath::Max(0.0f, Theme.Layer.ActiveGlow.Reach));
 	const FMixtormatSurfaceRecipe Glow = MakeLayerGlowRecipe(Theme, Reach / Size.Y);
 	FMixtormatSurfaceSamples BodySamples;
 	CompositeSurface(Body, Palette, FMixtormatStateModifier(), BodySamples);

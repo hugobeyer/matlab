@@ -23,7 +23,8 @@ class SMixtormatLayerChildRow final : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerChildRow)
-		: _StructuralHighlightRole(EStructuralLinkHighlightRole::None)
+		: _bConnectionPresentation(false)
+		, _StructuralHighlightRole(EStructuralLinkHighlightRole::None)
 		, _bActive(true)
 		, _bSelected(false)
 		, _bInstanceSource(false)
@@ -35,6 +36,10 @@ public:
 		SLATE_NAMED_SLOT(FArguments, Icon)
 		// Optional compact connection controls, supplied only for structural module rows.
 		SLATE_NAMED_SLOT(FArguments, StructuralLink)
+		// Replaces ordinary text/badge columns; the adapter owns typography and endpoint status.
+		SLATE_NAMED_SLOT(FArguments, ConnectionContent)
+		// Retains the enable/icon shell and input routing, without the selected active halo.
+		SLATE_ARGUMENT(bool, bConnectionPresentation)
 
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Kind)

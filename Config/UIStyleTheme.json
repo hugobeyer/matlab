@@ -422,7 +422,12 @@
 		"LayerLayout.PaddingX": 8,
 		"LayerLayout.ThumbnailSize": 20,
 		"LayerLayout.ItemGap": 7,
-		"LayerLayout.ChildIndent": 38
+		"LayerLayout.ChildIndent": 38,
+		"LayerConnections.Indent": 16,
+		"LayerConnections.Inset": 4,
+		"LayerConnections.TextGap": 3,
+		"LayerConnections.PickerWidth": 300,
+		"LayerConnections.PickerListMaxHeight": 260
 	},
 	"buttons":
 	{
