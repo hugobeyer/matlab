@@ -79,6 +79,12 @@ namespace MixtormatMenu
 		return *this;
 	}
 
+	FBuilder& FBuilder::ToolTip(const FText& Text)
+	{
+		LastRow().ToolTip = Text;
+		return *this;
+	}
+
 	FBuilder& FBuilder::Checked(const TAttribute<bool>& InChecked)
 	{
 		LastRow().bChecked = InChecked;
@@ -156,6 +162,7 @@ namespace MixtormatMenu
 				[
 					SNew(SMixtormatMenuItem)
 					.Label(Entry.Label)
+					.ToolTipText(Entry.ToolTip)
 					.Shortcut(Entry.Shortcut)
 					.Icon(Entry.Icon)
 					.bChecked(Entry.bChecked)

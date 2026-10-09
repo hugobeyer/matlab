@@ -47,6 +47,7 @@ namespace MixtormatMenu
 		// Modifiers, applied to the row added last. Chained after Item so a row reads in one line
 		// rather than through a nine-argument call where every other argument is a default.
 		FBuilder& Shortcut(const FText& Text);
+		FBuilder& ToolTip(const FText& Text);
 		FBuilder& Checked(const TAttribute<bool>& InChecked);
 		FBuilder& Enabled(const TAttribute<bool>& InEnabled);
 		FBuilder& Destructive();
@@ -67,6 +68,7 @@ namespace MixtormatMenu
 			EKind Kind = EKind::Row;
 			FText Label;
 			FText Shortcut;
+			FText ToolTip;
 			const FSlateBrush* Icon = nullptr;
 			FSimpleDelegate OnActivate;
 			FOnGetContent OnGetSubMenu;

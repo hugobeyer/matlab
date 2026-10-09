@@ -5,6 +5,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
 #include "Services/MixtormatPaths.h"
 #include "ObjectTools.h"
@@ -1535,6 +1536,22 @@ bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, con
 	const EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
 	int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
 {
+	return PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, nullptr,
+		ProposedLayers, LayerIndex, InsertIndex, OutReason);
+}
+
+bool SMixtormat::PrepareConnectedStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
+	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source,
+	TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
+{
+	return PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, &Source,
+		ProposedLayers, LayerIndex, InsertIndex, OutReason);
+}
+
+bool SMixtormat::PrepareStructuralModuleProposal(const FGuid TargetLayerId, const FGuid TargetChildId,
+	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* ProposedSource,
+	TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
+{
 	OutReason = LOCTEXT("StructuralCreationUnavailable", "Requires an enabled, unscoped generator target in a Generator layer");
 	if (!bHasWorkingMaterial || !TargetLayerId.IsValid() || !TargetChildId.IsValid()
 		|| (ModuleType != EMixtormatLayerChildType::HeightPush
@@ -1553,9 +1570,18 @@ bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, con
 		}
 		LayerIndex = Index;
 	}
-	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return false; }
+	if (!WorkingLayers.IsValidIndex(LayerIndex))
+	{
+		OutReason = LOCTEXT("StructuralCreationMissingLayer", "Target layer no longer exists");
+		return false;
+	}
 	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	if (Layer.Type != EMixtormatLayerType::Generator || !Layer.bEnabled) { return false; }
+	if (Layer.Type != EMixtormatLayerType::Generator || !Layer.bEnabled)
+	{
+		OutReason = Layer.bEnabled ? LOCTEXT("StructuralCreationGeneratorLayer", "Requires a Generator layer")
+			: LOCTEXT("StructuralCreationDisabledLayer", "Target layer is disabled");
+		return false;
+	}
 	InsertIndex = INDEX_NONE;
 	for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
 	{
@@ -1567,13 +1593,36 @@ bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, con
 		}
 		InsertIndex = Index;
 	}
-	if (!Layer.Children.IsValidIndex(InsertIndex)) { return false; }
-	const FMixtormatLayerChild& Target = Layer.Children[InsertIndex];
-	if (Target.Type != EMixtormatLayerChildType::Generator || Target.IsInstance()
-		|| Target.ScopeOwnerChildId.IsValid() || !IsChildEnabled(Target)
-		|| (ModuleType == EMixtormatLayerChildType::HeightPush
-			&& Target.Generator.Type != EMixtormatGeneratorType::StrataCarver))
+	if (!Layer.Children.IsValidIndex(InsertIndex))
 	{
+		OutReason = LOCTEXT("StructuralCreationMissingTarget", "Target child no longer exists");
+		return false;
+	}
+	const FMixtormatLayerChild& Target = Layer.Children[InsertIndex];
+	if (Target.Type != EMixtormatLayerChildType::Generator)
+	{
+		OutReason = LOCTEXT("StructuralCreationGeneratorTarget", "Requires a generator target");
+		return false;
+	}
+	if (Target.IsInstance())
+	{
+		OutReason = LOCTEXT("StructuralCreationInstanceTarget", "Break the target instance before adding a connection");
+		return false;
+	}
+	if (Target.ScopeOwnerChildId.IsValid())
+	{
+		OutReason = LOCTEXT("StructuralCreationScopedTarget", "Target must be an unscoped generator");
+		return false;
+	}
+	if (!IsChildEnabled(Target))
+	{
+		OutReason = LOCTEXT("StructuralCreationDisabledTarget", "Target generator is disabled");
+		return false;
+	}
+	if (ModuleType == EMixtormatLayerChildType::HeightPush
+		&& Target.Generator.Type != EMixtormatGeneratorType::StrataCarver)
+	{
+		OutReason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
 		return false;
 	}
 	// Insert at the root boundary, never inside the preceding owner's contiguous mask/tool block.
@@ -1595,25 +1644,34 @@ bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, con
 	if (ModuleType == EMixtormatLayerChildType::HeightPush) { Module.HeightPush.TargetChildId = TargetChildId; }
 	else { Module.StructuralWarp.TargetChildId = TargetChildId; }
 	ApplyLinkDefaults(Module, TargetLayerId);
+	if (ProposedSource)
+	{
+		// Copy only the typed endpoint. Placement/trace controls retain creation defaults.
+		Source.bEnabled = true;
+		Source.SourceLayerId = ProposedSource->SourceLayerId;
+		Source.SourceChildId = ProposedSource->SourceChildId;
+		Source.OutputName = ProposedSource->OutputName;
+		Source.Kind = ProposedSource->Kind;
+	}
 	ProposedLayers = WorkingLayers;
 	ProposedLayers[LayerIndex].Children.Insert(MoveTemp(Module), InsertIndex);
 
-	TArray<FMixtormatLayer> Effective;
-	MixtormatLayerGroups::BuildEffectiveLayers(ProposedLayers, WorkingLayerGroups, Effective);
-	const int32 EffectiveLayerIndex = Effective.IndexOfByPredicate([&](const FMixtormatLayer& Candidate)
-		{ return Candidate.LayerId == TargetLayerId; });
-	if (!Effective.IsValidIndex(EffectiveLayerIndex)) { return false; }
-	FMixtormatLayer Resolved = Effective[EffectiveLayerIndex];
 	const FGuid ModuleId = ProposedLayers[LayerIndex].Children[InsertIndex].ChildId;
-	const int32 ModuleIndex = Resolved.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Candidate)
-		{ return Candidate.ChildId == ModuleId; });
-	MixtormatParameterBinding::ApplyDirectReferences(FMixtormatBindingScope{Effective, WorkingLayerGroups}, Resolved);
-	const auto Status = MixtormatOutputReferences::EvaluateStructuralLinkForGather(
-		Effective, EffectiveLayerIndex, ModuleIndex, Resolved);
-	if (Status.ModuleIssue != MixtormatOutputReferences::EStructuralLinkIssue::None
-		|| Status.Target.Issue != MixtormatOutputReferences::EStructuralLinkIssue::None)
+	const FMixtormatStructuralConnectionContext Context(ProposedLayers, WorkingLayerGroups,
+		{EMixtormatChildOwnerType::Layer, TargetLayerId, ModuleId});
+	const auto Status = Context.Evaluate();
+	using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
+	const EIssue Issue = Status.ModuleIssue != EIssue::None ? Status.ModuleIssue
+		: Status.Target.Issue != EIssue::None ? Status.Target.Issue
+		: ProposedSource ? Status.Source.Issue : EIssue::None;
+	if (Issue != EIssue::None)
 	{
-		OutReason = LOCTEXT("StructuralCreationInvalidTarget", "Target is unavailable in the effective generator stack");
+		OutReason = MixtormatStructuralConnections::IssueText(Issue);
+		return false;
+	}
+	if (ProposedSource && !Status.bCanExecuteStructurally)
+	{
+		OutReason = LOCTEXT("StructuralCreationInactive", "Connection is unavailable in the effective generator stack");
 		return false;
 	}
 	if (!PublishedOutputPlacementsValid(FMixtormatBindingScope{ProposedLayers, WorkingLayerGroups}))
@@ -1629,11 +1687,23 @@ bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, con
 FReply SMixtormat::CreateStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
 	const EMixtormatLayerChildType ModuleType)
 {
+	return CommitStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, nullptr);
+}
+
+FReply SMixtormat::CreateConnectedStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
+	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source)
+{
+	return CommitStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, &Source);
+}
+
+FReply SMixtormat::CommitStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
+	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source)
+{
 	TArray<FMixtormatLayer> ProposedLayers;
 	int32 LayerIndex = INDEX_NONE;
 	int32 InsertIndex = INDEX_NONE;
 	FText Reason;
-	if (!PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+	if (!PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, Source,
 		ProposedLayers, LayerIndex, InsertIndex, Reason))
 	{
 		WorkingStatusText = Reason.ToString();

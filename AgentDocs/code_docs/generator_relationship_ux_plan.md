@@ -1,13 +1,20 @@
 # Generator relationships — target-first implementation plan
 
-Status: implementation specification, 2026-10-08. **Documentation only; not implemented.**
+Status: partially implemented, 2026-10-08. **Phases 1–2 and the phase-3 picker are source-reviewed only; no build/runtime validation.**
+
+Delivered: owned gather-equivalent context, shared typed source collection, revalidated atomic connected
+creation, searchable/grouped target-first Warp/Push menus, canonical disabled reasons/tooltips, keyboard
+navigation/dismissal, preserved advanced unconnected paths, and generator add-menu gate alignment.
+Still pending: phase-3 temporary endpoint highlighting and phases 4–6 (display projection/connection rows,
+inspector summary/navigation, generator-local collapse/lifecycle, and `LayerConnections` style contract).
+No tests, diagnostics, commands, builds, Unreal launches, or image reads were performed.
 
 Primary decision: **target-first source picker + target-owned connection rows**. This replaces the confusing primary workflow, not merely its labels. Existing advanced authoring, serialized data, evaluation semantics, and unrelated UI remain intact.
 
 Implementation baseline updated 2026-10-08: Noise Mask/Noise Gate and live `Noise Value from…`
 source authoring now exist; all six generators can own deformation tools, including Cliff Strata.
-The target-first Structural Warp picker, projected relationship rows, generator-local collapse,
-and `LayerConnections` style fields in this plan **still do not exist**. Do not conflate the mask
+The target-first Warp/Push picker and atomic creation now exist. Projected relationship rows,
+generator-local collapse, and `LayerConnections` style fields **still do not exist**. Do not conflate the mask
 source workflow with completion of this plan. See `noise_gate_flow_handoff.md` for delivered code,
 UI availability findings, and source-review limitations.
 
@@ -239,7 +246,8 @@ These paths are integration touchpoints, not a demand to edit every file. If a g
 
 ## 5. Proposed files and responsibility split
 
-The following files **do not exist yet**. Names and types here are proposed, not claims about current APIs.
+The model and picker pairs below now exist. The projection and connection-row pairs remain
+**proposed and unimplemented**; their names/types are not claims about current APIs.
 
 | Proposed files | Single responsibility |
 |---|---|
@@ -872,7 +880,9 @@ Implement this plan in the listed order. Read targeted source symbols before edi
 
 Keep changes behavior-preserving and local to the connection authoring/presentation workflow. Refactor duplicated connection logic where specified, but do not redesign the compositor, serialized model, history system, or whole layer panel.
 
-All types/APIs/files explicitly marked **proposed** need implementation. Do not call them as existing APIs. When a detail depends on Slate/engine signatures, read available source/documentation before using it instead of guessing.
+Use the delivered model/picker pairs and connected preparation/creation APIs described in the status
+above. Remaining projection/row/style types marked **proposed** still need implementation; do not call
+them as existing APIs. When a detail depends on Slate/engine signatures, read available source/documentation before using it instead of guessing.
 
 Stop and ask before changing runtime compatibility, enabling shared-group structural authoring, moving operations automatically, changing target-copy ownership, removing advanced paths, or deleting existing authored data/features.
 

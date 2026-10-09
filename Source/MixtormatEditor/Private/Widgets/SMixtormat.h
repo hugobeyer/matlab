@@ -434,6 +434,18 @@ private:
 	bool PrepareStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
 		EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
 		int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
+	FReply CreateConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source);
+	bool PrepareConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source,
+		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
+	bool PrepareStructuralModuleProposal(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source,
+		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
+	FReply CommitStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source);
+	TSharedRef<SWidget> BuildStructuralSourcePickerForTarget(FGuid TargetLayerId, FGuid TargetChildId,
+		EMixtormatLayerChildType ModuleType);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(

@@ -1170,6 +1170,13 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
+	const bool bCanAdd = CanCreateChild(Target) && CanAddGeneratorModule(Target);
+	const FText Reason = bCanAdd ? FText::GetEmpty()
+		: Target.IsGroup() ? LOCTEXT("GeneratorModuleGroupUnavailable", "Generator modules cannot be authored in groups")
+		: Target.ScopeOwnerChildId.IsValid() ? LOCTEXT("GeneratorModuleScopedUnavailable", "Generator modules must be unscoped")
+		: !CanAddGeneratorModule(Target) ? LOCTEXT("GeneratorModuleLayerUnavailable", "Requires a Generator layer")
+		: LOCTEXT("GeneratorModuleCreationUnavailable", "Cannot create a child at this location");
+	if (!bCanAdd) { Menu.Caption(Reason); }
 	Menu.Item(
 		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
 		MixtormatIcons::Generator(),
@@ -1177,7 +1184,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		{
 			CreateChild(Target, EMixtormatChildCreation::StrataCarver);
 		}))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(
 		LOCTEXT("AddCracksChild", "Cracks"),
 		MixtormatIcons::Generator(),
@@ -1185,7 +1192,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		{
 			CreateChild(Target, EMixtormatChildCreation::Cracks);
 		}))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(
 		LOCTEXT("AddRockFormationChild", "Rock Formation"),
 		MixtormatIcons::Generator(),
@@ -1193,7 +1200,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		{
 			CreateChild(Target, EMixtormatChildCreation::RockFormation);
 		}))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(
 		LOCTEXT("AddPebblesChild", "Pebbles"),
 		MixtormatIcons::Generator(),
@@ -1201,31 +1208,30 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		{
 			CreateChild(Target, EMixtormatChildCreation::Pebbles);
 		}))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
 	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::Generator(),
 			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
-			.Enabled(TAttribute<bool>(CanCreateChild(Target) && !Target.IsGroup()
-						&& !Target.ScopeOwnerChildId.IsValid()));
+			.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::StructuralWarp); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target) && CanAddGeneratorModule(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightCurve); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightColorRampChild", "Color Ramp"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightColorRamp); }))
-		.Enabled(TAttribute<bool>(CanCreateChild(Target)));
+		.Enabled(bCanAdd).ToolTip(Reason);
 	return Menu.Build();
 }
 
@@ -1400,31 +1406,68 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	{
 		const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 		const FMixtormatLayerChild& Target = Layer.Children[ChildIndex];
-		const auto AddStructuralAction = [this, &Menu, TargetLayerId = Layer.LayerId, TargetChildId = Target.ChildId](
-			const EMixtormatLayerChildType ModuleType, const FText& Label)
+		const FGuid TargetLayerId = Layer.LayerId;
+		const FGuid TargetChildId = Target.ChildId;
+		const bool bStrata = Target.Type == EMixtormatLayerChildType::Generator
+			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
+		struct FStructuralAction
 		{
-			TArray<FMixtormatLayer> ProposedLayers;
-			int32 ProposedLayerIndex = INDEX_NONE;
-			int32 InsertIndex = INDEX_NONE;
+			EMixtormatLayerChildType Type;
+			FText Label;
 			FText Reason;
-			const bool bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
-				ProposedLayers, ProposedLayerIndex, InsertIndex, Reason);
-			const FText EntryLabel = bAvailable ? Label : FText::Format(
-				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Reason);
-			Menu.Item(EntryLabel, MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
-				{
-					CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
-				})).Enabled(bAvailable);
+			bool bAvailable = false;
 		};
-		if (Target.Type == EMixtormatLayerChildType::Generator
-			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver)
+		TArray<FStructuralAction> Actions;
+		const auto AddStructuralPicker = [this, &Menu, &Actions, TargetLayerId, TargetChildId, bStrata](
+			const EMixtormatLayerChildType ModuleType, const FText& Label, const FText& UnconnectedLabel)
 		{
-			AddStructuralAction(EMixtormatLayerChildType::HeightPush,
-				LOCTEXT("AddHeightPushForTarget", "Add Height Push"));
-		}
-		AddStructuralAction(EMixtormatLayerChildType::StructuralWarp,
+			FStructuralAction Action;
+			Action.Type = ModuleType;
+			Action.Label = UnconnectedLabel;
+			if (ModuleType == EMixtormatLayerChildType::HeightPush && !bStrata)
+			{
+				Action.Reason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
+			}
+			else
+			{
+				TArray<FMixtormatLayer> ProposedLayers;
+				int32 ProposedLayerIndex = INDEX_NONE;
+				int32 InsertIndex = INDEX_NONE;
+				Action.bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+					ProposedLayers, ProposedLayerIndex, InsertIndex, Action.Reason);
+			}
+			const FText EntryLabel = Action.bAvailable ? Label : FText::Format(
+				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Action.Reason);
+			Menu.SubMenu(EntryLabel, MixtormatIcons::Generator(),
+				FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
+				{
+					return BuildStructuralSourcePickerForTarget(TargetLayerId, TargetChildId, ModuleType);
+				})).Enabled(Action.bAvailable).ToolTip(Action.Reason);
+			if (ModuleType != EMixtormatLayerChildType::HeightPush || bStrata) { Actions.Add(MoveTemp(Action)); }
+		};
+		AddStructuralPicker(EMixtormatLayerChildType::StructuralWarp,
+			LOCTEXT("WarpUsingForTarget", "Warp using…"),
 			LOCTEXT("AddStructuralWarpForTarget", "Add Structural Warp"));
+		AddStructuralPicker(EMixtormatLayerChildType::HeightPush,
+			LOCTEXT("HeightPushFromForTarget", "Height Push from…"),
+			LOCTEXT("AddHeightPushForTarget", "Add Height Push"));
+		Menu.SubMenu(LOCTEXT("StructuralCreationAdvanced", "Advanced"), nullptr,
+			FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, Actions]()
+			{
+				MixtormatMenu::FBuilder Advanced;
+				Advanced.Caption(LOCTEXT("StructuralAddUnconnected", "Add unconnected…"));
+				for (const FStructuralAction& Action : Actions)
+				{
+					const FText Label = Action.bAvailable ? Action.Label : FText::Format(
+						LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Action.Label, Action.Reason);
+					Advanced.Item(Label, MixtormatIcons::Generator(),
+						FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType = Action.Type]()
+						{
+							CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
+						})).Enabled(Action.bAvailable).ToolTip(Action.Reason);
+				}
+				return Advanced.Build();
+			}));
 		Menu.Separator();
 	}
 

@@ -1,11 +1,13 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatStructuralSourcePicker.h"
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
@@ -28,31 +30,7 @@ namespace
 
 	FText ConnectionIssueText(const EIssue Issue)
 	{
-		switch (Issue)
-		{
-		case EIssue::None: return FText::GetEmpty();
-		case EIssue::Unset: return LOCTEXT("StructuralUnset", "No connection selected");
-		case EIssue::MissingLayer: return LOCTEXT("StructuralMissingLayer", "Referenced layer no longer exists");
-		case EIssue::MissingChild: return LOCTEXT("StructuralMissingChild", "Referenced child no longer exists");
-		case EIssue::DuplicateIdentity: return LOCTEXT("StructuralDuplicate", "Duplicate identity is ambiguous");
-		case EIssue::DisabledLayer: return LOCTEXT("StructuralDisabledLayer", "Layer is disabled");
-		case EIssue::DisabledSource: return LOCTEXT("StructuralDisabledSource", "Source or its owner is disabled");
-		case EIssue::DisabledTarget: return LOCTEXT("StructuralDisabledTarget", "Target is disabled");
-		case EIssue::DisabledReference: return LOCTEXT("StructuralDisabledReference", "Source reference is disabled");
-		case EIssue::WrongOwnerLayer: return LOCTEXT("StructuralWrongLayer", "Requires a Generator layer");
-		case EIssue::WrongModuleType: return LOCTEXT("StructuralWrongModule", "Requires Height Push or Structural Warp");
-		case EIssue::ScopedModule: return LOCTEXT("StructuralScopedModule", "Module must be an unscoped sibling");
-		case EIssue::WrongSourceKind: return LOCTEXT("StructuralSourceKind", "Requires signed Height for Push or typed Flow / UV Map for Warp");
-		case EIssue::WrongSourceScope: return LOCTEXT("StructuralSourceScope", "Requires an unscoped Height generator or generator-owned Flow / UV Map effect");
-		case EIssue::IncompleteSourceScope: return LOCTEXT("StructuralIncompleteScope", "Move the module after the complete source scope");
-		case EIssue::InvalidSourceScope: return LOCTEXT("StructuralInvalidScope", "Source scope or generator owner is invalid");
-		case EIssue::ForwardSource: return LOCTEXT("StructuralForwardSource", "Source must finish before the module");
-		case EIssue::ForwardTarget: return LOCTEXT("StructuralForwardTarget", "Target must be after the module");
-		case EIssue::WrongTargetKind: return LOCTEXT("StructuralTargetKind", "Push requires Strata; Warp requires a generator");
-		case EIssue::ScopedTarget: return LOCTEXT("StructuralScopedTarget", "Target must be unscoped");
-		case EIssue::UnavailableEffectAsset: return LOCTEXT("StructuralMissingEffect", "Source effect asset is unavailable");
-		}
-		return LOCTEXT("StructuralUnsupported", "Unsupported structural connection");
+		return MixtormatStructuralConnections::IssueText(Issue);
 	}
 
 	FText ConnectionMenuReason(const EIssue Issue)
@@ -84,56 +62,6 @@ namespace
 		return LOCTEXT("StructuralMenuUnsupported", "Unsupported");
 	}
 
-	// Prepare one raw effective projection per menu. Only the destination copy receives
-	// bindings/instances, matching Gather's distinct source/Warp-target and Push-target views.
-	struct FConnectionProjection
-	{
-		TArray<FMixtormatLayer> Effective;
-		const TArray<FMixtormatLayerGroup>& Groups;
-		int32 LayerIndex = INDEX_NONE;
-		int32 ChildIndex = INDEX_NONE;
-
-		FConnectionProjection(const TArray<FMixtormatLayer>& Layers,
-			const TArray<FMixtormatLayerGroup>& InGroups, const FMixtormatChildAddress& Address)
-			: Groups(InGroups)
-		{
-			MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, Effective);
-			if (Address.OwnerType != EMixtormatChildOwnerType::Layer || !Address.IsValid()) { return; }
-			LayerIndex = Effective.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
-				{ return Layer.LayerId == Address.OwnerId; });
-			if (!Effective.IsValidIndex(LayerIndex)) { return; }
-			ChildIndex = Effective[LayerIndex].Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
-				{ return Child.ChildId == Address.ChildId; });
-		}
-
-		MixtormatOutputReferences::FStructuralLinkStatus Evaluate(
-			const FMixtormatOutputReference* Source = nullptr, const FGuid* Target = nullptr) const
-		{
-			if (!Effective.IsValidIndex(LayerIndex))
-			{
-				MixtormatOutputReferences::FStructuralLinkStatus Status;
-				Status.ModuleIssue = EIssue::MissingLayer;
-				return Status;
-			}
-			FMixtormatLayer Resolved = Effective[LayerIndex];
-			if (Resolved.Children.IsValidIndex(ChildIndex))
-			{
-				FMixtormatLayerChild& Module = Resolved.Children[ChildIndex];
-				if (Module.Type == EMixtormatLayerChildType::HeightPush)
-				{
-					if (Source) { Module.HeightPush.Source = *Source; }
-					if (Target) { Module.HeightPush.TargetChildId = *Target; }
-				}
-				else if (Module.Type == EMixtormatLayerChildType::StructuralWarp)
-				{
-					if (Source) { Module.StructuralWarp.Source = *Source; }
-					if (Target) { Module.StructuralWarp.TargetChildId = *Target; }
-				}
-			}
-			MixtormatParameterBinding::ApplyDirectReferences(FMixtormatBindingScope{Effective, Groups}, Resolved);
-			return MixtormatOutputReferences::EvaluateStructuralLinkForGather(Effective, LayerIndex, ChildIndex, Resolved);
-		}
-	};
 
 	FText ConnectionIssueCode(const EIssue Issue)
 	{
@@ -226,7 +154,7 @@ FText SMixtormat::GetStructuralConnectionLabel(
 		const FText None = LOCTEXT("StructuralConnectionNone", "None");
 		return CacheLabels(None, None);
 	}
-	const FConnectionProjection Projection(WorkingLayers, WorkingLayerGroups, Address);
+	const FMixtormatStructuralConnectionContext Projection(WorkingLayers, WorkingLayerGroups, Address);
 	const auto Status = Projection.Evaluate();
 	const auto& Edge = Role == ERole::Target ? Status.Target : Status.Source;
 	if (!Projection.Effective.IsValidIndex(Edge.LayerIndex)
@@ -263,12 +191,106 @@ FText SMixtormat::GetStructuralConnectionLabel(
 	return CacheLabels(FullLabel, CompactLabel);
 }
 
+TSharedRef<SWidget> SMixtormat::BuildStructuralSourcePickerForTarget(const FGuid TargetLayerId,
+	const FGuid TargetChildId, const EMixtormatLayerChildType ModuleType)
+{
+	MixtormatMenu::FBuilder Menu;
+	TArray<FMixtormatLayer> ProposedLayers;
+	int32 LayerIndex = INDEX_NONE;
+	int32 InsertIndex = INDEX_NONE;
+	FText Reason;
+	if (!PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+		ProposedLayers, LayerIndex, InsertIndex, Reason))
+	{
+		Menu.Caption(Reason);
+		return Menu.Build();
+	}
+	const bool bPush = ModuleType == EMixtormatLayerChildType::HeightPush;
+	const FMixtormatLayerChild& Module = ProposedLayers[LayerIndex].Children[InsertIndex];
+	const FMixtormatStructuralConnectionContext Context(ProposedLayers, WorkingLayerGroups,
+		{EMixtormatChildOwnerType::Layer, TargetLayerId, Module.ChildId});
+	const FMixtormatOutputReference& ModuleSource = bPush ? Module.HeightPush.Source : Module.StructuralWarp.Source;
+	TArray<FMixtormatStructuralSourcePickerEntry> Entries;
+	for (const FMixtormatStructuralSourceCandidate& Candidate : Context.CollectSources(ProposedLayers, ModuleSource))
+	{
+		const FMixtormatLayer& Layer = ProposedLayers[Candidate.LayerIndex];
+		const FMixtormatLayerChild& Child = Layer.Children[Candidate.ChildIndex];
+		FText Breadcrumb = GetStructuralChildLabel(Layer, Candidate.ChildIndex);
+		// Resolve each scope owner by a unique GUID, never by a name or first matching child.
+		FGuid OwnerId = Child.ScopeOwnerChildId;
+		TSet<FGuid> Visited;
+		Visited.Add(Child.ChildId);
+		while (OwnerId.IsValid() && !Visited.Contains(OwnerId))
+		{
+			Visited.Add(OwnerId);
+			int32 OwnerIndex = INDEX_NONE;
+			int32 Matches = 0;
+			for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+			{
+				if (Layer.Children[Index].ChildId != OwnerId) { continue; }
+				OwnerIndex = Index;
+				++Matches;
+			}
+			if (Matches != 1) { break; }
+			Breadcrumb = FText::Format(LOCTEXT("StructuralPickerBreadcrumb", "{0} / {1}"),
+				GetStructuralChildLabel(Layer, OwnerIndex), Breadcrumb);
+			OwnerId = Layer.Children[OwnerIndex].ScopeOwnerChildId;
+		}
+		const FText OutputKind = StaticEnum<EMixtormatPublishedFieldKind>()->GetDisplayNameTextByValue(
+			static_cast<int64>(Candidate.Source.Kind));
+		const FText Output = FText::Format(LOCTEXT("StructuralPickerTypedOutput", "{0} ({1})"),
+			FText::FromName(Candidate.Source.OutputName), OutputKind);
+		const FText Label = FText::Format(LOCTEXT("StructuralPickerOutput", "{0} · {1}"), Breadcrumb, Output);
+		// Preparation validated the destination; candidate status still owns source eligibility.
+		const EIssue Issue = Candidate.Status.ModuleIssue != EIssue::None ? Candidate.Status.ModuleIssue
+			: Candidate.Status.Target.Issue != EIssue::None ? Candidate.Status.Target.Issue : Candidate.Issue;
+		FMixtormatStructuralSourcePickerEntry Entry;
+		Entry.Source.SourceLayerId = Candidate.SourceAddress.OwnerId;
+		Entry.Source.SourceChildId = Candidate.SourceAddress.ChildId;
+		Entry.Source.OutputName = Candidate.Source.OutputName;
+		Entry.Source.Kind = Candidate.Source.Kind;
+		Entry.Source.bEnabled = true;
+		Entry.LayerIndex = Candidate.LayerIndex;
+		Entry.LayerLabel = Layer.LayerId == TargetLayerId
+			? LOCTEXT("StructuralMenuThisLayer", "This layer") : Layer.DisplayName;
+		Entry.bAvailable = Issue == EIssue::None && Candidate.Status.bCanExecuteStructurally;
+		Entry.Label = Entry.bAvailable ? Label : FText::Format(LOCTEXT("StructuralPickerShortReason", "{0} — {1}"),
+			Label, Issue == EIssue::None ? LOCTEXT("StructuralPickerInactive", "Connection inactive") : ConnectionMenuReason(Issue));
+		const FText FullLabel = FText::Format(LOCTEXT("StructuralPickerFullLabel", "{0} / {1}"), Layer.DisplayName, Label);
+		Entry.ToolTip = Entry.bAvailable ? FullLabel : FText::Format(LOCTEXT("StructuralPickerFullReason", "{0}\n{1}"),
+			FullLabel, Issue == EIssue::None
+				? LOCTEXT("StructuralPickerInactiveReason", "Connection is unavailable in the effective generator stack")
+				: MixtormatStructuralConnections::IssueText(Issue));
+		Entry.SearchText = FullLabel.ToString();
+		Entries.Add(MoveTemp(Entry));
+	}
+	const int32 TargetIndex = ProposedLayers[LayerIndex].Children.IndexOfByPredicate(
+		[TargetChildId](const FMixtormatLayerChild& Child) { return Child.ChildId == TargetChildId; });
+	const FText Caption = FText::Format(bPush
+		? LOCTEXT("StructuralPickerPushCaption", "Height Push {0} from…")
+		: LOCTEXT("StructuralPickerWarpCaption", "Warp {0} using…"),
+		GetStructuralChildLabel(ProposedLayers[LayerIndex], TargetIndex));
+	const TWeakPtr<SMixtormat> WeakThis = SharedThis(this);
+	Menu.Widget(SNew(SMixtormatStructuralSourcePicker)
+		.Caption(Caption)
+		.Entries(MoveTemp(Entries))
+		.OnSourcePicked(FOnMixtormatStructuralSourcePicked::CreateLambda(
+			[WeakThis, TargetLayerId, TargetChildId, ModuleType](const FMixtormatOutputReference& Source)
+			{
+				if (const auto Editor = WeakThis.Pin())
+				{
+					Editor->CreateConnectedStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, Source);
+				}
+			})));
+	return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatChildAddress Address, const ERole Role)
 {
 	MixtormatMenu::FBuilder Menu;
 	const FMixtormatLayerChild* Module = ResolveChildAt(Address);
 	if (Address.OwnerType != EMixtormatChildOwnerType::Layer || !Module || !IsStructuralModule(*Module)) { return Menu.Build(); }
-	const FConnectionProjection Projection(WorkingLayers, WorkingLayerGroups, Address);
+	const FMixtormatStructuralConnectionContext Projection(WorkingLayers, WorkingLayerGroups, Address);
 	const auto CurrentStatus = Projection.Evaluate();
 	const bool bEditable = !Module->IsInstance() && !Module->ScopeOwnerChildId.IsValid()
 		&& (CurrentStatus.ModuleIssue == EIssue::None || CurrentStatus.ModuleIssue == EIssue::DisabledLayer);
@@ -286,52 +308,44 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 		EIssue Issue = EIssue::None;
 	};
 	TArray<FEntry> Entries;
-	for (const FMixtormatLayer& Layer : WorkingLayers)
+	if (Role == ERole::Source)
 	{
-		if (Role == ERole::Target && Layer.LayerId != Address.OwnerId) { continue; }
-		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+		for (const FMixtormatStructuralSourceCandidate& Candidate : Projection.CollectSources(WorkingLayers, CurrentSource))
 		{
-			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
-			const FText Name = GetStructuralChildLabel(Layer, Index);
-			const auto AddEntry = [&](const FMixtormatOutputReference& Source, const FGuid Target, const FText& Label)
+			const FMixtormatLayer& Layer = WorkingLayers[Candidate.LayerIndex];
+			const FText Name = GetStructuralChildLabel(Layer, Candidate.ChildIndex);
+			FEntry Entry;
+			Entry.Source = Candidate.Source;
+			Entry.Label = Name;
+			if (!bPush)
 			{
+				const FText OutputLabel = Candidate.Source.Kind == EMixtormatPublishedFieldKind::Flow
+					? LOCTEXT("StructuralMenuFlow", "Flow") : LOCTEXT("StructuralMenuUV", "UV");
+				Entry.Label = FText::Format(LOCTEXT("StructuralMenuOutput", "{0} · {1}"), Name, OutputLabel);
+			}
+			Entry.LayerLabel = Layer.DisplayName;
+			Entry.LayerId = Layer.LayerId;
+			Entry.Issue = Candidate.Issue;
+			Entries.Add(MoveTemp(Entry));
+		}
+	}
+	else
+	{
+		for (const FMixtormatLayer& Layer : WorkingLayers)
+		{
+			if (Layer.LayerId != Address.OwnerId) { continue; }
+			for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+			{
+				const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+				if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
 				FEntry Entry;
-				Entry.Source = Source;
-				Entry.Target = Target;
-				Entry.Label = Label;
+				Entry.Source = CurrentSource;
+				Entry.Target = Candidate.ChildId;
+				Entry.Label = GetStructuralChildLabel(Layer, Index);
 				Entry.LayerLabel = Layer.DisplayName;
 				Entry.LayerId = Layer.LayerId;
-				Entry.Issue = ConnectionIssue(Projection.Evaluate(Role == ERole::Source ? &Source : nullptr,
-					Role == ERole::Target ? &Target : nullptr), Role);
+				Entry.Issue = ConnectionIssue(Projection.Evaluate(nullptr, &Entry.Target), Role);
 				Entries.Add(MoveTemp(Entry));
-			};
-			if (Role == ERole::Target)
-			{
-				if (Candidate.Type == EMixtormatLayerChildType::Generator) { AddEntry(CurrentSource, Candidate.ChildId, Name); }
-				continue;
-			}
-			FMixtormatOutputReference Source = CurrentSource;
-			Source.bEnabled = true;
-			Source.SourceLayerId = Layer.LayerId;
-			Source.SourceChildId = Candidate.ChildId;
-			if (bPush)
-			{
-				if (Candidate.Type != EMixtormatLayerChildType::Generator) { continue; }
-				Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
-				Source.OutputName = TEXT("Height");
-				AddEntry(Source, FGuid(), Name);
-				continue;
-			}
-			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Candidate);
-			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
-			{
-				if (!Output.bCopyableAsField || (Output.FieldKind != EMixtormatPublishedFieldKind::Flow
-					&& Output.FieldKind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
-				Source.Kind = Output.FieldKind;
-				Source.OutputName = Output.Name;
-				const FText OutputLabel = Output.FieldKind == EMixtormatPublishedFieldKind::Flow
-					? LOCTEXT("StructuralMenuFlow", "Flow") : LOCTEXT("StructuralMenuUV", "UV");
-				AddEntry(Source, FGuid(), FText::Format(LOCTEXT("StructuralMenuOutput", "{0} · {1}"), Name, OutputLabel));
 			}
 		}
 	}
@@ -543,7 +557,7 @@ FReply SMixtormat::SetStructuralConnection(const FMixtormatChildAddress Address,
 			ProposedSource.SourceChildId.Invalidate();
 		}
 	}
-	const FConnectionProjection Projection(WorkingLayers, WorkingLayerGroups, Address);
+	const FMixtormatStructuralConnectionContext Projection(WorkingLayers, WorkingLayerGroups, Address);
 	const auto Status = Projection.Evaluate(Role == ERole::Source ? &ProposedSource : nullptr,
 		Role == ERole::Target ? &ProposedTarget : nullptr);
 	const EIssue Issue = ConnectionIssue(Status, Role);

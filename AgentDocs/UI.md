@@ -69,10 +69,18 @@ Noise and Cliff use Height steering and explicitly explain why Signed Distance i
 
 ## Generator relationship UX plan
 
-`code_docs/generator_relationship_ux_plan.md` specifies the proposed target-first source picker,
-atomic connected creation, target-owned display projection, repair/collapse behavior, and complete
-UI STYLE integration. It is a textual implementation handoff, not delivered behavior; no concept
-image reads or testing are required or authorized. Existing runtime ownership/order remains intact.
+`code_docs/generator_relationship_ux_plan.md` is partially implemented. Generator RMB now offers
+`Warp using…` and `Height Push from…` through the searchable, grouped
+`UI/Menus/SMixtormatStructuralSourcePicker.*`. Unavailable rows retain canonical reasons and full
+tooltips; keyboard Up/Down selects eligible rows, Enter activates, and Escape dismisses without edits.
+`MixtormatStructuralConnectionModel.*` owns the effective/resolved context and typed source collector
+shared with existing endpoint menus. `PrepareConnectedStructuralModuleForTarget` revalidates at the
+real insertion boundary; the connected creator commits source and target in one history/preview edit.
+`Advanced → Add unconnected…` and layer-level creation remain available. Generator add menus now
+match the creator's layer/unscoped ownership gates instead of offering clickable no-ops.
+Target-owned display projection, generator-local collapse, inspector summary/navigation, temporary
+picker endpoint highlights, and `LayerConnections` style integration remain proposed. No runtime
+ownership/order migration was made. Source review only; no tests, diagnostics, builds or commands.
 
 ## Inspector builders
 

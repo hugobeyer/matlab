@@ -151,13 +151,17 @@ No broad feature enablement, Cluster-ID redesign, group structural authoring, le
 
 ## 5. Cross-plan status
 
-`generator_relationship_ux_plan.md` remains a plan for Structural Warp / Height Push target-first creation and target-owned display. It is **not completed** by the Noise source picker.
+`generator_relationship_ux_plan.md` is now **partially implemented**, not completed by this Noise work.
+The subsequent relationship pass delivered the owned structural context/shared source collector,
+connected Warp/Push atomic proposal/commit APIs, searchable target-first picker, canonical disabled
+reasons/tooltips, keyboard navigation, and advanced unconnected creation. Generator add-menu gates
+now match the creator. Source review only; no validation commands were run.
 
 Still proposed:
 
-- Connected Structural Warp / Push atomic proposal API.
-- Shared structural candidate model and display projection files.
-- Projected connection rows under receiving generators.
+- Temporary picker endpoint highlighting and its lifecycle cleanup.
+- Structural display projection files and target-owned connection rows.
+- Inspector relationship summary/source navigation.
 - Generator-local collapse.
 - LayerConnections style metrics/schema/readers.
 
