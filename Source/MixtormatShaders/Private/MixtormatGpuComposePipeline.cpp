@@ -882,7 +882,14 @@ namespace MixtormatGpuCompositor
 						FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
 						CombinedEffectHeight = EffectHeightTargets[0];
 						FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
-						DebugMask = CombinedMask;
+						// Preserve scoped child mask previews set in AddScopedFeatureMask.
+						// When in LayerMask preview mode for this layer, DebugMask may already
+						// hold a scoped snapshot; only reset to CombinedMask if it hasn't been
+						// overridden by a scoped mask pass.
+						if (DebugMask == CombinedMask)
+						{
+							DebugMask = CombinedMask;
+						}
 						AddLayerHeightSmoothPasses(Ctx, LayerCtx, Layer);
 						if (Layer.bGenerator && LayerCtx.GeneratorBundle.Height)
 						{
