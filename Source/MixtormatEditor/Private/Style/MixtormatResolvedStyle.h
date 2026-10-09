@@ -265,6 +265,7 @@ namespace Mixtormat
 		FMixtormatResolvedCardStyle Cards;
 		FMixtormatResolvedLayerStyle Layers;
 		FMixtormatResolvedButtonStyle Buttons;
+		FMixtormatScalarRampButtonTheme ScalarRampButton;
 		FMixtormatResolvedMenuStyle Menus;
 		FMixtormatResolvedGalleryStyle Gallery;
 		FMixtormatResolvedPreviewStyle Preview;

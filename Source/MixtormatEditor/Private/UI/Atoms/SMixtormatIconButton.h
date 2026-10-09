@@ -35,6 +35,10 @@ public:
 		SLATE_ARGUMENT(Mixtormat::EMixtormatIconRole, Role)
 		// Active swaps the glyph to the accent, for a toggle that lives as an icon.
 		SLATE_ATTRIBUTE(bool, bActive)
+		// Draws the scalar ramp button's themed plate behind the glyph: an Accent gradient with
+		// its own blend, radius and per-state shades. Off by default -- the bare glyph is the
+		// shared atom's contract everywhere else.
+		SLATE_ARGUMENT(bool, bPlate)
 		SLATE_ATTRIBUTE(FText, ToolTip)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
 		// Bound instead of OnClicked when the handler needs the modifier keys. If both are bound
@@ -44,6 +48,9 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry,
+		const FSlateRect& CullingRect, FSlateWindowElementList& Elements, int32 LayerId,
+		const FWidgetStyle& WidgetStyle, bool bParentEnabled) const override;
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
@@ -54,6 +61,7 @@ private:
 
 	TAttribute<bool> bActive;
 	Mixtormat::EMixtormatIconRole Role = Mixtormat::EMixtormatIconRole::Count;
+	bool bPlate = false;
 	FSimpleDelegate OnClicked;
 	FOnMixtormatIconClicked OnClickedWithModifiers;
 	bool bPressed = false;

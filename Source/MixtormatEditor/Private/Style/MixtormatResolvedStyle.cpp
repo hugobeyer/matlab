@@ -425,6 +425,7 @@ namespace Mixtormat
 		}
 
 		OutStyle.ControlLayout = Theme.ControlLayout;
+		OutStyle.ScalarRampButton = Theme.ScalarRampButton;
 		OutStyle.FoldoutLayout = Theme.FoldoutLayout;
 		OutStyle.CardLayout = Theme.CardLayout;
 		OutStyle.LayerLayout = Theme.LayerLayout;

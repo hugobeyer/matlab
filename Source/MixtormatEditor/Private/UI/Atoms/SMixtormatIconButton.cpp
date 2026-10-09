@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/SMixtormatHelp.h"
+#include "UI/Primitives/MixtormatGradientPainter.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 
@@ -12,6 +13,7 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 {
 	bActive = InArgs._bActive;
 	Role = InArgs._Role;
+	bPlate = InArgs._bPlate;
 	OnClicked = InArgs._OnClicked;
 	OnClickedWithModifiers = InArgs._OnClickedWithModifiers;
 	// Two boxes: the outer one is the click target and the inner one is the glyph. Hit testing
@@ -51,9 +53,48 @@ void SMixtormatIconButton::Construct(const FArguments& InArgs)
 	];
 }
 
+int32 SMixtormatIconButton::OnPaint(const FPaintArgs& Args, const FGeometry& Geometry,
+	const FSlateRect& CullingRect, FSlateWindowElementList& Elements, const int32 LayerId,
+	const FWidgetStyle& WidgetStyle, const bool bParentEnabled) const
+{
+	if (bPlate)
+	{
+		// The plate: an Accent gradient over the surface behind the button, at the role's own
+		// blend, radius and per-state shades. Normal skips the composite, so the default path
+		// is the plain gradient it always was.
+		const Mixtormat::FMixtormatScalarRampButtonTheme& Plate =
+			FMixtormatThemeStore::GetResolved().ScalarRampButton;
+		const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
+		float Top = Plate.RestTop;
+		float Bottom = Plate.RestBottom;
+		if (bActive.Get(false)) { Top = Plate.ActiveTop; Bottom = Plate.ActiveBottom; }
+		else if (IsHovered()) { Top = Plate.HoverTop; Bottom = Plate.HoverBottom; }
+
+		FLinearColor Color = Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
+		Color.A = 1.0f;
+		if (Plate.BodyBlend != MixtormatCompositing::EMixtormatBlendMode::Normal)
+		{
+			Color = MixtormatCompositing::ApplyBlend(Plate.BodyBlend,
+				Palette.Get(Mixtormat::EMixtormatColorRole::Ground), Color);
+			Color.A = 1.0f;
+		}
+
+		const MixtormatGradient::FStop Stops[] = {
+			{ 0.0f, Color.CopyWithNewOpacity(Top * Plate.Opacity) },
+			{ 1.0f, Color.CopyWithNewOpacity(Bottom * Plate.Opacity) },
+		};
+		const FVector2f Size(Geometry.GetLocalSize());
+		MixtormatGradient::Paint(Elements, LayerId, Geometry.ToPaintGeometry(), Size,
+			Orient_Vertical, Stops, FVector4f(Plate.Radius));
+	}
+
+	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, LayerId + 1,
+		WidgetStyle, bParentEnabled);
+}
+
 FSlateColor SMixtormatIconButton::GetGlyphColor() const
 {
-	// No plate, so every state has to live in the glyph itself.
+	// No plate by default, so every state has to live in the glyph itself.
 	if (Role != Mixtormat::EMixtormatIconRole::Count)
 	{
 		const Mixtormat::FMixtormatResolvedStyle& R = FMixtormatThemeStore::GetResolved();

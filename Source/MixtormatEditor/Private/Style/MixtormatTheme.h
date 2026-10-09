@@ -516,6 +516,26 @@ namespace Mixtormat
 		float TextOpacity = 0.78f;
 	};
 
+	// The scalar ramp's toolbar buttons: a group of icon buttons that carry a plate, unlike the
+	// bare glyph the shared icon button draws. The plate is an Accent gradient over the surface
+	// behind it, with its own blend, radius and per-state shades.
+	struct FMixtormatScalarRampButtonTheme
+	{
+		MixtormatCompositing::EMixtormatBlendMode BodyBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+
+		float Radius = 2.0f;
+		float Opacity = 1.0f;
+
+		float RestTop = 0.06f;
+		float RestBottom = 0.02f;
+
+		float HoverTop = 0.14f;
+		float HoverBottom = 0.05f;
+
+		float ActiveTop = 0.22f;
+		float ActiveBottom = 0.08f;
+	};
+
 	// Menu ground plus an optional top lip, a border, and per-state item rows. Destructive rows
 	// keep a normal row's shape and change only hue, so the gesture reads the same as a hover.
 	struct FMixtormatMenuTheme
@@ -955,6 +975,7 @@ namespace Mixtormat
 		FMixtormatLayerConnectionMetrics LayerConnections;
 
 		FMixtormatButtonTheme Button;
+		FMixtormatScalarRampButtonTheme ScalarRampButton;
 
 		FMixtormatMenuTheme Menu;
 		FMixtormatMenuMetrics MenuLayout;

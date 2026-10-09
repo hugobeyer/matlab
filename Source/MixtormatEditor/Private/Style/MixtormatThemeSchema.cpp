@@ -340,6 +340,18 @@ void AddIconRole(
 		SetLocateTarget(P, LocateBegin, ETarget::ControlToggle);
 
 		LocateBegin = P.Num();
+		BLEND_DEF("ScalarRampButton.BodyBlend", Controls, "Ramp Button", "Body Blend", ScalarRampButton.BodyBlend);
+		NUM("ScalarRampButton.Radius", Controls, "Ramp Button", "Radius", ScalarRampButton.Radius, 0, 12, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ScalarRampButton.Opacity", Controls, "Ramp Button", "Opacity", ScalarRampButton.Opacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.RestTop", Controls, "Ramp Button", "Rest Top", ScalarRampButton.RestTop, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.RestBottom", Controls, "Ramp Button", "Rest Bottom", ScalarRampButton.RestBottom, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.HoverTop", Controls, "Ramp Button", "Hover Top", ScalarRampButton.HoverTop, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.HoverBottom", Controls, "Ramp Button", "Hover Bottom", ScalarRampButton.HoverBottom, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.ActiveTop", Controls, "Ramp Button", "Active Top", ScalarRampButton.ActiveTop, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("ScalarRampButton.ActiveBottom", Controls, "Ramp Button", "Active Bottom", ScalarRampButton.ActiveBottom, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
+
+		LocateBegin = P.Num();
 		NUM("ControlLayout.RowHeight", Controls, "Layout", "Row Height", ControlLayout.RowHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.RowGap", Controls, "Layout", "Row Gap", ControlLayout.RowGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.PairedGap", Controls, "Layout", "Paired Gap", ControlLayout.PairedGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);

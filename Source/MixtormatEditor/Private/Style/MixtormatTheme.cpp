@@ -147,6 +147,14 @@ namespace Mixtormat
 		T.Toggle.FillInset = 3.0f;                    // --toggle-fill-inset
 		T.Toggle.DisabledShadeTop = 0.3f;
 		T.Toggle.DisabledShadeBottom = 0.12f;
+		T.ScalarRampButton.Radius = 2.0f;
+		T.ScalarRampButton.Opacity = 1.0f;
+		T.ScalarRampButton.RestTop = 0.06f;
+		T.ScalarRampButton.RestBottom = 0.02f;
+		T.ScalarRampButton.HoverTop = 0.14f;
+		T.ScalarRampButton.HoverBottom = 0.05f;
+		T.ScalarRampButton.ActiveTop = 0.22f;
+		T.ScalarRampButton.ActiveBottom = 0.08f;
 
 
 		// ---- Control layout ------------------------------------------------------------
@@ -572,6 +580,14 @@ namespace Mixtormat
 		T.Toggle.FillInset = 2.0f;
 		T.Toggle.DisabledShadeTop = 1.0f;
 		T.Toggle.DisabledShadeBottom = 0.170000002f;
+		T.ScalarRampButton.Radius = 2.0f;
+		T.ScalarRampButton.Opacity = 1.0f;
+		T.ScalarRampButton.RestTop = 0.06f;
+		T.ScalarRampButton.RestBottom = 0.02f;
+		T.ScalarRampButton.HoverTop = 0.14f;
+		T.ScalarRampButton.HoverBottom = 0.05f;
+		T.ScalarRampButton.ActiveTop = 0.22f;
+		T.ScalarRampButton.ActiveBottom = 0.08f;
 		T.ControlLayout.RowHeight = 19.0f;
 		T.ControlLayout.RowGap = 2.0f;
 		T.ControlLayout.PairedGap = 4.0f;
@@ -930,6 +946,13 @@ namespace Mixtormat
 
 		Clamp01(TEXT("Toggle.DisabledShadeTop"), InOutTheme.Toggle.DisabledShadeTop);
 		Clamp01(TEXT("Toggle.DisabledShadeBottom"), InOutTheme.Toggle.DisabledShadeBottom);
+		Clamp01(TEXT("ScalarRampButton.Opacity"), InOutTheme.ScalarRampButton.Opacity);
+		Clamp01(TEXT("ScalarRampButton.RestTop"), InOutTheme.ScalarRampButton.RestTop);
+		Clamp01(TEXT("ScalarRampButton.RestBottom"), InOutTheme.ScalarRampButton.RestBottom);
+		Clamp01(TEXT("ScalarRampButton.HoverTop"), InOutTheme.ScalarRampButton.HoverTop);
+		Clamp01(TEXT("ScalarRampButton.HoverBottom"), InOutTheme.ScalarRampButton.HoverBottom);
+		Clamp01(TEXT("ScalarRampButton.ActiveTop"), InOutTheme.ScalarRampButton.ActiveTop);
+		Clamp01(TEXT("ScalarRampButton.ActiveBottom"), InOutTheme.ScalarRampButton.ActiveBottom);
 		Clamp01(TEXT("Foldout.LiftOpacity"), InOutTheme.Foldout.LiftOpacity);
 				Clamp01(TEXT("Foldout.HoverTintOpacity"), InOutTheme.Foldout.HoverTintOpacity);
 				Clamp01(TEXT("Foldout.AccentOpacity"), InOutTheme.Foldout.AccentOpacity);
@@ -1032,6 +1055,7 @@ namespace Mixtormat
 		ClampMin(TEXT("Well.Radius"), InOutTheme.Well.Radius, 0.0f);
 		ClampMin(TEXT("Well.BorderWidth"), InOutTheme.Well.BorderWidth, 0.0f);
 		ClampMin(TEXT("Toggle.Size"), InOutTheme.Toggle.Size, 1.0f);
+		ClampMin(TEXT("ScalarRampButton.Radius"), InOutTheme.ScalarRampButton.Radius, 0.0f);
 		ClampMin(TEXT("Card.Radius"), InOutTheme.Card.Radius, 0.0f);
 				ClampMin(TEXT("Card.Reach"), InOutTheme.Card.Reach, 0.0f);
 		ClampMin(TEXT("Button.Height"), InOutTheme.Button.Height, 1.0f);

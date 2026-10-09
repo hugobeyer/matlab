@@ -31,6 +31,7 @@ void SMixtormatRampEditorBase::BuildLayout()
 		[
 			SNew(SMixtormatIconButton).Icon(Brush)
 			.Size(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize)
+			.bPlate(true)
 			.ToolTip(Tip).bActive(Active).OnClicked(Click)
 		];
 	};
