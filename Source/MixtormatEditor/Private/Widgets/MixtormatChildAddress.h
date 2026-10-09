@@ -41,8 +41,9 @@ struct FMixtormatChildAddress
 
 	friend uint32 GetTypeHash(const FMixtormatChildAddress& Address)
 	{
+		// FGuid's hidden-friend hash requires argument-dependent lookup.
 		return HashCombine(HashCombine(::GetTypeHash(static_cast<uint8>(Address.OwnerType)),
-			::GetTypeHash(Address.OwnerId)), ::GetTypeHash(Address.ChildId));
+			GetTypeHash(Address.OwnerId)), GetTypeHash(Address.ChildId));
 	}
 
 	bool operator==(const FMixtormatChildAddress& Other) const

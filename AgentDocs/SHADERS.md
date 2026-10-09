@@ -136,3 +136,7 @@ Trace the full path: CPU declaration (the struct's owning runtime header, e.g.
 `MixtormatLayerTypes.h` / `MixtormatGeneratorTypes.h` / `MixtormatMaskTypes.h`) →
 gather (`Compositing/Mixtormat*Gather.cpp`) → dispatch/binding (`MixtormatGpu*Passes.cpp`)
 → defaults → inspector metadata → `.usf`/`.ush` (+ `// @param` tag).
+
+
+
+Read REVIEWS.md, there are shader necessities there maybe.
