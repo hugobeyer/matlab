@@ -451,7 +451,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 		.Padding(Layout.LibraryPagePadding)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-			Mixtormat::EMixtormatColorRole::Panel))
+			Mixtormat::EMixtormatColorRole::Shell))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
