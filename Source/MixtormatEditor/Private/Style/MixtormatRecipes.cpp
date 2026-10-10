@@ -323,6 +323,27 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakeSourcesAddTabRecipe(const FMixtormatTheme& Theme, const bool bHovered)
+	{
+		FMixtormatSurfaceRecipe Recipe = MakeCardBodyRecipe(Theme, 1.0f, 0.0f);
+		// The tab touches the card on its top edge; only its outer lower corner rounds.
+		Recipe.CornerRadii = FVector4f(0.0f, 0.0f, Theme.Card.Radius, 0.0f);
+		const auto& Layout = Theme.LayerLayout;
+		const float Strength = FMath::Clamp(Layout.SourcesAddTabHighlight
+			* (bHovered ? 1.0f : 0.35f), 0.0f, 1.0f);
+		if (Strength > 0.0f)
+		{
+			FMixtormatPaintLayer Accent;
+			Accent.Source = MakeColorRef(EMixtormatColorRole::Accent);
+			Accent.Blend = Theme.Button.BodyBlend;
+			Accent.Strength = Strength;
+			Accent.OpacityRamp = MakeFalloffRamp(EMixtormatAxis::Vertical,
+				0.0f, 1.0f, Layout.SourcesAddTabHighlightBias, 6);
+			Recipe.Layers.Add(Accent);
+		}
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeCardHeaderRecipe(const FMixtormatTheme& Theme, const float Seam)
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
