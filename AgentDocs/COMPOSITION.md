@@ -21,7 +21,7 @@ sees a flat array of the same length and order.
 
 `RequestCompose` also takes the document's `Sources`. Only **demanded** sources
 evaluate: `CollectDemandedShelfSources` (`Compositing/MixtormatSourceGather.*`)
-seeds from generator `HeightSource`/`WarpSource` inputs, then closes the set over
+seeds from generator `HeightSource`/`WarpSource` inputs and enabled masks bound to shelf Noise `Value`, then closes the set over
 producer-to-producer references and returns it in **dependency order**
 (a producer always follows the sources it reads). Shelf array order is
 organisational only and never affects scheduling or results.
@@ -99,8 +99,10 @@ FlowWarp,Grade,LayerBlur,WornEdges}Passes.cpp`, `MixtormatEffectCommon.cpp`.
 - Mask sources: Texture, Layer Values, appended inline `Noise` (`FMixtormatMaskLayer::Noise`,
   `UsesNoise()`), or a live published output. `MixtormatMaskGather` stores
   `FMaskRenderData.bNoise/Noise/SourceChildIndex` for the inline path and resolves published
-  sources through `MixtormatOutputReferences::ResolvePublishedMaskSource`, the canonical
-  same-layer completed-earlier-scope check for Noise `Value`.
+  layer-owned sources through `MixtormatOutputReferences::ResolvePublishedMaskSource`, the
+  canonical same-layer completed-earlier-scope check for Noise `Value`. A published
+  shelf Noise `Value` instead uses the appended Source owner discriminator and
+  SourceShelfId (no material LayerId), with its producer's root at child index 0.
 - Noise masks reuse the producer: `AddNoiseMaskPass` (identity placement, no Height/Gradient/ID
   allocation) writes R32 coverage; `AddNoiseCoveragePass` maps typed `ScalarSigned`
   (`saturate(0.5*Value+0.5)`) / `Scalar01` to coverage. Converted coverage is cached per source
