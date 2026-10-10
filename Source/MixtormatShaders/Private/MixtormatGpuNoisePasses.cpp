@@ -242,6 +242,29 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowComposeCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowComposeCS", SF_Compute);
 
+	class FMixtormatNoiseFlowTransportCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatNoiseFlowTransportCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseFlowTransportCS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TransportFlow)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, TransportValidity)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, TransportCoordinates)
+			SHADER_PARAMETER_SAMPLER(SamplerState, TransportLinearWrapSampler)
+			SHADER_PARAMETER_SAMPLER(SamplerState, TransportPointWrapSampler)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutTransportFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutTransportValidity)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowTransportCS,
+		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowTransportCS", SF_Compute);
+
 	// The family-to-kind contract now lives in Runtime (MixtormatOutputReferences::NoiseValueKind),
 	// so the producer and the reference validators read one definition. See the USF header.
 
@@ -434,6 +457,32 @@ FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
 	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.FlowCompose"),
 		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 	return Flow;
+}
+
+FRDGTextureRef AddNoiseFlowTransportPass(FMixtormatComposeContext& Ctx, FRDGTextureRef Flow,
+	FRDGTextureRef Validity, FRDGTextureRef Coordinates, FRDGTextureRef& OutValidity)
+{
+	check(Flow && Validity && Coordinates);
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Transported = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.TransportedFlow"));
+	OutValidity = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.TransportedFlowValidity"));
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseFlowTransportCS::FParameters>();
+	P->OutputSize = Size;
+	P->TransportFlow = Flow;
+	P->TransportValidity = Validity;
+	P->TransportCoordinates = Coordinates;
+	P->TransportLinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+	P->TransportPointWrapSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+	P->OutTransportFlow = Ctx.GraphBuilder.CreateUAV(Transported);
+	P->OutTransportValidity = Ctx.GraphBuilder.CreateUAV(OutValidity);
+	TShaderMapRef<FMixtormatNoiseFlowTransportCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.FlowTransport"),
+		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	return Transported;
 }
 
 namespace
