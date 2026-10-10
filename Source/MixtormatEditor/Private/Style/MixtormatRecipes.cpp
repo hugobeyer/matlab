@@ -733,8 +733,18 @@ namespace Mixtormat
 		const FMixtormatTheme& Theme, const EMixtormatButtonState State,
 		const int32 TabIndex, const int32 TabCount)
 	{
-		FMixtormatSurfaceRecipe Recipe = MakeButtonRecipe(Theme, State, false);
 		const FMixtormatPreviewMetrics& Layout = Theme.PreviewLayout;
+		// Ground is the same continuous surface under the layer column and rail.
+		// An optional shared button body may lift it without forcing a separate plate.
+		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
+		FMixtormatSurfaceRecipe Button = MakeButtonRecipe(Theme, State, false);
+		const float SurfaceStrength = FMath::Clamp(Layout.LeftRailButtonSurfaceStrength, 0.0f, 1.0f);
+		for (FMixtormatPaintLayer& Layer : Button.Layers)
+		{
+			Layer.Strength *= State == EMixtormatButtonState::Rest ? SurfaceStrength : 1.0f;
+			Recipe.Layers.Add(Layer);
+		}
+		Recipe.Borders = Button.Borders;
 		const int32 Count = FMath::Max(TabCount, 1);
 		const int32 Index = FMath::Clamp(TabIndex, 0, Count - 1);
 		// Only the outside corners may round. Every shared seam stays square,
@@ -761,7 +771,8 @@ namespace Mixtormat
 			{
 				const float LocalT = static_cast<float>(Point) / static_cast<float>(Samples - 1);
 				const float GlobalT = (static_cast<float>(Index) + LocalT) / static_cast<float>(Count);
-				Shade.OpacityRamp.Points.Add({ LocalT, FMath::Pow(GlobalT, Bias) });
+				const float ShadeT = Layout.bLeftRailShadeInverted ? 1.0f - GlobalT : GlobalT;
+				Shade.OpacityRamp.Points.Add({ LocalT, FMath::Pow(ShadeT, Bias) });
 			}
 			Recipe.Layers.Add(Shade);
 		}
