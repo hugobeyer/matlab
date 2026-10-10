@@ -500,7 +500,10 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 									return FReply::Handled();
 								})
 								[
-									SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+									SNew(SBox)
+									.WidthOverride(Resolved.LayerLayout.SourcesAddIconSize)
+									.HeightOverride(Resolved.LayerLayout.SourcesAddIconSize)
+									.HAlign(HAlign_Center).VAlign(VAlign_Center)
 									[
 										SNew(SImage)
 										.Image(MixtormatIcons::Add())
