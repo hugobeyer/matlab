@@ -19,6 +19,7 @@ namespace Mixtormat
 		Preview,
 		GalleryShell,
 		Typography,
+		Sources,
 		Count,
 	};
 
