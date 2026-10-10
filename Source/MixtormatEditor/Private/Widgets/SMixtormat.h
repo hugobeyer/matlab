@@ -599,6 +599,7 @@ private:
 	const FMixtormatBehavior* GetSelectedBehaviorWarp() const;
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
 	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
+	TSharedRef<SWidget> BuildBehaviorWarpInfluenceMenu();
 	TSharedRef<SWidget> BuildStructuralWarpControls();
 	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
 	TSharedRef<SWidget> BuildStructuralConnectionMenu(FMixtormatChildAddress Address,
