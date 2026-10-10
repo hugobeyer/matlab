@@ -35,7 +35,7 @@ The shared evaluator runs all scoped PostGeneration Behavior entries in authored
 - The source corrections remain uncompiled and not GPU-validated. BoundaryFromIds.Distance is still a mask output and is not automatically classified as signed SDF.
 
 ## Not yet complete
-1. **PreGeneration follow-up:** Published Flow/UVMap Warp now composes a lifted coordinate map before all six native generator passes. Pending: GPU compilation/viewport tests, subtexel coordinate filtering, full stage-specific authoring UI, and any additional pre-stage operations (Own Height is necessarily post-stage).
+1. **PreGeneration follow-up:** Published Flow/UVMap Warp now composes a lifted coordinate map before all six native generator passes. Pending: GPU compilation/viewport tests and any additional pre-stage operations (Own Height is necessarily post-stage). The PreGeneration UV map now interpolates lifted coordinates periodically, and Warp Inspector exposes a before/after stage selector.
 2. **Full driver source-kind parity:** current Behavior scalar slots support earlier CombinedMask, not all published-field/region/gate/local parameter driver sources.
 3. **Expanded-group and instance authoring parity:** existing stale-ownership checks are partial, not a substitute for exhaustive source remapping, duplicate/paste, template and instance verification.
 4. **Field authoring/composition:** no universal field graph or automatic conversion between SDF, height, mask, flow, vector or ID semantics.
@@ -52,4 +52,4 @@ The shared evaluator runs all scoped PostGeneration Behavior entries in authored
 - PreGeneration Warp with published typed Flow or UVMap is validated/gathered, demanded before producer evaluation, and applied before native generator sampling.
 - Strength, Flow drivers, Scalar drivers, optional Scalar01 Influence, and scoped masks use existing Warp evaluation. Ordered PreGeneration Warp operations compose a lifted UV field.
 - Strata Carver, Rock Formation, Cracks, Pebbles, Cliff Strata and Noise use the shared optional coordinate contract. Dynamic pre-fields bypass geological node-cache lookups and extraction; the original path stays unchanged when no pre-warp exists.
-- Pre-stage Own Native Height is deliberately rejected: no native height exists yet at that point. The stage has not been exposed in UI; compilation and shader/runtime testing have not been run.
+- Pre-stage Own Native Height is deliberately rejected: no native height exists yet at that point. Warp's Inspector exposes the stage when a published Direction field is selected. Compilation and shader/runtime testing have not been run.
