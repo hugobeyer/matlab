@@ -316,6 +316,7 @@ namespace Mixtormat
 
 		T.Layer.ActiveHairlineWidth = 1.0f;
 		T.Layer.ActiveHairlineOpacity = 0.55f;
+		T.Layer.ChildActiveHairlineOpacity = 0.38f;
 
 		// --layer-hierarchy-line-*
 		T.LayerHierarchy.Source = MakeColorRef(EMixtormatColorRole::Text);
@@ -730,6 +731,7 @@ namespace Mixtormat
 		T.Layer.ActiveGlow.Reach = 10.0f;
 		T.Layer.ActiveHairlineWidth = 0.75f;
 		T.Layer.ActiveHairlineOpacity = 0.550000012f;
+		T.Layer.ChildActiveHairlineOpacity = 0.38f;
 		T.LayerHierarchy.Indent = 28.0f;
 		T.LayerHierarchy.Width = 1.0f;
 		T.LayerHierarchy.Opacity = 0.310000002f;
@@ -965,6 +967,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Layer.ActiveGlow.Opacity"), InOutTheme.Layer.ActiveGlow.Opacity);
 
 		Clamp01(TEXT("Layer.ActiveHairlineOpacity"), InOutTheme.Layer.ActiveHairlineOpacity);
+		Clamp01(TEXT("Layer.ChildActiveHairlineOpacity"), InOutTheme.Layer.ChildActiveHairlineOpacity);
 		Clamp01(TEXT("Layer.GroupHairlineOpacity"), InOutTheme.Layer.GroupHairlineOpacity);
 		Clamp01(TEXT("Layer.ChildHairlineOpacity"), InOutTheme.Layer.ChildHairlineOpacity);
 		Clamp01(TEXT("Layer.GroupStrength"), InOutTheme.Layer.GroupStrength);

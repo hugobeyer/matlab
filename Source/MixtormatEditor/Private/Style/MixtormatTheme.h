@@ -465,6 +465,7 @@ namespace Mixtormat
 		// The selected row's top edge. Separate from the glow because it is crisp rather than soft.
 		float ActiveHairlineWidth = 1.0f;
 		float ActiveHairlineOpacity = 0.6f;
+		float ChildActiveHairlineOpacity = 0.6f;
 	};
 
 	// Hierarchy rails are foreground structure: painted after the row gradient, never saturated by

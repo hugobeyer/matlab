@@ -546,6 +546,7 @@ void AddIconRole(
 		NUM_DEF("Layer.ActiveGlow.Reach", Layers, "Active", "Glow Reach", Layer.ActiveGlow.Reach, 0, 128, 1, 0);
 		NUM_DEF("Layer.ActiveHairlineWidth", Layers, "Active", "Active Hairline Width", Layer.ActiveHairlineWidth, 0, 4, .25, 2);
 		NUM_DEF("Layer.ActiveHairlineOpacity", Layers, "Active", "Active Hairline Opacity", Layer.ActiveHairlineOpacity, 0, 1, .01, 2);
+				NUM_DEF("Layer.ChildActiveHairlineOpacity", Layers, "Child", "Selected Hairline Opacity", Layer.ChildActiveHairlineOpacity, 0, 1, .01, 2);
 		NUM("LayerHierarchy.Indent", Layers, "Hierarchy", "Indent", LayerHierarchy.Indent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerHierarchy.Width", Layers, "Hierarchy", "Line Width", LayerHierarchy.Width, 0, 4, .25, 2, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerHierarchy.Opacity", Layers, "Hierarchy", "Opacity", LayerHierarchy.Opacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::StyleRefresh);

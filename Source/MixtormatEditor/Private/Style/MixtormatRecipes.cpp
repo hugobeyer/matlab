@@ -241,7 +241,9 @@ namespace Mixtormat
 			FMixtormatPaintLayer Hairline;
 			Hairline.Source = MakeColorRef(bSelected ? EMixtormatColorRole::Accent : EMixtormatColorRole::Hairline);
 			Hairline.Source.Saturation = bSelected ? Theme.Layer.ActiveGlow.Saturation : 1.0f;
-			Hairline.Strength = bSelected ? Theme.Layer.ActiveHairlineOpacity
+			Hairline.Strength = bSelected
+				? (Kind == EMixtormatLayerKind::Child
+					? Theme.Layer.ChildActiveHairlineOpacity : Theme.Layer.ActiveHairlineOpacity)
 				: Kind == EMixtormatLayerKind::Group ? Theme.Layer.GroupHairlineOpacity
 				: Kind == EMixtormatLayerKind::Child ? Theme.Layer.ChildHairlineOpacity
 				: Theme.Layer.HairlineOpacity;
