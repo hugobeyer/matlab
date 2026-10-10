@@ -1,0 +1,225 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#ifndef MIXTORMAT_NOISE_V2_USH
+#define MIXTORMAT_NOISE_V2_USH
+
+// Opt-in Noise V2 shader algorithms. Included AFTER MixtormatNoise.ush's legacy functions.
+// These helpers do not change any existing family, uniform, output, or serialized value.
+// Arguments use tile UV; all lattice hashes wrap before lookup. Consumers choose field types.
+
+struct FMixtormatNoiseV2Sample
+{
+	float Value;
+	float2 Gradient; // analytic d/d(tile UV)
+};
+
+// Local Gabor/phasor impulses, NOT global cosine stripes. Each periodic lattice cell has a
+// seeded impulse with smooth compact support. Cell-specific phases and directions overlap
+// into fibers; components adds independent impulse layers. No discontinuous UV rotations.
+// Wave is the desired *direction*, preferably the existing integer-snapped wave vector.
+// Frequency is cycles per impulse-cell; Anisotropy narrows support across the wave.
+// PhaseVariation and OrientationVariation are zero-neutral (radians for orientation).
+FMixtormatNoiseV2Sample MixtormatNoiseV2Phasor(
+	float2 UV, int Period, uint Seed, float2 Wave, float Frequency,
+	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components)
+{
+	const int P = clamp(Period, 1, 4096);
+	const float2 p = frac(UV) * (float)P;
+	const int2 Base = (int2)floor(p);
+	const float WaveLengthSq = dot(Wave, Wave);
+	const float2 BaseDirection = WaveLengthSq > 1.0e-8f
+		? Wave * rsqrt(WaveLengthSq) : float2(0.0f, 1.0f);
+	const float Freq = clamp(abs(Frequency), 0.0f, 128.0f);
+	const float CrossScale = 1.0f + clamp(Anisotropy, 0.0f, 16.0f);
+	const float PhaseSpread = clamp(PhaseVariation, 0.0f, 1.0f);
+	const float OrientationSpread = clamp(OrientationVariation, 0.0f, 3.14159265f);
+	const int Count = clamp(Components, 1, 4);
+	float Sum = 0.0f;
+	float2 DSum = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int c = 0; c < Count; ++c)
+	{
+		const uint ComponentSeed = Seed + (uint)c * 0x2545F491u;
+		[unroll]
+		for (int y = -1; y <= 1; ++y)
+		{
+			[unroll]
+			for (int x = -1; x <= 1; ++x)
+			{
+				const int2 Cell = Base + int2(x, y);
+				const float2 Jitter = MixtormatCellOffset(Cell, P, ComponentSeed);
+				const float2 Pivot = (float2)Cell + 0.5f + Jitter * 0.75f;
+				const float2 Delta = p - Pivot;
+				const float2 Variation = MixtormatCellOffset(Cell, P, ComponentSeed ^ 0x9e3779b9u);
+				const float Angle = 2.0f * Variation.x * OrientationSpread;
+				const float Sn = sin(Angle);
+				const float Cs = cos(Angle);
+				const float2 Direction = float2(
+					BaseDirection.x * Cs - BaseDirection.y * Sn,
+					BaseDirection.x * Sn + BaseDirection.y * Cs);
+				const float2 Side = float2(-Direction.y, Direction.x);
+				const float Along = dot(Delta, Direction);
+				const float Across = dot(Delta, Side) * CrossScale;
+				const float Radius2 = Along * Along + Across * Across;
+				const float EnvelopeBase = max(1.0f - Radius2, 0.0f);
+				if (EnvelopeBase <= 0.0f) { continue; }
+				const float Envelope = EnvelopeBase * EnvelopeBase * EnvelopeBase;
+				const float Phase = MIXTORMAT_NOISE_TAU
+					* (Freq * Along + Variation.y * PhaseSpread);
+				const float SnPhase = sin(Phase);
+				const float CsPhase = cos(Phase);
+				const float2 EnvelopeGradient = -6.0f * EnvelopeBase * EnvelopeBase
+					* (Along * Direction + Across * CrossScale * Side);
+				Sum += Envelope * CsPhase;
+				DSum += EnvelopeGradient * CsPhase
+					- Envelope * (MIXTORMAT_NOISE_TAU * Freq * SnPhase) * Direction;
+			}
+		}
+	}
+	// Fixed amplitude normalization (not divide by sum of weights): preserves C2 continuity
+	// where no impulse is in support, instead of introducing holes or normalization spikes.
+	const float Normalizer = 0.5f / (float)Count;
+	FMixtormatNoiseV2Sample Result;
+	Result.Value = Sum * Normalizer;
+	Result.Gradient = DSum * (Normalizer * (float)P);
+	return Result;
+}
+
+// A divergence-free (before consumer-dependent masking/normalization) 2D curl field.
+// Each octave uses the shared periodic gradient-noise derivative. Its potential can be
+// weighted by 1/period, so derivative amplitude remains resolution-independent.
+// DirectionBias is constant transport, also divergence-free; Strength=0 is exact zero.
+float2 MixtormatNoiseV2Curl(
+	float2 UV, int BasePeriod, int Octaves, float Roughness, float Lacunarity,
+	uint Seed, float2 DirectionBias, float Bias, float Strength)
+{
+	if (Strength == 0.0f) { return float2(0.0f, 0.0f); }
+	float2 Curl = float2(0.0f, 0.0f);
+	float WeightSum = 0.0f;
+	float Weight = 1.0f;
+	float Period = (float)clamp(BasePeriod, 1, 4096);
+	const float Persistence = saturate(Roughness);
+	const float FrequencyStep = max(Lacunarity, 1.0f);
+	[loop]
+	for (int k = 0; k < clamp(Octaves, 1, 8); ++k)
+	{
+		const int P = MixtormatNoiseOctavePeriod(Period);
+		if (P == 0) { break; }
+		const float3 N = MixtormatPeriodicNoiseD(frac(UV) * (float)P,
+			P, Seed + (uint)k * 0x2545F491u);
+		Curl += Weight * float2(N.z, -N.y);
+		WeightSum += Weight;
+		Weight *= Persistence;
+		Period *= FrequencyStep;
+	}
+	Curl /= max(WeightSum, 1.0e-6f);
+	const float BiasLengthSq = dot(DirectionBias, DirectionBias);
+	const float2 Direction = BiasLengthSq > 1.0e-8f
+		? DirectionBias * rsqrt(BiasLengthSq) : float2(0.0f, 0.0f);
+	return Strength * (Curl + Direction * Bias);
+}
+
+// Periodic domain distortion. CurlMix=0 uses directional scalar displacement;
+// CurlMix=1 uses curl displacement. No solver, no coordinate-contract reinterpretation.
+// Any strength of zero returns UV bit-for-bit; warp remains periodic in both axes.
+float2 MixtormatNoiseV2WarpDomain(
+	float2 UV, int Period, int Octaves, float Roughness, float Lacunarity,
+	uint Seed, float Strength, float2 Direction, float CurlMix)
+{
+	if (Strength == 0.0f) { return UV; }
+	const int P = clamp(Period, 1, 4096);
+	const float Mix = saturate(CurlMix);
+	float2 Displacement = float2(0.0f, 0.0f);
+	if (Mix < 1.0f)
+	{
+		float Value;
+		float2 Derivative;
+		MixtormatNoiseFbm(UV, (float)P, clamp(Octaves, 1, 8),
+			Roughness, Lacunarity, Seed, Value, Derivative);
+		const float DirectionLengthSq = dot(Direction, Direction);
+		const float2 Axis = DirectionLengthSq > 1.0e-8f
+			? Direction * rsqrt(DirectionLengthSq) : float2(0.0f, 1.0f);
+		Displacement += (1.0f - Mix) * Value * Axis;
+	}
+	if (Mix > 0.0f)
+	{
+		Displacement += Mix * MixtormatNoiseV2Curl(UV, P, Octaves,
+			Roughness, Lacunarity, Seed, float2(0.0f, 0.0f), 0.0f, 1.0f);
+	}
+	return UV + Displacement * (Strength / (float)P);
+}
+
+// Alternative cellular metrics. Mode 0=Euclidean, 1=Manhattan, 2=Chebyshev.
+// Jitter=1/Mode=0 reuses the legacy implementation exactly, including stable cell IDs.
+// Both distance gradients are in cell-width units; at kinks/ties a subgradient is chosen.
+float MixtormatNoiseV2Metric(float2 Delta, int Mode)
+{
+	if (Mode == 1) { return abs(Delta.x) + abs(Delta.y); }
+	if (Mode == 2) { return max(abs(Delta.x), abs(Delta.y)); }
+	return length(Delta);
+}
+
+float2 MixtormatNoiseV2MetricGradient(float2 Delta, int Mode)
+{
+	if (Mode == 1) { return sign(Delta); }
+	if (Mode == 2)
+	{
+		return abs(Delta.x) >= abs(Delta.y)
+			? float2(sign(Delta.x), 0.0f)
+			: float2(0.0f, sign(Delta.y));
+	}
+	const float LenSq = dot(Delta, Delta);
+	return LenSq > 1.0e-9f ? Delta * rsqrt(LenSq) : float2(0.0f, 0.0f);
+}
+
+FMixtormatNoiseWorley MixtormatNoiseV2Worley(
+	float2 UV, int Period, uint Seed, float Jitter, int Metric)
+{
+	const int P = max(Period, 1); // Preserve legacy Worley periods when new controls are neutral.
+	const float SafeJitter = saturate(Jitter);
+	const int Mode = clamp(Metric, 0, 2);
+	if (SafeJitter == 1.0f && Mode == 0)
+	{
+		return MixtormatNoiseWorley(UV, P, Seed);
+	}
+	const float2 p = frac(UV) * (float)P;
+	const int2 Base = (int2)floor(p);
+	float Best = 1.0e30f;
+	float Second = 1.0e30f;
+	float2 FirstDelta = float2(0.0f, 0.0f);
+	float2 SecondDelta = float2(0.0f, 0.0f);
+	int2 Nearest = Base;
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Cell = Base + int2(x, y);
+			const float2 Delta = p - MixtormatCellPoint(Cell, P, Seed, SafeJitter);
+			const float Distance = MixtormatNoiseV2Metric(Delta, Mode);
+			if (Distance < Best)
+			{
+				Second = Best;
+				SecondDelta = FirstDelta;
+				Best = Distance;
+				FirstDelta = Delta;
+				Nearest = Cell;
+			}
+			else if (Distance < Second)
+			{
+				Second = Distance;
+				SecondDelta = Delta;
+			}
+		}
+	}
+	FMixtormatNoiseWorley Result;
+	Result.F1 = Best;
+	Result.F2 = Second;
+	Result.CellId = MixtormatCellHash(Nearest, P, Seed);
+	Result.Direction = MixtormatNoiseV2MetricGradient(FirstDelta, Mode);
+	Result.SecondDirection = MixtormatNoiseV2MetricGradient(SecondDelta, Mode);
+	return Result;
+}
+
+#endif

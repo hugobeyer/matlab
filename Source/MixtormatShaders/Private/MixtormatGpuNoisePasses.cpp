@@ -53,6 +53,20 @@ namespace
 			SHADER_PARAMETER(FVector2f, OffsetUV)
 			SHADER_PARAMETER(FVector2f, Wave)
 			SHADER_PARAMETER(float, PhaseOffset)
+			SHADER_PARAMETER(float, PhasorFrequency)
+			SHADER_PARAMETER(float, PhasorAnisotropy)
+			SHADER_PARAMETER(float, PhasorPhaseVariation)
+			SHADER_PARAMETER(float, PhasorOrientationVariation)
+			SHADER_PARAMETER(int32, PhasorComponents)
+			SHADER_PARAMETER(int32, WorleyMetric)
+			SHADER_PARAMETER(float, WorleyJitter)
+			SHADER_PARAMETER(float, DistortionStrength)
+			SHADER_PARAMETER(int32, DistortionPeriod)
+			SHADER_PARAMETER(int32, DistortionOctaves)
+			SHADER_PARAMETER(float, DistortionRoughness)
+			SHADER_PARAMETER(float, DistortionLacunarity)
+			SHADER_PARAMETER(float, DistortionCurlMix)
+			SHADER_PARAMETER(FVector2f, DistortionDirectionUV)
 			SHADER_PARAMETER(uint32, ProducesIds)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValue)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
@@ -88,9 +102,9 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseCoverageCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "CoverageCS", SF_Compute);
 
-	// Bars: the authored direction snapped to the integer wave vector that tiles.
+	// Bars / Phasor: the authored direction snapped to a tileable integer wave vector.
 	//
-	// A stripe at an arbitrary angle does not close on the tile, so the phase direction snaps to
+	// A global stripe at an arbitrary angle does not close on the tile, so the phase direction snaps to
 	// the nearest small coprime integer vector and is scaled so a whole number of cycles crosses
 	// the tile -- the same lattice snap Strata Carver's bedding uses, kept local here because the
 	// original is file-private to the generator-pass file. Scale is cycles across the tile; the
@@ -160,9 +174,9 @@ namespace
 			|| Type == EMixtormatNoiseType::WorleyF1MinusF2;
 	}
 
-	bool NoiseIsBars(const EMixtormatNoiseType Type)
+	bool NoiseUsesWave(const EMixtormatNoiseType Type)
 	{
-		return Type == EMixtormatNoiseType::Bars;
+		return Type == EMixtormatNoiseType::Bars || Type == EMixtormatNoiseType::Phasor;
 	}
 }
 
@@ -183,6 +197,20 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
 	Out.OffsetY = Finite(Noise.NoiseOffsetY, Defaults.NoiseOffsetY);
 	Out.Direction = Finite(Noise.NoiseDirection, Defaults.NoiseDirection);
+	Out.PhasorFrequency = FMath::Clamp(Finite(Noise.NoisePhasorFrequency, Defaults.NoisePhasorFrequency), 0.0f, 12.0f);
+	Out.PhasorAnisotropy = FMath::Clamp(Finite(Noise.NoisePhasorAnisotropy, Defaults.NoisePhasorAnisotropy), 0.0f, 8.0f);
+	Out.PhasorPhaseVariation = FMath::Clamp(Finite(Noise.NoisePhasorPhaseVariation, Defaults.NoisePhasorPhaseVariation), 0.0f, 1.0f);
+	Out.PhasorOrientationVariation = FMath::Clamp(Finite(Noise.NoisePhasorOrientationVariation, Defaults.NoisePhasorOrientationVariation), 0.0f, 3.14159265f);
+	Out.PhasorComponents = FMath::Clamp(Noise.NoisePhasorComponents, 1, 4);
+	Out.WorleyMetric = FMath::Clamp(static_cast<int32>(Noise.NoiseWorleyMetric), 0, 2);
+	Out.WorleyJitter = FMath::Clamp(Finite(Noise.NoiseWorleyJitter, Defaults.NoiseWorleyJitter), 0.0f, 1.0f);
+	Out.DistortionStrength = FMath::Clamp(Finite(Noise.NoiseDistortionStrength, Defaults.NoiseDistortionStrength), 0.0f, 2.0f);
+	Out.DistortionFrequency = FMath::Clamp(Finite(Noise.NoiseDistortionFrequency, Defaults.NoiseDistortionFrequency), 1.0f, 64.0f);
+	Out.DistortionOctaves = FMath::Clamp(Noise.NoiseDistortionOctaves, 1, 8);
+	Out.DistortionRoughness = FMath::Clamp(Finite(Noise.NoiseDistortionRoughness, Defaults.NoiseDistortionRoughness), 0.0f, 1.0f);
+	Out.DistortionLacunarity = FMath::Clamp(Finite(Noise.NoiseDistortionLacunarity, Defaults.NoiseDistortionLacunarity), 1.0f, 4.0f);
+	Out.DistortionCurlMix = FMath::Clamp(Finite(Noise.NoiseDistortionCurlMix, Defaults.NoiseDistortionCurlMix), 0.0f, 1.0f);
+	Out.DistortionDirection = Finite(Noise.NoiseDistortionDirection, Defaults.NoiseDistortionDirection);
 	return Out;
 }
 
@@ -259,11 +287,10 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 	const EMixtormatNoiseType NoiseType = static_cast<EMixtormatNoiseType>(Noise.Type);
 	const bool bProducesIds = !bValueOnly && NoiseProducesIds(NoiseType);
 
-	// Bars resolves its tileable wave and its seed phase on the CPU; every other family ignores
-	// both uniforms.
+	// Bars and Phasor share the snapped tileable orientation. Existing Bars phase is unchanged.
 	FVector2f Wave(0.0f, 1.0f);
 	float PhaseOffset = 0.0f;
-	if (NoiseIsBars(NoiseType))
+	if (NoiseUsesWave(NoiseType))
 	{
 		Wave = ResolveNoiseWave(Noise.Scale, Noise.Direction);
 		// A constant phase slide: any constant leaves the field periodic, and the golden-ratio
@@ -311,6 +338,21 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		P->OffsetUV = FVector2f(Noise.OffsetX, Noise.OffsetY);
 		P->Wave = Wave;
 		P->PhaseOffset = PhaseOffset;
+		P->PhasorFrequency = Noise.PhasorFrequency;
+		P->PhasorAnisotropy = Noise.PhasorAnisotropy;
+		P->PhasorPhaseVariation = Noise.PhasorPhaseVariation;
+		P->PhasorOrientationVariation = Noise.PhasorOrientationVariation;
+		P->PhasorComponents = Noise.PhasorComponents;
+		P->WorleyMetric = Noise.WorleyMetric;
+		P->WorleyJitter = Noise.WorleyJitter;
+		P->DistortionStrength = Noise.DistortionStrength;
+		P->DistortionPeriod = FMath::RoundToInt(Noise.DistortionFrequency);
+		P->DistortionOctaves = Noise.DistortionOctaves;
+		P->DistortionRoughness = Noise.DistortionRoughness;
+		P->DistortionLacunarity = Noise.DistortionLacunarity;
+		P->DistortionCurlMix = Noise.DistortionCurlMix;
+		const float WarpAngle = FMath::DegreesToRadians(Noise.DistortionDirection);
+		P->DistortionDirectionUV = FVector2f(FMath::Sin(WarpAngle), FMath::Cos(WarpAngle));
 		P->ProducesIds = bProducesIds ? 1u : 0u;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
