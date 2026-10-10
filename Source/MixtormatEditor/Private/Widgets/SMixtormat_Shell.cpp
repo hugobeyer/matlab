@@ -42,7 +42,7 @@ namespace
 			const float Opacity = FMath::Clamp(L.LeftRailFadeOpacity, 0.0f, 1.0f);
 			if (Width <= 1.0f || Opacity <= 0.0f) return Layer;
 			FLinearColor Shade = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
-			Shade.A = Opacity * Style.GetColorAndOpacityTint().A;
+			Shade.A *= Opacity * Style.GetColorAndOpacityTint().A;
 			TArray<FSlateGradientStop> Stops;
 			Stops.Add(FSlateGradientStop(FVector2D(0.0f, 0.0f), Shade));
 			Shade.A = 0.0f;
