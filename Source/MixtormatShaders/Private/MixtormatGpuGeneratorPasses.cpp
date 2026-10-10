@@ -1596,10 +1596,23 @@ namespace
 				FMixtormatNoiseRenderData Noise;
 				if (!MixtormatNoiseRenderStore().Find(
 					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)
-					|| !Noise.bWriteFlow) { continue; }
+					|| (!Noise.bWriteFlow && !Noise.bWriteHeight)) { continue; }
 				FGeneratorBundle ScopedBundle;
 				AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &ScopedBundle,
 					nullptr, Module.Height);
+				if (ScopedBundle.Height && Module.Height)
+				{
+					const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef HeightMask = bMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: nullptr;
+					ScopedBundle.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder,
+						ScopedBundle.Height, Size, Child.Generator.bNormalizeHeight,
+						Child.Generator.HeightScale, Child.Generator.HeightBias, true, HeightMask,
+						TEXT("Mixtormat.Generator.ScopedNoiseHeight"));
+					AddGeneratorModuleCombine(Ctx, Module.Height, ScopedBundle, Child, Module.Height);
+				}
+				if (!Noise.bWriteFlow) { continue; }
 				const FPublishedField* Generated = Ctx.PublishedFieldOutputs.Find(
 					PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GeneratedFlow"))));
 				if (!Generated || !Generated->IsComplete()
