@@ -18,6 +18,7 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Controls/MixtormatEntryCommit.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
@@ -51,16 +52,20 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 	const bool bCanDisable = InArgs._bCanDisable;
 	const TAttribute<bool> bSolo = InArgs._bSolo;
 
-	TSharedRef<SWidget> Eye = SNew(SMixtormatLayerIcon)
+	const FText EyeHint = bCanDisable
+		? LOCTEXT("LayerVisToggleHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
+		: LOCTEXT("LayerVisToggleLockedHint", "This layer's visibility is locked.");
+	TSharedRef<SWidget> Eye = SNew(SMixtormatHelp)
+		.Text(EyeHint)
+		[
+		SNew(SMixtormatLayerIcon)
 		.bVisibility(true)
 		.bOn(bLayerEnabled)
 		.bActive(bSolo)
-		.ToolTipText(bCanDisable
-			? LOCTEXT("LayerVisToggleHint", "Show or hide this layer. Ctrl or Alt click to solo it.")
-			: LOCTEXT("LayerVisToggleLockedHint", "This layer's visibility is locked."))
 		.OnClickedWithModifiers(bCanDisable
 			? FOnMixtormatIconClicked::CreateSP(this, &SMixtormatLayerRow::HandleEyeClicked)
-			: FOnMixtormatIconClicked());
+			: FOnMixtormatIconClicked())
+		];
 
 	ChildSlot
 	[
