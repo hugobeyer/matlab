@@ -914,16 +914,16 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
 	float NoiseScale = 8.0f;
 
-	// Octaves for FBM / Ridged / Billow. Each runs on its own integer period, so the stack
-	// tiles whatever the per-octave periods turn out to be.
+	// Octaves for FBM / Ridged / Billow and optional layering of other families.
+	// Each octave uses its own integer period so the stack remains periodic.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "1", UIMax = "8", ClampMin = "1", ClampMax = "8"))
 	int32 NoiseDetail = 4;
 
-	// Persistence for FBM / Ridged / Billow: how much of each finer octave survives.
+	// Persistence of added finer octaves, including optional Worley and Phasor layers.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "0", UIMax = "1", Delta = "0.01"))
 	float NoiseRoughness = 0.5f;
 
-	// Frequency multiplier between octaves for FBM / Ridged / Billow. Rounded per octave to the
+	// Frequency multiplier for multilayer families. Rounded per octave to the
 	// integer period the lattice needs, so a continuous control never breaks tileability.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "1", UIMax = "4", Delta = "0.05"))
 	float NoiseLacunarity = 2.0f;
@@ -939,6 +939,11 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	// the angle snaps to the nearest one that tiles, like Strata Carver's bedding direction.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "0", UIMax = "360", Delta = "1"))
 	float NoiseDirection = 0.0f;
+
+	// Optional octave layering of originally single-frequency families. Zero is a strict
+	// bypass, including saved materials; FBM/Ridged/Billow retain their existing layering.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseLayerMix = 0.0f;
 
 	// Phasor only. Existing Bars keeps its original cosine/seed appearance.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "12.0", Delta = "0.05"))
@@ -956,6 +961,13 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "1", UIMax = "4", ClampMin = "1", ClampMax = "4"))
 	int32 NoisePhasorComponents = 2;
 
+	// Signed raw Value shaping for Phasor only. Scale=1 and Bias=0 preserve V2 defaults.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoisePhasorScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float NoisePhasorBias = 0.0f;
+
 	// Worley only. Euclidean + jitter 1 is the original unchanged cellular field.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley")
 	EMixtormatNoiseWorleyMetric NoiseWorleyMetric = EMixtormatNoiseWorleyMetric::Euclidean;
@@ -963,9 +975,18 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float NoiseWorleyJitter = 1.0f;
 
+	// Stable per-cell distance amplitude variation. Does not displace feature points/IDs.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseWorleyCellDepth = 0.0f;
+
 	// Optional domain distortion shared by scalar families. Zero strength is an exact bypass.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float NoiseDistortionStrength = 0.0f;
+
+	// Independent high-frequency jagged warp mixed with the existing smooth/curl distortion.
+	// Zero is a strict bypass, independently of DistortionStrength.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float NoiseDistortionJaggedness = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
 	float NoiseDistortionFrequency = 4.0f;
