@@ -910,7 +910,7 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 	}
 	if (Layer.Type == EMixtormatLayerType::Generator)
 	{
-		return LOCTEXT("GeneratorLayerSource", "GEN");
+		return FText::GetEmpty();
 	}
 	if (Layer.ChannelMode == EMixtormatLayerChannelMode::NormalDetail
 		&& Layer.NormalSourceType == EMixtormatNormalSourceType::Texture
