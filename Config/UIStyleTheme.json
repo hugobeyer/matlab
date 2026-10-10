@@ -147,7 +147,7 @@
 		"Icons.NavigationRail.GlyphSize": 18,
 		"Icons.NavigationRail.ButtonSize": 30,
 		"Icons.NavigationRail.HitSize": 30,
-		"Icons.NavigationRail.RestOpacity": 0.60000002384185791,
+		"Icons.NavigationRail.RestOpacity": 0.44999998807907104,
 		"Icons.NavigationRail.HoverOpacity": 1,
 		"Icons.NavigationRail.DisabledOpacity": 0.31999999284744263
 	},
@@ -292,7 +292,20 @@
 		"TextField.LabelOpacity": 0.89999997615814209,
 		"TextField.HighlightOpacity": 0.85000002384185791,
 		"TextField.ShadeBlend": "Multiply",
-		"TextField.HighlightBlend": "Normal"
+		"TextField.HighlightBlend": "Normal",
+		"TextField.SelectionColor": [
+			0.039999999105930328,
+			0.31999999284744263,
+			0.57999998331069946,
+			1
+		],
+		"TextField.ShadeBottomOpacity": 0.37999999523162842,
+		"TextField.PaddingX": 5,
+		"TextField.PaddingY": 1,
+		"TextField.MinHeight": 18,
+		"TextField.MinWidth": 24,
+		"TextField.FontSize": 10,
+		"TextField.SelectionOpacity": 0.55000001192092896
 	},
 	"foldouts":
 	{
@@ -578,7 +591,7 @@
 		"PreviewLayout.ResolutionControlWidth": 122,
 		"PreviewLayout.TogglePadding": 0,
 		"PreviewLayout.FinalPopupWidth": 212,
-		"PreviewLayout.LeftRailButtonGap": 2,
+		"PreviewLayout.LeftRailButtonGap": 1,
 		"PreviewLayout.LeftOverlayWidth": 320,
 		"PreviewLayout.LeftOverlaySurfaceOpacity": 0.81999999284744263,
 		"PreviewLayout.QuickControlsCentreGap": 210,
@@ -590,7 +603,22 @@
 		"PreviewLayout.QuickControlsGuideAxisOpacity": 0.11999999731779099,
 		"PreviewLayout.QuickControlsGuideGlowDiameter": 720,
 		"PreviewLayout.QuickControlsGuideGlowOpacity": 0.64999997615814209,
-		"PreviewLayout.OverlayClusterInset": 2
+		"PreviewLayout.OverlayClusterInset": 2,
+		"PreviewLayout.LeftRailButtonWidth": 24,
+		"PreviewLayout.LeftRailButtonHeight": 128,
+		"PreviewLayout.LeftRailInnerPadding": 1,
+		"PreviewLayout.LeftRailLabelGap": 0,
+		"PreviewLayout.LeftRailBorderOpacity": 0.079999998211860657,
+		"PreviewLayout.LeftRailBorderThickness": 0,
+		"PreviewLayout.LeftRailShadowOpacity": 0.25,
+		"PreviewLayout.LeftRailShadowOffset": 12,
+		"PreviewLayout.LeftRailShadowRadius": 1,
+		"PreviewLayout.LeftRailCornerRadius": 1,
+		"PreviewLayout.QuickControlsActionsWidth": 140,
+		"PreviewLayout.QuickControlsVignetteBias": 1,
+		"PreviewLayout.QuickControlsVignetteIntensity": 1,
+		"PreviewLayout.QuickControlsVignetteInnerRadius": 0,
+		"PreviewLayout.QuickControlsVignetteFalloff": 2
 	},
 	"galleryShell":
 	{
