@@ -366,7 +366,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
 		MixtormatChildScope::ValidateBehaviorInputs(
-			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources);
+			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources, &Layer);
 	if (!Valid.bCanEvaluate || Valid.GeneratorChildIndex == INDEX_NONE) { return; }
 	const FMixtormatOutputReference& Reference = Behavior.Direction.Published;
 	const int32 SourceIndex = Reference.IsShelfSource() ? 0
