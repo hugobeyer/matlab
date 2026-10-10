@@ -19,6 +19,15 @@
 
 using namespace MixtormatLayersPrivate;
 
+class SMixtormatSourceAddTarget final : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SMixtormatSourceAddTarget) {}
+		SLATE_DEFAULT_SLOT(FArguments, Content)
+	SLATE_END_ARGS()
+	void Construct(const FArguments& InArgs) { ChildSlot[InArgs._Content.Widget]; }
+};
+
 void SMixtormat::RebuildLayerList()
 {
 	StructuralEndpointPreview.Reset();
@@ -471,46 +480,49 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 			[
 				// The tab touches the card's lower edge. Reuses the group button
 				// surface/hairline tokens and the existing six-kind menu.
-				SAssignNew(AddSourceAnchor, SMenuAnchor)
-				.Placement(MenuPlacement_AboveAnchor)
-				.OnGetMenuContent(this, &SMixtormat::BuildAddSourcesMenu)
+				SNew(SMixtormatSourceAddTarget)
 				[
-					SNew(SBox)
-					.WidthOverride(Resolved.LayerLayout.SourcesAddTabWidth)
-					.HeightOverride(Resolved.LayerLayout.SourcesAddTabHeight)
+					SAssignNew(AddSourceAnchor, SMenuAnchor)
+					.Placement(MenuPlacement_AboveAnchor)
+					.OnGetMenuContent(this, &SMixtormat::BuildAddSourcesMenu)
 					[
-						SNew(SMixtormatHelp)
-						.Text(LOCTEXT("AddSourceHint", "Add a reusable generator source."))
+						SNew(SBox)
+						.WidthOverride(Resolved.LayerLayout.SourcesAddTabWidth)
+						.HeightOverride(Resolved.LayerLayout.SourcesAddTabHeight)
 						[
-							SNew(SMixtormatSurfaceBox)
-							.Recipe_Lambda([this]()
-							{
-								return Mixtormat::MakeSourcesAddTabRecipe(
-									FMixtormatThemeStore::GetTheme(),
-									AddSourceAnchor.IsValid() && AddSourceAnchor->IsHovered());
-							})
-							.InheritWidgetStyle(true)
+							SNew(SMixtormatHelp)
+							.Text(LOCTEXT("AddSourceHint", "Add a reusable generator source."))
 							[
-								SNew(SButton)
-								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
-								.HAlign(HAlign_Center)
-								.VAlign(VAlign_Center)
-								.ContentPadding(0.0f)
-								.OnClicked_Lambda([this]()
+								SNew(SMixtormatSurfaceBox)
+								.Recipe_Lambda([this]()
 								{
-									if (AddSourceAnchor.IsValid()) { AddSourceAnchor->SetIsOpen(true); }
-									return FReply::Handled();
+									return Mixtormat::MakeSourcesAddTabRecipe(
+										FMixtormatThemeStore::GetTheme(),
+										AddSourceAnchor.IsValid() && AddSourceAnchor->IsHovered());
 								})
+								.InheritWidgetStyle(true)
 								[
-									SNew(SBox)
-									.WidthOverride(Resolved.LayerLayout.SourcesAddIconSize)
-									.HeightOverride(Resolved.LayerLayout.SourcesAddIconSize)
-									.HAlign(HAlign_Center).VAlign(VAlign_Center)
+									SNew(SButton)
+									.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+									.HAlign(HAlign_Center)
+									.VAlign(VAlign_Center)
+									.ContentPadding(0.0f)
+									.OnClicked_Lambda([this]()
+									{
+										if (AddSourceAnchor.IsValid()) { AddSourceAnchor->SetIsOpen(true); }
+										return FReply::Handled();
+									})
 									[
-										SNew(SImage)
-										.Image(MixtormatIcons::Add())
-										.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-											Mixtormat::EMixtormatColorRole::Text)))
+										SNew(SBox)
+										.WidthOverride(Resolved.LayerLayout.SourcesAddIconSize)
+										.HeightOverride(Resolved.LayerLayout.SourcesAddIconSize)
+										.HAlign(HAlign_Center).VAlign(VAlign_Center)
+										[
+											SNew(SImage)
+											.Image(MixtormatIcons::Add())
+											.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+												Mixtormat::EMixtormatColorRole::Text)))
+										]
 									]
 								]
 							]
