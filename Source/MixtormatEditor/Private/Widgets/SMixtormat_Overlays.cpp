@@ -13,11 +13,9 @@
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SNullWidget.h"
 
-// The floating panels: the placement cycles, the shared stack both panels float in, the fronting
-// that decides which one a press lands on, and the drag/resize interaction that moves them.
-//
-// The geometry itself is shared with the left panel and lives in SMixtormatOverlayPanel.cpp; this
-// file is the workspace wiring around it.
+// Inspector overlay placement, drag/resize gestures and gallery drawer interactions.
+// The Layers/Library/Global navigation remains docked in the left column;
+// only Inspector uses floating-panel geometry from SMixtormatOverlayPanel.cpp.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -74,9 +72,8 @@ FVector2D SMixtormat::GetPreviewViewportLocalPosition(const FVector2D& ScreenPos
 
 TSharedRef<SWidget> SMixtormat::BuildFloatingPanelStack()
 {
-	// A frame per panel: the slot padding is the panel's position, so the frame owns the geometry
-	// and the host owns the size. Both frames are self-hit-test-invisible -- empty viewport must
-	// still reach the viewport underneath -- while the hosts stay hit-testable.
+	// Inspector's frame owns the positioning, while its host owns size. Empty
+	// viewport remains hit-test-transparent to camera controls.
 	InspectorOverlayFrame = SNew(SBox)
 		.Padding_Lambda([this]()
 		{
