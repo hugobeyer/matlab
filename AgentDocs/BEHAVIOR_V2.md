@@ -1,6 +1,6 @@
 # Behavior System V2 — implementation contract
 
-Status: Universal PostGeneration Warp has a typed Flow/UVMap GPU path and initial generator-owned editor authoring (right-click generator → Add Warp Behavior (V2), source picker, strength, Flow controls, enable/duplicate/remove). Scoped masks, native height-gradient input, additional Behavior kinds/stages, group-source UI, and Unreal compile/GPU validation remain outstanding.
+Status: Universal PostGeneration Warp has a typed Flow/UVMap GPU path and initial generator-owned editor authoring (right-click generator → Add Warp Behavior (V2), source picker, strength, Flow controls, enable/duplicate/remove). Append-only Behavior and BehaviorFlow parameter owners now resolve their struct payloads and parameter addresses. Scoped masks, native height-gradient input, additional Behavior kinds/stages, group-source UI, and Unreal compile/GPU validation remain outstanding.
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
@@ -31,12 +31,12 @@ Status: Universal PostGeneration Warp has a typed Flow/UVMap GPU path and initia
 - Both legacy completed Structural Warp and V2 Warp reuse `RemapGeneratorModuleOutputs`; Noise Value/Gradient publication retains the existing dedicated transport semantics.
 - Legacy Generator Flow tools run before V2 post-generation Behaviors. Legacy Structural Warp for non-Strata remains applied after signed normalization. This is an explicit transitional ordering, not yet an arbitrary interleavable operation chain.
 - **Initial UI authoring is present:** select a Generator's right-click **Add Warp Behavior (V2)**, then set a typed Flow/UV Direction in the Warp Inspector. Unconnected Warp remains neutral. The picker offers only direct supported layer fields and compatible Sources shelf roots. It does not yet offer expanded group producers, and there is no local Own Height Gradient mode.
-- **Not yet complete:** scoped Behavior masks, general field composition, PreGeneration, other Behavior kinds, parameter-driver metadata, per-socket render source identities and full instance/group authoring. These must not be inferred from the presence of a Warp row.
+- **Not yet complete:** scoped Behavior masks, general field composition, PreGeneration, other Behavior kinds, GPU consumption of parameter drivers, per-socket render source identities and full instance/group authoring. These must not be inferred from the presence of a Warp row.
 - Shader field demand includes V2 Warp input references to prevent neutral source flow tools being skipped.
 - No build, shader compile, Unreal launch or GPU validation was performed.
 
 ## Required next code increments
-1. Complete the initial Behavior add menu/row/Inspector with mask authoring, typed field source status messages, parameter-driver metadata and editable expanded-group sources.
+1. Complete the initial Behavior add menu/row/Inspector with mask authoring, typed field source status messages, GPU-resolved parameter drivers and editable expanded-group sources.
 2. Extend explicit field contracts to local Own Height Gradient/Boundary, independent masking and per-socket sources without changing serialized legacy operations.
 3. Define the next execution phase for PreGeneration and interleaved generator-owned tools while preserving legacy order.
 4. Review group / clipboard / instances / source scheduling under effective projections, and examine typed-transport limits for every generator bundle.
