@@ -1491,6 +1491,16 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 		FMixtormatLayerChild Child;
 		ApplyChildCreationDefaults(Child, Kind);
+		// Flow Field requires a real owner boundary for SDF steering.
+		if (Kind == EMixtormatChildCreation::BehaviorFlowField)
+		{
+			const FMixtormatLayerChild* Generator = ResolveChildAt(Owner);
+			if (Generator && Generator->Type == EMixtormatLayerChildType::Generator
+				&& !MixtormatGeneratorHasFlowBoundary(Generator->Generator.Type))
+			{
+				Child.Behavior.Flow.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
+			}
+		}
 		const int32 CreatedIndex = InsertScopedChild(*Children, ResolveChildIndexAt(Owner), MoveTemp(Child));
 		if (CreatedIndex == INDEX_NONE)
 		{
