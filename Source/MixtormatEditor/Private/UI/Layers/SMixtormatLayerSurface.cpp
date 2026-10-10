@@ -42,7 +42,9 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 	const bool Group = Kind == EMixtormatLayerKind::Group;
 	const bool Child = Kind == EMixtormatLayerKind::Child;
 	FMixtormatSurfaceDrawStyle DrawStyle;
+	// Inactive rows recede independently of the interactive visibility squircle.
 	DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
+	if (!Context.bVisible) { DrawStyle.Tint.A *= 0.45f; }
 	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
 		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
 
@@ -98,7 +100,7 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 				(Top + Bottom) * 0.5f / Size.Y, DrawStyle);
 		}
 	}
-	if (Context.bSelected && Reach > 0.0f)
+	if (Context.bVisible && Context.bSelected && Reach > 0.0f)
 	{
 		++PaintLayer;
 		if (!Group && !Child)
@@ -132,7 +134,7 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 		{
 			FMixtormatSurfaceSamples Backdrop;
 			BackdropAt(0.0f, Backdrop);
-			if (Context.bSelected && Reach > 0.0f)
+			if (Context.bVisible && Context.bSelected && Reach > 0.0f)
 			{
 				FMixtormatSurfaceSamples WithGlow;
 				CompositeOverlay(GlowAt(0.0f), Palette, Backdrop, 0.0f, WithGlow);

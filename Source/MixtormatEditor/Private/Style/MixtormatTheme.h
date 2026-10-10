@@ -850,6 +850,8 @@ namespace Mixtormat
 		MixtormatCompositing::EMixtormatBlendMode RestBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 		MixtormatCompositing::EMixtormatBlendMode HoverBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 		MixtormatCompositing::EMixtormatBlendMode DisabledBlend = MixtormatCompositing::EMixtormatBlendMode::SoftLight;
+		// OFF is the authoring visibility state; separate from a disabled Slate widget.
+		MixtormatCompositing::EMixtormatBlendMode OffBlend = MixtormatCompositing::EMixtormatBlendMode::SoftLight;
 	};
 
 	enum class EMixtormatIconRole : uint8

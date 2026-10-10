@@ -49,13 +49,14 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 		// A disabled mark recesses: black at full coverage, and the role's Disabled blend decides
 		// how it darkens the row -- Soft Light by default, which deepens rather than replacing.
 		Source = FLinearColor::Black;
-		Source.A = 1.0f;
+		Source.A = IconStyle.DisabledOpacity;
 		Blend = IconStyle.DisabledBlend;
 	}
 	else
 	{
 		Source.A = bHot ? IconStyle.HoverOpacity : IconStyle.RestOpacity;
-		Blend = bHot ? IconStyle.HoverBlend : IconStyle.RestBlend;
+		Blend = bVisibility && !On ? IconStyle.OffBlend
+			: (bHot ? IconStyle.HoverBlend : IconStyle.RestBlend);
 	}
 	if (Blend != MixtormatCompositing::EMixtormatBlendMode::Normal)
 	{

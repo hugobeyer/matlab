@@ -184,7 +184,8 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 						[
 							SNew(STextBlock)
 							.Font(SourceTextStyle.Font)
-							.ColorAndOpacity(SourceTextStyle.ColorAndOpacity)
+							.ColorAndOpacity_Lambda([Enabled = bLayerEnabled, Base = SourceTextStyle.ColorAndOpacity]()
+							{ FLinearColor Color = Base.GetSpecifiedColor(); if (!Enabled.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
 							.Text(InArgs._Source)
 						]
 
@@ -251,6 +252,7 @@ FSlateColor SMixtormatLayerRow::GetNameColor() const
 	FLinearColor Color = Resolved.Palette.Get(Role);
 	Color.A *= Mixtormat::FMixtormatTypography::GetSpec(
 		Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName).Opacity;
+	if (!bLayerEnabled.Get(true)) { Color.A *= 0.45f; }
 	return FSlateColor(Color);
 }
 
