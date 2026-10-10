@@ -3531,6 +3531,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 						&& ((Candidate.Type == EMixtormatLayerChildType::Generator
 							&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
 							|| (Candidate.Type == EMixtormatLayerChildType::Behavior
+								&& Candidate.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
 								&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
 									|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform)));
 				});
