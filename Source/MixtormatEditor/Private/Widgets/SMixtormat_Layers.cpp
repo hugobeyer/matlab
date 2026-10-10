@@ -12,6 +12,7 @@
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -478,24 +479,35 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 					.WidthOverride(Resolved.LayerLayout.SourcesAddTabWidth)
 					.HeightOverride(Resolved.LayerLayout.SourcesAddTabHeight)
 					[
-						SNew(SMixtormatGroupAction, false)
-						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-						.ToolTipText(LOCTEXT("AddSourceHint", "Add a reusable generator source. Source evaluation and connections are not implemented yet."))
-						.OnClicked_Lambda([this]()
-						{
-							if (AddSourceAnchor.IsValid())
-							{
-								AddSourceAnchor->SetIsOpen(true);
-							}
-							return FReply::Handled();
-						})
+						SNew(SMixtormatHelp)
+						.Text(LOCTEXT("AddSourceHint", "Add a reusable generator source."))
 						[
-							SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+							SNew(SMixtormatSurfaceBox)
+							.Recipe_Lambda([this]()
+							{
+								return Mixtormat::MakeSourcesAddTabRecipe(
+									FMixtormatThemeStore::GetTheme(),
+									AddSourceAnchor.IsValid() && AddSourceAnchor->IsHovered());
+							})
+							.InheritWidgetStyle(true)
 							[
-								SNew(SImage)
-								.Image(MixtormatIcons::Add())
-								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-									Mixtormat::EMixtormatColorRole::Text)))
+								SNew(SButton)
+								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+								.ContentPadding(0.0f)
+								.OnClicked_Lambda([this]()
+								{
+									if (AddSourceAnchor.IsValid()) { AddSourceAnchor->SetIsOpen(true); }
+									return FReply::Handled();
+								})
+								[
+									SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+									[
+										SNew(SImage)
+										.Image(MixtormatIcons::Add())
+										.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+											Mixtormat::EMixtormatColorRole::Text)))
+									]
+								]
 							]
 						]
 					]
