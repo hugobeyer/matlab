@@ -1,6 +1,6 @@
 # Behavior System V2 — implementation contract
 
-Status: Universal post-generation Warp now supports typed published Flow/UVMap and a generator-local native-height-gradient direction, with independent per-Behavior scoped masks. The generator-owned Inspector has explicit source modes, Strength, Gradient Reach, Flow controls and enable/remove/duplicate. Noise V2 Inspector additions have been retained on this branch while sync of current main is tracked in draft PR #2. No Unreal, shader or GPU build/test validation has been performed.
+Status: Universal post-generation Warp now supports typed published Flow/UVMap and a generator-local native-height-gradient direction, with independent per-Behavior scoped masks. The generator-owned Inspector has explicit source modes, Strength, Gradient Reach, Flow controls and enable/remove/duplicate. Noise V2 is integrated from main through merged PR #2 (`40cb6f6`) with both Noise and Behavior Inspector controls retained. No Unreal, shader or GPU build/test validation has been performed.
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
@@ -37,13 +37,13 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 - No build, shader compile, Unreal launch or GPU validation was performed.
 
 ## Required next code increments
-1. Extend the initial Warp UI with typed field source status messages, explicit mask authoring from more source types, GPU-resolved parameter drivers and editable expanded-group sources.
+1. Extend the initial Warp UI with typed source/status messages, reusable mask authoring from gallery/Noise/field sources, GPU-resolved parameter drivers and editable expanded-group sources.
 2. Extend field contracts beyond the implemented local gradient transform to Own Boundary and general field composition; add separate typed Influence source binding without changing serialized legacy operations.
 3. Define the next execution phase for PreGeneration and interleaved generator-owned tools while preserving legacy order.
 4. Review group / clipboard / instances / source scheduling under effective projections, and examine typed-transport limits for every generator bundle.
 5. Validate Unreal shader compilation and real material output when explicitly authorized.
 
 ## Parallel development
-Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file has retained the Noise V2 settings; integrating the remaining `main` ancestry is tracked by draft PR #2.
+Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 settings. `main` was merged into this feature branch through PR #2 (`40cb6f6`), leaving `main` unchanged.
 
 Repository policy: source/static review only by default; build, test and Unreal launches require user approval.
