@@ -1,13 +1,42 @@
-<?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="mask">
-  <title>mask</title>
-  <g id="mask-cell-offset" transform="translate(-256,-128)">
-    <g id="icon-mask" inkscape:label="mask" transform="matrix(1.4,0,0,1.4,243.19982,115.19984)">
-      <g id="mask--layer1" inkscape:label="Layer 1" inkscape:groupmode="layer">
-        <g id="mask--mask" inkscape:label="mask" data-original-id="path207" transform="translate(-385.3731,-319.124)">
-          <path id="mask--mask-shape" style="fill:#f9f9f9;stroke-width:1.23446" d="m 400.93516,366.36775 -0.80171,-1.36693 v -8.97935 l 4.51723,-0.16254 0.0554,6.66797 7.57889,0.46303 0.0912,4.17321 -10.63935,0.005 -0.80166,-0.80062 z m 18.67683,0.30983 -0.21547,-3.78475 8.09117,-0.2518 0.0819,-7.15753 7.04404,0.0791 v 10.18646 l -1.60609,1.42035 h -12.90353 z m -19.47854,-20.29662 v -9.46375 l 1.42606,-1.35727 10.16886,0.018 -1.09952,4.17306 -5.75947,0.14568 -0.16058,6.567 z m 27.38296,2.25375 0.053,-2.65862 v -6.24248 h -7.41107 l 0.14254,-4.17208 13.16943,-0.005 1.14316,1.10598 v 10.43762 l -1.11112,1.45136 z" sodipodi:nodetypes="ccccccccccccccccccccccccccccccccccccc" />
-        </g>
-      </g>
-    </g>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64"
+   height="64"
+   viewBox="0 0 64 64"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="mask.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050">
+    <inkscape:page
+       x="0"
+       y="0"
+       width="64"
+       height="64"
+       id="page2"
+       margin="0"
+       bleed="0" />
+  </sodipodi:namedview>
+  <g
+     id="layer1"
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer">
+    <path
+       id="rect1"
+       style="fill:#f9f9f9;stroke-width:4.82253;stroke-linecap:round;stroke-linejoin:round;stroke-dashoffset:9.5"
+       d="M 28.621067,9.5839059 8.7279638,26.243393 v 7.715973 L 37.832443,9.5839059 Z m 14.848045,0 L 8.7279638,38.680678 v 7.714046 L 51.795965,10.325826 51.054045,9.5839059 Z m 9.72783,5.9527081 -44.4689782,37.242481 v 0.547286 l 2.1428962,2.140971 h 3.861841 L 53.196942,23.254514 Z m 0,12.437285 -32.8295,27.493453 h 9.213304 L 53.196942,35.687944 Z" />
   </g>
 </svg>
