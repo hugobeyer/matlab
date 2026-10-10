@@ -559,17 +559,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			.Enabled(TAttribute<bool>(bCanNestChild));
 		Menu.Separator();
 	}
-	if (bCanLeaveGroup && !WorkingLayers.IsEmpty())
-	{
-		// "Move to Layer", not "Unshare": the destination has to be named, and there is no
-		// sensible default for it -- the child belonged to every member equally.
-		Menu.SubMenu(
-			LOCTEXT("MoveGroupChildToLayerContext", "Move to Layer..."),
-			nullptr,
-			FOnGetContent::CreateSP(
-				this, &SMixtormat::BuildMoveGroupChildToLayerMenu, GroupId, ChildIndex));
-		Menu.Separator();
-	}
 	// Copy / Copy as Instance / Copy Output / Paste, and (for an instance) Go to Source / Break
 	// Instance / Replace Source / Copy Instance Reference -- the same rows a layer child's menus
 	// build via AddSharedChildMenuItems, driven by the same address-based clipboard rather than a
