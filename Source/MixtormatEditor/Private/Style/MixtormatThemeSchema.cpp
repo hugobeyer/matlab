@@ -663,6 +663,8 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Navigation Rail", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Navigation Rail", "Rail Vertical Shade", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadeBias", Preview, "Navigation Rail", "Rail Shade Bias", PreviewLayout.LeftRailShadeBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailFadeExtension", Preview, "Navigation Rail", "Horizontal Fade Extension", PreviewLayout.LeftRailFadeExtension, 0, 256, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailFadeOpacity", Preview, "Navigation Rail", "Horizontal Fade Opacity", PreviewLayout.LeftRailFadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				P.Add(Bool(TEXT("PreviewLayout.bLeftRailShadeInverted"), ETab::Preview,
 					TEXT("Navigation Rail"), TEXT("Rail Shade Invert"),
 					[](const FMixtormatTheme& T) { return T.PreviewLayout.bLeftRailShadeInverted; },
