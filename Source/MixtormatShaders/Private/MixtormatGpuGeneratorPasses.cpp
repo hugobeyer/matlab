@@ -442,6 +442,7 @@ public:
 		SHADER_PARAMETER(float, OutHigh)
 		SHADER_PARAMETER(uint32, NormalizeMode)
 		SHADER_PARAMETER(float, OutputScale)
+		SHADER_PARAMETER(float, HeightBias)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
@@ -513,11 +514,12 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	const FIntPoint Size,
 	const bool bNormalize,
 	const float OutputScale,
+	const float HeightBias,
 	const TCHAR* Name)
 {
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-	// The reduce is only needed for the zero-preserving normalization. Normalize off uses the raw
-	// signed field, so the min/max dispatch is skipped entirely.
+	// The reduce is only needed for the centring path. Normalize off uses the raw signed field, so
+	// the min/max dispatch is skipped entirely.
 	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
 		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
 	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
@@ -543,8 +545,12 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		P->OutputSize = Size;
 		P->OutLow = -1.0f;
 		P->OutHigh = 1.0f;
-		P->NormalizeMode = bNormalize ? 1u : 2u;
+		// Mode 3 is mid-range centring, not the retired max-absolute mode 1: every generator must
+		// land on the same symmetric [-1, 1] or Height Blend's Min/Max/Difference are decided by
+		// whichever module happens to carry the larger pedestal.
+		P->NormalizeMode = bNormalize ? 3u : 2u;
 		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
+		P->HeightBias = FMath::IsFinite(HeightBias) ? HeightBias : 0.0f;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Signed);
@@ -2928,11 +2934,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}
-		// The shared signed output contract: zero-preserving max-absolute normalization to -1..1,
-		// then Height Scale (which may exceed -1..1). Applied after flow.
+		// The shared signed output contract: mid-range centring onto a symmetric -1..1, then Height Bias,
+		// then Height Scale (which may exceed -1..1). Applied after flow. Centring rather than
+		// max-absolute normalization is what makes Height Blend's Min/Max/Difference well-posed
+		// between modules: a max-abs field is still asymmetric (Gradient lands at [-1, +0.83]), so a
+		// module carrying a pedestal would win every comparison.
 		Module.Height = AddSignedGeneratorHeightPasses(
 			Ctx.GraphBuilder, Module.Height, Size,
 			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+			Child.Generator.HeightBias,
 			TEXT("Mixtormat.Generator.SignedHeight"));
 
 		// Strata regenerates in its structural frame. Every other supported target instead owns

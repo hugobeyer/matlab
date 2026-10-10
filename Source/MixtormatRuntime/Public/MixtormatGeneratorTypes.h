@@ -1027,6 +1027,13 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseHeightScale = 1.0f;
+
+	// Signed-height offset applied after centring and before Height Scale. Zero is identity.
+	// Centring alone puts every module on a symmetric -1..1; this is the deliberate offset for a
+	// module that should sit high or low in a Height Blend rather than straddling zero. Appended
+	// after Noise V2.2; identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseHeightBias = 0.0f;
 };
 
 

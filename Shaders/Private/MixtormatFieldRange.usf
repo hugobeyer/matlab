@@ -9,8 +9,10 @@
 //   from a zero clear. Only run when a measured range is actually needed.
 // RANGE_STAGE 1 (Resolve):   mode 0 remaps (h - min) / (max - min) onto [OutLow, OutHigh]; mode 1
 //   is zero-preserving max-absolute normalization (h / max(abs(min), abs(max))) clamped to -1..1;
-//   mode 2 is the raw signed field times OutputScale, unclamped. Both signed modes multiply by
-//   OutputScale after the (mode 1) clamp, so Scale may push the result beyond -1..1.
+//   mode 2 is the raw signed field times OutputScale, unclamped. Mode 3 is the generator
+//   signed-height centring: the same mid-range remap onto [-1, 1] as mode 0, plus HeightBias and
+//   OutputScale. Mode 3 replaced mode 1 for that path -- see the note at mode 3 for why
+//   max-absolute cannot serve Height Blend.
 //
 // Nothing is clamped after OutputScale: the generator contract is on the normalized base field,
 // and the document/export level owns the final remap.
@@ -22,6 +24,7 @@ float OutLow;
 float OutHigh;
 uint NormalizeMode;
 float OutputScale;
+float HeightBias;
 Texture2D<float> SourceField;
 RWStructuredBuffer<uint> OutRange;
 StructuredBuffer<uint> Range;
@@ -102,6 +105,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// contract is enforced by the normalization path; this path is the escape hatch for a
 		// field whose own amplitude is already meaningful. No reduction is needed for it.
 		OutField[Pixel] = Value * OutputScale;
+	}
+	else if (NormalizeMode == 3u)
+	{
+		// Mid-range centring for the generator signed-height contract: every module lands on the
+		// same symmetric [-1, 1], so Height Blend's Add/Min/Max/Difference are well-posed against
+		// each other. Max-absolute (mode 1) does NOT do this -- it only divides by the larger
+		// excursion, so a field like Gradient ends up asymmetric at [-1, +0.83] and a module with a
+		// pedestal (Ridged at [-0.32, +1]) wins every Min/Max against it.
+		const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
+		OutField[Pixel] = (lerp(-1.0f, 1.0f, Unit) + HeightBias) * OutputScale;
 	}
 	else
 	{
