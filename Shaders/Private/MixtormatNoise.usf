@@ -161,7 +161,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
 		// farthest corners of a cell past one width; the clamp is part of the contract.
 		Value = saturate(Distance);
-		Gradient = w.Direction;
+		// Worley publishes the derivative of the selected distance, in cell-width units.
+		// F2-F1 must subtract both gradients; reusing F1's direction was incorrect.
+		Gradient = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.Direction
+			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.SecondDirection
+			: (w.SecondDirection - w.Direction);
 		CellId = w.CellId;
 	}
 	else // NOISE_TYPE_BARS
