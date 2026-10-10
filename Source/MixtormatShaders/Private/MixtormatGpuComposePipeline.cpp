@@ -741,7 +741,8 @@ namespace MixtormatGpuCompositor
 								Ctx.PublishedFieldDemand.Add(Child.StructuralWarp.Source.Source);
 							}
 							if (Child.Type == EMixtormatLayerChildType::Behavior
-								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+								&& (Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+									|| Child.Behavior.Stage == EMixtormatBehaviorStage::PreGeneration)
 								&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
 									|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
 								&& Child.Behavior.Direction.Source.ChildIndex != INDEX_NONE)
