@@ -286,14 +286,37 @@ namespace MixtormatLayerGroups
 					}
 				}
 			};
-			const auto RemapChildReferences = [&RemapPair](FMixtormatLayerChild& Child)
+			const auto RemapChildReferences = [&RemapPair, &ChildIdRemap](FMixtormatLayerChild& Child)
 			{
+				const auto RemapOutput = [&RemapPair](FMixtormatOutputReference& Reference)
+				{
+					// Shelf references are keyed by SourceShelfId and are not group members.
+					if (Reference.IsLayerSource())
+					{
+						RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
+					}
+				};
 				RemapPair(Child.SourceLayerId, Child.SourceChildId);
 				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
-				RemapPair(Child.OutputReference.SourceLayerId, Child.OutputReference.SourceChildId);
-				RemapPair(Child.BoundaryId.RegionIdsSource.SourceLayerId, Child.BoundaryId.RegionIdsSource.SourceChildId);
-				RemapPair(Child.StructuralWarp.Source.SourceLayerId, Child.StructuralWarp.Source.SourceChildId);
-				RemapPair(Child.HeightPush.Source.SourceLayerId, Child.HeightPush.Source.SourceChildId);
+				RemapOutput(Child.OutputReference);
+				RemapOutput(Child.Generator.HeightSource);
+				RemapOutput(Child.Generator.WarpSource);
+				RemapOutput(Child.BoundaryId.RegionIdsSource);
+				RemapOutput(Child.StructuralWarp.Source);
+				RemapOutput(Child.HeightPush.Source);
+				RemapPair(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
+				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId))
+				{
+					Child.HeightColorRamp.SourceChildId = *Effective;
+				}
+				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightPush.TargetChildId))
+				{
+					Child.HeightPush.TargetChildId = *Effective;
+				}
+				if (const FGuid* Effective = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
+				{
+					Child.StructuralWarp.TargetChildId = *Effective;
+				}
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
