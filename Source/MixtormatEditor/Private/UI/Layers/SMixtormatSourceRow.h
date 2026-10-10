@@ -41,7 +41,6 @@ public:
 private:
 	FReply OpenContextMenu();
 	void HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType);
-	void ToggleEnabled();
 
 	// Copied out of the args: the enabled binding is read per paint, after Construct has returned.
 	TAttribute<bool> Enabled;
