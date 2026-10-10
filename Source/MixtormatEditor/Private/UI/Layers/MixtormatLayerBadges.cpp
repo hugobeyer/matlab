@@ -312,7 +312,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::BoundaryFromIds: return FText::GetEmpty();
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
-		case EMixtormatLayerChildType::Generator: return LOCTEXT("ChildKindGenerator", "GEN");
+		case EMixtormatLayerChildType::Generator: return FText::GetEmpty();
 		case EMixtormatLayerChildType::HeightBlend: return LOCTEXT("ChildKindHeightBlend", "HBLD");
 		case EMixtormatLayerChildType::HeightCurve: return LOCTEXT("ChildKindHeightCurve", "HCRV");
 		case EMixtormatLayerChildType::HeightColorRamp: return LOCTEXT("ChildKindHeightColorRamp", "HCLR");
