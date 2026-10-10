@@ -1334,10 +1334,25 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior"), false},
 				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior"), true},
 				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Add Carve / Deposit Behavior"), true},
-				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false},
-				{EMixtormatChildCreation::BehaviorFlowField, LOCTEXT("AddBehaviorFlowToGenerator", "Add Flow Field"), false}};
+				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false}};
+			if (Target.Type == EMixtormatLayerChildType::Generator)
+			{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				if (CanAddScopedFlowGenerator(Destination))
+				{
+					Menu.Item(LOCTEXT("AddFlowToGenerator", "Add Flow"), MixtormatIcons::Generator(),
+						FSimpleDelegate::CreateLambda([this, Destination]()
+						{
+							CreateChild(Destination, EMixtormatChildCreation::NoiseFlow);
+						}));
+				}
+			}
 			for (const FBehaviorEntry& Entry : Entries)
 			{
+				if (Target.Type == EMixtormatLayerChildType::Generator
+					&& Target.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Target.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow) { continue; }
 				FMixtormatLayerChild Prototype;
 				ApplyChildCreationDefaults(Prototype, Entry.Creation);
 				if (!CanKeepScopedPlacement(Target, Prototype)) { continue; }
