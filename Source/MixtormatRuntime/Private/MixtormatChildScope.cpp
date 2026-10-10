@@ -153,7 +153,10 @@ namespace MixtormatChildScope
 				// The current Influence gather supports ordered layer fields only.
 				// Report shelf Influence as unavailable rather than validating a source
 				// that the renderer cannot bind.
-				if (bInfluence) { return EBehaviorInputIssue::InvalidPublishedSource; }
+				if (bInfluence || Behavior.Type == EMixtormatBehaviorType::Carve)
+				{
+					return EBehaviorInputIssue::InvalidPublishedSource;
+				}
 				const auto ShelfStatus = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Ref);
 				if (ShelfStatus.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 				{
@@ -186,6 +189,14 @@ namespace MixtormatChildScope
 			|| Behavior.Type == EMixtormatBehaviorType::Deform;
 		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
 			|| Behavior.Type == EMixtormatBehaviorType::Carve;
+		// Reject inactive operation sockets too: gather does not evaluate a Warp
+		// with Height connected, or a Push/Carve with Direction connected.
+		if ((bNeedsDirection && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
+			|| (bNeedsHeight && Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None))
+		{
+			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
+			return Result;
+		}
 		Result.Issue = CheckInput(Behavior.Direction, true, false, bNeedsDirection);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		if (Behavior.Type == EMixtormatBehaviorType::Carve && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
