@@ -77,41 +77,9 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)))
 						]
 					]
-					+ SOverlay::Slot()
-					.HAlign(HAlign_Left)
-					.Padding(FMargin(MixtormatTokens::LayerSourceBarWidth + MixtormatTokens::StructuralLinkHighlightGap, 0.0f, 0.0f, 0.0f))
-					[
-						SNew(SBox)
-						.WidthOverride(MixtormatTokens::StructuralLinkHighlightWidth)
-						.Visibility_Lambda([Role = InArgs._StructuralHighlightRole]()
-						{
-							return Role.Get(EStructuralLinkHighlightRole::None) == EStructuralLinkHighlightRole::None
-								? EVisibility::Collapsed : EVisibility::HitTestInvisible;
-						})
-						[
-							SNew(SImage)
-							.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-							.ColorAndOpacity_Lambda([Role = InArgs._StructuralHighlightRole]()
-							{
-								const Mixtormat::FMixtormatResolvedPalette& Palette = FMixtormatThemeStore::GetResolved().Palette;
-								const EStructuralLinkHighlightRole Value = Role.Get(EStructuralLinkHighlightRole::None);
-								if (Value == EStructuralLinkHighlightRole::Source)
-								{
-									return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::Accent));
-								}
-								if (Value == EStructuralLinkHighlightRole::Target)
-								{
-									return FSlateColor(Palette.Get(Mixtormat::EMixtormatColorRole::Modified));
-								}
-								return FSlateColor(FLinearColor::LerpUsingHSV(
-									Palette.Get(Mixtormat::EMixtormatColorRole::Accent),
-									Palette.Get(Mixtormat::EMixtormatColorRole::Modified), 0.5f));
-							})
-						]
-					]
-					+ SOverlay::Slot()
-					[
-					SNew(SBox)
++ SOverlay::Slot()
+				[
+				SNew(SBox)
 				.HeightOverride(Layout.ChildRowHeight)
 				// Same leading/trailing insets as a layer row, plus the child indent, so both
 				// follow the Leading/Trailing inset tokens together.
@@ -151,96 +119,57 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.FillWidth(1.0f)
 					.VAlign(VAlign_Center)
 					[
-						InArgs._bConnectionPresentation
-							? InArgs._ConnectionContent.Widget
-							: StaticCastSharedRef<SWidget>(
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot()
-								.FillWidth(1.0f)
-								.VAlign(VAlign_Center)
-								[
-									SNew(STextBlock)
-									.Font(NameTextStyle.Font)
-									.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
-									{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
-									.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-									.Text(InArgs._Name)
-								]
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
-								[
-									SNew(STextBlock)
-									.Font(SourceTextStyle.Font)
-									.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = SourceTextStyle.ColorAndOpacity]()
-									{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
-									.Text(InArgs._StructuralCount)
-									.ToolTipText(InArgs._StructuralCountToolTip)
-									.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-									.Visibility_Lambda([Count = InArgs._StructuralCount]()
-									{
-										return Count.Get(FText::GetEmpty()).IsEmpty()
-											? EVisibility::Collapsed : EVisibility::Visible;
-									})
-								]
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
-								[
-									SNew(SBox)
-									.Visibility_Lambda([Link = InArgs._StructuralLink.Widget]()
-									{
-										return Link == SNullWidget::NullWidget ? EVisibility::Collapsed : EVisibility::Visible;
-									})
-									[
-										InArgs._StructuralLink.Widget
-									]
-								]
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(
-									Layout.ItemGap,
-									0.0f,
-									Layout.ItemGap,
-									0.0f)
-								[
-									SNew(STextBlock)
-									.Font(SourceTextStyle.Font)
-									.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = SourceTextStyle.ColorAndOpacity]()
-									{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
-									.Text(InArgs._Kind)
-									// Same reason as the badge below: a child with no kind mark should not
-									// spend the slot's padding saying nothing.
-									.Visibility_Lambda([Kind = InArgs._Kind]()
-									{
-										return Kind.Get(FText::GetEmpty()).IsEmpty()
-											? EVisibility::Collapsed
-											: EVisibility::Visible;
-									})
-								]
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								[
-									SNew(SMixtormatBadge)
-									.Text(InArgs._Badge)
-									.OnGetMenuContent(InArgs._OnGetBadgeMenu)
-									// Collapsed rather than drawn empty. A badge is a fixed-width pill, so a
-									// child whose slot has nothing to say -- an ID node, whose name already
-									// says it -- would otherwise print a blank box down the column. The row's
-									// height is pinned by the SBox above, so removing it changes only width.
-									.Visibility_Lambda([Badge = InArgs._Badge]()
-									{
-										return Badge.Get(FText::GetEmpty()).IsEmpty()
-											? EVisibility::Collapsed
-											: EVisibility::Visible;
-									})
-								]
-							)
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Font(NameTextStyle.Font)
+							.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
+							{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
+							.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+							.Text(InArgs._Name)
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(Layout.ItemGap, 0.0f, Layout.ItemGap, 0.0f)
+						[
+							SNew(STextBlock)
+							.Font(SourceTextStyle.Font)
+							.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = SourceTextStyle.ColorAndOpacity]()
+							{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
+							.Text(InArgs._Kind)
+							// Same reason as the badge below: a child with no kind mark should not
+							// spend the slot's padding saying nothing.
+							.Visibility_Lambda([Kind = InArgs._Kind]()
+							{
+								return Kind.Get(FText::GetEmpty()).IsEmpty()
+									? EVisibility::Collapsed
+									: EVisibility::Visible;
+							})
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						[
+							SNew(SMixtormatBadge)
+							.Text(InArgs._Badge)
+							.OnGetMenuContent(InArgs._OnGetBadgeMenu)
+							// Collapsed rather than drawn empty. A badge is a fixed-width pill, so a
+							// child whose slot has nothing to say -- an ID node, whose name already
+							// says it -- would otherwise print a blank box down the column. The row's
+							// height is pinned by the SBox above, so removing it changes only width.
+							.Visibility_Lambda([Badge = InArgs._Badge]()
+							{
+								return Badge.Get(FText::GetEmpty()).IsEmpty()
+									? EVisibility::Collapsed
+									: EVisibility::Visible;
+							})
+						]
 					]
+				]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SNew(SBox)

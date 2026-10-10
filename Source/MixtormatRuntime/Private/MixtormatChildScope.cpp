@@ -231,8 +231,6 @@ namespace MixtormatChildScope
 		// Weight is the influence; no separate control is needed.
 		case EMixtormatLayerChildType::HeightColorRamp:
 		case EMixtormatLayerChildType::Behavior:
-		case EMixtormatLayerChildType::HeightPush:
-				case EMixtormatLayerChildType::StructuralWarp:
 			return true;
 		default:
 			return false;

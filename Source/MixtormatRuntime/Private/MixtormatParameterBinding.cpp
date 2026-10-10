@@ -82,9 +82,6 @@ namespace
 		case EMixtormatParameterOwnerType::HeightBlend: return Child.Type == EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatParameterOwnerType::HeightCurve: return Child.Type == EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatParameterOwnerType::HeightColorRamp: return Child.Type == EMixtormatLayerChildType::HeightColorRamp;
-				case EMixtormatParameterOwnerType::HeightPush: return Child.Type == EMixtormatLayerChildType::HeightPush;
-						case EMixtormatParameterOwnerType::StructuralWarp:
-		case EMixtormatParameterOwnerType::StructuralWarpFlow: return Child.Type == EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatParameterOwnerType::CombineId: return Child.Type == EMixtormatLayerChildType::CombineId;
 		case EMixtormatParameterOwnerType::IdGroup: return Child.Type == EMixtormatLayerChildType::IdGroup;
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
@@ -191,9 +188,6 @@ namespace
 		case EMixtormatParameterOwnerType::HeightBlend: View.ConstData = &Child.HeightBlend; break;
 		case EMixtormatParameterOwnerType::HeightCurve: View.ConstData = &Child.HeightCurve; break;
 		case EMixtormatParameterOwnerType::HeightColorRamp: View.ConstData = &Child.HeightColorRamp; break;
-				case EMixtormatParameterOwnerType::HeightPush: View.ConstData = &Child.HeightPush; break;
-						case EMixtormatParameterOwnerType::StructuralWarp: View.ConstData = &Child.StructuralWarp; break;
-		case EMixtormatParameterOwnerType::StructuralWarpFlow: View.ConstData = &Child.StructuralWarp.Source; break;
 		case EMixtormatParameterOwnerType::Behavior: View.ConstData = &Child.Behavior; break;
 		case EMixtormatParameterOwnerType::BehaviorFlow: View.ConstData = &Child.Behavior.Direction.Published; break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
@@ -595,9 +589,6 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::HeightBlend: return { FMixtormatGeneratorHeightBlend::StaticStruct() };
 		case EMixtormatParameterOwnerType::HeightCurve: return { FMixtormatGeneratorHeightCurve::StaticStruct() };
 		case EMixtormatParameterOwnerType::HeightColorRamp: return { FMixtormatGeneratorHeightColorRamp::StaticStruct() };
-				case EMixtormatParameterOwnerType::HeightPush: return { FMixtormatGeneratorHeightPush::StaticStruct() };
-						case EMixtormatParameterOwnerType::StructuralWarp: return { FMixtormatGeneratorStructuralWarp::StaticStruct() };
-		case EMixtormatParameterOwnerType::StructuralWarpFlow: return { FMixtormatOutputReference::StaticStruct() };
 		case EMixtormatParameterOwnerType::Behavior: return { FMixtormatBehavior::StaticStruct() };
 		case EMixtormatParameterOwnerType::BehaviorFlow: return { FMixtormatOutputReference::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
@@ -810,7 +801,6 @@ namespace MixtormatParameterBinding
 			RemapOutput(Child.BoundaryId.RegionIdsSource, false);
 			RemapOutput(Child.Generator.HeightSource, true);
 			RemapOutput(Child.Generator.WarpSource, true);
-			RemapOutput(Child.HeightPush.Source, true);
 			if (Child.HeightBlend.SourceLayerId == OldLayerId
 				&& OriginalChildIds.Contains(Child.HeightBlend.SourceChildId))
 			{
@@ -824,23 +814,12 @@ namespace MixtormatParameterBinding
 			{
 				Child.HeightColorRamp.SourceChildId = *Mapped;
 			}
-			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.HeightPush.TargetChildId))
-			{
-				Child.HeightPush.TargetChildId = *NewTargetChildId;
-			}
-			RemapOutput(Child.StructuralWarp.Source, true);
 			// V2 typed Behavior sockets are addresses too. Follow duplicated local
 			// producers, but preserve explicit references to external layers/shelf.
 			RemapOutput(Child.Behavior.Direction.Published, true);
 			RemapOutput(Child.Behavior.Height.Published, true);
 			RemapOutput(Child.Behavior.Influence.Published, true);
-			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
-			{
-				Child.StructuralWarp.TargetChildId = *NewTargetChildId;
-			}
-
-			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
-				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
+			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer)
 			{
 				Child.Mask.PublishedSourceLayerId = NewLayerId;
 				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.Mask.PublishedSourceChildId))
@@ -931,8 +910,6 @@ namespace MixtormatParameterBinding
 				RemapStructuralSource(Child.BoundaryId.RegionIdsSource);
 				RemapStructuralSource(Child.Generator.HeightSource);
 				RemapStructuralSource(Child.Generator.WarpSource);
-				RemapStructuralSource(Child.HeightPush.Source);
-				RemapStructuralSource(Child.StructuralWarp.Source);
 				RemapStructuralSource(Child.Behavior.Direction.Published);
 				RemapStructuralSource(Child.Behavior.Height.Published);
 				RemapStructuralSource(Child.Behavior.Influence.Published);
@@ -948,14 +925,6 @@ namespace MixtormatParameterBinding
 					if (OwnerChildren->Contains(Child.HeightColorRamp.SourceChildId))
 					{
 						RemapGuid(Child.HeightColorRamp.SourceChildId, ChildIdRemap);
-					}
-					if (OwnerChildren->Contains(Child.HeightPush.TargetChildId))
-					{
-						RemapGuid(Child.HeightPush.TargetChildId, ChildIdRemap);
-					}
-					if (OwnerChildren->Contains(Child.StructuralWarp.TargetChildId))
-					{
-						RemapGuid(Child.StructuralWarp.TargetChildId, ChildIdRemap);
 					}
 				}
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
@@ -1325,16 +1294,6 @@ namespace MixtormatParameterBinding
 				&& Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
 			{
 				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
-			}
-			if (Child.HeightPush.Source.SourceChildId == ChildId
-				&& Child.HeightPush.Source.SourceLayerId == OldLayerId)
-			{
-				Child.HeightPush.Source.SourceLayerId = NewLayerId;
-			}
-			if (Child.StructuralWarp.Source.SourceChildId == ChildId
-				&& Child.StructuralWarp.Source.SourceLayerId == OldLayerId)
-			{
-				Child.StructuralWarp.Source.SourceLayerId = NewLayerId;
 			}
 			if (Child.OutputReference.SourceChildId == ChildId
 				&& Child.OutputReference.SourceLayerId == OldLayerId)

@@ -763,8 +763,6 @@ void SMixtormat::RefreshLayeredPreview(const bool bMarkDirty)
 	// Before anything reads the stack: an instance shows what its source says, and the row,
 	// the badge and the inspector all read the authored payload to find that out.
 	SyncChildInstances();
-	StructuralIncomingCountLabels.Reset();
-	StructuralConnectionLabelCache.Reset();
 
 	bInteractiveEdit = IsInteractiveEdit() || bInteractiveEdit;
 	bPreviewSubmitPending = true;

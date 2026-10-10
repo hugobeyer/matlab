@@ -98,8 +98,6 @@ namespace
 		case EMixtormatLayerChildType::HeightBlend: return EMixtormatParameterOwnerType::HeightBlend;
 		case EMixtormatLayerChildType::HeightCurve: return EMixtormatParameterOwnerType::HeightCurve;
 		case EMixtormatLayerChildType::HeightColorRamp: return EMixtormatParameterOwnerType::HeightColorRamp;
-				case EMixtormatLayerChildType::HeightPush: return EMixtormatParameterOwnerType::HeightPush;
-						case EMixtormatLayerChildType::StructuralWarp: return EMixtormatParameterOwnerType::StructuralWarp;
 
 		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
@@ -136,8 +134,6 @@ namespace
 		case EMixtormatLayerChildType::HeightBlend: return &Child.HeightBlend;
 		case EMixtormatLayerChildType::HeightCurve: return &Child.HeightCurve;
 		case EMixtormatLayerChildType::HeightColorRamp: return &Child.HeightColorRamp;
-				case EMixtormatLayerChildType::HeightPush: return &Child.HeightPush;
-						case EMixtormatLayerChildType::StructuralWarp: return &Child.StructuralWarp;
 
 		case EMixtormatLayerChildType::IdGroup: return &Child.IdGroup;
 		case EMixtormatLayerChildType::Blur: return &Child.Blur;
@@ -205,15 +201,6 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 				Result.LayerId = ContainerId;
 				Result.ChildId = Child.ChildId;
 				Result.Owner = EMixtormatParameterOwnerType::BehaviorFlow;
-				return true;
-			}
-			if (Child.Type == EMixtormatLayerChildType::StructuralWarp
-				&& Owner == &Child.StructuralWarp.Source
-				&& OwnerStruct == FMixtormatOutputReference::StaticStruct())
-			{
-				Result.LayerId = ContainerId;
-				Result.ChildId = Child.ChildId;
-				Result.Owner = EMixtormatParameterOwnerType::StructuralWarpFlow;
 				return true;
 			}
 			if (Owner == OwnerPointer(Child))
@@ -719,28 +706,13 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterDriverPopover, Target))
 		.Enabled(Target.IsValid()
 			&& !WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
-				{ return Entry.SourceId == Target.LayerId; })
-			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
-				|| WorkingLayers.ContainsByPredicate([&Target](const FMixtormatLayer& Layer)
-					{ return Layer.LayerId == Target.LayerId; }))
-			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
-				|| (Target.ValueType == EMixtormatParameterValueType::Float
-					&& (Target.Parameter == FName(TEXT("FlowAmount"))
-						|| Target.Parameter == FName(TEXT("FlowTraceLength"))))));
+				{ return Entry.SourceId == Target.LayerId; }));
 
 	if (IsParameterDriven(Target))
 	{
 		Menu.Item(
 			LOCTEXT("ClearParameterDriver", "Clear Driver"),
 			nullptr,
-			FSimpleDelegate::CreateSP(this, &SMixtormat::ClearParameterDriver, Target));
-	}
-
-	// Developer-only surface. Gated by one console variable, compiled only into the editor
-	// module -- a packaged build carries neither the flag's consumer nor this code.
-	if (MixtormatParameterUi::IsDeveloperMetaEnabled() && Target.IsValid())
-	{
-		const TOptional<FMixtormatParameterDefinitionKey> DevKey =
 			MixtormatParameterUi::DefinitionKeyOf(Target);
 		const bool bPersistentlyEditable = DevKey.IsSet()
 			&& MixtormatParameterAuthoring::IsPersistentlyEditable(*DevKey);
@@ -889,8 +861,6 @@ namespace
 		case EMixtormatLayerChildType::HeightBlend: return FMixtormatGeneratorHeightBlend::StaticStruct();
 		case EMixtormatLayerChildType::HeightCurve: return FMixtormatGeneratorHeightCurve::StaticStruct();
 		case EMixtormatLayerChildType::HeightColorRamp: return FMixtormatGeneratorHeightColorRamp::StaticStruct();
-					case EMixtormatLayerChildType::HeightPush: return FMixtormatGeneratorHeightPush::StaticStruct();
-								case EMixtormatLayerChildType::StructuralWarp: return FMixtormatGeneratorStructuralWarp::StaticStruct();
 
 		case EMixtormatLayerChildType::Behavior: return FMixtormatBehavior::StaticStruct();
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
@@ -922,7 +892,6 @@ namespace
 		const UScriptStruct* OwnerStruct = nullptr;
 		if ((Address.Owner == EMixtormatParameterOwnerType::MaskNoise
 			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow
-			|| Address.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow) && Child)
 		{
 			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
 		}
@@ -1752,16 +1721,6 @@ void SMixtormat::SetDriverSource(
 	{
 		return;
 	}
-	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
-		&& SourceKind != EMixtormatDriverSourceKind::None)
-	{
-		if (SourceKind != EMixtormatDriverSourceKind::CombinedMask || SourceChildId.IsValid()) { return; }
-		const int32 TargetIndex = WorkingLayers.IndexOfByPredicate([&Target](const FMixtormatLayer& Layer)
-			{ return Layer.LayerId == Target.LayerId; });
-		const int32 SourceIndex = WorkingLayers.IndexOfByPredicate([&SourceLayerId](const FMixtormatLayer& Layer)
-			{ return Layer.LayerId == SourceLayerId && Layer.bEnabled; });
-		if (SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE || SourceIndex >= TargetIndex) { return; }
-	}
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, true))
 	{
 		Binding->Reference.bEnabled = false;
@@ -1791,22 +1750,6 @@ void SMixtormat::SetDriverEnabled(FMixtormatParameterAddress Target, const bool 
 		{ return Entry.SourceId == Target.LayerId; })) { return; }
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, bEnabled))
 	{
-		if (bEnabled && Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow)
-		{
-			const int32 TargetIndex = WorkingLayers.IndexOfByPredicate([&Target](const FMixtormatLayer& Layer)
-				{ return Layer.LayerId == Target.LayerId; });
-			const int32 SourceIndex = WorkingLayers.IndexOfByPredicate([Binding](const FMixtormatLayer& Layer)
-				{ return Layer.LayerId == Binding->Driver.SourceLayerId && Layer.bEnabled; });
-			if (Target.ValueType != EMixtormatParameterValueType::Float
-				|| (Target.Parameter != FName(TEXT("FlowAmount"))
-					&& Target.Parameter != FName(TEXT("FlowTraceLength")))
-				|| Binding->Driver.SourceKind != EMixtormatDriverSourceKind::CombinedMask
-				|| Binding->Driver.SourceChildId.IsValid()
-				|| SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE || SourceIndex >= TargetIndex)
-			{
-				return;
-			}
-		}
 		Binding->Driver.bEnabled = bEnabled && Binding->Driver.SourceKind != EMixtormatDriverSourceKind::None;
 		if (Binding->Driver.bEnabled)
 		{
@@ -1834,14 +1777,9 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 		nullptr,
 		FSimpleDelegate::CreateSP(
 			this, &SMixtormat::SetDriverSource, Target, FGuid{}, FGuid{}, EMixtormatDriverSourceKind::None, FName()));
-
-	const bool bStructural = Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow;
 	for (const FMixtormatLayer& Layer : WorkingLayers)
 	{
-		// A structural module can read only a completed mask from an earlier
-		// enabled layer; never offer a later, self or child-level source.
-		if (bStructural && Layer.LayerId == Target.LayerId) { break; }
-		if (bStructural && !Layer.bEnabled) { continue; }
+
 		Menu.Item(
 			FText::Format(LOCTEXT("DriverLayerMaskSource", "{0} / Layer Mask"), Layer.DisplayName),
 			nullptr,
@@ -1854,7 +1792,6 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 				EMixtormatDriverSourceKind::CombinedMask,
 				FName(TEXT("Mask"))));
 
-		if (bStructural) { continue; }
 		for (const FMixtormatLayerChild& Child : Layer.Children)
 		{
 			EMixtormatDriverSourceKind Kind = EMixtormatDriverSourceKind::None;
@@ -1863,7 +1800,6 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 			{
 			case EMixtormatLayerChildType::Filter:
 			case EMixtormatLayerChildType::PatternId:
-
 			case EMixtormatLayerChildType::IdGroup:
 				Kind = EMixtormatDriverSourceKind::RegionIds;
 				Output = FName(TEXT("RandomPerId"));
@@ -1957,32 +1893,12 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
-	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
-		&& !WorkingLayers.ContainsByPredicate([&Target](const FMixtormatLayer& Layer)
-			{ return Layer.LayerId == Target.LayerId; }))
-	{
-		MixtormatMenu::FBuilder Menu;
-		Menu.Caption(LOCTEXT("DriverSharedWarpUnavailable", "Drivers"))
-			.Item(LOCTEXT("DriverSharedWarpUnavailableMessage", "Shared group Warp modules cannot execute spatial drivers."), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
 	if (WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
 		{ return Entry.SourceId == Target.LayerId; }))
 	{
 		MixtormatMenu::FBuilder Menu;
 		Menu.Caption(LOCTEXT("DriverShelfUnavailable", "Drivers"))
 			.Item(LOCTEXT("DriverShelfUnavailableMessage", "Shelf parameter drivers need a published signal consumer."), nullptr, FSimpleDelegate())
-			.Enabled(false);
-		return Menu.Build();
-	}
-	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
-		&& Target.Parameter != FName(TEXT("FlowAmount"))
-		&& Target.Parameter != FName(TEXT("FlowTraceLength")))
-	{
-		MixtormatMenu::FBuilder Menu;
-		Menu.Caption(LOCTEXT("DriverWarpUnavailable", "Drivers"))
-			.Item(LOCTEXT("DriverWarpUnavailableMessage", "Only Flow Amount and Trace Length support mask drivers."), nullptr, FSimpleDelegate())
 			.Enabled(false);
 		return Menu.Build();
 	}

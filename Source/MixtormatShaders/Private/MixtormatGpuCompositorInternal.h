@@ -1014,18 +1014,9 @@ namespace MixtormatGpuCompositor
 		uint32 Combine = 0;
 	};
 
-	// Ordered structural modules target a later same-layer Strata child explicitly.
-	struct FGeneratorStructuralWarpRenderData
-	{
-		FOutputReferenceRenderData Source;
-		int32 TargetChildIndex = INDEX_NONE;
-		// Flow Amount and Trace Length, respectively. Unresolved signals leave the
-		// authored scalars unchanged and never create a new Driver model.
-		FScalarDriverRenderData Drivers[2];
-	};
-
-	// Generator-owned V2 operation. PostGeneration Warp, Push, and Carve share the
-	// ordered executor; unimplemented stage/kind combinations fail closed.
+	// A Generator child that rewrites an earlier Generator's own output. Warp, Push, Carve and
+	// Deform share the one ordered executor; stage/kind combinations that do not apply fail
+	// closed in Gather rather than running at an arbitrary point in the pass list.
 	struct FBehaviorRenderData
 	{
 		EMixtormatBehaviorType Type = EMixtormatBehaviorType::Warp;
@@ -1045,13 +1036,6 @@ namespace MixtormatGpuCompositor
 		// Optional independent 0..1 field, distinct from nested mask children.
 		bool bHasInfluence = false;
 		FOutputReferenceRenderData Influence;
-	};
-
-	struct FGeneratorHeightPushRenderData
-	{
-		FOutputReferenceRenderData Source;
-		int32 TargetChildIndex = INDEX_NONE;
-		float Amount = 1.0f;
 	};
 
 	struct FGeneratorHeightBlendRenderData
@@ -1137,8 +1121,6 @@ namespace MixtormatGpuCompositor
 		FGeneratorHeightBlendRenderData HeightBlend;
 		FGeneratorHeightCurveRenderData HeightCurve;
 		FGeneratorHeightColorRampRenderData HeightColorRamp;
-		FGeneratorHeightPushRenderData HeightPush;
-		FGeneratorStructuralWarpRenderData StructuralWarp;
 		FBehaviorRenderData Behavior;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
@@ -1688,9 +1670,6 @@ namespace MixtormatGpuCompositor
 		// Blend sublayer can read another module's result.
 		TMap<int32, FRDGTextureRef> GeneratorModuleHeights;
 		TMap<int32, FGeneratorInputFields> GeneratorInputs;
-		TMap<int32, FRDGTextureRef> GeneratorHeightPushFields;
-		// Destination-tile displacement, separate from the composed signed bedding shift.
-		TMap<int32, FRDGTextureRef> GeneratorStructuralDisplacements;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1759,8 +1738,6 @@ namespace MixtormatGpuCompositor
 			GeneratorFields.Reset();
 			GeneratorModuleHeights.Reset();
 			GeneratorInputs.Reset();
-			GeneratorHeightPushFields.Reset();
-			GeneratorStructuralDisplacements.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};

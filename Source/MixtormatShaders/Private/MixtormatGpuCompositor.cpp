@@ -1725,9 +1725,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (LayerChild.Type == EMixtormatLayerChildType::HeightBlend
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightCurve
-				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp
-				|| LayerChild.Type == EMixtormatLayerChildType::HeightPush
-								|| LayerChild.Type == EMixtormatLayerChildType::StructuralWarp)
+				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp)
 			{
 				GatherGeneratorHeightModuleChild(Data, Layer, LayerChild, SourceChildIndex,
 					bGeneratorLayer, LayerIndex, EffectiveLayers);

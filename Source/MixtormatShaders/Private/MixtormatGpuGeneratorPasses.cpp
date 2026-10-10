@@ -104,10 +104,6 @@ public:
 		SHADER_PARAMETER(float, IDInfluence)
 		SHADER_PARAMETER(uint32, HasScopedMask)
 		SHADER_PARAMETER(uint32, HasRegionIds)
-		SHADER_PARAMETER(uint32, HasHeightPush)
-		SHADER_PARAMETER(uint32, HasStructuralWarp)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, StructuralDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightPushField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, ResolveRegionIds)
@@ -681,80 +677,6 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
-
-// Generator-layer Height Blend sublayer: combines the running signed height with another module's.
-class FMixtormatGeneratorHeightPushCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightPushCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(uint32, HasPrevious)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightPush.usf", "MainCS", SF_Compute);
-
-class FMixtormatGeneratorStructuralWarpCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, HasPreviousDisplacement)
-		SHADER_PARAMETER(uint32, HasPreviousShift)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpCoordinates)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "MainCS", SF_Compute);
-
-class FMixtormatGeneratorStructuralWarpCoordinateCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCoordinateCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "CoordinateCS", SF_Compute);
 
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
@@ -1744,25 +1666,6 @@ namespace
 		}
 	}
 
-	FRDGTextureRef AddStructuralWarpCoordinates(FMixtormatComposeContext& Ctx, FRDGTextureRef Displacement,
-		const int32 LayerIndex, const int32 ChildIndex)
-	{
-		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Coordinates = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.StructuralWarp.Coordinates"));
-		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCoordinateCS::FParameters>();
-		P->OutputSize = Size;
-		P->PreviousDisplacement = Displacement;
-		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Coordinates);
-		TShaderMapRef<FMixtormatGeneratorStructuralWarpCoordinateCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.StructuralWarp.Coordinates.L%d.C%d", LayerIndex, ChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-		return Coordinates;
-	}
-
 	// The bedding as an integer lattice vector, which is what lets the beds tile.
 	//
 	// A bedding plane at an arbitrary angle does not close on the tile, so the direction snaps to
@@ -1851,8 +1754,6 @@ namespace
 		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
 		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
 		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
-		const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(Child.SourceChildIndex);
-		const bool bHasStructuralWarp = Displacement && *Displacement;
 		FRDGTextureRef DirectBoundary = MakeField(PF_G32R32F, TEXT("Mixtormat.Strata.DirectBoundary"));
 
 		{
@@ -1881,14 +1782,9 @@ namespace
 			P->Depth = Carver.Depth;
 			P->MaskInfluence = Carver.MaskInfluence;
 			P->IDInfluence = Carver.IDInfluence;
-			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
-			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-			const FRDGTextureRef* Push = LayerCtx.GeneratorHeightPushFields.Find(Child.SourceChildIndex);
-			P->HasHeightPush = Push && *Push ? 1u : 0u;
-			P->HeightPushField = Push && *Push ? *Push : SourceHeight;
-			P->HasStructuralWarp = bHasStructuralWarp ? 1u : 0u;
-			P->StructuralDisplacement = bHasStructuralWarp ? *Displacement : Ctx.EmptyPatternUV;
-			P->SourceHeight = SourceHeight;
+P->HasScopedMask = bHasScopedMask ? 1u : 0u;
+		P->HasRegionIds = bHasRegionIds ? 1u : 0u;
+		P->SourceHeight = SourceHeight;
 			P->ResolveMask = ScopedMask;
 			P->ResolveRegionIds = RegionIds;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -1911,8 +1807,11 @@ namespace
 			Bundle->Height = CarvedHeight;
 
 			Bundle->RegionIds = BedIds;
-			Bundle->BoundaryField = bHasStructuralWarp ? DirectBoundary
-				: RemapBundleField(Ctx, BedPosition, nullptr, 8);
+			// The generator's own (distance, validity) boundary, read by a Behavior Carve for
+			// OwnBoundary. Texels whose interface math did not resolve stay invalid rather
+			// than reading as a flat surface, and no remap is needed because there is no
+			// structural displacement to compose with it.
+			Bundle->BoundaryField = DirectBoundary;
 			Bundle->RegisterNamedMask(FName(TEXT("StrataPosition")), BedPosition,
 				FGeneratorBundle::EFieldSemantic::BedCoordinate, FGeneratorBundle::EFieldUnits::BedFraction);
 			Bundle->RegisterNamedMask(FName(TEXT("StrataRandom")), BedRandom,
@@ -3226,92 +3125,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
-		// Structural input modules run at their own authored position, before a later target.
-		if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
-		{
-			const FGeneratorStructuralWarpRenderData& Warp = Child.StructuralWarp;
-			const FPublishedField* FoundSource = Ctx.PublishedFieldOutputs.Find(Warp.Source.Source);
-			if (Warp.TargetChildIndex == INDEX_NONE || !FoundSource || !FoundSource->IsComplete()
-				|| FoundSource->Kind != Warp.Source.Kind || FoundSource->Texture->Desc.Extent != Size
-				|| (Warp.Source.Kind != EMixtormatPublishedFieldKind::Flow
-					&& Warp.Source.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
-			if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				&& ((Warp.Source.FlowAmount == 0.0f && !Warp.Drivers[0].bEnabled)
-					|| (Warp.Source.FlowTraceLength == 0.0f && !Warp.Drivers[1].bEnabled))) { continue; }
-			const FPublishedField Source = *FoundSource;
-			const FRDGTextureRef Coordinates = Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				? AddReferencedFlowUVPass(Ctx, Warp.Source, Source, LayerCtx.LayerIndex,
-					Child.SourceChildIndex, Warp.Drivers)
-				: Source.Texture;
-			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-			const FRDGTextureRef Mask = bHasMask
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : RunningHeight;
-			const FRDGTextureRef* OldD = LayerCtx.GeneratorStructuralDisplacements.Find(Warp.TargetChildIndex);
-			const FRDGTextureRef* OldB = LayerCtx.GeneratorHeightPushFields.Find(Warp.TargetChildIndex);
-			const auto MakeState = [&](EPixelFormat Format, const TCHAR* Name)
-			{
-				return Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-					Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-			};
-			FRDGTextureRef NewD = MakeState(PF_G32R32F, TEXT("Mixtormat.Generator.StructuralDisplacement"));
-			FRDGTextureRef NewB = MakeState(PF_R32_FLOAT, TEXT("Mixtormat.Generator.WarpedBeddingShift"));
-			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCS::FParameters>();
-			P->OutputSize = Size;
-			P->HasPreviousDisplacement = OldD && *OldD ? 1u : 0u;
-			P->HasPreviousShift = OldB && *OldB ? 1u : 0u;
-			P->HasMask = bHasMask ? 1u : 0u;
-			P->WarpCoordinates = Coordinates;
-			P->PreviousDisplacement = OldD && *OldD ? *OldD : Coordinates;
-			P->PreviousShift = OldB && *OldB ? *OldB : RunningHeight;
-			P->ScopedMask = Mask;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutDisplacement = Ctx.GraphBuilder.CreateUAV(NewD);
-			P->OutShift = Ctx.GraphBuilder.CreateUAV(NewB);
-			TShaderMapRef<FMixtormatGeneratorStructuralWarpCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StructuralWarp.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-			const bool bHadShift = OldB && *OldB;
-			LayerCtx.GeneratorStructuralDisplacements.Add(Warp.TargetChildIndex, NewD);
-			if (bHadShift) { LayerCtx.GeneratorHeightPushFields.Add(Warp.TargetChildIndex, NewB); }
-			continue;
-		}
-		if (Child.Type == EMixtormatLayerChildType::HeightPush)
-		{
-			const FGeneratorHeightPushRenderData& Push = Child.HeightPush;
-			const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Push.Source.Source);
-			if (Push.Amount == 0.0f || Push.TargetChildIndex == INDEX_NONE || !Source
-				|| Source->Kind != EMixtormatPublishedFieldKind::ScalarSigned || !Source->IsComplete()
-				|| Source->Texture->Desc.Extent != Size) { continue; }
-			const FRDGTextureRef Height = Source->Texture;
-			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-			const FRDGTextureRef Mask = bHasMask
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Height;
-			const FRDGTextureRef* Found = LayerCtx.GeneratorHeightPushFields.Find(Push.TargetChildIndex);
-			const FRDGTextureRef Previous = Found ? *Found : nullptr;
-			FRDGTextureRef Shift = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-				Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.Generator.HeightPush"));
-			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorHeightPushCS::FParameters>();
-			P->OutputSize = Size;
-			P->Amount = Push.Amount;
-			P->HasPrevious = Previous ? 1u : 0u;
-			P->HasMask = bHasMask ? 1u : 0u;
-			P->SourceHeight = Height;
-			P->PreviousShift = Previous ? Previous : Height;
-			P->ScopedMask = Mask;
-			P->OutShift = Ctx.GraphBuilder.CreateUAV(Shift);
-			TShaderMapRef<FMixtormatGeneratorHeightPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.HeightPush.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-			LayerCtx.GeneratorHeightPushFields.Add(Push.TargetChildIndex, Shift);
-			continue;
-		}
 		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
 		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
 		{
@@ -3456,8 +3269,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}
-		// V2 transforms the native bundle before the same normalize/scale step
-		// all generator families already use. Legacy flow tools retain their order.
+		// The ordered Behaviors own this generator's bundle from here: they transform the
+		// native bundle before the same normalize/scale step all generator families use.
 		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 		// Normalize the unmasked Noise native height, then apply its scoped gate to the
 		// resolved signed result. Gating before centring turns masked zeros into negative height.
@@ -3475,18 +3288,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			NoiseHeightGate,
 			TEXT("Mixtormat.Generator.SignedHeight"));
 
-		// Strata regenerates in its structural frame. Every other supported target instead owns
-		// one completed-bundle pullback after native generation, flow and signed normalization.
-		if (Child.Generator.Type != EMixtormatGeneratorType::StrataCarver)
-		{
-			if (const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(
-				Child.SourceChildIndex); Displacement && *Displacement)
-			{
-				const FRDGTextureRef Coordinates = AddStructuralWarpCoordinates(Ctx, *Displacement,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
-				RemapGeneratorModuleOutputs(Ctx, Layer, Child, Module, Coordinates);
-			}
-		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
 			AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);

@@ -314,9 +314,6 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				true, true, false, NAME_None});
 		}
 		break;
-	case EMixtormatLayerChildType::StructuralWarp:
-		// Structural state is internal to its explicit target; no standalone field or preview.
-		break;
 	case EMixtormatLayerChildType::HeightColorRamp:
 		// The published colour field. Previewable and copyable as a typed field, never as a scalar
 		// mask: a colour is not a coverage value a Replace-blend mask child could read. The output

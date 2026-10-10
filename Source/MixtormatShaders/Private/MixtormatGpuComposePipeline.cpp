@@ -518,11 +518,7 @@ namespace MixtormatGpuCompositor
 					for (const FChildRenderData& Child : DemandLayer.Children)
 					{
 						const FScalarDriverRenderData* Drivers = nullptr;
-						if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
-						{
-							Drivers = Child.StructuralWarp.Drivers;
-						}
-						else if (Child.Type == EMixtormatLayerChildType::Behavior)
+						if (Child.Type == EMixtormatLayerChildType::Behavior)
 						{
 							for (const FScalarDriverRenderData& Driver : Child.Behavior.ScalarDrivers)
 							{
@@ -729,16 +725,6 @@ namespace MixtormatGpuCompositor
 							{
 								// Includes scoped group inputs and local alias chains before prefix reuse.
 								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
-							}
-							if (Child.Type == EMixtormatLayerChildType::HeightPush
-								&& Child.HeightPush.Source.Source.ChildIndex != INDEX_NONE)
-							{
-								Ctx.PublishedFieldDemand.Add(Child.HeightPush.Source.Source);
-							}
-							if (Child.Type == EMixtormatLayerChildType::StructuralWarp
-								&& Child.StructuralWarp.Source.Source.ChildIndex != INDEX_NONE)
-							{
-								Ctx.PublishedFieldDemand.Add(Child.StructuralWarp.Source.Source);
 							}
 							if (Child.Type == EMixtormatLayerChildType::Behavior
 								&& (Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration

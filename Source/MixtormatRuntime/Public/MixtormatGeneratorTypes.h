@@ -30,8 +30,9 @@ enum class EMixtormatGeneratorType : uint8
 };
 
 // How a pebble's cut planes are oriented.
-// Generators that can own Shape Deform / Generator Flow / Flow Carve / Gravity Flow.
-// Noise and Cliff Strata support Height steering; boundary controls require a signed boundary field.
+// Which generators can own a Behavior. Every generator except Cliff Strata can be steered;
+// Noise and Cliff Strata support height steering only, because boundary controls require a
+// signed boundary field and neither publishes one.
 // One list for runtime gather, GPU passes and editor placement.
 inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 {
@@ -682,62 +683,8 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightBlend
 	float BlendBias = 0.0f;
 };
 
-// Ordered before its target generator. This shifts the target's bedding coordinate, not its
-// finished relief or the layer's running height. Source uses the existing typed output address.
-USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightPush
-{
-	GENERATED_BODY()
-
-	FMixtormatGeneratorHeightPush()
-	{
-		Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
-		Source.OutputName = FName(TEXT("Height"));
-	}
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Push")
-	bool bEnabled = true;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Push")
-	FMixtormatOutputReference Source;
-
-	// A later Strata generator in this layer. Other target semantics are not enabled yet.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Push")
-	FGuid TargetChildId;
-
-	// Bedding-coordinate shift per signed source-height unit; zero is exactly neutral.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Push", meta = (UIMin = "-16.0", UIMax = "16.0", Delta = "0.01"))
-	float Amount = 1.0f;
-};
-
-// Ordered structural pullback before an explicit target; never resamples finished geology.
-USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatGeneratorStructuralWarp
-{
-	GENERATED_BODY()
-
-	FMixtormatGeneratorStructuralWarp()
-	{
-		Source.Kind = EMixtormatPublishedFieldKind::Flow;
-		Source.OutputName = FName(TEXT("FlowDirection"));
-	}
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
-	bool bEnabled = true;
-
-	// Completed Flow or identity-winding lifted UVMap. Vector2 is not a coordinate contract.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
-	FMixtormatOutputReference Source;
-
-	// Any later, enabled, unscoped generator in this layer may be targeted.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Structural Warp")
-	FGuid TargetChildId;
-};
-
-// A Generator-layer sublayer that remaps the running signed height through the shared scalar ramp.
-// The ramp is authored in -1..1 with zero at the centre; the signed field is never converted to
-// 0..1 first.
-USTRUCT(BlueprintType)
+// A Generator-layer sublayer that combines the running signed height with another module's
+// USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 {
 	GENERATED_BODY()

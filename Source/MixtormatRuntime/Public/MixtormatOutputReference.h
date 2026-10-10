@@ -135,7 +135,10 @@ namespace MixtormatOutputReferences
 		bool bCanExecute = false;
 	};
 
-	// Transient structural eligibility only; never serialized or a guarantee of GPU availability.
+	// Transient reference eligibility only; never serialized or a guarantee of GPU availability.
+	// There is no whole-link status any more: a Behavior names its generator through
+	// ScopeOwnerChildId and its fields through typed sockets, so a link has one editable end
+	// rather than a separately-authored source and target pair.
 	enum class EStructuralLinkIssue : uint8
 	{
 		None, Unset, MissingLayer, MissingChild, DuplicateIdentity,
@@ -152,47 +155,6 @@ namespace MixtormatOutputReferences
 		int32 LayerIndex = INDEX_NONE;
 		int32 ChildIndex = INDEX_NONE;
 	};
-
-	struct FStructuralLinkStatus
-	{
-		FStructuralEdgeStatus Source;
-		FStructuralEdgeStatus Target;
-		EStructuralLinkIssue ModuleIssue = EStructuralLinkIssue::None;
-		bool bModuleEnabled = false;
-		bool bCanExecuteStructurally = false;
-	};
-
-	// Pass effective, instance-resolved layers. Indices address that projection, not authored
-	// group rows. Group provenance cannot be inferred here; Editor must gate group authoring.
-	// Candidate overrides never mutate the arrays. Disabled modules retain independent edges.
-	MIXTORMATRUNTIME_API FStructuralLinkStatus EvaluateStructuralLink(
-		const TArray<FMixtormatLayer>& Layers,
-		int32 ModuleLayerIndex,
-		int32 ModuleChildIndex,
-		const FMixtormatOutputReference* ProposedSource = nullptr,
-		const FGuid* ProposedTarget = nullptr);
-
-	// Mirrors Gather's mixed projection without changing its render predicates: effective
-	// layers for sources/Warp targets, binding-resolved destination for module/Push targets.
-	MIXTORMATRUNTIME_API FStructuralLinkStatus EvaluateStructuralLinkForGather(
-		const TArray<FMixtormatLayer>& EffectiveLayers,
-		int32 ModuleLayerIndex,
-		int32 ModuleChildIndex,
-		const FMixtormatLayer& ResolvedModuleLayer);
-
-	// Preserves Gather's first eligible later Strata target rule, including duplicate GUIDs.
-	MIXTORMATRUNTIME_API int32 ResolveHeightPushTarget(
-		const TArray<FMixtormatLayer>& Layers,
-		int32 DestinationLayerIndex,
-		int32 DestinationChildIndex,
-		const FGuid& TargetChildId);
-
-	// Gather's binding/instance-resolved layer may differ from the effective array entry.
-	// Use that exact layer for target eligibility without copying the entire projection.
-	MIXTORMATRUNTIME_API int32 ResolveHeightPushTarget(
-		const FMixtormatLayer& Layer,
-		int32 DestinationChildIndex,
-		const FGuid& TargetChildId);
 
 	// True for every kind the reference system understands. Exhaustive over the enum, so an
 	// unrecognised (future) value can never silently pass reference validation.
@@ -255,14 +217,6 @@ namespace MixtormatOutputReferences
 		int32 DestinationLayerIndex,
 		int32 DestinationChildIndex,
 		const FMixtormatOutputReference& Reference);
-
-	// Ordered Structural Warp: explicit later, enabled, unscoped generator target in the same
-	// Generator layer. Returns its authored child index; no implicit target or group support.
-	MIXTORMATRUNTIME_API int32 ResolveStructuralWarpTarget(
-		const TArray<FMixtormatLayer>& Layers,
-		int32 DestinationLayerIndex,
-		int32 DestinationChildIndex,
-		const FGuid& TargetChildId);
 
 	// Published mask addressing; Noise.Value requires an enabled, completed generator scope.
 	// Other published mask outputs retain their existing address-resolution behavior.

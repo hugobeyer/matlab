@@ -5,7 +5,6 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
-#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -247,10 +246,7 @@ TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex
 			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, DestIndex]()
 			{
 				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
-			})).Enabled(!WorkingLayers.IsValidIndex(LayerIndex)
-				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-				|| (ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::HeightPush
-					&& ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::StructuralWarp));
+			})).Enabled(true);
 	}
 	if (Menu.IsEmpty())
 	{
@@ -1225,12 +1221,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
-	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::WarpPush(),
-			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
-			.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::WarpStructural(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::StructuralWarp); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1405,132 +1395,42 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
-		|| RowType == EMixtormatLayerChildType::HeightPush
-		|| RowType == EMixtormatLayerChildType::StructuralWarp
 		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
-	if ((RowType == EMixtormatLayerChildType::HeightPush || RowType == EMixtormatLayerChildType::StructuralWarp)
-		&& WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-	{
-		const FMixtormatChildAddress Address = MakeChildAddress(LayerIndex, ChildIndex);
-		const FMixtormatLayerChild& Module = WorkingLayers[LayerIndex].Children[ChildIndex];
-		const FMixtormatStructuralConnectionContext Context(WorkingLayers, WorkingLayerGroups, Address);
-		const auto Status = Context.Evaluate();
-		using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
-		const FText Reason = Module.IsInstance()
-			? LOCTEXT("StructuralConnectionInstanceEdit", "Break the instance to edit its endpoints")
-			: Module.ScopeOwnerChildId.IsValid() ? MixtormatStructuralConnections::IssueText(EIssue::ScopedModule)
-			: Status.ModuleIssue != EIssue::None && Status.ModuleIssue != EIssue::DisabledLayer
-				? MixtormatStructuralConnections::IssueText(Status.ModuleIssue) : FText::GetEmpty();
-		const bool bEditable = Reason.IsEmpty();
-		FMixtormatChildAddress SourceAddress;
-		FText NavigationReason;
-		const bool bCanNavigate = ResolveStructuralSourceAddress(Address, SourceAddress, NavigationReason);
-		// Omit unavailable operations entirely; invalid endpoints are still explained
-		// in the selected child Inspector and in the shared connection-status model.
-		if (bCanNavigate)
-		{
-			Menu.Item(LOCTEXT("StructuralGoToSource", "Go to source"), MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([this, Address]() { GoToStructuralSource(Address); }));
-		}
-		if (bEditable)
-		{
-			Menu.SubMenu(LOCTEXT("StructuralChangeSource", "Source"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateLambda([this, Address]()
-				{
-					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Source);
-				}));
-			Menu.SubMenu(LOCTEXT("StructuralChangeTarget", "Target"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateLambda([this, Address]()
-				{
-					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Target);
-				}));
-		}
-		if (bCanNavigate && bEditable)
-		{
-			Menu.Item(LOCTEXT("StructuralDisconnectSource", "Disconnect"), nullptr,
-				FSimpleDelegate::CreateLambda([this, Address]()
-				{
-					SetStructuralConnection(Address, EMixtormatStructuralConnectionRole::Source);
-				}));
-		}
-		Menu.Separator();
-	}
-
-	if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
+if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
 		const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 		const FMixtormatLayerChild& Target = Layer.Children[ChildIndex];
-		const FGuid TargetLayerId = Layer.LayerId;
 		const FGuid TargetChildId = Target.ChildId;
-		const bool bStrata = Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
-		// Target-first authoring: one click inserts an operation as a projected child
-		// of the target. Source/target are then edited on that child row. Do not
-		// create a second search interface over the same hierarchy.
-		const auto AddStructuralChild = [this, &Menu, TargetLayerId, TargetChildId](
-			const EMixtormatLayerChildType ModuleType, const FText& Label)
-		{
-			TArray<FMixtormatLayer> ProposedLayers;
-			int32 ProposedLayerIndex = INDEX_NONE;
-			int32 InsertIndex = INDEX_NONE;
-			FText Reason;
-			if (!PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
-				ProposedLayers, ProposedLayerIndex, InsertIndex, Reason)) { return false; }
-			Menu.Item(Label, ModuleType == EMixtormatLayerChildType::HeightPush
-				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
-				FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
-				{
-					CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
-				}));
-			return true;
-		};
-		// V2 is a genuinely generator-owned child; unlike the legacy authored-position
-		// structural module it can be nested directly under this generator.
+		// A Behavior is a genuinely generator-owned child, so it is authored in place
+		// under the generator rather than as a separate module that targets one later.
 		if (!Target.IsInstance() && CanAddScopedChild(Layer.Children, ChildIndex))
 		{
-			Menu.Item(LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior (V2)"),
-				MixtormatIcons::WarpStructural(),
-				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
-				{
-				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
-				Destination.ScopeOwnerChildId = TargetChildId;
-				CreateChild(Destination, EMixtormatChildCreation::BehaviorWarp);
-				}));
-			Menu.Item(LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior (V2)"),
-				MixtormatIcons::WarpPush(),
-				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
-				{
-					FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
-					Destination.ScopeOwnerChildId = TargetChildId;
-					CreateChild(Destination, EMixtormatChildCreation::BehaviorPush);
-				}));
-			Menu.Item(LOCTEXT("AddBehaviorCarveToGenerator", "Add Carve / Deposit Behavior (V2)"),
-				MixtormatIcons::WarpPush(),
-				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
-				{
-					FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
-					Destination.ScopeOwnerChildId = TargetChildId;
-					CreateChild(Destination, EMixtormatChildCreation::BehaviorCarve);
-				}));
-			Menu.Item(LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior (V2)"),
-				MixtormatIcons::WarpStructural(),
-				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
-				{
-					FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
-					Destination.ScopeOwnerChildId = TargetChildId;
-					CreateChild(Destination, EMixtormatChildCreation::BehaviorDeform);
-				}));
+			struct FBehaviorEntry
+			{
+				EMixtormatChildCreation Creation;
+				FText Label;
+				bool bPushIcon;
+			};
+			const FBehaviorEntry Entries[] = {
+				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior"), false},
+				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior"), true},
+				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Add Carve / Deposit Behavior"), true},
+				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false}};
+			for (const FBehaviorEntry& Entry : Entries)
+			{
+				Menu.Item(Entry.Label,
+					Entry.bPushIcon ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
+					FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId, Entry]()
+					{
+						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+						Destination.ScopeOwnerChildId = TargetChildId;
+						CreateChild(Destination, Entry.Creation);
+					}));
+			}
 		}
-		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
-			LOCTEXT("WarpUsingForTarget", "Add Structural Warp (Legacy)"));
-		if (bStrata)
-		{
-			bAddedStructural |= AddStructuralChild(EMixtormatLayerChildType::HeightPush,
-				LOCTEXT("HeightPushFromForTarget", "Add Height Push"));
-		}
-		if (bAddedStructural) { Menu.Separator(); }
 	}
 
 	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
@@ -1642,14 +1542,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		case EMixtormatLayerChildType::HeightColorRamp:
 			RemoveLabel = LOCTEXT("RemoveHeightColorRampChild", "Remove Height Color Ramp");
 			break;
-		case EMixtormatLayerChildType::HeightPush:
-			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
-			break;
 		case EMixtormatLayerChildType::Behavior:
 			RemoveLabel = LOCTEXT("RemoveBehaviorChild", "Remove Behavior");
-			break;
-		case EMixtormatLayerChildType::StructuralWarp:
-			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");
 			break;
 		default:
 			break;

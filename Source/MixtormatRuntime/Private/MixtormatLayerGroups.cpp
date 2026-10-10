@@ -306,25 +306,10 @@ namespace MixtormatLayerGroups
 				RemapOutput(Child.Behavior.Height.Published);
 				RemapOutput(Child.Behavior.Influence.Published);
 				RemapOutput(Child.BoundaryId.RegionIdsSource);
-				RemapOutput(Child.StructuralWarp.Source);
-				RemapOutput(Child.HeightPush.Source);
 				RemapPair(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
 				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId))
 				{
 					Child.HeightColorRamp.SourceChildId = *Effective;
-				}
-				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightPush.TargetChildId))
-				{
-					Child.HeightPush.TargetChildId = *Effective;
-				}
-				if (const FGuid* Effective = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
-				{
-					Child.StructuralWarp.TargetChildId = *Effective;
-				}
-				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
-				{
-					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
-					RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
 				}
 			};
 
@@ -350,16 +335,6 @@ namespace MixtormatLayerGroups
 				// already does, rather than the layer treating what the group did.
 				FMixtormatLayerChild& Clone = Layer.Children.Add_GetRef(GroupChild);
 				Clone.ChildId = ChildIdRemap.FindChecked(GroupChild.ChildId);
-				// Structural modules are layer-local; group expansion must not enable an unsupported owner.
-				if (Clone.Type == EMixtormatLayerChildType::StructuralWarp)
-				{
-					Clone.StructuralWarp.bEnabled = false;
-				}
-				else if (Clone.Type == EMixtormatLayerChildType::HeightPush)
-				{
-					Clone.HeightPush.bEnabled = false;
-				}
-
 				if (Clone.ScopeOwnerChildId.IsValid())
 				{
 					if (const FGuid* Effective = ChildIdRemap.Find(Clone.ScopeOwnerChildId))

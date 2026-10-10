@@ -56,12 +56,7 @@ float MaskInfluence;
 float IDInfluence;
 uint HasScopedMask;
 uint HasRegionIds;
-uint HasHeightPush;
-uint HasStructuralWarp;
 
-// Periodic unwrapped displacement in destination tile units, not absolute coordinates.
-Texture2D<float2> StructuralDisplacement;
-Texture2D<float> HeightPushField;
 Texture2D<float> SourceHeight;
 Texture2D<float> ResolveMask;
 Texture2D<uint> ResolveRegionIds;
@@ -243,25 +238,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(DispatchThreadId.xy);
 	const float2 DestinationUV = (float2(P) + 0.5f) / float2(OutputSize);
 	OutBoundaryField[P] = float2(0.0f, 0.0f);
-	float2 StructuralUV = DestinationUV;
-	float2x2 J = float2x2(1.0f, 0.0f, 0.0f, 1.0f);
-	if (HasStructuralWarp != 0u)
-	{
-		StructuralUV += StructuralDisplacement.Load(int3(P, 0));
-		if (!all(isfinite(StructuralUV))) { StrataWriteInvalid(P); return; }
-
-		// Difference D directly: the coordinate helper's Jacobian expects absolute W.
-		const float2 X = float2(1.0f, 0.0f) + (
-			StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(1, 0), OutputSize), 0))
-			- StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P - int2(1, 0), OutputSize), 0)))
-			* (0.5f * OutputSize.x);
-		const float2 Y = float2(0.0f, 1.0f) + (
-			StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P + int2(0, 1), OutputSize), 0))
-			- StructuralDisplacement.Load(int3(MixtormatGeneratorWarpWrap(P - int2(0, 1), OutputSize), 0)))
-			* (0.5f * OutputSize.y);
-		J = float2x2(X.x, Y.x, X.y, Y.y);
-	}
-	const float2 UV = MixtormatGeneratorUV(StructuralUV);
+	const float2 UV = MixtormatGeneratorUV(DestinationUV);
 	if (!all(isfinite(UV))) { StrataWriteInvalid(P); return; }
 	const float2 StrikeVector = float2(BedPerp) / (float)max(BedPeriod, 1);
 	float Strike = dot(UV, StrikeVector);
@@ -269,22 +246,7 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float S = dot(UV, float2(BedWave));
 	float2 SGradient = MixtormatGeneratorDestinationGradient(float2(BedWave));
-	if (HasStructuralWarp != 0u)
-	{
-		StrikeGradient = mul(StrikeGradient, J);
-		SGradient = mul(SGradient, J);
-	}
-	// B and its final gradient are destination-space; neither receives J again.
-	if (HasHeightPush != 0u)
-	{
-		const float2 Texel = 1.0f / float2(OutputSize);
-		S += HeightPushField.Load(int3(P, 0));
-		SGradient += float2(
-			HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV + float2(Texel.x, 0.0f), 0.0f)
-				- HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV - float2(Texel.x, 0.0f), 0.0f),
-			HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV + float2(0.0f, Texel.y), 0.0f)
-				- HeightPushField.SampleLevel(LinearWrapSampler, DestinationUV - float2(0.0f, Texel.y), 0.0f)) / (2.0f * Texel);
-	}
+	// B and its final gradient are destination-space.
 	if (!isfinite(Strike) || !isfinite(S)) { StrataWriteInvalid(P); return; }
 	if (Bend != 0.0f)
 	{
@@ -339,7 +301,9 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Lower = Upper;
 		Upper = StrataInterface(Bed + 1, Strike);
 	}
-	if (HasStructuralWarp != 0u)
+	// Local negative-inside interface distance in destination UV units, from the same
+	// gradient chain the bedding itself used. This is the generator's own boundary, and it
+	// is what a Behavior Carve with OwnBoundary reads.
 	{
 		const float FL = S - Lower.x;
 		const float FU = Upper.x - S;
@@ -352,7 +316,6 @@ void ResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			&& all(isfinite(gL)) && all(isfinite(gU))
 			&& isfinite(LengthL) && isfinite(LengthU) && LengthL > 1e-12f && LengthU > 1e-12f)
 		{
-			// Local negative-inside interface distance in destination UV units.
 			const float Distance = -min(FL / LengthL, FU / LengthU);
 			if (isfinite(Distance)) { OutBoundaryField[P] = float2(Distance, 1.0f); }
 		}

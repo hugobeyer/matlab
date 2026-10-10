@@ -80,16 +80,13 @@ enum class EMixtormatChildCreation : uint8
 	HeightCurve,
 	HeightColorRamp,
 	Peeling,
-	HeightPush,
-	StructuralWarp,
+	// The one structural authoring path. Each entry is a Behavior kind, scoped to the
+	// generator it rewrites; there is no separate legacy module any more.
 	BehaviorWarp,
 	BehaviorPush,
 	BehaviorCarve,
 	BehaviorDeform,
 };
-
-// Editor-only connection role; the existing payload remains the serialized truth.
-enum class EMixtormatStructuralConnectionRole : uint8 { Source, Target };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
 //
@@ -368,8 +365,6 @@ private:
 	FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address);
 	const FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address) const;
 	int32 ResolveChildIndexAt(const FMixtormatChildAddress& Address) const;
-	bool StructuralLinksPreserved(const TArray<FMixtormatLayer>& ProposedLayers,
-		const TArray<FMixtormatLayerGroup>& ProposedGroups, FText& OutReason) const;
 	bool CanMovePublishedOutputs(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
 		int32 InsertIndex, FText* OutReason = nullptr) const;
 	bool CanMoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
@@ -440,23 +435,6 @@ private:
 	// The one creation path both menus call. Appends the child, applies the defaults that kind
 	// wants, and leaves it selected in whichever container it landed in.
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
-	FReply CreateStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType);
-	bool PrepareStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
-		int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	FReply CreateConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source);
-	bool PrepareConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source,
-		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	bool PrepareStructuralModuleProposal(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source,
-		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	FReply CommitStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source);
-	TSharedRef<SWidget> BuildStructuralSourcePickerForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(
@@ -592,12 +570,6 @@ private:
 	FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp();
 	const FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp() const;
 	TSharedRef<SWidget> BuildHeightColorRampControls();
-	FMixtormatGeneratorHeightPush* GetSelectedHeightPush();
-	const FMixtormatGeneratorHeightPush* GetSelectedHeightPush() const;
-	TSharedRef<SWidget> BuildHeightPushControls();
-	TSharedRef<SWidget> BuildHeightPushConnectionMenu(bool bTarget);
-	FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp();
-	const FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp() const;
 	FMixtormatBehavior* GetSelectedBehaviorWarp();
 	const FMixtormatBehavior* GetSelectedBehaviorWarp() const;
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
@@ -615,27 +587,6 @@ private:
 	const FMixtormatBehavior* GetSelectedBehaviorDeform() const;
 	TSharedRef<SWidget> BuildBehaviorDeformControls();
 	TSharedRef<SWidget> BuildBehaviorDeformSourceMenu();
-	TSharedRef<SWidget> BuildStructuralWarpControls();
-	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
-	TSharedRef<SWidget> BuildStructuralConnectionMenu(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role);
-	FReply SetStructuralConnection(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role, const FMixtormatOutputReference* Source = nullptr,
-		const FGuid* TargetId = nullptr);
-	FText GetStructuralConnectionLabel(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role, bool bCompact = false,
-		FText* OutFullLabel = nullptr) const;
-	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
-	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
-	TSharedRef<SWidget> BuildStructuralRelationshipHeader();
-	bool GetStructuralRelationshipRow(FMixtormatChildAddress Address, FMixtormatProjectedChildRow& OutRow,
-		EMixtormatLayerChildType& OutType, FText& OutReason) const;
-	FMixtormatStructuralRelationshipPresentation DescribeStructuralConnection(const FMixtormatProjectedChildRow& Row,
-		EMixtormatLayerChildType Type) const;
-	FText GetStructuralRelationshipText(FMixtormatChildAddress Address, bool bToolTip) const;
-	bool ResolveStructuralSourceAddress(FMixtormatChildAddress ModuleAddress,
-		FMixtormatChildAddress& OutSource, FText& OutReason) const;
-	FReply GoToStructuralSource(FMixtormatChildAddress ModuleAddress);
 	FReply NavigateToChild(FMixtormatChildAddress Address);
 	// Mutates expansion only; the caller rebuilds if this returns true.
 	bool RevealChildInHierarchy(FMixtormatChildAddress Address);
@@ -643,6 +594,7 @@ private:
 	bool ResolveHierarchyChildAddress(FMixtormatChildAddress Address, int32& OutOwnerIndex,
 		int32& OutChildIndex) const;
 	TArray<FMixtormatProjectedChildRow> BuildGroupHierarchyRows(FGuid GroupId) const;
+	TArray<FMixtormatProjectedChildRow> BuildLayerHierarchyRows(FGuid LayerId) const;
 	FMixtormatLayerHierarchyPaint BuildGroupHierarchyPaint(
 		const TArray<FMixtormatProjectedChildRow>& VisibleRows, int32 DisplayIndex) const;
 	TArray<FMixtormatProjectedChildRow> FilterVisibleHierarchyRows(
@@ -650,12 +602,6 @@ private:
 	TSharedRef<SWidget> BuildGeneratorDisclosure(FMixtormatChildAddress Address, bool bHasChildren,
 		FText ToolTip = FText::GetEmpty());
 	void RegisterChildRowWidget(FMixtormatChildAddress Address, TSharedRef<SWidget> Widget);
-	FText GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, int32 ChildIndex) const;
-	TSharedRef<SWidget> BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
-		EMixtormatLayerChildType Type, FText& OutToolTip);
-	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
-	bool IsSelectedStructuralSourceLayer(FGuid LayerId, FGuid GroupId) const;
-	FText GetStructuralIncomingCountLabel(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
@@ -1729,8 +1675,6 @@ private:
 	// whichever layer landed on its old row.
 	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
 	// the widgets away and builds new ones on every change.
-	mutable TMap<FGuid, TArray<FText>> StructuralIncomingCountLabels;
-	mutable TMap<FString, FText> StructuralConnectionLabelCache;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatSourceRow>> SourceRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;

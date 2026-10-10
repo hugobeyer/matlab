@@ -483,12 +483,13 @@ namespace MixtormatOutputReferences
 			return INDEX_NONE;
 		}
 		const FMixtormatLayerChild& Destination = DestinationLayer.Children[DestinationChildIndex];
-		const bool bPush = Destination.Type == EMixtormatLayerChildType::HeightPush;
-		const bool bWarp = Destination.Type == EMixtormatLayerChildType::StructuralWarp;
+		// A generator input socket is the only destination that reads an explicit field
+		// reference on the child itself. Behaviors carry their own typed field slots and are
+		// validated by MixtormatChildScope::ValidateBehaviorInputs, which applies the same
+		// ordering and typing rules against the Behavior's own scope.
 		if ((!bIgnoreDestinationState && Destination.ScopeOwnerChildId.IsValid())
-			|| (bPush ? (!bIgnoreDestinationState && !Destination.HeightPush.bEnabled)
-				: bWarp ? (!bIgnoreDestinationState && !Destination.StructuralWarp.bEnabled)
-				: Destination.Type != EMixtormatLayerChildType::Generator || !Destination.Generator.bEnabled))
+			|| Destination.Type != EMixtormatLayerChildType::Generator
+			|| (!bIgnoreDestinationState && !Destination.Generator.bEnabled))
 		{
 			return INDEX_NONE;
 		}
@@ -498,8 +499,7 @@ namespace MixtormatOutputReferences
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::Flow);
 		const bool bUV = Reference.Kind == EMixtormatPublishedFieldKind::UVMap
 			&& Reference.OutputName == CanonicalFieldOutputName(EMixtormatPublishedFieldKind::UVMap);
-		if ((!bHeight && !bFlow && !bUV) || (bPush && !bHeight)
-					|| (bWarp && !bFlow && !bUV)) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+		if (!bHeight && !bFlow && !bUV) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 
 		int32 SourceLayerIndex = INDEX_NONE;
 		for (int32 Index = 0; Index < Layers.Num(); ++Index)
@@ -616,191 +616,6 @@ namespace MixtormatOutputReferences
 		FStructuralEdgeStatus Status;
 		return EvaluateGeneratorInputSource(Layers, DestinationLayerIndex, DestinationChildIndex,
 			Reference, Status, false);
-	}
-
-	static FStructuralEdgeStatus EvaluateStructuralTarget(const FMixtormatLayer& Layer,
-		const int32 LayerIndex, const int32 ModuleIndex, const FGuid& TargetChildId, const bool bPush)
-	{
-		FStructuralEdgeStatus Status;
-		Status.LayerIndex = LayerIndex;
-		if (!TargetChildId.IsValid() && !bPush) { return Status; }
-		int32 Matches = 0;
-		for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
-		{
-			const FMixtormatLayerChild& Target = Layer.Children[Index];
-			if (Target.ChildId != TargetChildId) { continue; }
-			++Matches;
-			if (Status.ChildIndex == INDEX_NONE) { Status.ChildIndex = Index; }
-			// Push historically takes the first eligible later match; do not tighten that
-			// render contract to Warp's unique-identity rule in a presentation refactor.
-			if (bPush && Index > ModuleIndex && Target.Type == EMixtormatLayerChildType::Generator
-				&& Target.Generator.bEnabled && !Target.ScopeOwnerChildId.IsValid()
-				&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver)
-			{
-				Status.ChildIndex = Index;
-				Status.Issue = EStructuralLinkIssue::None;
-				return Status;
-			}
-		}
-		if (Matches == 0) { Status.Issue = EStructuralLinkIssue::MissingChild; }
-		else if (!bPush && Matches > 1) { Status.Issue = EStructuralLinkIssue::DuplicateIdentity; }
-		else
-		{
-			const FMixtormatLayerChild& Target = Layer.Children[Status.ChildIndex];
-			if (Status.ChildIndex <= ModuleIndex) { Status.Issue = EStructuralLinkIssue::ForwardTarget; }
-			else if (Target.Type != EMixtormatLayerChildType::Generator
-				|| (bPush && Target.Generator.Type != EMixtormatGeneratorType::StrataCarver))
-			{
-				Status.Issue = EStructuralLinkIssue::WrongTargetKind;
-			}
-			else if (!Target.Generator.bEnabled) { Status.Issue = EStructuralLinkIssue::DisabledTarget; }
-			else if (Target.ScopeOwnerChildId.IsValid()) { Status.Issue = EStructuralLinkIssue::ScopedTarget; }
-			else { Status.Issue = EStructuralLinkIssue::None; }
-		}
-		return Status;
-	}
-
-	FStructuralLinkStatus EvaluateStructuralLink(const TArray<FMixtormatLayer>& Layers,
-		const int32 ModuleLayerIndex, const int32 ModuleChildIndex,
-		const FMixtormatOutputReference* ProposedSource, const FGuid* ProposedTarget)
-	{
-		FStructuralLinkStatus Status;
-		if (!Layers.IsValidIndex(ModuleLayerIndex))
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::MissingLayer;
-			return Status;
-		}
-		const FMixtormatLayer& Layer = Layers[ModuleLayerIndex];
-		if (!Layer.Children.IsValidIndex(ModuleChildIndex))
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::MissingChild;
-			return Status;
-		}
-		const FMixtormatLayerChild& Module = Layer.Children[ModuleChildIndex];
-		const bool bPush = Module.Type == EMixtormatLayerChildType::HeightPush;
-		if (!bPush && Module.Type != EMixtormatLayerChildType::StructuralWarp)
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::WrongModuleType;
-			return Status;
-		}
-		Status.bModuleEnabled = bPush ? Module.HeightPush.bEnabled : Module.StructuralWarp.bEnabled;
-		const FMixtormatOutputReference& Source = ProposedSource ? *ProposedSource
-			: bPush ? Module.HeightPush.Source : Module.StructuralWarp.Source;
-		const FGuid& Target = ProposedTarget ? *ProposedTarget
-			: bPush ? Module.HeightPush.TargetChildId : Module.StructuralWarp.TargetChildId;
-		// Destination inactivity/scoping is orthogonal to the saved edges. The shared
-		// predicate ignores only destination flags; producer flags and scope checks remain.
-		if (Layer.Type != EMixtormatLayerType::Generator)
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::WrongOwnerLayer;
-			return Status;
-		}
-		if (!Layer.bEnabled) { Status.ModuleIssue = EStructuralLinkIssue::DisabledLayer; }
-		else if (Module.ScopeOwnerChildId.IsValid()) { Status.ModuleIssue = EStructuralLinkIssue::ScopedModule; }
-		int32 ModuleLayerMatches = 0;
-		for (const FMixtormatLayer& Candidate : Layers)
-		{
-			if (Candidate.LayerId == Layer.LayerId) { ++ModuleLayerMatches; }
-		}
-		int32 ModuleChildMatches = 0;
-		for (const FMixtormatLayerChild& Candidate : Layer.Children)
-		{
-			if (Candidate.ChildId == Module.ChildId) { ++ModuleChildMatches; }
-		}
-		if (!Layer.LayerId.IsValid()) { Status.ModuleIssue = EStructuralLinkIssue::MissingLayer; }
-		else if (!Module.ChildId.IsValid()) { Status.ModuleIssue = EStructuralLinkIssue::MissingChild; }
-		else if (ModuleLayerMatches > 1 || ModuleChildMatches > 1)
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::DuplicateIdentity;
-		}
-		EvaluateGeneratorInputSource(Layers, ModuleLayerIndex, ModuleChildIndex, Source, Status.Source, true);
-		if (Target.IsValid())
-		{
-			Status.Target = EvaluateStructuralTarget(Layer, ModuleLayerIndex, ModuleChildIndex, Target, bPush);
-		}
-		Status.bCanExecuteStructurally = Status.ModuleIssue == EStructuralLinkIssue::None
-			&& Status.bModuleEnabled && Status.Source.Issue == EStructuralLinkIssue::None
-			&& Status.Target.Issue == EStructuralLinkIssue::None;
-		return Status;
-	}
-
-	FStructuralLinkStatus EvaluateStructuralLinkForGather(const TArray<FMixtormatLayer>& EffectiveLayers,
-		const int32 ModuleLayerIndex, const int32 ModuleChildIndex, const FMixtormatLayer& ResolvedModuleLayer)
-	{
-		FStructuralLinkStatus Status;
-		if (!EffectiveLayers.IsValidIndex(ModuleLayerIndex))
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::MissingLayer;
-			return Status;
-		}
-		if (!ResolvedModuleLayer.Children.IsValidIndex(ModuleChildIndex)
-			|| !EffectiveLayers[ModuleLayerIndex].Children.IsValidIndex(ModuleChildIndex))
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::MissingChild;
-			return Status;
-		}
-		const FMixtormatLayerChild& Module = ResolvedModuleLayer.Children[ModuleChildIndex];
-		const bool bPush = Module.Type == EMixtormatLayerChildType::HeightPush;
-		if (!bPush && Module.Type != EMixtormatLayerChildType::StructuralWarp)
-		{
-			Status.ModuleIssue = EStructuralLinkIssue::WrongModuleType;
-			return Status;
-		}
-		const FMixtormatOutputReference& Source = bPush ? Module.HeightPush.Source : Module.StructuralWarp.Source;
-		const FGuid& TargetId = bPush ? Module.HeightPush.TargetChildId : Module.StructuralWarp.TargetChildId;
-		Status = EvaluateStructuralLink(EffectiveLayers, ModuleLayerIndex, ModuleChildIndex, &Source, &TargetId);
-		Status.bModuleEnabled = bPush ? Module.HeightPush.bEnabled : Module.StructuralWarp.bEnabled;
-		if (!ResolvedModuleLayer.bEnabled) { Status.ModuleIssue = EStructuralLinkIssue::DisabledLayer; }
-		else if (ResolvedModuleLayer.Type != EMixtormatLayerType::Generator) { Status.ModuleIssue = EStructuralLinkIssue::WrongOwnerLayer; }
-		else if (Module.ScopeOwnerChildId.IsValid()) { Status.ModuleIssue = EStructuralLinkIssue::ScopedModule; }
-		if (bPush && TargetId.IsValid())
-		{
-			Status.Target = EvaluateStructuralTarget(ResolvedModuleLayer, ModuleLayerIndex, ModuleChildIndex, TargetId, true);
-		}
-		// Source gathering still gates the authored destination's enabled/type/scope flags.
-		// Do not turn an inherited UI payload into a newly supported render connection.
-		FStructuralEdgeStatus GatherSource;
-		const int32 SourceIndex = EvaluateGeneratorInputSource(EffectiveLayers, ModuleLayerIndex,
-			ModuleChildIndex, Source, GatherSource, false);
-		Status.bCanExecuteStructurally = Status.ModuleIssue == EStructuralLinkIssue::None
-			&& Status.bModuleEnabled && SourceIndex != INDEX_NONE
-			&& Status.Source.Issue == EStructuralLinkIssue::None && Status.Target.Issue == EStructuralLinkIssue::None;
-		return Status;
-	}
-
-	int32 ResolveHeightPushTarget(const TArray<FMixtormatLayer>& Layers,
-		const int32 DestinationLayerIndex, const int32 DestinationChildIndex, const FGuid& TargetChildId)
-	{
-		if (!Layers.IsValidIndex(DestinationLayerIndex)) { return INDEX_NONE; }
-		return ResolveHeightPushTarget(Layers[DestinationLayerIndex], DestinationChildIndex, TargetChildId);
-	}
-
-	int32 ResolveHeightPushTarget(const FMixtormatLayer& Layer,
-		const int32 DestinationChildIndex, const FGuid& TargetChildId)
-	{
-		if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
-			|| !Layer.Children.IsValidIndex(DestinationChildIndex)) { return INDEX_NONE; }
-		const FMixtormatLayerChild& Module = Layer.Children[DestinationChildIndex];
-		if (Module.Type != EMixtormatLayerChildType::HeightPush
-			|| !Module.HeightPush.bEnabled || Module.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
-		const FStructuralEdgeStatus Status = EvaluateStructuralTarget(
-			Layer, INDEX_NONE, DestinationChildIndex, TargetChildId, true);
-		return Status.Issue == EStructuralLinkIssue::None ? Status.ChildIndex : INDEX_NONE;
-	}
-
-	int32 ResolveStructuralWarpTarget(const TArray<FMixtormatLayer>& Layers,
-		const int32 DestinationLayerIndex, const int32 DestinationChildIndex, const FGuid& TargetChildId)
-	{
-		if (!Layers.IsValidIndex(DestinationLayerIndex)) { return INDEX_NONE; }
-		const FMixtormatLayer& Layer = Layers[DestinationLayerIndex];
-		if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
-			|| !Layer.Children.IsValidIndex(DestinationChildIndex)) { return INDEX_NONE; }
-		const FMixtormatLayerChild& Module = Layer.Children[DestinationChildIndex];
-		if (Module.Type != EMixtormatLayerChildType::StructuralWarp
-			|| !Module.StructuralWarp.bEnabled || Module.ScopeOwnerChildId.IsValid()) { return INDEX_NONE; }
-		const FStructuralEdgeStatus Status = EvaluateStructuralTarget(
-			Layer, DestinationLayerIndex, DestinationChildIndex, TargetChildId, false);
-		return Status.Issue == EStructuralLinkIssue::None ? Status.ChildIndex : INDEX_NONE;
 	}
 
 	int32 ResolvePublishedMaskSource(const TArray<FMixtormatLayer>& Layers,
