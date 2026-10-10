@@ -200,7 +200,7 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.PhasorFrequency = FMath::Clamp(Finite(Noise.NoisePhasorFrequency, Defaults.NoisePhasorFrequency), 0.0f, 12.0f);
 	Out.PhasorAnisotropy = FMath::Clamp(Finite(Noise.NoisePhasorAnisotropy, Defaults.NoisePhasorAnisotropy), 0.0f, 8.0f);
 	Out.PhasorPhaseVariation = FMath::Clamp(Finite(Noise.NoisePhasorPhaseVariation, Defaults.NoisePhasorPhaseVariation), 0.0f, 1.0f);
-	Out.PhasorOrientationVariation = FMath::Clamp(Finite(Noise.NoisePhasorOrientationVariation, Defaults.NoisePhasorOrientationVariation), 0.0f, PI);
+	Out.PhasorOrientationVariation = FMath::Clamp(Finite(Noise.NoisePhasorOrientationVariation, Defaults.NoisePhasorOrientationVariation), 0.0f, 3.14159265f);
 	Out.PhasorComponents = FMath::Clamp(Noise.NoisePhasorComponents, 1, 4);
 	Out.WorleyMetric = FMath::Clamp(static_cast<int32>(Noise.NoiseWorleyMetric), 0, 2);
 	Out.WorleyJitter = FMath::Clamp(Finite(Noise.NoiseWorleyJitter, Defaults.NoiseWorleyJitter), 0.0f, 1.0f);
