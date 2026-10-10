@@ -44,7 +44,10 @@ enum class EMixtormatParameterOwnerType : uint8
 		StructuralWarp UMETA(DisplayName = "Structural Warp"),
 	// Appended: the inline Noise payload nested inside an ordinary Mask child.
 	MaskNoise = 25 UMETA(DisplayName = "Mask Noise"),
-	StructuralWarpFlow = 26 UMETA(DisplayName = "Structural Warp Flow")
+	StructuralWarpFlow = 26 UMETA(DisplayName = "Structural Warp Flow"),
+	// Append-only V2 parameter owners. Flow lives inside the Direction socket.
+	Behavior = 27 UMETA(DisplayName = "Behavior"),
+	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow")
 };
 
 UENUM(BlueprintType)
