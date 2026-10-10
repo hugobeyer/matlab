@@ -643,6 +643,17 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				if (const FGuid* Parent = Ids.Find(Child->ScopeOwnerChildId)) Child->ScopeOwnerChildId = *Parent;
 				Remap(Child->SourceLayerId, Child->SourceChildId);
 				Remap(Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId);
+				Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
+				Remap(Child->BoundaryId.RegionIdsSource.SourceLayerId, Child->BoundaryId.RegionIdsSource.SourceChildId);
+				if (Child->OutputReference.IsShelfSource()
+					&& Child->OutputReference.SourceShelfId == OriginalSourceId)
+				{
+					if (const FGuid* Mapped = Ids.Find(Child->OutputReference.SourceChildId))
+					{
+						Child->OutputReference.SourceShelfId = Copy.SourceId;
+						Child->OutputReference.SourceChildId = *Mapped;
+					}
+				}
 				Remap(Child->HeightPush.Source.SourceLayerId, Child->HeightPush.Source.SourceChildId);
 				Remap(Child->StructuralWarp.Source.SourceLayerId, Child->StructuralWarp.Source.SourceChildId);
 				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
