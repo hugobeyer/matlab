@@ -723,14 +723,6 @@ FReply SMixtormat::RenameSource(const FGuid SourceId, const FText NewName)
 	return FReply::Handled();
 }
 
-void SMixtormat::HandleSourceNameCommitted(const FText& Text, ETextCommit::Type CommitType)
-{
-	if (const FMixtormatSourceEntry* Source = GetSelectedSource())
-	{
-		RenameSource(Source->SourceId, Text);
-	}
-}
-
 void SMixtormat::ToggleSourcesExpanded()
 {
 	bSourcesExpanded = !bSourcesExpanded;
