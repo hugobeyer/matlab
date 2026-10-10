@@ -645,14 +645,14 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("Preview.IconRestOpacity", Preview, "Overlay Plate", "Icon / Label Rest Opacity", Preview.IconRestOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Preview.HoverAccent", Preview, "Overlay Plate", "Hover Accent", Preview.HoverAccent, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Preview.PressAccent", Preview, "Overlay Plate", "Press Accent", Preview.PressAccent, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.OverlayInset", Preview, "Layout", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.OverlayClusterInset", Preview, "Layout", "Cluster Inset", PreviewLayout.OverlayClusterInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.OverlayInset", Preview, "Preview Controls", "Overlay Inset", PreviewLayout.OverlayInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.OverlayClusterInset", Preview, "Preview Controls", "Cluster Inset", PreviewLayout.OverlayClusterInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 
-				NUM("PreviewLayout.ToolbarGap", Preview, "Layout", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.OverlayButtonGap", Preview, "Layout", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.ToolbarGap", Preview, "Preview Controls", "Toolbar Gap", PreviewLayout.ToolbarGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.OverlayButtonGap", Preview, "Preview Controls", "Button Gap", PreviewLayout.OverlayButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Preview Controls", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.TogglePadding", Preview, "Preview Controls", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.FinalPopupWidth", Preview, "Preview Controls", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Navigation Rail", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftRailButtonWidth", Preview, "Navigation Rail", "Rail Button Width", PreviewLayout.LeftRailButtonWidth, 22, 120, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftRailContentInset", Preview, "Navigation Rail", "Rail Content Inset", PreviewLayout.LeftRailContentInset, 0, 100, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
@@ -677,20 +677,20 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Navigation Rail", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Navigation Rail", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Navigation Rail", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.QuickControlsActionsWidth", Preview, "Layout", "Actions Card Width", PreviewLayout.QuickControlsActionsWidth, 80, 320, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.QuickControlsFadeStartDistance", Preview, "Layout", "Quick Controls Fade Start Distance", PreviewLayout.QuickControlsFadeStartDistance, 0, 300, 4, 0, EMixtormatThemeRefreshMode::Paint);
-								NUM("PreviewLayout.QuickControlsFadeRange", Preview, "Layout", "Quick Controls Fade Range", PreviewLayout.QuickControlsFadeRange, 1, 600, 4, 0, EMixtormatThemeRefreshMode::Paint);
-								NUM("PreviewLayout.QuickControlsGuideAxisLength", Preview, "Layout", "Quick Controls Guide Length", PreviewLayout.QuickControlsGuideAxisLength, 0, 400, 2, 0, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsGuideAxisThickness", Preview, "Layout", "Quick Controls Guide Thickness", PreviewLayout.QuickControlsGuideAxisThickness, .25, 4, .25, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsGuideAxisOpacity", Preview, "Layout", "Quick Controls Guide Opacity", PreviewLayout.QuickControlsGuideAxisOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsGuideGlowDiameter", Preview, "Layout", "Marking Menu Vignette Diameter", PreviewLayout.QuickControlsGuideGlowDiameter, 0, 1200, 2, 0, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsGuideGlowOpacity", Preview, "Layout", "Marking Menu Vignette Darkness", PreviewLayout.QuickControlsGuideGlowOpacity, 0, 1, .001, 3, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsVignetteBias", Preview, "Layout", "Vignette Gradient Bias", PreviewLayout.QuickControlsVignetteBias, .1, 5, .05, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsVignetteIntensity", Preview, "Layout", "Vignette Intensity", PreviewLayout.QuickControlsVignetteIntensity, 0, 3, .05, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsVignetteInnerRadius", Preview, "Layout", "Vignette Inner Radius", PreviewLayout.QuickControlsVignetteInnerRadius, 0, .95, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.QuickControlsVignetteFalloff", Preview, "Layout", "Vignette Falloff", PreviewLayout.QuickControlsVignetteFalloff, .25, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Marking Menu", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Marking Menu", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsActionsWidth", Preview, "Marking Menu", "Actions Card Width", PreviewLayout.QuickControlsActionsWidth, 80, 320, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsFadeStartDistance", Preview, "Marking Menu", "Quick Controls Fade Start Distance", PreviewLayout.QuickControlsFadeStartDistance, 0, 300, 4, 0, EMixtormatThemeRefreshMode::Paint);
+								NUM("PreviewLayout.QuickControlsFadeRange", Preview, "Marking Menu", "Quick Controls Fade Range", PreviewLayout.QuickControlsFadeRange, 1, 600, 4, 0, EMixtormatThemeRefreshMode::Paint);
+								NUM("PreviewLayout.QuickControlsGuideAxisLength", Preview, "Marking Menu", "Quick Controls Guide Length", PreviewLayout.QuickControlsGuideAxisLength, 0, 400, 2, 0, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideAxisThickness", Preview, "Marking Menu", "Quick Controls Guide Thickness", PreviewLayout.QuickControlsGuideAxisThickness, .25, 4, .25, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideAxisOpacity", Preview, "Marking Menu", "Quick Controls Guide Opacity", PreviewLayout.QuickControlsGuideAxisOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideGlowDiameter", Preview, "Marking Menu", "Marking Menu Vignette Diameter", PreviewLayout.QuickControlsGuideGlowDiameter, 0, 1200, 2, 0, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsGuideGlowOpacity", Preview, "Marking Menu", "Marking Menu Vignette Darkness", PreviewLayout.QuickControlsGuideGlowOpacity, 0, 1, .001, 3, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteBias", Preview, "Marking Menu", "Vignette Gradient Bias", PreviewLayout.QuickControlsVignetteBias, .1, 5, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteIntensity", Preview, "Marking Menu", "Vignette Intensity", PreviewLayout.QuickControlsVignetteIntensity, 0, 3, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteInnerRadius", Preview, "Marking Menu", "Vignette Inner Radius", PreviewLayout.QuickControlsVignetteInnerRadius, 0, .95, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteFalloff", Preview, "Marking Menu", "Vignette Falloff", PreviewLayout.QuickControlsVignetteFalloff, .25, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Preview);
 				for (FMixtormatThemeProperty& Property : P)
 				{
