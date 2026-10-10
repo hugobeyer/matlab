@@ -634,6 +634,24 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				if (Owner != OriginalSourceId) return;
 				if (const FGuid* Next = Ids.Find(Child)) { Owner = Copy.SourceId; Child = *Next; }
 			};
+			const auto RemapOutput = [&Ids, OriginalSourceId, &Copy, &Remap](FMixtormatOutputReference& Reference)
+			{
+				if (Reference.IsShelfSource())
+				{
+					if (Reference.SourceShelfId == OriginalSourceId)
+					{
+						if (const FGuid* Mapped = Ids.Find(Reference.SourceChildId))
+						{
+							Reference.SourceShelfId = Copy.SourceId;
+							Reference.SourceChildId = *Mapped;
+						}
+					}
+				}
+				else
+				{
+					Remap(Reference.SourceLayerId, Reference.SourceChildId);
+				}
+			};
 			for (FMixtormatLayerChild* Child : [&Copy]()
 			{
 				TArray<FMixtormatLayerChild*> All;
@@ -644,25 +662,15 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 			{
 				if (const FGuid* Parent = Ids.Find(Child->ScopeOwnerChildId)) Child->ScopeOwnerChildId = *Parent;
 				Remap(Child->SourceLayerId, Child->SourceChildId);
-				// Shelf references carry their own owner GUID. Remap before the legacy
-				// layer/child pair so the old child identity remains available as a key.
-				if (Child->OutputReference.IsShelfSource()
-					&& Child->OutputReference.SourceShelfId == OriginalSourceId)
-				{
-					if (const FGuid* Mapped = Ids.Find(Child->OutputReference.SourceChildId))
-					{
-						Child->OutputReference.SourceShelfId = Copy.SourceId;
-						Child->OutputReference.SourceChildId = *Mapped;
-					}
-				}
-				else
-				{
-					Remap(Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId);
-				}
+				RemapOutput(Child->OutputReference);
+				RemapOutput(Child->Generator.HeightSource);
+				RemapOutput(Child->Generator.WarpSource);
 				Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
-				Remap(Child->BoundaryId.RegionIdsSource.SourceLayerId, Child->BoundaryId.RegionIdsSource.SourceChildId);
-				Remap(Child->HeightPush.Source.SourceLayerId, Child->HeightPush.Source.SourceChildId);
-				Remap(Child->StructuralWarp.Source.SourceLayerId, Child->StructuralWarp.Source.SourceChildId);
+				RemapOutput(Child->BoundaryId.RegionIdsSource);
+				RemapOutput(Child->HeightPush.Source);
+				RemapOutput(Child->StructuralWarp.Source);
+				Remap(Child->HeightBlend.SourceLayerId, Child->HeightBlend.SourceChildId);
+				if (const FGuid* Input = Ids.Find(Child->HeightColorRamp.SourceChildId)) Child->HeightColorRamp.SourceChildId = *Input;
 				if (const FGuid* Target = Ids.Find(Child->HeightPush.TargetChildId)) Child->HeightPush.TargetChildId = *Target;
 				if (const FGuid* Target = Ids.Find(Child->StructuralWarp.TargetChildId)) Child->StructuralWarp.TargetChildId = *Target;
 				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
