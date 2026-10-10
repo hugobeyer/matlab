@@ -254,7 +254,7 @@ thumbnail-bearing list of saved mixes and imported user surfaces, using
 asset actions remain. Library no longer shows arbitrary editable-layer counts,
 because that count is not an entry name or asset type. Layout, item spacing and
 thumbnail size (28px default, with a 2px item gap) are governed by `Shell.LibraryPagePadding`,
-`LibrarySearchBottomGap`, `LibraryItemGap`, and `LibraryThumbnailSize`.
+`LibrarySearchBottomGap`, `LibraryItemGap`, `LibraryRowHeight`, and `LibraryThumbnailSize`. The row is 34px by default and thumbnails are clipped to its inner height even when an older saved theme still stores a larger thumbnail size.
 Text follows shared `CardTitle` / `LayerName` typography and
 `Palette.TextMuted` / `Palette.Text` with additional
 `LibraryHeadingOpacity` and `LibraryLabelOpacity`. All are registered under
