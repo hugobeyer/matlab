@@ -868,6 +868,15 @@ enum class EMixtormatNoiseType : uint8
 	Phasor UMETA(DisplayName = "Phasor")
 };
 
+// New Noise V2 selector; the property did not exist in legacy assets.
+UENUM(BlueprintType)
+enum class EMixtormatNoiseWorleyMetric : uint8
+{
+	Euclidean UMETA(DisplayName = "Euclidean"),
+	Manhattan UMETA(DisplayName = "Manhattan"),
+	Chebyshev UMETA(DisplayName = "Chebyshev")
+};
+
 // Noise: a tileable, seeded, resolution-independent scalar field producer.
 //
 // It publishes what the algorithm genuinely produces -- a Value, a Gradient with directional
@@ -948,8 +957,8 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	int32 NoisePhasorComponents = 2;
 
 	// Worley only. Euclidean + jitter 1 is the original unchanged cellular field.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0", UIMax = "2", ClampMin = "0", ClampMax = "2"))
-	int32 NoiseWorleyMetric = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley")
+	EMixtormatNoiseWorleyMetric NoiseWorleyMetric = EMixtormatNoiseWorleyMetric::Euclidean;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float NoiseWorleyJitter = 1.0f;
