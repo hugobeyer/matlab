@@ -1525,8 +1525,6 @@ private:
 	FReply AddSource(const EMixtormatGeneratorType Kind);
 	FReply DeleteSource(const FGuid SourceId);
 	FReply RenameSource(const FGuid SourceId, const FText NewName);
-	// The source panel's name box commit: renames the selected source.
-	void HandleSourceNameCommitted(const FText& Text, ETextCommit::Type CommitType);
 	void SelectSource(const FGuid SourceId);
 	FMixtormatSourceEntry* GetSelectedSource();
 	const FMixtormatSourceEntry* GetSelectedSource() const;
@@ -1605,9 +1603,6 @@ private:
 	TSharedRef<SWidget> BuildPreviewCameraControls();
 	TSharedRef<SWidget> BuildPreviewOutputControls();
 	TSharedRef<SWidget> BuildInspectorPanel();
-	// The selected Sources shelf entry's card: name, kind, enabled. The kind's own parameter
-	// panel opens beneath it through the shared generator resolver.
-	TSharedRef<SWidget> BuildSourcesPanel();
 	TSharedRef<SWidget> BuildGeneratorInputControls();
 	TSharedRef<SWidget> BuildGeneratorInputMenu(bool bHeightInput);
 	// The one list of child types that own the child-inspector scrollbox. Both master visibility
