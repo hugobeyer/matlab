@@ -1383,7 +1383,7 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
 						Destination.ScopeOwnerChildId = TargetChildId;
 						CreateChild(Destination, Entry.Creation);
-					})).BehaviorStyle();
+					}));
 			}
 			if (CanOwnScopedMasks(Target))
 			{
