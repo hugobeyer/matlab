@@ -74,6 +74,15 @@ namespace MixtormatChildScope
 		Result.GeneratorChildIndex = GeneratorIndex;
 		const FMixtormatLayerChild& Owner = Layer.Children[GeneratorIndex];
 		const FMixtormatBehavior& Behavior = Layer.Children[BehaviorChildIndex].Behavior;
+		// Serialized but not executable operations must never appear as valid
+		// inputs to a gather, source picker, or later capability query.
+		if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+			|| (Behavior.Type != EMixtormatBehaviorType::Warp
+				&& Behavior.Type != EMixtormatBehaviorType::Push))
+		{
+			Result.Issue = EBehaviorInputIssue::UnsupportedOperation;
+			return Result;
+		}
 		if (!Layer.bEnabled || !Owner.Generator.bEnabled || !Behavior.bEnabled)
 		{
 			Result.Issue = EBehaviorInputIssue::Disabled;

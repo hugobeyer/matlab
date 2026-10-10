@@ -30,7 +30,8 @@ namespace MixtormatChildScope
 	enum class EBehaviorInputIssue : uint8
 	{
 		None, InvalidOwner, Disabled, InvalidStrength, MissingInput,
-		WrongFieldKind, InvalidStage, UnsupportedBoundary, InvalidPublishedSource
+		WrongFieldKind, InvalidStage, UnsupportedBoundary, InvalidPublishedSource,
+		UnsupportedOperation
 	};
 
 	struct FBehaviorInputStatus
