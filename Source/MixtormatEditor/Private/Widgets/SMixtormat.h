@@ -569,7 +569,6 @@ private:
 	TSharedRef<SWidget> BuildBehaviorFlowFieldControls();
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
 	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
-	TSharedRef<SWidget> BuildBehaviorWarpInfluenceMenu();
 	FMixtormatBehavior* GetSelectedBehaviorPush();
 	const FMixtormatBehavior* GetSelectedBehaviorPush() const;
 	TSharedRef<SWidget> BuildBehaviorPushControls();
