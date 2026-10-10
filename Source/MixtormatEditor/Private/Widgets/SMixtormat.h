@@ -1547,6 +1547,10 @@ private:
 	void DeleteBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
+	// The viewport's contextual hint strip (CONTEXT tab in UI STYLE): one compact line of
+	// key/action pairs at the bottom-left, first matching context wins. Hit-test-invisible;
+	// follows the H/Space master flag.
+	TSharedRef<SWidget> BuildPreviewHintStrip();
 	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /
 	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
 	// caller decides where it goes and how it is wrapped.

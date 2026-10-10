@@ -20,6 +20,7 @@ namespace Mixtormat
 		GalleryShell,
 		Typography,
 		Sources,
+		Context,
 		Count,
 	};
 
@@ -62,6 +63,9 @@ namespace Mixtormat
 		ScrollArea,
 		SourcesShelf,
 		SourcesAddButton,
+		// The viewport hint strip: its own identity so the eye can outline it precisely
+		// instead of falling back to the whole preview.
+		HintStrip,
 	};
 
 	// Refresh mode for a theme property change. Strongest wins when coalescing.

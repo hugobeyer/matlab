@@ -441,5 +441,6 @@ namespace Mixtormat
 		OutStyle.PreviewLayout = Theme.PreviewLayout;
 		OutStyle.GalleryLayout = Theme.GalleryLayout;
 		OutStyle.ShellLayout = Theme.Shell;
+		OutStyle.ContextLayout = Theme.ContextLayout;
 	}
 }

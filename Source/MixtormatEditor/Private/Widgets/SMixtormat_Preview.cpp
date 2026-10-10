@@ -972,6 +972,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			BuildFloatingPanelStack()
 		]
+		// The contextual hint strip: bottom-left, hit-test-invisible, its own inset token so
+		// it does not move when a toolbar inset is retuned.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
+		.Padding(Resolved.ContextLayout.HintStripInset)
+		[
+			BuildPreviewHintStrip()
+		]
 		// The Tab quick controls, above the floating panels: it is invoked deliberately, so it takes
 		// the top layer.
 		+ SOverlay::Slot()
