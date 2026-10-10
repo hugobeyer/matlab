@@ -1056,6 +1056,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 	};
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
+		// Generator/Behavior ownership accepts scoped Mask producers, not arbitrary ID tools.
+		if (Target.ScopeOwnerChildId.IsValid()
+			&& Entry.Value != EMixtormatChildCreation::NoiseMask
+			&& Entry.Value != EMixtormatChildCreation::LayerValuesMask) { continue; }
 		// The glyph is the node this creates, not the menu it happens to be filed under: Color ID
 		// and Random From IDs are listed beside the mask producers because that is how they blend,
 		// but both derive from an ID map and so carry the IDs glyph, as their rows will once made.
