@@ -1,6 +1,6 @@
 # Behavior System V2 — implementation contract
 
-Status: P0 serialization, direct-ownership lookup, editor enable-state handling, scoped placement rules, and group/clipboard reference remaps are present. GPU evaluation, field resolution, parameter registration and UI authoring are not implemented.
+Status: P0 serialization, direct-ownership lookup, editor enable-state handling, scoped placement rules, group/clipboard remaps, and a non-mutating typed input validator are present. GPU evaluation, stage-aware render-data gathering, parameter registration and UI authoring are not implemented.
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
@@ -24,7 +24,7 @@ Status: P0 serialization, direct-ownership lookup, editor enable-state handling,
 - A Warp Direction input cannot consume `OwnNativeHeight` as a vector without an **explicit** scalar-to-direction operation, such as a height-gradient field producer. That operation is not implemented. Do not silently reinterpret scalar textures as Flow.
 
 ## Required next code increments
-1. Implement a non-mutating typed resolver for each Behavior input; report invalid/forward/missing/scope-incompatible sources. Respect source shelf scheduling and group-expanded identity.
+1. Extend the initial non-mutating typed resolver with full stage-specific dependency snapshots and per-socket source identities. Current `ValidateBehaviorInputs` checks direct ownership, enabled flags, finite strength, required sockets, generic scalar coverage, producer reference eligibility, and available local boundaries; it does not prove GPU readiness.
 2. Add a stage-aware gather representation, based on original child GUID rather than an ambiguous authored/effective index.
 3. Define and implement explicit height-to-direction field conversion (if Own Height is chosen) before the Rock Formation **PostGeneration Warp** prototype. Reuse existing native flow/UV transport code and preserve height and companion field remapping contracts.
 4. Opt-in dispatch only for valid, enabled scoped Behavior children. Explicitly define stage ordering between generator modules and post-generator child tools.
