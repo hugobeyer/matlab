@@ -9,6 +9,8 @@ int2 OutputSize;
 float Strength;
 uint UseMask;
 Texture2D<float> ScopedMask;
+uint UseInfluence;
+Texture2D<float> InfluenceField;
 Texture2D<float2> SourceCoordinates;
 Texture2D<float> SourceHeight;
 float GradientReach;
@@ -35,6 +37,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
 		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
 	}
 	OutCoordinates[Pixel] = UV + Weight * (Source - UV);
 }
@@ -70,6 +77,11 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
 		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
 	}
 	// Smoothly limit large slopes; flat regions remain exactly stationary.
 	const float2 Offset = isfinite(Magnitude) ? Gradient / (1.0f + Magnitude) : float2(0.0f, 0.0f);
