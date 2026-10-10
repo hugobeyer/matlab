@@ -730,6 +730,15 @@ void AddIconRole(
 				NUM("Shell.TopBarActionInset", GalleryShell, "Shell / Layout", "Top Bar Action Inset", Shell.TopBarActionInset, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.StatusBarHeight", GalleryShell, "Shell / Layout", "Status Bar Height", Shell.StatusBarHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.PanelPadding", GalleryShell, "Shell / Layout", "Panel Padding", Shell.PanelPadding, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.GlobalPagePadding", GalleryShell, "Global Page", "Content Padding", Shell.GlobalPagePadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.GlobalCardGap", GalleryShell, "Global Page", "Card Gap", Shell.GlobalCardGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryPagePadding", GalleryShell, "Library Page", "Content Padding", Shell.LibraryPagePadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibrarySearchBottomGap", GalleryShell, "Library Page", "Search Bottom Gap", Shell.LibrarySearchBottomGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibrarySearchInnerPadding", GalleryShell, "Library Page", "Search Inner Padding", Shell.LibrarySearchInnerPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryItemGap", GalleryShell, "Library Page", "Item Gap", Shell.LibraryItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryThumbnailSize", GalleryShell, "Library Page", "Thumbnail Size", Shell.LibraryThumbnailSize, 24, 128, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryLabelOpacity", GalleryShell, "Library Typography", "Label Opacity", Shell.LibraryLabelOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryHeadingOpacity", GalleryShell, "Library Typography", "Heading Opacity", Shell.LibraryHeadingOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				SetLocateTarget(P, LocateBegin, ETarget::Shell);
 
 				// Each role locates the chrome it actually styles; Body only styles the help
