@@ -1239,6 +1239,102 @@ namespace
 		RemapGeneratorBundle(Ctx, Bundle, WarpedUV);
 	}
 
+	// Shared completed-bundle remap for both legacy Structural Warp and V2 Warp.
+	// Generator-specific named outputs carry their own declared transport semantics.
+	void RemapGeneratorModuleOutputs(FMixtormatComposeContext& Ctx,
+		const FLayerRenderData& Layer, const FChildRenderData& Owner,
+		FGeneratorBundle& Module, FRDGTextureRef Coordinates)
+	{
+		const FPublishedFieldKey ValueKey =
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Value")));
+		const FPublishedFieldKey GradientKey =
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Gradient")));
+		const FPublishedField* NoiseValue = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+			? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
+		const FPublishedField* NoiseGradient = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+			? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
+		const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
+		const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
+		RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
+		if (ValueSnapshot.IsComplete())
+		{
+			Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
+				ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
+				nullptr, nullptr, false});
+		}
+		if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector
+			&& Module.GradientDescriptor.Units == FGeneratorBundle::EFieldUnits::GeneratorDomain
+			&& GradientSnapshot.Texture
+			&& GradientSnapshot.Texture->Desc.Extent == Ctx.Request.Resolution
+			&& GradientSnapshot.Texture->Desc.Format == PF_G32R32F)
+		{
+			Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
+				GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
+				nullptr, nullptr, false});
+		}
+	}
+
+	// A lifted UVMap carries displacement in destination texel space; interpolate
+	// that displacement (not wrapped absolute coordinates) to preserve tile winding.
+	FRDGTextureRef ScaleBehaviorUV(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef Source, const float Strength, const int32 LayerIndex, const int32 ChildIndex)
+	{
+		if (Strength == 1.0f) { return Source; }
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.WarpCoordinates"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorUvBlendCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Strength;
+		P->SourceCoordinates = Source;
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorUvBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.WarpUV.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	// Universal PostGeneration Warp: the owner provides a completed native bundle.
+	// Neither the gather nor this executor switches on its generator family.
+	void ApplyGeneratorPostWarpBehaviors(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Owner, FGeneratorBundle& Module)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type != EMixtormatLayerChildType::Behavior
+				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
+				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
+			const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
+			if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
+				|| Published->Texture->Desc.Extent != Size) { continue; }
+			FRDGTextureRef Coordinates = nullptr;
+			if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+			{
+				if (Ref.FlowAmount == 0.0f || Ref.FlowTraceLength == 0.0f) { continue; }
+				Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+			}
+			else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
+				&& Published->Texture->Desc.Format == PF_G32R32F)
+			{
+				Coordinates = ScaleBehaviorUV(Ctx, Published->Texture,
+					Child.Behavior.Strength, LayerCtx.LayerIndex, Child.SourceChildIndex);
+			}
+			if (Coordinates)
+			{
+				RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+			}
+		}
+	}
+
 	FRDGTextureRef AddStructuralWarpCoordinates(FMixtormatComposeContext& Ctx, FRDGTextureRef Displacement,
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
@@ -2948,6 +3044,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}
+		// V2 transforms the native bundle before the same normalize/scale step
+		// all generator families already use. Legacy flow tools retain their order.
+		ApplyGeneratorPostWarpBehaviors(Ctx, LayerCtx, Layer, Child, Module);
 		// The shared signed output contract: zero-preserving max-absolute normalization to -1..1,
 		// then Height Scale (which may exceed -1..1). Applied after flow.
 		Module.Height = AddSignedGeneratorHeightPasses(
@@ -2964,33 +3063,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			{
 				const FRDGTextureRef Coordinates = AddStructuralWarpCoordinates(Ctx, *Displacement,
 					LayerCtx.LayerIndex, Child.SourceChildIndex);
-				const FPublishedFieldKey ValueKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Value")));
-				const FPublishedFieldKey GradientKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Gradient")));
-				const FPublishedField* NoiseValue = Child.Generator.Type == EMixtormatGeneratorType::Noise
-					? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
-				const FPublishedField* NoiseGradient = Child.Generator.Type == EMixtormatGeneratorType::Noise
-					? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
-				const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
-				const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
-				RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
-				if (ValueSnapshot.IsComplete())
-				{
-					Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
-						ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
-						nullptr, nullptr, false});
-				}
-				if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector
-					&& Module.GradientDescriptor.Units == FGeneratorBundle::EFieldUnits::GeneratorDomain
-					&& GradientSnapshot.Texture && GradientSnapshot.Texture->Desc.Extent == Size
-					&& GradientSnapshot.Texture->Desc.Format == PF_G32R32F)
-				{
-					// Noise Gradient is declared source-domain data: lattice families are analytic
-					// covectors and Worley/Bars are directions. Preserve that public frame by
-					// transport-sampling; do not silently apply either vector transform.
-					Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
-						GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
-						nullptr, nullptr, false});
-				}
+				RemapGeneratorModuleOutputs(Ctx, Layer, Child, Module, Coordinates);
 			}
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
