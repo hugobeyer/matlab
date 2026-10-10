@@ -597,6 +597,10 @@ public:
 		SHADER_PARAMETER(float, TraceLength)
 		SHADER_PARAMETER(int32, Steps)
 		SHADER_PARAMETER(float, WarpStrength)
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal1)
 		SHADER_PARAMETER(uint32, CarveMode)
 		SHADER_PARAMETER(float, Depth)
 		SHADER_PARAMETER(float, Width)
@@ -856,7 +860,8 @@ namespace
 	// The producer's typed field stays intact; only the consumer's placement is traced.
 	FRDGTextureRef AddReferencedFlowUVPass(FMixtormatComposeContext& Ctx,
 		const FOutputReferenceRenderData& Reference, const FPublishedField& Field,
-		const int32 LayerIndex, const int32 ChildIndex)
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FScalarDriverRenderData* Drivers = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -871,6 +876,29 @@ namespace
 		P->TraceLength = Reference.FlowTraceLength;
 		P->WarpStrength = Reference.FlowAmount;
 		P->Steps = Reference.FlowSteps;
+		FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+		for (int32 Slot = 0; Slot < 2; ++Slot)
+		{
+			const FScalarDriverRenderData* Driver = Drivers ? &Drivers[Slot] : nullptr;
+			FRDGTextureRef Signal = nullptr;
+			if (Driver && Driver->bEnabled)
+			{
+				if (FRDGTextureRef* Found = Ctx.DriverSnapshots.Find(Driver->SourceLayerId))
+				{
+					Signal = *Found;
+				}
+			}
+			const bool bResolved = Signal != nullptr;
+			Signals[Slot] = bResolved ? Signal : Ctx.EmptyDriverSignal;
+			P->FlowDriverParamsA[Slot] = FVector4f(
+				bResolved ? 1.0f : 0.0f, Driver && Driver->bInvert ? 1.0f : 0.0f,
+				Driver ? Driver->InputMin : 0.0f, Driver ? Driver->InputMax : 1.0f);
+			P->FlowDriverParamsB[Slot] = FVector4f(
+				Driver ? Driver->OutputMin : 0.0f, Driver ? Driver->OutputMax : 1.0f,
+				Driver ? Driver->Amount : 0.0f, Driver ? static_cast<float>(Driver->Combine) : 0.0f);
+		}
+		P->FlowDriverSignal0 = Signals[0];
+		P->FlowDriverSignal1 = Signals[1];
 		P->FlowField = Field.Texture;
 		P->FlowSmooth = Field.FlowSmooth;
 		P->FlowValidity = Field.Validity;
@@ -2681,10 +2709,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				|| (Warp.Source.Kind != EMixtormatPublishedFieldKind::Flow
 					&& Warp.Source.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
 			if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				&& (Warp.Source.FlowAmount == 0.0f || Warp.Source.FlowTraceLength == 0.0f)) { continue; }
+				&& ((Warp.Source.FlowAmount == 0.0f && !Warp.Drivers[0].bEnabled)
+					|| (Warp.Source.FlowTraceLength == 0.0f && !Warp.Drivers[1].bEnabled))) { continue; }
 			const FPublishedField Source = *FoundSource;
 			const FRDGTextureRef Coordinates = Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				? AddReferencedFlowUVPass(Ctx, Warp.Source, Source, LayerCtx.LayerIndex, Child.SourceChildIndex)
+				? AddReferencedFlowUVPass(Ctx, Warp.Source, Source, LayerCtx.LayerIndex,
+					Child.SourceChildIndex, Warp.Drivers)
 				: Source.Texture;
 			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
