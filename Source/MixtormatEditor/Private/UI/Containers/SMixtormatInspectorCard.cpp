@@ -125,15 +125,18 @@ void SMixtormatInspectorCard::Construct(const FArguments& InArgs)
 				Layout.HeaderBottom))
 			[ Header ]
 		];
-		Stack->AddSlot().AutoHeight()
-		[
-			SAssignNew(BodyBox, SBox)
-			.Padding(FMargin(Layout.BodyHorizontal,
-				Layout.BodyTop,
-				Layout.BodyHorizontal,
-				Layout.BodyBottom))
-			[ InArgs._Content.Widget ]
-		];
+		if (!InArgs._HeaderOnly)
+		{
+			Stack->AddSlot().AutoHeight()
+			[
+				SAssignNew(BodyBox, SBox)
+				.Padding(FMargin(Layout.BodyHorizontal,
+					Layout.BodyTop,
+					Layout.BodyHorizontal,
+					Layout.BodyBottom))
+				[ InArgs._Content.Widget ]
+			];
+		}
 		ChildSlot
 		.Padding(FMargin(Layout.OuterLeft,
 			Layout.OuterTop,
