@@ -25,7 +25,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Materials/Material.h"
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionCustom.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionIf.h"
 #include "Materials/MaterialExpressionMultiply.h"
 #include "Materials/MaterialExpressionScalarParameter.h"

@@ -690,6 +690,13 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("PreviewLayout.QuickControlsVignetteInnerRadius", Preview, "Layout", "Vignette Inner Radius", PreviewLayout.QuickControlsVignetteInnerRadius, 0, .95, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsVignetteFalloff", Preview, "Layout", "Vignette Falloff", PreviewLayout.QuickControlsVignetteFalloff, .25, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Preview);
+				for (FMixtormatThemeProperty& Property : P)
+				{
+					if (Property.Id.ToString().StartsWith(TEXT("PreviewLayout.LeftRail")))
+					{
+						Property.LocateTarget = ETarget::NavigationRail;
+					}
+				}
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
 				LocateBegin = P.Num();
