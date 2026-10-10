@@ -50,6 +50,7 @@ namespace
 			SHADER_PARAMETER(int32, Detail)
 			SHADER_PARAMETER(float, Roughness)
 			SHADER_PARAMETER(float, Lacunarity)
+			SHADER_PARAMETER(float, LayerMix)
 			SHADER_PARAMETER(FVector2f, OffsetUV)
 			SHADER_PARAMETER(FVector2f, Wave)
 			SHADER_PARAMETER(float, PhaseOffset)
@@ -58,9 +59,13 @@ namespace
 			SHADER_PARAMETER(float, PhasorPhaseVariation)
 			SHADER_PARAMETER(float, PhasorOrientationVariation)
 			SHADER_PARAMETER(int32, PhasorComponents)
+			SHADER_PARAMETER(float, PhasorScale)
+			SHADER_PARAMETER(float, PhasorBias)
 			SHADER_PARAMETER(int32, WorleyMetric)
 			SHADER_PARAMETER(float, WorleyJitter)
+			SHADER_PARAMETER(float, WorleyCellDepth)
 			SHADER_PARAMETER(float, DistortionStrength)
+			SHADER_PARAMETER(float, DistortionJaggedness)
 			SHADER_PARAMETER(int32, DistortionPeriod)
 			SHADER_PARAMETER(int32, DistortionOctaves)
 			SHADER_PARAMETER(float, DistortionRoughness)
@@ -192,6 +197,7 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.Seed = Noise.NoiseSeed;
 	Out.Scale = FMath::Max(Finite(Noise.NoiseScale, Defaults.NoiseScale), 1.0f);
 	Out.Detail = FMath::Clamp(Noise.NoiseDetail, 1, 8);
+	Out.LayerMix = FMath::Clamp(Finite(Noise.NoiseLayerMix, Defaults.NoiseLayerMix), 0.0f, 1.0f);
 	Out.Roughness = Finite(Noise.NoiseRoughness, Defaults.NoiseRoughness);
 	Out.Lacunarity = FMath::Max(Finite(Noise.NoiseLacunarity, Defaults.NoiseLacunarity), 1.0f);
 	Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
@@ -202,9 +208,13 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.PhasorPhaseVariation = FMath::Clamp(Finite(Noise.NoisePhasorPhaseVariation, Defaults.NoisePhasorPhaseVariation), 0.0f, 1.0f);
 	Out.PhasorOrientationVariation = FMath::Clamp(Finite(Noise.NoisePhasorOrientationVariation, Defaults.NoisePhasorOrientationVariation), 0.0f, 3.14159265f);
 	Out.PhasorComponents = FMath::Clamp(Noise.NoisePhasorComponents, 1, 4);
+	Out.PhasorScale = FMath::Clamp(Finite(Noise.NoisePhasorScale, Defaults.NoisePhasorScale), 0.0f, 4.0f);
+	Out.PhasorBias = FMath::Clamp(Finite(Noise.NoisePhasorBias, Defaults.NoisePhasorBias), -1.0f, 1.0f);
 	Out.WorleyMetric = FMath::Clamp(static_cast<int32>(Noise.NoiseWorleyMetric), 0, 2);
 	Out.WorleyJitter = FMath::Clamp(Finite(Noise.NoiseWorleyJitter, Defaults.NoiseWorleyJitter), 0.0f, 1.0f);
+	Out.WorleyCellDepth = FMath::Clamp(Finite(Noise.NoiseWorleyCellDepth, Defaults.NoiseWorleyCellDepth), 0.0f, 1.0f);
 	Out.DistortionStrength = FMath::Clamp(Finite(Noise.NoiseDistortionStrength, Defaults.NoiseDistortionStrength), 0.0f, 2.0f);
+	Out.DistortionJaggedness = FMath::Clamp(Finite(Noise.NoiseDistortionJaggedness, Defaults.NoiseDistortionJaggedness), 0.0f, 2.0f);
 	Out.DistortionFrequency = FMath::Clamp(Finite(Noise.NoiseDistortionFrequency, Defaults.NoiseDistortionFrequency), 1.0f, 64.0f);
 	Out.DistortionOctaves = FMath::Clamp(Noise.NoiseDistortionOctaves, 1, 8);
 	Out.DistortionRoughness = FMath::Clamp(Finite(Noise.NoiseDistortionRoughness, Defaults.NoiseDistortionRoughness), 0.0f, 1.0f);
@@ -335,6 +345,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		P->Detail = Noise.Detail;
 		P->Roughness = Noise.Roughness;
 		P->Lacunarity = Noise.Lacunarity;
+		P->LayerMix = Noise.LayerMix;
 		P->OffsetUV = FVector2f(Noise.OffsetX, Noise.OffsetY);
 		P->Wave = Wave;
 		P->PhaseOffset = PhaseOffset;
@@ -343,9 +354,13 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		P->PhasorPhaseVariation = Noise.PhasorPhaseVariation;
 		P->PhasorOrientationVariation = Noise.PhasorOrientationVariation;
 		P->PhasorComponents = Noise.PhasorComponents;
+		P->PhasorScale = Noise.PhasorScale;
+		P->PhasorBias = Noise.PhasorBias;
 		P->WorleyMetric = Noise.WorleyMetric;
 		P->WorleyJitter = Noise.WorleyJitter;
+		P->WorleyCellDepth = Noise.WorleyCellDepth;
 		P->DistortionStrength = Noise.DistortionStrength;
+		P->DistortionJaggedness = Noise.DistortionJaggedness;
 		P->DistortionPeriod = FMath::RoundToInt(Noise.DistortionFrequency);
 		P->DistortionOctaves = Noise.DistortionOctaves;
 		P->DistortionRoughness = Noise.DistortionRoughness;
