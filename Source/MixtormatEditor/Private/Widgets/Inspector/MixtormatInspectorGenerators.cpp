@@ -1807,7 +1807,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformControls()
 			return bValid ? FText::FromName(Ref.OutputName)
 				: FText::Format(LOCTEXT("BehaviorDeformInfluenceUnavailable", "Unavailable / {0}"),
 					FText::FromName(Ref.OutputName));
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformInfluenceMenu)),
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
 		LOCTEXT("BehaviorDeformInfluenceHint", "Optional Scalar 0..1 field. Multiplies relief displacement and any scoped mask; missing fields disable Deform.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
