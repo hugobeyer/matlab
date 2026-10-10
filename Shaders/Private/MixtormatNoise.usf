@@ -21,9 +21,10 @@
 //   Billow            0..1, bumps at 1          Value * 2 - 1
 //   Worley F1/F2/F-F  0..1, distance in cells   1 - Value * 2
 //   Bars              signed cosine phase       the value itself
+//   Phasor            signed local impulses     the value itself
 //
 // Tiling is by construction, not by wrapping the input: every lattice is wrapped to an integer
-// period before it is hashed (see MixtormatNoise.ush), and Bars runs on an integer wave vector
+// period before it is hashed (see MixtormatNoise.ush), and Bars/Phasor share an integer orientation
 // resolved CPU-side. Offset translates the domain, which leaves any periodic field periodic.
 
 #include "/Engine/Public/Platform.ush"
