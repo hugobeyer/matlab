@@ -724,6 +724,7 @@ namespace Mixtormat
 
 		// Non-compositing Sources array card. Geometry only: styling comes from
 		// the shared Card and Button recipes, not a parallel Sources palette.
+		float SourcesTopGap = 1.0f;
 		float SourcesBottomGap = 8.0f;
 		float SourcesEmptyHeight = 20.0f;
 		float SourcesRowHeight = 20.0f;
@@ -781,7 +782,7 @@ namespace Mixtormat
 		float LeftRailShadowOpacity = 0.25f;
 		// Bias < 1 darkens earlier; > 1 concentrates shade near the bottom.
 		float LeftRailShadeBias = 1.0f;
-		bool bLeftRailShadeInverted = false;
+		bool bLeftRailShadeInverted = true;
 		float LeftRailButtonSurfaceStrength = 0.0f;
 		// Legacy positional-shadow settings retained for serialized theme compatibility.
 		float LeftRailShadowOffset = 2.0f;
