@@ -515,6 +515,18 @@ namespace MixtormatGpuCompositor
 							DriverSnapshotDemand.Add(Driver.SourceLayerId);
 						}
 					}
+					for (const FChildRenderData& Child : DemandLayer.Children)
+					{
+						if (Child.Type != EMixtormatLayerChildType::StructuralWarp) { continue; }
+						for (const FScalarDriverRenderData& Driver : Child.StructuralWarp.Drivers)
+						{
+							if (Driver.bEnabled && !Driver.bRegionSource
+								&& Driver.SourceLayerId != DemandLayer.LayerId)
+							{
+								DriverSnapshotDemand.Add(Driver.SourceLayerId);
+							}
+						}
+					}
 				}
 				TMap<FGuid, FRDGTextureRef>& DriverSnapshots = Ctx.DriverSnapshots;
 				TMap<FPublishedMaskKey, FRDGTextureRef>& PublishedMaskOutputs = Ctx.PublishedMaskOutputs;
