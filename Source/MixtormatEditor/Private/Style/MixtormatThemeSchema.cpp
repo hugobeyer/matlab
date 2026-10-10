@@ -302,7 +302,13 @@ void AddIconRole(
 				COL("TextField.Border", Controls, "Text Fields", "Border", TextField.Border, EMixtormatThemeRefreshMode::Reconstruct);
 				COL("TextField.Highlight", Controls, "Text Fields", "Highlight", TextField.Highlight, EMixtormatThemeRefreshMode::Reconstruct);
 				COL("TextField.SelectionColor", Controls, "Text Fields", "Selection Color", TextField.SelectionColor, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("TextField.ShadeOpacity", Controls, "Text Fields", "Shade Opacity", TextField.ShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.ShadeOpacity", Controls, "Text Fields", "Shade Top Opacity", TextField.ShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.ShadeBottomOpacity", Controls, "Text Fields", "Shade Bottom Opacity", TextField.ShadeBottomOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.PaddingX", Controls, "Text Fields", "Horizontal Padding", TextField.PaddingX, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.PaddingY", Controls, "Text Fields", "Vertical Padding", TextField.PaddingY, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.MinHeight", Controls, "Text Fields", "Minimum Height", TextField.MinHeight, 12, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.MinWidth", Controls, "Text Fields", "Minimum Width", TextField.MinWidth, 0, 200, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.FontSize", Controls, "Text Fields", "Font Size", TextField.FontSize, 8, 24, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.BorderOpacity", Controls, "Text Fields", "Border Opacity", TextField.BorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.BorderThickness", Controls, "Text Fields", "Border Thickness", TextField.BorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.Radius", Controls, "Text Fields", "Radius", TextField.Radius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
