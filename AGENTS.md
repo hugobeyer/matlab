@@ -62,12 +62,15 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
   dispatch/binding → defaults → inspector metadata → `.usf`/`.ush`.
 - UI changes use `Style/MixtormatDesignTokens.h` + `MixtormatThemeStore`, not
   local styling.
-- Layers, Library and Global share the left-column Panel background and reusable
+- Layers, Library and Global share the left-column Shell background and reusable
   foldout/card/well/row recipes. Never add independent local palette/opacity
   numbers or borrow marking-menu geometry for left-column page layout. Page-only
   spacing and Library label opacity belong in Shell UI STYLE metrics; retain the
   viewport builders' behavior while adding explicit compact variants as needed.
   See `AgentDocs/UI.md` > Left-column visual contract.
+- The Layers stack is dock-only: never recreate the grab header, floating Layers
+  overlay, snap-back gesture or its old UI STYLE controls. The Inspector remains
+  eligible for overlay mode. Preserve Library/Global navigation.
 - Never introduce native Unreal/Slate default tooltips (`.ToolTipText`, `SetToolTipText`,
   or unstyled `SToolTip`). All help popovers must use `SMixtormatHelp` or its
   `MakeStyledToolTip` adapter for interactive widgets. Text, appearance and timing
