@@ -770,6 +770,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::BehaviorWarp:     return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::BehaviorPush:     return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::BehaviorCarve:    return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorDeform:   return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
 				case EMixtormatChildCreation::StructuralWarp:  return EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
@@ -845,6 +846,10 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::BehaviorCarve:
 			Child.Behavior.Type = EMixtormatBehaviorType::Carve;
 			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
+			break;
+		case EMixtormatChildCreation::BehaviorDeform:
+			Child.Behavior.Type = EMixtormatBehaviorType::Deform;
+			Child.Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::None;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -2133,6 +2138,18 @@ const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorPush() const
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	return Child && Child->Type == EMixtormatLayerChildType::Behavior
 		&& Child->Behavior.Type == EMixtormatBehaviorType::Push ? &Child->Behavior : nullptr;
+}
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorDeform()
+{
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorDeform());
+}
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorDeform() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Deform ? &Child->Behavior : nullptr;
 }
 
 FMixtormatBehavior* SMixtormat::GetSelectedBehaviorCarve()

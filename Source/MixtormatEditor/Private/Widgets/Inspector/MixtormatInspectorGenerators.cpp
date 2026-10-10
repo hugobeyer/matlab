@@ -1579,6 +1579,271 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Selected = ResolveChildAt(Address);
+	if (!Selected || Selected->Type != EMixtormatLayerChildType::Behavior
+		|| Selected->IsInstance()) { return Menu.Build(); }
+
+	const int32 DestinationLayerIndex = WorkingLayers.IndexOfByPredicate(
+		[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+	if (!WorkingLayers.IsValidIndex(DestinationLayerIndex)) { return Menu.Build(); }
+	const FMixtormatLayer& Destination = WorkingLayers[DestinationLayerIndex];
+	const int32 BehaviorIndex = Destination.Children.IndexOfByPredicate(
+		[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+	if (!Destination.Children.IsValidIndex(BehaviorIndex)) { return Menu.Build(); }
+	const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+		Destination.Children, BehaviorIndex);
+	if (OwnerIndex == INDEX_NONE) { return Menu.Build(); }
+
+	const auto Assign = [this, Address](const FMixtormatOutputReference* Source)
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		if (!Child || Child->IsInstance()
+			|| Child->Type != EMixtormatLayerChildType::Behavior) { return; }
+		if (Source)
+		{
+			Child->Behavior.Direction.Published = *Source;
+			Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::PublishedOutput;
+		}
+		else
+		{
+			Child->Behavior.Direction.Published = FMixtormatOutputReference{};
+			Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::None;
+		}
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	};
+	Menu.Item(LOCTEXT("BehaviorDeformChooseSourceLater", "Choose source later"), nullptr,
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(nullptr); }));
+	Menu.Item(LOCTEXT("BehaviorDeformOwnHeight", "Own Height Gradient"),
+		MixtormatIcons::WarpStructural(),
+		FSimpleDelegate::CreateLambda([this, Address]()
+		{
+			if (FMixtormatLayerChild* Child = ResolveChildAt(Address))
+			{
+				if (Child->Type == EMixtormatLayerChildType::Behavior && !Child->IsInstance())
+				{
+					Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::OwnNativeHeight;
+					Child->Behavior.Direction.Published = FMixtormatOutputReference{};
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}
+		}));
+	Menu.Separator();
+
+	// All sources are explicit, typed and order-checked by the runtime resolver.
+	// The generic Vector2 type is deliberately not accepted as transport.
+	for (int32 SourceLayerIndex = 0;
+		SourceLayerIndex <= DestinationLayerIndex; ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+		for (const FMixtormatLayerChild& Producer : SourceLayer.Children)
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Producer);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (!Output.bCopyableAsField
+					|| (Output.FieldKind != EMixtormatPublishedFieldKind::Flow
+						&& Output.FieldKind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
+				FMixtormatOutputReference Ref;
+				Ref.SourceLayerId = SourceLayer.LayerId;
+				Ref.SourceChildId = Producer.ChildId;
+				Ref.OutputName = Output.Name;
+				Ref.Kind = Output.FieldKind;
+				const bool bAvailable = MixtormatOutputReferences::ResolveGeneratorInputSource(
+					WorkingLayers, DestinationLayerIndex, OwnerIndex, Ref) != INDEX_NONE;
+				Menu.Item(FText::Format(LOCTEXT("BehaviorDeformSourceEntry", "{0} / {1} / {2}"),
+					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
+					MixtormatIcons::Generator(),
+					FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }))
+					.Enabled(bAvailable);
+			}
+		}
+	}
+
+	// Sources shelf producers are separately addressed and evaluated before layers.
+	for (const FMixtormatSourceEntry& Shelf : WorkingSources)
+	{
+		if (Shelf.Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		for (const EMixtormatPublishedFieldKind Kind : {
+			EMixtormatPublishedFieldKind::Flow, EMixtormatPublishedFieldKind::UVMap})
+		{
+			FMixtormatOutputReference Ref;
+			Ref.OwnerKind = EMixtormatOutputReferenceOwnerKind::Shelf;
+			Ref.SourceShelfId = Shelf.SourceId;
+			Ref.SourceChildId = Shelf.Child.ChildId;
+			Ref.Kind = Kind;
+			Ref.OutputName = Kind == EMixtormatPublishedFieldKind::Flow
+				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV"));
+			const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(
+				WorkingSources, Ref);
+			if (Status.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+			{
+				continue;
+			}
+			Menu.Item(FText::Format(LOCTEXT("BehaviorDeformShelfSource", "Sources / {0} / {1}"),
+				Shelf.DisplayName, FText::FromName(Ref.OutputName)),
+				MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }));
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformControls()
+{
+	const auto Deform = [this]() { return GetSelectedBehaviorDeform(); };
+	const auto Reference = [Deform]() -> FMixtormatOutputReference*
+	{
+		FMixtormatBehavior* Selected = Deform();
+		return Selected ? &Selected->Direction.Published : nullptr;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorDeformSourceLabel", "Direction Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
+		{
+			const FMixtormatBehavior* Selected = GetSelectedBehaviorDeform();
+			if (Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			{
+				return LOCTEXT("BehaviorDeformOwnHeightSelected", "Own Height Gradient");
+			}
+			if (!Selected || Selected->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+				|| !Selected->Direction.Published.HasSource())
+			{
+				return LOCTEXT("BehaviorDeformUnset", "Choose source");
+			}
+			const FMixtormatOutputReference& Ref = Selected->Direction.Published;
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+				[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+			const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
+				? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
+					[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
+				: INDEX_NONE;
+			const int32 OwnerIndex = ChildIndex != INDEX_NONE
+				? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+					WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
+			const bool bAvailable = OwnerIndex != INDEX_NONE && (Ref.IsShelfSource()
+				? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
+					== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
+				: MixtormatOutputReferences::ResolveGeneratorInputSource(
+					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
+			if (!bAvailable)
+			{
+				return FText::Format(LOCTEXT("BehaviorDeformUnavailableSource", "Unavailable / {0}"),
+					FText::FromName(Ref.OutputName));
+			}
+			return FText::Format(LOCTEXT("BehaviorDeformSourceChip", "{0} / {1}"),
+				Ref.IsShelfSource() ? LOCTEXT("BehaviorDeformShelfChip", "Sources")
+					: LOCTEXT("BehaviorDeformLayerChip", "Layer"),
+				FText::FromName(Ref.OutputName));
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformSourceMenu)),
+		LOCTEXT("BehaviorDeformDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Deform resamples native height only, leaving IDs and coverage fixed.")));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorDeformInfluenceLabel", "Influence Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
+		{
+			const FMixtormatBehavior* Deform = GetSelectedBehaviorDeform();
+			if (!Deform || Deform->Influence.Origin == EMixtormatBehaviorFieldOrigin::None)
+			{
+				return LOCTEXT("BehaviorDeformInfluenceUnset", "None");
+			}
+			const FMixtormatOutputReference& Ref = Deform->Influence.Published;
+			if (!Ref.HasSource()) { return LOCTEXT("BehaviorDeformInfluenceMissing", "Source missing"); }
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+				[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+			const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
+				? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
+					[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
+				: INDEX_NONE;
+			const bool bValid = Ref.Kind == EMixtormatPublishedFieldKind::Scalar01
+				&& !Ref.IsShelfSource() && ChildIndex != INDEX_NONE
+				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+			return bValid ? FText::FromName(Ref.OutputName)
+				: FText::Format(LOCTEXT("BehaviorDeformInfluenceUnavailable", "Unavailable / {0}"),
+					FText::FromName(Ref.OutputName));
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformInfluenceMenu)),
+		LOCTEXT("BehaviorDeformInfluenceHint", "Optional Scalar 0..1 field. Multiplies relief displacement and any scoped mask; missing fields disable Deform.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
+		-4.0, 4.0, 1.0, 0.01,
+		LOCTEXT("BehaviorDeformStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddSliderRow(Panel,
+		SNew(SBox)
+		.Visibility_Lambda([Deform]()
+		{
+			const FMixtormatBehavior* Selected = Deform();
+			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSlider<FMixtormatBehavior>(
+				LOCTEXT("BehaviorDeformGradientReach", "Gradient Reach (UV)"),
+				Deform, &FMixtormatBehavior::GradientReach, 0.0, 0.25, 0.02, 0.001,
+				LOCTEXT("BehaviorDeformGradientReachHint", "Maximum UV displacement from the current native-height gradient. Stable across resolutions; zero is neutral."))
+		]);
+	TSharedRef<SVerticalBox> FlowPanel = SNew(SVerticalBox);
+	AddSliderRow(FlowPanel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("BehaviorDeformFlowAmount", "Flow Amount"),
+			Reference, &FMixtormatOutputReference::FlowAmount, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("BehaviorDeformFlowAmountHint", "Multiplies Deform Strength during Flow trace.")),
+		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("BehaviorDeformTraceLength", "Trace Length (UV)"),
+			Reference, &FMixtormatOutputReference::FlowTraceLength, 0.0, 1.0, 0.05, 0.001,
+			LOCTEXT("BehaviorDeformTraceHint", "Length of the Flow integration path."))));
+	AddSliderRow(FlowPanel, MakeMemberSliderInt<FMixtormatOutputReference>(
+		LOCTEXT("BehaviorDeformSteps", "Flow Steps"), Reference, &FMixtormatOutputReference::FlowSteps,
+		1.0, 64.0, 16,
+		LOCTEXT("BehaviorDeformStepsHint", "Integration steps; UV Maps use their coordinates directly.")));
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SBox).Visibility_Lambda([Deform, Reference]()
+		{
+			const FMixtormatBehavior* Selected = Deform();
+			const FMixtormatOutputReference* Ref = Reference();
+			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+				&& Ref && Ref->Kind == EMixtormatPublishedFieldKind::Flow
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})[FlowPanel]
+	];
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Deform]() { return Deform() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorDeformHeading", "WARP"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Deform]()
+					{
+						const FMixtormatBehavior* Selected = Deform();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Deform](const ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* Selected = Deform())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildStructuralWarpConnectionMenu(const bool bTarget)
 {
 	return BuildStructuralConnectionMenu(GetSelectedChildAddress(), bTarget

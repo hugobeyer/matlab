@@ -1514,6 +1514,14 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 					Destination.ScopeOwnerChildId = TargetChildId;
 					CreateChild(Destination, EMixtormatChildCreation::BehaviorCarve);
 				}));
+			Menu.Item(LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior (V2)"),
+				MixtormatIcons::WarpStructural(),
+				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
+				{
+					FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+					Destination.ScopeOwnerChildId = TargetChildId;
+					CreateChild(Destination, EMixtormatChildCreation::BehaviorDeform);
+				}));
 		}
 		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
 			LOCTEXT("WarpUsingForTarget", "Add Structural Warp (Legacy)"));

@@ -1446,7 +1446,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 
 	const bool bBehaviorWarp = Kind == EMixtormatChildCreation::BehaviorWarp
 		|| Kind == EMixtormatChildCreation::BehaviorPush
-		|| Kind == EMixtormatChildCreation::BehaviorCarve;
+		|| Kind == EMixtormatChildCreation::BehaviorCarve
+		|| Kind == EMixtormatChildCreation::BehaviorDeform;
 	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
 	if (bBehaviorWarp)
 	{
