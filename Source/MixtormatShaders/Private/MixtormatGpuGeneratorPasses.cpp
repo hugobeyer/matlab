@@ -1566,7 +1566,7 @@ namespace
 					Child.SourceChildIndex, Child.Behavior.FlowDrivers);
 			}
 			if (!UV) { continue; }
-			const bool bMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			FRDGTextureRef Gate = bMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 				: LayerCtx.CombinedMask;
@@ -1627,7 +1627,7 @@ namespace
 					|| (bOwnBoundary ? Distance->Desc.Format != PF_G32R32F
 						: (Distance->Desc.Format != PF_R16F
 							&& Distance->Desc.Format != PF_R32_FLOAT))) { continue; }
-				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
@@ -1662,7 +1662,7 @@ namespace
 					break;
 				}
 				if (!Delta || !Module.Height || Delta->Desc.Format != PF_R32_FLOAT) { continue; }
-				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
@@ -1676,7 +1676,7 @@ namespace
 			{
 				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
 					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
-				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
@@ -1711,7 +1711,7 @@ namespace
 				{
 					// Strength is independent of authored/driver Flow Amount, and
 					// always gates the final displacement toward the identity UV.
-					const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+					const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 					FRDGTextureRef Gate = bHasMask
 						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 						: LayerCtx.CombinedMask;
