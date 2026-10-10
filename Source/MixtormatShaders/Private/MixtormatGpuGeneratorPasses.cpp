@@ -1429,13 +1429,13 @@ namespace
 				}
 				if (Coordinates)
 				{
-					// Flow strength is already included in FlowAmount at gather.
+					// Strength is independent of authored/driver Flow Amount, and
+					// always gates the final displacement toward the identity UV.
 					const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
 					FRDGTextureRef Gate = bHasMask
 						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 						: LayerCtx.CombinedMask;
-					const float BlendStrength = Ref.Kind == EMixtormatPublishedFieldKind::UVMap
-						? Child.Behavior.Strength : 1.0f;
+					const float BlendStrength = Child.Behavior.Strength;
 					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
 						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
 				}
