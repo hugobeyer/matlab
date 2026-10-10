@@ -368,12 +368,22 @@ namespace MixtormatLayerGroups
 					}
 					else
 					{
-						// Scoped beneath something that is not in this container. The owner is not
-						// here to gate, so the clone joins the member's ordinary child chain
-						// rather than hanging off an address that resolves to nothing.
-						Clone.ScopeOwnerChildId.Invalidate();
+						// An unresolved shared Behavior must not turn into an unscoped
+						// operation on a member. Preserve its owner ID and fail closed.
+						if (Clone.Type == EMixtormatLayerChildType::Behavior)
+						{
+							Clone.Behavior.bEnabled = false;
+						}
+						else
+						{
+							Clone.ScopeOwnerChildId.Invalidate();
+						}
 					}
 				}
+				else if (Clone.Type == EMixtormatLayerChildType::Behavior)
+				{
+				Clone.Behavior.bEnabled = false;
+			}
 
 				RemapChildReferences(Clone);
 			}
