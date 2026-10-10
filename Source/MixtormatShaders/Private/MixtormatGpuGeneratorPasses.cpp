@@ -1567,8 +1567,41 @@ namespace
 		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef WorkingFlow = Ctx.GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Size, PF_FloatRGBA, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Generator.WorkingFlow"));
+		AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(WorkingFlow), FLinearColor::Black);
+		FRDGTextureRef WorkingFlowValidity = nullptr;
 		for (const FChildRenderData& Child : Layer.Children)
 		{
+			if (Child.Type == EMixtormatLayerChildType::Generator
+				&& Child.ScopeOwnerSourceChildIndex == Owner.SourceChildIndex
+				&& Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				FMixtormatNoiseRenderData Noise;
+				if (!MixtormatNoiseRenderStore().Find(
+					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)
+					|| !Noise.bWriteFlow) { continue; }
+				FGeneratorBundle ScopedBundle;
+				AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &ScopedBundle,
+					nullptr, Module.Height);
+				const FPublishedField* Generated = Ctx.PublishedFieldOutputs.Find(
+					PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GeneratedFlow"))));
+				if (!Generated || !Generated->IsComplete()
+					|| Generated->Kind != EMixtormatPublishedFieldKind::Flow
+					|| Generated->Texture->Desc.Extent != Size) { continue; }
+				const bool bMasked = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Mask = bMasked ? AddScopedFeatureMask(Ctx, LayerCtx, Layer,
+					Child.SourceChildIndex, true) : nullptr;
+				WorkingFlow = AddNoiseFlowComposePass(Ctx, WorkingFlow, Generated->Texture, Mask,
+					Noise.FlowAdd, Noise.FlowMix, WorkingFlowValidity,
+					TEXT("Mixtormat.Generator.AccumulatedFlow"));
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow, WorkingFlow,
+						WorkingFlowValidity, false});
+				continue;
+			}
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
@@ -3363,6 +3396,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			continue;
 		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		FGeneratorInputFields& Inputs = LayerCtx.GeneratorInputs.Add(Child.SourceChildIndex);
