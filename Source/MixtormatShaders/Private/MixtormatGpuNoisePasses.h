@@ -13,7 +13,7 @@ namespace MixtormatGpuCompositor
 // leaves the module out, the same as a disabled generator.
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 	const FLayerRenderData& Layer, int32 SourceChildIndex, FGeneratorBundle* Bundle,
-	FRDGTextureRef PreUV = nullptr);
+	FRDGTextureRef PreUV = nullptr, FRDGTextureRef PrecedingHeight = nullptr);
 
 // Source-local R32_FLOAT coverage. No generator publication/height or mask placement/shaping.
 FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatNoise& Noise);
@@ -28,7 +28,7 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 // P1 generated Flow: the weighted Height/Slope/Curl/Constant MODE field in the canonical
 // layout (FIELD_CONTRACT_P0.md section 1), published under "GeneratedFlow". OwnHeight is the
 // module's native signed field (the Height basis). The Slope basis is compiled in but disabled
-// until P2 supplies the preceding working-height snapshot.
+// with Slope sampling the height snapshot preceding this generator in authored order.
 FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
 	int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight);
 
