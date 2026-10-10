@@ -1843,6 +1843,14 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
+	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow)
+	{
+		MixtormatMenu::FBuilder Menu;
+		Menu.Caption(LOCTEXT("DriverWarpUnavailable", "Drivers"))
+			.Item(LOCTEXT("DriverWarpUnavailableMessage", "Structural Warp spatial modulation is not supported by the GPU trace yet."), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
 	if (Target.ValueType != EMixtormatParameterValueType::Float)
 	{
 		MixtormatMenu::FBuilder Menu;
