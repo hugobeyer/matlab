@@ -420,31 +420,27 @@ void SMixtormat::AddSharedChildMenuItems(
 				FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address));
 		}
 	}
-	Menu.Item(
-		LOCTEXT("PasteChildContext", "Paste"),
-		nullptr,
-		FSimpleDelegate::CreateLambda([this, Address]()
-		{
-			PasteChild(Address, ResolveChildIndexAt(Address));
-		}))
-		.Enabled(TAttribute<bool>::CreateLambda([this, Address]()
-		{
-			return CanPasteChild(Address, ResolveChildIndexAt(Address));
-		}));
+	if (CanPasteChild(Address, ResolveChildIndexAt(Address)))
+	{
+		Menu.Item(LOCTEXT("PasteChildContext", "Paste"), nullptr,
+			FSimpleDelegate::CreateLambda([this, Address]()
+			{
+				PasteChild(Address, ResolveChildIndexAt(Address));
+			}));
+	}
 	// Only offered where it can land: a copied mask on a row that can own scoped masks.
-	if (Child && CanOwnScopedMasks(*Child))
+	if (Child && CanOwnScopedMasks(*Child) && CanCreateNoiseGate(Address))
 	{
 		Menu.Item(LOCTEXT("CreateNoiseGateContext", "Noise Gate"), MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }))
-			.Enabled(CanCreateNoiseGate(Address));
+			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }));
 	}
-	if (Child && Child->Type == EMixtormatLayerChildType::Mask)
+	if (Child && Child->Type == EMixtormatLayerChildType::Mask && !bInstance)
 	{
 		Menu.SubMenu(LOCTEXT("MaskSourceContext", "Source"), nullptr,
 			FOnGetContent::CreateLambda([this, Address]()
 			{
 				return BuildMaskSourceMenuFor(Address);
-			})).Enabled(!bInstance);
+			}));
 	}
 	if (CanPasteAsGatingMask(Address))
 	{
