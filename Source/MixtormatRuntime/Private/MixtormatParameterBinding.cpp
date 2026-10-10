@@ -769,6 +769,16 @@ namespace MixtormatParameterBinding
 		{
 			RemapBinding(Binding);
 		}
+		const auto RemapOutput = [&](FMixtormatOutputReference& Reference, const bool bRequireOwned)
+		{
+			if (!Reference.IsLayerSource() || Reference.SourceLayerId != OldLayerId
+				|| (bRequireOwned && !OriginalChildIds.Contains(Reference.SourceChildId))) { return; }
+			Reference.SourceLayerId = NewLayerId;
+			if (const FGuid* Mapped = ChildIdRemap.Find(Reference.SourceChildId))
+			{
+				Reference.SourceChildId = *Mapped;
+			}
+		};
 		for (FMixtormatLayerChild& Child : Layer.Children)
 		{
 			if (const FGuid* NewOwnerChildId = ChildIdRemap.Find(Child.ScopeOwnerChildId))
@@ -790,49 +800,36 @@ namespace MixtormatParameterBinding
 					Child.SourceChildId = *NewSourceChildId;
 				}
 			}
-			if (Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
+			RemapOutput(Child.OutputReference, false);
+			RemapOutput(Child.BoundaryId.RegionIdsSource, false);
+			RemapOutput(Child.Generator.HeightSource, true);
+			RemapOutput(Child.Generator.WarpSource, true);
+			RemapOutput(Child.HeightPush.Source, true);
+			if (Child.HeightBlend.SourceLayerId == OldLayerId
+				&& OriginalChildIds.Contains(Child.HeightBlend.SourceChildId))
 			{
-				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
-				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.BoundaryId.RegionIdsSource.SourceChildId))
+				Child.HeightBlend.SourceLayerId = NewLayerId;
+				if (const FGuid* Mapped = ChildIdRemap.Find(Child.HeightBlend.SourceChildId))
 				{
-					Child.BoundaryId.RegionIdsSource.SourceChildId = *NewSourceChildId;
+					Child.HeightBlend.SourceChildId = *Mapped;
 				}
 			}
-			if (Child.HeightPush.Source.SourceLayerId == OldLayerId
-				&& OriginalChildIds.Contains(Child.HeightPush.Source.SourceChildId))
+			if (const FGuid* Mapped = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId))
 			{
-				Child.HeightPush.Source.SourceLayerId = NewLayerId;
-				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.HeightPush.Source.SourceChildId))
-				{
-					Child.HeightPush.Source.SourceChildId = *NewSourceChildId;
-				}
+				Child.HeightColorRamp.SourceChildId = *Mapped;
 			}
 			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.HeightPush.TargetChildId))
 			{
 				Child.HeightPush.TargetChildId = *NewTargetChildId;
 			}
-			if (Child.StructuralWarp.Source.SourceLayerId == OldLayerId
-				&& OriginalChildIds.Contains(Child.StructuralWarp.Source.SourceChildId))
-			{
-				Child.StructuralWarp.Source.SourceLayerId = NewLayerId;
-				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.StructuralWarp.Source.SourceChildId))
-				{
-					Child.StructuralWarp.Source.SourceChildId = *NewSourceChildId;
-				}
-			}
+			RemapOutput(Child.StructuralWarp.Source, true);
 			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
 			{
 				Child.StructuralWarp.TargetChildId = *NewTargetChildId;
 			}
-			if (Child.OutputReference.SourceLayerId == OldLayerId)
-			{
-				Child.OutputReference.SourceLayerId = NewLayerId;
-				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.OutputReference.SourceChildId))
-				{
-					Child.OutputReference.SourceChildId = *NewSourceChildId;
-				}
-			}
-			if (Child.Mask.PublishedSourceLayerId == OldLayerId)
+
+			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
+				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{
 				Child.Mask.PublishedSourceLayerId = NewLayerId;
 				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.Mask.PublishedSourceChildId))
