@@ -323,6 +323,30 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerGroup
 	TArray<FMixtormatLayerChild> Children;
 };
 
+// A Sources shelf entry: one generator that publishes fields for other operations to consume.
+// It is not a layer -- it never composites into the material, and its position in the shelf is
+// organisation only, so it carries none of FMixtormatLayer's blend or surface state.
+//
+// The payload is a standard unscoped generator child rather than a bare FMixtormatGenerator, so
+// the addressing, clipboard and instance machinery that already speaks FMixtormatLayerChild keeps
+// one shape to resolve. Tools and masks owned by the source are future children scoped to that
+// child's ChildId; they are not authored yet.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatSourceEntry
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FGuid SourceId = FGuid::NewGuid();
+
+	// Shelf label. Sources are addressed by SourceId; the name is presentation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
+	FMixtormatLayerChild Child;
+};
+
 namespace MixtormatHue
 {
 	// Degrees of hue rotation per unit of a normalised -1..1 editor slider.

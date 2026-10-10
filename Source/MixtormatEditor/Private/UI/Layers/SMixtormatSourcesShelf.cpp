@@ -46,11 +46,11 @@ void SMixtormatSourcesShelf::Construct(const FArguments& InArgs)
 		.Padding(0.0f, Layout.OuterTop, 0.0f, 0.0f)
 		[
 			SNew(SMixtormatFoldoutHeader)
-			.IsHovered_Lambda([this]() { return bHovered; })
+			.IsHovered_Lambda([this]() { return HeaderButton.IsValid() && HeaderButton->IsHovered(); })
 			[
 				// Behaviour only. The header paints the bar; a button with plates of its own would
 				// light a button-shaped patch inside it.
-				SNew(SButton)
+				SAssignNew(HeaderButton, SButton)
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(
 					TEXT("Mixtormat.InspectorHeaderButton")))
 				.ContentPadding(FMargin(0.0f))
@@ -128,18 +128,6 @@ void SMixtormatSourcesShelf::Construct(const FArguments& InArgs)
 			]
 		]
 	];
-}
-
-void SMixtormatSourcesShelf::OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
-	bHovered = true;
-}
-
-void SMixtormatSourcesShelf::OnMouseLeave(const FPointerEvent& MouseEvent)
-{
-	SCompoundWidget::OnMouseLeave(MouseEvent);
-	bHovered = false;
 }
 
 FReply SMixtormatSourcesShelf::ToggleExpanded()

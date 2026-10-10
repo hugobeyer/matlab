@@ -621,6 +621,24 @@ FText SMixtormat::GetSelectedBadgeText() const
 
 void SMixtormat::SyncSelectedLayerControls()
 {
+	if (SelectedSourceId.IsValid())
+	{
+		// A source is the inspector's subject; the layer controls below read the layer stack and
+		// have nothing to sync. The header still names what is selected.
+		const FMixtormatSourceEntry* Source = GetSelectedSource();
+		bHasSelectedLayer = false;
+		if (SelectedSurfaceText.IsValid())
+		{
+			SelectedSurfaceText->SetText(Source
+				? Source->DisplayName
+				: LOCTEXT("NoSelectedSource", "No source selected"));
+		}
+		if (SelectedIdentityText.IsValid())
+		{
+			SelectedIdentityText->SetText(LOCTEXT("SourceIdentity", "SOURCE"));
+		}
+		return;
+	}
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		bHasSelectedLayer = false;

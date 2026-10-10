@@ -7,6 +7,8 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
+class SButton;
+
 // The Sources shelf: the collapsible bar below the layer rows that lists reusable generator
 // outputs.
 //
@@ -18,8 +20,8 @@
 // the caller, because the layer stack panel is rebuilt on a theme refresh and an open shelf has
 // to survive that.
 //
-// Hover is tracked here rather than read from the workspace widget: that widget is the whole
-// editor, so borrowing its hover state would leave the header permanently lit.
+// Hover is read from the header button itself, not from this widget: the shelf also holds the
+// expanded body, and a shelf-wide hover would keep the bar lit while the cursor works down there.
 class SMixtormatSourcesShelf final : public SCompoundWidget
 {
 public:
@@ -40,13 +42,12 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
-	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
-
 private:
 	FReply ToggleExpanded();
 
 	TAttribute<bool> Expanded;
 	FSimpleDelegate OnToggle;
-	bool bHovered = false;
+	// Downward reference only (parent holds a child), so a strong pointer is safe here; the hover
+	// binding reads it back per paint.
+	TSharedPtr<SButton> HeaderButton;
 };

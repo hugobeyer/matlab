@@ -460,6 +460,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					{
 						return HasSelectedChildInspector() ? EVisibility::Visible : EVisibility::Collapsed;
 					})
+					// The selected Sources shelf entry's card, above the child panels: with a source
+					// selected, the matching generator panel below resolves through the same
+					// GetSelectedGenerator() accessor.
+					+ SScrollBox::Slot()[BuildSourcesPanel()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildRunoffControls()]

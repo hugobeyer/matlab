@@ -6,7 +6,9 @@
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
+#include "UI/Layers/SMixtormatSourceRow.h"
 #include "UI/Layers/SMixtormatSourcesShelf.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -441,8 +443,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 {
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	// The shelf sits under a FillHeight layer list, so an unbounded body would squeeze the stack
+	// out of the pane. Past a handful of rows the shelf scrolls instead of growing.
+	constexpr int32 MaxVisibleSourceRows = 6;
 
-	return SNew(SMixtormatSourcesShelf)
+	TSharedRef<SWidget> Shelf = SNew(SMixtormatSourcesShelf)
 		.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
 		.Title(LOCTEXT("SourcesShelfTitle", "SOURCES"))
 		.Expanded_Lambda([this]() { return bSourcesExpanded; })
@@ -452,25 +457,238 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("SourcesShelfEmpty", "No sources yet. Reusable generators, ramps and shared values will be listed here."))
+				.Text(LOCTEXT("SourcesShelfEmpty", "No sources yet. Add a generator that publishes fields for other operations to consume."))
 				.AutoWrapText(true)
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				// Live, not synced: adding or deleting the last source flips this without a rebuild.
+				.Visibility_Lambda([this]() { return WorkingSources.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBox)
+				.MaxDesiredHeight(Resolved.LayerLayout.RowHeight * MaxVisibleSourceRows)
+				[
+					SNew(SScrollBox)
+					.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+					.ScrollBarThickness(FVector2D(Resolved.ShellLayout.ScrollbarThickness))
+					+ SScrollBox::Slot()[SAssignNew(SourcesListBox, SVerticalBox)]
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f)
 			[
-				SNew(SBox)
-				.HeightOverride(Resolved.ControlLayout.ButtonHeight)
+				// The menu opens upward: the shelf sits at the bottom of the pane.
+				SAssignNew(AddSourceAnchor, SMenuAnchor)
+				.Placement(MenuPlacement_AboveAnchor)
+				.OnGetMenuContent(this, &SMixtormat::BuildAddSourcesMenu)
 				[
 					SNew(SButton)
 					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled(false)
-					.ToolTipText(LOCTEXT("AddSourceUnavailableHint", "Adding sources is not available yet; sources cannot be stored with the material yet."))
+					.ToolTipText(LOCTEXT("AddSourceHint", "Add a generator that publishes fields for other operations to consume. Sources do not composite into the material, and connections are not authored yet."))
+					.OnClicked_Lambda([this]()
+					{
+						if (AddSourceAnchor.IsValid())
+						{
+							AddSourceAnchor->SetIsOpen(true);
+						}
+						return FReply::Handled();
+					})
 					[
 						SNew(STextBlock).Text(LOCTEXT("AddSourceAction", "Add Source"))
 					]
 				]
 			]
 		];
+	RebuildSourcesList();
+	return Shelf;
+}
+
+void SMixtormat::RebuildSourcesList()
+{
+	if (!SourcesListBox.IsValid())
+	{
+		return;
+	}
+	SourcesListBox->ClearChildren();
+	for (const FMixtormatSourceEntry& Entry : WorkingSources)
+	{
+		const FGuid SourceId = Entry.SourceId;
+		SourcesListBox->AddSlot().AutoHeight()
+		[
+			SNew(SMixtormatSourceRow)
+			.Name_Lambda([this, SourceId]()
+			{
+				const FMixtormatSourceEntry* Source =
+					WorkingSources.FindByPredicate([SourceId](const FMixtormatSourceEntry& Candidate)
+					{ return Candidate.SourceId == SourceId; });
+				return Source ? Source->DisplayName : FText::GetEmpty();
+			})
+			.Kind_Lambda([this, SourceId]()
+			{
+				const FMixtormatSourceEntry* Source =
+					WorkingSources.FindByPredicate([SourceId](const FMixtormatSourceEntry& Candidate)
+					{ return Candidate.SourceId == SourceId; });
+				return Source
+					? StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(
+						static_cast<int64>(Source->Child.Generator.Type))
+					: FText::GetEmpty();
+			})
+			.bEnabled_Lambda([this, SourceId]()
+			{
+				const FMixtormatSourceEntry* Source =
+					WorkingSources.FindByPredicate([SourceId](const FMixtormatSourceEntry& Candidate)
+					{ return Candidate.SourceId == SourceId; });
+				return Source && Source->Child.Generator.bEnabled;
+			})
+			.bSelected_Lambda([this, SourceId]() { return SelectedSourceId == SourceId; })
+			.OnSelected(FSimpleDelegate::CreateSP(this, &SMixtormat::SelectSource, SourceId))
+			.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildSourceContextMenu, SourceId))
+		];
+	}
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
+{
+	// The same six kinds the generator Add menu offers, with the same labels and glyph: a source
+	// is a generator payload in a different place, not a different node.
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(LOCTEXT("AddStrataCarverSource", "Strata Carver"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::StrataCarver); }));
+	Menu.Item(LOCTEXT("AddCracksSource", "Cracks"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Cracks); }));
+	Menu.Item(LOCTEXT("AddRockFormationSource", "Rock Formation"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::RockFormation); }));
+	Menu.Item(LOCTEXT("AddPebblesSource", "Pebbles"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Pebbles); }));
+	Menu.Item(LOCTEXT("AddCliffStrataSource", "Cliff Strata"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::CliffStrata); }));
+	Menu.Item(LOCTEXT("AddNoiseSource", "Noise"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Noise); }));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("DeleteSource", "Delete Source"),
+		MixtormatIcons::Trash(),
+		// The action returns FReply; the menu delegate takes void.
+		FSimpleDelegate::CreateLambda([this, SourceId]() { DeleteSource(SourceId); }));
+	return Menu.Build();
+}
+
+FMixtormatSourceEntry* SMixtormat::GetSelectedSource()
+{
+	return const_cast<FMixtormatSourceEntry*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedSource());
+}
+
+const FMixtormatSourceEntry* SMixtormat::GetSelectedSource() const
+{
+	return SelectedSourceId.IsValid()
+		? WorkingSources.FindByPredicate([SourceId = SelectedSourceId](const FMixtormatSourceEntry& Candidate)
+			{ return Candidate.SourceId == SourceId; })
+		: nullptr;
+}
+
+void SMixtormat::SelectSource(const FGuid SourceId)
+{
+	// One subject at a time, the same exclusivity the group selection keeps.
+	SelectedSourceId = SourceId;
+	SelectedLayerIndex = INDEX_NONE;
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = INDEX_NONE;
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	bHasSelectedLayer = false;
+	SyncSelectedLayerControls();
+}
+
+FReply SMixtormat::AddSource(const EMixtormatGeneratorType Kind)
+{
+	if (!bHasWorkingMaterial)
+	{
+		return FReply::Handled();
+	}
+
+	FMixtormatSourceEntry& Entry = WorkingSources.AddDefaulted_GetRef();
+	// The same defaults a generator child gets from the Add menu, so a source starts configured
+	// exactly like its layer-stack counterpart would.
+	ApplyChildCreationDefaults(Entry.Child, CreationKindForGenerator(Kind));
+	Entry.Child.ScopeOwnerChildId.Invalidate();
+
+	int32 SameKindCount = 0;
+	for (const FMixtormatSourceEntry& Existing : WorkingSources)
+	{
+		if (Existing.Child.Generator.Type == Kind)
+		{
+			++SameKindCount;
+		}
+	}
+	Entry.DisplayName = FText::Format(
+		LOCTEXT("SourceDefaultName", "{0} Source {1}"),
+		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Kind)),
+		FText::AsNumber(SameKindCount));
+
+	SelectSource(Entry.SourceId);
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
+	RebuildSourcesList();
+	if (AddSourceAnchor.IsValid())
+	{
+		AddSourceAnchor->SetIsOpen(false);
+	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::DeleteSource(const FGuid SourceId)
+{
+	const int32 Removed = WorkingSources.RemoveAll([SourceId](const FMixtormatSourceEntry& Candidate)
+	{
+		return Candidate.SourceId == SourceId;
+	});
+	if (Removed == 0)
+	{
+		return FReply::Handled();
+	}
+	if (SelectedSourceId == SourceId)
+	{
+		SelectedSourceId.Invalidate();
+	}
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
+	SyncSelectedLayerControls();
+	RebuildSourcesList();
+	return FReply::Handled();
+}
+
+FReply SMixtormat::RenameSource(const FGuid SourceId, const FText NewName)
+{
+	FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+		[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
+	// A blank name is refused rather than replaced with a default, the same rule as layers.
+	if (!Source || NewName.IsEmptyOrWhitespace() || Source->DisplayName.EqualTo(NewName))
+	{
+		return FReply::Handled();
+	}
+	Source->DisplayName = NewName;
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
+	SyncSelectedLayerControls();
+	return FReply::Handled();
+}
+
+void SMixtormat::HandleSourceNameCommitted(const FText& Text, ETextCommit::Type CommitType)
+{
+	if (const FMixtormatSourceEntry* Source = GetSelectedSource())
+	{
+		RenameSource(Source->SourceId, Text);
+	}
 }
 
 void SMixtormat::ToggleSourcesExpanded()

@@ -184,6 +184,9 @@ private:
 		// Groups are part of the same edit as the layers they hold -- membership lives on the
 		// layer, so restoring one without the other leaves a layer in a group that is not there.
 		TArray<FMixtormatLayerGroup> Groups;
+		// Sources shelf entries ride the same edit: they are document data, and an undo that
+		// restored layers but not sources would resurrect a deleted source or lose a new one.
+		TArray<FMixtormatSourceEntry> Sources;
 		bool bRotateUV90 = false;
 		FMixtormatFinalSettings FinalSettings;
 	};
@@ -637,6 +640,8 @@ private:
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
 	const FMixtormatGenerator* GetSelectedGenerator() const;
+	// NOTE: with a Sources shelf entry selected, this resolves the source's generator payload, so
+	// the generator parameter panels serve sources through the same accessors.
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 
@@ -807,6 +812,9 @@ private:
 	static bool AreLayerStacksEqual(
 		const TArray<FMixtormatLayer>& A,
 		const TArray<FMixtormatLayer>& B);
+	static bool AreSourcesEqual(
+		const TArray<FMixtormatSourceEntry>& A,
+		const TArray<FMixtormatSourceEntry>& B);
 	static bool HaveSameLayerStructure(
 		const TArray<FMixtormatLayer>& A,
 		const TArray<FMixtormatLayer>& B);
@@ -1519,6 +1527,19 @@ private:
 	TSharedRef<SWidget> BuildLayerStackPanel();
 	// The Sources shelf: the collapsible list of reusable outputs below the layer rows.
 	TSharedRef<SWidget> BuildSourcesShelf();
+	// Shelf rows, the Add Source menu and the source actions. Authoring only: sources do not
+	// evaluate or connect yet, so no action here touches the render.
+	void RebuildSourcesList();
+	TSharedRef<SWidget> BuildAddSourcesMenu();
+	TSharedRef<SWidget> BuildSourceContextMenu(const FGuid SourceId);
+	FReply AddSource(const EMixtormatGeneratorType Kind);
+	FReply DeleteSource(const FGuid SourceId);
+	FReply RenameSource(const FGuid SourceId, const FText NewName);
+	// The source panel's name box commit: renames the selected source.
+	void HandleSourceNameCommitted(const FText& Text, ETextCommit::Type CommitType);
+	void SelectSource(const FGuid SourceId);
+	FMixtormatSourceEntry* GetSelectedSource();
+	const FMixtormatSourceEntry* GetSelectedSource() const;
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerThumbnail(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerChildIcon(int32 LayerIndex, int32 ChildIndex);
@@ -1594,6 +1615,9 @@ private:
 	TSharedRef<SWidget> BuildPreviewCameraControls();
 	TSharedRef<SWidget> BuildPreviewOutputControls();
 	TSharedRef<SWidget> BuildInspectorPanel();
+	// The selected Sources shelf entry's card: name, kind, enabled. The kind's own parameter
+	// panel opens beneath it through the shared generator resolver.
+	TSharedRef<SWidget> BuildSourcesPanel();
 	// The one list of child types that own the child-inspector scrollbox. Both master visibility
 	// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel
 	// and still leave the layer inspector showing underneath.
@@ -1685,6 +1709,10 @@ private:
 	TSharedPtr<SVerticalBox> UserLibraryListBox;
 	TSharedPtr<SVerticalBox> LayerListBox;
 	TSharedPtr<SScrollBox> LayerScrollBox;
+	TSharedPtr<SVerticalBox> SourcesListBox;
+	// The Add Source menu's anchor, so its button can open it and the menu can close itself after
+	// a successful add.
+	TSharedPtr<SMenuAnchor> AddSourceAnchor;
 	TSharedPtr<SWrapBox> MaskListBox;
 	TSharedPtr<STextBlock> SelectedSurfaceText;
 	TSharedPtr<STextBlock> SelectedIdentityText;
@@ -1712,6 +1740,9 @@ private:
 	mutable TMap<FString, FText> StructuralConnectionLabelCache;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
+	// The selected Sources shelf entry, by identity like every other selection. Selecting a
+	// source clears the layer and group selection, so the inspector has one subject.
+	FGuid SelectedSourceId;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
 	TWeakPtr<FMixtormatStructuralEndpointPreview> StructuralEndpointPreview;
@@ -1736,6 +1767,10 @@ private:
 	TArray<FMixtormatLayer> SavedLayers;
 	TArray<FMixtormatLayerGroup> WorkingLayerGroups;
 	TArray<FMixtormatLayerGroup> SavedLayerGroups;
+	// The Sources shelf's document mirror, kept apart from the compositing stack on purpose:
+	// nothing that walks WorkingLayers may see a source as a layer.
+	TArray<FMixtormatSourceEntry> WorkingSources;
+	TArray<FMixtormatSourceEntry> SavedSources;
 	TArray<FEditHistoryState> UndoHistory;
 	TArray<FEditHistoryState> RedoHistory;
 	TArray<FNumericResetBinding> NumericResetBindings;

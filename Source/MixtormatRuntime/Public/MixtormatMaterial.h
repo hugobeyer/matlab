@@ -98,6 +98,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layers", meta = (TitleProperty = "DisplayName"))
 	TArray<FMixtormatLayerGroup> LayerGroups;
 
+	// Sources shelf entries: generators that publish fields for other operations to consume.
+	// A list, not a compositing stack -- entries never blend into the material, and their order
+	// here is organisation only. Kept beside the layers rather than inside them so the compositor,
+	// height references and grouping never see a source as a stack member.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Layers", meta = (TitleProperty = "DisplayName"))
+	TArray<FMixtormatSourceEntry> Sources;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UTexture2D> BakedBaseColor;
 

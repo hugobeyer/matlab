@@ -2078,6 +2078,12 @@ const FMixtormatCracks* SMixtormat::GetSelectedCracks() const
 // sections at the same time, which is what a forgotten one looks like.
 bool SMixtormat::HasSelectedGenerator() const
 {
+	// A selected source claims the inspector through the same category test a layer generator
+	// uses, so its parameter panel opens instead of the layer's sections.
+	if (GetSelectedSource())
+	{
+		return true;
+	}
 	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
 	return Child && Child->Type == EMixtormatLayerChildType::Generator;
 }
@@ -2089,6 +2095,14 @@ FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
 
 const FMixtormatGenerator* SMixtormat::GetSelectedGenerator() const
 {
+	// A selected Sources shelf entry resolves its own generator payload, so the generator
+	// parameter panels serve sources through this same accessor. Everything below reads the
+	// layer stack and stays out of the way.
+	if (const FMixtormatSourceEntry* Source = GetSelectedSource())
+	{
+		return Source->Child.Type == EMixtormatLayerChildType::Generator
+			? &Source->Child.Generator : nullptr;
+	}
 	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
 	{
 		return Child->Type == EMixtormatLayerChildType::Generator ? &Child->Generator : nullptr;

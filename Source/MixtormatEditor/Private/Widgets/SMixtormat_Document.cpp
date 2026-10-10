@@ -77,6 +77,8 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers.Reset();
 	WorkingLayerGroups.Reset();
+	WorkingSources.Reset();
+	SelectedSourceId.Invalidate();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -118,6 +120,7 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	WorkingStatusText = TEXT("New material · unsaved");
 	RebuildLayerList();
 	RebuildMaskList();
+	RebuildSourcesList();
 	return FReply::Handled();
 }
 
@@ -145,6 +148,8 @@ FReply SMixtormat::NewWorkingMaterial()
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers.Reset();
 	WorkingLayerGroups.Reset();
+	WorkingSources.Reset();
+	SelectedSourceId.Invalidate();
 	SavedLayers.Reset();
 	SavedLayerGroups.Reset();
 	WorkingMaterialAsset.Reset();
@@ -215,6 +220,8 @@ FReply SMixtormat::OpenWorkingMaterial()
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers = MaterialAsset->Layers;
 	WorkingLayerGroups = MaterialAsset->LayerGroups;
+	WorkingSources = MaterialAsset->Sources;
+	SelectedSourceId.Invalidate();
 	bGlobalUVRotation90 = MaterialAsset->bRotateUV90;
 	WorkingFinalSettings = MaterialAsset->FinalSettings;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
@@ -254,6 +261,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 	WorkingStatusText = FString::Printf(TEXT("Opened %s"), *WorkingMaterialName);
 	RebuildLayerList();
 	RebuildMaskList();
+	RebuildSourcesList();
 	return FReply::Handled();
 }
 
@@ -280,6 +288,7 @@ FReply SMixtormat::SaveWorkingMaterial()
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
 	MaterialAsset->LayerGroups = WorkingLayerGroups;
+	MaterialAsset->Sources = WorkingSources;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->FinalSettings = WorkingFinalSettings;
 	MaterialAsset->MarkPackageDirty();
@@ -293,10 +302,12 @@ FReply SMixtormat::SaveWorkingMaterial()
 	{
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
+		SavedSources = WorkingSources;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		SavedFinalSettings = WorkingFinalSettings;
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
+		CurrentHistoryState.Sources = WorkingSources;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved
@@ -361,6 +372,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
 	MaterialAsset->Layers = WorkingLayers;
 	MaterialAsset->LayerGroups = WorkingLayerGroups;
+	MaterialAsset->Sources = WorkingSources;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
 	MaterialAsset->FinalSettings = WorkingFinalSettings;
 	MaterialAsset->MarkPackageDirty();
@@ -374,10 +386,12 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	{
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
+		SavedSources = WorkingSources;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		SavedFinalSettings = WorkingFinalSettings;
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
+		CurrentHistoryState.Sources = WorkingSources;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	}
 	WorkingStatusText = bSaved

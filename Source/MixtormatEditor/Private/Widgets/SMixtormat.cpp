@@ -202,6 +202,26 @@ bool SMixtormat::AreLayerStacksEqual(
 	for (int32 LayerIndex = 0; LayerIndex < A.Num(); ++LayerIndex)
 	{
 		if (!LayerStruct->CompareScriptStruct(&A[LayerIndex], &B[LayerIndex], 0))
+	{
+		return false;
+	}
+}
+	return true;
+}
+
+bool SMixtormat::AreSourcesEqual(
+	const TArray<FMixtormatSourceEntry>& A,
+	const TArray<FMixtormatSourceEntry>& B)
+{
+	if (A.Num() != B.Num())
+	{
+		return false;
+	}
+
+	const UScriptStruct* SourceStruct = FMixtormatSourceEntry::StaticStruct();
+	for (int32 SourceIndex = 0; SourceIndex < A.Num(); ++SourceIndex)
+	{
+		if (!SourceStruct->CompareScriptStruct(&A[SourceIndex], &B[SourceIndex], 0))
 		{
 			return false;
 		}
@@ -246,6 +266,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
+	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	bHistoryInitialized = true;
@@ -255,6 +276,7 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	{
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
+		SavedSources = WorkingSources;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		SavedFinalSettings = WorkingFinalSettings;
 	}
@@ -273,6 +295,7 @@ void SMixtormat::RecordEditHistory()
 	}
 	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
+		&& AreSourcesEqual(CurrentHistoryState.Sources, WorkingSources)
 		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90
 		&& CurrentHistoryState.FinalSettings == WorkingFinalSettings)
 	{
@@ -297,6 +320,7 @@ void SMixtormat::RecordEditHistory()
 
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
+	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	RedoHistory.Reset();
@@ -308,6 +332,7 @@ bool SMixtormat::IsCurrentStateSaved() const
 	return WorkingMaterialAsset.IsValid()
 		&& AreLayerStacksEqual(WorkingLayers, SavedLayers)
 		&& AreLayerGroupsEqual(WorkingLayerGroups, SavedLayerGroups)
+		&& AreSourcesEqual(WorkingSources, SavedSources)
 		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90
 		&& WorkingFinalSettings == SavedFinalSettings;
 }
@@ -317,6 +342,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	bApplyingHistory = true;
 	WorkingLayers = State.Layers;
 	WorkingLayerGroups = State.Groups;
+	WorkingSources = State.Sources;
 	bGlobalUVRotation90 = State.bRotateUV90;
 	WorkingFinalSettings = State.FinalSettings;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
@@ -343,6 +369,9 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	SelectionAnchorLayerId.Invalidate();
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
+	// The restored state is not the state the source selection was taken against, and a source
+	// the undo removed must not stay selected.
+	SelectedSourceId.Invalidate();
 	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
@@ -351,6 +380,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	RefreshLayeredPreview(false);
 	RebuildLayerList();
 	RebuildMaskList();
+	RebuildSourcesList();
 	bApplyingHistory = false;
 }
 
@@ -358,11 +388,13 @@ void SMixtormat::SynchronizeHistoryAfterCancelledEdit()
 {
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
+	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	if (!UndoHistory.IsEmpty()
 		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(UndoHistory.Last().Groups, WorkingLayerGroups)
+		&& AreSourcesEqual(UndoHistory.Last().Sources, WorkingSources)
 		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90
 		&& UndoHistory.Last().FinalSettings == WorkingFinalSettings)
 	{

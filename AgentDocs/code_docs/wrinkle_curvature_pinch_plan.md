@@ -1,8 +1,10 @@
 # Wrinkle and Curvature Pinch — implementation plan
 
-Status: Phase 0 Sources shelf shell implemented (UI only: foldout below the layer stack, empty
-state, disabled Add Source; no source storage, creation or evaluation). Everything else is
-proposed, not implemented. Source review only; no commands, builds, tests or diagnostics.
+Status: Phase 1 step 1 implemented (document-backed sources: storage, save/load, undo, Add Source
+rows, shelf selection, Inspector card; generator kinds only). Not implemented: evaluation,
+output publication, target connections, Paste as Instance into Sources, Influence Only toggle,
+global floats, shared ramps, Wrinkle/Pinch. Source review only; no commands, builds, tests or
+diagnostics.
 
 ## 1. Scope and user contract
 
