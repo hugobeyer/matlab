@@ -1418,7 +1418,8 @@ if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
 				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior"), false},
 				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior"), true},
 				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Add Carve / Deposit Behavior"), true},
-				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false}};
+				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false},
+				{EMixtormatChildCreation::BehaviorFlowField, LOCTEXT("AddBehaviorFlowToGenerator", "Add Flow Field"), false}};
 			for (const FBehaviorEntry& Entry : Entries)
 			{
 				Menu.Item(Entry.Label,
