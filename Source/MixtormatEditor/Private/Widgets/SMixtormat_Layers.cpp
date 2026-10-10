@@ -3,11 +3,14 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatRecipes.h"
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
 #include "UI/Layers/SMixtormatSourceRow.h"
 #include "UI/Layers/SMixtormatSourcesShelf.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
+#include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
@@ -287,7 +290,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						BuildSourcesShelf()
 					]
 					// Layer, Group, and Fill Layer actions sit immediately beneath Sources.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.SourcesBottomGap, 0.0f, 0.0f)
 					[
 						SNew(SHorizontalBox)
 						.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -435,47 +438,66 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 		.Expanded_Lambda([this]() { return bSourcesExpanded; })
 		.OnToggle(FSimpleDelegate::CreateSP(this, &SMixtormat::ToggleSourcesExpanded))
 		[
+			// Unity-style array card: only rows live inside the card.
+			// The add action is a small attached bottom-right tab, not a layer action.
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("SourcesShelfEmpty", "No sources yet. Add a generator that publishes fields for other operations to consume."))
-				.AutoWrapText(true)
-				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-				// Live, not synced: adding or deleting the last source flips this without a rebuild.
-				.Visibility_Lambda([this]() { return WorkingSources.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SBox)
-				.MaxDesiredHeight(Resolved.LayerLayout.RowHeight * MaxVisibleSourceRows)
+				SNew(SMixtormatSurfaceBox)
+				.Recipe_Lambda([]()
+				{
+					const auto& Theme = FMixtormatThemeStore::GetTheme();
+					Mixtormat::FMixtormatSurfaceRecipe Recipe =
+						Mixtormat::MakeCardBodyRecipe(Theme, 1.0f, 0.0f);
+					Recipe.Radius = Theme.Card.Radius;
+					return Recipe;
+				})
+				.InheritWidgetStyle(true)
+				.Padding(FMargin(Resolved.CardLayout.Padding, Resolved.CardLayout.Gap))
 				[
-					SNew(SScrollBox)
-					.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
-					.ScrollBarThickness(FVector2D(Resolved.ShellLayout.ScrollbarThickness))
-					+ SScrollBox::Slot()[SAssignNew(SourcesListBox, SVerticalBox)]
+					SNew(SBox)
+					.MinDesiredHeight(Resolved.LayerLayout.SourcesEmptyHeight)
+					.MaxDesiredHeight(Resolved.LayerLayout.RowHeight * MaxVisibleSourceRows)
+					[
+						SNew(SScrollBox)
+						.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+						.ScrollBarThickness(FVector2D(Resolved.ShellLayout.ScrollbarThickness))
+						+ SScrollBox::Slot()[SAssignNew(SourcesListBox, SVerticalBox)]
+					]
 				]
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
 			[
-				// The menu opens upward: the shelf sits at the bottom of the pane.
+				// The tab touches the card's lower edge. Reuses the group button
+				// surface/hairline tokens and the existing six-kind menu.
 				SAssignNew(AddSourceAnchor, SMenuAnchor)
 				.Placement(MenuPlacement_AboveAnchor)
 				.OnGetMenuContent(this, &SMixtormat::BuildAddSourcesMenu)
 				[
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT("AddSourceHint", "Add a generator that publishes fields for other operations to consume. Sources do not composite into the material, and connections are not authored yet."))
-					.OnClicked_Lambda([this]()
-					{
-						if (AddSourceAnchor.IsValid())
-						{
-							AddSourceAnchor->SetIsOpen(true);
-						}
-						return FReply::Handled();
-					})
+					SNew(SBox)
+					.WidthOverride(Resolved.LayerLayout.SourcesAddTabWidth)
+					.HeightOverride(Resolved.LayerLayout.SourcesAddTabHeight)
 					[
-						SNew(STextBlock).Text(LOCTEXT("AddSourceAction", "Add Source"))
+						SNew(SMixtormatGroupAction, false)
+						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+						.ToolTipText(LOCTEXT("AddSourceHint", "Add a reusable generator source. Source evaluation and connections are not implemented yet."))
+						.OnClicked_Lambda([this]()
+						{
+							if (AddSourceAnchor.IsValid())
+							{
+								AddSourceAnchor->SetIsOpen(true);
+							}
+							return FReply::Handled();
+						})
+						[
+							SNew(SBox).HAlign(HAlign_Center).VAlign(VAlign_Center)
+							[
+								SNew(SImage)
+								.Image(MixtormatIcons::Add())
+								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+									Mixtormat::EMixtormatColorRole::Text)))
+							]
+						]
 					]
 				]
 			]
@@ -495,6 +517,7 @@ void SMixtormat::RebuildSourcesList()
 	{
 		const FGuid SourceId = Entry.SourceId;
 		SourcesListBox->AddSlot().AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.SourcesRowGap)
 		[
 			SNew(SMixtormatSourceRow)
 			.Name_Lambda([this, SourceId]()
