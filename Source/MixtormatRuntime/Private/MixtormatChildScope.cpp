@@ -131,6 +131,10 @@ namespace MixtormatChildScope
 			if (!bKindCorrect) { return EBehaviorInputIssue::WrongFieldKind; }
 			if (Ref.IsShelfSource())
 			{
+				// The current Influence gather supports ordered layer fields only.
+				// Report shelf Influence as unavailable rather than validating a source
+				// that the renderer cannot bind.
+				if (bInfluence) { return EBehaviorInputIssue::InvalidPublishedSource; }
 				const auto ShelfStatus = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Ref);
 				if (ShelfStatus.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 				{
