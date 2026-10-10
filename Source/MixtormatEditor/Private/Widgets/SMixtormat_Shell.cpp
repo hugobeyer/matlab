@@ -504,16 +504,39 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 
 TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 {
-	// The rail and selected page form the normal left workspace column; only Layers can pop out.
+	// One continuous page surface. The rail overlays the page's leading inset
+	// instead of reserving a separate horizontal column beside it.
+	const Mixtormat::FMixtormatPreviewMetrics& Layout =
+		FMixtormatThemeStore::GetResolved().PreviewLayout;
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth()
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				// Only page content is inset; the parent column background remains
+				// continuous under the nav tabs. Floating Layers still uses its own layout.
+				SNew(SBox)
+				.Padding(FMargin(Layout.LeftRailContentInset, 0.0f, 0.0f, 0.0f))
+				[
+					SAssignNew(LeftSwitcher, SWidgetSwitcher)
+					.WidgetIndex(LeftTabIndex)
+					+ SWidgetSwitcher::Slot()
+					[
+						SAssignNew(LeftPanelDockHost, SBox)
+						[LeftPanelPlacement == ELeftPanelPlacement::Docked
+							? LeftPanel.ToSharedRef() : SNullWidget::NullWidget]
+					]
+					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
+					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
+				]
+			]
+			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 			[
 				SNew(SBox)
+				.WidthOverride(Layout.LeftRailButtonWidth)
 				[
 					SNew(SMixtormatIconRail)
 					.Options({
@@ -532,24 +555,8 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
 				]
 			]
-			+ SHorizontalBox::Slot().FillWidth(1.0f)
-			[
-				SNew(SBox)
-				[
-					SAssignNew(LeftSwitcher, SWidgetSwitcher)
-					.WidgetIndex(LeftTabIndex)
-					+ SWidgetSwitcher::Slot()
-					[
-						SAssignNew(LeftPanelDockHost, SBox)
-						[LeftPanelPlacement == ELeftPanelPlacement::Docked
-							? LeftPanel.ToSharedRef() : SNullWidget::NullWidget]
-					]
-					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
-					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
-				]
-				]
-			];
-	}
+		];
+}
 
 TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 {
