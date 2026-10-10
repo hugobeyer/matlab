@@ -217,6 +217,7 @@ inline EMixtormatBehaviorFieldKind MixtormatBehaviorFieldEffectiveKind(
 UENUM(BlueprintType)
 enum class EMixtormatBehaviorFlowMode : uint8
 {
+	None = 0 UMETA(Hidden),
 	Transport = 1 UMETA(DisplayName = "Flow"),
 	Gravity = 3 UMETA(DisplayName = "Gravity")
 };
