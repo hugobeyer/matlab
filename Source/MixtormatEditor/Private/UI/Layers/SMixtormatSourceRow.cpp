@@ -68,6 +68,14 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, MixtormatTokens::LayerNameInset, 0.0f)
 					[
+						SNew(SMixtormatLayerIcon)
+						.bVisibility(true)
+						.bOn(Enabled)
+						.OnClicked(OnToggleEnabled)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, MixtormatTokens::LayerNameInset, 0.0f)
+					[
 						SNew(SBox)
 						.WidthOverride(GlyphSize)
 						.HeightOverride(GlyphSize)
