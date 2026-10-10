@@ -29,7 +29,7 @@ struct FMixtormatNoiseRenderData
 	float Lacunarity = 2.0f;
 	float OffsetX = 0.0f;
 	float OffsetY = 0.0f;
-	// Bars only: the direction the stripes advance across, in degrees.
+	// Bars / Phasor: the direction the patterns advance across, in degrees.
 	float Direction = 0.0f;
 	float PhasorFrequency = 2.0f;
 	float PhasorAnisotropy = 0.0f;
