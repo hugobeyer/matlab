@@ -1027,7 +1027,10 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			// GetSelectedChildIndex() reports nothing selected for them.
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
-		|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp))
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp
+			// A Behavior is stored through SelectedMaskIndex too. Without it here the selected
+			// address is invalid and every GetSelectedBehavior*() reports nothing selected.
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Behavior))
 	{
 		return SelectedMaskIndex;
 	}
