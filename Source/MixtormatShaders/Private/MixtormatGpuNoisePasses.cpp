@@ -538,13 +538,13 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		// Generate unmasked native Height and publish unmasked Value/Gradient/IDs.
 		// The generator resolve gates Height *after* Noise-specific centring and Bias.
 		// Retain the existing shader resource bindings for compatibility.
-		// Write Height OFF leaves the UAV unbound: the module's native field still exists (the
-		// intrinsic FlowDirection diagnostic and the MODE Height basis read it), but no height
-		// is written and the compositor contributes nothing (see AddNoisePasses).
+		// Always write the native height scratch texture: MainCS requires OutHeight,
+		// and Flow MODE uses this field even if Write Height is disabled.
+		// Write Height gates only the subsequent bundle contribution.
 		P->HasMask = 0u;
 		P->ScopedMask = Value;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
-		P->OutHeight = Height && Noise.bWriteHeight ? GraphBuilder.CreateUAV(Height) : nullptr;
+		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
 		P->OutIds = Ids ? GraphBuilder.CreateUAV(Ids) : nullptr;
 		ClearUnusedGraphResources(Shader, P);
