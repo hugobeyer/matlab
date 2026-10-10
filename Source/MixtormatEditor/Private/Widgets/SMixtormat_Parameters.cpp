@@ -393,7 +393,8 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 		if (!Child || !ChildHasParameterOwner(*Child, Target.Owner)) { return nullptr; }
 		return Child->ParameterBindings.FindByPredicate([&Target](const FMixtormatParameterBinding& Item)
 		{
-			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter;
+			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter
+				&& Item.ValueType == Target.ValueType && Item.TypeName == Target.TypeName;
 		});
 	}
 	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
@@ -410,7 +411,9 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 					[&Target](const FMixtormatParameterBinding& Item)
 					{
 						return Item.DestinationOwner == Target.Owner
-							&& Item.DestinationParameter == Target.Parameter;
+							&& Item.DestinationParameter == Target.Parameter
+							&& Item.ValueType == Target.ValueType
+							&& Item.TypeName == Target.TypeName;
 					});
 			}
 		}
@@ -440,7 +443,8 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 		}
 		return Bindings ? Bindings->FindByPredicate([&Target](const FMixtormatParameterBinding& Item)
 		{
-			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter;
+			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter
+				&& Item.ValueType == Target.ValueType && Item.TypeName == Target.TypeName;
 		}) : nullptr;
 	}
 	return nullptr;
