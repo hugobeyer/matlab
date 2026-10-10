@@ -29,6 +29,20 @@
 
 namespace
 {
+	// Display order is independent of append-only serialized enum ordinal values.
+	constexpr Mixtormat::EMixtormatThemeTab ThemeTabOrder[] = {
+		Mixtormat::EMixtormatThemeTab::Global,
+		Mixtormat::EMixtormatThemeTab::Controls,
+		Mixtormat::EMixtormatThemeTab::Foldouts,
+		Mixtormat::EMixtormatThemeTab::Cards,
+		Mixtormat::EMixtormatThemeTab::Layers,
+		Mixtormat::EMixtormatThemeTab::Sources,
+		Mixtormat::EMixtormatThemeTab::Buttons,
+		Mixtormat::EMixtormatThemeTab::Menus,
+		Mixtormat::EMixtormatThemeTab::Preview,
+		Mixtormat::EMixtormatThemeTab::GalleryShell,
+		Mixtormat::EMixtormatThemeTab::Typography
+	};
 	constexpr float EditorControlWidth = 150.0f;
 	constexpr float ResetGap = 6.0f;
 	constexpr float SectionGap = 8.0f;
@@ -85,10 +99,9 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 	
 	TArray<FText> Tabs;
 	Tabs.Add(LOCTEXT("AllTab", "ALL"));
-	for (uint8 I = 0; I < static_cast<uint8>(Mixtormat::EMixtormatThemeTab::Count); ++I)
+	for (const Mixtormat::EMixtormatThemeTab Tab : ThemeTabOrder)
 	{
-		Tabs.Add(FText::FromString(Mixtormat::FMixtormatThemeSchema::TabLabel(
-			static_cast<Mixtormat::EMixtormatThemeTab>(I))));
+		Tabs.Add(FText::FromString(Mixtormat::FMixtormatThemeSchema::TabLabel(Tab)));
 	}
 
 	const TSharedRef<SWidget> TabStrip =
@@ -99,7 +112,15 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 			SNew(SMixtormatTabStrip)
 			.Options(Tabs)
 			.StretchTabs(false)
-			.ActiveIndex_Lambda([this]() { return SelectedTab == INDEX_NONE ? 0 : SelectedTab + 1; })
+			.ActiveIndex_Lambda([this]()
+			{
+				if (SelectedTab == INDEX_NONE) return 0;
+				for (int32 I = 0; I < UE_ARRAY_COUNT(ThemeTabOrder); ++I)
+				{
+					if (static_cast<int32>(ThemeTabOrder[I]) == SelectedTab) return I + 1;
+				}
+				return 0;
+			})
 			.OnChosen(this, &SMixtormatThemePanel::SelectTab)
 		];
 
@@ -640,7 +661,8 @@ FReply SMixtormatThemePanel::ResetAll()
 
 void SMixtormatThemePanel::SelectTab(const int32 Index)
 {
-	SelectedTab = Index <= 0 ? INDEX_NONE : Index - 1;
+	SelectedTab = Index <= 0 || Index > UE_ARRAY_COUNT(ThemeTabOrder)
+		? INDEX_NONE : static_cast<int32>(ThemeTabOrder[Index - 1]);
 	if (PropertyScroll.IsValid())
 	{
 		PropertyScroll->ScrollToStart();
