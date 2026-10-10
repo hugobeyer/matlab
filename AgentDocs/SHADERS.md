@@ -30,6 +30,10 @@ Convention: `FMixtormat<Feature><Stage>CS` → `Mixtormat<Feature>.usf` →
 `MixtormatGeneratorPlacement.ush`, `MixtormatGeneratorHeightModules.ush`,
 `MixtormatGully.ush`, `MixtormatCellular.ush`, `MixtormatGeneratorWarp.ush`,
 `MixtormatNoiseV2.ush` (Noise-only extensions included after the legacy Noise definitions).
+Noise V2.1 also provides optional multi-octave layers for the historically single-frequency
+families, continuous cell-distance modulation, and an independently authored high-frequency
+jagged domain warp. Opt-in values default to zero so the previous shader outputs are unchanged;
+see `AgentDocs/NOISE_V2.md` for exact contracts and performance risks.
 
 Capacity headers (`MixtormatScalarRampCapacity.ush`,
 `MixtormatColorRampCapacity.ush`) are included by **Runtime C++** too
