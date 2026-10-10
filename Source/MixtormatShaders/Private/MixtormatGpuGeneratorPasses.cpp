@@ -857,6 +857,8 @@ public:
 		SHADER_PARAMETER(float, Strength)
 		SHADER_PARAMETER(uint32, UseMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
@@ -879,6 +881,8 @@ public:
 		SHADER_PARAMETER(float, GradientReach)
 		SHADER_PARAMETER(uint32, UseMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
@@ -1304,9 +1308,10 @@ namespace
 	// that displacement (not wrapped absolute coordinates) to preserve tile winding.
 	FRDGTextureRef ScaleBehaviorUV(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef Source, const float Strength, FRDGTextureRef Mask,
-		const bool bUseMask, const int32 LayerIndex, const int32 ChildIndex)
+		const bool bUseMask, FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex)
 	{
-		if (Strength == 1.0f && !bUseMask) { return Source; }
+		if (Strength == 1.0f && !bUseMask && !bUseInfluence) { return Source; }
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -1316,6 +1321,8 @@ namespace
 		P->Strength = Strength;
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
 		P->SourceCoordinates = Source;
 		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorUvBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1330,6 +1337,7 @@ namespace
 	FRDGTextureRef MakeBehaviorHeightGradientUV(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef SourceHeight, const float Strength, const float Reach,
 		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -1342,6 +1350,8 @@ namespace
 		P->GradientReach = Reach;
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
 		P->SourceHeight = SourceHeight;
 		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorHeightGradientCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
