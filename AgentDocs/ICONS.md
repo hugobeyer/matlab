@@ -145,6 +145,20 @@ These previously suggested icons are also registered in source:
 - `VariableLink` · `variable-link.svg` — a parameter driven by a global variable (globals plan)
 - `VariableUnlink` · `variable-unlink.svg` — break the variable link
 
+## Flow and warp SVGs (2026-10-10)
+
+Six supplied 64px SVG assets are registered without altering their artwork.
+Names distinguish operations that **produce/steer flow** from operations that **warp/push**:
+
+- `FlowDirection` — `flow-direction.svg`: Generator Flow / Flow Carve
+- `FlowGravity` — `flow-gravity.svg`: Gravity Flow
+- `WarpDeform` — `warp-deform.svg`: Shape Deform
+- `WarpNoise` — `warp-noise.svg`: reserved for explicit noise-driven warp (not the Noise generator)
+- `WarpPush` — `warp-push.svg`: Height Push
+- `WarpStructural` — `warp-structural.svg`: Structural Warp / Flow Warp
+
+Existing generic generator, effect, and noise icons remain available.
+
 ## How to add one
 
 - Art: 64 px white-on-transparent PNG → `Resources/Icons/<kebab>.png`; match the
