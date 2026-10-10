@@ -17,7 +17,7 @@ Scope: noise-specific shaders only; no Behavior V2, serialized runtime, common c
 | Stage | Result | Files | Compatibility / limits |
 | --- | --- | --- | --- |
 | P0 audit | Source-traced all nine algorithms, hashes, period rounding, derivative meanings, producer paths, and texture allocations | No file required | Static inspection only; no visual/runtime proof of seam or quality |
-| P0 Worley | Track the second-nearest feature delta and publish F2's direction / F2-F1's vector difference instead of F1's direction for all three modes | `MixtormatNoise.ush`, `MixtormatNoise.usf` | **Intentional correction** to published Gradient for saved F2 / F2-F1 projects; Value, Height, IDs, seeds and controls unchanged |
+| P0 Worley | Track the second-nearest feature delta; publish family-correct F2 / F2-F1 gradients and zero the derivative on saturated Value plateaus | `MixtormatNoise.ush`, `MixtormatNoise.usf` | **Intentional correction** to published Gradient for saved F2 / F2-F1 projects; Value, Height, IDs, seeds and controls unchanged |
 | P1 Phasor shader core | Seeded, compact-support periodic Gabor/phasor impulses, local orientation/phase variation, 1–4 overlapping layers, frequency and anisotropy, analytic UV-space derivative | `MixtormatNoiseV2.ush`, included by `MixtormatNoise.ush` | Opt-in helper only; not an authorable NoiseType until shared runtime/UI coordination |
 | P2 Curl shader core | Multi-octave periodic curl of the shared analytic gradient noise with deterministic seed, constant direction bias, and scalar strength | `MixtormatNoiseV2.ush` | Opt-in Vector2 helper, **not** a Flow/UV publication or a solver |
 | P3 Worley shader core | Opt-in Euclidean / Manhattan / Chebyshev distances, jitter 0–1, nearest/second-nearest gradients, wrapped stable cell ID | `MixtormatNoiseV2.ush` | Existing full-jitter Euclidean path is directly delegated to legacy Worley |
@@ -28,7 +28,7 @@ Scope: noise-specific shaders only; no Behavior V2, serialized runtime, common c
 
 1. **Confirmed and fixed:** F2 and F2-F1 returned the F1 gradient, despite their different distance functions.
 2. **Existing semantic compromise:** Worley publishes cell-width directional derivatives, while lattice families publish tile-UV analytic derivatives and Bars publishes a unit phase direction. The output type is generic `Vector2`; downstream consumers must not infer Flow, UV or a common derivative scale.
-3. **Existing clamp caveat:** Worley Value clamps distance to 0..1, while its published Gradient is the derivative of the unclamped distance. Avoid representing it as the derivative of saturated Value unless a new explicit contract is agreed.
+3. **Worley clamp:** Values outside 0..1 are constant after saturation, and P0 now publishes a zero gradient there. Exactly at distance 0 or 1 and at closest-feature ties, the analytic derivative is undefined; the shader picks a stable convention.
 4. **Period and placement:** Native lattice evaluation is periodic in both axes and uses UV, not texel coordinates. Arbitrary generator placement (especially fractional scale or rotation) can alter where the boundaries of a *placed* tile lie; it is not proof that transformed output always matches at unit-square edges.
 5. **Phasor cost:** 9 cell samples per component, up to four components, with transcendentals. Avoid forcing this cost onto existing Bars. Profile GPU instruction count when authorized.
 6. **Domain distortion gradient:** Warping sample positions requires a Jacobian when publishing a transformed analytic Gradient. No such publication is wired in this branch; do not reuse an unwarped derivative as a warped derivative.
@@ -40,7 +40,7 @@ Scope: noise-specific shaders only; no Behavior V2, serialized runtime, common c
 | --- | --- | --- |
 | Legacy nine noise modes | Generator, inline mask, shelf typed Value | Preserved, same authored controls |
 | Legacy Worley Value/Height/IDs | F1, F2, F2-F1 | Unchanged |
-| Legacy Worley Gradient | Incorrect F1 reuse in F2/F2-F1 | Correct second-feature and difference direction |
+| Legacy Worley Gradient | Incorrect F1 reuse in F2/F2-F1; nonzero plateau gradients | Correct F2/F2-F1 direction and zero plateau gradients |
 | Generalized phasor | Only existing Bars cosine wave | Opt-in periodic impulse phasor helper, not yet UI-exposed |
 | Curl | Shared two-octave curl in Gully | Reused foundation; opt-in multi-octave curl field |
 | Worley metrics/jitter | Euclidean, fixed jitter=1 | Opt-in metrics + jitter helper |
