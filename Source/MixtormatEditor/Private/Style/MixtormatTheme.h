@@ -964,6 +964,12 @@ namespace Mixtormat
 		FLinearColor Highlight = FLinearColor(0.04f, 0.32f, 0.58f, 1.0f);
 		FLinearColor SelectionColor = FLinearColor(0.04f, 0.32f, 0.58f, 1.0f);
 		float ShadeOpacity = 0.18f;
+		float ShadeBottomOpacity = 0.38f;
+		float PaddingX = 5.0f;
+		float PaddingY = 1.0f;
+		float MinHeight = 18.0f;
+		float MinWidth = 24.0f;
+		float FontSize = 10.0f;
 		float BorderOpacity = 0.55f;
 		float BorderThickness = 1.0f;
 		float Radius = 2.0f;
