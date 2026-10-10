@@ -293,7 +293,7 @@ void SMixtormat::RebuildUserLibraryList()
 	if (!UserLibraryListBox.IsValid()) { return; }
 	UserLibraryListBox->ClearChildren();
 	const auto& Resolved = FMixtormatThemeStore::GetResolved();
-	const auto& Library = Resolved.Shell;
+	const auto& Library = Resolved.ShellLayout;
 	const auto& Palette = Resolved.Palette;
 	const auto HeadingStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle),
@@ -418,7 +418,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 			}
 		});
 	SearchEdit->SetText(FText::FromString(UserLibrarySearchText));
-	const auto& Layout = FMixtormatThemeStore::GetResolved().Shell;
+	const auto& Layout = FMixtormatThemeStore::GetResolved().ShellLayout;
 	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)
 	[
 		SNew(SHorizontalBox)
