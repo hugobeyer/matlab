@@ -57,6 +57,9 @@ namespace Mixtormat
 			case EMixtormatStyleTarget::ControlToggle:
 				return Is(Type, TEXT("SMixtormatToggle"));
 
+			case EMixtormatStyleTarget::TextField:
+				return Is(Type, TEXT("SMixtormatTextFieldGradient"));
+
 			case EMixtormatStyleTarget::ControlLayout:
 				return Is(Type, TEXT("SMixtormatSlider"))
 					|| Is(Type, TEXT("SMixtormatToggle"))
@@ -191,6 +194,7 @@ namespace Mixtormat
 		case EMixtormatStyleTarget::ControlWell: return NSLOCTEXT("MixtormatStyleLocator", "ControlWell", "Control wells");
 		case EMixtormatStyleTarget::ControlFill: return NSLOCTEXT("MixtormatStyleLocator", "ControlFill", "Slider / toggle fills");
 		case EMixtormatStyleTarget::ControlToggle: return NSLOCTEXT("MixtormatStyleLocator", "ControlToggle", "Toggles");
+		case EMixtormatStyleTarget::TextField: return NSLOCTEXT("MixtormatStyleLocator", "TextField", "Text fields");
 		case EMixtormatStyleTarget::ControlLayout: return NSLOCTEXT("MixtormatStyleLocator", "ControlLayout", "Inspector controls");
 		case EMixtormatStyleTarget::Foldout: return NSLOCTEXT("MixtormatStyleLocator", "Foldout", "Foldout");
 		case EMixtormatStyleTarget::SourcesShelf: return NSLOCTEXT("MixtormatStyleLocator", "SourcesShelf", "Sources shelf");
