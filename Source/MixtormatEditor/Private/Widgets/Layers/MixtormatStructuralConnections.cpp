@@ -307,7 +307,7 @@ FMixtormatStructuralRelationshipPresentation SMixtormat::DescribeStructuralConne
 }
 
 TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
-	const EMixtormatLayerChildType Type, FText& OutToolTip) const
+	const EMixtormatLayerChildType Type, FText& OutToolTip)
 {
 	const auto Presentation = DescribeStructuralConnection(Row, Type);
 	OutToolTip = Presentation.ToolTip;
@@ -322,6 +322,12 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 	// The row's first icon conveys the operation type; the inline glyph alone
 	// conveys direction. Never encode a second arrow into the operation label.
 	const FText Prefix = Presentation.Operation;
+	const FMixtormatLayerChild* Module = ResolveChildAt(Row.Address);
+	const bool bSourceEditable = bIncoming && Module && !Module->IsInstance()
+		&& !Module->ScopeOwnerChildId.IsValid();
+	const FText CompactSource = Row.Status.Source.Issue == EIssue::Unset
+		? LOCTEXT("StructuralRowSourceAdd", "Source +")
+		: Presentation.Source;
 	const float ArrowSize = FMath::Min(Resolved.ControlLayout.LayerChildIconSize,
 		Resolved.LayerLayout.ChildRowHeight * 0.65f);
 	const FText Suffix = bIncoming && !Row.ResolvedSource.OutputName.IsNone() ? Presentation.Output : FText::GetEmpty();
@@ -334,16 +340,31 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 			.Padding(0.0f, 0.0f, Resolved.LayerConnections.TextGap, 0.0f)
 		[
 			SNew(SBox).WidthOverride(ArrowSize).HeightOverride(ArrowSize)
+			.Visibility(bIncoming ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
 			[
-				SNew(SImage)
-				.Image(bIncoming ? MixtormatIcons::ChevronLeft() : MixtormatIcons::ChevronRight())
+				SNew(SImage).Image(MixtormatIcons::ChevronRight())
 				.ColorAndOpacity(SourceStyle.ColorAndOpacity)
 			]
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 		[
-			SNew(STextBlock).Font(NameStyle.Font).ColorAndOpacity(NameStyle.ColorAndOpacity)
-				.Text(bIncoming ? Presentation.Source : Presentation.Target).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+			bIncoming
+				? StaticCastSharedRef<SWidget>(
+					SNew(SBox).MaxDesiredWidth(MixtormatTokens::StructuralLinkChipMaxWidth)
+					[
+						SNew(SMixtormatBadge)
+						.bAutoWidth(true)
+						.Text(CompactSource)
+						.ToolTip(Presentation.Source)
+						.IsEnabled(bSourceEditable)
+						.OnGetMenuContent_Lambda([this, Address = Row.Address]()
+						{
+							return BuildStructuralConnectionMenu(Address, ERole::Source);
+						})
+					])
+				: StaticCastSharedRef<SWidget>(
+					SNew(STextBlock).Font(NameStyle.Font).ColorAndOpacity(NameStyle.ColorAndOpacity)
+					.Text(Presentation.Target).OverflowPolicy(ETextOverflowPolicy::Ellipsis))
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(Resolved.LayerConnections.TextGap, 0.0f, 0.0f, 0.0f)
 		[
