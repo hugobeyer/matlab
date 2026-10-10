@@ -2,11 +2,12 @@
 
 #include "UI/Controls/SMixtormatIconRail.h"
 #include "Style/MixtormatCompositing.h"
+#include "Style/MixtormatRecipes.h"
+#include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
 #include "UI/Menus/SMixtormatHelp.h"
 
-#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Input/Reply.h"
@@ -90,60 +91,72 @@ namespace
             const FVector2f BodyOffset(SpineWidth - 1.0f, Shoulder);
             const FVector2f BodySize(FMath::Max(1.0f, Size.X - BodyOffset.X), BodyHeight);
 
-            // Match the layer/group creation buttons: shared button recipe over the
-            // dark panel ground. Do not tint the tab with an independent white plate.
-            FLinearColor Surface = Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
-            Surface.A = 1.0f;
-            FLinearColor Accent = Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
-            Accent.A = FMath::Clamp(bActive ? Theme.Button.SelectedTop
-                : bHover ? Theme.Button.HoverTop : Theme.Button.RestTop, 0.0f, 1.0f);
-            FLinearColor Fill = MixtormatCompositing::ApplyBlend(Theme.Button.BodyBlend, Surface, Accent);
-            FLinearColor Shade = Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
-            Shade.A = FMath::Clamp(Theme.Well.ShadeBottom, 0.0f, 1.0f);
-            Fill = MixtormatCompositing::ApplyBlend(Theme.Well.ShadeBlend, Fill, Shade);
-            Fill.A = 1.0f;
-
-            FLinearColor Border = Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
-            Border.A *= Layout.LeftRailBorderOpacity
-                * (bActive ? Theme.Button.HairlineSelectedOpacity
-                    : bHover ? Theme.Button.HairlineHoverOpacity : Theme.Button.HairlineOpacity);
-            const FLinearColor BlendedBorder = MixtormatCompositing::ApplyBlend(
-                Theme.Button.HairlineBlend, Fill, Border);
-            Border.R = BlendedBorder.R;
-            Border.G = BlendedBorder.G;
-            Border.B = BlendedBorder.B;
-
-            // The narrow neck joins the tab to the spine. Only the protruding shoulder
-            // receives a rounded contour, so the tab is not another floating rounded card.
+            // Use the exact shared group-button recipe. A local rounded Slate brush
+            // cannot survive the deferred Slate paint pass, and ad-hoc compositing
+            // cannot reproduce the button's vertical gradient and hairline blend.
+            Mixtormat::FMixtormatSurfaceRecipe FaceRecipe = Mixtormat::MakeButtonRecipe(
+                Theme, bActive ? Mixtormat::EMixtormatButtonState::Selected
+                    : bHover ? Mixtormat::EMixtormatButtonState::Hover
+                    : Mixtormat::EMixtormatButtonState::Rest, false);
             const float Radius = FMath::Clamp(Layout.LeftRailCornerRadius,
                 0.0f, FMath::Min(BodySize.X, BodySize.Y) * 0.5f);
-            const FSlateRoundedBoxBrush Face(Fill, FVector4(Radius, Radius, Radius, Radius),
-                Border, Layout.LeftRailBorderThickness);
+            FaceRecipe.Radius = Radius;
+            Mixtormat::FMixtormatSurfaceSamples FaceSamples;
+            Mixtormat::CompositeSurface(FaceRecipe, Palette,
+                Mixtormat::FMixtormatStateModifier(), FaceSamples);
+            const FLinearColor FaceTop = FaceSamples.Colors.IsEmpty()
+                ? Palette.Get(Mixtormat::EMixtormatColorRole::Ground)
+                : FaceSamples.Colors[0];
 
             if (Layout.LeftRailShadowOpacity > 0.0f && Layout.LeftRailShadowOffset > 0.0f)
             {
-                const FSlateRoundedBoxBrush Shadow(FLinearColor::Black,
-                    Radius + Layout.LeftRailShadowRadius);
-                FSlateDrawElement::MakeBox(Elements, LayerId,
+                Mixtormat::FMixtormatSurfaceRecipe ShadowRecipe = FaceRecipe;
+                ShadowRecipe.Radius = Radius + Layout.LeftRailShadowRadius;
+                Mixtormat::FMixtormatSurfaceDrawStyle ShadowStyle;
+                ShadowStyle.Tint = FLinearColor(0.0f, 0.0f, 0.0f,
+                    Layout.LeftRailShadowOpacity * WidgetStyle.GetColorAndOpacityTint().A);
+                Mixtormat::FMixtormatSurfacePainter::PaintBody(Elements, LayerId,
                     Geometry.ToPaintGeometry(BodySize,
                         FSlateLayoutTransform(BodyOffset + FVector2f(
                             Layout.LeftRailShadowOffset, Layout.LeftRailShadowOffset))),
-                    &Shadow, ESlateDrawEffect::None,
-                    FLinearColor(0.0f, 0.0f, 0.0f,
-                        Layout.LeftRailShadowOpacity * WidgetStyle.GetColorAndOpacityTint().A));
+                    ShadowRecipe, FaceSamples, ShadowStyle);
             }
 
-            FSlateDrawElement::MakeBox(Elements, LayerId + 1,
+            Mixtormat::FMixtormatSurfaceDrawStyle FaceStyle;
+            FaceStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
+            Mixtormat::FMixtormatSurfacePainter::PaintBody(Elements, LayerId + 1,
                 Geometry.ToPaintGeometry(BodySize, FSlateLayoutTransform(BodyOffset)),
-                &Face, ESlateDrawEffect::None, WidgetStyle.GetColorAndOpacityTint());
+                FaceRecipe, FaceSamples, FaceStyle);
 
-            // Fill the attachment neck over the body's left edge: no separated tiles
-            // and no duplicate hairline where each tab meets the common rail.
+            // Fill the neck against the common spine. It uses the same resolved
+            // recipe colour, never a separate white/native plate.
             const FSlateBrush* White = FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"));
             FSlateDrawElement::MakeBox(Elements, LayerId + 2,
                 Geometry.ToPaintGeometry(
                     FVector2f(SpineWidth + 1.0f, Size.Y), FSlateLayoutTransform()),
-                White, ESlateDrawEffect::None, Fill * WidgetStyle.GetColorAndOpacityTint());
+                White, ESlateDrawEffect::None, FaceTop * WidgetStyle.GetColorAndOpacityTint());
+
+            // Carry the authored group-button top hairline over the protruding face.
+            if (!FaceRecipe.Borders.IsEmpty())
+            {
+                const auto& Hairline = FaceRecipe.Borders[0];
+                FLinearColor Source = Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
+                Source.A = Hairline.Source.Opacity
+                    * Mixtormat::EvaluateRamp(Hairline.OpacityRamp, 0.0f)
+                    * Layout.LeftRailBorderOpacity;
+                const FLinearColor Edge = MixtormatCompositing::ApplyBlend(
+                    Hairline.Blend, FaceTop, Source);
+                const float BorderWidth = FMath::Clamp(Layout.LeftRailBorderThickness
+                    * Hairline.Width, 0.0f, BodyHeight);
+                if (BorderWidth > 0.0f && BodySize.X > Radius * 2.0f)
+                {
+                    FSlateDrawElement::MakeBox(Elements, LayerId + 3,
+                        Geometry.ToPaintGeometry(
+                            FVector2f(BodySize.X - Radius * 2.0f, BorderWidth),
+                            FSlateLayoutTransform(BodyOffset + FVector2f(Radius, 0.0f))),
+                        White, ESlateDrawEffect::None, Edge * WidgetStyle.GetColorAndOpacityTint());
+                }
+            }
 
             const auto& IconRole = Resolved.Icons.Roles[
                 static_cast<uint8>(Mixtormat::EMixtormatIconRole::NavigationRail)];
@@ -160,7 +173,7 @@ namespace
 
             if (Icon)
             {
-                FSlateDrawElement::MakeBox(Elements, LayerId + 3,
+                FSlateDrawElement::MakeBox(Elements, LayerId + 4,
                     Geometry.ToPaintGeometry(FVector2f(Glyph, Glyph),
                         FSlateLayoutTransform(FVector2f((Size.X - Glyph) * 0.5f, GlyphTop))),
                     Icon, ESlateDrawEffect::None, Foreground);
@@ -180,13 +193,13 @@ namespace
                 const FVector2D TextCenter(
                     Size.X * 0.5f, TextStart + FMath::Max(0.0f, Size.Y - TextStart) * 0.5f);
                 const FVector2D Origin = TextCenter - TextSize * 0.5f;
-                FSlateDrawElement::MakeText(Elements, LayerId + 4,
+                FSlateDrawElement::MakeText(Elements, LayerId + 5,
                     Geometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(Origin),
                         FSlateRenderTransform(FQuat2D(-HALF_PI)), FVector2D(0.5f, 0.5f)),
                     Label, Font, ESlateDrawEffect::None, Foreground);
             }
 
-            return LayerId + 4;
+            return LayerId + 5;
         }
 
     private:
