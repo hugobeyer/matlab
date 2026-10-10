@@ -854,6 +854,16 @@ namespace Mixtormat
 		float TopBarActionInset = 0.0f;
 		float StatusBarHeight = 24.0f;
 		float PanelPadding = 7.0f;
+		// Left workspace pages: reuse Card, Foldout, Well and typography recipes.
+		float GlobalPagePadding = 7.0f;
+		float GlobalCardGap = 6.0f;
+		float LibraryPagePadding = 7.0f;
+		float LibrarySearchBottomGap = 7.0f;
+		float LibrarySearchInnerPadding = 5.0f;
+		float LibraryItemGap = 4.0f;
+		float LibraryThumbnailSize = 52.0f;
+		float LibraryLabelOpacity = 0.82f;
+		float LibraryHeadingOpacity = 0.65f;
 		float ScrollbarThickness = 4.0f;
 		float ScrollbarThumbOpacity = 0.22f;
 		float ScrollbarHoverOpacity = 0.42f;
