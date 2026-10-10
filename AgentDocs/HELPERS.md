@@ -20,12 +20,20 @@ plus the TODO lists for mapping and architecture work on top of it.
   F2/F12 and the context menu only.
 - Text lives in `LOCTEXT`/`NSLOCTEXT`, namespace `SMixtormat` for editor code.
 
+## Mandatory tooltip rule
+
+- Every Mixtormat tooltip must be themed. Prefer `SMixtormatHelp` around controls.
+- For input widgets that cannot be wrapped without altering drag/focus behavior, use `SMixtormatHelp::MakeStyledToolTip` with `SetToolTip`.
+- No raw `.ToolTipText(...)`, `SetToolTipText(...)` or unstyled `SToolTip` in new code. Existing use at call sites of `SMixtormatGroupAction` is routed through its styled wrapper, but should not be expanded.
+- The shared help surface owns typography, palette, compositing, padding and width. Never duplicate these recipes at individual call sites.
+- Preserve mouse capture, focus, modifiers, hover/click semantics and localized help strings.
+
 ## Mechanisms
 
 | Mechanism | Where | Notes |
 |---|---|---|
 | `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Styled hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (0.35 seconds / 350 ms). Used by shell actions, sliders, the icon rail, preview quick controls, and overlay resize/fit controls. It clears native tooltips in its child subtree. |
-| Plain tooltips | `.ToolTipText(...)` on widgets | Still used by existing controls outside the migrated surfaces; migrate only when those surfaces are intentionally touched. |
+| Legacy native tooltips | `.ToolTipText(...)` / `SetToolTipText(...)` | Forbidden for new Mixtormat code. Migrate existing sites to styled help; do not repeat the native pattern. |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
 | Status bar | `WorkingStatusText` | "Unsaved changes" / "All changes saved" / `Preview: <mode>`. Supplements visual/control feedback; not updated by every viewport hotkey. |
 | Mode label | `GetPreviewModeLabel()` | `"{0}  (Shift+V for Material)"` on the preview. |
