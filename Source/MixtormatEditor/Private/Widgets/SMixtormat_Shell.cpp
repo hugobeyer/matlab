@@ -655,7 +655,7 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 		{
 			Panel->AddSlot().AutoHeight()
 			[
-				SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().Shell.GlobalCardGap)
+				SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.GlobalCardGap)
 			];
 		}
 		return AddCard(Panel, Title);
@@ -707,7 +707,7 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 	return SNew(SScrollBox)
 		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 		+ SScrollBox::Slot()
-		.Padding(FMargin(FMixtormatThemeStore::GetResolved().Shell.GlobalPagePadding, 0.0f))
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.GlobalPagePadding, 0.0f))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
