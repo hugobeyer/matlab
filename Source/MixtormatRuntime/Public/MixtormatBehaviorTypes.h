@@ -76,6 +76,11 @@ struct MIXTORMATRUNTIME_API FMixtormatBehavior
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "-4.0", UIMax = "4.0"))
 	float Strength = 1.0f;
 
+	// UV reach for Warp driven by the owning module's current native height
+	// gradient. Independent of texture resolution; zero disables displacement.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "0.0", UIMax = "0.25"))
+	float GradientReach = 0.02f;
+
 	// Vector transport / UV source for Warp and Deform.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Fields")
 	FMixtormatBehaviorFieldInput Direction;
