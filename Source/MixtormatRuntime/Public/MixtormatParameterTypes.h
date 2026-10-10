@@ -43,7 +43,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	HeightPush UMETA(DisplayName = "Height Push"),
 		StructuralWarp UMETA(DisplayName = "Structural Warp"),
 	// Appended: the inline Noise payload nested inside an ordinary Mask child.
-	MaskNoise = 25 UMETA(DisplayName = "Mask Noise")
+	MaskNoise = 25 UMETA(DisplayName = "Mask Noise"),
+	StructuralWarpFlow = 26 UMETA(DisplayName = "Structural Warp Flow")
 };
 
 UENUM(BlueprintType)
