@@ -434,6 +434,8 @@ public:
 		SHADER_PARAMETER(uint32, NormalizeMode)
 		SHADER_PARAMETER(float, OutputScale)
 		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(uint32, HasHeightGate)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightGate)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
@@ -490,6 +492,8 @@ FRDGTextureRef AddNormalizeFieldPasses(
 		P->OutHigh = OutHigh;
 		P->NormalizeMode = 0u;
 		P->OutputScale = 1.0f;
+		P->HasHeightGate = 0u;
+		P->HeightGate = Field;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Normalized);
@@ -507,6 +511,7 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	const float OutputScale,
 	const float HeightBias,
 	const bool bCenterNoise,
+	FRDGTextureRef HeightGate,
 	const TCHAR* Name)
 {
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
@@ -542,6 +547,8 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		P->NormalizeMode = bNormalize ? (bCenterNoise ? 3u : 1u) : 2u;
 		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
 		P->HeightBias = FMath::IsFinite(HeightBias) ? HeightBias : 0.0f;
+		P->HasHeightGate = HeightGate ? 1u : 0u;
+		P->HeightGate = HeightGate ? HeightGate : Field;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Signed);
@@ -3450,13 +3457,20 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// V2 transforms the native bundle before the same normalize/scale step
 		// all generator families already use. Legacy flow tools retain their order.
 		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
-		// Noise uses centred normalization for Height Blend; all other generators retain
-		// zero-preserving max-absolute normalization. Both apply after post Behaviors.
+		// Normalize the unmasked Noise native height, then apply its scoped gate to the
+		// resolved signed result. Gating before centring turns masked zeros into negative height.
+		// Other generators keep the historical zero-preserving max-abs contract.
+		const FRDGTextureRef NoiseHeightGate =
+			Child.Generator.Type == EMixtormatGeneratorType::Noise
+			&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+				: nullptr;
 		Module.Height = AddSignedGeneratorHeightPasses(
 			Ctx.GraphBuilder, Module.Height, Size,
 			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
 			Child.Generator.HeightBias,
 			Child.Generator.Type == EMixtormatGeneratorType::Noise,
+			NoiseHeightGate,
 			TEXT("Mixtormat.Generator.SignedHeight"));
 
 		// Strata regenerates in its structural frame. Every other supported target instead owns

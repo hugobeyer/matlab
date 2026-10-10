@@ -25,6 +25,8 @@ float OutHigh;
 uint NormalizeMode;
 float OutputScale;
 float HeightBias;
+uint HasHeightGate;
+Texture2D<float> HeightGate;
 Texture2D<float> SourceField;
 RWStructuredBuffer<uint> OutRange;
 StructuredBuffer<uint> Range;
@@ -90,12 +92,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float High = OrderedToFloat(Range[1]);
 	const float Span = High - Low;
 	const float Value = SourceField.Load(int3(Pixel, 0));
+	float ResolvedHeight = 0.0f;
 	if (NormalizeMode == 1u)
 	{
 		// Zero-preserving max-absolute normalization: the largest excursion maps to 1 and zero
 		// stays exactly zero, so empty/background pixels acquire no height offset.
 		const float MaxAbs = max(abs(Low), abs(High));
-		OutField[Pixel] = (MaxAbs > 1e-12f
+		ResolvedHeight = (MaxAbs > 1e-12f
 			? clamp(Value / MaxAbs, -1.0f, 1.0f)
 			: 0.0f) * OutputScale;
 	}
@@ -104,7 +107,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Normalize off: the raw signed field times Scale, with no clamp at all. The generator
 		// contract is enforced by the normalization path; this path is the escape hatch for a
 		// field whose own amplitude is already meaningful. No reduction is needed for it.
-		OutField[Pixel] = Value * OutputScale;
+		ResolvedHeight = Value * OutputScale;
 	}
 	else if (NormalizeMode == 3u)
 	{
@@ -113,13 +116,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// each other. Max-absolute (mode 1) does NOT do this -- it only divides by the larger
 		// excursion, so a field like Gradient ends up asymmetric at [-1, +0.83] and a module with a
 		// pedestal (Ridged at [-0.32, +1]) wins every Min/Max against it.
-		const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
-		OutField[Pixel] = (lerp(-1.0f, 1.0f, Unit) + HeightBias) * OutputScale;
+		const float Centered = Span > 1e-12f
+			? lerp(-1.0f, 1.0f, (Value - Low) / Span) : 0.0f;
+		ResolvedHeight = (Centered + HeightBias) * OutputScale;
 	}
 	else
 	{
 		const float Unit = Span > 1e-12f ? (Value - Low) / Span : 0.0f;
-		OutField[Pixel] = lerp(OutLow, OutHigh, Unit);
+		ResolvedHeight = lerp(OutLow, OutHigh, Unit);
 	}
+	// Preserve a true zero outside scoped Noise masks regardless of normalization or Bias.
+	const float Gate = HasHeightGate != 0u ? HeightGate.Load(int3(Pixel, 0)) : 1.0f;
+	OutField[Pixel] = ResolvedHeight * Gate;
 }
 #endif

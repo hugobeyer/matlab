@@ -387,16 +387,11 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		const float WarpAngle = FMath::DegreesToRadians(Noise.DistortionDirection);
 		P->DistortionDirectionUV = FVector2f(FMath::Sin(WarpAngle), FMath::Cos(WarpAngle));
 		P->ProducesIds = bProducesIds ? 1u : 0u;
-		// Scoped mask. Height-only by design: Value and Gradient stay ungated so Noise keeps
-		// working as a mask source and Height Push/Warp consumers are unaffected. No mask means
-		// HasMask 0 and the shader substitutes 1 -- "no mask" and "a white mask" must not collapse
-		// to the same picture.
-		const bool bHasMask = LayerCtx && Layer && !bValueOnly
-			&& HasScopedGeneratorMasks(*Layer, SourceChildIndex);
-		P->HasMask = bHasMask ? 1u : 0u;
-		P->ScopedMask = bHasMask
-			? AddScopedFeatureMask(Ctx, *LayerCtx, *Layer, SourceChildIndex, true)
-			: Value;
+		// Generate unmasked native Height and publish unmasked Value/Gradient/IDs.
+		// The generator resolve gates Height *after* Noise-specific centring and Bias.
+		// Retain the existing shader resource bindings for compatibility.
+		P->HasMask = 0u;
+		P->ScopedMask = Value;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
