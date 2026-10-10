@@ -1520,8 +1520,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 				[this, LayerIndex, ChildIndex, SelectedGeneratorMaskPath]()
 			{
 				AssignScopedMaskToChild(LayerIndex, ChildIndex, SelectedGeneratorMaskPath);
-			}))
-			;
+			}));
 			Menu.Separator();
 		}
 	}
