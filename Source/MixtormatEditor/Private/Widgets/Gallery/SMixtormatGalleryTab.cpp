@@ -15,7 +15,6 @@
 void SMixtormatGalleryTab::Construct(const FArguments& InArgs)
 {
 	OnActivated = InArgs._OnActivated;
-	SetToolTipText(LOCTEXT("RestoreGalleryHint", "Open the material and mask gallery (G)."));
 
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 	const auto& Glyph = Resolved.Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)];
