@@ -566,6 +566,7 @@ void FMixtormatStyle::Refresh()
 		TextColor.A *= T.LabelOpacity;
 		Edit.SetForegroundColor(FSlateColor(TextColor));
 		Edit.SetFocusedForegroundColor(FSlateColor(TextColor));
+		Edit.SetReadOnlyForegroundColor(FSlateColor(TextColor));
 		FLinearColor SelectionColor = T.SelectionColor;
 		SelectionColor.A *= T.SelectionOpacity;
 		Edit.TextStyle.SetSelectedBackgroundColor(FSlateColor(SelectionColor));
