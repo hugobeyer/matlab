@@ -22,6 +22,7 @@ public:
 
 	SLATE_ARGUMENT(TSharedPtr<SWidget>, LeadingHeaderContent)
 	SLATE_ARGUMENT(bool, CompactLayout)
+		SLATE_ARGUMENT(bool, HeaderOnly)
 
 		// Sits at the right end of the title line: a preview toggle, a reset. Optional.
 		SLATE_ARGUMENT(TSharedPtr<SWidget>, HeaderAction)
