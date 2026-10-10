@@ -43,7 +43,7 @@ void SMixtormatSourcesShelf::Construct(const FArguments& InArgs)
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0.0f, Layout.OuterTop, 0.0f, 0.0f)
+		.Padding(0.0f, Resolved.LayerLayout.SourcesTopGap, 0.0f, 0.0f)
 		[
 			SNew(SMixtormatFoldoutHeader)
 			.IsHovered_Lambda([this]() { return HeaderButton.IsValid() && HeaderButton->IsHovered(); })
