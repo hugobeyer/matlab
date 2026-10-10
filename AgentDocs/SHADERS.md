@@ -28,7 +28,8 @@ Convention: `FMixtormat<Feature><Stage>CS` → `Mixtormat<Feature>.usf` →
 `MixtormatRegionId.ush`, `MixtormatCurvature.ush`, `MixtormatHeightNormal.ush`,
 `MixtormatEdgeShading.ush`, `MixtormatMaskShaping.ush`, `MixtormatDebugColor.ush`,
 `MixtormatGeneratorPlacement.ush`, `MixtormatGeneratorHeightModules.ush`,
-`MixtormatGully.ush`, `MixtormatCellular.ush`, `MixtormatGeneratorWarp.ush`.
+`MixtormatGully.ush`, `MixtormatCellular.ush`, `MixtormatGeneratorWarp.ush`,
+`MixtormatNoiseV2.ush` (Noise-only extensions included after the legacy Noise definitions).
 
 Capacity headers (`MixtormatScalarRampCapacity.ush`,
 `MixtormatColorRampCapacity.ush`) are included by **Runtime C++** too
