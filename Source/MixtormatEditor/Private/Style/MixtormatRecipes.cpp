@@ -708,6 +708,47 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakeNavigationRailTabRecipe(
+		const FMixtormatTheme& Theme, const EMixtormatButtonState State,
+		const int32 TabIndex, const int32 TabCount)
+	{
+		FMixtormatSurfaceRecipe Recipe = MakeButtonRecipe(Theme, State, false);
+		const FMixtormatPreviewMetrics& Layout = Theme.PreviewLayout;
+		Recipe.Radius = Layout.LeftRailCornerRadius;
+
+		// The old drop shadow extended beyond the widget and into layer rows.
+		// Shade is now an in-bounds, shared vertical ramp across every tab.
+		if (Layout.LeftRailShadowOpacity > 0.0f)
+		{
+			FMixtormatPaintLayer Shade;
+			Shade.Source = MakeColorRef(EMixtormatColorRole::Shade);
+			Shade.Blend = Theme.Well.ShadeBlend;
+			Shade.Strength = FMath::Clamp(Layout.LeftRailShadowOpacity, 0.0f, 1.0f);
+			Shade.OpacityRamp.Axis = EMixtormatAxis::Vertical;
+			constexpr int32 Samples = 8;
+			const int32 Count = FMath::Max(TabCount, 1);
+			const int32 Index = FMath::Clamp(TabIndex, 0, Count - 1);
+			const float Bias = FMath::Max(Layout.LeftRailShadeBias, 0.1f);
+			Shade.OpacityRamp.Points.Reserve(Samples);
+			for (int32 Point = 0; Point < Samples; ++Point)
+			{
+				const float LocalT = static_cast<float>(Point) / static_cast<float>(Samples - 1);
+				const float GlobalT = (static_cast<float>(Index) + LocalT) / static_cast<float>(Count);
+				Shade.OpacityRamp.Points.Add({ LocalT, FMath::Pow(GlobalT, Bias) });
+			}
+			Recipe.Layers.Add(Shade);
+		}
+
+		// Keep the shared button hairline blend but expose its thickness and strength
+		// through the existing Navigation Rail tokens.
+		for (FMixtormatBorderLayer& Border : Recipe.Borders)
+		{
+			Border.Width *= Layout.LeftRailBorderThickness;
+			Border.Source.Opacity *= Layout.LeftRailBorderOpacity;
+		}
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, const EMixtormatButtonState State,
 			const bool bShowSeparator)
 	{
