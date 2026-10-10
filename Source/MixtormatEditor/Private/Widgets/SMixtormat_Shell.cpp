@@ -23,7 +23,7 @@
 
 namespace
 {
-	// An independent full-height overlay, so the horizontal shade is not clipped to the rail tabs.
+	// Horizontal shadow under the rail buttons, above the Layers page; not a per-tab shade.
 	class SMixtormatRailFade final : public SLeafWidget
 	{
 	public:
@@ -39,12 +39,16 @@ namespace
 		{
 			const auto& L = FMixtormatThemeStore::GetResolved().PreviewLayout;
 			const float Width = G.GetLocalSize().X;
+			const float Edge = FMath::Min(FMath::Max(L.LeftRailButtonWidth, 0.0f), Width);
 			const float Opacity = FMath::Clamp(L.LeftRailFadeOpacity, 0.0f, 1.0f);
-			if (Width <= 1.0f || Opacity <= 0.0f) return Layer;
+			if (Width <= Edge || Opacity <= 0.0f) return Layer;
 			FLinearColor Shade = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
 			Shade.A *= Opacity * Style.GetColorAndOpacityTint().A;
 			TArray<FSlateGradientStop> Stops;
+			// A shadow *beneath* the rail: full strength at its outer edge, then
+			// transparent over the Layers page. The buttons paint on top of this pass.
 			Stops.Add(FSlateGradientStop(FVector2D(0.0f, 0.0f), Shade));
+			Stops.Add(FSlateGradientStop(FVector2D(Edge, 0.0f), Shade));
 			Shade.A = 0.0f;
 			Stops.Add(FSlateGradientStop(FVector2D(Width, 0.0f), Shade));
 			FSlateDrawElement::MakeGradient(Elements, Layer, G.ToPaintGeometry(), Stops, Orient_Horizontal);
