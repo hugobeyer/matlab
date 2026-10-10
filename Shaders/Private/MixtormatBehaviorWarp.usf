@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 
 // Scale an already-lifted destination->source UV map about the identity.
 // Subtracting the identity at each texel preserves periodic displacement
@@ -14,7 +15,25 @@ Texture2D<float> InfluenceField;
 Texture2D<float2> SourceCoordinates;
 Texture2D<float> SourceHeight;
 float GradientReach;
+float4 BehaviorDriverParamsA[2];
+float4 BehaviorDriverParamsB[2];
+Texture2D<float> BehaviorDriverSignal0;
+Texture2D<float> BehaviorDriverSignal1;
 RWTexture2D<float2> OutCoordinates;
+
+float DrivenBehaviorStrength(int2 Pixel)
+{
+	return MixtormatApplyDriver(Strength,
+		BehaviorDriverSignal0.Load(int3(Pixel, 0)),
+		BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+}
+
+float DrivenBehaviorReach(int2 Pixel)
+{
+	return max(0.0f, MixtormatApplyDriver(GradientReach,
+		BehaviorDriverSignal1.Load(int3(Pixel, 0)),
+		BehaviorDriverParamsA[1], BehaviorDriverParamsB[1]));
+}
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -32,7 +51,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	// A scoped Behavior mask gates the displacement, not the generator's
 	// original height/coverage. Flow tracing and UV-map transport share this step.
-	float Weight = Strength;
+	float Weight = DrivenBehaviorStrength(Pixel);
 	if (UseMask != 0u)
 	{
 		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
@@ -72,7 +91,7 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// UV-space derivatives hold their physical slope across resolutions.
 	const float2 Gradient = 0.5f * (float2(HR - HL, HU - HD) * float2(OutputSize));
 	const float Magnitude = length(Gradient);
-	float Weight = Strength * GradientReach;
+	float Weight = DrivenBehaviorStrength(Pixel) * DrivenBehaviorReach(Pixel);
 	if (UseMask != 0u)
 	{
 		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
