@@ -326,6 +326,7 @@ private:
 	FReply ClearLayerMask(int32 LayerIndex);
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
+	bool CanReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex) const;
 	FReply ReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
 	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
