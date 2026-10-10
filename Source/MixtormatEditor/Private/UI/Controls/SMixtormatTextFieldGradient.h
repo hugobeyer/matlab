@@ -5,7 +5,7 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatThemeStore.h"
-#include "MixtormatCompositing.h"
+#include "Style/MixtormatCompositing.h"
 
 class SMixtormatTextFieldGradient final : public SCompoundWidget
 {
