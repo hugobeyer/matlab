@@ -7,6 +7,7 @@
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Controls/SMixtormatIconRail.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -487,8 +488,12 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					})
 					[
 						// The action returns FReply; the tab's delegate takes void.
-						SNew(SMixtormatGalleryTab)
-						.OnActivated(FSimpleDelegate::CreateLambda([this]() { ToggleBottomLibraryCollapsed(); }))
+						SNew(SMixtormatHelp)
+						.Text(LOCTEXT("RestoreGalleryStyledHint", "Open the material and mask gallery (G)."))
+						[
+							SNew(SMixtormatGalleryTab)
+							.OnActivated(FSimpleDelegate::CreateLambda([this]() { ToggleBottomLibraryCollapsed(); }))
+						]
 					]
 				]
 			]
