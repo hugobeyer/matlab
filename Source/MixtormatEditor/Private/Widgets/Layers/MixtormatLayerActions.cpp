@@ -1448,6 +1448,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		|| Kind == EMixtormatChildCreation::BehaviorDeform
 		|| Kind == EMixtormatChildCreation::BehaviorFlowField;
 	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
+	const bool bScopedFlow = Kind == EMixtormatChildCreation::NoiseFlow
+		&& CanAddScopedFlowGenerator(Target);
 	if (bBehaviorWarp)
 	{
 		if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
@@ -1473,7 +1475,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			: EMixtormatChildOwnerType::Layer, OwnerId, Target.ScopeOwnerChildId}))
 		{ return FReply::Handled(); }
 	}
-	else if (!CanCreateChild(Target))
+	else if (!CanCreateChild(Target) && !bScopedFlow)
 	{
 		return FReply::Handled();
 	}
@@ -1482,7 +1484,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		|| CreatedType == EMixtormatLayerChildType::HeightBlend
 		|| CreatedType == EMixtormatLayerChildType::HeightCurve
 		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp)
-		&& !CanAddGeneratorModule(Target))
+		&& !CanAddGeneratorModule(Target) && !bScopedFlow)
 	{
 		return FReply::Handled();
 	}
