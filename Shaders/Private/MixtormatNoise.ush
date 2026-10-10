@@ -245,4 +245,7 @@ void MixtormatNoiseBars(float2 UV, float2 Wave, float PhaseOffset, out float Val
 	Gradient = WaveLength > 1.0e-6f ? Wave / WaveLength : float2(0.0f, 1.0f);
 }
 
+// Opt-in extensions; legacy family dispatch is unchanged.
+#include "/Plugin/Mixtormat/Private/MixtormatNoiseV2.ush"
+
 #endif
