@@ -665,7 +665,21 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				RemapOutput(Child->OutputReference);
 				RemapOutput(Child->Generator.HeightSource);
 				RemapOutput(Child->Generator.WarpSource);
-				Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
+				if (Child->Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf)
+				{
+					if (Child->Mask.PublishedSourceShelfId == OriginalSourceId)
+					{
+						if (const FGuid* Mapped = Ids.Find(Child->Mask.PublishedSourceChildId))
+						{
+							Child->Mask.PublishedSourceShelfId = Copy.SourceId;
+							Child->Mask.PublishedSourceChildId = *Mapped;
+						}
+					}
+				}
+				else
+				{
+					Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
+				}
 				RemapOutput(Child->BoundaryId.RegionIdsSource);
 				RemapOutput(Child->HeightPush.Source);
 				RemapOutput(Child->StructuralWarp.Source);
