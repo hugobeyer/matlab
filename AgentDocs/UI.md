@@ -59,10 +59,10 @@ The Sources shelf is a non-compositing array card above the layer creation toolb
 `UI/Layers/SMixtormatSourceRow.*` rows. It reuses the inspector foldout's header anatomy,
 tokens and surface; the body now uses the shared Card recipe, compact Menu-row styling,
 and an always-visible (when expanded) + tab attached at the card's bottom-right edge.
-The tab reuses GroupAction button styling and opens the existing six-generator menu.
+The tab reuses the shared card surface recipe and opens the existing six-generator menu. Sources has its own UI STYLE tab, with independent card spacing, row dimensions, add-button background width/height, square icon size, lower-corner radius and accent strength. The add glyph is centered and never inherits the background aspect ratio.
 Empty cards show no instructional text, but retain the + tab. The layout is authored by
 `LayerLayout.SourcesBottomGap`, `SourcesEmptyHeight`, `SourcesRowHeight`, `SourcesRowGap`,
-`SourcesAddTabWidth`, and `SourcesAddTabHeight` under UI STYLE > Layers > Sources.
+`SourcesAddTabWidth`, and `SourcesAddTabHeight` under UI STYLE > Sources.
 Expansion is session UI state (`bSourcesExpanded`) and never reaches the
 document or the render. Sources are document data (`FMixtormatSourceEntry` on
 `UMixtormatMaterial`, mirrored as `WorkingSources` beside -- never inside -- `WorkingLayers`), so
