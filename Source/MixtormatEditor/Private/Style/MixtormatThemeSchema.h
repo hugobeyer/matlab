@@ -14,12 +14,12 @@ namespace Mixtormat
 		Foldouts,
 		Cards,
 		Layers,
+		Sources,
 		Buttons,
 		Menus,
 		Preview,
 		GalleryShell,
 		Typography,
-		Sources,
 		Count,
 	};
 
@@ -43,6 +43,7 @@ namespace Mixtormat
 		ControlFill,
 		ControlToggle,
 		ControlLayout,
+		TextField,
 		Foldout,
 		Card,
 		Layer,
