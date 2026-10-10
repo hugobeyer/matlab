@@ -263,6 +263,30 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			}
 		}
 		break;
+	case EMixtormatLayerChildType::Behavior:
+		if (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
+			|| Child.Behavior.Flow.bUseTracedFlow)
+		{
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowDirection", "Flow Direction"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("WarpedUVGrid")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowUV", "Warped UV Grid"),
+				EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("Influence")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowInfluence", "Influence"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("Validity")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowValidity", "Validity"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Carve)
+			{
+				Result.Outputs.Add({FName(TEXT("CarveMask")),
+					NSLOCTEXT("SMixtormat", "BehaviorFlowCarveMask", "Carve Mask"),
+					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
+			}
+		}
+		break;
 	case EMixtormatLayerChildType::Effect:
 		if (MixtormatIsGeneratorFlowEffect(EffectType))
 		{
