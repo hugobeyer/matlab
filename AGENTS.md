@@ -62,6 +62,10 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
   dispatch/binding → defaults → inspector metadata → `.usf`/`.ush`.
 - UI changes use `Style/MixtormatDesignTokens.h` + `MixtormatThemeStore`, not
   local styling.
+- Never introduce native Unreal/Slate default tooltips (`.ToolTipText`, `SetToolTipText`,
+  or unstyled `SToolTip`). All help popovers must use `SMixtormatHelp` or its
+  `MakeStyledToolTip` adapter for interactive widgets. Text, appearance and timing
+  must be centralized; no local tooltip styling. See `AgentDocs/HELPERS.md`.
 - Enum values are serialized by value: append, never reorder. Renames go in
   `Config/DefaultMixtormat.ini` `[CoreRedirects]`.
 
