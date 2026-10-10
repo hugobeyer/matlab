@@ -3,10 +3,11 @@
 #include "UI/Layers/SMixtormatSourceRow.h"
 
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
-#include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
@@ -34,10 +35,18 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 			? InArgs._OnGetContextMenu
 			: FOnGetContent())
 		[
-			SNew(SMixtormatLayerSurface)
-			.Kind(Mixtormat::EMixtormatLayerKind::Layer)
-			.bSelected(InArgs._bSelected)
-			.bHovered_Lambda([this]() { return bHovered; })
+			SNew(SMixtormatSurfaceBox)
+			// Selection/hover share the menu-row recipe instead of a compositing
+			// layer surface. Sources are reusable entries, not material layers.
+			.Recipe_Lambda([this, Selected = InArgs._bSelected]()
+			{
+				const auto State = Selected.Get(false)
+					? Mixtormat::EMixtormatMenuRowState::Checked
+					: bHovered ? Mixtormat::EMixtormatMenuRowState::Hover
+					: Mixtormat::EMixtormatMenuRowState::Normal;
+				return Mixtormat::MakeMenuRowRecipe(FMixtormatThemeStore::GetTheme(), State);
+			})
+			.InheritWidgetStyle(true)
 			[
 				SNew(SBox)
 				.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.RowHeight)
