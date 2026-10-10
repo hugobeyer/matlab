@@ -301,12 +301,14 @@ void AddIconRole(
 				COL("TextField.Shade", Controls, "Text Fields", "Shade", TextField.Shade, EMixtormatThemeRefreshMode::Reconstruct);
 				COL("TextField.Border", Controls, "Text Fields", "Border", TextField.Border, EMixtormatThemeRefreshMode::Reconstruct);
 				COL("TextField.Highlight", Controls, "Text Fields", "Highlight", TextField.Highlight, EMixtormatThemeRefreshMode::Reconstruct);
+				COL("TextField.SelectionColor", Controls, "Text Fields", "Selection Color", TextField.SelectionColor, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.ShadeOpacity", Controls, "Text Fields", "Shade Opacity", TextField.ShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.BorderOpacity", Controls, "Text Fields", "Border Opacity", TextField.BorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.BorderThickness", Controls, "Text Fields", "Border Thickness", TextField.BorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.Radius", Controls, "Text Fields", "Radius", TextField.Radius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.LabelOpacity", Controls, "Text Fields", "Text Opacity", TextField.LabelOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("TextField.HighlightOpacity", Controls, "Text Fields", "Highlight Opacity", TextField.HighlightOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.SelectionOpacity", Controls, "Text Fields", "Selection Opacity", TextField.SelectionOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				BLEND("TextField.ShadeBlend", Controls, "Text Fields", "Shade Blend", TextField.ShadeBlend, EMixtormatThemeRefreshMode::Reconstruct);
 				BLEND("TextField.HighlightBlend", Controls, "Text Fields", "Highlight Blend", TextField.HighlightBlend, EMixtormatThemeRefreshMode::Reconstruct);
 				SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
