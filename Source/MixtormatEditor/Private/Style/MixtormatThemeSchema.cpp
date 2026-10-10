@@ -583,10 +583,10 @@ NUM("LayerLayout.SourcesBottomGap", Sources, "Layout", "Bottom Gap", LayerLayout
 NUM("LayerLayout.SourcesEmptyHeight", Sources, "Layout", "Empty Card Height", LayerLayout.SourcesEmptyHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 NUM("LayerLayout.SourcesRowHeight", Sources, "Layout", "Row Height", LayerLayout.SourcesRowHeight, 14, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 NUM("LayerLayout.SourcesRowGap", Sources, "Layout", "Row Gap", LayerLayout.SourcesRowGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-NUM("LayerLayout.SourcesAddTabWidth", Sources, "Layout", "Add Tab Width", LayerLayout.SourcesAddTabWidth, 16, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-NUM("LayerLayout.SourcesAddTabHeight", Sources, "Layout", "Add Tab Height", LayerLayout.SourcesAddTabHeight, 14, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-NUM("LayerLayout.SourcesAddTabHighlight", Sources, "Layout", "Add Tab Highlight", LayerLayout.SourcesAddTabHighlight, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Layout", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+NUM("LayerLayout.SourcesAddTabWidth", Sources, "Add Button", "Add Tab Width", LayerLayout.SourcesAddTabWidth, 16, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesAddTabHeight", Sources, "Add Button", "Add Tab Height", LayerLayout.SourcesAddTabHeight, 14, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesAddTabHighlight", Sources, "Add Button", "Add Tab Highlight", LayerLayout.SourcesAddTabHighlight, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("LayerLayout.SourcesAddIconSize", Sources, "Add Button", "Icon Size (Square)", LayerLayout.SourcesAddIconSize, 4, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesAddTabBottomRadius", Sources, "Add Button", "Bottom Radius", LayerLayout.SourcesAddTabBottomRadius, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Paint);
 		SetLocateTarget(P, LocateBegin, ETarget::Card);
@@ -653,28 +653,28 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Layout", "Add Tab Highli
 				NUM("PreviewLayout.ResolutionControlWidth", Preview, "Layout", "Resolution Width", PreviewLayout.ResolutionControlWidth, 40, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Layout", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailButtonWidth", Preview, "Layout", "Rail Button Width", PreviewLayout.LeftRailButtonWidth, 22, 120, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailContentInset", Preview, "Layout", "Rail Content Inset", PreviewLayout.LeftRailContentInset, 0, 100, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailButtonHeight", Preview, "Layout", "Rail Button Height", PreviewLayout.LeftRailButtonHeight, 60, 160, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailInnerPadding", Preview, "Layout", "Rail Inner Padding", PreviewLayout.LeftRailInnerPadding, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailLabelGap", Preview, "Layout", "Rail Icon Label Gap", PreviewLayout.LeftRailLabelGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftRailBorderOpacity", Preview, "Layout", "Rail Border Opacity", PreviewLayout.LeftRailBorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Layout", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Layout", "Rail Vertical Shade", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadeBias", Preview, "Layout", "Rail Shade Bias", PreviewLayout.LeftRailShadeBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Navigation Rail", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailButtonWidth", Preview, "Navigation Rail", "Rail Button Width", PreviewLayout.LeftRailButtonWidth, 22, 120, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailContentInset", Preview, "Navigation Rail", "Rail Content Inset", PreviewLayout.LeftRailContentInset, 0, 100, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailButtonHeight", Preview, "Navigation Rail", "Rail Button Height", PreviewLayout.LeftRailButtonHeight, 60, 160, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailInnerPadding", Preview, "Navigation Rail", "Rail Inner Padding", PreviewLayout.LeftRailInnerPadding, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailLabelGap", Preview, "Navigation Rail", "Rail Icon Label Gap", PreviewLayout.LeftRailLabelGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailBorderOpacity", Preview, "Navigation Rail", "Rail Border Opacity", PreviewLayout.LeftRailBorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Navigation Rail", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Navigation Rail", "Rail Vertical Shade", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadeBias", Preview, "Navigation Rail", "Rail Shade Bias", PreviewLayout.LeftRailShadeBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 				P.Add(Bool(TEXT("PreviewLayout.bLeftRailShadeInverted"), ETab::Preview,
-					TEXT("Layout"), TEXT("Rail Shade Invert"),
+					TEXT("Navigation Rail"), TEXT("Rail Shade Invert"),
 					[](const FMixtormatTheme& T) { return T.PreviewLayout.bLeftRailShadeInverted; },
 					[](FMixtormatTheme& T, const bool Value) { T.PreviewLayout.bLeftRailShadeInverted = Value; },
 					TEXT("Reverse the shared vertical shade across Layers / Library / Global"),
 					EMixtormatThemeRefreshMode::Paint));
-				NUM("PreviewLayout.LeftRailButtonSurfaceStrength", Preview, "Layout", "Rail Button Surface", PreviewLayout.LeftRailButtonSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailHoverSurfaceStrength", Preview, "Layout", "Rail Hover Surface", PreviewLayout.LeftRailHoverSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailSelectedSurfaceStrength", Preview, "Layout", "Rail Selected Surface", PreviewLayout.LeftRailSelectedSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Layout", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailButtonSurfaceStrength", Preview, "Navigation Rail", "Rail Button Surface", PreviewLayout.LeftRailButtonSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailHoverSurfaceStrength", Preview, "Navigation Rail", "Rail Hover Surface", PreviewLayout.LeftRailHoverSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailSelectedSurfaceStrength", Preview, "Navigation Rail", "Rail Selected Surface", PreviewLayout.LeftRailSelectedSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Navigation Rail", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Navigation Rail", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Navigation Rail", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsActionsWidth", Preview, "Layout", "Actions Card Width", PreviewLayout.QuickControlsActionsWidth, 80, 320, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
