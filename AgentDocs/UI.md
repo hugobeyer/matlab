@@ -93,8 +93,11 @@ future shelf evaluator extensions must use typed owner-kind keys, not fake layer
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
-`Noise Value from…`, wires the mask to a completed earlier Noise generator's live published
-`Value` (with `Paste Copied Noise Value` when the clipboard holds such a mask). Inline selection
+`Noise Value from…`, wires the mask either to a completed earlier layer/group Noise
+`Value` or to an enabled Sources-shelf Noise root by SourceId/ChildId. Shelf
+references retain their distinct owner kind, survive source duplication, and
+are demanded ahead of the layer stack. `Paste Copied Noise Value` remains for
+supported copied mask references. Inline selection
 clears published GUIDs first, because a published source otherwise wins; `UsesNoise()` mirrors
 `UsesLayerValues()` precedence. Source changes preserve blending, shaping, filters and scope, and
 instances stay locked (they mirror their source child). The inline Noise controls reuse the
