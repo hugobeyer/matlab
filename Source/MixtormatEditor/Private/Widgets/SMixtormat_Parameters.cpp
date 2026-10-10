@@ -700,6 +700,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterDriverPopover, Target))
 		.Enabled(Target.IsValid()
+			&& !WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
+				{ return Entry.SourceId == Target.LayerId; })
 			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
 				|| (Target.ValueType == EMixtormatParameterValueType::Float
 					&& (Target.Parameter == FName(TEXT("FlowAmount"))
@@ -1721,6 +1723,22 @@ void SMixtormat::SetDriverSource(
 	{
 		return;
 	}
+	if (SourceKind != EMixtormatDriverSourceKind::None
+		&& WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
+			{ return Entry.SourceId == Target.LayerId; }))
+	{
+		return;
+	}
+	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
+		&& SourceKind != EMixtormatDriverSourceKind::None)
+	{
+		if (SourceKind != EMixtormatDriverSourceKind::CombinedMask || SourceChildId.IsValid()) { return; }
+		const int32 TargetIndex = WorkingLayers.IndexOfByPredicate([&Target](const FMixtormatLayer& Layer)
+			{ return Layer.LayerId == Target.LayerId; });
+		const int32 SourceIndex = WorkingLayers.IndexOfByPredicate([&SourceLayerId](const FMixtormatLayer& Layer)
+			{ return Layer.LayerId == SourceLayerId && Layer.bEnabled; });
+		if (SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE || SourceIndex >= TargetIndex) { return; }
+	}
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, true))
 	{
 		Binding->Reference.bEnabled = false;
@@ -1898,6 +1916,15 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
+	if (WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
+		{ return Entry.SourceId == Target.LayerId; }))
+	{
+		MixtormatMenu::FBuilder Menu;
+		Menu.Caption(LOCTEXT("DriverShelfUnavailable", "Drivers"))
+			.Item(LOCTEXT("DriverShelfUnavailableMessage", "Shelf parameter drivers need a published signal consumer."), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
 	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
 		&& Target.Parameter != FName(TEXT("FlowAmount"))
 		&& Target.Parameter != FName(TEXT("FlowTraceLength")))
