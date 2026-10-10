@@ -864,7 +864,8 @@ enum class EMixtormatNoiseType : uint8
 	WorleyF1 UMETA(DisplayName = "Worley F1"),
 	WorleyF2 UMETA(DisplayName = "Worley F2"),
 	WorleyF1MinusF2 UMETA(DisplayName = "Worley F1-F2"),
-	Bars UMETA(DisplayName = "Bars / Stripes")
+	Bars UMETA(DisplayName = "Bars / Stripes"),
+	Phasor UMETA(DisplayName = "Phasor")
 };
 
 // Noise: a tileable, seeded, resolution-independent scalar field producer.
@@ -878,7 +879,7 @@ enum class EMixtormatNoiseType : uint8
 // The module's height contribution to its Generator layer is the family's value remapped to the
 // shared signed contract (zero-centred, so zero is the neutral generator height):
 //
-//   Gradient / Value / FBM / Bars   the value itself (already zero-centred)
+//   Gradient / Value / FBM / Bars / Phasor   the signed value (zero-centred)
 //   Ridged / Billow                 Value * 2 - 1   (crests and bumps read up)
 //   Worley F1 / F2 / F1-F2          1 - Value * 2   (feature points and walls read up)
 //
@@ -929,6 +930,52 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	// the angle snaps to the nearest one that tiles, like Strata Carver's bedding direction.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "0", UIMax = "360", Delta = "1"))
 	float NoiseDirection = 0.0f;
+
+	// Phasor only. Existing Bars keeps its original cosine/seed appearance.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "12.0", Delta = "0.05"))
+	float NoisePhasorFrequency = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "8.0", Delta = "0.05"))
+	float NoisePhasorAnisotropy = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoisePhasorPhaseVariation = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "3.14", Delta = "0.01"))
+	float NoisePhasorOrientationVariation = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "1", UIMax = "4", ClampMin = "1", ClampMax = "4"))
+	int32 NoisePhasorComponents = 2;
+
+	// Worley only. Euclidean + jitter 1 is the original unchanged cellular field.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0", UIMax = "2", ClampMin = "0", ClampMax = "2"))
+	int32 NoiseWorleyMetric = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Worley", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseWorleyJitter = 1.0f;
+
+	// Optional domain distortion shared by scalar families. Zero strength is an exact bypass.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float NoiseDistortionStrength = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
+	float NoiseDistortionFrequency = 4.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1", UIMax = "8", ClampMin = "1", ClampMax = "8"))
+	int32 NoiseDistortionOctaves = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseDistortionRoughness = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1.0", UIMax = "4.0", Delta = "0.05"))
+	float NoiseDistortionLacunarity = 2.0f;
+
+	// 0 = directional FBM displacement, 1 = divergence-free curl displacement.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseDistortionCurlMix = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float NoiseDistortionDirection = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
 	bool bNoiseNormalizeHeight = true;
