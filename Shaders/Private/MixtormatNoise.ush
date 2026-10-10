@@ -176,6 +176,7 @@ struct FMixtormatNoiseWorley
 	float F1;         // distance to the nearest feature point, in cell widths
 	float F2;         // distance to the second nearest
 	uint CellId;      // hash of the owning cell, stable under the period
+	uint SecondCellId; // hash of second-nearest feature; used for seam-safe depth modulation
 	float2 Direction; // unit vector from the nearest feature toward this pixel (F1 derivative)
 	float2 SecondDirection; // unit vector from second-nearest feature (F2 derivative)
 };
@@ -191,6 +192,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 	float2 BestDelta = float2(0.0f, 0.0f);
 	float2 SecondDelta = float2(0.0f, 0.0f);
 	int2 NearestCell = Base;
+	int2 SecondCell = Base;
 
 	[unroll]
 	for (int y = -1; y <= 1; ++y)
@@ -205,6 +207,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 			{
 				SecondSq = BestSq;
 				SecondDelta = BestDelta;
+				SecondCell = NearestCell;
 				BestSq = DistSq;
 				BestDelta = Delta;
 				NearestCell = Cell;
@@ -213,6 +216,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 			{
 				SecondSq = DistSq;
 				SecondDelta = Delta;
+				SecondCell = Cell;
 			}
 		}
 	}
@@ -221,6 +225,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 	Result.F1 = sqrt(BestSq);
 	Result.F2 = sqrt(SecondSq);
 	Result.CellId = MixtormatCellHash(NearestCell, P, Seed);
+	Result.SecondCellId = MixtormatCellHash(SecondCell, P, Seed);
 	// Pixel minus feature, normalised: the direction the distance grows in. A pixel exactly on
 	// a feature point has no direction; the measure-zero case gets zero rather than a NaN.
 	Result.Direction = BestSq > 1.0e-9f ? -BestDelta * rsqrt(BestSq) : float2(0.0f, 0.0f);
