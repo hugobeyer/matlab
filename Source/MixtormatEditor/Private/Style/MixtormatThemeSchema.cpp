@@ -643,6 +643,7 @@ void AddIconRole(
 				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Layers Pop-out Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.QuickControlsActionsWidth", Preview, "Layout", "Actions Card Width", PreviewLayout.QuickControlsActionsWidth, 80, 320, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsFadeStartDistance", Preview, "Layout", "Quick Controls Fade Start Distance", PreviewLayout.QuickControlsFadeStartDistance, 0, 300, 4, 0, EMixtormatThemeRefreshMode::Paint);
 								NUM("PreviewLayout.QuickControlsFadeRange", Preview, "Layout", "Quick Controls Fade Range", PreviewLayout.QuickControlsFadeRange, 1, 600, 4, 0, EMixtormatThemeRefreshMode::Paint);
 								NUM("PreviewLayout.QuickControlsGuideAxisLength", Preview, "Layout", "Quick Controls Guide Length", PreviewLayout.QuickControlsGuideAxisLength, 0, 400, 2, 0, EMixtormatThemeRefreshMode::Paint);
