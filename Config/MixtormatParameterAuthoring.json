@@ -463,37 +463,14 @@
 			"snap": 0
 		},
 		"ReliefId.EdgeRoughnessAmount":
+		"Generator.QuarterHeight":
 		{
 			"default": 0,
 			"uiMin": 0,
 			"uiMax": 1,
-			"snap": 0
-		}
-	},
-	"Generator Flow":
-	{
-		"Effect.GeneratorFlowTraceLength":
-		{
-			"default": 0.004999999888241291,
-			"uiMin": 0,
-			"uiMax": 0.10000000149011612,
-			"snap": 0.0010000000474974513
-		},
-		"Effect.GeneratorFlowFeather":
-		{
-			"default": 0.5,
-			"uiMin": 0,
-			"uiMax": 32,
-			"snap": 0.0099999997764825821
-		},
-		"Effect.GeneratorFlowSteps:Int":
-		{
-			"default": 64,
-			"uiMin": 1,
-			"uiMax": 128,
-			"snap": 1,
+			"snap": 0,
 			"clampMin": 0,
-			"clampMax": 512
+			"clampMax": 1
 		}
 	},
 	"Mask":
@@ -1268,6 +1245,156 @@
 			"uiMin": 0.001,
 			"uiMax": 0.25,
 			"snap": 0.001
+		}
+	},
+	"Behavior Flow":
+	{
+		"BehaviorFlowSettings.GeneratorFlowAmount":
+		{
+			"default": 1.0,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowTangent":
+		{
+			"default": 0.0,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowAngle":
+		{
+			"default": 0.0,
+			"uiMin": -180.0,
+			"uiMax": 180.0,
+			"snap": 1.0
+		},
+		"BehaviorFlowSettings.GravityFlowSurfaceFollow":
+		{
+			"default": 1.0,
+			"uiMin": 0.0,
+			"uiMax": 2.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GravityFlowDeflection":
+		{
+			"default": 1.0,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowBend":
+		{
+			"default": 0.0,
+			"uiMin": -180.0,
+			"uiMax": 180.0,
+			"snap": 1.0
+		},
+		"BehaviorFlowSettings.GeneratorFlowSeed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1024,
+			"snap": 1
+		},
+		"BehaviorFlowSettings.GeneratorFlowRadius:Int":
+		{
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 16,
+			"snap": 1
+		},
+		"BehaviorFlowSettings.GeneratorFlowSmooth":
+		{
+			"default": 8.0,
+			"uiMin": 0.0,
+			"uiMax": 64.0,
+			"snap": 0.5
+		},
+		"BehaviorFlowSettings.GeneratorFlowReach":
+		{
+			"default": 0.1,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.001
+		},
+		"BehaviorFlowSettings.GeneratorFlowFeather":
+		{
+			"default": 0.5,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowOffsetAlong":
+		{
+			"default": 0.0,
+			"uiMin": -1.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowOffsetAcross":
+		{
+			"default": 0.0,
+			"uiMin": -1.0,
+			"uiMax": 1.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowShapeOffset":
+		{
+			"default": 0.0,
+			"uiMin": -0.25,
+			"uiMax": 0.25,
+			"snap": 0.001
+		},
+		"BehaviorFlowSettings.GeneratorFlowBulge":
+		{
+			"default": 0.0,
+			"uiMin": -0.25,
+			"uiMax": 0.25,
+			"snap": 0.001
+		},
+		"BehaviorFlowSettings.GeneratorFlowTraceLength":
+		{
+			"default": 0.1,
+			"uiMin": 0.0,
+			"uiMax": 1.0,
+			"snap": 0.001
+		},
+		"BehaviorFlowSettings.GeneratorFlowSteps:Int":
+		{
+			"default": 16,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"BehaviorFlowSettings.GeneratorFlowWarpStrength":
+		{
+			"default": 1.0,
+			"uiMin": -4.0,
+			"uiMax": 4.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowDepth":
+		{
+			"default": 1.0,
+			"uiMin": 0.0,
+			"uiMax": 2.0,
+			"snap": 0.01
+		},
+		"BehaviorFlowSettings.GeneratorFlowWidth":
+		{
+			"default": 0.01,
+			"uiMin": 0.0,
+			"uiMax": 0.25,
+			"snap": 0.001
+		},
+		"BehaviorFlowSettings.GeneratorFlowFalloff":
+		{
+			"default": 1.0,
+			"uiMin": 0.1,
+			"uiMax": 8.0,
+			"snap": 0.01
 		}
 	}
 }

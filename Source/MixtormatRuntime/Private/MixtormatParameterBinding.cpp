@@ -87,7 +87,8 @@ namespace
 		case EMixtormatParameterOwnerType::Blur: return Child.Type == EMixtormatLayerChildType::Blur;
 		case EMixtormatParameterOwnerType::Curvature: return Child.Type == EMixtormatLayerChildType::Curvature;
 		case EMixtormatParameterOwnerType::Behavior:
-		case EMixtormatParameterOwnerType::BehaviorFlow: return Child.Type == EMixtormatLayerChildType::Behavior;
+		case EMixtormatParameterOwnerType::BehaviorFlow:
+		case EMixtormatParameterOwnerType::BehaviorFlowSettings: return Child.Type == EMixtormatLayerChildType::Behavior;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
@@ -190,6 +191,7 @@ namespace
 		case EMixtormatParameterOwnerType::HeightColorRamp: View.ConstData = &Child.HeightColorRamp; break;
 		case EMixtormatParameterOwnerType::Behavior: View.ConstData = &Child.Behavior; break;
 		case EMixtormatParameterOwnerType::BehaviorFlow: View.ConstData = &Child.Behavior.Direction.Published; break;
+		case EMixtormatParameterOwnerType::BehaviorFlowSettings: View.ConstData = &Child.Behavior.Flow; break;
 		case EMixtormatParameterOwnerType::CombineId: View.ConstData = &Child.CombineId; break;
 		case EMixtormatParameterOwnerType::IdGroup: View.ConstData = &Child.IdGroup; break;
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
@@ -591,6 +593,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::HeightColorRamp: return { FMixtormatGeneratorHeightColorRamp::StaticStruct() };
 		case EMixtormatParameterOwnerType::Behavior: return { FMixtormatBehavior::StaticStruct() };
 		case EMixtormatParameterOwnerType::BehaviorFlow: return { FMixtormatOutputReference::StaticStruct() };
+		case EMixtormatParameterOwnerType::BehaviorFlowSettings: return { FMixtormatBehaviorFlowSettings::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
 		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };

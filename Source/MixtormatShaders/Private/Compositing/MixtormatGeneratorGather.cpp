@@ -544,7 +544,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
 				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
 				{
-					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
+					return (Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
+							|| Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlowSettings)
 						&& Candidate.DestinationParameter == DriverProperties[Slot]
 						&& Candidate.Driver.bEnabled
 						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask

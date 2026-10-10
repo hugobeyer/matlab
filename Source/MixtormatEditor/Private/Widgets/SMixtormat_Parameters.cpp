@@ -196,11 +196,19 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 			}
 			if (Child.Type == EMixtormatLayerChildType::Behavior
 				&& Owner == &Child.Behavior.Direction.Published
-				&& OwnerStruct == FMixtormatOutputReference::StaticStruct())
+				&& Child.Behavior.Direction.Published.HasSource())
 			{
 				Result.LayerId = ContainerId;
 				Result.ChildId = Child.ChildId;
 				Result.Owner = EMixtormatParameterOwnerType::BehaviorFlow;
+				return true;
+			}
+			if (Child.Type == EMixtormatLayerChildType::Behavior
+				&& Owner == &Child.Behavior.Flow)
+			{
+				Result.LayerId = ContainerId;
+				Result.ChildId = Child.ChildId;
+				Result.Owner = EMixtormatParameterOwnerType::BehaviorFlowSettings;
 				return true;
 			}
 			if (Owner == OwnerPointer(Child))
@@ -899,7 +907,8 @@ namespace
 		const void* OwnerPtr = nullptr;
 		const UScriptStruct* OwnerStruct = nullptr;
 		if ((Address.Owner == EMixtormatParameterOwnerType::MaskNoise
-			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow) && Child)
+			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow
+			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlowSettings) && Child)
 		{
 			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
 		}

@@ -48,7 +48,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	// The one structural parameter owner. Flow lives inside the Behavior's Direction socket,
 	// so one owner covers the payload and one covers the typed reference inside it.
 	Behavior = 27 UMETA(DisplayName = "Behavior"),
-	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow")
+	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow Ref"),
+	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow")
 };
 
 UENUM(BlueprintType)
