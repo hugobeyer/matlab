@@ -14,12 +14,12 @@ namespace Mixtormat
 		Foldouts,
 		Cards,
 		Layers,
-		Sources,
 		Buttons,
 		Menus,
 		Preview,
 		GalleryShell,
 		Typography,
+		Sources,
 		Count,
 	};
 
