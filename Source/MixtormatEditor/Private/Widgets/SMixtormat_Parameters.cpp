@@ -710,6 +710,9 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			&& !WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
 				{ return Entry.SourceId == Target.LayerId; })
 			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
+				|| WorkingLayers.ContainsByPredicate([&Target](const FMixtormatLayer& Layer)
+					{ return Layer.LayerId == Target.LayerId; }))
+			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
 				|| (Target.ValueType == EMixtormatParameterValueType::Float
 					&& (Target.Parameter == FName(TEXT("FlowAmount"))
 						|| Target.Parameter == FName(TEXT("FlowTraceLength"))))));
@@ -1941,6 +1944,16 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
+	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
+		&& !WorkingLayers.ContainsByPredicate([&Target](const FMixtormatLayer& Layer)
+			{ return Layer.LayerId == Target.LayerId; }))
+	{
+		MixtormatMenu::FBuilder Menu;
+		Menu.Caption(LOCTEXT("DriverSharedWarpUnavailable", "Drivers"))
+			.Item(LOCTEXT("DriverSharedWarpUnavailableMessage", "Shared group Warp modules cannot execute spatial drivers."), nullptr, FSimpleDelegate())
+			.Enabled(false);
+		return Menu.Build();
+	}
 	if (WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
 		{ return Entry.SourceId == Target.LayerId; }))
 	{
