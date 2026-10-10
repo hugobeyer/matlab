@@ -759,6 +759,16 @@ namespace Mixtormat
 		float TogglePadding = 2.0f;
 		float FinalPopupWidth = 232.0f;
 		float LeftRailButtonGap = 2.0f;
+		float LeftRailButtonWidth = 52.0f;
+		float LeftRailButtonHeight = 54.0f;
+		float LeftRailInnerPadding = 4.0f;
+		float LeftRailBorderOpacity = 0.24f;
+		float LeftRailBorderThickness = 1.0f;
+		float LeftRailShadowOpacity = 0.25f;
+		float LeftRailShadowOffset = 2.0f;
+		float LeftRailShadowRadius = 5.0f;
+		float LeftRailCornerRadius = 2.0f;
+		float LeftRailLabelGap = 3.0f;
 		float LeftOverlayWidth = 320.0f;
 		float LeftOverlaySurfaceOpacity = 0.82f;
 		float QuickControlsCentreGap = 210.0f;
