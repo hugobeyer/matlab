@@ -569,6 +569,7 @@ void AddIconRole(
 		NUM("LayerLayout.ThumbnailSize", Layers, "Layout", "Thumbnail Size", LayerLayout.ThumbnailSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ItemGap", Layers, "Layout", "Item Gap", LayerLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ChildIndent", Layers, "Layout", "Child Indent", LayerLayout.ChildIndent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+		NUM("LayerLayout.SourcesTopGap", Layers, "Sources", "Top Gap", LayerLayout.SourcesTopGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesBottomGap", Layers, "Sources", "Bottom Gap", LayerLayout.SourcesBottomGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesEmptyHeight", Layers, "Sources", "Empty Card Height", LayerLayout.SourcesEmptyHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesRowHeight", Layers, "Sources", "Row Height", LayerLayout.SourcesRowHeight, 14, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
