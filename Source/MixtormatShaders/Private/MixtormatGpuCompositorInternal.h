@@ -1036,6 +1036,8 @@ namespace MixtormatGpuCompositor
 		FOutputReferenceRenderData Direction;
 		// Reuse the scalar-driver signal contract for published Flow Amount/Trace Length.
 		FScalarDriverRenderData FlowDrivers[2];
+		// Shared per-pixel drivers for Strength and Gradient Reach.
+		FScalarDriverRenderData ScalarDrivers[2];
 		// Optional independent 0..1 field, distinct from nested mask children.
 		bool bHasInfluence = false;
 		FOutputReferenceRenderData Influence;
