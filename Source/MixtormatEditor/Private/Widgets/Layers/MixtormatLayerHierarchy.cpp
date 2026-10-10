@@ -44,7 +44,7 @@ namespace MixtormatLayersPrivate
 		}
 		else if (Child.Type == EMixtormatLayerChildType::Effect)
 		{
-			switch (Child.Effect.Type)
+			switch (ResolveChildEffectType(Child))
 			{
 			case EMixtormatEffectType::ShapeDeform: Specific = MixtormatIcons::WarpDeform(); break;
 			case EMixtormatEffectType::GravityFlow: Specific = MixtormatIcons::FlowGravity(); break;
