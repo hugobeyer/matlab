@@ -114,6 +114,7 @@ flowchart TD
         B2["Canonical Child Output & Capability Descriptors"]
         B3["1-Click Preset Export (.uasset)"]
         B4["Substrate & Legacy PBR Auto-Material Generator"]
+        B5["Prominent Channel & Combined Diagnostic Previews"]
     end
 
     subgraph P3["Pillar 3: Stability & GPU Verification"]
@@ -175,6 +176,9 @@ To compete with standalone tools like Substance 3D Sampler or Quixel Mixer direc
 3. **Custom Preset Export & Library Manager**:
    - Allow artists to right-click any custom Layer, Generator, or Effect chain and save it as a reusable `.uasset` preset directly in their project's Content Browser.
 
+4. **High-Visibility Diagnostic & Combined Preview System**:
+   - Move beyond hidden hotkey cycling (e.g. `Shift+V`) into a persistent **Viewport Channel HUD Ribbon** (`Lit`, `BaseColor`, `Normal`, `Roughness`, `AO`, `Metallic`, `Height`), **Interactive Split-Screen A/B Wipe**, and **Combined Mask/PBR Superimposition** with adjustable opacity.
+
 ---
 
 ## 3. Stability & GPU Code Deduplication
@@ -199,8 +203,6 @@ Products in the top revenue tier on Fab succeed because of **perceived quality a
 | **Interactive Demo Scene** | Ship `Content/Maps/Mixtormat_Showcase.umap` featuring a polished environment lighting setup (Lumen/Nanite) showcasing 10+ live procedural materials on 3D assets. |
 | **High-Res Fab Gallery** | 6–8 4K ($3840 \times 2160$) rendered beauty shots featuring split before/after views (Raw Mesh vs Mixtormat Surface). |
 | **Quickstart Tutorial Series** | 3 short (3-minute) YouTube tutorials: *Getting Started with Generators*, *Mastering Structural Effects (Erosion & Peeling)*, and *Baking to Substrate*. |
-
-Here is the complete **Viral Go-To-Market & Launch Playbook** for **Mixtormat** on the Fab Store, tailored specifically for Unreal Engine technical artists, environment artists, and indie developers.
 
 ---
 
@@ -342,11 +344,6 @@ Post in `#showcase` or `#tools` channels (always check server self-promotion rul
 - Transition price to full $89.99 USD tier.
 ```
 
-
-The short answer is: **No for the core product, but YES for the demo showcase.**
-
-Here is the strategic breakdown of why you should keep the core tool focused, and where geometry props actually belong.
-
 ---
 
 # Strategic Decision: Core Tool vs. Props & Geometry
@@ -408,11 +405,6 @@ Include **5 to 8 curated, unwrapped demonstration props** inside the plugin's `C
 
 * **Core Tool Identity**: **100% Procedural Material, Mask & Texture Authoring Suite**.
 * **Prop Content**: **Ship 5–8 high-quality demo props inside the showcase map** solely to let users inspect, rotate, and test the materials out-of-the-box.
-Now I understand what you meant: **Mesh-aware / Prop texturing** — where the effects (like edge wear, paint peeling, cavity dirt, and moisture runoff) directly read the **3D mesh’s baked maps / curvature / world position / normals** to texture specific 3D props (like texturing a gun, barrel, or vehicle in Substance Painter), rather than just generating tileable materials.
-
-The verdict on this: **YES, absolutely — this is the #1 feature that separates a $30 "tileable texture tool" from a $90+ "Substance Painter killer".**
-
-Here is how you should position and implement this workflow in Mixtormat.
 
 ---
 
@@ -499,11 +491,122 @@ Promoting **"In-Engine Mesh & Prop Texturing"** will dramatically boost sales:
 
 This turns Mixtormat from a *"niche material mixer"* into an **essential texturing pipeline tool for all 3D modelers and environment artists**.
 
-Integrating with **Unreal Engine’s new Landscape / Terrains & Nanite Displaced Geometry systems** is one of the highest-leverage commercial moves you can make.
+---
 
-In UE 5.4 – 5.8+, Epic is transitioning the terrain paradigm toward **Nanite Tessellated / Displaced Meshes**, **Procedural Content Generation (PCG) Landscape Integration**, and **GPU Landscape Layer Blending**.
+# 👁️ Viewport & Preview Architecture: Visibility, Overlays & Combined Previews
 
-Here is how Mixtormat can integrate with Unreal's modern terrain workflows and become an indispensable terrain texturing powerhouse.
+```mermaid
+flowchart TD
+    subgraph ViewportEngine["Viewport Rendering & Preview Pipeline"]
+        Composite["GPU RDG Composite\n(BaseColor, Normal, RAM, Height)"]
+        Diagnostics["Diagnostic Passes\n(Masks, Region IDs, Flow Vectors, Distance Fields)"]
+    end
+
+    subgraph PreviewModes["Interactive Viewport Presentation Modes"]
+        M1["1. Top-Level Channel Ribbon\n(Lit, BaseColor, Normal, Roughness, AO, Metallic, Height)"]
+        M2["2. Combined Mask Overlay\n(Red/Cyan & Heatmap superimposition on Lit 3D)"]
+        M3["3. Split-Screen A/B Wipe\n(Interactive Wipe: Lit vs Channel / Before vs After)"]
+        M4["4. Quad-Grid Multi-View\n(Simultaneous 4-way PBR breakdown)"]
+        M5["5. 2D Tile Canvas & 3D Sync\n(Periodic UV boundary audit + 3D Orbit Mesh)"]
+    end
+
+    ViewportEngine --> PreviewModes
+```
+
+## 1. Why Preview Visibility & Combined Modes Dictate Commercial Success
+
+In professional authoring tools (Substance 3D Designer, Substance Painter, Marmoset Toolbag, Unreal Engine Viewport ViewModes), **the viewport is the artist's canvas**. If diagnostic channels or feature masks are hidden behind obscure key chords (such as a blind `Shift+V` cycle) or force artists into flat, unlit, black-and-white isolation, three critical workflow problems emerge:
+
+1. **Loss of 3D Spatial Context**: Viewing a black-and-white mask in isolation hides whether the edge wear aligns with the 3D model's bevels, or whether runoff streaks align with the actual gravity normal under scene lighting.
+2. **Friction in Fine-Tuning**: Dialing in subtle generator parameters (e.g. craquelure seed, hydraulic sediment, paint lift) requires instantly seeing the mask *superimposed* over the lit surface.
+3. **Diminished Perceived Value**: Standalone tools feel "premium" because their viewports feature prominent, glowing channel tabs, split-screen wipes, and real-time diagnostic overlays.
+
+---
+
+## 2. The 5 Core Viewport Preview Workflows
+
+### A. Prominent Top-Level Channel Ribbon (HUD Header)
+* **What it replaces**: The hidden `V` / `Shift+V` channel cycle in [`SMixtormatPreviewViewport.h`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatEditor/Private/Widgets/SMixtormatPreviewViewport.h#L50-L65).
+* **New UI Presentation**: A sleek, persistent horizontal segmented ribbon docked at the top of the 3D viewport:
+  - `[ 💡 Lit ]` `[ 🎨 BaseColor (C) ]` `[ 🧭 Normal (N) ]` `[ ⚪ Roughness (R) ]` `[ 🌑 AO (O) ]` `[ 🪙 Metallic (M) ]` `[ 🏔️ Height (H) ]`
+* **Workflow**:
+  - One-click channel soloing with active accent pill styling.
+  - Standard DCC hotkey bindings (`C`, `N`, `R`, `H`, `M`, `L` for Lit) for instant muscle memory.
+  - Active channel tag watermark displayed cleanly in the corner of the viewport (e.g. `CHANNEL: ROUGHNESS (LINEAR R8)`).
+
+---
+
+### B. Combined Mask Overlay & Heatmap Superimposition (Lit + Mask Overlay)
+* **What it does**: Rather than rendering procedural masks (such as *Worn Edges*, *Craquelure*, *SeedMask*, or *Cavity Dirt*) as an isolated flat 2D image, it blends the diagnostic mask directly on top of the **shaded 3D model with Lumen lighting and displacement**.
+* **Visual Modes**:
+  - **Red / Cyan Coverage Tint**: Unmasked areas show full PBR lighting; active mask regions are tinted with an adjustable red/cyan overlay.
+  - **Diagnostic False-Color Heatmap**: High-contrast gradient (Blue $\rightarrow$ Green $\rightarrow$ Yellow $\rightarrow$ Red) showing continuous float intensity.
+  - **Flow Vector & Warped Grid Overlay**: Overlays flow direction arrows or periodic UV grid lines directly onto the 3D geometry to visualize hydraulic erosion pull or domain warping.
+  - **Signed Distance Field Iso-Contours**: Visualizes distance contours around peeling flakes or fracture pieces.
+* **Controls**: An interactive `Overlay Opacity` slider (0% to 100%) and quick toggle hotkey (`O`).
+
+---
+
+### C. Interactive Split-Screen & Wipe Comparison (A/B Slider)
+* **What it does**: An interactive vertical or horizontal wipe line that artists can drag across the viewport with the mouse cursor.
+* **Comparison Modes**:
+  - **Lit Composite vs. Raw Base Layer**: Instantly verify how much detail the layer stack and weathering passes have added.
+  - **Lit Material vs. Diagnostic Mask / Normal Pass**: Inspect underlying geometric detail side-by-side with the finished render.
+  - **GPU Preview vs. Baked Texture Set**: Validate that the baked 4K PBR Substrate material perfectly matches the real-time procedural RDG composite.
+* **Commercial Value**: Split-screen wipes are the **#1 visual asset** for marketing videos, Fab product screenshots, and short-form social media demos.
+
+---
+
+### D. Multi-Channel Quad-Grid Preview (4-Way Viewport)
+* **What it does**: A 1-click toggle (`Quad View` / `F4`) that divides the viewport into 4 synchronized viewports:
+  1. **Top-Left**: Lit 3D Render (Lumen + Displacement).
+  2. **Top-Right**: BaseColor Pass.
+  3. **Bottom-Left**: Normal & Curvature Pass.
+  4. **Bottom-Right**: Combined RAM / Height Displacement Pass.
+* **Syncing**: All 4 quadrants share identical camera orbit, pan, and zoom in real time with zero desync.
+
+---
+
+### E. Dual 2D Flat Tile Canvas & 3D Orbital Mesh Sync
+* **What it does**: A side-by-side dual panel layout:
+  - **Left Panel (2D Canvas)**: Flat unlit $0..1$ UV view with $3\times 3$ periodic tile boundary repeating to easily check seamless tiling, seam matching, and edge wrapping.
+  - **Right Panel (3D Viewport)**: Orbitable sphere, plane, cube, cylinder, or custom prop mesh under studio lighting.
+* **Hover Crosshair**: Hovering the cursor on the 2D tile canvas projects a matching 3D gizmo / normal dot onto the 3D mesh surface, instantly showing where the texel resides on the 3D model.
+
+---
+
+## 3. Technical Implementation & GPU Blit Architecture
+
+```mermaid
+flowchart LR
+    subgraph RDG["Render Dependency Graph (RDG)"]
+        ScenePass["Viewport Scene Lit Pass\n(GBuffer / Lumen Resolve)"]
+        DebugPass["Mixtormat Debug Pass\n(Mask / Channel / Flow / SDF)"]
+        BlitPass["Mixtormat Preview Blit Pass\n(Alpha Blend / Wipe Split Shader)"]
+    end
+
+    ScenePass --> BlitPass
+    DebugPass --> BlitPass
+    BlitPass --> SlateTarget["SMixtormatPreviewViewport RenderTarget"]
+```
+
+1. **Lightweight Compositing Blit Pass ([`MixtormatGpuDebugPreviewPasses.cpp`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatShaders/Private/MixtormatGpuDebugPreviewPasses.cpp))**:
+   - The diagnostic overlay is executed as a lightweight pixel shader blit pass that samples the diagnostic texture and composite scene color, applying split wipe lines or overlay alpha tints.
+2. **Zero-Cost Inactive Overhead**:
+   - When the viewport is in standard `Lit` mode, diagnostic RDG passes are completely pruned from the GraphBuilder execution, ensuring 0% GPU performance overhead during normal material editing.
+3. **Slate Integration ([`SMixtormat_PreviewControls.cpp`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatEditor/Private/Widgets/SMixtormat_PreviewControls.cpp))**:
+   - Viewport controls are constructed via unified Slate widgets shared between the on-viewport HUD overlay and the GLOBAL settings panel, eliminating duplicate logic.
+
+---
+
+## 4. Summary: How Advanced Previews Drive Fab Virality
+
+| Preview Feature | Traditional UE Viewports | **Mixtormat Preview Suite** | Commercial Benefit |
+|---|---|---|---|
+| **Channel Inspect** | Buried in submenus or hotkeys. | **Persistent 1-Click Header Ribbon**. | Faster artist workflow, higher satisfaction. |
+| **Mask Feedback** | Flat black & white only. | **3D Superimposed Mask & Heatmap**. | Effortless mask tuning with lighting context. |
+| **A/B Comparison** | Toggle layer visibility repeatedly. | **Interactive Drag Wipe Slider**. | Incredible marketing & showcase demonstrations. |
+| **Multi-Channel** | One channel at a time. | **Real-Time Quad Multi-View**. | AAA studio tool polish matching Substance & Marmoset. |
 
 ---
 
@@ -586,232 +689,217 @@ flowchart TD
 2. **For Post-Launch (1.1 Update)**:
    - **PCG Texture Sampler Bridge**: Direct drag-and-drop integration between Mixtormat assets and UE PCG graphs.
    - **Landscape Layer Auto-Assigner**: Automatically generate the `ULandscapeLayerInfoObject` assets and wire them into a Landscape Material.
-  - **Yes, 100% — terrain-based mapping is not only acceptable, it is a massive competitive advantage.**
-  
-  In fact, terrain and landscape artists are among the **most underserved and highest-spending buyers** on the Fab Store.
-  
-  Here is why terrain-based mapping fits Mixtormat naturally and why it is a huge selling point.
-  
-  ---
-  
-  # Why Terrain-Based Mapping is a Perfect Fit
-  
-  ```mermaid
-  flowchart LR
-      subgraph NaturalMath["Mixtormat Already Computes"]
-          M1["• Continuous Signed Height (PF_R32_FLOAT)"]
-          M2["• Hydraulic & Directional Erosion Carve"]
-          M3["• Rock Strata Carver & Layer Angles"]
-          M4["• Slope & Curvature Masks"]
-          M5["• Cellular Crack & Pebble Breakers"]
-      end
-  
-      subgraph TerrainOutput["Direct Terrain Application"]
-          NaturalMath --> T1["🏔️ Nanite Terrain Meshes & Cliff Stamps"]
-          NaturalMath --> T2["🗺️ UE Landscape Layer Splatmaps (Scree, Grass, Rock, Mud)"]
-          NaturalMath --> T3["🌍 Triplanar & World-Aligned Biome Texturing"]
-      end
-  ```
-  
-  ---
-  
-  ## 1. Why It Fits Mixtormat’s Math Out-of-the-Box
-  
-  You don't need to rebuild your engine to support terrain mapping because your math is already geological:
-  
-  1. **Hydraulic Erosion & Carve ([`MixtormatErosion.usf`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Shaders/Private/MixtormatErosion.usf))**:
-     - Seeds non-negative carve depth, preserves flats, and relaxes sediment along gravity downhill slopes. This is the exact math used by standalone terrain software like Gaea and World Machine.
-  
-  2. **Rock Strata & Dip Angles ([`MixtormatStrataCarver.usf`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Shaders/Private/MixtormatStrataCarver.usf))**:
-     - Generates geological bedding planes, sedimentary banding, and tectonic fault tilting directly in GPU compute.
-  
-  3. **Slope, Occlusion & Curvature Filtering**:
-     - You already calculate slope power, directional light/gravity bias, and curvature to mask where moss, snow, mud, or rock faces appear.
-  
-  ---
-  
-  ## 2. The 3 Terrain Mapping Modes You Enable
-  
-  ### A. Triplanar / World-Aligned Mapping (No UV Stretching on Cliffs)
-  * **The Problem**: Normal UV mapping stretches and tears on vertical cliff walls and steep terrain slopes.
-  * **The Mixtormat Solution**: Because Mixtormat generates standard PBR texture sets (BaseColor, Normal, RAM, Height), artists can plug them directly into **World-Aligned / Triplanar Material Functions** in Unreal Engine to coat massive mountains and cliffs with zero UV seams.
-  
-  ### B. Nanite Displaced Landscape Stamps & Cliffs
-  * **The Modern UE5 Paradigm**: Instead of using traditional heightfield grids, AAA games (like *Fortnite*, *Black Myth: Wukong*, *Hellblade 2*) build environments with **Nanite modular cliff rocks and terrain displacement meshes**.
-  * **The Synergy**: Mixtormat outputs **32-bit floating point displacement** (`PF_R32_FLOAT`), giving Nanite meshes razor-sharp micro-facets, cracks, and strata layers.
-  
-  ### C. Landscape Splatmaps / Weightmaps (Layer Blending)
-  * Exporting your generated masks (e.g. *Erosion Deposit*, *Slope Rock*, *Plate Breakup*) directly as **Landscape Layer Weightmaps** lets artists paint and auto-blend entire biomes in Unreal Engine.
-  
-  ---
-  
-  ## 3. How to Market Terrain Mapping for Maximum Sales
-  
-  When you list Mixtormat on Fab, position it for both **Environment/Prop Artists** AND **Terrain/World Builders**:
-  
-  * **Feature Bullet**: *"Geological & Terrain Ready — Includes dedicated Hydraulic Erosion, Strata Bedding Carver, and Nanite 32-bit Height Displacement for Cliff & Landscape authoring."*
-  * **Visual Showcase**: Include one breathtaking landscape/cliff render in your store gallery showing a terrain asset textured with Mixtormat's erosion and strata layers.
-  
-  ### Conclusion
-  Terrain-based mapping is a **natural, high-value extension** of what Mixtormat already does best. It expands your market from just "prop texturing" to the entire **Open World & Environment Art** community!
 
+---
 
+# Why Terrain-Based Mapping is a Perfect Fit
 
+```mermaid
+flowchart LR
+    subgraph NaturalMath["Mixtormat Already Computes"]
+        M1["• Continuous Signed Height (PF_R32_FLOAT)"]
+        M2["• Hydraulic & Directional Erosion Carve"]
+        M3["• Rock Strata Carver & Layer Angles"]
+        M4["• Slope & Curvature Masks"]
+        M5["• Cellular Crack & Pebble Breakers"]
+    end
 
-  **Yes, competitors exist, but almost all of them suffer from major workflow, architectural, or commercial flaws that Mixtormat solves.**
-  
-  Let’s look at the actual competitive landscape, what they do, and where **Mixtormat wins decisively**.
-  
-  ---
-  
-  # Competitive Analysis: Where Mixtormat Beats the Competition
-  
-  ```mermaid
-  flowchart TD
-      Competitors["Existing Erosion & Material Tools"]
-      
-      Competitors --> Standalone["1. External Standalone Apps\n(Gaea, World Machine, Substance Designer)"]
-      Competitors --> UEPlugins["2. Existing UE Marketplace Plugins\n(Simple Landscape Brushes, Blueprint tools)"]
-      Competitors --> Subscriptions["3. Megascans / Quixel Mixer\n(Discontinued / Limited In-Engine Interactivity)"]
-  
-      Standalone --> Weak1["❌ Breaks Flow: Export/Import loop, no Lumen context"]
-      UEPlugins --> Weak2["❌ CPU-Bound or Primitive: Just basic height stamps, no full PBR layers"]
-      Subscriptions --> Weak3["❌ Mixer is dead/stagnant; Substance requires expensive monthly sub"]
-  
-      Weak1 & Weak2 & Weak3 --> MixtormatAdvantage["💎 Mixtormat's Sweet Spot:\n100% Native RDG GPU Compute + Multi-Layer PBR Authoring\nDirectly inside UE5.8 with 0 Subscriptions"]
-  ```
-  
-  ---
-  
-  ## 1. Breakdown of Key Competitors & Their Flaws
-  
-  ### A. External Standalone Tools (Gaea 2, World Machine, World Creator)
-  * **What they do**: Excellent macro-terrain height generation.
-  * **Their Big Flaw**:
-    - **The "Export-Import" Hell**: You must sculpt in Gaea $\rightarrow$ export EXRs $\rightarrow$ import to UE $\rightarrow$ tweak lighting $\rightarrow$ realize the scale looks wrong in Lumen $\rightarrow$ go back to Gaea $\rightarrow$ re-export.
-    - **Macro Only**: They generate mountain heightmaps, but they **cannot do micro-material layering** (like mixing wood grain, peeling paint, rusted metal, or detailed rock strata tileables).
-  * **Mixtormat's Advantage**: **Zero export loops.** You see the material live in Unreal Engine under your project's actual Lumen lighting, Nanite settings, and camera angles.
-  
-  ---
-  
-  ### B. Adobe Substance Suite (Substance Designer & Painter)
-  * **What they do**: The gold standard of procedural texturing and prop painting.
-  * **Their Big Flaw**:
-    - **Expensive Monthly Subscriptions**: $20 – $50+/month per user, which indies, students, and small studios hate.
-    - **External App**: Constantly baking and syncing maps between Substance and Unreal Engine.
-  * **Mixtormat's Advantage**: **Perpetual license on Fab ($89 one-time)** with **100% native in-engine authoring**. No third-party software needed on your team's machines.
-  
-  ---
-  
-  ### C. Existing UE Marketplace Landscape Plugins
-  * **What they do**: Blueprint-based landscape brushes, simple slope-blend landscape auto-materials, or basic virtual texture tools.
-  * **Their Big Flaw**:
-    - **Surface-Level Blending Only**: They merely blend 3 tiled textures together using slope angles in a pixel shader. They **do not author new procedural height, hydraulic flow carve, craquelure cracking, peeling, or custom PBR textures from scratch**.
-    - **Performance Heavy at Runtime**: Auto-materials with 8 layers run expensive runtime pixel shader instructions across the whole screen.
-  * **Mixtormat's Advantage**: **Mixtormat is an authoring & baking powerhouse.** It calculates complex RDG GPU simulations (hydraulic erosion, lift tension, structural warp) once, and bakes them to ultra-optimized, high-performance textures and Nanite displacement.
-  
-  ---
-  
-  ### D. Quixel Mixer
-  * **What happened**: Epic stopped active development and updates for Quixel Mixer years ago, leaving a massive gap for a modern, in-engine layering tool.
-  * **Mixtormat's Advantage**: Fills the exact void left by Quixel Mixer, but integrated **directly inside the Unreal Engine Editor**.
-  
-  ---
-  
-  ## 2. The Unique Mixtormat Formula: "Macro-Terrain Math meets Micro-Surface Layering"
-  
-  Most tools do **only terrain** (Gaea) OR **only props** (Substance Painter). 
-  
-  Mixtormat combines both into a **single unified layer stack**:
-  1. **Generators**: Rock Formations, Strata Carvers, Cellular Fractures, Noises.
-  2. **Structural Effects**: Hydraulic Erosion, Plate Breakup, Worn Edges, Peeling Paint.
-  3. **Simulation Masks**: Moisture Runoff, Stains, Cavity Dirt.
-  4. **Instant Baking**: 1-click output to Substrate, PBR, and Nanite displacement.
-  
-  ---
-  
-  ## 3. How to Frame This in Your Marketing (The Winning Pitch)
-  
-  > *"Why pay monthly subscriptions or waste hours in external export loops?*
-  > 
-  > *Mixtormat gives you AAA procedural generation, hydraulic erosion, rock strata, and multi-layer weathering **100% natively inside Unreal Engine 5.8** on your GPU.*
-  > 
-  > *Iterate live under your game's real Lumen lighting. Bake to Substrate & PBR in one click."*
-  
-  This positioning makes it clear why Mixtormat is a must-have, even in a market with existing tools!
+    subgraph TerrainOutput["Direct Terrain Application"]
+        NaturalMath --> T1["🏔️ Nanite Terrain Meshes & Cliff Stamps"]
+        NaturalMath --> T2["🗺️ UE Landscape Layer Splatmaps (Scree, Grass, Rock, Mud)"]
+        NaturalMath --> T3["🌍 Triplanar & World-Aligned Biome Texturing"]
+    end
+```
 
+---
 
-  Here is the exact reality of how **Mixtormat’s architecture handles layers, multi-material blending, and independent tiling** right now:
-  
-  ---
-  
-  # Multi-Material Blending & Independent Tiling in Mixtormat
-  
-  ```mermaid
-  flowchart TD
-      subgraph LayerStack["Mixtormat Layer Stack (Already Implemented)"]
-          L1["Layer 1: Base Rock\n(Tiling: 1.0, UVScale: 1x1, Offset, Flip, Rotation)"]
-          L2["Layer 2: Sandstone Strata\n(Tiling: 4.0, UVScale: 2x1, Masked by Slope)"]
-          L3["Layer 3: Moss & Dirt\n(Tiling: 8.0, UVScale: 4x4, Masked by Cavity AO)"]
-          L4["Layer 4: Peeling Paint\n(Tiling: 2.0, Masked by Curvature + Edge Wear)"]
-      end
-  
-      subgraph GPUCompose["GPU RDG Compositor Pipeline"]
-          LayerStack --> Compose["AddLayerCompositePass()\n• Independent Per-Layer UV Lattice (frac)\n• 20 Blend Modes (Overlay, SoftLight, Normal...)\n• Height-blended or Mask-blended Stacking"]
-      end
-  
-      GPUCompose --> FinalOutput["Finished Multi-Material Surface (1-Click Bake)"]
-  ```
-  
-  ---
-  
-  ## 1. Good News: Independent Layer Tiling is ALREADY Built In!
-  
-  You **do not need a major UI rewrite** for independent tiling. In [`MixtormatLayerTypes.h`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L440-L480), every layer in Mixtormat already has its own isolated UV & placement properties:
-  
-  - **`Tiling`** (Per-layer independent frequency)
-  - **`UVScaleX` / `UVScaleY`** (Independent non-uniform per-axis scale)
-  - **`UVOffsetX` / `UVOffsetY`** (Per-layer sliding)
-  - **`bFlipU` / `bFlipV`** (Mirroring)
-  - **`Rotation`** (Quarter-turn UV rotations preserving periodic `frac()` tiling)
-  
-  ### How It Works:
-  If you stack:
-  1. **Rock layer** at `Tiling = 1.0`
-  2. **Detail Pebbles / Mud layer** at `Tiling = 8.0`
-  3. **Moss layer** at `Tiling = 12.0`
-  
-  The GPU compositor evaluates each layer’s source textures using its **own distinct UV coordinate lattice** before blending them together in `AddLayerCompositePass`.
-  
-  ---
-  
-  ## 2. Multi-Material Blending: How It Works Today
-  
-  Mixtormat supports **three distinct layer types** in [`EMixtormatLayerType`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L20-L26):
-  
-  1. **`Material Layer`**: Points to a complete surface asset (`SourceSurface` or nested `SourceComposition`) with its own BaseColor, Normal, Roughness, and Height maps.
-  2. **`Fill Layer`**: Constant color/roughness with procedural masks.
-  3. **`Generator Layer`**: GPU-evaluated procedural shapes (Strata Carver, Rock Formation, Fracture, Noise).
-  
-  ### 20 Color & Height Blend Modes:
-  In [`EMixtormatColorBlendMode`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L60-L85), you have full Photoshop/Substance-grade blending:
-  * *Normal, Add, Subtract, Multiply, Screen, Overlay, Soft Light, Hard Light, Color Dodge, Burn, Difference, Min, Max, Luminosity, Hue, Saturation...*
-  
-  ---
-  
-  ## 3. What *Is* Needed for Terrain Multi-Material Workflow? (Very Minimal!)
-  
-  To make multi-material terrain blending 100% intuitive for environment artists, you only need **2 small UX touches**, not a rewrite:
-  
-  1. **Macro / Micro Blend Preset Helpers**:
-     - In the Layer Inspector, allow artists to quickly pick **"World Scale / Macro"** vs **"Detail Micro-Tiling"** presets.
-  2. **Height-Blended Transitions (Height-Blend Slider)**:
-     - When blending Mud over Rock, artists love height-blending (where the mud fills the crevices of the rock first before covering the peaks). You already calculate `CombinedEffectHeight` and `LayerInputHeight`; simply expose a clear **"Height Depth Contrast"** slider on the Layer header.
-  
-  ---
-  
-  ## Summary
-  
-  * **Do you have to build independent tiling from scratch?** **NO.** Every layer already owns independent tiling, per-axis UV scale, offset, and rotation.
-  * **Does it support multi-material stacking?** **YES.** You can stack unlimited Material, Generator, and Fill layers with 20 blend modes.
-  * **Is a major UI overhaul required?** **NO.** The current Slate UI stack and inspector cards already display and edit these properties cleanly.
+## 1. Why It Fits Mixtormat’s Math Out-of-the-Box
+
+You don't need to rebuild your engine to support terrain mapping because your math is already geological:
+
+1. **Hydraulic Erosion & Carve ([`MixtormatErosion.usf`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Shaders/Private/MixtormatErosion.usf))**:
+   - Seeds non-negative carve depth, preserves flats, and relaxes sediment along gravity downhill slopes. This is the exact math used by standalone terrain software like Gaea and World Machine.
+
+2. **Rock Strata & Dip Angles ([`MixtormatStrataCarver.usf`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Shaders/Private/MixtormatStrataCarver.usf))**:
+   - Generates geological bedding planes, sedimentary banding, and tectonic fault tilting directly in GPU compute.
+
+3. **Slope, Occlusion & Curvature Filtering**:
+   - You already calculate slope power, directional light/gravity bias, and curvature to mask where moss, snow, mud, or rock faces appear.
+
+---
+
+## 2. The 3 Terrain Mapping Modes You Enable
+
+### A. Triplanar / World-Aligned Mapping (No UV Stretching on Cliffs)
+* **The Problem**: Normal UV mapping stretches and tears on vertical cliff walls and steep terrain slopes.
+* **The Mixtormat Solution**: Because Mixtormat generates standard PBR texture sets (BaseColor, Normal, RAM, Height), artists can plug them directly into **World-Aligned / Triplanar Material Functions** in Unreal Engine to coat massive mountains and cliffs with zero UV seams.
+
+### B. Nanite Displaced Landscape Stamps & Cliffs
+* **The Modern UE5 Paradigm**: Instead of using traditional heightfield grids, AAA games (like *Fortnite*, *Black Myth: Wukong*, *Hellblade 2*) build environments with **Nanite modular cliff rocks and terrain displacement meshes**.
+* **The Synergy**: Mixtormat outputs **32-bit floating point displacement** (`PF_R32_FLOAT`), giving Nanite meshes razor-sharp micro-facets, cracks, and strata layers.
+
+### C. Landscape Splatmaps / Weightmaps (Layer Blending)
+* Exporting your generated masks (e.g. *Erosion Deposit*, *Slope Rock*, *Plate Breakup*) directly as **Landscape Layer Weightmaps** lets artists paint and auto-blend entire biomes in Unreal Engine.
+
+---
+
+## 3. How to Market Terrain Mapping for Maximum Sales
+
+When you list Mixtormat on Fab, position it for both **Environment/Prop Artists** AND **Terrain/World Builders**:
+
+* **Feature Bullet**: *"Geological & Terrain Ready — Includes dedicated Hydraulic Erosion, Strata Bedding Carver, and Nanite 32-bit Height Displacement for Cliff & Landscape authoring."*
+* **Visual Showcase**: Include one breathtaking landscape/cliff render in your store gallery showing a terrain asset textured with Mixtormat's erosion and strata layers.
+
+### Conclusion
+Terrain-based mapping is a **natural, high-value extension** of what Mixtormat already does best. It expands your market from just "prop texturing" to the entire **Open World & Environment Art** community!
+
+---
+
+# Competitive Analysis: Where Mixtormat Beats the Competition
+
+```mermaid
+flowchart TD
+    Competitors["Existing Erosion & Material Tools"]
+    
+    Competitors --> Standalone["1. External Standalone Apps\n(Gaea, World Machine, Substance Designer)"]
+    Competitors --> UEPlugins["2. Existing UE Marketplace Plugins\n(Simple Landscape Brushes, Blueprint tools)"]
+    Competitors --> Subscriptions["3. Megascans / Quixel Mixer\n(Discontinued / Limited In-Engine Interactivity)"]
+
+    Standalone --> Weak1["❌ Breaks Flow: Export/Import loop, no Lumen context"]
+    UEPlugins --> Weak2["❌ CPU-Bound or Primitive: Just basic height stamps, no full PBR layers"]
+    Subscriptions --> Weak3["❌ Mixer is dead/stagnant; Substance requires expensive monthly sub"]
+
+    Weak1 & Weak2 & Weak3 --> MixtormatAdvantage["💎 Mixtormat's Sweet Spot:\n100% Native RDG GPU Compute + Multi-Layer PBR Authoring\nDirectly inside UE5.8 with 0 Subscriptions"]
+```
+
+---
+
+## 1. Breakdown of Key Competitors & Their Flaws
+
+### A. External Standalone Tools (Gaea 2, World Machine, World Creator)
+* **What they do**: Excellent macro-terrain height generation.
+* **Their Big Flaw**:
+  - **The "Export-Import" Hell**: You must sculpt in Gaea $\rightarrow$ export EXRs $\rightarrow$ import to UE $\rightarrow$ tweak lighting $\rightarrow$ realize the scale looks wrong in Lumen $\rightarrow$ go back to Gaea $\rightarrow$ re-export.
+  - **Macro Only**: They generate mountain heightmaps, but they **cannot do micro-material layering** (like mixing wood grain, peeling paint, rusted metal, or detailed rock strata tileables).
+* **Mixtormat's Advantage**: **Zero export loops.** You see the material live in Unreal Engine under your project's actual Lumen lighting, Nanite settings, and camera angles.
+
+---
+
+### B. Adobe Substance Suite (Substance Designer & Painter)
+* **What they do**: The gold standard of procedural texturing and prop painting.
+* **Their Big Flaw**:
+  - **Expensive Monthly Subscriptions**: $20 – $50+/month per user, which indies, students, and small studios hate.
+  - **External App**: Constantly baking and syncing maps between Substance and Unreal Engine.
+* **Mixtormat's Advantage**: **Perpetual license on Fab ($89 one-time)** with **100% native in-engine authoring**. No third-party software needed on your team's machines.
+
+---
+
+### C. Existing UE Marketplace Landscape Plugins
+* **What they do**: Blueprint-based landscape brushes, simple slope-blend landscape auto-materials, or basic virtual texture tools.
+* **Their Big Flaw**:
+  - **Surface-Level Blending Only**: They merely blend 3 tiled textures together using slope angles in a pixel shader. They **do not author new procedural height, hydraulic flow carve, craquelure cracking, peeling, or custom PBR textures from scratch**.
+  - **Performance Heavy at Runtime**: Auto-materials with 8 layers run expensive runtime pixel shader instructions across the whole screen.
+* **Mixtormat's Advantage**: **Mixtormat is an authoring & baking powerhouse.** It calculates complex RDG GPU simulations (hydraulic erosion, lift tension, structural warp) once, and bakes them to ultra-optimized, high-performance textures and Nanite displacement.
+
+---
+
+### D. Quixel Mixer
+* **What happened**: Epic stopped active development and updates for Quixel Mixer years ago, leaving a massive gap for a modern, in-engine layering tool.
+* **Mixtormat's Advantage**: Fills the exact void left by Quixel Mixer, but integrated **directly inside the Unreal Engine Editor**.
+
+---
+
+## 2. The Unique Mixtormat Formula: "Macro-Terrain Math meets Micro-Surface Layering"
+
+Most tools do **only terrain** (Gaea) OR **only props** (Substance Painter). 
+
+Mixtormat combines both into a **single unified layer stack**:
+1. **Generators**: Rock Formations, Strata Carvers, Cellular Fractures, Noises.
+2. **Structural Effects**: Hydraulic Erosion, Plate Breakup, Worn Edges, Peeling Paint.
+3. **Simulation Masks**: Moisture Runoff, Stains, Cavity Dirt.
+4. **Instant Baking**: 1-click output to Substrate, PBR, and Nanite displacement.
+
+---
+
+## 3. How to Frame This in Your Marketing (The Winning Pitch)
+
+> *"Why pay monthly subscriptions or waste hours in external export loops?*
+> 
+> *Mixtormat gives you AAA procedural generation, hydraulic erosion, rock strata, and multi-layer weathering **100% natively inside Unreal Engine 5.8** on your GPU.*
+> 
+> *Iterate live under your game's real Lumen lighting. Bake to Substrate & PBR in one click."*
+
+This positioning makes it clear why Mixtormat is a must-have, even in a market with existing tools!
+
+---
+
+# Multi-Material Blending & Independent Tiling in Mixtormat
+
+```mermaid
+flowchart TD
+    subgraph LayerStack["Mixtormat Layer Stack (Already Implemented)"]
+        L1["Layer 1: Base Rock\n(Tiling: 1.0, UVScale: 1x1, Offset, Flip, Rotation)"]
+        L2["Layer 2: Sandstone Strata\n(Tiling: 4.0, UVScale: 2x1, Masked by Slope)"]
+        L3["Layer 3: Moss & Dirt\n(Tiling: 8.0, UVScale: 4x4, Masked by Cavity AO)"]
+        L4["Layer 4: Peeling Paint\n(Tiling: 2.0, Masked by Curvature + Edge Wear)"]
+    end
+
+    subgraph GPUCompose["GPU RDG Compositor Pipeline"]
+        LayerStack --> Compose["AddLayerCompositePass()\n• Independent Per-Layer UV Lattice (frac)\n• 20 Blend Modes (Overlay, SoftLight, Normal...)\n• Height-blended or Mask-blended Stacking"]
+    end
+
+    GPUCompose --> FinalOutput["Finished Multi-Material Surface (1-Click Bake)"]
+```
+
+---
+
+## 1. Good News: Independent Layer Tiling is ALREADY Built In!
+
+You **do not need a major UI rewrite** for independent tiling. In [`MixtormatLayerTypes.h`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L440-L480), every layer in Mixtormat already has its own isolated UV & placement properties:
+
+- **`Tiling`** (Per-layer independent frequency)
+- **`UVScaleX` / `UVScaleY`** (Independent non-uniform per-axis scale)
+- **`UVOffsetX` / `UVOffsetY`** (Per-layer sliding)
+- **`bFlipU` / `bFlipV`** (Mirroring)
+- **`Rotation`** (Quarter-turn UV rotations preserving periodic `frac()` tiling)
+
+### How It Works:
+If you stack:
+1. **Rock layer** at `Tiling = 1.0`
+2. **Detail Pebbles / Mud layer** at `Tiling = 8.0`
+3. **Moss layer** at `Tiling = 12.0`
+
+The GPU compositor evaluates each layer’s source textures using its **own distinct UV coordinate lattice** before blending them together in `AddLayerCompositePass`.
+
+---
+
+## 2. Multi-Material Blending: How It Works Today
+
+Mixtormat supports **three distinct layer types** in [`EMixtormatLayerType`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L20-L26):
+
+1. **`Material Layer`**: Points to a complete surface asset (`SourceSurface` or nested `SourceComposition`) with its own BaseColor, Normal, Roughness, and Height maps.
+2. **`Fill Layer`**: Constant color/roughness with procedural masks.
+3. **`Generator Layer`**: GPU-evaluated procedural shapes (Strata Carver, Rock Formation, Fracture, Noise).
+
+### 20 Color & Height Blend Modes:
+In [`EMixtormatColorBlendMode`](file:///C:/Tools/MaterialLab/MatLab/Plugins/Mixtormat/Source/MixtormatRuntime/Public/MixtormatLayerTypes.h#L60-L85), you have full Photoshop/Substance-grade blending:
+* *Normal, Add, Subtract, Multiply, Screen, Overlay, Soft Light, Hard Light, Color Dodge, Burn, Difference, Min, Max, Luminosity, Hue, Saturation...*
+
+---
+
+## 3. What *Is* Needed for Terrain Multi-Material Workflow? (Very Minimal!)
+
+To make multi-material terrain blending 100% intuitive for environment artists, you only need **2 small UX touches**, not a rewrite:
+
+1. **Macro / Micro Blend Preset Helpers**:
+   - In the Layer Inspector, allow artists to quickly pick **"World Scale / Macro"** vs **"Detail Micro-Tiling"** presets.
+2. **Height-Blended Transitions (Height-Blend Slider)**:
+   - When blending Mud over Rock, artists love height-blending (where the mud fills the crevices of the rock first before covering the peaks). You already calculate `CombinedEffectHeight` and `LayerInputHeight`; simply expose a clear **"Height Depth Contrast"** slider on the Layer header.
+
+---
+
+## Summary
+
+* **Do you have to build independent tiling from scratch?** **NO.** Every layer already owns independent tiling, per-axis UV scale, offset, and rotation.
+* **Does it support multi-material stacking?** **YES.** You can stack unlimited Material, Generator, and Fill layers with 20 blend modes.
+* **Is a major UI overhaul required?** **NO.** The current Slate UI stack and inspector cards already display and edit these properties cleanly.
