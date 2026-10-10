@@ -1,0 +1,13 @@
+int pts[] = expandpointgroup(0, "*");
+
+foreach (int pt; pts)
+{
+    setpointattrib(0, "_curv", pt, 0.0, "set");
+    setpointattrib(0, "_shadow_mask", pt, 0.0, "set");
+    setpointattrib(0, "_shadow_tmp", pt, 0.0, "set");
+    setpointattrib(0, "_grav", pt, set(0.0, -1.0, 0.0), "set");
+    setpointattrib(0, "_fold_mask", pt, 0.0, "set");
+    setpointattrib(0, "_fold_disp", pt, 0.0, "set");
+    setpointattrib(0, "_ao_mask", pt, 1.0, "set");
+    setpointattrib(0, "_thickness_mask", pt, 1.0, "set");
+}
