@@ -68,7 +68,12 @@ re-implemented:
 
 Noise V2 extends this shared producer with an appended **Phasor** family, Worley metrics/jitter
 and optional curl-driven domain distortion. Defaults preserve old Value/Height contracts.
-See [NOISE_V2.md](NOISE_V2.md) for new parameters, semantic limits and validation gates.
+Noise V2.1 adds opt-in octave layering to Gradient/Value/Worley/Bars/Phasor, a smooth
+Worley cell-distance-depth control, Phasor Scale/Bias and independent jagged-domain warp.
+Noise-specific numeric/enum authoring defaults are registered for Generator/MaskNoise in
+`Config/MixtormatParameterAuthoring.json`. The normal right-click reference/dev-menu path
+applies; pixel-based Noise GPU Driver evaluation is **not** implemented yet.
+See [NOISE_V2.md](NOISE_V2.md) for parameters, constraints and validation gates.
 
 ## Gravity Flow (texture-space generator child)
 

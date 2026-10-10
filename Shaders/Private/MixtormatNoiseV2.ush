@@ -124,13 +124,13 @@ float2 MixtormatNoiseV2Curl(
 // Any strength of zero returns UV bit-for-bit; warp remains periodic in both axes.
 float2 MixtormatNoiseV2WarpDomain(
 	float2 UV, int Period, int Octaves, float Roughness, float Lacunarity,
-	uint Seed, float Strength, float2 Direction, float CurlMix)
+	uint Seed, float Strength, float2 Direction, float CurlMix, float Jaggedness)
 {
-	if (Strength == 0.0f) { return UV; }
+	if (Strength == 0.0f && Jaggedness == 0.0f) { return UV; }
 	const int P = clamp(Period, 1, 4096);
 	const float Mix = saturate(CurlMix);
 	float2 Displacement = float2(0.0f, 0.0f);
-	if (Mix < 1.0f)
+	if (Strength > 0.0f && Mix < 1.0f)
 	{
 		float Value;
 		float2 Derivative;
@@ -141,12 +141,22 @@ float2 MixtormatNoiseV2WarpDomain(
 			? Direction * rsqrt(DirectionLengthSq) : float2(0.0f, 1.0f);
 		Displacement += (1.0f - Mix) * Value * Axis;
 	}
-	if (Mix > 0.0f)
+	if (Strength > 0.0f && Mix > 0.0f)
 	{
 		Displacement += Mix * MixtormatNoiseV2Curl(UV, P, Octaves,
 			Roughness, Lacunarity, Seed, float2(0.0f, 0.0f), 0.0f, 1.0f);
 	}
-	return UV + Displacement * (Strength / (float)P);
+	// High-frequency, periodic cusp-shaped vector micro-warp. Independent of the
+	// smooth/curl strength: the user can author jaggedness alone or mix both.
+	float2 Jagged = float2(0.0f, 0.0f);
+	if (Jaggedness > 0.0f)
+	{
+		const int SharpPeriod = min(P * 4, 4096);
+		const float3 N = MixtormatPeriodicNoiseD(frac(UV) * (float)SharpPeriod,
+			SharpPeriod, Seed ^ 0x9b9773e9u);
+		Jagged = sign(N.yz) * sqrt(abs(N.yz));
+	}
+	return UV + (Displacement * Strength + Jagged * Jaggedness) / (float)P;
 }
 
 // Alternative cellular metrics. Mode 0=Euclidean, 1=Manhattan, 2=Chebyshev.
@@ -220,6 +230,82 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 	Result.Direction = MixtormatNoiseV2MetricGradient(FirstDelta, Mode);
 	Result.SecondDirection = MixtormatNoiseV2MetricGradient(SecondDelta, Mode);
 	return Result;
+}
+
+
+// Smooth periodic cell-distance modulation. Seeded lattice values vary the apparent
+// depth of nearby cells without moving Voronoi feature points or altering IDs. The quintic
+// interpolation is continuous across cell edges and the gradient uses the product rule.
+void MixtormatNoiseV2CellDistanceVariation(
+	float2 UV, int Period, uint Seed, float Depth,
+	inout float Distance, inout float2 Gradient)
+{
+	if (Depth <= 0.0f) { return; }
+	const int P = max(Period, 1);
+	const float3 Modulation = MixtormatNoiseValueD(
+		frac(UV) * (float)P, P, Seed ^ 0x73f348b1u);
+	const float Factor = 1.0f + 0.75f * saturate(Depth) * Modulation.x;
+	const float OriginalDistance = Distance;
+	Distance = OriginalDistance * Factor;
+	Gradient = Gradient * Factor + OriginalDistance
+		* (0.75f * saturate(Depth) * (float)P) * Modulation.yz;
+}
+
+// Additional frequency layers for noise families originally authored as one octave.
+// The caller preserves the first octave and its Region IDs; this evaluates only finer
+// octaves. Each uses periodic, integer lattice periods and independent seeded draws.
+void MixtormatNoiseV2LayerOctave(
+	float2 UV, int Type, int Period, uint Seed, float2 Wave, float PhaseOffset,
+	float BasePeriod, int WorleyMetric, float WorleyJitter, float WorleyCellDepth,
+	float PhasorFrequency, float PhasorAnisotropy, float PhasorPhaseVariation,
+	float PhasorOrientationVariation, int PhasorComponents,
+	out float Value, out float2 Gradient)
+{
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+	const float2 TiledUV = frac(UV);
+	const int P = max(Period, 1);
+	if (Type == 0)
+	{
+		const float3 N = MixtormatPeriodicNoiseD(TiledUV * (float)P, P, Seed);
+		Value = N.x * MIXTORMAT_NOISE_SQRT2;
+		Gradient = (float)P * MIXTORMAT_NOISE_SQRT2 * N.yz;
+	}
+	else if (Type == 1)
+	{
+		const float3 N = MixtormatNoiseValueD(TiledUV * (float)P, P, Seed);
+		Value = N.x;
+		Gradient = (float)P * N.yz;
+	}
+	else if (Type == 5 || Type == 6 || Type == 7)
+	{
+		const FMixtormatNoiseWorley W = MixtormatNoiseV2Worley(
+			TiledUV, P, Seed, WorleyJitter, WorleyMetric);
+		float Distance = Type == 5 ? W.F1 : Type == 6 ? W.F2 : (W.F2 - W.F1);
+		Gradient = Type == 5 ? W.Direction
+			: Type == 6 ? W.SecondDirection : (W.SecondDirection - W.Direction);
+		MixtormatNoiseV2CellDistanceVariation(TiledUV, P, Seed,
+			WorleyCellDepth, Distance, Gradient);
+		Value = saturate(Distance);
+		if (Distance <= 0.0f || Distance >= 1.0f)
+		{
+			Gradient = float2(0.0f, 0.0f);
+		}
+	}
+	else if (Type == 8)
+	{
+		// A rounded integer wave vector closes at the tile seam for each octave.
+		const float2 OctaveWave = round(Wave * ((float)P / max(BasePeriod, 1.0f)));
+		MixtormatNoiseBars(TiledUV, OctaveWave, PhaseOffset, Value, Gradient);
+	}
+	else if (Type == 9)
+	{
+		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2Phasor(TiledUV,
+			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,
+			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents);
+		Value = N.Value;
+		Gradient = N.Gradient;
+	}
 }
 
 #endif
