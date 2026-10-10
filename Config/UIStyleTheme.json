@@ -621,7 +621,7 @@
 		"PreviewLayout.QuickControlsVignetteFalloff": 1.9500000476837158,
 		"PreviewLayout.LeftRailContentInset": 28,
 		"PreviewLayout.LeftRailShadeBias": 8,
-		"PreviewLayout.LeftRailFadeExtension": 4,
+		"PreviewLayout.LeftRailFadeExtension": 72,
 		"PreviewLayout.LeftRailFadeOpacity": 1,
 		"PreviewLayout.bLeftRailShadeInverted": true,
 		"PreviewLayout.LeftRailButtonSurfaceStrength": 0.32999998331069946,
