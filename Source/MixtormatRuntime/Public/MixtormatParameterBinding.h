@@ -20,6 +20,7 @@ struct MIXTORMATRUNTIME_API FMixtormatBindingScope
 {
 	const TArray<FMixtormatLayer>* Layers = nullptr;
 	const TArray<FMixtormatLayerGroup>* Groups = nullptr;
+	const TArray<FMixtormatSourceEntry>* Sources = nullptr;
 
 	FMixtormatBindingScope(const TArray<FMixtormatLayer>& InLayers)
 		: Layers(&InLayers)
@@ -34,6 +35,14 @@ struct MIXTORMATRUNTIME_API FMixtormatBindingScope
 	{
 	}
 
+	FMixtormatBindingScope(
+		const TArray<FMixtormatLayer>& InLayers,
+		const TArray<FMixtormatLayerGroup>& InGroups,
+		const TArray<FMixtormatSourceEntry>& InSources)
+		: Layers(&InLayers), Groups(&InGroups), Sources(&InSources)
+	{
+	}
+
 	const TArray<FMixtormatLayer>& GetLayers() const { return *Layers; }
 };
 
@@ -43,6 +52,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 {
 	TArray<FMixtormatLayer>* Layers = nullptr;
 	TArray<FMixtormatLayerGroup>* Groups = nullptr;
+	TArray<FMixtormatSourceEntry>* Sources = nullptr;
 
 	FMixtormatMutableBindingScope(TArray<FMixtormatLayer>& InLayers)
 		: Layers(&InLayers)
@@ -57,8 +67,17 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 	{
 	}
 
+	FMixtormatMutableBindingScope(
+		TArray<FMixtormatLayer>& InLayers,
+		TArray<FMixtormatLayerGroup>& InGroups,
+		TArray<FMixtormatSourceEntry>& InSources)
+		: Layers(&InLayers), Groups(&InGroups), Sources(&InSources)
+	{
+	}
+
 	operator FMixtormatBindingScope() const
 	{
+		if (Groups && Sources) { return FMixtormatBindingScope(*Layers, *Groups, *Sources); }
 		return Groups
 			? FMixtormatBindingScope(*Layers, *Groups)
 			: FMixtormatBindingScope(*Layers);
