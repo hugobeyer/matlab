@@ -1535,7 +1535,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					return GetStructuralHighlightRole(MakeChildAddress(LayerIndex, ChildIndex));
 				})
 				.StructuralLink()[bConnection ? SNullWidget::NullWidget : BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
-				.Icon()[bConnection ? SNew(SImage).Image(MixtormatIcons::ChevronLeft())
+				.Icon()[bConnection ? SNew(SImage)
+					.Image(Child.Type == EMixtormatLayerChildType::HeightPush
+						? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural())
 					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
 					: BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.
