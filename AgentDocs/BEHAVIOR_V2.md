@@ -29,7 +29,7 @@ The shared evaluator runs all scoped PostGeneration Behavior entries in authored
 - Source/Influence references should resolve at the **owning generator's evaluation point**. A later producer may not be used merely because it precedes the Behavior row in the editor.
 
 ## October 10 source correction batch
-- Rock Formation `RockEdgeDistance` and Pebbles `PebbleEdgeDistance` now publish typed `SDF` fields in addition to their historical named-mask outputs. The corresponding Editor capabilities expose these exact fields for typed Copy and Carve source selection; no automatic scalar-to-SDF conversion was added.
+- Rock Formation `RockEdgeDistance` and Pebbles `PebbleEdgeDistance` now publish typed `SDF` fields in addition to their historical named-mask outputs. The Editor exposes these fields for Carve source selection while the existing Copy Output action still copies them as Masks; no automatic scalar-to-SDF conversion was added.
 - The shared Influence source picker and Warp/Deform availability use the owning Generator's ordering, not the later Behavior row. The Carve inspector heading identifies Carve / Deposit.
 - Shelf dependencies for Behaviors with disabled Generator owners are not scheduled.
 - The source corrections remain uncompiled and not GPU-validated. BoundaryFromIds.Distance is still a mask output and is not automatically classified as signed SDF.
