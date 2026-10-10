@@ -60,3 +60,6 @@ Repository policy: source/static review only by default; build, test and Unreal 
 - Added generator context-menu Push creation, typed signed-height source picker, Inspector Strength/Influence/enable controls, source availability indication, and per-kind child labels. The legacy Height Push remains unchanged.
 - Updated Behavior-branch ancestry with the two latest main commits, retaining unrelated Shell UI and audit documentation; main is unchanged.
 - Implementation is not complete. Remaining: explicit pre-generation generator capabilities and sampling, typed Carve/Deposit SDF/boundary rules and GPU executor, distinct Deform semantics, broadened driver sources/dependency handling, group and instance parity, general source/mask authoring, saved-material compatibility verification, and Unreal C++/UHT/HLSL/runtime checks. No builds/tests were authorized or run.
+
+- Fixed shelf scheduling for Push: a typed published ScalarSigned shelf height source is now demanded before GPU gather, just like a typed Warp shelf Flow/UVMap source.
+- Runtime input-status validation reports an unsupported operation for unimplemented Carve, Deform, or PreGeneration instead of claiming an executable valid input.
