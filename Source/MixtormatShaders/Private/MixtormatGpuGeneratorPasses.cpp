@@ -1412,9 +1412,15 @@ namespace
 					|| Published->Texture->Desc.Extent != Size) { continue; }
 				if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
 				{
-					if (Ref.FlowAmount == 0.0f || Ref.FlowTraceLength == 0.0f) { continue; }
+					// An active driver can produce displacement even when its authored
+					// scalar is zero. Unavailable signals keep their authored fallback.
+					if ((Ref.FlowAmount == 0.0f && !Child.Behavior.FlowDrivers[0].bEnabled)
+						|| (Ref.FlowTraceLength == 0.0f && !Child.Behavior.FlowDrivers[1].bEnabled))
+					{
+						continue;
+					}
 					Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
-						LayerCtx.LayerIndex, Child.SourceChildIndex);
+						LayerCtx.LayerIndex, Child.SourceChildIndex, Child.Behavior.FlowDrivers);
 				}
 				else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
 					&& Published->Texture->Desc.Format == PF_G32R32F)
