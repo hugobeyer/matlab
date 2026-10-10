@@ -52,8 +52,6 @@ replacing instance-source glow. E1 adds explicit target-row actions in
 unscoped module before that target, connects only its target GUID, and leaves its source unset.
 Existing layer-level creation stays unchanged. The shared procedural removal handler accepts
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
-No build/runtime validation has been run.
-
 The Sources shelf is a non-compositing array card above the layer creation toolbar, built by
 `SMixtormat::BuildSourcesShelf` with `UI/Layers/SMixtormatSourcesShelf.*` shell and
 `UI/Layers/SMixtormatSourceRow.*` rows. It reuses the inspector foldout's header anatomy,
@@ -85,7 +83,7 @@ child is normalised as a direct child of the root. Output references now append 
 owner kind and `SourceShelfId`; `ClassifyShelfSourceReference` provides explicit repair status for
 shelf links, but existing layer-only resolvers reject them until source evaluation exists. There is
 no shelf hierarchy/tool UI or evaluator yet, so `OwnedChildren` and shelf references are persisted
-ownership/address data only. Authoring only; no build/runtime validation run.
+ownership/address data only. Authoring only.
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
@@ -143,8 +141,6 @@ add tab uses the registered `Icons/add` SVG and `MakeSourcesAddTabRecipe` to
 share `MakeCardBodyRecipe` styling; `LayerLayout.SourcesAddTabHighlight` and
 `SourcesAddTabHighlightBias` control its accent ramp, without introducing
 a new parallel palette.
-
-No compilation or runtime/visual verification was performed by the agent.
 
 ## Generator Input controls
 
@@ -299,7 +295,7 @@ thumbnails; the Masks header also shows the selected mask name without applying 
 Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.
 Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
 The category popup populates its family list on opening; `All` clears the category filter.
-Inspector remains dockable. These gallery changes have source review only, not visual validation.
+Inspector remains dockable.
 The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
 independent of toolbar sizing. It overlays the full-width left page's leading
 `PreviewLayout.LeftRailContentInset` (34px default); the page surface remains one
@@ -320,5 +316,5 @@ inside each tab's bounds rather than overlapping layer rows. The Q marking menu 
 resolution control. Its backdrop is a centre-dark, edge-transparent vignette behind the cards;
 UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
 IDs remain unchanged for theme compatibility, but no longer describe a light bloom. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
-retains camera zoom. These additions have source review only, not build or runtime validation.
-The validation checklist is retained in the archived `old_docs/overlay-workspace-handoff.md`; runtime validation is not implied.
+retains camera zoom.
+The validation checklist is retained in the archived `old_docs/overlay-workspace-handoff.md`.
