@@ -325,10 +325,13 @@ void SMixtormat::RebuildUserLibraryList()
 		UserLibraryListBox->AddSlot().AutoHeight()
 		.Padding(0.0f, 0.0f, 0.0f, Library.LibraryItemGap)
 		[
-			SNew(SMixtormatCompositionCard)
-			.OnGetContextMenu(ContextMenu)
+			SNew(SBox)
+			.HeightOverride(Library.LibraryRowHeight)
 			[
-				SNew(SMixtormatSurfaceBox)
+				SNew(SMixtormatCompositionCard)
+				.OnGetContextMenu(ContextMenu)
+				[
+					SNew(SMixtormatSurfaceBox)
 				.Recipe_Lambda([]()
 				{
 					return Mixtormat::MakeCardBodyRecipe(FMixtormatThemeStore::GetTheme(), 1.0f, 0.0f);
@@ -339,7 +342,8 @@ void SMixtormat::RebuildUserLibraryList()
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SNew(SMixtormatTile)
-						.TileSize(Library.LibraryThumbnailSize)
+						.TileSize(FMath::Min(Library.LibraryThumbnailSize,
+							FMath::Max(12.0f, Library.LibraryRowHeight - 2.0f * Library.LibraryItemGap)))
 						.ThumbnailAsset(ThumbnailAsset)
 						.ThumbnailPool(ThumbnailPool)
 						.bShowName(false)
@@ -353,6 +357,7 @@ void SMixtormat::RebuildUserLibraryList()
 						.ColorAndOpacity(FSlateColor(LabelColor))
 						.Text(Name)
 						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+					]
 					]
 				]
 			]
