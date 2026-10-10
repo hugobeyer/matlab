@@ -90,8 +90,9 @@ namespace
             const FVector2f BodyOffset(SpineWidth - 1.0f, Shoulder);
             const FVector2f BodySize(FMath::Max(1.0f, Size.X - BodyOffset.X), BodyHeight);
 
-            // Reuse the existing button accent blend and well shade blend.
-            FLinearColor Surface = Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
+            // Match the layer/group creation buttons: shared button recipe over the
+            // dark panel ground. Do not tint the tab with an independent white plate.
+            FLinearColor Surface = Palette.Get(Mixtormat::EMixtormatColorRole::Ground);
             Surface.A = 1.0f;
             FLinearColor Accent = Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
             Accent.A = FMath::Clamp(bActive ? Theme.Button.SelectedTop
