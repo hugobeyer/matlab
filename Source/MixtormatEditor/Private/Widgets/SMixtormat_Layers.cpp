@@ -621,7 +621,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 			const auto Renew = [&Ids](FMixtormatLayerChild& Child)
 			{
 				const FGuid Old = Child.ChildId;
-				MixtormatParameterBinding::RegenerateChildIdentity(Child);
+				// Generate all new IDs before remapping any references. RegenerateChildIdentity
+				// would pre-rewrite self references, breaking the original-ID map below.
+				Child.ChildId = FGuid::NewGuid();
 				Ids.Add(Old, Child.ChildId);
 			};
 			Renew(Copy.Child);
