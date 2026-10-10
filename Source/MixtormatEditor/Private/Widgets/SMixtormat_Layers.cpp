@@ -525,13 +525,12 @@ void SMixtormat::RebuildSourcesList()
 		return;
 	}
 	SourcesListBox->ClearChildren();
+	SourceRowWidgets.Reset();
 	for (const FMixtormatSourceEntry& Entry : WorkingSources)
 	{
 		const FGuid SourceId = Entry.SourceId;
-		SourcesListBox->AddSlot().AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.SourcesRowGap)
-		[
-			SNew(SMixtormatSourceRow)
+		TSharedPtr<SMixtormatSourceRow> Row;
+		SAssignNew(Row, SMixtormatSourceRow)
 			.Name_Lambda([this, SourceId]()
 			{
 				const FMixtormatSourceEntry* Source =
@@ -558,8 +557,15 @@ void SMixtormat::RebuildSourcesList()
 			})
 			.bSelected_Lambda([this, SourceId]() { return SelectedSourceId == SourceId; })
 			.OnSelected(FSimpleDelegate::CreateSP(this, &SMixtormat::SelectSource, SourceId))
-			.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildSourceContextMenu, SourceId))
-		];
+			.OnNameCommitted(FOnTextCommitted::CreateLambda([this, SourceId](const FText& Name, ETextCommit::Type)
+			{
+				RenameSource(SourceId, Name);
+			}))
+			.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildSourceContextMenu, SourceId));
+		SourceRowWidgets.Add(SourceId, Row);
+		SourcesListBox->AddSlot().AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.SourcesRowGap)
+		[Row.ToSharedRef()];
 	}
 }
 
@@ -586,6 +592,15 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 {
 	MixtormatMenu::FBuilder Menu;
+	Menu.Item(LOCTEXT("RenameSource", "Rename"), nullptr,
+		FSimpleDelegate::CreateLambda([this, SourceId]()
+		{
+			SelectSource(SourceId);
+			if (const TWeakPtr<SMixtormatSourceRow>* WeakRow = SourceRowWidgets.Find(SourceId))
+			{
+				if (const TSharedPtr<SMixtormatSourceRow> Row = WeakRow->Pin()) { Row->BeginRename(); }
+			}
+		}));
 	Menu.Item(
 		LOCTEXT("DeleteSource", "Delete Source"),
 		MixtormatIcons::Trash(),
