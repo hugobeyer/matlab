@@ -549,14 +549,10 @@ void FMixtormatStyle::Refresh()
 	// Common typography and states for Slate text-entry widgets (rename and authoring fields).
 	{
 		const Mixtormat::FMixtormatTextFieldTheme& T = FMixtormatThemeStore::GetTheme().TextField;
-		FLinearColor ShadeSource = T.Shade;
-		ShadeSource.A = T.ShadeOpacity;
-		const FLinearColor Background = MixtormatCompositing::ApplyBlend(T.ShadeBlend, T.Surface, ShadeSource);
 		FLinearColor BorderColor = T.Border;
 		BorderColor.A *= T.BorderOpacity;
 		FLinearColor Highlight = T.Highlight;
 		Highlight.A *= T.HighlightOpacity;
-		const FLinearColor Focused = MixtormatCompositing::ApplyBlend(T.HighlightBlend, Background, Highlight);
 		FEditableTextBoxStyle Edit = FCoreStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
 		// Gradient is painted by SMixtormatTextFieldGradient behind this transparent entry.
 		// Keep border and focus states in the native editable box for normal keyboard behavior.
