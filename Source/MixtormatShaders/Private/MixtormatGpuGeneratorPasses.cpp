@@ -1722,7 +1722,30 @@ namespace
 				continue;
 			}
 			FRDGTextureRef Coordinates = nullptr;
-			if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			// Scoped Flow inherits automatically from preceding Flow siblings.
+			// No direction-field picker is consulted for this execution path.
+			if (WorkingFlowValidity
+				&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+					|| Child.Behavior.Type == EMixtormatBehaviorType::Deform))
+			{
+				FOutputReferenceRenderData AutoFlow;
+				AutoFlow.FlowAmount = 1.0f;
+				AutoFlow.FlowTraceLength = Child.Behavior.Flow.TraceLength;
+				AutoFlow.FlowSteps = Child.Behavior.Flow.TraceSteps;
+				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
+					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
+				Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, FlowField,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Coordinates = ScaleBehaviorUV(Ctx, Coordinates, Child.Behavior.Strength,
+					Gate, bHasMask, Influence, bUseInfluence,
+					LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+			}
+			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 			{
 				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
 					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
