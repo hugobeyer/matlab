@@ -955,6 +955,12 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.FlowDirection"), TEXT("Icons/flow-direction"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.FlowGravity"), TEXT("Icons/flow-gravity"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.WarpDeform"), TEXT("Icons/warp-deform"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.WarpNoise"), TEXT("Icons/warp-noise"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.WarpPush"), TEXT("Icons/warp-push"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.WarpStructural"), TEXT("Icons/warp-structural"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	// IDs and ID-derived data are their own category, not Generated Mask. They were borrowing that
 	// glyph only because there was no icon for them yet.
 	SetSvgIcon(TEXT("Mixtormat.Icon.Ids"), TEXT("Icons/ids"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
