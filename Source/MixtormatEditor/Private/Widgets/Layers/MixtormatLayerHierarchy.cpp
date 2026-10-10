@@ -963,7 +963,7 @@ FText SMixtormat::GetLayerChildSourceText(
 	const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
 	if (IsGeneratorFlow(Child))
 	{
-		return LOCTEXT("GeneratorFlowTarget", "TARGET · GEN");
+		return LOCTEXT("GeneratorFlowTarget", "TARGET");
 	}
 	if (IsFlowWarp(Child))
 	{
@@ -979,7 +979,7 @@ FText SMixtormat::GetLayerChildSourceText(
 			// a mask under a generator steers it -- seed placement, propagation cost, carve
 			// depth -- and only reaches a plain multiply at the very end. Calling both gating
 			// would teach the wrong thing about Mask Influence on the one row where it matters.
-			return LOCTEXT("GeneratorSteerMask", "STEERS · GEN");
+			return LOCTEXT("GeneratorSteerMask", "STEERS");
 		}
 		return IsFlowWarp(Owner)
 			? LOCTEXT("FlowWarpGateMask", "GATES · WARP")
