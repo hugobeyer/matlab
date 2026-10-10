@@ -931,10 +931,15 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 	AddSliderRow(LightingRows, BuildPreviewLightingControls(EPreviewControlLayout::Grid));
 	TSharedRef<SVerticalBox> GeometryRows = SNew(SVerticalBox);
 	AddSliderRow(GeometryRows, BuildPreviewGeometryControls(EPreviewControlLayout::Grid));
-	TSharedRef<SVerticalBox> ActionRows = SNew(SVerticalBox);
-	AddSliderRow(ActionRows, BuildQuickControlsActions());
-
 	const Mixtormat::FMixtormatPreviewMetrics& PreviewMetrics = FMixtormatThemeStore::GetResolved().PreviewLayout;
+	const TSharedRef<SMixtormatInspectorCard> ActionsCard = SNew(SMixtormatInspectorCard)
+		.Title(LOCTEXT("QuickControlsActions", "ACTIONS"))
+		.HeaderOnly(true)
+		.HeaderAction(BuildQuickControlsActions())
+		[
+			SNew(SBox)
+		];
+	ActionsCard->SetRenderTransform(Reveal(FVector2D(0.0, 1.0)));
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		.Visibility(EVisibility::SelfHitTestInvisible)
 		+ SVerticalBox::Slot().AutoHeight()
@@ -977,7 +982,11 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 		.Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
 		[
-			MakeCard(LOCTEXT("QuickControlsActions", "ACTIONS"), ActionRows, FVector2D(0.0, 1.0))
+			SNew(SBox)
+			.MinDesiredWidth(PreviewMetrics.QuickControlsActionsWidth)
+			[
+				ActionsCard
+			]
 		];
 	// Keep card sizing independent of the viewport-wide backdrop.
 	QuickControlsPanel = Cards;
