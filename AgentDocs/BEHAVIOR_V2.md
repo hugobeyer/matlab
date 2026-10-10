@@ -44,11 +44,12 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 5. Validate Unreal shader compilation and real material output when explicitly authorized.
 
 ## Parallel development
-Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 controls. `main` was merged into this feature branch through PR #2 (`40cb6f6`) and PR #4 (`2883362`), leaving `main` unchanged. Current branch ancestry was checked after PR #4 with zero commits behind `main`.
+Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 controls. `main` was merged into this feature branch through PR #2 (`40cb6f6`) and PR #4 (`2883362`), leaving `main` unchanged. The branch incorporated `main` through PR #4, but as of the latest October 10 comparison is two commits behind current `main` (Shell and unrelated audit/roadmap files); synchronization remains required before merge.
 
 Repository policy: source/static review only by default; build, test and Unreal launches require user approval.
 
 ## Unvalidated October 10 continuation
 - Scope sanitation and group-member clone expansion now fail closed for invalid Behavior owners; existing authored group template data remains intact.
 - Published Flow Warp gathers two existing `BehaviorFlow` scalar-driver slots for `FlowAmount` and `FlowTraceLength`, allows enabled earlier-layer CombinedMask sources, demands their snapshots in composition, and forwards both slots to the existing shared Flow tracing shader. Driver semantics for other source kinds/Behavior parameters remain unimplemented.
+- The Warp Inspector hides Gradient Reach outside Own Height Gradient mode and Flow controls outside published Flow mode.
 - These changes were source-reviewed only. Unreal 5.8 C++/UHT, shader compilation, viewport behavior, GPU masking, undo/redo, and saved-project compatibility have **not** been validated. Keep PR #5 draft; do not merge before authorization and completion.
