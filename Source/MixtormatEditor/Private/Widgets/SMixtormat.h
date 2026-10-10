@@ -633,7 +633,7 @@ private:
 	void RegisterChildRowWidget(FMixtormatChildAddress Address, TSharedRef<SWidget> Widget);
 	FText GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
-		EMixtormatLayerChildType Type, FText& OutToolTip) const;
+		EMixtormatLayerChildType Type, FText& OutToolTip);
 	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
 	bool IsSelectedStructuralSourceLayer(FGuid LayerId, FGuid GroupId) const;
 	FText GetStructuralIncomingCountLabel(int32 LayerIndex, int32 ChildIndex) const;
