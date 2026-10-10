@@ -664,11 +664,11 @@ void AddIconRole(
 					TEXT("Reverse the shared vertical shade across Layers / Library / Global"),
 					EMixtormatThemeRefreshMode::Paint));
 				NUM("PreviewLayout.LeftRailButtonSurfaceStrength", Preview, "Layout", "Rail Button Surface", PreviewLayout.LeftRailButtonSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailHoverSurfaceStrength", Preview, "Layout", "Rail Hover Surface", PreviewLayout.LeftRailHoverSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailSelectedSurfaceStrength", Preview, "Layout", "Rail Selected Surface", PreviewLayout.LeftRailSelectedSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Layout", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Layers Pop-out Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Layers Pop-out Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsRowGap", Preview, "Layout", "Quick Controls Row Gap", PreviewLayout.QuickControlsRowGap, 0, 80, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.QuickControlsActionsWidth", Preview, "Layout", "Actions Card Width", PreviewLayout.QuickControlsActionsWidth, 80, 320, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
