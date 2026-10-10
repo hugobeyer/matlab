@@ -17,10 +17,41 @@
 #include "Services/MixtormatSurfaceImporter.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/SLeafWidget.h"
+#include "Rendering/DrawElements.h"
 
 
 namespace
 {
+	// An independent full-height overlay, so the horizontal shade is not clipped to the rail tabs.
+	class SMixtormatRailFade final : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatRailFade) {} SLATE_END_ARGS()
+		void Construct(const FArguments&) { SetVisibility(EVisibility::HitTestInvisible); }
+		FVector2D ComputeDesiredSize(float) const override
+		{
+			const auto& L = FMixtormatThemeStore::GetResolved().PreviewLayout;
+			return FVector2D(L.LeftRailButtonWidth + L.LeftRailFadeExtension, 1.0f);
+		}
+		int32 OnPaint(const FPaintArgs&, const FGeometry& G, const FSlateRect&,
+			FSlateWindowElementList& Elements, int32 Layer, const FWidgetStyle& Style, bool) const override
+		{
+			const auto& L = FMixtormatThemeStore::GetResolved().PreviewLayout;
+			const float Width = G.GetLocalSize().X;
+			const float Opacity = FMath::Clamp(L.LeftRailFadeOpacity, 0.0f, 1.0f);
+			if (Width <= 1.0f || Opacity <= 0.0f) return Layer;
+			FLinearColor Shade = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
+			Shade.A = Opacity * Style.GetColorAndOpacityTint().A;
+			TArray<FSlateGradientStop> Stops;
+			Stops.Add(FSlateGradientStop(FVector2D(0.0f, 0.0f), Shade));
+			Shade.A = 0.0f;
+			Stops.Add(FSlateGradientStop(FVector2D(Width, 0.0f), Shade));
+			FSlateDrawElement::MakeGradient(Elements, Layer, G.ToPaintGeometry(), Stops, Orient_Horizontal);
+			return Layer + 1;
+		}
+	};
+
 	using SMixtormatShellAction = SMixtormatGroupAction;
 
 	float TopBarActionHeight()
@@ -523,6 +554,12 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
 					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
 				]
+			]
+			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
+			[
+				SNew(SBox)
+				.WidthOverride(Layout.LeftRailButtonWidth + Layout.LeftRailFadeExtension)
+				[SNew(SMixtormatRailFade)]
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 			[
