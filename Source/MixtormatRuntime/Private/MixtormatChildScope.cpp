@@ -216,8 +216,12 @@ namespace MixtormatChildScope
 			return EBehaviorInputIssue::None;
 		};
 		const bool bTraced = Behavior.Flow.bUseTracedFlow;
-		const bool bNeedsDirection = !bTraced && (Behavior.Type == EMixtormatBehaviorType::Warp
-			|| Behavior.Type == EMixtormatBehaviorType::Deform);
+		// An unconnected Warp/Deform automatically consumes the generator's
+		// ordered working Flow. A manually authored socket still validates strictly.
+		const bool bNeedsDirection = !bTraced
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+			&& (Behavior.Type == EMixtormatBehaviorType::Warp
+				|| Behavior.Type == EMixtormatBehaviorType::Deform);
 		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
 			|| (Behavior.Type == EMixtormatBehaviorType::Carve && !bTraced);
 		// Reject inactive operation sockets too: gather does not evaluate a Warp
