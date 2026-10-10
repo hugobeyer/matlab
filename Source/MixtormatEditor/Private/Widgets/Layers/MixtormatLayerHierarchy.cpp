@@ -1563,8 +1563,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.ConnectionContent()[ConnectionContent]
 				.ToolTip(RowToolTip)
 				.Name(ChildName)
-				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
-				.Badge(MixtormatLayerBadges::ForChild(Child))
+				// The feature name and icon already identify these two scoped flow tools.
+				// Nesting identifies their target; redundant TARGET and SHAPE/FLOW pills add noise.
+				.Kind(Child.Type == EMixtormatLayerChildType::Effect
+					&& (EffectTypeOf(Child) == EMixtormatEffectType::ShapeDeform
+						|| EffectTypeOf(Child) == EMixtormatEffectType::GeneratorFlow)
+					? FText::GetEmpty() : GetLayerChildSourceText(LayerIndex, ChildIndex))
+				.Badge(Child.Type == EMixtormatLayerChildType::Effect
+					&& (EffectTypeOf(Child) == EMixtormatEffectType::ShapeDeform
+						|| EffectTypeOf(Child) == EMixtormatEffectType::GeneratorFlow)
+					? FText::GetEmpty() : MixtormatLayerBadges::ForChild(Child))
 				.StructuralCount_Lambda([this, RowAddress, StoredIncoming]()
 				{
 					return StoredIncoming > 0 && CollapsedGeneratorAddresses.Contains(RowAddress)
