@@ -173,7 +173,9 @@ void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FN
 
 	FMixtormatLayerChild PublishedChild;
 	// Preserve typed payloads when an output also supports scalar-mask consumption.
-	if (Output->bCopyableAsMask && !Output->bCopyableAsField)
+	if (Output->bCopyableAsMask && (!Output->bCopyableAsField
+		|| OutputName == FName(TEXT("RockEdgeDistance"))
+		|| OutputName == FName(TEXT("PebbleEdgeDistance"))))
 	{
 		PublishedChild.Type = EMixtormatLayerChildType::Mask;
 		PublishedChild.Mask.bEnabled = true;
