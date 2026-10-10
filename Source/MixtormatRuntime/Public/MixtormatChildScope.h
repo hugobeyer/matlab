@@ -18,6 +18,12 @@ namespace MixtormatChildScope
 		const TArray<FMixtormatLayerChild>& Children,
 		int32 ChildIndex);
 
+	// V2 Behaviors must be directly owned by an earlier Generator child. Never silently
+	// accept a layer-wide/unscoped Behavior or an indirect Mask/Effect parent.
+	MIXTORMATRUNTIME_API int32 ResolveBehaviorGeneratorIndex(
+		const TArray<FMixtormatLayerChild>& Children,
+		int32 BehaviorChildIndex);
+
 	// Clears ScopeOwnerChildId when ResolveOwnerIndex would return INDEX_NONE. Returns true if
 	// any child changed.
 	MIXTORMATRUNTIME_API bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children);
