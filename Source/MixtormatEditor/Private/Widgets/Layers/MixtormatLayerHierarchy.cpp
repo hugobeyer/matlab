@@ -49,6 +49,8 @@ namespace MixtormatLayersPrivate
 			case EMixtormatEffectType::ShapeDeform: Specific = MixtormatIcons::WarpDeform(); break;
 			case EMixtormatEffectType::GravityFlow: Specific = MixtormatIcons::FlowGravity(); break;
 			case EMixtormatEffectType::FlowCarve: Specific = MixtormatIcons::FlowDirection(); break;
+			case EMixtormatEffectType::GeneratorFlow: Specific = MixtormatIcons::FlowDirection(); break;
+			case EMixtormatEffectType::FlowWarp: Specific = MixtormatIcons::WarpStructural(); break;
 			default: break;
 			}
 		}
