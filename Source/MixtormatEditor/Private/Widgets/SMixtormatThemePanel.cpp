@@ -8,6 +8,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
+#include "UI/Menus/SMixtormatHelp.h"
 
 #include "HAL/FileManager.h"
 #include "Widgets/Colors/SColorBlock.h"
@@ -369,9 +370,9 @@ TSharedRef<SWidget> SMixtormatThemePanel::MakePropertyRow(
 		SNew(SButton)
 			.ContentPadding(FMargin(2.0f))
 			.IsEnabled(Target != Mixtormat::EMixtormatStyleTarget::None)
-			.ToolTipText(FText::Format(
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(FText::Format(
 				LOCTEXT("LocateTarget", "Locate / blink: {0}"),
-				Mixtormat::FMixtormatStyleLocator::Label(Target)))
+				Mixtormat::FMixtormatStyleLocator::Label(Target))))
 			.OnClicked_Lambda([this, Target]()
 			{
 				LocateTarget(Target);
