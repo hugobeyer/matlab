@@ -680,6 +680,12 @@ namespace MixtormatLayersPrivate
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::Generator)
+		{
+			return Owner.Type == EMixtormatLayerChildType::Generator
+				&& Child.Generator.Type == EMixtormatGeneratorType::Noise
+				&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
+		}
 		if (Child.Type == EMixtormatLayerChildType::Behavior)
 		{
 			if (Owner.Type == EMixtormatLayerChildType::Generator)
@@ -1675,6 +1681,22 @@ bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 	return !Target.IsGroup() && !Target.ScopeOwnerChildId.IsValid()
 		&& WorkingLayers.IsValidIndex(Target.LayerIndex)
 		&& WorkingLayers[Target.LayerIndex].Type == EMixtormatLayerType::Generator;
+}
+
+bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const
+{
+	if (Target.IsGroup() || !Target.ScopeOwnerChildId.IsValid()
+		|| !WorkingLayers.IsValidIndex(Target.LayerIndex)
+		|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator)
+	{
+		return false;
+	}
+	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
+	const int32 Index = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
+	return Children.IsValidIndex(Index)
+		&& Children[Index].Type == EMixtormatLayerChildType::Generator
+		&& !Children[Index].IsInstance()
+		&& MixtormatLayersPrivate::CanAddScopedChild(Children, Index);
 }
 
 FMixtormatMaskCurvature* SMixtormat::GetSelectedLayerCurvature()
