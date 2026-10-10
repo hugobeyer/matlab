@@ -166,6 +166,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Gradient = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.Direction
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.SecondDirection
 			: (w.SecondDirection - w.Direction);
+		// Value is saturated above. Its derivative is zero on the flat plateaus;
+		// exactly on a clamp boundary the derivative is not unique, so choose zero.
+		if (Distance <= 0.0f || Distance >= 1.0f)
+		{
+			Gradient = float2(0.0f, 0.0f);
+		}
 		CellId = w.CellId;
 	}
 	else // NOISE_TYPE_BARS
