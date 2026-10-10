@@ -575,6 +575,8 @@ void AddIconRole(
 		NUM("LayerLayout.SourcesRowGap", Layers, "Sources", "Row Gap", LayerLayout.SourcesRowGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesAddTabWidth", Layers, "Sources", "Add Tab Width", LayerLayout.SourcesAddTabWidth, 16, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesAddTabHeight", Layers, "Sources", "Add Tab Height", LayerLayout.SourcesAddTabHeight, 14, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("LayerLayout.SourcesAddTabHighlight", Layers, "Sources", "Add Tab Highlight", LayerLayout.SourcesAddTabHighlight, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("LayerLayout.SourcesAddTabHighlightBias", Layers, "Sources", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("LayerConnections.Indent", Layers, "Connections", "Indent", LayerConnections.Indent, 0, 40, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.Inset", Layers, "Connections", "Inset", LayerConnections.Inset, 0, 12, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.TextGap", Layers, "Connections", "Text Gap", LayerConnections.TextGap, 0, 12, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
