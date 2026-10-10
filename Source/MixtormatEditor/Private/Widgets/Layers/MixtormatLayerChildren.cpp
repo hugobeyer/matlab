@@ -767,6 +767,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::BehaviorPush:     return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::BehaviorCarve:    return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::BehaviorDeform:   return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorFlowField: return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -840,6 +841,9 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::BehaviorCarve:
 			Child.Behavior.Type = EMixtormatBehaviorType::Carve;
 			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
+			break;
+		case EMixtormatChildCreation::BehaviorFlowField:
+			Child.Behavior.Type = EMixtormatBehaviorType::FlowField;
 			break;
 		case EMixtormatChildCreation::BehaviorDeform:
 			Child.Behavior.Type = EMixtormatBehaviorType::Deform;
@@ -1424,6 +1428,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatBehaviorType::Push: return LOCTEXT("BehaviorPushChildName", "Push");
 		case EMixtormatBehaviorType::Carve: return LOCTEXT("BehaviorCarveChildName", "Carve / Deposit");
 		case EMixtormatBehaviorType::Deform: return LOCTEXT("BehaviorDeformChildName", "Deform");
+		case EMixtormatBehaviorType::FlowField: return LOCTEXT("BehaviorFlowFieldChildName", "Flow Field");
 		default: return LOCTEXT("BehaviorChildName", "Behavior");
 		}
 	}
