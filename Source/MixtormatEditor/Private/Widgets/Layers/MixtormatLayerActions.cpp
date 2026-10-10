@@ -1444,8 +1444,24 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		return FReply::Handled();
 	}
 
+	const bool bBehaviorWarp = Kind == EMixtormatChildCreation::BehaviorWarp;
 	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
-	if (bNoiseGate && !CanCreateChild(Target))
+	if (bBehaviorWarp)
+	{
+		if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
+			|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator
+			|| !Target.ScopeOwnerChildId.IsValid()) { return FReply::Handled(); }
+		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
+		const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
+		if (!Children.IsValidIndex(OwnerIndex)
+			|| Children[OwnerIndex].Type != EMixtormatLayerChildType::Generator
+			|| Children[OwnerIndex].IsInstance()
+			|| !MixtormatLayersPrivate::CanAddScopedChild(Children, OwnerIndex))
+		{
+			return FReply::Handled();
+		}
+	}
+	else if (bNoiseGate && !CanCreateChild(Target))
 	{
 		const FGuid OwnerId = Target.IsGroup() ? Target.GroupId
 			: (WorkingLayers.IsValidIndex(Target.LayerIndex) ? WorkingLayers[Target.LayerIndex].LayerId : FGuid());
@@ -1947,7 +1963,8 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::HeightCurve
 		&& ChildType != EMixtormatLayerChildType::HeightColorRamp
 		&& ChildType != EMixtormatLayerChildType::HeightPush
-		&& ChildType != EMixtormatLayerChildType::StructuralWarp)
+		&& ChildType != EMixtormatLayerChildType::StructuralWarp
+		&& ChildType != EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Handled();
 	}
