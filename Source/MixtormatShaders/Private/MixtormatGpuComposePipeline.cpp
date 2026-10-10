@@ -530,7 +530,6 @@ namespace MixtormatGpuCompositor
 						for (int32 Slot = 0; Slot < 2; ++Slot)
 						{
 							const FScalarDriverRenderData& Driver = Drivers[Slot];
-						{
 							if (Driver.bEnabled && !Driver.bRegionSource
 								&& Driver.SourceLayerId != DemandLayer.LayerId)
 							{
