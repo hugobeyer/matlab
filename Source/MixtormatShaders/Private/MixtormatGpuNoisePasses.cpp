@@ -424,7 +424,7 @@ FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
 	P->OutputSize = Size;
 	P->ComposeFlowIn = FlowIn;
 	P->ComposeGenerated = Generated;
-	P->ComposeMask = Mask;
+	P->ComposeMask = Mask ? Mask : Ctx.EmptyDriverSignal;
 	P->ComposeUseMask = Mask ? 1u : 0u;
 	P->ComposeAdd = Add;
 	P->ComposeMix = Mix;
