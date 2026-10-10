@@ -202,6 +202,7 @@ public:
 	// What the viewport is showing right now: Material, a V-key channel (with the Shift+V hint),
 	// or the debug view a preview eye turned on.
 	FText GetPreviewModeLabel() const;
+	void SetChannelPreview(EMixtormatChannelPreview NewMode);
 	void ResetChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;

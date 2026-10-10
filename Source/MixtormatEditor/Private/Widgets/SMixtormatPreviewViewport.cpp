@@ -1358,12 +1358,21 @@ void SMixtormatPreviewViewport::ToggleDisplacement()
 	OnToggleDisplacement.ExecuteIfBound();
 }
 
-void SMixtormatPreviewViewport::ResetChannelPreview()
-{
-	ChannelPreview = EMixtormatChannelPreview::Material;
-	ApplyChannelPreview();
-	OnChannelPreviewChanged.ExecuteIfBound();
-}
+	void SMixtormatPreviewViewport::SetChannelPreview(const EMixtormatChannelPreview NewMode)
+	{
+		if (NewMode == ChannelPreview)
+		{
+			return;
+		}
+		ChannelPreview = NewMode;
+		ApplyChannelPreview();
+		OnChannelPreviewChanged.ExecuteIfBound();
+	}
+
+	void SMixtormatPreviewViewport::ResetChannelPreview()
+	{
+		SetChannelPreview(EMixtormatChannelPreview::Material);
+	}
 
 void SMixtormatPreviewViewport::CycleModulePreview()
 {
@@ -1389,9 +1398,7 @@ void SMixtormatPreviewViewport::CycleChannelPreview()
 {
 	const uint8 NextMode = (static_cast<uint8>(ChannelPreview) + 1)
 		% (static_cast<uint8>(EMixtormatChannelPreview::Fuzz) + 1);
-	ChannelPreview = static_cast<EMixtormatChannelPreview>(NextMode);
-	ApplyChannelPreview();
-	OnChannelPreviewChanged.ExecuteIfBound();
+	SetChannelPreview(static_cast<EMixtormatChannelPreview>(NextMode));
 }
 
 void SMixtormatPreviewViewport::ApplyChannelPreview()
