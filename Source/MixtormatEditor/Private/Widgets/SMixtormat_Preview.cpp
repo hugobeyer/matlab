@@ -915,6 +915,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				CycleSelectedModulePreview();
 			}))
+			// Bare 1-4 in the viewport: same path as the geometry rail buttons.
+			.OnSetPreviewMesh(FMixtormatSetPreviewMesh::CreateLambda([this](const EMixtormatPreviewMesh MeshType)
+			{
+				SetPreviewMesh(MeshType);
+			}))
 			// Bare Q in the viewport. The delegate is installed once, on creation, and captures the
 			// workspace -- which survives a rebuild -- so it stays valid across theme refreshes.
 			.OnRequestQuickControls(FSimpleDelegate::CreateLambda([this]()

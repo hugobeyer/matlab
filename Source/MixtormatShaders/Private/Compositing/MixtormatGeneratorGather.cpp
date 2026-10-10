@@ -427,6 +427,53 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FlowOut.GeneratorFlowDepth = FMath::IsFinite(Flow.GeneratorFlowDepth) ? Flow.GeneratorFlowDepth : FMixtormatBehaviorFlowSettings().GeneratorFlowDepth;
 	FlowOut.GeneratorFlowWidth = FMath::IsFinite(Flow.GeneratorFlowWidth) ? Flow.GeneratorFlowWidth : FMixtormatBehaviorFlowSettings().GeneratorFlowWidth;
 	FlowOut.GeneratorFlowFalloff = FMath::IsFinite(Flow.GeneratorFlowFalloff) ? Flow.GeneratorFlowFalloff : FMixtormatBehaviorFlowSettings().GeneratorFlowFalloff;
+	// Resolve drivers for FMixtormatBehaviorFlowSettings properties:
+	const FName FlowSettingsProperties[8] = {
+		TEXT("GeneratorFlowAmount"),
+		TEXT("GeneratorFlowTraceLength"),
+		TEXT("GeneratorFlowWarpStrength"),
+		TEXT("GeneratorFlowDepth"),
+		TEXT("GeneratorFlowShapeOffset"),
+		TEXT("GeneratorFlowBulge"),
+		TEXT("GeneratorFlowReach"),
+		TEXT("GeneratorFlowFeather")
+	};
+	for (int32 Slot = 0; Slot < 8; ++Slot)
+	{
+		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+			[&FlowSettingsProperties, Slot](const FMixtormatParameterBinding& Candidate)
+			{
+				return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlowSettings
+					&& Candidate.DestinationParameter == FlowSettingsProperties[Slot]
+					&& Candidate.Driver.bEnabled
+					&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+					&& Candidate.Driver.SourceLayerId.IsValid();
+			});
+		if (!Binding) { continue; }
+		bool bEarlier = false;
+		for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+		{
+			if (EffectiveLayers.IsValidIndex(Previous)
+				&& EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+				&& EffectiveLayers[Previous].bEnabled)
+			{
+				bEarlier = true;
+				break;
+			}
+		}
+		if (!bEarlier) { continue; }
+		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FScalarDriverRenderData& Driver = FlowOut.SettingsDrivers[Slot];
+		Driver.bEnabled = true;
+		Driver.SourceLayerId = Authored.SourceLayerId;
+		Driver.bInvert = Authored.bInvert;
+		Driver.InputMin = Authored.InputMin;
+		Driver.InputMax = Authored.InputMax;
+		Driver.OutputMin = Authored.OutputMin;
+		Driver.OutputMax = Authored.OutputMax;
+		Driver.Amount = Authored.Amount;
+		Driver.Combine = static_cast<uint32>(Authored.Combine);
+	}
 	Out.GeneratorChildIndex = Valid.GeneratorChildIndex;
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
@@ -473,6 +520,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	}
 	// A zero-authored Strength remains neutral unless a valid ordered driver
 	// can replace or combine it. This check must follow driver resolution.
+	const bool bHasActiveFlowSettingsDriver = FlowOut.SettingsDrivers[0].bEnabled
+		|| FlowOut.SettingsDrivers[1].bEnabled || FlowOut.SettingsDrivers[2].bEnabled
+		|| FlowOut.SettingsDrivers[3].bEnabled || FlowOut.SettingsDrivers[4].bEnabled
+		|| FlowOut.SettingsDrivers[5].bEnabled || FlowOut.SettingsDrivers[6].bEnabled
+		|| FlowOut.SettingsDrivers[7].bEnabled;
 	if (!bFlowField && !bTraced && Out.Strength == 0.0f && !Out.ScalarDrivers[0].bEnabled)
 	{
 		Data.Children.Pop();
@@ -544,8 +596,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
 				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
 				{
-					return (Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
-							|| Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlowSettings)
+					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
 						&& Candidate.DestinationParameter == DriverProperties[Slot]
 						&& Candidate.Driver.bEnabled
 						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask

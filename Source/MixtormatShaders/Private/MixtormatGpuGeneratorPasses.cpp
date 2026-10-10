@@ -604,6 +604,16 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsA, [8])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsB, [8])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal2)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal3)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal4)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal5)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal6)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal7)
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
@@ -2140,6 +2150,32 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				}
 				P->BehaviorDriverSignal0 = DriverSignals[0];
 				P->BehaviorDriverSignal1 = DriverSignals[1];
+				FRDGTextureRef SettingsSignals[8] = {
+					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal,
+					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal
+				};
+				for (int32 Slot = 0; Slot < 8; ++Slot)
+				{
+					const FScalarDriverRenderData& Driver = Flow.SettingsDrivers[Slot];
+					FRDGTextureRef* Snapshot = Driver.bEnabled
+						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+					const bool bResolved = Snapshot != nullptr;
+					SettingsSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+					P->FlowSettingsDriverParamsA[Slot] = FVector4f(
+						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+						Driver.InputMin, Driver.InputMax);
+					P->FlowSettingsDriverParamsB[Slot] = FVector4f(
+						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+						static_cast<float>(Driver.Combine));
+				}
+				P->FlowSettingsDriverSignal0 = SettingsSignals[0];
+				P->FlowSettingsDriverSignal1 = SettingsSignals[1];
+				P->FlowSettingsDriverSignal2 = SettingsSignals[2];
+				P->FlowSettingsDriverSignal3 = SettingsSignals[3];
+				P->FlowSettingsDriverSignal4 = SettingsSignals[4];
+				P->FlowSettingsDriverSignal5 = SettingsSignals[5];
+				P->FlowSettingsDriverSignal6 = SettingsSignals[6];
+				P->FlowSettingsDriverSignal7 = SettingsSignals[7];
 				P->CarveMode = Flow.GeneratorFlowCarveMode;
 				P->Depth = Flow.GeneratorFlowDepth;
 				P->Width = Flow.GeneratorFlowWidth;

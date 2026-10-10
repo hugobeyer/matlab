@@ -434,6 +434,31 @@ public:
 			}
 			return true;
 		}
+		// Bare 1-4: the geometry rail's meshes, routed through the workspace.
+		if (EventArgs.Event == IE_Pressed
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			if (EventArgs.Key == EKeys::One)
+			{
+				Owner.RequestSetPreviewMesh(EMixtormatPreviewMesh::Sphere);
+				return true;
+			}
+			if (EventArgs.Key == EKeys::Two)
+			{
+				Owner.RequestSetPreviewMesh(EMixtormatPreviewMesh::Plane);
+				return true;
+			}
+			if (EventArgs.Key == EKeys::Three)
+			{
+				Owner.RequestSetPreviewMesh(EMixtormatPreviewMesh::Cube);
+				return true;
+			}
+			if (EventArgs.Key == EKeys::Four)
+			{
+				Owner.RequestSetPreviewMesh(EMixtormatPreviewMesh::Cylinder);
+				return true;
+			}
+		}
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::MouseScrollUp)
 		{
 			Owner.HandleCameraWheel(1.0f, EventArgs.Viewport
@@ -527,6 +552,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
+	OnSetPreviewMesh = InArgs._OnSetPreviewMesh;
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
 	OnDismissQuickControls = InArgs._OnDismissQuickControls;
 	OnCameraFovChanged = InArgs._OnCameraFovChanged;
@@ -1347,6 +1373,11 @@ void SMixtormatPreviewViewport::CycleModulePreview()
 void SMixtormatPreviewViewport::RequestQuickControls()
 {
 	OnRequestQuickControls.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::RequestSetPreviewMesh(const EMixtormatPreviewMesh MeshType)
+{
+	OnSetPreviewMesh.ExecuteIfBound(MeshType);
 }
 
 bool SMixtormatPreviewViewport::RequestDismissQuickControls()

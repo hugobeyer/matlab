@@ -1030,6 +1030,11 @@ namespace MixtormatGpuCompositor
 		float GeneratorFlowDepth = 1.0f;
 		float GeneratorFlowWidth = 0.01f;
 		float GeneratorFlowFalloff = 1.0f;
+		// Dedicated per-pixel drivers for BehaviorFlowSettings:
+		// 0: GeneratorFlowAmount, 1: GeneratorFlowTraceLength, 2: GeneratorFlowWarpStrength,
+		// 3: GeneratorFlowDepth, 4: GeneratorFlowShapeOffset, 5: GeneratorFlowBulge,
+		// 6: GeneratorFlowReach, 7: GeneratorFlowFeather
+		FScalarDriverRenderData SettingsDrivers[8];
 	};
 
 	struct FBehaviorRenderData
