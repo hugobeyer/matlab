@@ -18,6 +18,7 @@ DECLARE_GPU_STAT_NAMED(MixtormatCacheSave, TEXT("Mixtormat Cache Save"));
 DECLARE_GPU_STAT_NAMED(MixtormatLayer, TEXT("Mixtormat Layer"));
 DECLARE_GPU_STAT_NAMED(MixtormatRegionIds, TEXT("Mixtormat Region IDs"));
 DECLARE_GPU_STAT_NAMED(MixtormatGenerators, TEXT("Mixtormat Generators"));
+DECLARE_GPU_STAT_NAMED(MixtormatSourceProducer, TEXT("Mixtormat Source Producer"));
 DECLARE_GPU_STAT_NAMED(MixtormatChildren, TEXT("Mixtormat Masks and Effects"));
 DECLARE_GPU_STAT_NAMED(MixtormatComposite, TEXT("Mixtormat Composite"));
 DECLARE_GPU_STAT_NAMED(MixtormatStructure, TEXT("Mixtormat Erosion Relief Breakup Wear"));
@@ -828,13 +829,28 @@ namespace MixtormatGpuCompositor
 						}
 					}
 
-					for (int32 LayerIndex = FirstLayer; LayerIndex < Request.Layers.Num(); ++LayerIndex)
-					{
-						RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayer, "Mixtormat.Layer%d", LayerIndex);
-						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
-						const bool bHasIdGroups = Layer.Children.ContainsByPredicate(
-							[](const FChildRenderData& Child) { return Child.Type == EMixtormatLayerChildType::IdGroup; });
-						LayerCtx.BeginLayer(LayerIndex);
+						// Shelf producers run ahead of the stack, uncached, and never composite: each one
+						// is a synthetic Generator layer whose module chain publishes into the shared field
+						// registry under the entry's SourceId. The stack's generator inputs read those
+						// keys; nothing here touches the output targets or the layer ping-pong.
+						for (int32 SourceIndex = 0; SourceIndex < Request.SourceProducers.Num(); ++SourceIndex)
+						{
+							const FLayerRenderData& SourceLayer = Request.SourceProducers[SourceIndex];
+							if (!SourceLayer.bEnabled) { continue; }
+							FMixtormatLayerPassContext SourceCtx(Ctx);
+							SourceCtx.BeginLayer(SourceIndex);
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatSourceProducer, "Mixtormat.SourceProducer%d", SourceIndex);
+							AddRegionProducerPasses(Ctx, SourceCtx, SourceLayer);
+							AddGeneratorLayerPasses(Ctx, SourceCtx, SourceLayer);
+						}
+
+						for (int32 LayerIndex = FirstLayer; LayerIndex < Request.Layers.Num(); ++LayerIndex)
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayer, "Mixtormat.Layer%d", LayerIndex);
+							const FLayerRenderData& Layer = Request.Layers[LayerIndex];
+							const bool bHasIdGroups = Layer.Children.ContainsByPredicate(
+								[](const FChildRenderData& Child) { return Child.Type == EMixtormatLayerChildType::IdGroup; });
+							LayerCtx.BeginLayer(LayerIndex);
 
 						TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
 						TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
@@ -1276,7 +1292,7 @@ namespace MixtormatGpuCompositor
 							FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
 					AddCopyTexturePass(GraphBuilder, Rebuilt, FinalN);
 				}
-				}
+				} // End the MixtormatCompose GPU event scope before executing the graph.
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;
 				if (Request.bRotateOutput90)

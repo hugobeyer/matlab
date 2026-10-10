@@ -8,6 +8,7 @@
 #include "Compositing/MixtormatMaskGather.h"
 #include "Compositing/MixtormatIdGather.h"
 #include "Compositing/MixtormatGeneratorGather.h"
+#include "Compositing/MixtormatSourceGather.h"
 #include "MixtormatGpuCompositorInternal.h"
 
 #include "Async/Async.h"
@@ -1378,10 +1379,11 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	const FSoftObjectPath& OwnerPath)
+	const FSoftObjectPath& OwnerPath,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	return RequestCompose(Layers, TArray<FMixtormatLayerGroup>(), MoveTemp(OnComplete),
-		DebugSettings, bRotateOutput90, OwnerPath);
+		DebugSettings, bRotateOutput90, OwnerPath, Sources);
 }
 
 bool FMixtormatGpuCompositor::RequestCompose(
@@ -1390,7 +1392,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	const FSoftObjectPath& OwnerPath)
+	const FSoftObjectPath& OwnerPath,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	check(IsInGameThread());
 	FText ReferenceError;
@@ -1403,7 +1406,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	}
 	TSet<const UMixtormatMaterial*> ActiveSources;
 	return RequestComposeInternal(Layers, Groups, MoveTemp(OnComplete), DebugSettings,
-		bRotateOutput90, ActiveSources);
+		bRotateOutput90, ActiveSources, Sources);
 }
 
 bool FMixtormatGpuCompositor::RequestComposeInternal(
@@ -1412,7 +1415,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	TSet<const UMixtormatMaterial*>& ActiveSources)
+	TSet<const UMixtormatMaterial*>& ActiveSources,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
@@ -1604,7 +1608,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					const bool bComposed = Entry->Compositor->InitializeTargets(Resolution, false)
 						&& Entry->Compositor->RequestComposeInternal(Source->Layers, Source->LayerGroups,
 							FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
-							ActiveSources);
+							ActiveSources, Source->Sources);
 					ActiveSources.Remove(Source.Get());
 					if (!bComposed)
 					{
@@ -1622,7 +1626,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
 					&& SourceCompositor.RequestComposeInternal(Source->Layers, Source->LayerGroups,
 						FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
-						ActiveSources);
+						ActiveSources, Source->Sources);
 				ActiveSources.Remove(Source.Get());
 				if (!bComposed)
 				{
@@ -1684,7 +1688,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (LayerChild.Type == EMixtormatLayerChildType::Generator)
 			{
 				GatherGeneratorChild(Data, Layer, LayerChild, SourceChildIndex,
-					bGeneratorLayer, bCacheLayers, PlacementKey, LayerIndex, EffectiveLayers);
+					bGeneratorLayer, bCacheLayers, PlacementKey, LayerIndex, EffectiveLayers, Sources);
 				continue;
 			}
 
@@ -1886,6 +1890,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 		GatherLayerFields(Data, Layer, LayerIndex, Surface, LayerNormal);
 	}
+
+	// Shelf producers gather after the stack: the stack's gather resolved its shelf input keys
+	// against the authored Sources, and this pass now materializes exactly the producers those
+	// keys demand (plus their own earlier shelf dependencies). Uncached by design -- see
+	// GatherSourceProducers.
+	TSet<FGuid> DemandedShelfSources;
+	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
+	GatherSourceProducers(Sources, DemandedShelfSources, Request.SourceProducers);
 
 	const int32 CompositedTargetIndex = Request.Layers.IsEmpty()
 		? 0

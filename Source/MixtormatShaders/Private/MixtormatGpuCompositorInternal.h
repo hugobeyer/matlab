@@ -1275,6 +1275,10 @@ namespace MixtormatGpuCompositor
 	{
 		FIntPoint Resolution = FIntPoint::ZeroValue;
 		TArray<FLayerRenderData> Layers;
+		// Synthetic producer layers gathered from demanded Sources shelf entries, run ahead of the
+		// stack. They publish into the shared field registry keyed by the entry's SourceId and are
+		// never composited; the stack reads them by key like any other published field.
+		TArray<FLayerRenderData> SourceProducers;
 		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> Targets;
 		FTextureRHIRef OutputBC[2];
 		FTextureRHIRef OutputN[2];

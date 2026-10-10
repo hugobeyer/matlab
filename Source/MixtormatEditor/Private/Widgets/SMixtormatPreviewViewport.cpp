@@ -615,10 +615,11 @@ void SMixtormatPreviewViewport::SubmitCompose(
 	const TArray<FMixtormatLayer>& Layers,
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
-	const FMixtormatDebugPreviewSettings& DebugSettings)
+	const FMixtormatDebugPreviewSettings& DebugSettings,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	LastComposeSubmitTime = FPlatformTime::Seconds();
-	if (ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, false))
+	if (ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, false, Sources))
 	{
 		bMeasuringCompose = true;
 		EnsureComposeTimer();
@@ -639,7 +640,8 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
 	FMixtormatDebugPreviewSettings DebugSettings,
-	const bool bInteractive)
+	const bool bInteractive,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
@@ -652,12 +654,12 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	// final value of a scrub is never held back by the interval.
 	if (!CanSubmitCompose(bInteractive))
 	{
-		PendingCompose = FPendingCompose{Layers, Groups, Resolution, DebugSettings, bInteractive};
+		PendingCompose = FPendingCompose{Layers, Groups, Sources, Resolution, DebugSettings, bInteractive};
 		EnsureComposeTimer();
 		return;
 	}
 	PendingCompose.Reset();
-	SubmitCompose(Layers, Groups, Resolution, DebugSettings);
+	SubmitCompose(Layers, Groups, Resolution, DebugSettings, Sources);
 }
 
 EActiveTimerReturnType SMixtormatPreviewViewport::FlushPendingCompose(
@@ -689,14 +691,15 @@ EActiveTimerReturnType SMixtormatPreviewViewport::FlushPendingCompose(
 	}
 	FPendingCompose Pending = MoveTemp(PendingCompose.GetValue());
 	PendingCompose.Reset();
-	SubmitCompose(Pending.Layers, Pending.Groups, Pending.Resolution, Pending.DebugSettings);
+	SubmitCompose(Pending.Layers, Pending.Groups, Pending.Resolution, Pending.DebugSettings, Pending.Sources);
 	return EActiveTimerReturnType::Continue;
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	const TArray<FMixtormatLayer>& Layers,
 	const TArray<FMixtormatLayerGroup>& Groups,
-	const int32 Resolution)
+	const int32 Resolution,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	FMixtormatDebugPreviewSettings DebugSettings;
 	DebugSettings.Mode = bDebugPreviewMode;
@@ -706,7 +709,7 @@ bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	PendingCompose.Reset();
 	// The blocking wait would read as the cost of one preview compose and throttle the next drag.
 	bMeasuringCompose = false;
-	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, true);
+	return ComposeLayersWithDebug(Layers, Groups, Resolution, DebugSettings, true, Sources);
 }
 
 bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
@@ -714,7 +717,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution,
 	FMixtormatDebugPreviewSettings DebugSettings,
-	const bool bWaitForCompletion)
+	const bool bWaitForCompletion,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	if (!LayerCompositor)
 	{
@@ -771,7 +775,9 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		Groups,
 		FSimpleDelegate(),
 		DebugSettings,
-		bGlobalUVRotation90))
+		bGlobalUVRotation90,
+		FSoftObjectPath(),
+		Sources))
 	{
 		return false;
 	}

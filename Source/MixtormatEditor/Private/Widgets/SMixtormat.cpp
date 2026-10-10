@@ -924,8 +924,11 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			// at the top of RequestComposeInternal.
 			DebugSettings.ChildTarget = ChildPreviewTarget;
 			Viewport->SetFinalSettings(WorkingFinalSettings);
+			// Sources ride every working-document preview: they are document data beside the
+			// layers, unaffected by solo/isolation overrides of the layer array itself.
 			Viewport->SetPreviewLayers(
-				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings, bInteractiveEdit);
+				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings,
+				bInteractiveEdit, WorkingSources);
 		}
 	}
 

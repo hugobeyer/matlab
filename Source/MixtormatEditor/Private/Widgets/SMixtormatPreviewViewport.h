@@ -150,12 +150,14 @@ public:
 		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
-		bool bInteractive = false);
+		bool bInteractive = false,
+		const TArray<FMixtormatSourceEntry>& Sources = TArray<FMixtormatSourceEntry>());
 	void SetDebugPreview(FMixtormatDebugPreviewSettings DebugSettings);
 	bool ComposeLayersAtResolution(
 		const TArray<FMixtormatLayer>& Layers,
 		const TArray<FMixtormatLayerGroup>& Groups,
-		int32 Resolution);
+		int32 Resolution,
+		const TArray<FMixtormatSourceEntry>& Sources = TArray<FMixtormatSourceEntry>());
 	void SetPreviewScalarParameter(FName ParameterName, float Value);
 	void SetPreviewDisplacementEnabled(bool bEnabled);
 	void SetPreviewDisplacementAmount(float Amount);
@@ -235,7 +237,8 @@ private:
 		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
 		FMixtormatDebugPreviewSettings DebugSettings,
-		bool bWaitForCompletion);
+		bool bWaitForCompletion,
+		const TArray<FMixtormatSourceEntry>& Sources);
 	// One timer both measures the composite in flight and releases the pending request.
 	EActiveTimerReturnType FlushPendingCompose(double CurrentTime, float DeltaTime);
 	bool CanSubmitCompose(bool bInteractive) const;
@@ -244,7 +247,8 @@ private:
 		const TArray<FMixtormatLayer>& Layers,
 		const TArray<FMixtormatLayerGroup>& Groups,
 		int32 Resolution,
-		const FMixtormatDebugPreviewSettings& DebugSettings);
+		const FMixtormatDebugPreviewSettings& DebugSettings,
+		const TArray<FMixtormatSourceEntry>& Sources);
 	void EnsureComposeTimer();
 
 	// Latest preview request that arrived while the previous composite was still in flight or
@@ -254,6 +258,7 @@ private:
 	{
 		TArray<FMixtormatLayer> Layers;
 		TArray<FMixtormatLayerGroup> Groups;
+		TArray<FMixtormatSourceEntry> Sources;
 		int32 Resolution = 0;
 		FMixtormatDebugPreviewSettings DebugSettings;
 		bool bInteractive = false;

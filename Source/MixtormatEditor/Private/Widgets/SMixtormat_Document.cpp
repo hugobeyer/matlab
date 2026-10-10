@@ -529,7 +529,7 @@ FReply SMixtormat::ExecuteBake(
 		// at it temporarily resizes the shared compositor's render targets, but RefreshLayeredPreview
 		// below puts them back to CompositionResolution before the viewport is shown again.
 		if (!PreviewViewports[0]->ComposeLayersAtResolution(
-			WorkingLayers, WorkingLayerGroups, Settings.Resolution))
+			WorkingLayers, WorkingLayerGroups, Settings.Resolution, WorkingSources))
 		{
 			RefreshLayeredPreview(false);
 			FMessageDialog::Open(

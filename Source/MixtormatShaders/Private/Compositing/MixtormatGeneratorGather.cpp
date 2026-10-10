@@ -5,47 +5,69 @@
 #include "Compositing/MixtormatComposeHash.h"
 #include "Compositing/MixtormatNoiseRender.h"
 #include "MixtormatColorRampMath.h"
+#include "MixtormatMaterial.h"
+#include "MixtormatOutputReference.h"
 #include "MixtormatScalarRampMath.h"
 
 namespace MixtormatGpuCompositor
 {
-void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
-	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
-	const bool bGeneratorLayer, const bool bCacheLayers, const uint64 PlacementKey,
-	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
-{
-	// Modules exist only on Generator layers. A disabled layer must not gather them -- an
-	// enabled module on a hidden layer would build a surface nobody can see and still cost
-	// the whole solve.
-	const FMixtormatGenerator& Generator = LayerChild.Generator;
-	if (!bGeneratorLayer || !Layer.bEnabled || !Generator.bEnabled)
+	void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
+		const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
+		const bool bGeneratorLayer, const bool bCacheLayers, const uint64 PlacementKey,
+		const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers,
+		const TArray<FMixtormatSourceEntry>& Sources)
 	{
-		return;
-	}
+		// Modules exist only on Generator layers. A disabled layer must not gather them -- an
+		// enabled module on a hidden layer would build a surface nobody can see and still cost
+		// the whole solve.
+		const FMixtormatGenerator& Generator = LayerChild.Generator;
+		if (!bGeneratorLayer || !Layer.bEnabled || !Generator.bEnabled)
+		{
+			return;
+		}
 
-	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
-	ChildData.Type = EMixtormatLayerChildType::Generator;
-	ChildData.SourceChildIndex = SourceChildIndex;
-	ChildData.Generator.Type = Generator.Type;
-	const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
-		FGeneratorInputRenderData& Out, const bool bHeight)
-	{
-		Out.bRequested = Reference.bEnabled;
-		Out.Reference.Kind = Reference.Kind;
-		const bool bCompatible = bHeight
-			? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
-			: Reference.Kind == EMixtormatPublishedFieldKind::Flow || Reference.Kind == EMixtormatPublishedFieldKind::UVMap;
-		const int32 SourceIndex = bCompatible
-			? MixtormatOutputReferences::ResolveGeneratorInputSource(
-				EffectiveLayers, LayerIndex, SourceChildIndex, Reference) : INDEX_NONE;
-		Out.Reference.Source = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
-		Out.Reference.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
-		Out.Reference.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
-			? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
-		Out.Reference.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
-	};
-	GatherInput(Generator.HeightSource, ChildData.Generator.HeightSource, true);
-	GatherInput(Generator.WarpSource, ChildData.Generator.WarpSource, false);
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::Generator;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		ChildData.Generator.Type = Generator.Type;
+		const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
+			FGeneratorInputRenderData& Out, const bool bHeight)
+		{
+			Out.bRequested = Reference.bEnabled;
+			Out.Reference.Kind = Reference.Kind;
+			const bool bCompatible = bHeight
+				? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+				: Reference.Kind == EMixtormatPublishedFieldKind::Flow || Reference.Kind == EMixtormatPublishedFieldKind::UVMap;
+			FGuid OwnerId = Reference.SourceLayerId;
+			int32 SourceIndex = INDEX_NONE;
+			if (Reference.IsShelfSource())
+			{
+				// A shelf input names a producer by stable entry identity; its root child is index 0 of
+				// the synthetic producer layer. Classification keeps malformed, disabled and missing
+				// endpoints unavailable -- never a layer fallback, never a guessed producer.
+				OwnerId = Reference.SourceShelfId;
+				const MixtormatOutputReferences::FShelfSourceReferenceStatus Status = bCompatible
+					? MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference)
+					: MixtormatOutputReferences::FShelfSourceReferenceStatus();
+				if (Reference.bEnabled
+					&& Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+				{
+					SourceIndex = 0;
+				}
+			}
+			else if (bCompatible)
+			{
+				SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
+					EffectiveLayers, LayerIndex, SourceChildIndex, Reference);
+			}
+			Out.Reference.Source = {OwnerId, SourceIndex, Reference.OutputName};
+			Out.Reference.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
+			Out.Reference.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
+				? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
+			Out.Reference.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+		};
+		GatherInput(Generator.HeightSource, ChildData.Generator.HeightSource, true);
+		GatherInput(Generator.WarpSource, ChildData.Generator.WarpSource, false);
 
 	switch (Generator.Type)
 	{
