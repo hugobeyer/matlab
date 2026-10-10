@@ -199,7 +199,6 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 	float2 FirstDelta = float2(0.0f, 0.0f);
 	float2 SecondDelta = float2(0.0f, 0.0f);
 	int2 Nearest = Base;
-	int2 SecondCell = Base;
 	[unroll]
 	for (int y = -1; y <= 1; ++y)
 	{
@@ -213,7 +212,6 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 			{
 				Second = Best;
 				SecondDelta = FirstDelta;
-				SecondCell = Nearest;
 				Best = Distance;
 				FirstDelta = Delta;
 				Nearest = Cell;
@@ -222,7 +220,6 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 			{
 				Second = Distance;
 				SecondDelta = Delta;
-				SecondCell = Cell;
 			}
 		}
 	}
@@ -230,34 +227,28 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 	Result.F1 = Best;
 	Result.F2 = Second;
 	Result.CellId = MixtormatCellHash(Nearest, P, Seed);
-	Result.SecondCellId = MixtormatCellHash(SecondCell, P, Seed);
 	Result.Direction = MixtormatNoiseV2MetricGradient(FirstDelta, Mode);
 	Result.SecondDirection = MixtormatNoiseV2MetricGradient(SecondDelta, Mode);
 	return Result;
 }
 
 
-// Per-cell distance scale, not a change to the seeded feature positions or Region IDs.
-// Interpolating the closest two feature hashes near a Voronoi boundary makes the depth
-// modulation continuous when the nearest cell changes; its derivative includes the blend.
+// Smooth periodic cell-distance modulation. Seeded lattice values vary the apparent
+// depth of nearby cells without moving Voronoi feature points or altering IDs. The quintic
+// interpolation is continuous across cell edges and the gradient uses the product rule.
 void MixtormatNoiseV2CellDistanceVariation(
-	FMixtormatNoiseWorley W, float Depth, inout float Distance, inout float2 Gradient)
+	float2 UV, int Period, uint Seed, float Depth,
+	inout float Distance, inout float2 Gradient)
 {
 	if (Depth <= 0.0f) { return; }
-	const float V0 = (float)(MixtormatHashU(W.CellId ^ 0x73f348b1u) & 0xffffu) / 32767.5f - 1.0f;
-	const float V1 = (float)(MixtormatHashU(W.SecondCellId ^ 0x73f348b1u) & 0xffffu) / 32767.5f - 1.0f;
-	const float BlendGap = max(W.F2 - W.F1, 0.0f);
-	const float BlendT = saturate(BlendGap * 4.0f);
-	const float SmoothT = BlendT * BlendT * (3.0f - 2.0f * BlendT);
-	const float Variation = 0.5f * (V0 + V1) + 0.5f * (V0 - V1) * SmoothT;
-	const float TDerivative = BlendT > 0.0f && BlendT < 1.0f
-		? 12.0f * BlendT * (1.0f - BlendT) : 0.0f;
-	const float2 VariationGradient = 0.5f * (V0 - V1) * TDerivative
-		* (W.SecondDirection - W.Direction);
-	const float Factor = 1.0f + 0.75f * saturate(Depth) * Variation;
+	const int P = max(Period, 1);
+	const float3 Modulation = MixtormatNoiseValueD(
+		frac(UV) * (float)P, P, Seed ^ 0x73f348b1u);
+	const float Factor = 1.0f + 0.75f * saturate(Depth) * Modulation.x;
 	const float OriginalDistance = Distance;
 	Distance = OriginalDistance * Factor;
-	Gradient = Gradient * Factor + OriginalDistance * (0.75f * saturate(Depth)) * VariationGradient;
+	Gradient = Gradient * Factor + OriginalDistance
+		* (0.75f * saturate(Depth) * (float)P) * Modulation.yz;
 }
 
 // Additional frequency layers for noise families originally authored as one octave.
@@ -293,7 +284,8 @@ void MixtormatNoiseV2LayerOctave(
 		float Distance = Type == 5 ? W.F1 : Type == 6 ? W.F2 : (W.F2 - W.F1);
 		Gradient = Type == 5 ? W.Direction
 			: Type == 6 ? W.SecondDirection : (W.SecondDirection - W.Direction);
-		MixtormatNoiseV2CellDistanceVariation(W, WorleyCellDepth, Distance, Gradient);
+		MixtormatNoiseV2CellDistanceVariation(TiledUV, P, Seed,
+			WorleyCellDepth, Distance, Gradient);
 		Value = saturate(Distance);
 		if (Distance <= 0.0f || Distance >= 1.0f)
 		{
