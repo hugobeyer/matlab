@@ -55,6 +55,10 @@ namespace MixtormatLayersPrivate
 			RemapOutput(Copy.OutputReference);
 			RemapOutput(Copy.Generator.HeightSource);
 			RemapOutput(Copy.Generator.WarpSource);
+			// Copy typed Behavior sources with the subtree rather than retaining stale child IDs.
+			RemapOutput(Copy.Behavior.Direction.Published);
+			RemapOutput(Copy.Behavior.Height.Published);
+			RemapOutput(Copy.Behavior.Influence.Published);
 			RemapOutput(Copy.BoundaryId.RegionIdsSource);
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
 			RemapOutput(Copy.HeightPush.Source);
