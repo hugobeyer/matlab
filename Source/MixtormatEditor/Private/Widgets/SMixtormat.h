@@ -720,6 +720,11 @@ private:
 	FReply ReorderGroupChild(FGuid GroupId, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
+	// Group-child multi-select, mirroring the layer set: plain replaces, ctrl/cmd toggles,
+	// shift extends from the anchor, ctrl+shift unions the range in.
+	void UpdateGroupChildMultiSelection(FGuid GroupId, int32 ChildIndex);
+	bool IsGroupChildMultiSelected(FGuid GroupId, int32 ChildIndex) const;
+	TArray<int32> GetSelectedGroupChildIndices() const;
 	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
 	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
 	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;
@@ -1710,6 +1715,12 @@ private:
 	// Where a shift-extend measures from. Set by a plain click only -- reusing SelectedLayerIndex
 	// would move the anchor on every ctrl-click and make the next range unpredictable.
 	FGuid SelectionAnchorLayerId;
+	// Group-child multi-select, the same pattern as SelectedLayerIds but for a group's shared
+	// stack. Only meaningful while SelectedGroupId is valid; cleared whenever the selection
+	// moves to a layer, another group, or a source.
+	TSet<FGuid> SelectedGroupChildIds;
+	// The group-child anchor for shift-extend, same convention as SelectionAnchorLayerId.
+	FGuid SelectionAnchorGroupChildId;
 	TArray<FMixtormatLayer> WorkingLayers;
 	TArray<FMixtormatLayer> SavedLayers;
 	TArray<FMixtormatLayerGroup> WorkingLayerGroups;

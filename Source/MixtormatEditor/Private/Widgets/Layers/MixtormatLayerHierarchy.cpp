@@ -550,6 +550,28 @@ void SMixtormat::UpdateMultiSelection(const int32 LayerIndex)
 	const bool bToggle = Modifiers.IsControlDown() || Modifiers.IsCommandDown();
 	const bool bExtend = Modifiers.IsShiftDown();
 
+	// Ctrl+Shift: extend the range from the anchor WITHOUT collapsing what Ctrl already picked.
+	// Plain Shift resets to the anchor..click range; this unions the range into the selection,
+	// so Ctrl-click A, Ctrl-click C, then Ctrl+Shift-click F keeps A and C and adds A..F.
+	if (bExtend && bToggle && SelectionAnchorLayerId.IsValid())
+	{
+		const int32 AnchorIndex = WorkingLayers.IndexOfByPredicate(
+			[this](const FMixtormatLayer& Candidate)
+			{
+				return Candidate.LayerId == SelectionAnchorLayerId;
+			});
+		if (AnchorIndex != INDEX_NONE)
+		{
+			const int32 First = FMath::Min(AnchorIndex, LayerIndex);
+			const int32 Last = FMath::Max(AnchorIndex, LayerIndex);
+			for (int32 Index = First; Index <= Last; ++Index)
+			{
+				SelectedLayerIds.Add(WorkingLayers[Index].LayerId);
+			}
+			return;
+		}
+	}
+
 	if (bExtend && SelectionAnchorLayerId.IsValid())
 	{
 		const int32 AnchorIndex = WorkingLayers.IndexOfByPredicate(
@@ -1136,8 +1158,123 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	UpdateGroupChildMultiSelection(GroupId, ChildIndex);
 	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }
 	return FReply::Handled();
+}
+
+void SMixtormat::UpdateGroupChildMultiSelection(const FGuid GroupId, const int32 ChildIndex)
+{
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (!Group || !Group->Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+	const FGuid ClickedId = Group->Children[ChildIndex].ChildId;
+
+	// Read live, the same convention UpdateMultiSelection uses: the keys held now are the keys
+	// held for this click.
+	const FModifierKeysState Modifiers = FSlateApplication::Get().GetModifierKeys();
+	const bool bToggle = Modifiers.IsControlDown() || Modifiers.IsCommandDown();
+	const bool bExtend = Modifiers.IsShiftDown();
+
+	// A click on a different group starts a fresh selection in that group.
+	if (SelectedGroupId != GroupId)
+	{
+		SelectedGroupChildIds.Reset();
+		SelectionAnchorGroupChildId.Invalidate();
+	}
+
+	// Ctrl+Shift: union the anchor..click range into the selection, keeping prior ctrl picks.
+	if (bExtend && bToggle && SelectionAnchorGroupChildId.IsValid())
+	{
+		const int32 AnchorIndex = Group->Children.IndexOfByPredicate(
+			[&SelectionAnchorGroupChildId = SelectionAnchorGroupChildId](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.ChildId == SelectionAnchorGroupChildId;
+			});
+		if (AnchorIndex != INDEX_NONE)
+		{
+			const int32 First = FMath::Min(AnchorIndex, ChildIndex);
+			const int32 Last = FMath::Max(AnchorIndex, ChildIndex);
+			for (int32 Index = First; Index <= Last; ++Index)
+			{
+				SelectedGroupChildIds.Add(Group->Children[Index].ChildId);
+			}
+			return;
+		}
+	}
+
+	if (bExtend && SelectionAnchorGroupChildId.IsValid())
+	{
+		const int32 AnchorIndex = Group->Children.IndexOfByPredicate(
+			[&SelectionAnchorGroupChildId = SelectionAnchorGroupChildId](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.ChildId == SelectionAnchorGroupChildId;
+			});
+		if (AnchorIndex != INDEX_NONE)
+		{
+			SelectedGroupChildIds.Reset();
+			const int32 First = FMath::Min(AnchorIndex, ChildIndex);
+			const int32 Last = FMath::Max(AnchorIndex, ChildIndex);
+			for (int32 Index = First; Index <= Last; ++Index)
+			{
+				SelectedGroupChildIds.Add(Group->Children[Index].ChildId);
+			}
+			return;
+		}
+	}
+
+	if (bToggle)
+	{
+		if (SelectedGroupChildIds.Contains(ClickedId))
+		{
+			SelectedGroupChildIds.Remove(ClickedId);
+		}
+		else
+		{
+			SelectedGroupChildIds.Add(ClickedId);
+		}
+		SelectionAnchorGroupChildId = ClickedId;
+		return;
+	}
+
+	// Clicking inside an existing multi-selection keeps it, the same right-click courtesy the
+	// layer stack has.
+	if (SelectedGroupChildIds.Num() > 1 && SelectedGroupChildIds.Contains(ClickedId))
+	{
+		return;
+	}
+
+	SelectedGroupChildIds.Reset();
+	SelectedGroupChildIds.Add(ClickedId);
+	SelectionAnchorGroupChildId = ClickedId;
+}
+
+bool SMixtormat::IsGroupChildMultiSelected(const FGuid GroupId, const int32 ChildIndex) const
+{
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	return Group
+		&& Group->Children.IsValidIndex(ChildIndex)
+		&& SelectedGroupChildIds.Contains(Group->Children[ChildIndex].ChildId);
+}
+
+TArray<int32> SMixtormat::GetSelectedGroupChildIndices() const
+{
+	TArray<int32> Indices;
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
+	if (!Group)
+	{
+		return Indices;
+	}
+	for (int32 Index = 0; Index < Group->Children.Num(); ++Index)
+	{
+		if (SelectedGroupChildIds.Contains(Group->Children[Index].ChildId))
+		{
+			Indices.Add(Index);
+		}
+	}
+	return Indices;
 }
 
 // A shared child's row. ID children can reorder within their scope or move into an ID Group
@@ -1202,7 +1339,8 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			})
 			.bSelected_Lambda([this, GroupId, ChildIndex]()
 			{
-				return SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex;
+				return (SelectedGroupId == GroupId && SelectedGroupChildIndex == ChildIndex)
+					|| IsGroupChildMultiSelected(GroupId, ChildIndex);
 			})
 			.bInstanceSource_Lambda([this, GroupId, ChildIndex]()
 			{
