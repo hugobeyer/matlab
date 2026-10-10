@@ -372,7 +372,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							SNew(SBox)
 							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
-								SNew(SMixtormatGroupAction, false)
+								SNew(SMixtormatGroupAction, false, Resolved.LayerLayout.SourcesAddTabHeight)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 								.ToolTipText(LOCTEXT("AddFillLayerBottomHint", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })
@@ -457,7 +457,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 				[
 					SNew(SBox)
 					.MinDesiredHeight(Resolved.LayerLayout.SourcesEmptyHeight)
-					.MaxDesiredHeight(Resolved.LayerLayout.RowHeight * MaxVisibleSourceRows)
+					.MaxDesiredHeight((Resolved.LayerLayout.SourcesRowHeight + Resolved.LayerLayout.SourcesRowGap) * MaxVisibleSourceRows)
 					[
 						SNew(SScrollBox)
 						.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
