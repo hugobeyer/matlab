@@ -758,8 +758,8 @@ namespace Mixtormat
 			Index == 0 ? R : 0.0f, Index == 0 ? R : 0.0f,
 			Index == Count - 1 ? R : 0.0f, Index == Count - 1 ? R : 0.0f);
 
-		// The old drop shadow extended beyond the widget and into layer rows.
-		// Shade is now an in-bounds, shared vertical ramp across every tab.
+		// Shade is an in-bounds vertical gradient independently repeated on each tab.
+		// The separate horizontal shadow belongs to the shell overlay behind the rail.
 		if (Layout.LeftRailShadowOpacity > 0.0f)
 		{
 			FMixtormatPaintLayer Shade;
@@ -774,8 +774,7 @@ namespace Mixtormat
 			for (int32 Point = 0; Point < Samples; ++Point)
 			{
 				const float LocalT = static_cast<float>(Point) / static_cast<float>(Samples - 1);
-				const float GlobalT = (static_cast<float>(Index) + LocalT) / static_cast<float>(Count);
-				const float ShadeT = Layout.bLeftRailShadeInverted ? 1.0f - GlobalT : GlobalT;
+				const float ShadeT = Layout.bLeftRailShadeInverted ? 1.0f - LocalT : LocalT;
 				Shade.OpacityRamp.Points.Add({ LocalT, FMath::Pow(ShadeT, Bias) });
 			}
 			Recipe.Layers.Add(Shade);
