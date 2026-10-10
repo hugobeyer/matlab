@@ -1229,10 +1229,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
-	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::WarpPush(),
 			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
 			.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::StructuralWarp); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
@@ -1307,7 +1307,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddWornEdgesToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddFlowWarpEffect", "Flow Warp · Targets Layer"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFlowWarpToLayer(LayerIndex); }));
 	Menu.Item(
 		LOCTEXT("AddLayerBlurEffect", "Layer Blur"),
