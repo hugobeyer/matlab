@@ -781,6 +781,8 @@ namespace Mixtormat
 		float LeftRailShadowOpacity = 0.25f;
 		// Bias < 1 darkens earlier; > 1 concentrates shade near the bottom.
 		float LeftRailShadeBias = 1.0f;
+		bool bLeftRailShadeInverted = false;
+		float LeftRailButtonSurfaceStrength = 0.0f;
 		// Legacy positional-shadow settings retained for serialized theme compatibility.
 		float LeftRailShadowOffset = 2.0f;
 		float LeftRailShadowRadius = 5.0f;
