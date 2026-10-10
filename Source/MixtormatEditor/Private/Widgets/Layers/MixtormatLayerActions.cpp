@@ -67,6 +67,8 @@ FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 
 FReply SMixtormat::AddGeneratorLayerCreation(const EMixtormatChildCreation Kind)
 {
+	// A Flow preset is an owned Generator child, never a standalone material layer.
+	if (Kind == EMixtormatChildCreation::NoiseFlow) { return FReply::Handled(); }
 	AddLayerOrStartMaterial(EMixtormatLayerType::Generator);
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator)
