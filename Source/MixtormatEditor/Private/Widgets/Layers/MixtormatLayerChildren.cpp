@@ -683,6 +683,8 @@ namespace MixtormatLayersPrivate
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
 			return Owner.Type == EMixtormatLayerChildType::Generator
+				&& !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
 				&& Child.Generator.Type == EMixtormatGeneratorType::Noise
 				&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
 		}
@@ -1695,6 +1697,8 @@ bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) co
 	const int32 Index = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
 	return Children.IsValidIndex(Index)
 		&& Children[Index].Type == EMixtormatLayerChildType::Generator
+		&& !(Children[Index].Generator.Type == EMixtormatGeneratorType::Noise
+			&& Children[Index].Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
 		&& !Children[Index].IsInstance()
 		&& MixtormatLayersPrivate::CanAddScopedChild(Children, Index);
 }
