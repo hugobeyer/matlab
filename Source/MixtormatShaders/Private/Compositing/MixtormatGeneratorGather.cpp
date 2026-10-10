@@ -362,7 +362,6 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		|| (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 		|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
-		|| Behavior.Influence.Origin != EMixtormatBehaviorFieldOrigin::None
 		|| !FMath::IsFinite(Behavior.Strength) || Behavior.Strength == 0.0f) { return; }
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
@@ -399,6 +398,26 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+	if (Behavior.Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+	{
+		const FMixtormatOutputReference& MaskRef = Behavior.Influence.Published;
+		// Generic mask-valued outputs use the ordered field resolver, not the
+		// generator's Height/Warp socket or the Noise Value-to-Coverage coercion.
+		const int32 MaskChildIndex = MixtormatOutputReferences::ResolveSource(
+			EffectiveLayers, LayerIndex, BehaviorChildIndex, MaskRef);
+		if (MaskChildIndex == INDEX_NONE || MaskRef.IsShelfSource()
+			|| MaskRef.Kind != EMixtormatPublishedFieldKind::Scalar01)
+		{
+			Data.Children.RemoveAt(Data.Children.Num() - 1);
+			return;
+		}
+		Out.bHasInfluence = true;
+		Out.Influence.Source.LayerId = MaskRef.SourceLayerId;
+		Out.Influence.Source.ChildIndex = MaskChildIndex;
+		Out.Influence.Source.Output = MaskRef.OutputName;
+		Out.Influence.Source.OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
+		Out.Influence.Kind = MaskRef.Kind;
+	}
 }
 
 void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
