@@ -515,6 +515,10 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 						MixtormatIcons::Layers(),
 						MixtormatIcons::Library(),
 						MixtormatIcons::Global() })
+					.Labels({
+						LOCTEXT("LayersRailLabel", "Layers"),
+						LOCTEXT("LibraryRailLabel", "Library"),
+						LOCTEXT("GlobalRailLabel", "Global") })
 					.ToolTips({
 						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
 						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),
