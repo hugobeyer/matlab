@@ -240,6 +240,7 @@ namespace MixtormatLayerBadges
 			return ForGeneratorHeightOp(Child.HeightBlend.Op);
 		}
 		if (Child.Type == EMixtormatLayerChildType::HeightCurve
+			|| Child.Type == EMixtormatLayerChildType::Behavior
 			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp
 			|| Child.Type == EMixtormatLayerChildType::HeightPush
 						|| Child.Type == EMixtormatLayerChildType::StructuralWarp)
@@ -313,6 +314,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		case EMixtormatLayerChildType::Generator: return FText::GetEmpty();
+		case EMixtormatLayerChildType::Behavior: return FText::GetEmpty();
 		case EMixtormatLayerChildType::HeightBlend: return LOCTEXT("ChildKindHeightBlend", "HBLD");
 		case EMixtormatLayerChildType::HeightCurve: return LOCTEXT("ChildKindHeightCurve", "HCRV");
 		case EMixtormatLayerChildType::HeightColorRamp: return LOCTEXT("ChildKindHeightColorRamp", "HCLR");
