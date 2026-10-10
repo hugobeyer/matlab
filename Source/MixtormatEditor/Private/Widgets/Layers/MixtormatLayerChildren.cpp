@@ -682,7 +682,21 @@ namespace MixtormatLayersPrivate
 	{
 		if (Child.Type == EMixtormatLayerChildType::Behavior)
 		{
-			return Owner.Type == EMixtormatLayerChildType::Generator;
+			if (Owner.Type == EMixtormatLayerChildType::Generator)
+			{
+				return true;
+			}
+			if (Owner.Type != EMixtormatLayerChildType::Behavior)
+			{
+				return false;
+			}
+			// A child Flow Field modifies the immediate parent's input; nested
+			// operations must remain in the existing scoped child tree.
+			return Child.Behavior.Type == EMixtormatBehaviorType::FlowField
+				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Push
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Warp
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::FlowField);
 		}
 		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
