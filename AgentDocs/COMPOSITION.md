@@ -29,8 +29,10 @@ organisational only and never affects scheduling or results.
 `GatherSourceProducers` gathers each demanded entry as an explicitly source-owned
 producer (`FLayerRenderData::bIsShelfSource` / `SourceShelfId`, registry address
 `SourceId` tagged `EMixtormatOutputReferenceOwnerKind::Shelf` via `PublishedKey`) --
-never a synthetic material layer. Producers are gathered uncached (their node
-identity is settings-only and would not notice a dependency re-resolving).
+never a synthetic material layer. Producers are gathered uncached, with
+Follow/Link values resolved from real SourceId/ChildId parameter addresses in a
+transient producer copy; references to external material-stack layers remain
+ineligible for shelf producers.
 
 On the render thread the producer section runs ahead of the layer loop and only
 publishes: `AddRegionProducerPasses` + `AddGeneratorLayerPasses` fill
@@ -131,9 +133,10 @@ normal settings change. `LastPrefixHashes` finds the lowest changed layer.
 
 Sources shelf content is folded into the layer-prefix seed
 (`RequestComposeInternal`), because producers run uncached and are not layers, so
-they never enter the prefix chain themselves. Editing a demanded source therefore
-invalidates every cached layer above it and a resumed prefix can never serve a
-composite that sampled a stale shelf field. Generator module node caches stay
+they never enter the prefix chain themselves. Whenever at least one shelf producer is demanded, all shelf entries contribute
+to that seed: CPU Follow/Link parameter dependencies can reference another entry
+without needing its GPU output, and changing it must still invalidate cached
+composites. Shelf entry order stays irrelevant. Generator module node caches stay
 settings-only and are safe: they hold input-independent fields, while input
 combination is never node-cached.
 
