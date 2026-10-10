@@ -46,6 +46,7 @@
 #define NOISE_TYPE_WORLEY_F2   6
 #define NOISE_TYPE_WORLEY_F1F2 7
 #define NOISE_TYPE_BARS        8
+#define NOISE_TYPE_PHASOR      9
 
 int2 OutputSize;
 int NoiseType;
@@ -57,6 +58,20 @@ float Lacunarity;
 float2 OffsetUV;
 float2 Wave;
 float PhaseOffset;
+float PhasorFrequency;
+float PhasorAnisotropy;
+float PhasorPhaseVariation;
+float PhasorOrientationVariation;
+int PhasorComponents;
+int WorleyMetric;
+float WorleyJitter;
+float DistortionStrength;
+int DistortionPeriod;
+int DistortionOctaves;
+float DistortionRoughness;
+float DistortionLacunarity;
+float DistortionCurlMix;
+float2 DistortionDirectionUV;
 uint ProducesIds;
 
 RWTexture2D<float> OutValue;
@@ -120,6 +135,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// frac keeps a large Offset from walking the lattice coordinates out of float precision;
 	// the field has period 1 in tile UV, so the wrap is exact.
 	const float2 Domain = frac(UV + OffsetUV);
+	// Zero strength is a strict legacy identity: no warp math or extra texture samples.
+	float2 SampleDomain = Domain;
+	if (DistortionStrength > 0.0f)
+	{
+		SampleDomain = frac(MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
+			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix));
+	}
 
 	float Value = 0.0f;
 	float2 Gradient = float2(0.0f, 0.0f);
@@ -128,34 +151,35 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (NoiseType == NOISE_TYPE_GRADIENT)
 	{
 		const int P = max((int)round(max(Scale, 1.0f)), 1);
-		const float3 n = MixtormatPeriodicNoiseD(Domain * (float)P, P, Seed);
+		const float3 n = MixtormatPeriodicNoiseD(SampleDomain * (float)P, P, Seed);
 		Value = n.x * MIXTORMAT_NOISE_SQRT2;
 		Gradient = (float)P * MIXTORMAT_NOISE_SQRT2 * n.yz;
 	}
 	else if (NoiseType == NOISE_TYPE_VALUE)
 	{
 		const int P = max((int)round(max(Scale, 1.0f)), 1);
-		const float3 n = MixtormatNoiseValueD(Domain * (float)P, P, Seed);
+		const float3 n = MixtormatNoiseValueD(SampleDomain * (float)P, P, Seed);
 		Value = n.x;
 		Gradient = (float)P * n.yz;
 	}
 	else if (NoiseType == NOISE_TYPE_FBM)
 	{
-		MixtormatNoiseFbm(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		MixtormatNoiseFbm(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
 	}
 	else if (NoiseType == NOISE_TYPE_RIDGED)
 	{
-		MixtormatNoiseRidged(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		MixtormatNoiseRidged(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
 	}
 	else if (NoiseType == NOISE_TYPE_BILLOW)
 	{
-		MixtormatNoiseBillow(Domain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		MixtormatNoiseBillow(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
 	}
 	else if (NoiseType == NOISE_TYPE_WORLEY_F1
 		|| NoiseType == NOISE_TYPE_WORLEY_F2
 		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
 	{
-		const FMixtormatNoiseWorley w = MixtormatNoiseWorley(Domain, max((int)round(max(Scale, 1.0f)), 1), Seed);
+		const FMixtormatNoiseWorley w = MixtormatNoiseV2Worley(SampleDomain,
+			max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyJitter, WorleyMetric);
 		const float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.F2 : (w.F2 - w.F1);
 		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
@@ -174,10 +198,40 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 		CellId = w.CellId;
 	}
-	else // NOISE_TYPE_BARS
+	else if (NoiseType == NOISE_TYPE_PHASOR)
 	{
-		MixtormatNoiseBars(Domain, Wave, PhaseOffset, Value, Gradient);
+		const FMixtormatNoiseV2Sample Phasor = MixtormatNoiseV2Phasor(SampleDomain,
+			max((int)round(max(Scale, 1.0f)), 1), Seed, Wave,
+			PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+			PhasorOrientationVariation, PhasorComponents);
+		Value = Phasor.Value;
+		Gradient = Phasor.Gradient;
 	}
+	else // NOISE_TYPE_BARS, also preserves the previous fallback for unknown values
+	{
+		MixtormatNoiseBars(SampleDomain, Wave, PhaseOffset, Value, Gradient);
+	}
+
+#if !MIXTORMAT_NOISE_VALUE_ONLY
+	// Gradient is evaluated in the warped source domain. Chain-rule it into the
+	// generator domain only for distortion-enabled paths. Use two forward probes
+	// of the same periodic warp; the legacy zero path remains bit-for-bit intact.
+	if (DistortionStrength > 0.0f)
+	{
+		const float Epsilon = max(1.0e-4f, 0.01f / (float)max(DistortionPeriod, 1));
+		const float2 WarpAt = MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
+			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+		const float2 WarpX = MixtormatNoiseV2WarpDomain(Domain + float2(Epsilon, 0.0f),
+			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+		const float2 WarpY = MixtormatNoiseV2WarpDomain(Domain + float2(0.0f, Epsilon),
+			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+		Gradient = float2(dot(Gradient, (WarpX - WarpAt) / Epsilon),
+			dot(Gradient, (WarpY - WarpAt) / Epsilon));
+	}
+#endif
 
 	OutValue[Pixel] = Value;
 #if !MIXTORMAT_NOISE_VALUE_ONLY
