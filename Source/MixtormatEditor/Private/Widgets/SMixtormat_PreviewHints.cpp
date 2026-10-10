@@ -45,13 +45,14 @@ namespace Mixtormat
 
 	// The keycap plate: the preview plate recipe at rest, so the strip's keycaps are the
 	// same surface the overlay buttons use rather than a second plate look.
-	TSharedRef<SWidget> MakeHintKeycap(const FText& Key)
+	TSharedRef<SWidget> MakeHintKeycap(const FText& Key, const TAttribute<EVisibility>& Visible)
 	{
 		const FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 		const FTextBlockStyle KeycapStyle = FMixtormatTypography::MakeTextStyle(
 			FMixtormatTypography::GetSpec(Resolved.Typography, EMixtormatTextRole::MenuShortcut),
 			Resolved.Palette.Get(EMixtormatColorRole::Text));
 		return SNew(SMixtormatSurfaceBox)
+			.Visibility(Visible)
 			.Recipe_Lambda([]()
 			{
 				return MakePreviewPlateRecipe(FMixtormatThemeStore::GetResolved());
@@ -67,7 +68,6 @@ namespace Mixtormat
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 {
-	const Mixtormat::FMixtormatContextMetrics& Context = FMixtormatThemeStore::GetResolved().ContextLayout;
 	const FTextBlockStyle ActionStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(
 			FMixtormatThemeStore::GetResolved().Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
@@ -96,8 +96,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			&& !bHasSelectedLayer;
 	};
 
-	// One pair: optional keycap, action text, and when it is on screen.
-	const auto AddPair = [&Context, &ActionStyle](
+	// One pair: optional keycap, action text, and when it is on screen. Visibility lives on
+	// the children -- box-panel slots have no Visibility of their own.
+	const auto AddPair = [&ActionStyle](
 		SHorizontalBox& Box,
 		const FText& Key,
 		const FText& Action,
@@ -105,23 +106,25 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		if (!Key.IsEmpty())
 		{
-			Box.AddSlot().AutoWidth().VAlign(VAlign_Center).Visibility(Visible)
+			Box.AddSlot().AutoWidth().VAlign(VAlign_Center)
 				[
-					Mixtormat::MakeHintKeycap(Key)
+					Mixtormat::MakeHintKeycap(Key, Visible)
 				];
-			Box.AddSlot().AutoWidth().VAlign(VAlign_Center).Visibility(Visible)
-				.Padding(Context.HintKeyActionGap, 0.0f, 0.0f, 0.0f)
+			Box.AddSlot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(FMixtormatThemeStore::GetResolved().ContextLayout.HintKeyActionGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(STextBlock)
+					.Visibility(Visible)
 					.Text(Action)
 					.TextStyle(&ActionStyle)
 				];
 		}
 		else
 		{
-			Box.AddSlot().AutoWidth().VAlign(VAlign_Center).Visibility(Visible)
+			Box.AddSlot().AutoWidth().VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
+					.Visibility(Visible)
 					.Text(Action)
 					.TextStyle(&ActionStyle)
 				];
@@ -129,12 +132,14 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	};
 
 	// Gap before every pair after the first, so a collapsed pair takes its gap with it.
-	const auto AddGap = [&Context](SHorizontalBox& Box, const TAttribute<EVisibility>& Visible)
+	const auto AddGap = [](SHorizontalBox& Box, const TAttribute<EVisibility>& Visible)
 	{
-		Box.AddSlot().AutoWidth().VAlign(VAlign_Center).Visibility(Visible)
-			.Padding(Context.HintItemGap, 0.0f, 0.0f, 0.0f)
+		Box.AddSlot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(FMixtormatThemeStore::GetResolved().ContextLayout.HintItemGap, 0.0f, 0.0f, 0.0f)
 			[
-				SNew(SSpacer).Size(FVector2D(2.0f, 1.0f))
+				SNew(SSpacer)
+				.Visibility(Visible)
+				.Size(FVector2D(2.0f, 1.0f))
 			];
 	};
 
@@ -197,17 +202,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	TSharedRef<SWidget> Strip = MakePreviewCluster(Row);
 
 	const TSharedRef<Mixtormat::SMixtormatHintStrip> StripWidget = SNew(Mixtormat::SMixtormatHintStrip)
+		.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+		{
+			return bPreviewOverlayUiVisible ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		}))
 		[
 			Strip
 		];
-	StripWidget->SetVisibility(TAttribute<EVisibility>::CreateLambda([this]()
-	{
-		return bPreviewOverlayUiVisible ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	}));
-	StripWidget->SetRenderOpacity(TAttribute<float>::CreateLambda([]()
-	{
-		return FMixtormatThemeStore::GetResolved().ContextLayout.HintStripOpacity;
-	}));
+	// Render opacity is a plain float on SWidget, read once here; the schema entry is
+	// Reconstruct-mode, so editing Strip Opacity rebuilds the workspace and re-reads it.
+	StripWidget->SetRenderOpacity(FMixtormatThemeStore::GetResolved().ContextLayout.HintStripOpacity);
 	return StripWidget;
 }
 

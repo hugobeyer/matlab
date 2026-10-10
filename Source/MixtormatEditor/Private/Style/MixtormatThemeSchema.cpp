@@ -714,7 +714,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("Context.HintKeycapPadding", Context, "Hint Strip", "Keycap Padding", ContextLayout.HintKeycapPadding, 0, 8, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Context.HintKeyActionGap", Context, "Hint Strip", "Key-Action Gap", ContextLayout.HintKeyActionGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Context.HintItemGap", Context, "Hint Strip", "Item Gap", ContextLayout.HintItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-				NUM("Context.HintStripOpacity", Context, "Hint Strip", "Strip Opacity", ContextLayout.HintStripOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("Context.HintStripOpacity", Context, "Hint Strip", "Strip Opacity", ContextLayout.HintStripOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Context.HintStripInset", Context, "Hint Strip", "Strip Inset", ContextLayout.HintStripInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				SetLocateTarget(P, LocateBegin, ETarget::HintStrip);
 
