@@ -1023,6 +1023,17 @@ namespace MixtormatGpuCompositor
 		FScalarDriverRenderData Drivers[2];
 	};
 
+	// Generator-owned V2 operation. Only the PostGeneration Warp stage currently
+	// has a GPU implementation; other stages retain their authored data untouched.
+	struct FBehaviorRenderData
+	{
+		EMixtormatBehaviorType Type = EMixtormatBehaviorType::Warp;
+		EMixtormatBehaviorStage Stage = EMixtormatBehaviorStage::PostGeneration;
+		int32 GeneratorChildIndex = INDEX_NONE;
+		float Strength = 1.0f;
+		FOutputReferenceRenderData Direction;
+	};
+
 	struct FGeneratorHeightPushRenderData
 	{
 		FOutputReferenceRenderData Source;
@@ -1115,6 +1126,7 @@ namespace MixtormatGpuCompositor
 		FGeneratorHeightColorRampRenderData HeightColorRamp;
 		FGeneratorHeightPushRenderData HeightPush;
 		FGeneratorStructuralWarpRenderData StructuralWarp;
+		FBehaviorRenderData Behavior;
 		FUvIdRenderData UvId;
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
