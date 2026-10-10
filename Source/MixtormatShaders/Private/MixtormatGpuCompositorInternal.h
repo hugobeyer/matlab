@@ -1808,11 +1808,22 @@ namespace MixtormatGpuCompositor
 	}
 
 
-	// True when a generator has at least one enabled mask scoped beneath it. Asked before the
-	// mask is resolved, because "no mask" and "a mask that is white" must stay distinguishable.
-	// Declared here rather than duplicated: it lives in an anonymous namespace inside
-	// MixtormatGpuGeneratorPasses.cpp, so the Noise passes could not otherwise reach it.
-	bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex);
+	// A scoped mask is present when an owned Mask child contributes nonzero weight.
+	// Shared inline with Noise to avoid cross-translation-unit linker dependencies.
+	// Distinguishes no mask from an authored white mask.
+	inline bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
+	{
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type == EMixtormatLayerChildType::Mask
+				&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
+				&& Child.Mask.Weight != 0.0f)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 
 	// MixtormatGpuMaskPasses.cpp -- mask processing, generated masks, mask shaping.
 	FRDGTextureRef AddScopedFeatureMask(

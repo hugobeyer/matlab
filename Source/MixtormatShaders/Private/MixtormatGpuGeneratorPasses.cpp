@@ -60,42 +60,7 @@ namespace
 			FMath::Max(Resolution.Y / Divisor, 1));
 	}
 
-	// True when this generator has at least one enabled mask scoped beneath it.
-	//
-	// Asked before the scoped mask is resolved, because "there is no mask" and "there is a mask
-	// that happens to be white" are different: the first must leave Mask Influence completely
-	// inert whatever it is set to, and the second must honour it. Collapsing the two would make
-	// a generator with no mask behave as though Mask Influence were always 1, which is the same
-	// picture only by accident.
-	bool HasScopedMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
-	{
-		for (const FChildRenderData& Child : Layer.Children)
-		{
-			if (Child.Type == EMixtormatLayerChildType::Mask
-				&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
-				&& Child.Mask.Weight != 0.0f)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-}
 
-// Shared with the Noise passes, which resolve a scoped mask the same way. Declared in
-// MixtormatGpuCompositorInternal.h.
-bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
-{
-	for (const FChildRenderData& Child : Layer.Children)
-	{
-		if (Child.Type == EMixtormatLayerChildType::Mask
-			&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
-			&& Child.Mask.Weight != 0.0f)
-		{
-			return true;
-		}
-	}
-	return false;
 }
 
 // Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
@@ -1646,7 +1611,7 @@ namespace
 
 			// Independent scope, as under Strata Carver: the item's mask says where this item
 			// acts, not where the layer is.
-			const bool bHasMask = HasScopedMasks(Layer, FlowIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, FlowIndex);
 			FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
 				: Current;
@@ -2739,7 +2704,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					Child.SourceChildIndex, Warp.Drivers)
 				: Source.Texture;
 			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			const FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : RunningHeight;
 			const FRDGTextureRef* OldD = LayerCtx.GeneratorStructuralDisplacements.Find(Warp.TargetChildIndex);
@@ -2782,7 +2747,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				|| Source->Texture->Desc.Extent != Size) { continue; }
 			const FRDGTextureRef Height = Source->Texture;
 			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			const FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Height;
 			const FRDGTextureRef* Found = LayerCtx.GeneratorHeightPushFields.Find(Push.TargetChildIndex);
@@ -2862,7 +2827,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// A Mask scoped under this ramp gates where its colour shows, using the same independent
 			// scope the generator flow tools use: the mask says where this module acts, not where
 			// the layer is. The mask's own Weight dials how strongly it gates.
-			const bool bHasGate = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasGate = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			FRDGTextureRef RampGate = bHasGate
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 				: RampSource;
