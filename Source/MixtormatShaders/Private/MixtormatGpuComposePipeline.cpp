@@ -829,10 +829,11 @@ namespace MixtormatGpuCompositor
 						}
 					}
 
-						// Shelf producers run ahead of the stack, uncached, and never composite: each one
-						// is a synthetic Generator layer whose module chain publishes into the shared field
-						// registry under the entry's SourceId. The stack's generator inputs read those
-						// keys; nothing here touches the output targets or the layer ping-pong.
+						// Shelf producers run ahead of the stack, in dependency order, uncached, and never
+						// composite: each one is an explicitly source-owned producer whose module chain
+						// publishes into the shared field registry under the entry's SourceId. The stack's
+						// generator inputs read those keys; nothing here touches the output targets or the
+						// layer ping-pong.
 						for (int32 SourceIndex = 0; SourceIndex < Request.SourceProducers.Num(); ++SourceIndex)
 						{
 							const FLayerRenderData& SourceLayer = Request.SourceProducers[SourceIndex];

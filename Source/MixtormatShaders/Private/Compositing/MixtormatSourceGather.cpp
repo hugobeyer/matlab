@@ -11,109 +11,165 @@ namespace MixtormatGpuCompositor
 {
 	namespace
 	{
-		// The only shelf consumer contract that exists: a generator module's explicit Height/Warp
-		// input. OutputReference children and structural modules stay layer-only until their own
-		// shelf paths are built, so they contribute no demand here.
-		void CollectEntryDemand(const FMixtormatGenerator& Generator,
-			const TArray<FMixtormatSourceEntry>& Sources, TSet<FGuid>& OutDemandedSourceIds)
+		// A producer is evaluable only when its root payload is an enabled generator. Anything else
+		// publishes no fields, so it can neither satisfy demand nor carry demand onward.
+		bool IsEvaluableSource(const FMixtormatSourceEntry& Source)
 		{
-			const auto Collect = [&](const FMixtormatOutputReference& Reference)
+			return Source.Child.Type == EMixtormatLayerChildType::Generator
+				&& Source.Child.Generator.bEnabled;
+		}
+
+		// The Sources a generator's explicit inputs actually name, resolved by shelf identity. The
+		// socket's own kind contract is applied first (Height reads ScalarSigned, Warp reads Flow or
+		// UVMap), so an edge exists only where the input is genuinely consumable; a malformed,
+		// disabled, wrong-kind or self endpoint contributes no edge and is never scheduled.
+		void CollectGeneratorShelfDependencies(const FMixtormatGenerator& Generator,
+			const FGuid& SelfId, const TArray<FMixtormatSourceEntry>& Sources,
+			TArray<FGuid>& OutDependencies)
+		{
+			const auto Collect = [&](const FMixtormatOutputReference& Reference, const bool bHeight)
 			{
-				if (!Reference.bEnabled || !Reference.IsShelfSource()) { return; }
+				if (!Reference.IsShelfSource()) { return; }
+				// A self reference can never be an edge; it would be a one-node cycle.
+				if (Reference.SourceShelfId == SelfId) { return; }
+				const bool bCompatible = bHeight
+					? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+					: Reference.Kind == EMixtormatPublishedFieldKind::Flow
+						|| Reference.Kind == EMixtormatPublishedFieldKind::UVMap;
+				if (!bCompatible) { return; }
 				const MixtormatOutputReferences::FShelfSourceReferenceStatus Status =
 					MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
-				// Only a well-formed, enabled endpoint is schedulable; everything else stays an
-				// explicit repair state for the editor instead of a silently dropped dependency.
-				if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+				if (Status.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 				{
-					OutDemandedSourceIds.Add(Reference.SourceShelfId);
+					return;
 				}
+				OutDependencies.AddUnique(Reference.SourceShelfId);
 			};
-			Collect(Generator.HeightSource);
-			Collect(Generator.WarpSource);
+			Collect(Generator.HeightSource, true);
+			Collect(Generator.WarpSource, false);
 		}
 	}
 
 	void CollectDemandedShelfSources(
 		const TArray<FMixtormatLayer>& EffectiveLayers,
 		const TArray<FMixtormatSourceEntry>& Sources,
-		TSet<FGuid>& OutDemandedSourceIds)
+		TArray<FGuid>& OutDemandedOrder)
 	{
+		OutDemandedOrder.Reset();
 		if (Sources.IsEmpty()) { return; }
 
-		// Direct demand from the stack. A disabled layer gathers no modules, so it demands nothing.
+		TMap<FGuid, int32> IndexById;
+		IndexById.Reserve(Sources.Num());
+		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		{
+			IndexById.Add(Sources[Index].SourceId, Index);
+		}
+
+		// One edge list per entry, built once. Shelf order is not consulted.
+		TArray<TArray<FGuid>> Dependencies;
+		Dependencies.SetNum(Sources.Num());
+		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		{
+			if (IsEvaluableSource(Sources[Index]))
+			{
+				CollectGeneratorShelfDependencies(Sources[Index].Child.Generator,
+					Sources[Index].SourceId, Sources, Dependencies[Index]);
+			}
+		}
+
+		TSet<FGuid> Emitted;
+		TSet<FGuid> OnStack;
+
+		// Post-order DFS: a producer is emitted only after everything it reads. A back-edge (a
+		// reference to a node already on the active path) is a cycle and is dropped rather than
+		// recursed into, which also terminates self and mutual cycles.
+		TFunction<void(const FGuid&)> Visit = [&](const FGuid& SourceId)
+		{
+			if (Emitted.Contains(SourceId) || OnStack.Contains(SourceId)) { return; }
+			const int32* Index = IndexById.Find(SourceId);
+			if (!Index || !IsEvaluableSource(Sources[*Index])) { return; }
+
+			OnStack.Add(SourceId);
+			for (const FGuid& Dependency : Dependencies[*Index])
+			{
+				if (!OnStack.Contains(Dependency))
+				{
+					Visit(Dependency);
+				}
+			}
+			OnStack.Remove(SourceId);
+			Emitted.Add(SourceId);
+			OutDemandedOrder.Add(SourceId);
+		};
+
+		// Seed: the stack's own generator inputs. A disabled layer gathers no modules, so it
+		// demands nothing; each well-formed, enabled shelf endpoint is visited once.
 		for (const FMixtormatLayer& Layer : EffectiveLayers)
 		{
 			if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator) { continue; }
 			for (const FMixtormatLayerChild& Child : Layer.Children)
 			{
-				if (Child.Type == EMixtormatLayerChildType::Generator && Child.Generator.bEnabled)
+				if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled)
 				{
-					CollectEntryDemand(Child.Generator, Sources, OutDemandedSourceIds);
+					continue;
+				}
+				TArray<FGuid> Roots;
+				CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
+				for (const FGuid& Root : Roots)
+				{
+					Visit(Root);
 				}
 			}
-		}
-
-		// Transitive demand between producers. A shelf dependency may only name an earlier entry
-		// (the synthetic producer array preserves shelf order, and the generator-input validator
-		// enforces earlier-only there), so one reverse pass closes the set. A disabled intermediate
-		// publishes nothing, so demand does not travel through it.
-		for (int32 Index = Sources.Num() - 1; Index >= 0; --Index)
-		{
-			const FMixtormatSourceEntry& Source = Sources[Index];
-			if (!OutDemandedSourceIds.Contains(Source.SourceId)
-				|| Source.Child.Type != EMixtormatLayerChildType::Generator
-				|| !Source.Child.Generator.bEnabled)
-			{
-				continue;
-			}
-			CollectEntryDemand(Source.Child.Generator, Sources, OutDemandedSourceIds);
 		}
 	}
 
 	void GatherSourceProducers(
 		const TArray<FMixtormatSourceEntry>& Sources,
-		const TSet<FGuid>& DemandedSourceIds,
+		const TArray<FGuid>& DemandedOrder,
 		TArray<FLayerRenderData>& OutProducers)
 	{
-		if (DemandedSourceIds.IsEmpty()) { return; }
+		OutProducers.Reset();
+		if (DemandedOrder.IsEmpty()) { return; }
 
-		// The synthetic authored stack the producers gather against: one Generator layer per
-		// demanded entry, in shelf order. A producer's layer-kind inputs resolve against this array
-		// and find nothing -- sources are producers only, they never read the material stack.
-		TArray<FMixtormatLayer> SyntheticLayers;
-		TArray<int32> SyntheticSourceIndices;
-		SyntheticLayers.Reserve(Sources.Num());
-		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		TMap<FGuid, const FMixtormatSourceEntry*> ById;
+		ById.Reserve(Sources.Num());
+		for (const FMixtormatSourceEntry& Source : Sources)
 		{
-			const FMixtormatSourceEntry& Source = Sources[Index];
-			if (!DemandedSourceIds.Contains(Source.SourceId)
-				|| Source.Child.Type != EMixtormatLayerChildType::Generator
-				|| !Source.Child.Generator.bEnabled)
-			{
-				continue;
-			}
-			FMixtormatLayer& Synthetic = SyntheticLayers.AddDefaulted_GetRef();
-			Synthetic.LayerId = Source.SourceId;
-			Synthetic.Type = EMixtormatLayerType::Generator;
-			Synthetic.bEnabled = true;
-			Synthetic.Children.Add(Source.Child);
-			SyntheticSourceIndices.Add(Index);
+			ById.Add(Source.SourceId, &Source);
 		}
 
-		OutProducers.Reserve(SyntheticLayers.Num());
-		for (int32 SyntheticIndex = 0; SyntheticIndex < SyntheticLayers.Num(); ++SyntheticIndex)
+		// A producer never reads the material stack, so its layer-kind inputs must resolve to
+		// nothing. An empty effective-layer array is exactly that: no shelf producer can silently
+		// read a layer by index.
+		const TArray<FMixtormatLayer> NoLayers;
+
+		OutProducers.Reserve(DemandedOrder.Num());
+		for (const FGuid& SourceId : DemandedOrder)
 		{
-			const FMixtormatLayer& Synthetic = SyntheticLayers[SyntheticIndex];
+			const FMixtormatSourceEntry* const* Found = ById.Find(SourceId);
+			if (!Found || !*Found || !IsEvaluableSource(**Found)) { continue; }
+			const FMixtormatSourceEntry& Entry = **Found;
+
+			// Container for the generator gather only: one unscoped root child, no layer state. It
+			// exists to satisfy the module-container contract and is never added to the stack, keyed
+			// as a layer, or composited.
+			FMixtormatLayer Container;
+			Container.LayerId = Entry.SourceId;
+			Container.Type = EMixtormatLayerType::Generator;
+			Container.bEnabled = true;
+			Container.Children.Add(Entry.Child);
+
 			FLayerRenderData& Data = OutProducers.AddDefaulted_GetRef();
-			Data.LayerId = Synthetic.LayerId;
+			// Explicit shelf ownership: addressed by the entry's SourceId, never a material layer.
+			Data.LayerId = Entry.SourceId;
+			Data.bIsShelfSource = true;
+			Data.SourceShelfId = Entry.SourceId;
 			Data.bGenerator = true;
 			Data.bEnabled = true;
 
-			// One unscoped root child: no scope owners to resolve, no masks, no effects.
-			const uint64 PlacementKey = GatherLayerPlacementKey(Synthetic, true);
-			GatherGeneratorChild(Data, Synthetic, Synthetic.Children[0], 0,
-				true, false, PlacementKey, SyntheticIndex, SyntheticLayers, Sources);
+			const uint64 PlacementKey = GatherLayerPlacementKey(Container, true);
+			GatherGeneratorChild(Data, Container, Container.Children[0], 0,
+				true, false, PlacementKey, 0, NoLayers, Sources);
 		}
 	}
 }

@@ -61,9 +61,25 @@ namespace MixtormatOutputReferences
 			Status.Issue = EShelfSourceReferenceIssue::Unset;
 			return Status;
 		}
+		// A switched-off reference stays authored but is not a schedulable dependency.
+		if (!Reference.bEnabled)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::DisabledReference;
+			return Status;
+		}
 		if (!IsValidFieldKind(Reference.Kind))
 		{
 			Status.Issue = EShelfSourceReferenceIssue::InvalidFieldKind;
+			return Status;
+		}
+		// Typed-output contract: the shelf consumer sockets read signed scalar height or a flow/UV
+		// field. Any other kind names a field no shelf consumer addresses, so it is rejected here
+		// rather than resolving to an unsupported endpoint.
+		if (Reference.Kind != EMixtormatPublishedFieldKind::ScalarSigned
+			&& Reference.Kind != EMixtormatPublishedFieldKind::Flow
+			&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::UnsupportedOutputKind;
 			return Status;
 		}
 		const FName Expected = CanonicalFieldOutputName(Reference.Kind);

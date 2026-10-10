@@ -43,7 +43,7 @@ namespace MixtormatGpuCompositor
 			if (Reference.IsShelfSource())
 			{
 				// A shelf input names a producer by stable entry identity; its root child is index 0 of
-				// the synthetic producer layer. Classification keeps malformed, disabled and missing
+				// that producer. Classification keeps malformed, disabled, wrong-kind and missing
 				// endpoints unavailable -- never a layer fallback, never a guessed producer.
 				OwnerId = Reference.SourceShelfId;
 				const MixtormatOutputReferences::FShelfSourceReferenceStatus Status = bCompatible

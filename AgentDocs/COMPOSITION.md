@@ -21,22 +21,34 @@ sees a flat array of the same length and order.
 
 `RequestCompose` also takes the document's `Sources`. Only **demanded** sources
 evaluate: `CollectDemandedShelfSources` (`Compositing/MixtormatSourceGather.*`)
-finds shelf endpoints referenced by generator `HeightSource`/`WarpSource` inputs
-(plus their own earlier shelf dependencies, one reverse pass), and
-`GatherSourceProducers` gathers each as a synthetic Generator layer —
-`LayerId = SourceId`, one root child, shelf order.
+seeds from generator `HeightSource`/`WarpSource` inputs, then closes the set over
+producer-to-producer references and returns it in **dependency order**
+(a producer always follows the sources it reads). Shelf array order is
+organisational only and never affects scheduling or results.
+
+`GatherSourceProducers` gathers each demanded entry as an explicitly source-owned
+producer (`FLayerRenderData::bIsShelfSource` / `SourceShelfId`, registry address
+`SourceId`, one root child) -- never a synthetic material layer. Producers are
+gathered uncached (their node identity is settings-only and would not notice a
+dependency re-resolving).
 
 On the render thread the producer section runs ahead of the layer loop and only
 publishes: `AddRegionProducerPasses` + `AddGeneratorLayerPasses` fill
 `Ctx.PublishedFieldOutputs` under `{SourceId, 0, OutputName}`. Producers never
-composite, never touch the output targets, and are gathered uncached (their node
-identity is settings-only and would not notice a dependency re-resolving after a
-reorder). Consumer input keys resolve through
-`ClassifyShelfSourceReference`; malformed/disabled/missing endpoints stay
-unavailable and never fall back to a layer. Shelf dependencies are earlier-only
-(the synthetic array preserves shelf order and the existing generator-input
-validator enforces it), so cycles are structurally excluded; structural modules
-and OutputReference children remain layer-only until their own shelf paths land.
+composite, never touch the output targets, and always run ahead of the stack.
+Consumer input keys resolve through `ClassifyShelfSourceReference`, which now
+rejects a switched-off reference (`DisabledReference`) and any kind outside the
+shelf consumer contract -- ScalarSigned / Flow / UVMap (`UnsupportedOutputKind`)
+-- alongside the existing malformed/disabled/missing endpoint checks; those stay
+unavailable and never fall back to a layer.
+
+The graph is a DAG, not a position rule: self references and cycles contribute no
+edge, so an offending producer is dropped from the order and its consumer's input
+resolves to nothing (a missing field is treated as unavailable). A producer's
+layer-kind inputs resolve against an empty effective-layer array, so a shelf
+source can never read the material stack. Structural modules and OutputReference
+children remain layer-only until their own shelf paths land; a per-generator-type
+published-output table is still outstanding.
 
 ## Gather
 

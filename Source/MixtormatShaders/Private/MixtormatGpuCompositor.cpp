@@ -1892,10 +1892,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	}
 
 	// Shelf producers gather after the stack: the stack's gather resolved its shelf input keys
-	// against the authored Sources, and this pass now materializes exactly the producers those
-	// keys demand (plus their own earlier shelf dependencies). Uncached by design -- see
-	// GatherSourceProducers.
-	TSet<FGuid> DemandedShelfSources;
+	// against the authored Sources, and this pass now materializes exactly the producers those keys
+	// demand, transitively, in dependency order. Shelf order is never used and uncached by design --
+	// see GatherSourceProducers.
+	TArray<FGuid> DemandedShelfSources;
 	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
 	GatherSourceProducers(Sources, DemandedShelfSources, Request.SourceProducers);
 

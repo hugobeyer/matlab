@@ -112,7 +112,13 @@ namespace MixtormatOutputReferences
 		MissingChild,
 		WrongSourceKind,
 		DisabledSource,
-		Unevaluated
+		Unevaluated,
+		// The reference itself is switched off. Authored and kept, but not a schedulable edge.
+		DisabledReference,
+		// A field kind no Sources shelf producer is consumed with. The only shelf consumers are the
+		// generator Height/Warp sockets, which take ScalarSigned / Flow / UVMap; any other kind is a
+		// repairable authoring error rather than an endpoint to resolve.
+		UnsupportedOutputKind
 	};
 
 	struct FShelfSourceReferenceStatus

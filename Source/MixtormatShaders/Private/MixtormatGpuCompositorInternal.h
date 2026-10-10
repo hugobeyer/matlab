@@ -1179,6 +1179,12 @@ namespace MixtormatGpuCompositor
 	struct FLayerRenderData
 	{
 		FGuid LayerId;
+		// Explicit shelf ownership. Set only on the SourceProducers array: the entry is a Sources
+		// shelf producer rather than a material layer -- it is never composited, snapshotted or
+		// indexed as a layer. LayerId mirrors SourceShelfId purely as the published-field registry
+		// address, so shelf identity is never conflated with a layer when the stack is walked.
+		bool bIsShelfSource = false;
+		FGuid SourceShelfId;
 		bool bGenerator = false;
 		bool bGeneratorAlbedo = false;
 
@@ -1275,9 +1281,10 @@ namespace MixtormatGpuCompositor
 	{
 		FIntPoint Resolution = FIntPoint::ZeroValue;
 		TArray<FLayerRenderData> Layers;
-		// Synthetic producer layers gathered from demanded Sources shelf entries, run ahead of the
-		// stack. They publish into the shared field registry keyed by the entry's SourceId and are
-		// never composited; the stack reads them by key like any other published field.
+		// Explicitly source-owned producers for the demanded Sources shelf entries, run ahead of the
+		// stack in dependency order. They publish into the shared field registry keyed by the entry's
+		// SourceId and are never composited, snapshotted or cached; the stack reads them by key like
+		// any other published field.
 		TArray<FLayerRenderData> SourceProducers;
 		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> Targets;
 		FTextureRHIRef OutputBC[2];
