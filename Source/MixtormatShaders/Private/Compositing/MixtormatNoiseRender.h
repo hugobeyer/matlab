@@ -64,6 +64,8 @@ struct FMixtormatNoiseRenderData
 	float ModeConstantWeight = 0.0f;
 	float ModeAngle = 0.0f;
 	float ModeStrength = 1.0f;
+	float FlowAdd = 1.0f;
+	float FlowMix = 0.0f;
 };
 
 // Shared field sanitization for generator gather and inline source-local masks.
