@@ -742,7 +742,8 @@ namespace MixtormatGpuCompositor
 							}
 							if (Child.Type == EMixtormatLayerChildType::Behavior
 								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
-								&& Child.Behavior.Type == EMixtormatBehaviorType::Warp
+								&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+									|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
 								&& Child.Behavior.Direction.Source.ChildIndex != INDEX_NONE)
 							{
 								// Demand before the producer runs. A neutral flow tool may

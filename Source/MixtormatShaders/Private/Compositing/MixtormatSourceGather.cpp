@@ -154,7 +154,7 @@ namespace MixtormatGpuCompositor
 					for (const FGuid& Root : Roots) { Visit(Root); }
 				}
 			}
-			// V2 Warp and Push are typed consumers. Demand each connected
+			// V2 Warp, Deform and Push are typed consumers. Demand each connected
 			// shelf producer before GPU evaluation or the field will be absent.
 			if (Layer.Type == EMixtormatLayerType::Generator)
 			{
@@ -164,7 +164,8 @@ namespace MixtormatGpuCompositor
 					if (Child.Type != EMixtormatLayerChildType::Behavior
 						|| !Child.Behavior.bEnabled
 						|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
-							&& Child.Behavior.Type != EMixtormatBehaviorType::Push)
+							&& Child.Behavior.Type != EMixtormatBehaviorType::Push
+							&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
 						|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 						|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex) == INDEX_NONE)
 					{

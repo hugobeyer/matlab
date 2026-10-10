@@ -1541,7 +1541,8 @@ namespace
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
 					&& Child.Behavior.Type != EMixtormatBehaviorType::Push
-					&& Child.Behavior.Type != EMixtormatBehaviorType::Carve)
+					&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
+					&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
 			// A connected Influence that is unavailable must NOT turn into full strength.
@@ -1674,7 +1675,16 @@ namespace
 			}
 			if (Coordinates)
 			{
-				RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+				if (Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+				{
+					// Unlike Warp, Deform moves relief only. Region IDs, coverage,
+					// and named attributes retain their generator-domain placement.
+					Module.Height = RemapBundleField(Ctx, Module.Height, Coordinates, 0);
+				}
+				else
+				{
+					RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+				}
 			}
 		}
 	}

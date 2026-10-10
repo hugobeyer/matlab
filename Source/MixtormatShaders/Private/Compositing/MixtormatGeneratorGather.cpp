@@ -360,11 +360,12 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bWarp = Behavior.Type == EMixtormatBehaviorType::Warp;
 	const bool bPush = Behavior.Type == EMixtormatBehaviorType::Push;
 	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
-	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve)
+	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
+	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform)
 		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
-		|| (bWarp && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+		|| ((bWarp || bDeform) && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
-		|| (bWarp && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
+		|| ((bWarp || bDeform) && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
 		|| (bPush && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight

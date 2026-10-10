@@ -79,7 +79,8 @@ namespace MixtormatChildScope
 		if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			|| (Behavior.Type != EMixtormatBehaviorType::Warp
 				&& Behavior.Type != EMixtormatBehaviorType::Push
-				&& Behavior.Type != EMixtormatBehaviorType::Carve))
+				&& Behavior.Type != EMixtormatBehaviorType::Carve
+				&& Behavior.Type != EMixtormatBehaviorType::Deform))
 		{
 			Result.Issue = EBehaviorInputIssue::UnsupportedOperation;
 			return Result;
@@ -105,7 +106,8 @@ namespace MixtormatChildScope
 			{
 				if (bDirection && Input.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 				{
-					return Behavior.Type == EMixtormatBehaviorType::Warp
+					return (Behavior.Type == EMixtormatBehaviorType::Warp
+							|| Behavior.Type == EMixtormatBehaviorType::Deform)
 						&& Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
 						? EBehaviorInputIssue::None : EBehaviorInputIssue::InvalidStage;
 				}
