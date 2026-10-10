@@ -1475,6 +1475,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			return Candidate.AuthoredChildIndex == ChildIndex;
 		});
 		int32 StoredIncoming = 0;
+		int32 StoredWarp = 0;
+		int32 StoredPush = 0;
 		int32 ActiveIncoming = 0;
 		int32 IncomingIssues = 0;
 		TSet<FMixtormatChildAddress> CountedIncoming;
@@ -1487,6 +1489,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				|| CountedIncoming.Contains(Candidate.Address)) { continue; }
 			CountedIncoming.Add(Candidate.Address);
 			++StoredIncoming;
+			if (Layer.Children.IsValidIndex(Candidate.AuthoredChildIndex))
+			{
+				const EMixtormatLayerChildType RelationType = Layer.Children[Candidate.AuthoredChildIndex].Type;
+				if (RelationType == EMixtormatLayerChildType::StructuralWarp) { ++StoredWarp; }
+				else if (RelationType == EMixtormatLayerChildType::HeightPush) { ++StoredPush; }
+			}
 			if (Candidate.Status.bCanExecuteStructurally) { ++ActiveIncoming; }
 			if (!Candidate.PresentationReason.IsEmpty()
 				|| Candidate.Status.ModuleIssue != MixtormatOutputReferences::EStructuralLinkIssue::None
@@ -1496,6 +1504,40 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		const FText IncomingToolTip = StoredIncoming > 0 ? FText::Format(
 			LOCTEXT("GeneratorIncomingSummary", "{0} stored incoming; {1} active-valid; {2} with issues."),
 			FText::AsNumber(StoredIncoming), FText::AsNumber(ActiveIncoming), FText::AsNumber(IncomingIssues)) : FText::GetEmpty();
+		// Operation-specific marks replace the redundant GEN suffix on a target.
+		// The child rows remain the canonical place to edit connections.
+		TSharedRef<SHorizontalBox> IncomingMarks = SNew(SHorizontalBox);
+		const float MarkSize = FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize;
+		const FLinearColor MarkColor = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted);
+		const auto AddIncomingMark = [&IncomingMarks, MarkSize, MarkColor](
+			const FSlateBrush* Icon, const FText& Hint)
+		{
+			IncomingMarks->AddSlot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SMixtormatHelp).Text(Hint)
+				[
+					SNew(SBox).WidthOverride(MarkSize).HeightOverride(MarkSize)
+					[
+						SNew(SImage).Image(Icon).ColorAndOpacity(FSlateColor(MarkColor))
+					]
+				]
+			];
+		};
+		if (Child.Type == EMixtormatLayerChildType::Generator)
+		{
+			if (StoredWarp > 0)
+			{
+				AddIncomingMark(MixtormatIcons::WarpStructural(), FText::Format(
+					LOCTEXT("TargetWarpIndicator", "{0} incoming Warp operations"),
+					FText::AsNumber(StoredWarp)));
+			}
+			if (StoredPush > 0)
+			{
+				AddIncomingMark(MixtormatIcons::WarpPush(), FText::Format(
+					LOCTEXT("TargetPushIndicator", "{0} incoming Height Push operations"),
+					FText::AsNumber(StoredPush)));
+			}
+		}
 		TSharedPtr<SMixtormatLayerChildRow> ChildRow;
 
 		Container->AddChild(
@@ -1534,7 +1576,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				{
 					return GetStructuralHighlightRole(MakeChildAddress(LayerIndex, ChildIndex));
 				})
-				.StructuralLink()[bConnection ? SNullWidget::NullWidget : BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
+				.StructuralLink()[bConnection ? SNullWidget::NullWidget
+					: Child.Type == EMixtormatLayerChildType::Generator
+						? StaticCastSharedRef<SWidget>(IncomingMarks)
+						: BuildStructuralLinkChips(MakeChildAddress(LayerIndex, ChildIndex))]
 				.Icon()[bConnection ? SNew(SImage)
 					.Image(Child.Type == EMixtormatLayerChildType::HeightPush
 						? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural())
