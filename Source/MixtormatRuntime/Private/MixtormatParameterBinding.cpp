@@ -280,6 +280,22 @@ namespace
 		}
 		// No layer owns that id, so it may be a group's. Groups are checked second and never
 		// shadow a layer: a GroupId colliding with a LayerId is not something PostLoad allows.
+		if (Scope.Sources)
+		{
+			for (const FMixtormatSourceEntry& Source : *Scope.Sources)
+			{
+				if (Source.SourceId != Address.LayerId) { continue; }
+				if (Source.Child.ChildId == Address.ChildId)
+				{
+					return ChildOwner(Source.Child, Address.Owner);
+				}
+				for (const FMixtormatLayerChild& Child : Source.OwnedChildren)
+				{
+					if (Child.ChildId == Address.ChildId) { return ChildOwner(Child, Address.Owner); }
+				}
+				return {};
+			}
+		}
 		return LocateGroupOwner(Scope.Groups, Address);
 	}
 
@@ -334,6 +350,22 @@ namespace
 				}
 			}
 			return {};
+		}
+		if (Scope.Sources)
+		{
+			for (FMixtormatSourceEntry& Source : *Scope.Sources)
+			{
+				if (Source.SourceId != Address.LayerId) { continue; }
+				if (Source.Child.ChildId == Address.ChildId)
+				{
+					return MutableChildOwner(Source.Child, Address.Owner);
+				}
+				for (FMixtormatLayerChild& Child : Source.OwnedChildren)
+				{
+					if (Child.ChildId == Address.ChildId) { return MutableChildOwner(Child, Address.Owner); }
+				}
+				return {};
+			}
 		}
 		return LocateMutableGroupOwner(Scope.Groups, Address);
 	}
