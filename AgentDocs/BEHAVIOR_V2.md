@@ -1,6 +1,6 @@
 # Behavior System V2 — implementation contract
 
-Status: Universal post-generation Warp now supports typed published Flow/UVMap and a generator-local native-height-gradient direction, with independent per-Behavior scoped masks and an optional ordered published Scalar01 Influence field. The generator-owned Inspector has explicit source modes, Strength, Gradient Reach, Flow controls and enable/remove/duplicate. Noise V2 is integrated from main through merged PR #2 (`40cb6f6`) with both Noise and Behavior Inspector controls retained. No Unreal, shader or GPU build/test validation has been performed.
+Status: Universal post-generation Warp now supports typed published Flow/UVMap and a generator-local native-height-gradient direction, with independent per-Behavior scoped masks and an optional ordered published Scalar01 Influence field. The generator-owned Inspector has explicit source modes, Strength, Gradient Reach, Flow controls and enable/remove/duplicate. Noise V2 is integrated from main through PR #2 (`40cb6f6`) and the newer layered-noise/Phasor/Worley/jaggedness improvements through PR #4 (`2883362`); both Noise and Behavior Inspector controls are retained. No Unreal, shader or GPU build/test validation has been performed.
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
@@ -30,9 +30,9 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 - All new Warp operations for a generator execute in their child order via the same `ApplyGeneratorPostWarpBehaviors` GPU function. No family-specific branch or duplicate remap shader is introduced.
 - Both legacy completed Structural Warp and V2 Warp reuse `RemapGeneratorModuleOutputs`; Noise Value/Gradient publication retains the existing dedicated transport semantics.
 - Legacy Generator Flow tools run before V2 post-generation Behaviors. Legacy Structural Warp for non-Strata remains applied after signed normalization. This is an explicit transitional ordering, not yet an arbitrary interleavable operation chain.
-- **Initial UI authoring is present:** right-click Generator → **Add Warp Behavior (V2)** → choose **Own Height Gradient**, a compatible typed Flow/UV published field, or **Choose source later**. Gradient Reach is enabled only in local mode. A mask scoped beneath the Behavior gates its displacement, not the parent Generator. The picker does not yet offer expanded group producers.
+- **Initial UI authoring is present:** right-click Generator → **Add Warp Behavior (V2)** → choose **Own Height Gradient**, a compatible typed Flow/UV published field, or **Choose source later**. Gradient Reach is enabled only in local mode. **Influence Field** accepts an ordered, published Scalar01 from an earlier layer. Existing scoped-mask authoring (including Noise Gate) also targets Behavior and combines multiplicatively with Influence. Missing/invalid Direction or Influence sources are indicated as unavailable in the chips; the Warp skips unavailable fields instead of silently using full strength. The picker does not yet offer expanded group producers.
 - **Not yet complete:** general field composition, PreGeneration, other Behavior kinds, GPU consumption of parameter drivers, per-socket render source identities and full instance/group authoring. These must not be inferred from the presence of a Warp row.
-- Shader field demand includes V2 Warp input references to prevent neutral source flow tools being skipped.
+- Shader field demand includes V2 Warp Direction and optional Scalar01 Influence references, preventing neutral or cached producers from silently dropping a required field.
 - Scoped masks are gathered with the canonical `AddScopedFeatureMask` path and blend displacement toward identity through `MixtormatBehaviorWarp.usf`, preserving neutral behavior outside the mask. Additional `Influence` multiplies displacement with that mask for either published Flow/UV or Own Height Gradient. Shader bindings reject incomplete or unsupported formats instead of dropping the influence.
 - No build, shader compile, Unreal launch or GPU validation was performed.
 
@@ -44,6 +44,6 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 5. Validate Unreal shader compilation and real material output when explicitly authorized.
 
 ## Parallel development
-Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 settings. `main` was merged into this feature branch through PR #2 (`40cb6f6`), leaving `main` unchanged.
+Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 controls. `main` was merged into this feature branch through PR #2 (`40cb6f6`) and PR #4 (`2883362`), leaving `main` unchanged. Current branch ancestry was checked after PR #4 with zero commits behind `main`.
 
 Repository policy: source/static review only by default; build, test and Unreal launches require user approval.
