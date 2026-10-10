@@ -1766,9 +1766,12 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformControls()
 				? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
 					[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
 				: INDEX_NONE;
+			const int32 OwnerIndex = ChildIndex != INDEX_NONE
+				? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+					WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
 			const bool bValid = Ref.Kind == EMixtormatPublishedFieldKind::Scalar01
-				&& !Ref.IsShelfSource() && ChildIndex != INDEX_NONE
-				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+				&& !Ref.IsShelfSource() && OwnerIndex != INDEX_NONE
+				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 			return bValid ? FText::FromName(Ref.OutputName)
 				: FText::Format(LOCTEXT("BehaviorDeformInfluenceUnavailable", "Unavailable / {0}"),
 					FText::FromName(Ref.OutputName));
