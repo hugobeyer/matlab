@@ -829,6 +829,11 @@ namespace MixtormatParameterBinding
 				Child.HeightPush.TargetChildId = *NewTargetChildId;
 			}
 			RemapOutput(Child.StructuralWarp.Source, true);
+			// V2 typed Behavior sockets are addresses too. Follow duplicated local
+			// producers, but preserve explicit references to external layers/shelf.
+			RemapOutput(Child.Behavior.Direction.Published, true);
+			RemapOutput(Child.Behavior.Height.Published, true);
+			RemapOutput(Child.Behavior.Influence.Published, true);
 			if (const FGuid* NewTargetChildId = ChildIdRemap.Find(Child.StructuralWarp.TargetChildId))
 			{
 				Child.StructuralWarp.TargetChildId = *NewTargetChildId;
@@ -928,6 +933,9 @@ namespace MixtormatParameterBinding
 				RemapStructuralSource(Child.Generator.WarpSource);
 				RemapStructuralSource(Child.HeightPush.Source);
 				RemapStructuralSource(Child.StructuralWarp.Source);
+				RemapStructuralSource(Child.Behavior.Direction.Published);
+				RemapStructuralSource(Child.Behavior.Height.Published);
+				RemapStructuralSource(Child.Behavior.Influence.Published);
 				const TSet<FGuid>* HeightSourceChildren = OriginalOwnerChildIds.Find(Child.HeightBlend.SourceLayerId);
 				if (HeightSourceChildren && HeightSourceChildren->Contains(Child.HeightBlend.SourceChildId))
 				{
