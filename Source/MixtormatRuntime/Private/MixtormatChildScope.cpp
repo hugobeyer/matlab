@@ -196,24 +196,23 @@ namespace MixtormatChildScope
 		bool bChanged = false;
 		for (int32 Index = 0; Index < Children.Num(); ++Index)
 		{
-			if (!Children[Index].ScopeOwnerChildId.IsValid())
+			FMixtormatLayerChild& Child = Children[Index];
+			if (Child.Type == EMixtormatLayerChildType::Behavior)
 			{
+				// A Behavior has no valid root or indirect scope. Keep any authored
+				// owner identity for repair, but fail closed if it is not a Generator.
+				if (ResolveBehaviorGeneratorIndex(Children, Index) == INDEX_NONE
+					&& Child.Behavior.bEnabled)
+				{
+					Child.Behavior.bEnabled = false;
+					bChanged = true;
+				}
 				continue;
 			}
-			if (ResolveOwnerIndex(Children, Index) == INDEX_NONE)
+			if (Child.ScopeOwnerChildId.IsValid()
+				&& ResolveOwnerIndex(Children, Index) == INDEX_NONE)
 			{
-				// An orphaned Behavior must never become an unscoped/root operation.
-				// Keep its unresolved identity for repair, but disable execution.
-				if (Children[Index].Type == EMixtormatLayerChildType::Behavior)
-				{
-					if (Children[Index].Behavior.bEnabled)
-					{
-						Children[Index].Behavior.bEnabled = false;
-						bChanged = true;
-					}
-						continue;
-				}
-				Children[Index].ScopeOwnerChildId.Invalidate();
+				Child.ScopeOwnerChildId.Invalidate();
 				bChanged = true;
 			}
 		}
