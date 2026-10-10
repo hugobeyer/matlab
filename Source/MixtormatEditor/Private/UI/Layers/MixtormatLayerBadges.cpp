@@ -175,10 +175,6 @@ namespace MixtormatLayerBadges
 		case EMixtormatEffectType::Breakup:   return LOCTEXT("EffectBadgeBreakup", "BREAK");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("EffectBadgeWorn", "WORN");
 		case EMixtormatEffectType::FlowWarp:  return LOCTEXT("EffectBadgeFlowWarp", "WARP");
-		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("EffectBadgeShapeDeform", "SHAPE");
-		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("EffectBadgeGeneratorFlow", "FLOW");
-				case EMixtormatEffectType::GravityFlow: return LOCTEXT("EffectBadgeGravityFlow", "GRAV");
-		case EMixtormatEffectType::FlowCarve: return LOCTEXT("EffectBadgeFlowCarve", "CARVE");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("EffectBadgeLayerBlur", "BLUR");
 		case EMixtormatEffectType::Runoff:    return LOCTEXT("EffectBadgeRunoff", "RUNOFF");
 		default:                              return LOCTEXT("EffectBadgePeel", "PEEL");
@@ -240,9 +236,8 @@ namespace MixtormatLayerBadges
 			return ForGeneratorHeightOp(Child.HeightBlend.Op);
 		}
 		if (Child.Type == EMixtormatLayerChildType::HeightCurve
-			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp
-			|| Child.Type == EMixtormatLayerChildType::HeightPush
-						|| Child.Type == EMixtormatLayerChildType::StructuralWarp)
+			|| Child.Type == EMixtormatLayerChildType::Behavior
+			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 		{
 			return FText::GetEmpty();
 		}
@@ -313,11 +308,10 @@ namespace MixtormatLayerBadges
 		case EMixtormatLayerChildType::Blur:      return LOCTEXT("ChildKindBlur", "BLUR");
 		case EMixtormatLayerChildType::Curvature: return LOCTEXT("ChildKindCurvature", "CURV");
 		case EMixtormatLayerChildType::Generator: return FText::GetEmpty();
+		case EMixtormatLayerChildType::Behavior: return FText::GetEmpty();
 		case EMixtormatLayerChildType::HeightBlend: return LOCTEXT("ChildKindHeightBlend", "HBLD");
 		case EMixtormatLayerChildType::HeightCurve: return LOCTEXT("ChildKindHeightCurve", "HCRV");
 		case EMixtormatLayerChildType::HeightColorRamp: return LOCTEXT("ChildKindHeightColorRamp", "HCLR");
-					case EMixtormatLayerChildType::HeightPush: return LOCTEXT("ChildKindHeightPush", "HPUSH");
-							case EMixtormatLayerChildType::StructuralWarp: return LOCTEXT("ChildKindStructuralWarp", "WARP");
 		default:                                  return LOCTEXT("ChildKindMask", "MASK");
 		}
 	}

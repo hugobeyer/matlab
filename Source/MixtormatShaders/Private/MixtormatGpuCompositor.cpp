@@ -1716,11 +1716,16 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
+			if (LayerChild.Type == EMixtormatLayerChildType::Behavior)
+			{
+				GatherGeneratorBehaviorChild(Data, Layer, LayerChild, SourceChildIndex,
+					LayerIndex, EffectiveLayers, Sources);
+				continue;
+			}
+
 			if (LayerChild.Type == EMixtormatLayerChildType::HeightBlend
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightCurve
-				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp
-				|| LayerChild.Type == EMixtormatLayerChildType::HeightPush
-								|| LayerChild.Type == EMixtormatLayerChildType::StructuralWarp)
+				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp)
 			{
 				GatherGeneratorHeightModuleChild(Data, Layer, LayerChild, SourceChildIndex,
 					bGeneratorLayer, LayerIndex, EffectiveLayers);
@@ -1786,17 +1791,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			{
 				const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 				bool bWarpableOwner = false;
-				bool bFlowGeneratorOwner = false;
 				if (OwnerIndex != INDEX_NONE)
 				{
 					const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
 					bWarpableOwner = Owner.Type == EMixtormatLayerChildType::Mask;
-					// Generator flow tools transform their owning Rock Formation's field. A
-					// disabled owner produces no field, so its tools go with it.
-					bFlowGeneratorOwner = Owner.Type == EMixtormatLayerChildType::Generator
-						&& Layer.Type == EMixtormatLayerType::Generator
-						&& MixtormatCanOwnGeneratorFlow(Owner.Generator.Type)
-						&& Owner.Generator.bEnabled;
 					if (Owner.Type == EMixtormatLayerChildType::Effect)
 					{
 						const UMixtormatEffect* OwnerAsset = Owner.Effect.Effect.LoadSynchronous();
@@ -1807,21 +1805,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 							MixtormatEffectClassOf(OwnerType) == EMixtormatEffectClass::Surface;
 					}
 				}
-				const bool bValidFlowWarpScope =
-					(ResolvedType == EMixtormatEffectType::FlowWarp && bWarpableOwner)
-					|| (MixtormatIsGeneratorFlowEffect(ResolvedType) && bFlowGeneratorOwner);
-				if (!bValidFlowWarpScope)
+				if (ResolvedType != EMixtormatEffectType::FlowWarp || !bWarpableOwner)
 				{
 					Data.Children.RemoveAt(Data.Children.Num() - 1);
 					continue;
 				}
 				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
-			}
-			else if (MixtormatIsGeneratorFlowEffect(ResolvedType))
-			{
-				// A flow tool must sit under the module whose field it transforms.
-				Data.Children.RemoveAt(Data.Children.Num() - 1);
-				continue;
 			}
 			FEffectRenderData& EffectData = ChildData.Effect;
 			EffectData.Type = ResolvedType;
@@ -1861,11 +1850,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				GatherFlowWarp(EffectData, LayerEffect);
 			}
 
-			if (MixtormatIsGeneratorFlowEffect(ResolvedType))
-			{
-				GatherGeneratorFlow(EffectData, LayerEffect);
-			}
-
 			if (ResolvedType == EMixtormatEffectType::WornEdges)
 			{
 				GatherWornEdges(EffectData, LayerEffect);
@@ -1881,15 +1865,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				GatherRunoff(EffectData, LayerEffect, Data.bHasMask);
 			}
 
-			// Filters and generator flow tools have no post-composite effect data. bHasEffects
+			// Filters have no post-composite effect data. bHasEffects
 			// stays clear for them, so the composite never samples an unwritten effect target.
 			//
 			// Gated on the class, not on the absence of an asset. Erosion got away with the
 			// narrower test because nothing creates Erosion assets, but Grade is a valid
 			// EffectType on UMixtormatEffect, so an authored Grade asset would fall through
 			// into the peel branches below and trip exactly the failure above.
-			if (MixtormatEffectClassOf(ResolvedType) == EMixtormatEffectClass::Filter
-				|| MixtormatIsGeneratorFlowEffect(ResolvedType))
+			if (MixtormatEffectClassOf(ResolvedType) == EMixtormatEffectClass::Filter)
 			{
 				continue;
 			}

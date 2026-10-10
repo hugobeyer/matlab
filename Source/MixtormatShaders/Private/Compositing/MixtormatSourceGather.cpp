@@ -5,6 +5,7 @@
 #include "Compositing/MixtormatGeneratorGather.h"
 #include "Compositing/MixtormatLayerGather.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatParameterBinding.h"
 
@@ -151,6 +152,45 @@ namespace MixtormatGpuCompositor
 					TArray<FGuid> Roots;
 					CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
 					for (const FGuid& Root : Roots) { Visit(Root); }
+				}
+			}
+			// V2 Warp, Deform and Push are typed consumers. Demand each connected
+			// shelf producer before GPU evaluation or the field will be absent.
+			if (Layer.Type == EMixtormatLayerType::Generator)
+			{
+				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+				{
+					const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+					if (Child.Type != EMixtormatLayerChildType::Behavior
+						|| !Child.Behavior.bEnabled
+						|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+							&& Child.Behavior.Type != EMixtormatBehaviorType::Push
+							&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
+						|| (Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+							&& !(Child.Behavior.Stage == EMixtormatBehaviorStage::PreGeneration
+								&& Child.Behavior.Type == EMixtormatBehaviorType::Warp))
+						|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex) == INDEX_NONE)
+					{
+						continue;
+					}
+					const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex);
+					if (!Layer.Children.IsValidIndex(OwnerIndex)
+						|| !Layer.Children[OwnerIndex].Generator.bEnabled) { continue; }
+					const bool bPush = Child.Behavior.Type == EMixtormatBehaviorType::Push;
+					const FMixtormatBehaviorFieldInput& Input = bPush
+						? Child.Behavior.Height : Child.Behavior.Direction;
+					const FMixtormatOutputReference& Reference = Input.Published;
+					if (Input.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+						|| !Reference.IsShelfSource() || !Reference.bEnabled
+						|| (bPush
+							? Reference.Kind != EMixtormatPublishedFieldKind::ScalarSigned
+							: (Reference.Kind != EMixtormatPublishedFieldKind::Flow
+								&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap))) { continue; }
+					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
+					if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+					{
+						Visit(Reference.SourceShelfId);
+					}
 				}
 			}
 			// The mask pipeline consumes Noise Value as typed scalar coverage, with

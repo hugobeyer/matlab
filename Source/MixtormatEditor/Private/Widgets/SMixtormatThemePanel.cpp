@@ -40,6 +40,7 @@ namespace
 		Mixtormat::EMixtormatThemeTab::Buttons,
 		Mixtormat::EMixtormatThemeTab::Menus,
 		Mixtormat::EMixtormatThemeTab::Preview,
+		Mixtormat::EMixtormatThemeTab::Context,
 		Mixtormat::EMixtormatThemeTab::GalleryShell,
 		Mixtormat::EMixtormatThemeTab::Typography
 	};

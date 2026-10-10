@@ -13,7 +13,6 @@
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
-#include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -30,7 +29,6 @@ public:
 
 void SMixtormat::RebuildLayerList()
 {
-	StructuralEndpointPreview.Reset();
 	for (auto It = CollapsedGeneratorAddresses.CreateIterator(); It; ++It)
 	{
 		int32 OwnerIndex, ChildIndex;
@@ -47,8 +45,6 @@ void SMixtormat::RebuildLayerList()
 	}
 
 	LayerListBox->ClearChildren();
-	StructuralIncomingCountLabels.Reset();
-	StructuralConnectionLabelCache.Reset();
 	LayerThumbnails.Reset();
 	LayerRowWidgets.Reset();
 	GroupRowWidgets.Reset();
@@ -680,13 +676,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				{
 					Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
 				}
-				RemapOutput(Child->BoundaryId.RegionIdsSource);
-				RemapOutput(Child->HeightPush.Source);
-				RemapOutput(Child->StructuralWarp.Source);
+				RemapOutput(Child->Behavior.Direction.Published);
+				RemapOutput(Child->Behavior.Height.Published);
+				RemapOutput(Child->Behavior.Influence.Published);
 				Remap(Child->HeightBlend.SourceLayerId, Child->HeightBlend.SourceChildId);
 				if (const FGuid* Input = Ids.Find(Child->HeightColorRamp.SourceChildId)) Child->HeightColorRamp.SourceChildId = *Input;
-				if (const FGuid* Target = Ids.Find(Child->HeightPush.TargetChildId)) Child->HeightPush.TargetChildId = *Target;
-				if (const FGuid* Target = Ids.Find(Child->StructuralWarp.TargetChildId)) Child->StructuralWarp.TargetChildId = *Target;
 				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
 				{
 					Remap(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);

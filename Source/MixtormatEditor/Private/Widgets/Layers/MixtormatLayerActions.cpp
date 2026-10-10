@@ -3,9 +3,9 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
-#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
 #include "Services/MixtormatPaths.h"
 #include "ObjectTools.h"
@@ -62,6 +62,11 @@ void SMixtormat::InitializeNewLayer(
 
 FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 {
+	return AddGeneratorLayerCreation(CreationKindForGenerator(Type));
+}
+
+FReply SMixtormat::AddGeneratorLayerCreation(const EMixtormatChildCreation Kind)
+{
 	AddLayerOrStartMaterial(EMixtormatLayerType::Generator);
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator)
@@ -70,7 +75,7 @@ FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 	}
 
 	// The first module is the layer's first child; CreateChild selects it and refreshes the stack.
-	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), CreationKindForGenerator(Type));
+	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), Kind);
 }
 
 FReply SMixtormat::AddLayerOrStartMaterial(const EMixtormatLayerType LayerType)
@@ -290,12 +295,6 @@ FReply SMixtormat::CreateGroupFromSelection()
 				++StrandedCount;
 			}
 		}
-	}
-	FText MoveReason;
-	if (!StructuralLinksPreserved(ProposedLayers, ProposedGroups, MoveReason))
-	{
-		WorkingStatusText = MoveReason.ToString();
-		return FReply::Handled();
 	}
 	WorkingLayers = MoveTemp(ProposedLayers);
 	WorkingLayerGroups = MoveTemp(ProposedGroups);
@@ -882,7 +881,8 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 	}
 	const FMixtormatLayerChild* NewSourceChild = MixtormatParameterBinding::FindChild(
 		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSource.OwnerId, NewSource.ChildId);
-	if (NewSourceChild && IsGeneratorFlow(*NewSourceChild) && !Placement->ScopeOwnerChildId.IsValid())
+	if (NewSourceChild && NewSourceChild->Type == EMixtormatLayerChildType::Behavior
+		&& !Placement->ScopeOwnerChildId.IsValid())
 	{
 		return FReply::Unhandled();
 	}
@@ -944,8 +944,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	}
 
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
-		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -1207,8 +1206,7 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath EffectPath)
 {
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
-		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -1444,8 +1442,32 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		return FReply::Handled();
 	}
 
+	const bool bBehaviorWarp = Kind == EMixtormatChildCreation::BehaviorWarp
+		|| Kind == EMixtormatChildCreation::BehaviorPush
+		|| Kind == EMixtormatChildCreation::BehaviorCarve
+		|| Kind == EMixtormatChildCreation::BehaviorDeform
+		|| Kind == EMixtormatChildCreation::BehaviorFlowField;
 	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
-	if (bNoiseGate && !CanCreateChild(Target))
+	const bool bScopedFlow = Kind == EMixtormatChildCreation::NoiseFlow
+		&& CanAddScopedFlowGenerator(Target);
+	if (bBehaviorWarp)
+	{
+		if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
+			|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator
+			|| !Target.ScopeOwnerChildId.IsValid()) { return FReply::Handled(); }
+		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
+		const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
+		FMixtormatLayerChild Prototype;
+		MixtormatLayersPrivate::ApplyChildCreationDefaults(Prototype, Kind);
+		if (!Children.IsValidIndex(OwnerIndex)
+			|| Children[OwnerIndex].IsInstance()
+			|| !MixtormatLayersPrivate::CanKeepScopedPlacement(Children[OwnerIndex], Prototype)
+			|| !MixtormatLayersPrivate::CanAddScopedChild(Children, OwnerIndex))
+		{
+			return FReply::Handled();
+		}
+	}
+	else if (bNoiseGate && !CanCreateChild(Target))
 	{
 		const FGuid OwnerId = Target.IsGroup() ? Target.GroupId
 			: (WorkingLayers.IsValidIndex(Target.LayerIndex) ? WorkingLayers[Target.LayerIndex].LayerId : FGuid());
@@ -1453,7 +1475,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			: EMixtormatChildOwnerType::Layer, OwnerId, Target.ScopeOwnerChildId}))
 		{ return FReply::Handled(); }
 	}
-	else if (!CanCreateChild(Target))
+	else if (!CanCreateChild(Target) && !bScopedFlow)
 	{
 		return FReply::Handled();
 	}
@@ -1461,10 +1483,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	if ((CreatedType == EMixtormatLayerChildType::Generator
 		|| CreatedType == EMixtormatLayerChildType::HeightBlend
 		|| CreatedType == EMixtormatLayerChildType::HeightCurve
-		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp
-		|| CreatedType == EMixtormatLayerChildType::HeightPush
-		|| CreatedType == EMixtormatLayerChildType::StructuralWarp)
-		&& !CanAddGeneratorModule(Target))
+		|| CreatedType == EMixtormatLayerChildType::HeightColorRamp)
+		&& !CanAddGeneratorModule(Target) && !bScopedFlow)
 	{
 		return FReply::Handled();
 	}
@@ -1479,6 +1499,21 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 		FMixtormatLayerChild Child;
 		ApplyChildCreationDefaults(Child, Kind);
+		// A nested Flow reads the owning generator through its Behavior ancestors.
+		// Height is also a valid self fallback for any generator without boundary output.
+		if (Kind == EMixtormatChildCreation::BehaviorFlowField)
+		{
+			const int32 ParentIndex = ResolveChildIndexAt(Owner);
+			const int32 GeneratorIndex = Children->IsValidIndex(ParentIndex)
+				&& (*Children)[ParentIndex].Type == EMixtormatLayerChildType::Generator
+				? ParentIndex
+				: MixtormatChildScope::ResolveBehaviorGeneratorIndex(*Children, ParentIndex);
+			if (Children->IsValidIndex(GeneratorIndex)
+				&& !MixtormatGeneratorHasFlowBoundary((*Children)[GeneratorIndex].Generator.Type))
+			{
+				Child.Behavior.Flow.FlowSource = EMixtormatBehaviorFlowSource::Height;
+			}
+		}
 		const int32 CreatedIndex = InsertScopedChild(*Children, ResolveChildIndexAt(Owner), MoveTemp(Child));
 		if (CreatedIndex == INDEX_NONE)
 		{
@@ -1532,205 +1567,6 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	return FReply::Handled();
 }
 
-bool SMixtormat::PrepareStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
-	int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
-{
-	return PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, nullptr,
-		ProposedLayers, LayerIndex, InsertIndex, OutReason);
-}
-
-bool SMixtormat::PrepareConnectedStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source,
-	TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
-{
-	return PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, &Source,
-		ProposedLayers, LayerIndex, InsertIndex, OutReason);
-}
-
-bool SMixtormat::PrepareStructuralModuleProposal(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* ProposedSource,
-	TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const
-{
-	OutReason = LOCTEXT("StructuralCreationUnavailable", "Requires an enabled, unscoped generator target in a Generator layer");
-	if (!bHasWorkingMaterial || !TargetLayerId.IsValid() || !TargetChildId.IsValid()
-		|| (ModuleType != EMixtormatLayerChildType::HeightPush
-			&& ModuleType != EMixtormatLayerChildType::StructuralWarp))
-	{
-		return false;
-	}
-	LayerIndex = INDEX_NONE;
-	for (int32 Index = 0; Index < WorkingLayers.Num(); ++Index)
-	{
-		if (WorkingLayers[Index].LayerId != TargetLayerId) { continue; }
-		if (LayerIndex != INDEX_NONE)
-		{
-			OutReason = LOCTEXT("StructuralCreationDuplicateLayer", "Target layer identity is ambiguous");
-			return false;
-		}
-		LayerIndex = Index;
-	}
-	if (!WorkingLayers.IsValidIndex(LayerIndex))
-	{
-		OutReason = LOCTEXT("StructuralCreationMissingLayer", "Target layer no longer exists");
-		return false;
-	}
-	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	if (Layer.Type != EMixtormatLayerType::Generator || !Layer.bEnabled)
-	{
-		OutReason = Layer.bEnabled ? LOCTEXT("StructuralCreationGeneratorLayer", "Requires a Generator layer")
-			: LOCTEXT("StructuralCreationDisabledLayer", "Target layer is disabled");
-		return false;
-	}
-	InsertIndex = INDEX_NONE;
-	for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
-	{
-		if (Layer.Children[Index].ChildId != TargetChildId) { continue; }
-		if (InsertIndex != INDEX_NONE)
-		{
-			OutReason = LOCTEXT("StructuralCreationDuplicateTarget", "Target child identity is ambiguous");
-			return false;
-		}
-		InsertIndex = Index;
-	}
-	if (!Layer.Children.IsValidIndex(InsertIndex))
-	{
-		OutReason = LOCTEXT("StructuralCreationMissingTarget", "Target child no longer exists");
-		return false;
-	}
-	const FMixtormatLayerChild& Target = Layer.Children[InsertIndex];
-	if (Target.Type != EMixtormatLayerChildType::Generator)
-	{
-		OutReason = LOCTEXT("StructuralCreationGeneratorTarget", "Requires a generator target");
-		return false;
-	}
-	if (Target.IsInstance())
-	{
-		OutReason = LOCTEXT("StructuralCreationInstanceTarget", "Break the target instance before adding a connection");
-		return false;
-	}
-	if (Target.ScopeOwnerChildId.IsValid())
-	{
-		OutReason = LOCTEXT("StructuralCreationScopedTarget", "Target must be an unscoped generator");
-		return false;
-	}
-	if (!IsChildEnabled(Target))
-	{
-		OutReason = LOCTEXT("StructuralCreationDisabledTarget", "Target generator is disabled");
-		return false;
-	}
-	if (ModuleType == EMixtormatLayerChildType::HeightPush
-		&& Target.Generator.Type != EMixtormatGeneratorType::StrataCarver)
-	{
-		OutReason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
-		return false;
-	}
-	// Insert at the root boundary, never inside the preceding owner's contiguous mask/tool block.
-	if (FindSiblingRoot(Layer.Children, InsertIndex, FGuid()) != InsertIndex
-		|| (InsertIndex > 0 && FindSubtreeEnd(Layer.Children, InsertIndex - 1) > InsertIndex))
-	{
-		OutReason = LOCTEXT("StructuralCreationScopeBoundary", "Insertion would split an existing child subtree");
-		return false;
-	}
-
-	FMixtormatLayerChild Module;
-	ApplyChildCreationDefaults(Module, ModuleType == EMixtormatLayerChildType::HeightPush
-		? EMixtormatChildCreation::HeightPush : EMixtormatChildCreation::StructuralWarp);
-	Module.ScopeOwnerChildId.Invalidate();
-	FMixtormatOutputReference& Source = ModuleType == EMixtormatLayerChildType::HeightPush
-		? Module.HeightPush.Source : Module.StructuralWarp.Source;
-	Source.SourceLayerId.Invalidate();
-	Source.SourceChildId.Invalidate();
-	if (ModuleType == EMixtormatLayerChildType::HeightPush) { Module.HeightPush.TargetChildId = TargetChildId; }
-	else { Module.StructuralWarp.TargetChildId = TargetChildId; }
-	ApplyLinkDefaults(Module, TargetLayerId);
-	if (ProposedSource)
-	{
-		// Copy only the typed endpoint. Placement/trace controls retain creation defaults.
-		Source.bEnabled = true;
-		Source.SourceLayerId = ProposedSource->SourceLayerId;
-		Source.SourceChildId = ProposedSource->SourceChildId;
-		Source.OutputName = ProposedSource->OutputName;
-		Source.Kind = ProposedSource->Kind;
-	}
-	ProposedLayers = WorkingLayers;
-	ProposedLayers[LayerIndex].Children.Insert(MoveTemp(Module), InsertIndex);
-
-	const FGuid ModuleId = ProposedLayers[LayerIndex].Children[InsertIndex].ChildId;
-	const FMixtormatStructuralConnectionContext Context(ProposedLayers, WorkingLayerGroups,
-		{EMixtormatChildOwnerType::Layer, TargetLayerId, ModuleId});
-	const auto Status = Context.Evaluate();
-	using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
-	const EIssue Issue = Status.ModuleIssue != EIssue::None ? Status.ModuleIssue
-		: Status.Target.Issue != EIssue::None ? Status.Target.Issue
-		: ProposedSource ? Status.Source.Issue : EIssue::None;
-	if (Issue != EIssue::None)
-	{
-		OutReason = MixtormatStructuralConnections::IssueText(Issue);
-		return false;
-	}
-	if (ProposedSource && !Status.bCanExecuteStructurally)
-	{
-		OutReason = LOCTEXT("StructuralCreationInactive", "Connection is unavailable in the effective generator stack");
-		return false;
-	}
-	if (!PublishedOutputPlacementsValid(FMixtormatBindingScope{ProposedLayers, WorkingLayerGroups}))
-	{
-		OutReason = LOCTEXT("StructuralCreationPublishedPlacement", "Insertion requires valid published-output placement");
-		return false;
-	}
-	if (!StructuralLinksPreserved(ProposedLayers, WorkingLayerGroups, OutReason)) { return false; }
-	OutReason = FText::GetEmpty();
-	return true;
-}
-
-FReply SMixtormat::CreateStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType)
-{
-	return CommitStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, nullptr);
-}
-
-FReply SMixtormat::CreateConnectedStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source)
-{
-	return CommitStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, &Source);
-}
-
-FReply SMixtormat::CommitStructuralModuleForTarget(const FGuid TargetLayerId, const FGuid TargetChildId,
-	const EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source)
-{
-	TArray<FMixtormatLayer> ProposedLayers;
-	int32 LayerIndex = INDEX_NONE;
-	int32 InsertIndex = INDEX_NONE;
-	FText Reason;
-	if (!PrepareStructuralModuleProposal(TargetLayerId, TargetChildId, ModuleType, Source,
-		ProposedLayers, LayerIndex, InsertIndex, Reason))
-	{
-		WorkingStatusText = Reason.ToString();
-		return FReply::Handled();
-	}
-	WorkingLayers = MoveTemp(ProposedLayers);
-	CollapsedGeneratorAddresses.Remove({EMixtormatChildOwnerType::Layer, TargetLayerId, TargetChildId});
-	RevealChildInHierarchy(MakeChildAddress(LayerIndex, InsertIndex));
-	SetLayerExpanded(LayerIndex, true);
-	// Commit selection here: SelectWorkingChild can submit a second preview refresh in debug mode.
-	bBypassSelectedChild = false;
-	SelectedLayerIndex = LayerIndex;
-	SelectedEffectIndex = INDEX_NONE;
-	SelectedMaskIndex = InsertIndex;
-	bHasSelectedLayer = true;
-	SelectedGroupId.Invalidate();
-	SelectedGroupChildIndex = INDEX_NONE;
-	RefreshLayeredPreview(false);
-	LastHistoryRecordTime = 0.0;
-	RecordEditHistory();
-	LastHistoryRecordTime = 0.0;
-	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
-	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
-	RebuildLayerList();
-	SyncSelectedLayerControls();
-	return FReply::Handled();
-}
 
 FReply SMixtormat::AddTextureMask(const FMixtormatAddTarget Target, const FSoftObjectPath MaskPath)
 {
@@ -1946,8 +1782,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::HeightBlend
 		&& ChildType != EMixtormatLayerChildType::HeightCurve
 		&& ChildType != EMixtormatLayerChildType::HeightColorRamp
-		&& ChildType != EMixtormatLayerChildType::HeightPush
-		&& ChildType != EMixtormatLayerChildType::StructuralWarp)
+		&& ChildType != EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Handled();
 	}
@@ -2136,47 +1971,6 @@ FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
 	RebuildLayerList();
-	return FReply::Handled();
-}
-
-FReply SMixtormat::AddGeneratorFlow(
-	const FMixtormatChildAddress& Owner, const EMixtormatEffectType Type)
-{
-	if (!MixtormatIsGeneratorFlowEffect(Type) || !CanAddGeneratorFlow(Owner))
-	{
-		return FReply::Handled();
-	}
-	FMixtormatLayerChild Child;
-	Child.Type = EMixtormatLayerChildType::Effect;
-	Child.Effect.ProceduralType = Type;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
-	const FMixtormatLayerChild* ScopeOwner = ResolveChildAt(Owner);
-	if (Type == EMixtormatEffectType::GravityFlow
-		|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator
-			&& !MixtormatGeneratorHasFlowBoundary(ScopeOwner->Generator.Type)))
-	{
-		Child.Effect.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
-	}
-	const int32 InsertAt = Owner.ChildId.IsValid()
-		? InsertScopedChild(*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child))
-		: ResolveContainer(Owner)->Add(MoveTemp(Child));
-	if (InsertAt == INDEX_NONE)
-	{
-		return FReply::Handled();
-	}
-	if (Owner.OwnerType == EMixtormatChildOwnerType::Group)
-	{
-		FinishGroupChildEdit(Owner.OwnerId, InsertAt);
-	}
-	else
-	{
-		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; });
-		SetLayerExpanded(LayerIndex, true);
-		SelectWorkingChild(LayerIndex, InsertAt);
-		RefreshLayeredPreview();
-		RebuildLayerList();
-	}
 	return FReply::Handled();
 }
 

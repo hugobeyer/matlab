@@ -674,8 +674,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 				if (MeshType == EMixtormatPreviewMesh::Plane)
 				{
 					return PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
-						? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X")
-						: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal");
+						? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X (2)")
+						: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal (2)");
 				}
 				return ToolTip;
 			}),
@@ -696,9 +696,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 			.VAlign(VAlign_Center)
 			[Glyph]));
 	};
-	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere"), MixtormatIcons::Sphere());
-	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder"), MixtormatIcons::Cylinder());
-	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube"), MixtormatIcons::Cube());
+	AddMeshButton(EMixtormatPreviewMesh::Sphere, LOCTEXT("SpherePreview", "Sphere (1)"), MixtormatIcons::Sphere());
+	AddMeshButton(EMixtormatPreviewMesh::Cylinder, LOCTEXT("CylinderPreview", "Cylinder (4)"), MixtormatIcons::Cylinder());
+	AddMeshButton(EMixtormatPreviewMesh::Cube, LOCTEXT("CubePreview", "Cube (3)"), MixtormatIcons::Cube());
 	AddMeshButton(EMixtormatPreviewMesh::Plane, LOCTEXT("PlanePreview", "Plane"), MixtormatIcons::Plane());
 	Buttons.Add(MakePreviewRailButton(
 		TAttribute<bool>::CreateLambda([this]() { return bGlobalUVRotation90; }),

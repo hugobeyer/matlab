@@ -36,7 +36,7 @@ public:
 		, _bSelected(false)
 		, _bReference(false)
 		, _bHoldsInstanceSource(false)
-		, _bStructuralSource(false)
+
 		, _bSolo(false)
 		, _bCanDisable(true)
 	{}
@@ -59,7 +59,7 @@ public:
 		// The selected instance's source sits inside this layer while it is collapsed, so the layer
 		// carries the source marker its hidden child row cannot show.
 		SLATE_ATTRIBUTE(bool, bHoldsInstanceSource)
-		SLATE_ATTRIBUTE(bool, bStructuralSource)
+
 		// Soloed layers light the eye in the accent, so the one layer the preview is showing is
 		// visible without a second control in the row.
 		SLATE_ATTRIBUTE(bool, bSolo)

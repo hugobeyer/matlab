@@ -22,8 +22,6 @@ namespace MixtormatGpuCompositor
 	void GatherBreakup(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherLayerBlur(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherFlowWarp(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
-	// Shared by Shape Deform, Generator Flow and Flow Carve; each reads the subset it uses.
-	void GatherGeneratorFlow(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherWornEdges(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 
 	// Stain and Runoff resolve into the layer's mask chain, so gathering one makes the layer

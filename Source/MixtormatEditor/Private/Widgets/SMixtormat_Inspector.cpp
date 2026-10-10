@@ -254,8 +254,13 @@ bool SMixtormat::HasSelectedChildInspector() const
 		|| GetSelectedHeightBlend()
 		|| GetSelectedHeightCurve()
 		|| GetSelectedHeightColorRamp()
-		|| GetSelectedHeightPush()
-				|| GetSelectedStructuralWarp();
+				|| GetSelectedBehaviorWarp()
+		|| GetSelectedBehaviorPush()
+		|| GetSelectedBehaviorCarve()
+		|| GetSelectedBehaviorDeform()
+		|| (ResolveChildAt(GetSelectedChildAddress())
+			&& ResolveChildAt(GetSelectedChildAddress())->Type == EMixtormatLayerChildType::Behavior
+			&& ResolveChildAt(GetSelectedChildAddress())->Behavior.Type == EMixtormatBehaviorType::FlowField);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
@@ -467,11 +472,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildErosionControls()]
 					+ SScrollBox::Slot()[BuildGradeControls()]
 					+ SScrollBox::Slot()[BuildFlowWarpControls()]
-										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::ShapeDeform)]
-										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::GeneratorFlow)]
-+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::GravityFlow)]
-										+ SScrollBox::Slot()[BuildGeneratorFlowControls(EMixtormatEffectType::FlowCarve)]
-					+ SScrollBox::Slot()[BuildLayerBlurControls()]
+															+ SScrollBox::Slot()[BuildLayerBlurControls()]
 					+ SScrollBox::Slot()[BuildBreakupControls()]
 					+ SScrollBox::Slot()[BuildWornEdgesControls()]
 					+ SScrollBox::Slot()[BuildGeneratedMaskControls()]
@@ -500,8 +501,11 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildHeightBlendModuleControls()]
 					+ SScrollBox::Slot()[BuildHeightCurveControls()]
 					+ SScrollBox::Slot()[BuildHeightColorRampControls()]
-										+ SScrollBox::Slot()[BuildHeightPushControls()]
-															+ SScrollBox::Slot()[BuildStructuralWarpControls()]
+					+ SScrollBox::Slot()[BuildBehaviorFlowFieldControls()]
+					+ SScrollBox::Slot()[BuildBehaviorWarpControls()]
+			+ SScrollBox::Slot()[BuildBehaviorPushControls()]
+			+ SScrollBox::Slot()[BuildBehaviorCarveControls()]
+			+ SScrollBox::Slot()[BuildBehaviorDeformControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

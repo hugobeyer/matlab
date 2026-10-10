@@ -30,10 +30,10 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 			Child.Generator.bEnabled = true;
 		}
 		FMixtormatLayerChild& Tool = Layer.Children[1];
-		Tool.Type = EMixtormatLayerChildType::Effect;
+		Tool.Type = EMixtormatLayerChildType::Behavior;
 		Tool.ScopeOwnerChildId = Layer.Children[0].ChildId;
-		Tool.Effect.bEnabled = true;
-		Tool.Effect.ProceduralType = EMixtormatEffectType::GeneratorFlow;
+		Tool.Behavior.bEnabled = true;
+		Tool.Behavior.Type = EMixtormatBehaviorType::FlowField;
 	}
 	FMixtormatOutputReference Reference;
 	Reference.SourceLayerId = Layers[0].LayerId;
@@ -97,66 +97,22 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::CliffStrata;
 	TestEqual(TEXT("Cliff flow ownership remains unavailable"), Resolve(0, 2), INDEX_NONE);
 	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::StrataCarver;
-	Layers[0].Children[1].Effect.bEnabled = false;
+	Layers[0].Children[1].Behavior.bEnabled = false;
 	TestEqual(TEXT("Disabled flow tool"), Resolve(0, 2), INDEX_NONE);
-	Layers[0].Children[1].Effect.bEnabled = true;
+	Layers[0].Children[1].Behavior.bEnabled = true;
 	Reference.Kind = EMixtormatPublishedFieldKind::UVMap;
 	Reference.OutputName = FName(TEXT("WarpedUV"));
-	TestEqual(TEXT("Generator Flow publishes UVMap"), Resolve(0, 2), 1);
-	Layers[0].Children[1].Effect.ProceduralType = EMixtormatEffectType::FlowCarve;
-	TestEqual(TEXT("Flow Carve has no UVMap output"), Resolve(0, 2), INDEX_NONE);
+	TestEqual(TEXT("Flow Field has no UVMap output"), Resolve(0, 2), INDEX_NONE);
+	Layers[0].Children[1].Behavior.Type = EMixtormatBehaviorType::Warp;
+	Layers[0].Children[1].Behavior.Flow.bUseTracedFlow = true;
+	TestEqual(TEXT("Traced Warp publishes UVMap"), Resolve(0, 2), 1);
+	Layers[0].Children[1].Behavior.Type = EMixtormatBehaviorType::Carve;
+	TestEqual(TEXT("Traced Carve has no UVMap output"), Resolve(0, 2), INDEX_NONE);
 	Reference.Kind = EMixtormatPublishedFieldKind::Flow;
 	Reference.OutputName = FName(TEXT("FlowDirection"));
-	TestEqual(TEXT("Flow Carve still publishes Flow"), Resolve(0, 2), 1);
+	TestEqual(TEXT("Traced Carve still publishes Flow"), Resolve(0, 2), 1);
 	Reference.bEnabled = false;
 	TestEqual(TEXT("Disabled connection"), Resolve(0, 2), INDEX_NONE);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMixtormatHeightPushSourceTest,
-	"Mixtormat.Runtime.HeightPush.SourceOrder",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FMixtormatHeightPushSourceTest::RunTest(const FString& Parameters)
-{
-	TArray<FMixtormatLayer> Layers;
-	Layers.SetNum(1);
-	FMixtormatLayer& Layer = Layers[0];
-	Layer.LayerId = FGuid::NewGuid();
-	Layer.Type = EMixtormatLayerType::Generator;
-	Layer.bEnabled = true;
-	Layer.Children.SetNum(3);
-	for (FMixtormatLayerChild& Child : Layer.Children)
-	{
-		Child.ChildId = FGuid::NewGuid();
-		Child.Type = EMixtormatLayerChildType::Generator;
-	}
-	Layer.Children[1].Type = EMixtormatLayerChildType::HeightPush;
-	FMixtormatGeneratorHeightPush& Push = Layer.Children[1].HeightPush;
-	Push.TargetChildId = Layer.Children[2].ChildId;
-	Push.Source.SourceLayerId = Layer.LayerId;
-	Push.Source.SourceChildId = Layer.Children[0].ChildId;
-	const auto Resolve = [&]()
-	{
-		return MixtormatOutputReferences::ResolveGeneratorInputSource(Layers, 0, 1, Push.Source);
-	};
-	TestEqual(TEXT("Earlier signed source feeds Height Push"), Resolve(), 0);
-	TestEqual(TEXT("Signed source kind is preserved"), Push.Source.Kind, EMixtormatPublishedFieldKind::ScalarSigned);
-	Push.Source.SourceChildId = Push.TargetChildId;
-	TestEqual(TEXT("Target cannot also be a future source"), Resolve(), INDEX_NONE);
-	Push.Source.SourceChildId = Layer.Children[1].ChildId;
-	TestEqual(TEXT("Push cannot read itself"), Resolve(), INDEX_NONE);
-	Push.Source.SourceChildId = Layer.Children[0].ChildId;
-	Push.Source.Kind = EMixtormatPublishedFieldKind::Flow;
-	Push.Source.OutputName = FName(TEXT("FlowDirection"));
-	TestEqual(TEXT("Flow is not a Height Push source"), Resolve(), INDEX_NONE);
-	Push.Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
-	Push.Source.OutputName = FName(TEXT("Height"));
-	Push.bEnabled = false;
-	TestEqual(TEXT("Disabled push is inert"), Resolve(), INDEX_NONE);
-	Push.bEnabled = true;
-	Layer.Children[0].Generator.bEnabled = false;
-	TestEqual(TEXT("Disabled height producer is unavailable"), Resolve(), INDEX_NONE);
 	return true;
 }
 

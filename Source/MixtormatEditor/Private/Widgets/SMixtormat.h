@@ -41,7 +41,6 @@ class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatProjectedChildRow;
-struct FMixtormatStructuralRelationshipPresentation;
 struct FMixtormatLayerHierarchyPaint;
 struct FMixtormatSurfaceEntry;
 
@@ -75,17 +74,22 @@ enum class EMixtormatChildCreation : uint8
 	Pebbles,
 	CliffStrata,
 	Noise,
+	// The Flow creation preset: the same Noise generator with the P0 Flow defaults
+	// (Write Height OFF, Write Flow ON, Curl weight 1). Editor-only, never serialized.
+	NoiseFlow,
 	// Generator-layer sublayers.
 	HeightBlend,
 	HeightCurve,
 	HeightColorRamp,
 	Peeling,
-	HeightPush,
-	StructuralWarp,
+	// The one structural authoring path. Each entry is a Behavior kind, scoped to the
+	// generator it rewrites; there is no separate legacy module any more.
+	BehaviorWarp,
+	BehaviorPush,
+	BehaviorCarve,
+	BehaviorDeform,
+	BehaviorFlowField,
 };
-
-// Editor-only connection role; the existing payload remains the serialized truth.
-enum class EMixtormatStructuralConnectionRole : uint8 { Source, Target };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
 //
@@ -286,6 +290,9 @@ private:
 	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
 	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
 	FReply AddGeneratorLayer(EMixtormatGeneratorType Type);
+	// Creation-kind entry so the Flow preset (same Noise generator, different defaults) can
+	// share the Add menu without a second generator type.
+	FReply AddGeneratorLayerCreation(EMixtormatChildCreation Kind);
 	TSharedRef<SWidget> BuildAddGeneratorLayerMenu();
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();
@@ -325,6 +332,8 @@ private:
 	FReply ClearLayerMask(int32 LayerIndex);
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
+	bool CanReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex) const;
+	FReply ReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex);
 	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
 	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
 	// Same move, but the destination is a group's shared stack rather than another layer: the
@@ -364,8 +373,6 @@ private:
 	FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address);
 	const FMixtormatLayerChild* ResolveChildAt(const FMixtormatChildAddress& Address) const;
 	int32 ResolveChildIndexAt(const FMixtormatChildAddress& Address) const;
-	bool StructuralLinksPreserved(const TArray<FMixtormatLayer>& ProposedLayers,
-		const TArray<FMixtormatLayerGroup>& ProposedGroups, FText& OutReason) const;
 	bool CanMovePublishedOutputs(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
 		int32 InsertIndex, FText* OutReason = nullptr) const;
 	bool CanMoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
@@ -413,8 +420,6 @@ private:
 	// target signature decays a reference away -- a by-ref parameter here fails to match the bound
 	// pointer-to-member type.
 	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(FMixtormatChildAddress Address);
-	TSharedRef<SWidget> BuildMoveChildToLayerMenu(int32 LayerIndex, int32 ChildIndex);
-	TSharedRef<SWidget> BuildMoveGroupChildToLayerMenu(FGuid GroupId, int32 ChildIndex);
 
 	// The rows every child row shares, appended to whichever child menu is open (layer or group) so
 	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
@@ -436,25 +441,9 @@ private:
 	// The one creation path both menus call. Appends the child, applies the defaults that kind
 	// wants, and leaves it selected in whichever container it landed in.
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
-	FReply CreateStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType);
-	bool PrepareStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, TArray<FMixtormatLayer>& ProposedLayers,
-		int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	FReply CreateConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source);
-	bool PrepareConnectedStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference& Source,
-		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	bool PrepareStructuralModuleProposal(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source,
-		TArray<FMixtormatLayer>& ProposedLayers, int32& LayerIndex, int32& InsertIndex, FText& OutReason) const;
-	FReply CommitStructuralModuleForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType, const FMixtormatOutputReference* Source);
-	TSharedRef<SWidget> BuildStructuralSourcePickerForTarget(FGuid TargetLayerId, FGuid TargetChildId,
-		EMixtormatLayerChildType ModuleType);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
+	bool CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(
 		const TSharedRef<SVerticalBox>& Panel,
 		TFunction<FMixtormatHeightBlend*()> Resolve,
@@ -498,12 +487,6 @@ private:
 	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
 	TSharedRef<SWidget> BuildLayerBlurControls();
 	TSharedRef<SWidget> BuildFlowWarpControls();
-	FMixtormatLayerEffect* GetSelectedGeneratorFlow();
-	const FMixtormatLayerEffect* GetSelectedGeneratorFlow() const;
-	bool CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const;
-	FReply AddGeneratorFlow(const FMixtormatChildAddress& Owner, EMixtormatEffectType Type);
-	void AddGeneratorFlowMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner);
-	TSharedRef<SWidget> BuildGeneratorFlowControls(EMixtormatEffectType Type);
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
 	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
@@ -588,33 +571,23 @@ private:
 	FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp();
 	const FMixtormatGeneratorHeightColorRamp* GetSelectedHeightColorRamp() const;
 	TSharedRef<SWidget> BuildHeightColorRampControls();
-	FMixtormatGeneratorHeightPush* GetSelectedHeightPush();
-	const FMixtormatGeneratorHeightPush* GetSelectedHeightPush() const;
-	TSharedRef<SWidget> BuildHeightPushControls();
-	TSharedRef<SWidget> BuildHeightPushConnectionMenu(bool bTarget);
-	FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp();
-	const FMixtormatGeneratorStructuralWarp* GetSelectedStructuralWarp() const;
-	TSharedRef<SWidget> BuildStructuralWarpControls();
-	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
-	TSharedRef<SWidget> BuildStructuralConnectionMenu(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role);
-	FReply SetStructuralConnection(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role, const FMixtormatOutputReference* Source = nullptr,
-		const FGuid* TargetId = nullptr);
-	FText GetStructuralConnectionLabel(FMixtormatChildAddress Address,
-		EMixtormatStructuralConnectionRole Role, bool bCompact = false,
-		FText* OutFullLabel = nullptr) const;
-	FText GetStructuralChildLabel(const FMixtormatLayer& Layer, int32 ChildIndex) const;
-	TSharedRef<SWidget> BuildStructuralLinkChips(FMixtormatChildAddress Address);
-	TSharedRef<SWidget> BuildStructuralRelationshipHeader();
-	bool GetStructuralRelationshipRow(FMixtormatChildAddress Address, FMixtormatProjectedChildRow& OutRow,
-		EMixtormatLayerChildType& OutType, FText& OutReason) const;
-	FMixtormatStructuralRelationshipPresentation DescribeStructuralConnection(const FMixtormatProjectedChildRow& Row,
-		EMixtormatLayerChildType Type) const;
-	FText GetStructuralRelationshipText(FMixtormatChildAddress Address, bool bToolTip) const;
-	bool ResolveStructuralSourceAddress(FMixtormatChildAddress ModuleAddress,
-		FMixtormatChildAddress& OutSource, FText& OutReason) const;
-	FReply GoToStructuralSource(FMixtormatChildAddress ModuleAddress);
+	FMixtormatBehavior* GetSelectedBehaviorWarp();
+	const FMixtormatBehavior* GetSelectedBehaviorWarp() const;
+	TSharedRef<SWidget> BuildBehaviorFlowFieldControls();
+	TSharedRef<SWidget> BuildBehaviorWarpControls();
+	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
+	FMixtormatBehavior* GetSelectedBehaviorPush();
+	const FMixtormatBehavior* GetSelectedBehaviorPush() const;
+	TSharedRef<SWidget> BuildBehaviorPushControls();
+	TSharedRef<SWidget> BuildBehaviorPushSourceMenu();
+	FMixtormatBehavior* GetSelectedBehaviorCarve();
+	const FMixtormatBehavior* GetSelectedBehaviorCarve() const;
+	TSharedRef<SWidget> BuildBehaviorCarveControls();
+	TSharedRef<SWidget> BuildBehaviorCarveSourceMenu();
+	FMixtormatBehavior* GetSelectedBehaviorDeform();
+	const FMixtormatBehavior* GetSelectedBehaviorDeform() const;
+	TSharedRef<SWidget> BuildBehaviorDeformControls();
+	TSharedRef<SWidget> BuildBehaviorDeformSourceMenu();
 	FReply NavigateToChild(FMixtormatChildAddress Address);
 	// Mutates expansion only; the caller rebuilds if this returns true.
 	bool RevealChildInHierarchy(FMixtormatChildAddress Address);
@@ -622,6 +595,7 @@ private:
 	bool ResolveHierarchyChildAddress(FMixtormatChildAddress Address, int32& OutOwnerIndex,
 		int32& OutChildIndex) const;
 	TArray<FMixtormatProjectedChildRow> BuildGroupHierarchyRows(FGuid GroupId) const;
+	TArray<FMixtormatProjectedChildRow> BuildLayerHierarchyRows(FGuid LayerId) const;
 	FMixtormatLayerHierarchyPaint BuildGroupHierarchyPaint(
 		const TArray<FMixtormatProjectedChildRow>& VisibleRows, int32 DisplayIndex) const;
 	TArray<FMixtormatProjectedChildRow> FilterVisibleHierarchyRows(
@@ -629,12 +603,6 @@ private:
 	TSharedRef<SWidget> BuildGeneratorDisclosure(FMixtormatChildAddress Address, bool bHasChildren,
 		FText ToolTip = FText::GetEmpty());
 	void RegisterChildRowWidget(FMixtormatChildAddress Address, TSharedRef<SWidget> Widget);
-	FText GetStructuralSourceBreadcrumb(const FMixtormatLayer& Layer, int32 ChildIndex) const;
-	TSharedRef<SWidget> BuildStructuralConnectionContent(const FMixtormatProjectedChildRow& Row,
-		EMixtormatLayerChildType Type, FText& OutToolTip);
-	EStructuralLinkHighlightRole GetStructuralHighlightRole(FMixtormatChildAddress Address) const;
-	bool IsSelectedStructuralSourceLayer(FGuid LayerId, FGuid GroupId) const;
-	FText GetStructuralIncomingCountLabel(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildColorRampSourceMenu();
 	FReply AddGeneratorToGroup(FGuid GroupId, EMixtormatGeneratorType GeneratorType);
 	bool HasSelectedGenerator() const;
@@ -758,6 +726,11 @@ private:
 	FReply ReorderGroupChild(FGuid GroupId, int32 SourceChildIndex, int32 TargetChildIndex);
 	FReply ToggleGroupChildEnabled(FGuid GroupId, int32 ChildIndex);
 	FReply SelectGroupChild(FGuid GroupId, int32 ChildIndex);
+	// Group-child multi-select, mirroring the layer set: plain replaces, ctrl/cmd toggles,
+	// shift extends from the anchor, ctrl+shift unions the range in.
+	void UpdateGroupChildMultiSelection(FGuid GroupId, int32 ChildIndex);
+	bool IsGroupChildMultiSelected(FGuid GroupId, int32 ChildIndex) const;
+	TArray<int32> GetSelectedGroupChildIndices() const;
 	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
 	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
 	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;
@@ -914,6 +887,16 @@ private:
 	void AddMaskShapingRows(
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		TFunction<FMixtormatMaskShaping*()> Resolve);
+
+	// The per-field composition block: amplitude, direction reverse, and the
+	// signed-scalar blend where the operation has a base to fold into. One resolver
+	// so Warp, Deform, Push and Carve cannot drift apart on which socket offers
+	// what. What a socket may legally carry is the runtime's decision, read back
+	// through the shared effective-kind helper rather than re-decided per panel.
+	void AddBehaviorFieldCompositionRows(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		TFunction<FMixtormatBehaviorFieldInput*()> ResolveField,
+		bool bAllowBlend);
 
 	FMixtormatParameterAddress BuildParameterAddress(
 		const void* Owner,
@@ -1575,6 +1558,10 @@ private:
 	void DeleteBuiltInSurface(FSoftObjectPath AssetPath);
 	void RemoveImportedSurface(FSoftObjectPath AssetPath);
 	TSharedRef<SWidget> BuildPreviewPanel();
+	// The viewport's contextual hint strip (CONTEXT tab in UI STYLE): one compact line of
+	// key/action pairs at the bottom-left, first matching context wins. Hit-test-invisible;
+	// follows the H/Space master flag.
+	TSharedRef<SWidget> BuildPreviewHintStrip();
 	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /
 	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
 	// caller decides where it goes and how it is wrapped.
@@ -1708,8 +1695,6 @@ private:
 	// whichever layer landed on its old row.
 	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
 	// the widgets away and builds new ones on every change.
-	mutable TMap<FGuid, TArray<FText>> StructuralIncomingCountLabels;
-	mutable TMap<FString, FText> StructuralConnectionLabelCache;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatSourceRow>> SourceRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
@@ -1719,7 +1704,6 @@ private:
 	TOptional<FMixtormatSourceEntry> SourceClipboard;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
-	TWeakPtr<FMixtormatStructuralEndpointPreview> StructuralEndpointPreview;
 	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;
 	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
@@ -1737,6 +1721,12 @@ private:
 	// Where a shift-extend measures from. Set by a plain click only -- reusing SelectedLayerIndex
 	// would move the anchor on every ctrl-click and make the next range unpredictable.
 	FGuid SelectionAnchorLayerId;
+	// Group-child multi-select, the same pattern as SelectedLayerIds but for a group's shared
+	// stack. Only meaningful while SelectedGroupId is valid; cleared whenever the selection
+	// moves to a layer, another group, or a source.
+	TSet<FGuid> SelectedGroupChildIds;
+	// The group-child anchor for shift-extend, same convention as SelectionAnchorLayerId.
+	FGuid SelectionAnchorGroupChildId;
 	TArray<FMixtormatLayer> WorkingLayers;
 	TArray<FMixtormatLayer> SavedLayers;
 	TArray<FMixtormatLayerGroup> WorkingLayerGroups;
@@ -1785,7 +1775,10 @@ private:
 	// idle instead of re-submitting an unchanged stack every frame while the mouse is held.
 	bool bPreviewSubmitPending = false;
 	bool bShowCompositionBefore = false;
-	bool bPreviewOverlayUiVisible = false;
+	// The H/Space master flag. The default rails it used to hide are gone (their clusters live
+	// in GLOBAL and the Q menu), so its only reader now is the hint strip: visible by default,
+	// H hides it.
+	bool bPreviewOverlayUiVisible = true;
 	// Viewport group visibility, one flag per group, driven by the GLOBAL switches. Session state
 	// on the retained workspace; the H/Space master flag above composes with these rather than
 	// replacing them, and hidden groups keep their hotkeys.

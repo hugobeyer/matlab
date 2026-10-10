@@ -119,6 +119,7 @@ namespace MixtormatPreviewScreenPercentage
 // Escape behaviour is untouched otherwise.
 DECLARE_DELEGATE_RetVal(bool, FMixtormatDismissQuickControls);
 DECLARE_DELEGATE_OneParam(FMixtormatCameraFovChanged, float);
+DECLARE_DELEGATE_OneParam(FMixtormatSetPreviewMesh, EMixtormatPreviewMesh);
 
 class SMixtormatPreviewViewport final : public SEditorViewport
 {
@@ -128,6 +129,9 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
+		// Bare 1-4 in the viewport: the workspace swaps the preview mesh through its own
+		// SetPreviewMesh, so the Plane re-press orientation toggle stays in one place.
+		SLATE_EVENT(FMixtormatSetPreviewMesh, OnSetPreviewMesh)
 		// Bare Q in the viewport: the workspace opens its quick controls. Routed through the client
 		// rather than a global preprocessor, so text entry and Slate's own focus navigation keep
 		// their keys everywhere else.
@@ -181,6 +185,8 @@ public:
 	void FocusCamera();
 	// Called by the viewport client when bare Q arrives; the workspace decides what to do.
 	void RequestQuickControls();
+	// Called by the viewport client when bare 1-4 arrives; the workspace swaps the mesh.
+	void RequestSetPreviewMesh(EMixtormatPreviewMesh MeshType);
 	// Called by the viewport client when Escape arrives; true when the workspace closed something.
 	bool RequestDismissQuickControls();
 	UTextureRenderTarget2D* GetCompositedBaseColor() const;
@@ -193,9 +199,13 @@ public:
 	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
+	// Label for any mode, so callers that name the NEXT mode (the hint strip) do not have to
+	// duplicate the switch.
+	static FString GetChannelPreviewLabel(EMixtormatChannelPreview Mode);
 	// What the viewport is showing right now: Material, a V-key channel (with the Shift+V hint),
 	// or the debug view a preview eye turned on.
 	FText GetPreviewModeLabel() const;
+	void SetChannelPreview(EMixtormatChannelPreview NewMode);
 	void ResetChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;
@@ -278,6 +288,7 @@ private:
 	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
+	FMixtormatSetPreviewMesh OnSetPreviewMesh;
 	FSimpleDelegate OnRequestQuickControls;
 	FMixtormatDismissQuickControls OnDismissQuickControls;
 	FMixtormatCameraFovChanged OnCameraFovChanged;

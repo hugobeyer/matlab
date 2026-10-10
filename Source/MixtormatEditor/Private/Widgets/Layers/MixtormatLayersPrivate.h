@@ -44,10 +44,6 @@ namespace MixtormatLayersPrivate
 
 	bool IsFlowWarp(const FMixtormatLayerChild& Child);
 
-	bool IsGeneratorFlow(const FMixtormatLayerChild& Child);
-
-	bool CanOwnGeneratorFlow(const FMixtormatLayerChild& Child);
-
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child);
 
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child);

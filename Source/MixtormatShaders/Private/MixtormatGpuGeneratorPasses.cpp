@@ -78,6 +78,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(FIntPoint, BedWave)
 		SHADER_PARAMETER(FIntPoint, BedPerp)
 		SHADER_PARAMETER(int32, BedPeriod)
@@ -102,10 +104,6 @@ public:
 		SHADER_PARAMETER(float, IDInfluence)
 		SHADER_PARAMETER(uint32, HasScopedMask)
 		SHADER_PARAMETER(uint32, HasRegionIds)
-		SHADER_PARAMETER(uint32, HasHeightPush)
-		SHADER_PARAMETER(uint32, HasStructuralWarp)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, StructuralDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightPushField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, ResolveRegionIds)
@@ -147,6 +145,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(float, Style)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(uint32, Seed)
@@ -241,6 +241,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Density)
@@ -295,6 +297,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, CountX) SHADER_PARAMETER(int32, CountY) SHADER_PARAMETER(float, Density)
 		SHADER_PARAMETER(float, SizeMin) SHADER_PARAMETER(float, SizeMax) SHADER_PARAMETER(float, SizeAspect)
 		SHADER_PARAMETER(float, Jitter) SHADER_PARAMETER(float, FlowVariation) SHADER_PARAMETER(float, HeightMin) SHADER_PARAMETER(float, HeightMax)
@@ -358,6 +362,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Jitter)
@@ -424,6 +430,8 @@ public:
 		SHADER_PARAMETER(uint32, NormalizeMode)
 		SHADER_PARAMETER(float, OutputScale)
 		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(uint32, HasHeightGate)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, HeightGate)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
@@ -480,6 +488,8 @@ FRDGTextureRef AddNormalizeFieldPasses(
 		P->OutHigh = OutHigh;
 		P->NormalizeMode = 0u;
 		P->OutputScale = 1.0f;
+		P->HasHeightGate = 0u;
+		P->HeightGate = Field;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Normalized);
@@ -496,6 +506,8 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	const bool bNormalize,
 	const float OutputScale,
 	const float HeightBias,
+	const bool bCenterNoise,
+	FRDGTextureRef HeightGate,
 	const TCHAR* Name)
 {
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
@@ -526,12 +538,13 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		P->OutputSize = Size;
 		P->OutLow = -1.0f;
 		P->OutHigh = 1.0f;
-		// Mode 3 is mid-range centring, not the retired max-absolute mode 1: every generator must
-		// land on the same symmetric [-1, 1] or Height Blend's Min/Max/Difference are decided by
-		// whichever module happens to carry the larger pedestal.
-		P->NormalizeMode = bNormalize ? 3u : 2u;
+		// Mode 3 centres Noise height; mode 1 preserves max-absolute normalization
+		// for all other generators. Normalize-off leaves the raw signed height.
+		P->NormalizeMode = bNormalize ? (bCenterNoise ? 3u : 1u) : 2u;
 		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
 		P->HeightBias = FMath::IsFinite(HeightBias) ? HeightBias : 0.0f;
+		P->HasHeightGate = HeightGate ? 1u : 0u;
+		P->HeightGate = HeightGate ? HeightGate : Field;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Signed);
@@ -553,7 +566,7 @@ public:
 	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
 	// 7 one axis of the direction blur, 8 trace a published field into destination UVs,
 	// 9 texture-space gravity with local height or boundary steering.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 10);
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 11);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -584,6 +597,23 @@ public:
 		SHADER_PARAMETER(float, TraceLength)
 		SHADER_PARAMETER(int32, Steps)
 		SHADER_PARAMETER(float, WarpStrength)
+		SHADER_PARAMETER(float, BehaviorStrength)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsA, [8])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsB, [8])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal2)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal3)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal4)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal5)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal6)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal7)
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
@@ -664,80 +694,6 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
-
-// Generator-layer Height Blend sublayer: combines the running signed height with another module's.
-class FMixtormatGeneratorHeightPushCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorHeightPushCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(uint32, HasPrevious)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightPushCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightPush.usf", "MainCS", SF_Compute);
-
-class FMixtormatGeneratorStructuralWarpCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, HasPreviousDisplacement)
-		SHADER_PARAMETER(uint32, HasPreviousShift)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpCoordinates)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousShift)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutShift)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "MainCS", SF_Compute);
-
-class FMixtormatGeneratorStructuralWarpCoordinateCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorStructuralWarpCoordinateCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreviousDisplacement)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorStructuralWarpCoordinateCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorStructuralWarp.usf", "CoordinateCS", SF_Compute);
 
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
@@ -833,6 +789,138 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightColorRampCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightColorRamp.usf", "MainCS", SF_Compute);
 
+
+class FMixtormatBehaviorUvBlendCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorUvBlendCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
+		// Per-field composition for the Direction socket. Amplitude scales this
+		// socket's weight; Reverse flips the transported displacement.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "MainCS", SF_Compute);
+
+class FMixtormatBehaviorHeightGradientCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorHeightGradientCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorHeightGradientCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(float, GradientReach)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		// Per-field composition for the Direction socket on the local-gradient path.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorHeightGradientCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "HeightGradientCS", SF_Compute);
+
+class FMixtormatBehaviorSignedPushCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorSignedPushCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorSignedPushCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorHeight)
+		// Per-field composition for the Height socket: amplitude, sign and the
+		// signed-scalar combine. Gather admits Blend only where one was authored.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
+		SHADER_PARAMETER(uint32, FieldBlend)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedPushCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedPushCS", SF_Compute);
+
+class FMixtormatBehaviorSignedCarveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorSignedCarveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorSignedCarveCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(float, CarveWidth)
+		SHADER_PARAMETER(uint32, UseOwnBoundary)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDistance)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BehaviorBoundary)
+		// Per-field composition for the Height socket. Reverse flips which side of
+		// the distance field is carved, so it exchanges Carve and Deposit.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedCarveCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedCarveCS", SF_Compute);
+
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -841,6 +929,7 @@ namespace
 	{
 		const FGeneratorRenderData& Generator;
 		int32 SourceChildIndex;
+		FRDGTextureRef PreUV = nullptr;
 	};
 
 	// Shared Flow -> destination-UV binding for layer references and explicit generator inputs.
@@ -848,7 +937,7 @@ namespace
 	FRDGTextureRef AddReferencedFlowUVPass(FMixtormatComposeContext& Ctx,
 		const FOutputReferenceRenderData& Reference, const FPublishedField& Field,
 		const int32 LayerIndex, const int32 ChildIndex,
-		const FScalarDriverRenderData* Drivers = nullptr)
+		const FScalarDriverRenderData* Drivers = nullptr, const bool bCanonical = false)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -856,7 +945,7 @@ namespace
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.OutputReference.FlowUV"));
 		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(bCanonical ? 10 : 8);
 		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
 		P->OutputSize = Size;
@@ -900,7 +989,7 @@ namespace
 
 	// Every module sits in the Generator layer's UV placement, so the layer moves all of them.
 	template<typename TParameters>
-	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer)
+	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer, FRDGTextureRef PreUV, FRDGTextureRef Fallback)
 	{
 		P->GeneratorLayer = 1u;
 		P->GeneratorUVScale = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
@@ -908,6 +997,8 @@ namespace
 		P->GeneratorUVRotation = Layer.Rotation;
 		P->GeneratorUVFlipU = Layer.bFlipU ? 1u : 0u;
 		P->GeneratorUVFlipV = Layer.bFlipV ? 1u : 0u;
+		P->UsePreGenerationUV = PreUV ? 1u : 0u;
+		P->PreGenerationUV = PreUV ? PreUV : Fallback;
 	}
 
 
@@ -1189,15 +1280,16 @@ namespace
 		Bundle = MoveTemp(Moved);
 	}
 
-	// A step-7 completed-bundle operation owns every moved output. It is intentionally separate
-	// from flow apply, which has already authored Height/Coverage before companion remapping.
+	// A completed-bundle operation owns every moved output. The signed height
+	// supplied here may be native (V2 post-generation) or already normalized
+	// (legacy structural pullback). Flow apply authors Height/Coverage separately.
 	void RemapCompletedGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle,
 		FRDGTextureRef CompletedSignedHeight, FRDGTextureRef WarpedUV)
 	{
 		const FGeneratorBundle Source = Bundle;
 		if (!CompletedSignedHeight) { return; }
-		// Shared normalization/Height Scale already resolved Module.Height; remap that exact
-		// published signed result rather than the bundle's pre-normalized native height.
+		// Remap the caller's exact signed height snapshot, without introducing
+		// any normalization here or silently converting its units.
 		Bundle.Height = RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 0);
 		if (Source.Coverage)
 		{
@@ -1206,23 +1298,578 @@ namespace
 		RemapGeneratorBundle(Ctx, Bundle, WarpedUV);
 	}
 
-	FRDGTextureRef AddStructuralWarpCoordinates(FMixtormatComposeContext& Ctx, FRDGTextureRef Displacement,
+	// Shared completed-bundle remap for both legacy Structural Warp and V2 Warp.
+	// Generator-specific named outputs carry their own declared transport semantics.
+	void RemapGeneratorModuleOutputs(FMixtormatComposeContext& Ctx,
+		const FLayerRenderData& Layer, const FChildRenderData& Owner,
+		FGeneratorBundle& Module, FRDGTextureRef Coordinates)
+	{
+		const FPublishedFieldKey ValueKey =
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Value")));
+		const FPublishedFieldKey GradientKey =
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Gradient")));
+		const FPublishedField* NoiseValue = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+			? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
+		const FPublishedField* NoiseGradient = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+			? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
+		const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
+		const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
+		RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
+		if (ValueSnapshot.IsComplete())
+		{
+			Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
+				ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
+				nullptr, nullptr, false});
+		}
+		if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector
+			&& Module.GradientDescriptor.Units == FGeneratorBundle::EFieldUnits::GeneratorDomain
+			&& GradientSnapshot.Texture
+			&& GradientSnapshot.Texture->Desc.Extent == Ctx.Request.Resolution
+			&& GradientSnapshot.Texture->Desc.Format == PF_G32R32F)
+		{
+			Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
+				GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
+				nullptr, nullptr, false});
+		}
+	}
+
+	template<typename TParameters>
+	void SetBehaviorScalarDrivers(FMixtormatComposeContext& Ctx,
+		TParameters* P, const FScalarDriverRenderData* Drivers)
+	{
+		FRDGTextureRef Signals[2] = { Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal };
+		for (int32 Slot = 0; Slot < 2; ++Slot)
+		{
+			const FScalarDriverRenderData& Driver = Drivers[Slot];
+			FRDGTextureRef Signal = nullptr;
+			if (Driver.bEnabled)
+			{
+				if (FRDGTextureRef* Found = Ctx.DriverSnapshots.Find(Driver.SourceLayerId))
+				{
+					Signal = *Found;
+				}
+			}
+			const bool bResolved = Signal != nullptr;
+			Signals[Slot] = bResolved ? Signal : Ctx.EmptyDriverSignal;
+			P->BehaviorDriverParamsA[Slot] = FVector4f(
+				bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+				Driver.InputMin, Driver.InputMax);
+			P->BehaviorDriverParamsB[Slot] = FVector4f(
+				Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+				static_cast<float>(Driver.Combine));
+		}
+		P->BehaviorDriverSignal0 = Signals[0];
+		P->BehaviorDriverSignal1 = Signals[1];
+	}
+
+	// A lifted UVMap carries displacement in destination texel space; interpolate
+	// that displacement (not wrapped absolute coordinates) to preserve tile winding.
+	FRDGTextureRef ScaleBehaviorUV(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef Source, const float Strength, FRDGTextureRef Mask,
+		const bool bUseMask, FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FScalarDriverRenderData* Drivers,
+		const FBehaviorFieldComposition& Composition)
+	{
+		// A neutral socket must not cost a pass: identity amplitude and no reverse
+		// reproduce the source map exactly, so only composition beyond the default
+		// joins Strength, the masks and the drivers as reasons to run.
+		const bool bCompositionNeutral = Composition.Amplitude == 1.0f
+			&& Composition.bReversed == 0;
+		if (Strength == 1.0f && !bUseMask && !bUseInfluence
+			&& !Drivers[0].bEnabled && bCompositionNeutral) { return Source; }
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.WarpCoordinates"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorUvBlendCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Strength;
+		P->FieldAmplitude = Composition.Amplitude;
+		P->FieldReversed = Composition.bReversed;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
+		P->SourceCoordinates = Source;
+		SetBehaviorScalarDrivers(Ctx, P, Drivers);
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorUvBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.WarpUV.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	FRDGTextureRef MakeBehaviorHeightGradientUV(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef SourceHeight, const float Strength, const float Reach,
+		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FScalarDriverRenderData* Drivers,
+		const FBehaviorFieldComposition& Composition)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.HeightGradientUV"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorHeightGradientCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Strength;
+		P->FieldAmplitude = Composition.Amplitude;
+		P->FieldReversed = Composition.bReversed;
+		P->GradientReach = Reach;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
+		P->SourceHeight = SourceHeight;
+		SetBehaviorScalarDrivers(Ctx, P, Drivers);
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorHeightGradientCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.HeightGradient.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	FRDGTextureRef AddBehaviorSignedPushPass(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef BaseHeight, FRDGTextureRef DeltaHeight, const FBehaviorRenderData& Behavior,
+		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Coordinates = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.StructuralWarp.Coordinates"));
-		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCoordinateCS::FParameters>();
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.SignedPush"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorSignedPushCS::FParameters>();
 		P->OutputSize = Size;
-		P->PreviousDisplacement = Displacement;
-		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Coordinates);
-		TShaderMapRef<FMixtormatGeneratorStructuralWarpCoordinateCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		P->Strength = Behavior.Strength;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
+		P->SourceHeight = BaseHeight;
+		P->BehaviorHeight = DeltaHeight;
+		P->FieldAmplitude = Behavior.HeightComposition.Amplitude;
+		P->FieldReversed = Behavior.HeightComposition.bReversed;
+		P->FieldBlend = Behavior.HeightComposition.Blend;
+		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
+		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorSignedPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.StructuralWarp.Coordinates.L%d.C%d", LayerIndex, ChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-		return Coordinates;
+			RDG_EVENT_NAME("Mixtormat.Behavior.Push.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	FRDGTextureRef AddBehaviorSignedCarvePass(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef BaseHeight, FRDGTextureRef Distance, const bool bOwnBoundary,
+		const FBehaviorRenderData& Behavior,
+		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.SignedCarve"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorSignedCarveCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Behavior.Strength;
+		P->CarveWidth = Behavior.CarveWidth;
+		P->UseOwnBoundary = bOwnBoundary ? 1u : 0u;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
+		P->SourceHeight = BaseHeight;
+		// Only the selected distance binding is accessed by the shader.
+		P->BehaviorDistance = bOwnBoundary ? Ctx.EmptyDriverSignal : Distance;
+		P->BehaviorBoundary = bOwnBoundary ? Distance : Ctx.EmptyPatternUV;
+		P->FieldAmplitude = Behavior.HeightComposition.Amplitude;
+		P->FieldReversed = Behavior.HeightComposition.bReversed;
+		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
+		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorSignedCarveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.Carve.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	// Shared, ordered post-generation operations consume the owning native bundle.
+	FRDGTextureRef BuildGeneratorPreCoordinates(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Owner)
+	{
+		FRDGTextureRef Current = nullptr;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type != EMixtormatLayerChildType::Behavior
+				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PreGeneration
+				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				|| Child.Behavior.DirectionOrigin != EMixtormatBehaviorFieldOrigin::PublishedOutput) { continue; }
+			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
+			const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Ref.Source);
+			if (!Field || !Field->IsComplete() || Field->Kind != Ref.Kind
+				|| Field->Texture->Desc.Extent != Size) { continue; }
+			FRDGTextureRef Influence = LayerCtx.CombinedMask;
+			const bool bInfluence = Child.Behavior.bHasInfluence;
+			if (bInfluence)
+			{
+				const FPublishedField* I = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Influence.Source);
+				if (!I || !I->IsComplete() || I->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| I->Texture->Desc.Extent != Size) { continue; }
+				Influence = I->Texture;
+			}
+			FRDGTextureRef UV = nullptr;
+			if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap) { UV = Field->Texture; }
+			else if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+			{
+				if ((Ref.FlowAmount == 0.0f && !Child.Behavior.FlowDrivers[0].bEnabled)
+					|| (Ref.FlowTraceLength == 0.0f && !Child.Behavior.FlowDrivers[1].bEnabled)) { continue; }
+				UV = AddReferencedFlowUVPass(Ctx, Ref, *Field, LayerCtx.LayerIndex,
+					Child.SourceChildIndex, Child.Behavior.FlowDrivers);
+			}
+			if (!UV) { continue; }
+			const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+			FRDGTextureRef Gate = bMask
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+				: LayerCtx.CombinedMask;
+			UV = ScaleBehaviorUV(Ctx, UV, Child.Behavior.Strength, Gate, bMask, Influence,
+				bInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+				Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+			Current = Current ? RemapBundleField(Ctx, Current, UV, 3) : UV;
+		}
+		return Current;
+	}
+
+	bool IsFlowToolChild(const FChildRenderData& Candidate, int32 OwnerSourceChildIndex);
+	FRDGTextureRef AddBehaviorFlowFieldPasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		int32 OwnerSourceChildIndex, FRDGTextureRef BoundaryField, FRDGTextureRef RockField,
+		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex);
+
+	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef WorkingFlow = Ctx.GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Size, PF_FloatRGBA, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Generator.WorkingFlow"));
+		AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(WorkingFlow), FLinearColor::Black);
+		FRDGTextureRef WorkingFlowValidity = nullptr;
+		// Intrinsic Noise supplies a unit downhill vector; other generators can
+		// supply the same explicit unit-magnitude fallback from native height.
+		// The original directional publication is never added to itself twice.
+		const FPublishedField* Intrinsic = Ctx.PublishedFieldOutputs.Find(
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("FlowDirection"))));
+		if (Intrinsic && Intrinsic->IsComplete()
+			&& Intrinsic->Kind == EMixtormatPublishedFieldKind::Flow
+			&& Intrinsic->Texture->Desc.Extent == Size)
+		{
+			WorkingFlow = Intrinsic->Texture;
+			WorkingFlowValidity = Intrinsic->Validity;
+		}
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type == EMixtormatLayerChildType::Generator
+				&& Child.ScopeOwnerSourceChildIndex == Owner.SourceChildIndex
+				&& Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				FMixtormatNoiseRenderData Noise;
+				if (!MixtormatNoiseRenderStore().Find(
+					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)
+					|| (!Noise.bWriteFlow && !Noise.bWriteHeight)) { continue; }
+				FGeneratorBundle ScopedBundle;
+				AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &ScopedBundle,
+					nullptr, Module.Height);
+				if (ScopedBundle.Height && Module.Height)
+				{
+					const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef HeightMask = bMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: nullptr;
+					ScopedBundle.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder,
+						ScopedBundle.Height, Size, Child.Generator.bNormalizeHeight,
+						Child.Generator.HeightScale, Child.Generator.HeightBias, true, HeightMask,
+						TEXT("Mixtormat.Generator.ScopedNoiseHeight"));
+					AddGeneratorModuleCombine(Ctx, Module.Height, ScopedBundle, Child, Module.Height);
+				}
+				if (!Noise.bWriteFlow) { continue; }
+				const FPublishedField* Generated = Ctx.PublishedFieldOutputs.Find(
+					PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GeneratedFlow"))));
+				if (!Generated || !Generated->IsComplete()
+					|| Generated->Kind != EMixtormatPublishedFieldKind::Flow
+					|| Generated->Texture->Desc.Extent != Size) { continue; }
+				const bool bMasked = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Mask = bMasked ? AddScopedFeatureMask(Ctx, LayerCtx, Layer,
+					Child.SourceChildIndex, true) : nullptr;
+				WorkingFlow = AddNoiseFlowComposePass(Ctx, WorkingFlow, Generated->Texture, Mask,
+					Noise.FlowAdd, Noise.FlowMix, WorkingFlowValidity,
+					TEXT("Mixtormat.Generator.AccumulatedFlow"));
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow, WorkingFlow,
+						WorkingFlowValidity, false});
+				continue;
+			}
+			if (Child.Type != EMixtormatLayerChildType::Behavior
+				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+			// Nested fields execute in their immediate parent's input evaluation,
+			// not as independent operations on the generator's running height.
+			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex) { continue; }
+			if (IsFlowToolChild(Child, Owner.SourceChildIndex))
+			{
+				Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
+					Module.Coverage, &Module, Child.SourceChildIndex);
+				continue;
+			}
+			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Push
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Deform) { continue; }
+			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
+			// A connected Influence that is unavailable must NOT turn into full strength.
+			FRDGTextureRef Influence = LayerCtx.CombinedMask;
+			const bool bUseInfluence = Child.Behavior.bHasInfluence;
+			if (bUseInfluence)
+			{
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Influence.Source);
+				if (!Field || !Field->IsComplete()
+					|| Field->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| Field->Texture->Desc.Extent != Size
+					|| (Field->Texture->Desc.Format != PF_R16F
+						&& Field->Texture->Desc.Format != PF_R32_FLOAT))
+				{
+					continue;
+				}
+				Influence = Field->Texture;
+			}
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Carve)
+			{
+				const bool bOwnBoundary = Child.Behavior.HeightOrigin
+					== EMixtormatBehaviorFieldOrigin::OwnBoundary;
+				FRDGTextureRef Distance = bOwnBoundary ? Module.BoundaryField : nullptr;
+				if (!bOwnBoundary && Child.Behavior.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+				{
+					const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Height.Source);
+					if (Field && Field->IsComplete()
+						&& Field->Kind == EMixtormatPublishedFieldKind::SDF)
+					{
+						Distance = Field->Texture;
+					}
+				}
+				if (!Distance || !Module.Height || Distance->Desc.Extent != Size
+					|| (bOwnBoundary ? Distance->Desc.Format != PF_G32R32F
+						: (Distance->Desc.Format != PF_R16F
+							&& Distance->Desc.Format != PF_R32_FLOAT))) { continue; }
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Module.Height = AddBehaviorSignedCarvePass(Ctx, Module.Height, Distance,
+					bOwnBoundary, Child.Behavior, Gate, bHasMask, Influence, bUseInfluence,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				continue;
+			}
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Push)
+			{
+				FRDGTextureRef Delta = nullptr;
+				switch (Child.Behavior.HeightOrigin)
+				{
+				case EMixtormatBehaviorFieldOrigin::OwnNativeHeight:
+					Delta = Module.Height;
+					break;
+				case EMixtormatBehaviorFieldOrigin::PreviousRunningHeight:
+					Delta = PreviousRunningHeight;
+					break;
+				case EMixtormatBehaviorFieldOrigin::PublishedOutput:
+				{
+					const FPublishedField* HeightField = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Height.Source);
+					if (HeightField && HeightField->IsComplete()
+						&& HeightField->Kind == EMixtormatPublishedFieldKind::ScalarSigned
+						&& HeightField->Texture->Desc.Extent == Size)
+					{
+						Delta = HeightField->Texture;
+					}
+					break;
+				}
+				default:
+					break;
+				}
+				if (!Delta || !Module.Height || Delta->Desc.Format != PF_R32_FLOAT) { continue; }
+				// Child Flow Fields are modifiers of this Push input, never separate
+				// generator operations. Resolve each field against the current signed
+				// input and transport the input before applying Push's signed delta.
+				for (const FChildRenderData& Nested : Layer.Children)
+				{
+					if (Nested.Type != EMixtormatLayerChildType::Behavior
+						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
+						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
+					FRDGTextureRef UnusedCoverage = nullptr;
+					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+						Owner.SourceChildIndex, Module.BoundaryField, Delta,
+						UnusedCoverage, nullptr, Nested.SourceChildIndex);
+					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
+					if (Warped && Warped->IsComplete()
+						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
+						&& Warped->Texture->Desc.Extent == Size
+						&& Warped->Texture->Desc.Format == PF_G32R32F)
+					{
+						Delta = RemapBundleField(Ctx, Delta, Warped->Texture, 0);
+					}
+				}
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Module.Height = AddBehaviorSignedPushPass(Ctx, Module.Height, Delta,
+					Child.Behavior, Gate, bHasMask, Influence, bUseInfluence,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				continue;
+			}
+			FRDGTextureRef Coordinates = nullptr;
+			// Scoped Flow inherits automatically from preceding Flow siblings.
+			// No direction-field picker is consulted for this execution path.
+			if (WorkingFlowValidity
+				&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+					|| Child.Behavior.Type == EMixtormatBehaviorType::Deform))
+			{
+				FOutputReferenceRenderData AutoFlow;
+				AutoFlow.FlowAmount = 1.0f;
+				AutoFlow.FlowTraceLength = Child.Behavior.Flow.TraceLength;
+				AutoFlow.FlowSteps = Child.Behavior.Flow.TraceSteps;
+				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
+					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
+				Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, FlowField,
+					LayerCtx.LayerIndex, Child.SourceChildIndex, nullptr, true);
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Coordinates = ScaleBehaviorUV(Ctx, Coordinates, Child.Behavior.Strength,
+					Gate, bHasMask, Influence, bUseInfluence,
+					LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+			}
+			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			{
+				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
+					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
+				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
+					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
+					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+			}
+			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+			{
+				const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
+				if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
+					|| Published->Texture->Desc.Extent != Size) { continue; }
+				if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+				{
+					// An active driver can produce displacement even when its authored
+					// scalar is zero. Unavailable signals keep their authored fallback.
+					if ((Ref.FlowAmount == 0.0f && !Child.Behavior.FlowDrivers[0].bEnabled)
+						|| (Ref.FlowTraceLength == 0.0f && !Child.Behavior.FlowDrivers[1].bEnabled))
+					{
+						continue;
+					}
+					Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
+						LayerCtx.LayerIndex, Child.SourceChildIndex, Child.Behavior.FlowDrivers);
+				}
+				else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
+					&& Published->Texture->Desc.Format == PF_G32R32F)
+				{
+					Coordinates = Published->Texture;
+				}
+				if (Coordinates)
+				{
+					// Strength is independent of authored/driver Flow Amount, and
+					// always gates the final displacement toward the identity UV.
+					const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef Gate = bHasMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: LayerCtx.CombinedMask;
+					const float BlendStrength = Child.Behavior.Strength;
+					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
+						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+				}
+			}
+			// Directly nested Flow Fields transport this operation's input coordinates.
+			// A field without a mask uses its own generator-derived flow and full scope.
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+				|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+			{
+				for (const FChildRenderData& Nested : Layer.Children)
+				{
+					if (Nested.Type != EMixtormatLayerChildType::Behavior
+						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
+						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
+					FRDGTextureRef UnusedCoverage = nullptr;
+					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+						Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
+						UnusedCoverage, nullptr, Nested.SourceChildIndex);
+					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
+					if (Warped && Warped->IsComplete()
+						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
+						&& Warped->Texture->Desc.Extent == Size
+						&& Warped->Texture->Desc.Format == PF_G32R32F)
+					{
+						Coordinates = Coordinates
+							? RemapBundleField(Ctx, Coordinates, Warped->Texture, 3)
+							: Warped->Texture;
+					}
+				}
+			}
+			if (Coordinates)
+			{
+				if (Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+				{
+					// Unlike Warp, Deform moves relief only. Region IDs, coverage,
+					// and named attributes retain their generator-domain placement.
+					Module.Height = RemapBundleField(Ctx, Module.Height, Coordinates, 0);
+				}
+				else
+				{
+					RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+					if (WorkingFlowValidity)
+					{
+						WorkingFlow = AddNoiseFlowTransportPass(Ctx, WorkingFlow,
+							WorkingFlowValidity, Coordinates, WorkingFlowValidity);
+						Ctx.PublishedFieldOutputs.Add(
+							PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
+							FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow,
+								WorkingFlow, WorkingFlowValidity, false});
+					}
+				}
+			}
+		}
 	}
 
 	// The bedding as an integer lattice vector, which is what lets the beds tile.
@@ -1313,14 +1960,12 @@ namespace
 		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
 		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
 		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
-		const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(Child.SourceChildIndex);
-		const bool bHasStructuralWarp = Displacement && *Displacement;
 		FRDGTextureRef DirectBoundary = MakeField(PF_G32R32F, TEXT("Mixtormat.Strata.DirectBoundary"));
 
 		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->BedWave = Lattice.Wave;
 			P->BedPerp = Lattice.Perp;
 			P->BedPeriod = Lattice.Period;
@@ -1343,14 +1988,9 @@ namespace
 			P->Depth = Carver.Depth;
 			P->MaskInfluence = Carver.MaskInfluence;
 			P->IDInfluence = Carver.IDInfluence;
-			P->HasScopedMask = bHasScopedMask ? 1u : 0u;
-			P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-			const FRDGTextureRef* Push = LayerCtx.GeneratorHeightPushFields.Find(Child.SourceChildIndex);
-			P->HasHeightPush = Push && *Push ? 1u : 0u;
-			P->HeightPushField = Push && *Push ? *Push : SourceHeight;
-			P->HasStructuralWarp = bHasStructuralWarp ? 1u : 0u;
-			P->StructuralDisplacement = bHasStructuralWarp ? *Displacement : Ctx.EmptyPatternUV;
-			P->SourceHeight = SourceHeight;
+P->HasScopedMask = bHasScopedMask ? 1u : 0u;
+		P->HasRegionIds = bHasRegionIds ? 1u : 0u;
+		P->SourceHeight = SourceHeight;
 			P->ResolveMask = ScopedMask;
 			P->ResolveRegionIds = RegionIds;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -1373,8 +2013,11 @@ namespace
 			Bundle->Height = CarvedHeight;
 
 			Bundle->RegionIds = BedIds;
-			Bundle->BoundaryField = bHasStructuralWarp ? DirectBoundary
-				: RemapBundleField(Ctx, BedPosition, nullptr, 8);
+			// The generator's own (distance, validity) boundary, read by a Behavior Carve for
+			// OwnBoundary. Texels whose interface math did not resolve stay invalid rather
+			// than reading as a flat surface, and no remap is needed because there is no
+			// structural displacement to compose with it.
+			Bundle->BoundaryField = DirectBoundary;
 			Bundle->RegisterNamedMask(FName(TEXT("StrataPosition")), BedPosition,
 				FGeneratorBundle::EFieldSemantic::BedCoordinate, FGeneratorBundle::EFieldUnits::BedFraction);
 			Bundle->RegisterNamedMask(FName(TEXT("StrataRandom")), BedRandom,
@@ -1445,9 +2088,13 @@ namespace
 
 	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
 	{
-		return Candidate.Type == EMixtormatLayerChildType::Effect
-			&& MixtormatIsGeneratorFlowEffect(Candidate.Effect.Type)
-			&& Candidate.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex;
+		return Candidate.Type == EMixtormatLayerChildType::Behavior
+			&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
+				|| (Candidate.Behavior.bUseTracedFlow
+					&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
+						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve)))
+			&& Candidate.Behavior.GeneratorChildIndex == OwnerSourceChildIndex;
 	}
 
 	bool IsPreviewingChild(const FRenderRequest& Request, const int32 LayerIndex, const int32 ChildIndex)
@@ -1458,41 +2105,23 @@ namespace
 	}
 
 	// An item that would leave the height unchanged. Still solved while its preview is up.
-	bool IsNeutralFlowTool(const FEffectRenderData& Flow)
+	bool IsNeutralFlowTool(const FBehaviorRenderData& Behavior)
 	{
-		if (Flow.GeneratorFlowAmount == 0.0f)
+		const FBehaviorFlowRenderData& Flow = Behavior.Flow;
+		if (Flow.FlowAmount == 0.0f) { return true; }
+		switch (Behavior.Type)
 		{
-			return true;
-		}
-		switch (Flow.Type)
-		{
-		case EMixtormatEffectType::ShapeDeform:
-			return Flow.GeneratorFlowShapeOffset == 0.0f && Flow.GeneratorFlowBulge == 0.0f;
-		case EMixtormatEffectType::GeneratorFlow:
-		case EMixtormatEffectType::GravityFlow:
-			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowWarpStrength == 0.0f;
-		case EMixtormatEffectType::FlowCarve:
-			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
+		case EMixtormatBehaviorType::FlowField:
+			return false;
+		case EMixtormatBehaviorType::Deform:
+			return Flow.ShapeOffset == 0.0f && Flow.Bulge == 0.0f;
+		case EMixtormatBehaviorType::Warp:
+			return Flow.TraceLength == 0.0f || Flow.WarpStrength == 0.0f;
+		case EMixtormatBehaviorType::Carve:
+			return Flow.TraceLength == 0.0f || Flow.Depth == 0.0f;
 		default:
 			return true;
-}
-}
-
-	bool IsPreviewingAnyFlowTool(
-		const FRenderRequest& Request,
-		const int32 LayerIndex,
-		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex)
-	{
-		for (const FChildRenderData& Candidate : Layer.Children)
-		{
-			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex))
-			{
-				return true;
-			}
 		}
-		return false;
 	}
 
 	bool IsFlowFieldDemanded(const FMixtormatComposeContext& Ctx,
@@ -1502,26 +2131,6 @@ namespace
 			PublishedKey(Layer, ChildIndex, FName(TEXT("FlowDirection"))))
 			|| Ctx.PublishedFieldDemand.Contains(
 				PublishedKey(Layer, ChildIndex, FName(TEXT("WarpedUV"))));
-	}
-
-	bool HasActiveFlowTools(
-		const FMixtormatComposeContext& Ctx,
-		const int32 LayerIndex,
-		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex)
-	{
-		const FRenderRequest& Request = Ctx.Request;
-		for (const FChildRenderData& Candidate : Layer.Children)
-		{
-			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& (!IsNeutralFlowTool(Candidate.Effect)
-					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)
-					|| IsFlowFieldDemanded(Ctx, Layer, Candidate.SourceChildIndex)))
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	// Pebbles publishes a scalar signed distance with a 1e9 no-hit sentinel; the seed stage
@@ -1546,7 +2155,7 @@ namespace
 		return Packed;
 	}
 
-	// Shape Deform / Generator Flow / Flow Carve under one generator, in authored order.
+	// Flow Fields and traced Behaviors under their owning generator; no Effect execution.
 	//
 	// Each item solves its own direction field (its Source, Radius and bend differ) against the
 	// height the previous item left, then transforms that height. RockField is the owner's cached
@@ -1557,7 +2166,7 @@ namespace
 	//
 	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height.
 	// Generator modules retain it for the named PebbleCoverage output, not height blending.
-	FRDGTextureRef AddGeneratorFlowToolPasses(
+	FRDGTextureRef AddBehaviorFlowFieldPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
@@ -1565,7 +2174,8 @@ namespace
 		FRDGTextureRef BoundaryField,
 		FRDGTextureRef RockField,
 		FRDGTextureRef& InOutCoverage,
-		FGeneratorBundle* Bundle = nullptr)
+		FGeneratorBundle* Bundle,
+		const int32 OnlyBehaviorChildIndex)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -1593,17 +2203,20 @@ namespace
 		FRDGTextureRef Current = RockField;
 		for (const FChildRenderData& FlowChild : Layer.Children)
 		{
-			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex))
+			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex)
+				|| (OnlyBehaviorChildIndex != INDEX_NONE
+					&& FlowChild.SourceChildIndex != OnlyBehaviorChildIndex))
 			{
 				continue;
 			}
-			const FEffectRenderData& Flow = FlowChild.Effect;
-			const bool bGravity = Flow.Type == EMixtormatEffectType::GravityFlow;
+			const FBehaviorFlowRenderData& Flow = FlowChild.Behavior.Flow;
+			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
+			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
 			// Height-only producers must never bind a null boundary or invent an SDF.
-			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
+			if (!BoundaryField && Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
-			const bool bNeutral = IsNeutralFlowTool(Flow);
+			const bool bNeutral = IsNeutralFlowTool(FlowChild.Behavior);
 			if (bNeutral && !bPreviewing && !IsFlowFieldDemanded(Ctx, Layer, FlowIndex))
 			{
 				continue;
@@ -1615,39 +2228,102 @@ namespace
 			FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
 				: Current;
+			FRDGTextureRef BehaviorInfluence = Ctx.EmptyDriverSignal;
+			const bool bUseBehaviorInfluence = !bFieldProducer && FlowChild.Behavior.bHasInfluence;
+			if (bUseBehaviorInfluence)
+			{
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(FlowChild.Behavior.Influence.Source);
+				if (!Field || !Field->IsComplete()
+					|| Field->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| Field->Texture->Desc.Extent != Size
+					|| (Field->Texture->Desc.Format != PF_R16F
+						&& Field->Texture->Desc.Format != PF_R32_FLOAT))
+				{
+					continue;
+				}
+				BehaviorInfluence = Field->Texture;
+			}
 
 			const auto Fill = [&](FMixtormatGeneratorFlowCS::FParameters* P)
 			{
 				P->OutputSize = Size;
 				P->SolveSize = SolveSize;
 				P->JumpStep = 1;
-				P->Source = Flow.GeneratorFlowSource;
-				P->Tangent = Flow.GeneratorFlowTangent;
-				P->Angle = Flow.GeneratorFlowAngle;
-				P->GravitySurfaceFollow = Flow.GravityFlowSurfaceFollow;
-				P->GravityDeflection = Flow.GravityFlowDeflection;
-				P->Bend = Flow.GeneratorFlowBend;
-				P->Seed = Flow.GeneratorFlowSeed;
-				P->Radius = Flow.GeneratorFlowRadius;
-				P->Smooth = Flow.GeneratorFlowSmooth;
+				P->Source = Flow.FlowSource;
+				P->Tangent = Flow.FlowTangent;
+				P->Angle = Flow.FlowAngle;
+				P->GravitySurfaceFollow = Flow.GravitySurfaceFollow;
+				P->GravityDeflection = Flow.GravityDeflection;
+				P->Bend = Flow.FlowBend;
+				P->Seed = Flow.FlowSeed;
+				P->Radius = Flow.FlowRadius;
+				P->Smooth = Flow.FlowSmooth;
 				P->BlurAxis = FIntPoint(1, 0);
-				P->Reach = Flow.GeneratorFlowReach;
-				P->Feather = Flow.GeneratorFlowFeather;
-				P->Amount = Flow.GeneratorFlowAmount;
-				P->OffsetAlong = Flow.GeneratorFlowOffsetAlong;
-				P->OffsetAcross = Flow.GeneratorFlowOffsetAcross;
+				P->Reach = Flow.Reach;
+				P->Feather = Flow.Feather;
+				P->Amount = Flow.FlowAmount;
+				P->OffsetAlong = Flow.FlowOffsetAlong;
+				P->OffsetAcross = Flow.FlowOffsetAcross;
 				P->HasMask = bHasMask ? 1u : 0u;
-				P->Mode = bGravity ? 3u : (Flow.Type == EMixtormatEffectType::ShapeDeform ? 0u
-					: (Flow.Type == EMixtormatEffectType::GeneratorFlow ? 1u : 2u));
-				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
-				P->Bulge = Flow.GeneratorFlowBulge;
-				P->TraceLength = Flow.GeneratorFlowTraceLength;
-				P->Steps = Flow.GeneratorFlowSteps;
-				P->WarpStrength = Flow.GeneratorFlowWarpStrength;
-				P->CarveMode = Flow.GeneratorFlowCarveMode;
-				P->Depth = Flow.GeneratorFlowDepth;
-				P->Width = Flow.GeneratorFlowWidth;
-				P->Falloff = Flow.GeneratorFlowFalloff;
+				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
+					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
+					: bGravity ? 3u : 1u;
+				const float BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
+				P->ShapeOffset = Flow.ShapeOffset;
+				P->Bulge = Flow.Bulge;
+				P->TraceLength = Flow.TraceLength;
+				P->Steps = Flow.TraceSteps;
+				P->WarpStrength = Flow.WarpStrength;
+				P->BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
+				P->UseInfluence = bUseBehaviorInfluence ? 1u : 0u;
+				P->InfluenceField = BehaviorInfluence;
+				FRDGTextureRef DriverSignals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+				for (int32 Slot = 0; Slot < 2; ++Slot)
+				{
+					const FScalarDriverRenderData& Driver = FlowChild.Behavior.ScalarDrivers[Slot];
+					FRDGTextureRef* Snapshot = Driver.bEnabled
+						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+					const bool bResolved = Snapshot != nullptr;
+					DriverSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+					P->BehaviorDriverParamsA[Slot] = FVector4f(
+						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+						Driver.InputMin, Driver.InputMax);
+					P->BehaviorDriverParamsB[Slot] = FVector4f(
+						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+						static_cast<float>(Driver.Combine));
+				}
+				P->BehaviorDriverSignal0 = DriverSignals[0];
+				P->BehaviorDriverSignal1 = DriverSignals[1];
+				FRDGTextureRef SettingsSignals[8] = {
+					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal,
+					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal
+				};
+				for (int32 Slot = 0; Slot < 8; ++Slot)
+				{
+					const FScalarDriverRenderData& Driver = Flow.SettingsDrivers[Slot];
+					FRDGTextureRef* Snapshot = Driver.bEnabled
+						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+					const bool bResolved = Snapshot != nullptr;
+					SettingsSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+					P->FlowSettingsDriverParamsA[Slot] = FVector4f(
+						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+						Driver.InputMin, Driver.InputMax);
+					P->FlowSettingsDriverParamsB[Slot] = FVector4f(
+						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+						static_cast<float>(Driver.Combine));
+				}
+				P->FlowSettingsDriverSignal0 = SettingsSignals[0];
+				P->FlowSettingsDriverSignal1 = SettingsSignals[1];
+				P->FlowSettingsDriverSignal2 = SettingsSignals[2];
+				P->FlowSettingsDriverSignal3 = SettingsSignals[3];
+				P->FlowSettingsDriverSignal4 = SettingsSignals[4];
+				P->FlowSettingsDriverSignal5 = SettingsSignals[5];
+				P->FlowSettingsDriverSignal6 = SettingsSignals[6];
+				P->FlowSettingsDriverSignal7 = SettingsSignals[7];
+				P->CarveMode = Flow.CarveMode;
+				P->Depth = Flow.Depth;
+				P->Width = Flow.Width;
+				P->Falloff = Flow.Falloff;
 				P->LinearWrapSampler = Sampler;
 				P->RockHeight = Current;
 				P->BoundaryField = BoundaryField ? BoundaryField : Ctx.EmptyPatternUV;
@@ -1660,7 +2336,7 @@ namespace
 			// Gravity + Height is evaluated directly at full resolution, including flat texels.
 			FRDGTextureRef SeedData = Ctx.EmptyPatternUV;
 			FRDGTextureRef JumpResult = Ctx.EmptyPatternUV;
-			if (!bGravity || Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance))
+			if (!bGravity || Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance))
 			{
 				SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
 				FRDGTextureRef Jump[2] = {
@@ -1732,7 +2408,7 @@ namespace
 
 			// Smooth: X then Y. Skipped at zero, where the raw field doubles as the smoothed one.
 			FRDGTextureRef FlowSmooth = FlowField;
-			if (Flow.GeneratorFlowSmooth != 0.0f)
+			if (Flow.FlowSmooth != 0.0f)
 			{
 				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(7);
 				FRDGTextureRef Blurred[2] = {
@@ -1779,7 +2455,19 @@ namespace
 			Ctx.PublishedFieldOutputs.Add(
 				PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
 				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
-			if (Flow.Type != EMixtormatEffectType::FlowCarve)
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, FlowIndex, FName(TEXT("Influence"))),
+				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Influence, nullptr, nullptr, false});
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
+				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
+			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve)
+			{
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, FlowIndex, FName(TEXT("CarveMask"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, CarveMask, nullptr, nullptr, false});
+			}
+			if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
 			{
 				Ctx.PublishedFieldOutputs.Add(
 					PublishedKey(Layer, FlowIndex, FName(TEXT("WarpedUV"))),
@@ -1821,13 +2509,14 @@ namespace
 						Shader, P, Groups);
 				};
 				BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
-				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUVGrid"));
+				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUV"));
 			}
 
-			if (!bNeutral)
+			if (!bNeutral && !bFieldProducer)
 			{
 				Current = Transformed;
-				if (InOutCoverage)
+				const bool bWarp = FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp;
+				if (InOutCoverage && bWarp)
 				{
 					InOutCoverage = MovedCoverage;
 				}
@@ -1835,7 +2524,7 @@ namespace
 				{
 					Bundle->Height = Current;
 					Bundle->Coverage = InOutCoverage;
-					if (Flow.Type != EMixtormatEffectType::FlowCarve)
+					if (bWarp)
 					{
 						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
 						BoundaryField = Bundle->BoundaryField;
@@ -1875,9 +2564,9 @@ namespace
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
 		const FRockLayout Layout = ResolveRockLayout(Rock);
-		const auto FillParameters = [&Rock, &Layout, &Layer, Size](FMixtormatRockFormationCS::FParameters* P)
+		const auto FillParameters = [&Rock, &Layout, &Layer, &Child, &Ctx, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->MaxLeaves = Layout.MaxLeaves;
 			P->CellsV = Layout.CellsV;
@@ -1937,7 +2626,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Rock.FieldKey != 0
 				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636B09ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
@@ -2145,6 +2834,8 @@ namespace
 			P->OutHigh = Rock.DepthMax;
 			P->NormalizeMode = 0u;
 			P->OutputScale = 1.0f;
+			P->HasHeightGate = 0u;
+			P->HeightGate = Outputs[0];
 			P->SourceField = Outputs[0];
 			P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 			P->OutField = GraphBuilder.CreateUAV(Height);
@@ -2174,9 +2865,9 @@ namespace
 		}
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
-		const auto Fill = [&Cracks, &Layer, &Child, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
+		const auto Fill = [&Cracks, &Layer, &Child, &Ctx, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->SolveSize = SolveSize;
 			P->Seed = Cracks.Seed;
@@ -2219,7 +2910,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Cracks.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Cracks.FieldKey != 0
 				? MixtormatComposeHash::Combine(Cracks.FieldKey, 0x437261636B74ull) : 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = NodeKey != 0
 				? NodeCache->Find(NodeKey, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
@@ -2398,9 +3089,9 @@ namespace
 		const FIntPoint Size = Request.Resolution;
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
-		const auto FillParameters = [&Pebbles, &Layer, Size](FMixtormatPebblesCS::FParameters* P)
+		const auto FillParameters = [&Pebbles, &Layer, &Child, &Ctx, Size](FMixtormatPebblesCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->Seed = Pebbles.Seed;
 			P->Cells = Pebbles.Cells;
@@ -2435,7 +3126,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Pebbles.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Pebbles.FieldKey != 0
 				? MixtormatComposeHash::Combine(Pebbles.FieldKey, 0x506562626C66ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
@@ -2547,13 +3238,13 @@ namespace
 		if(const TArray<FRDGTextureRef,TInlineAllocator<7>>* Memo=LayerCtx.GeneratorFields.Find(Child.SourceChildIndex)){for(int i=0;i<SlotCount;++i)O[i]=(*Memo)[i];}
 		else{
 			static const TCHAR* Names[SlotCount]={TEXT("Mixtormat.CliffStrata.RawHeight"),TEXT("Mixtormat.CliffStrata.Flow"),TEXT("Mixtormat.CliffStrata.BlockIds"),TEXT("Mixtormat.CliffStrata.RowIds"),TEXT("Mixtormat.CliffStrata.VoronoiRaw"),TEXT("Mixtormat.CliffStrata.FinalHeight"),TEXT("Mixtormat.CliffStrata.BlockSeam"),TEXT("Mixtormat.CliffStrata.RowSeam"),TEXT("Mixtormat.CliffStrata.Cavity"),TEXT("Mixtormat.CliffStrata.Coverage")};
-			FMixtormatNodeCache* NodeCache=Ctx.Request.NodeCache.Get();const uint64 NodeKey=NodeCache&&C.FieldKey?MixtormatComposeHash::Combine(C.FieldKey,0x436C696666537472ull):0;
+			FMixtormatNodeCache* NodeCache=Ctx.Request.NodeCache.Get();const uint64 NodeKey=NodeCache&&!Child.PreUV&&C.FieldKey?MixtormatComposeHash::Combine(C.FieldKey,0x436C696666537472ull):0;
 			auto Hit=NodeKey?NodeCache->Find(NodeKey,Size):TSharedPtr<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();bool complete=Hit.IsValid();for(int i=0;complete&&i<SlotCount;++i)complete=Hit->Outputs[i].IsValid();
 			if(complete){for(int i=0;i<SlotCount;++i)O[i]=GraphBuilder.RegisterExternalTexture(Hit->Outputs[i],Names[i]);}
 			else{
 				O[0]=Make(PF_R32_FLOAT,Names[0]);O[1]=Make(PF_G32R32F,Names[1]);O[2]=Make(PF_R32_UINT,Names[2]);O[3]=Make(PF_R32_UINT,Names[3]);O[4]=Make(PF_R32_FLOAT,Names[4]);O[5]=Make(PF_R32_FLOAT,Names[5]);O[6]=Make(PF_R16F,Names[6]);O[7]=Make(PF_R16F,Names[7]);O[8]=Make(PF_R16F,Names[8]);O[9]=Make(PF_R16F,Names[9]);
 				FRDGTextureRef Smooth=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.VoronoiSmooth")),SweepA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepA")),SweepB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepB")),IdA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdA")),IdB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdB")),RowA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowA")),RowB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowB"));
-				auto Fill=[&](FMixtormatCliffStrataCS::FParameters* P){FillGeneratorPlacement(P,Layer);P->OutputSize=Size;P->CountX=C.CountX;P->CountY=C.CountY;P->Density=C.Density;P->SizeMin=C.SizeMin;P->SizeMax=C.SizeMax;P->SizeAspect=C.SizeAspect;P->Jitter=C.Jitter;P->FlowVariation=C.FlowVariation;P->HeightMin=C.HeightMin;P->HeightMax=C.HeightMax;P->Steps=C.Steps;P->Rotation=C.Rotation;P->LeanX=C.LeanX;P->LeanY=C.LeanY;P->FormationCells=C.FormationCells;P->FormationAmount=C.FormationAmount;P->QuarterCopies=C.bQuarterCopies?1u:0u;P->QuarterYCount=C.QuarterYCount;P->QuarterFill=C.QuarterFill;P->QuarterSize=C.QuarterSize;P->QuarterHeight=C.QuarterHeight;P->QuarterJitterX=C.QuarterJitterX;P->QuarterJitterY=C.QuarterJitterY;P->Sides=C.Sides;P->ShapeRandom=C.bShapeRandom?1u:0u;P->CameraYaw=C.CameraYaw;P->CameraPitch=C.CameraPitch;P->ViewScale=C.ViewScale;P->DepthMin=C.DepthMin;P->DepthMax=C.DepthMax;P->UnitDistance=C.UnitDistance;P->UnitDistanceIdLerp=C.UnitDistanceIdLerp;P->CarveDepth=C.CarveDepth;P->CarveVoronoi=C.CarveVoronoi;P->YBias=C.YBias;P->YBiasVoronoi=C.YBiasVoronoi;P->YBiasVoronoiInvert=C.bYBiasVoronoiInvert?1u:0u;P->NegativeYUnitDistanceTaper=C.NegativeYUnitDistanceTaper;P->Reverse=C.bReverse?1u:0u;P->Seed=C.Seed;P->VoronoiCells=C.VoronoiCells;P->FlowVoronoi=C.FlowVoronoi;P->ChamferWidth=C.ChamferWidth;P->ChamferIntensity=C.ChamferIntensity;P->ChamferVoronoi=C.ChamferVoronoi;P->BlockCavityWidth=C.BlockCavityWidth;P->RowCavityWidth=C.RowCavityWidth;P->CavityIntensity=C.CavityIntensity;P->CavityVoronoiThreshold=C.CavityVoronoiThreshold;P->CavityVoronoiMaskGain=C.CavityVoronoiMaskGain;P->RawHeight=O[0];P->Flow=O[1];P->BlockIds=O[2];P->RowIds=O[3];P->VoronoiRaw=O[4];P->VoronoiSmooth=Smooth;P->SweepIn=SweepA;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;};
+				auto Fill=[&](FMixtormatCliffStrataCS::FParameters* P){FillGeneratorPlacement(P,Layer,Child.PreUV,Ctx.EmptyPatternUV);P->OutputSize=Size;P->CountX=C.CountX;P->CountY=C.CountY;P->Density=C.Density;P->SizeMin=C.SizeMin;P->SizeMax=C.SizeMax;P->SizeAspect=C.SizeAspect;P->Jitter=C.Jitter;P->FlowVariation=C.FlowVariation;P->HeightMin=C.HeightMin;P->HeightMax=C.HeightMax;P->Steps=C.Steps;P->Rotation=C.Rotation;P->LeanX=C.LeanX;P->LeanY=C.LeanY;P->FormationCells=C.FormationCells;P->FormationAmount=C.FormationAmount;P->QuarterCopies=C.bQuarterCopies?1u:0u;P->QuarterYCount=C.QuarterYCount;P->QuarterFill=C.QuarterFill;P->QuarterSize=C.QuarterSize;P->QuarterHeight=C.QuarterHeight;P->QuarterJitterX=C.QuarterJitterX;P->QuarterJitterY=C.QuarterJitterY;P->Sides=C.Sides;P->ShapeRandom=C.bShapeRandom?1u:0u;P->CameraYaw=C.CameraYaw;P->CameraPitch=C.CameraPitch;P->ViewScale=C.ViewScale;P->DepthMin=C.DepthMin;P->DepthMax=C.DepthMax;P->UnitDistance=C.UnitDistance;P->UnitDistanceIdLerp=C.UnitDistanceIdLerp;P->CarveDepth=C.CarveDepth;P->CarveVoronoi=C.CarveVoronoi;P->YBias=C.YBias;P->YBiasVoronoi=C.YBiasVoronoi;P->YBiasVoronoiInvert=C.bYBiasVoronoiInvert?1u:0u;P->NegativeYUnitDistanceTaper=C.NegativeYUnitDistanceTaper;P->Reverse=C.bReverse?1u:0u;P->Seed=C.Seed;P->VoronoiCells=C.VoronoiCells;P->FlowVoronoi=C.FlowVoronoi;P->ChamferWidth=C.ChamferWidth;P->ChamferIntensity=C.ChamferIntensity;P->ChamferVoronoi=C.ChamferVoronoi;P->BlockCavityWidth=C.BlockCavityWidth;P->RowCavityWidth=C.RowCavityWidth;P->CavityIntensity=C.CavityIntensity;P->CavityVoronoiThreshold=C.CavityVoronoiThreshold;P->CavityVoronoiMaskGain=C.CavityVoronoiMaskGain;P->RawHeight=O[0];P->Flow=O[1];P->BlockIds=O[2];P->RowIds=O[3];P->VoronoiRaw=O[4];P->VoronoiSmooth=Smooth;P->SweepIn=SweepA;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;};
 				for(int Stage=0;Stage<9;++Stage){FMixtormatCliffStrataCS::FPermutationDomain Perm;Perm.Set<FMixtormatCliffStrataCS::FStage>(Stage);TShaderMapRef<FMixtormatCliffStrataCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel),Perm);auto* P=GraphBuilder.AllocParameters<FMixtormatCliffStrataCS::FParameters>();Fill(P);P->OutRawHeight=GraphBuilder.CreateUAV(O[0]);P->OutFlow=GraphBuilder.CreateUAV(O[1]);P->OutBlockIds=GraphBuilder.CreateUAV(O[2]);P->OutRowIds=GraphBuilder.CreateUAV(O[3]);P->OutVoronoiRaw=GraphBuilder.CreateUAV(O[4]);P->OutVoronoiSmooth=GraphBuilder.CreateUAV(Smooth);P->OutSweep=GraphBuilder.CreateUAV(Stage==3?SweepA:SweepB);P->OutIdDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?IdA:IdB);P->OutRowDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?RowA:RowB);P->OutHeight=GraphBuilder.CreateUAV(O[5]);P->OutBlockSeam=GraphBuilder.CreateUAV(O[6]);P->OutRowSeam=GraphBuilder.CreateUAV(O[7]);P->OutCavity=GraphBuilder.CreateUAV(O[8]);P->OutCoverage=GraphBuilder.CreateUAV(O[9]);if(Stage==4)P->SweepIn=SweepA;if(Stage==6){P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}if(Stage==7){P->IdDistanceIn=IdB;P->RowDistanceIn=RowB;}if(Stage==8){P->SweepIn=SweepB;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}ClearUnusedGraphResources(Shader,P);const FIntVector Groups=(Stage==3||Stage==6)?FIntVector(1,Size.Y,1):((Stage==4||Stage==7)?FIntVector(Size.X,1,1):PixelGroups);FComputeShaderUtils::AddPass(GraphBuilder,RDG_EVENT_NAME("Mixtormat.CliffStrata.S%d.L%d.C%d",Stage,LayerCtx.LayerIndex,Child.SourceChildIndex),Shader,P,Groups);}
 				if(NodeKey){auto Entry=MakeShared<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();Entry->Key=NodeKey;Entry->Resolution=Size;for(int i=0;i<SlotCount;++i)GraphBuilder.QueueTextureExtraction(O[i],&Entry->Outputs[i]);Ctx.PendingNodeEntries.Add(Entry);}
 			}
@@ -2686,92 +3377,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
-		// Structural input modules run at their own authored position, before a later target.
-		if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
-		{
-			const FGeneratorStructuralWarpRenderData& Warp = Child.StructuralWarp;
-			const FPublishedField* FoundSource = Ctx.PublishedFieldOutputs.Find(Warp.Source.Source);
-			if (Warp.TargetChildIndex == INDEX_NONE || !FoundSource || !FoundSource->IsComplete()
-				|| FoundSource->Kind != Warp.Source.Kind || FoundSource->Texture->Desc.Extent != Size
-				|| (Warp.Source.Kind != EMixtormatPublishedFieldKind::Flow
-					&& Warp.Source.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
-			if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				&& ((Warp.Source.FlowAmount == 0.0f && !Warp.Drivers[0].bEnabled)
-					|| (Warp.Source.FlowTraceLength == 0.0f && !Warp.Drivers[1].bEnabled))) { continue; }
-			const FPublishedField Source = *FoundSource;
-			const FRDGTextureRef Coordinates = Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-				? AddReferencedFlowUVPass(Ctx, Warp.Source, Source, LayerCtx.LayerIndex,
-					Child.SourceChildIndex, Warp.Drivers)
-				: Source.Texture;
-			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-			const FRDGTextureRef Mask = bHasMask
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : RunningHeight;
-			const FRDGTextureRef* OldD = LayerCtx.GeneratorStructuralDisplacements.Find(Warp.TargetChildIndex);
-			const FRDGTextureRef* OldB = LayerCtx.GeneratorHeightPushFields.Find(Warp.TargetChildIndex);
-			const auto MakeState = [&](EPixelFormat Format, const TCHAR* Name)
-			{
-				return Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-					Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-			};
-			FRDGTextureRef NewD = MakeState(PF_G32R32F, TEXT("Mixtormat.Generator.StructuralDisplacement"));
-			FRDGTextureRef NewB = MakeState(PF_R32_FLOAT, TEXT("Mixtormat.Generator.WarpedBeddingShift"));
-			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorStructuralWarpCS::FParameters>();
-			P->OutputSize = Size;
-			P->HasPreviousDisplacement = OldD && *OldD ? 1u : 0u;
-			P->HasPreviousShift = OldB && *OldB ? 1u : 0u;
-			P->HasMask = bHasMask ? 1u : 0u;
-			P->WarpCoordinates = Coordinates;
-			P->PreviousDisplacement = OldD && *OldD ? *OldD : Coordinates;
-			P->PreviousShift = OldB && *OldB ? *OldB : RunningHeight;
-			P->ScopedMask = Mask;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutDisplacement = Ctx.GraphBuilder.CreateUAV(NewD);
-			P->OutShift = Ctx.GraphBuilder.CreateUAV(NewB);
-			TShaderMapRef<FMixtormatGeneratorStructuralWarpCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StructuralWarp.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-			const bool bHadShift = OldB && *OldB;
-			LayerCtx.GeneratorStructuralDisplacements.Add(Warp.TargetChildIndex, NewD);
-			if (bHadShift) { LayerCtx.GeneratorHeightPushFields.Add(Warp.TargetChildIndex, NewB); }
-			continue;
-		}
-		if (Child.Type == EMixtormatLayerChildType::HeightPush)
-		{
-			const FGeneratorHeightPushRenderData& Push = Child.HeightPush;
-			const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Push.Source.Source);
-			if (Push.Amount == 0.0f || Push.TargetChildIndex == INDEX_NONE || !Source
-				|| Source->Kind != EMixtormatPublishedFieldKind::ScalarSigned || !Source->IsComplete()
-				|| Source->Texture->Desc.Extent != Size) { continue; }
-			const FRDGTextureRef Height = Source->Texture;
-			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-			const FRDGTextureRef Mask = bHasMask
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Height;
-			const FRDGTextureRef* Found = LayerCtx.GeneratorHeightPushFields.Find(Push.TargetChildIndex);
-			const FRDGTextureRef Previous = Found ? *Found : nullptr;
-			FRDGTextureRef Shift = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-				Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-				TEXT("Mixtormat.Generator.HeightPush"));
-			auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorHeightPushCS::FParameters>();
-			P->OutputSize = Size;
-			P->Amount = Push.Amount;
-			P->HasPrevious = Previous ? 1u : 0u;
-			P->HasMask = bHasMask ? 1u : 0u;
-			P->SourceHeight = Height;
-			P->PreviousShift = Previous ? Previous : Height;
-			P->ScopedMask = Mask;
-			P->OutShift = Ctx.GraphBuilder.CreateUAV(Shift);
-			TShaderMapRef<FMixtormatGeneratorHeightPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.HeightPush.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-			LayerCtx.GeneratorHeightPushFields.Add(Push.TargetChildIndex, Shift);
-			continue;
-		}
 		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
 		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
 		{
@@ -2848,6 +3453,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			continue;
 		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		FGeneratorInputFields& Inputs = LayerCtx.GeneratorInputs.Add(Child.SourceChildIndex);
@@ -2872,7 +3478,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 		FGeneratorBundle Module;
-		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
+		const FRDGTextureRef PreUV = BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Child);
+		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, PreUV};
 		switch (Child.Generator.Type)
 		{
 		case EMixtormatGeneratorType::StrataCarver:
@@ -2895,79 +3502,68 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
-			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module);
+			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, RunningHeight);
 			break;
 		}
-		if (!Module.Height) { continue; }
-		// Flow runs on the generator's native field, before the shared signed normalization: the
-		// flow algorithm reads the field's own amplitude for its seed threshold and carve depth.
-		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		if (!Module.Height && Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
+		// A Noise module with Write Height OFF produces no height: it contributes nothing to the
+		// running height, runs no normalization, and its scoped Behaviors -- which all modify
+		// relief -- have nothing to act on. Its Value/Gradient/FlowDirection/GeneratedFlow
+		// publications and Region IDs still run below (P0 contract section 2).
+		const bool bNoiseHeightless = Child.Generator.Type == EMixtormatGeneratorType::Noise
+			&& !Module.Height;
+		// Publish raw generator masks before any owned Behavior may consume them.
+		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
-			// A mask on an owned flow tool may read its generator's *pre-flow* feature.
-			// Publish those existing raw named fields before the flow reads its masks.
-			// The normal publication below replaces these entries with completed/post-flow
-			// fields, so all later consumers retain their original output semantics.
-			for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
-			{
-				Ctx.PublishedMaskOutputs.Add(
-					PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
-			}
-			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
-				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
+			Ctx.PublishedMaskOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 		}
-		// The shared signed output contract: mid-range centring onto a symmetric -1..1, then Height Bias,
-		// then Height Scale (which may exceed -1..1). Applied after flow. Centring rather than
-		// max-absolute normalization is what makes Height Blend's Min/Max/Difference well-posed
-		// between modules: a max-abs field is still asymmetric (Gradient lands at [-1, +0.83]), so a
-		// module carrying a pedestal would win every comparison.
-		Module.Height = AddSignedGeneratorHeightPasses(
-			Ctx.GraphBuilder, Module.Height, Size,
-			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
-			Child.Generator.HeightBias,
-			TEXT("Mixtormat.Generator.SignedHeight"));
-
-		// Strata regenerates in its structural frame. Every other supported target instead owns
-		// one completed-bundle pullback after native generation, flow and signed normalization.
-		if (Child.Generator.Type != EMixtormatGeneratorType::StrataCarver)
+		// One authored-order pass processes producers and height operations on the native field.
+		if (!bNoiseHeightless)
 		{
-			if (const FRDGTextureRef* Displacement = LayerCtx.GeneratorStructuralDisplacements.Find(
-				Child.SourceChildIndex); Displacement && *Displacement)
+			// Generate a native-height Flow snapshot only when a scoped consumer
+			// needs it. Noise's completed diagnostic still overwrites this temporary
+			// publication after its normal output normalization.
+			const bool bNeedsWorkingFlow = Algo::AnyOf(Layer.Children,
+				[&Child](const FChildRenderData& Candidate)
+				{
+					return Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+						&& ((Candidate.Type == EMixtormatLayerChildType::Generator
+							&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
+							|| (Candidate.Type == EMixtormatLayerChildType::Behavior
+								&& Candidate.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
+								&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+									|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform)));
+				});
+			if (bNeedsWorkingFlow)
 			{
-				const FRDGTextureRef Coordinates = AddStructuralWarpCoordinates(Ctx, *Displacement,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
-				const FPublishedFieldKey ValueKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Value")));
-				const FPublishedFieldKey GradientKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Gradient")));
-				const FPublishedField* NoiseValue = Child.Generator.Type == EMixtormatGeneratorType::Noise
-					? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
-				const FPublishedField* NoiseGradient = Child.Generator.Type == EMixtormatGeneratorType::Noise
-					? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
-				const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
-				const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
-				RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
-				if (ValueSnapshot.IsComplete())
-				{
-					Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
-						ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
-						nullptr, nullptr, false});
-				}
-				if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector
-					&& Module.GradientDescriptor.Units == FGeneratorBundle::EFieldUnits::GeneratorDomain
-					&& GradientSnapshot.Texture && GradientSnapshot.Texture->Desc.Extent == Size
-					&& GradientSnapshot.Texture->Desc.Format == PF_G32R32F)
-				{
-					// Noise Gradient is declared source-domain data: lattice families are analytic
-					// covectors and Worley/Bars are directions. Preserve that public frame by
-					// transport-sampling; do not silently apply either vector transform.
-					Ctx.PublishedFieldOutputs.Add(GradientKey, FPublishedField{
-						GradientSnapshot.Kind, RemapBundleField(Ctx, GradientSnapshot.Texture, Coordinates, 4),
-						nullptr, nullptr, false});
-				}
+				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+			}
+			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
+			// Normalize the unmasked Noise native height, then apply its scoped gate to the
+			// resolved signed result. Gating before centring turns masked zeros into negative height.
+			// Other generators keep the historical zero-preserving max-abs contract.
+			const FRDGTextureRef NoiseHeightGate =
+				Child.Generator.Type == EMixtormatGeneratorType::Noise
+				&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: nullptr;
+			Module.Height = AddSignedGeneratorHeightPasses(
+				Ctx.GraphBuilder, Module.Height, Size,
+				Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+				Child.Generator.HeightBias,
+				Child.Generator.Type == EMixtormatGeneratorType::Noise,
+				NoiseHeightGate,
+				TEXT("Mixtormat.Generator.SignedHeight"));
+
+			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
-			AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
-			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection"))})
+			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection")), FName(TEXT("GeneratedFlow"))})
 			{
 				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
 					PublishedKey(Layer, Child.SourceChildIndex, Name));
@@ -2981,11 +3577,16 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
-		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
-		// Explicit inputs address the completed signed module result, never the running sum.
-		Ctx.PublishedFieldOutputs.Add(
-			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
-			FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+		// Height-less Noise retains nothing and combines nothing: zero contribution, no phantom
+		// relief through Height Blend, no normalization side effects.
+		if (Module.Height)
+		{
+			LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
+			// Explicit inputs address the completed signed module result, never the running sum.
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
+				FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+		}
 
 		// The only publication point: every module publishes under its own child index, after its
 		// flow. The layer's default IDs are therefore the last module that produced any.
@@ -3003,6 +3604,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
 				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+			// Preserve legacy mask consumers while publishing the declared signed
+			// UV-distance metric for typed Carve / Deposit consumers.
+			if (bDistance && Mask.Value && Mask.Value->Desc.Format == PF_R32_FLOAT)
+			{
+				Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key),
+					FPublishedField{EMixtormatPublishedFieldKind::SDF, Mask.Value, nullptr, nullptr, false});
+			}
 			if (IsChildOutputPreviewTarget(Ctx.Request,
 				bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
 				Mask.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
@@ -3018,7 +3626,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 
-		AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+		// Height-less Noise contributes nothing to the running height.
+		if (Module.Height)
+		{
+			AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+		}
 	}
 	// Color Ramp only publishes Color. The Generator layer owns whether the last valid ordered
 	// Color result becomes this layer's Base Color input. When nothing in the stack produced a

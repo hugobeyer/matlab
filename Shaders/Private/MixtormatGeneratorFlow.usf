@@ -43,10 +43,10 @@ int JumpStep;
 // Shared solve controls.
 uint Source;          // 0 signed distance, 1 height
 float Tangent;        // 0 normal, 1 contour (90 degrees)
-float Angle;          // degrees; Gravity Flow: rotation of (0,-1)
-// @param GravityFlowSurfaceFollow
+float Angle;          // degrees; Gravity mode: rotation of (0,-1)
+// @param GravitySurfaceFollow
 float GravitySurfaceFollow;
-// @param GravityFlowDeflection
+// @param GravityDeflection
 float GravityDeflection;
 float Bend;           // degrees, peak of the periodic bend noise
 uint Seed;
@@ -63,20 +63,37 @@ uint HasCoverage;
 uint GeneratorLayer;
 
 // Apply controls.
-uint Mode;            // 0 Shape Deform, 1 Generator Flow, 2 Flow Carve, 3 Gravity Flow
+uint Mode;            // 0 Deform, 1 Warp, 2 Carve, 3 Gravity
 float ShapeOffset;    // UV, signed
 float Bulge;          // UV, signed
 float TraceLength;    // UV
 int Steps;
-float WarpStrength;
-#if FLOW_STAGE == 8
-float4 FlowDriverParamsA[2];
-float4 FlowDriverParamsB[2];
-Texture2D<float> FlowDriverSignal0;
-Texture2D<float> FlowDriverSignal1;
+	float WarpStrength;
+	float BehaviorStrength;
+	uint UseInfluence;
+	Texture2D<float> InfluenceField;
+	float4 BehaviorDriverParamsA[2];
+	float4 BehaviorDriverParamsB[2];
+	Texture2D<float> BehaviorDriverSignal0;
+	Texture2D<float> BehaviorDriverSignal1;
+	float4 FlowSettingsDriverParamsA[8];
+	float4 FlowSettingsDriverParamsB[8];
+	Texture2D<float> FlowSettingsDriverSignal0;
+	Texture2D<float> FlowSettingsDriverSignal1;
+	Texture2D<float> FlowSettingsDriverSignal2;
+	Texture2D<float> FlowSettingsDriverSignal3;
+	Texture2D<float> FlowSettingsDriverSignal4;
+	Texture2D<float> FlowSettingsDriverSignal5;
+	Texture2D<float> FlowSettingsDriverSignal6;
+	Texture2D<float> FlowSettingsDriverSignal7;
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
+	float4 FlowDriverParamsA[2];
+	float4 FlowDriverParamsB[2];
+	Texture2D<float> FlowDriverSignal0;
+	Texture2D<float> FlowDriverSignal1;
 #endif
-uint CarveMode;       // 0 groove, 1 deposit
-float Depth;
+	uint CarveMode;       // 0 groove, 1 deposit
+	float Depth;
 float Width;          // UV
 float Falloff;
 
@@ -323,11 +340,27 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	bool bValid = NearestSeed(UV, Data, Distance);
 	float2 Direction = bValid ? OrientedDirection(UV, Data.xy) : 0.0f;
 
+#if FLOW_STAGE == 2
+	const float DrivenAmount = MixtormatApplyDriver(Amount,
+		FlowSettingsDriverSignal0.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[0], FlowSettingsDriverParamsB[0]);
+	const float DrivenReach = max(0.0f, MixtormatApplyDriver(Reach,
+		FlowSettingsDriverSignal6.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[6], FlowSettingsDriverParamsB[6]));
+	const float DrivenFeather = saturate(MixtormatApplyDriver(Feather,
+		FlowSettingsDriverSignal7.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[7], FlowSettingsDriverParamsB[7]));
+#else
+	const float DrivenAmount = Amount;
+	const float DrivenReach = Reach;
+	const float DrivenFeather = Feather;
+#endif
+
 	// Offsets move where the field is read, along and across its own direction.
 	if (bValid && (OffsetAlong != 0.0f || OffsetAcross != 0.0f))
 	{
 		const float2 Across = float2(-Direction.y, Direction.x);
-		const float2 Shifted = UV - (Direction * OffsetAlong + Across * OffsetAcross) * Reach;
+		const float2 Shifted = UV - (Direction * OffsetAlong + Across * OffsetAcross) * DrivenReach;
 		bValid = NearestSeed(Shifted, Data, Distance);
 		Direction = bValid ? OrientedDirection(Shifted, Data.xy) : 0.0f;
 	}
@@ -340,11 +373,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const float Mask = HasMask != 0u ? FlowMask.Load(int3(Pixel, 0)) : 1.0f;
-	const float Influence = bValid
-		? FlowFade(Reach * (1.0f - Feather), Reach, Distance) * Amount * Mask
+	float BehaviorWeight = 1.0f;
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		BehaviorWeight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	const float Influ = bValid
+		? FlowFade(DrivenReach * (1.0f - DrivenFeather), DrivenReach, Distance) * DrivenAmount * Mask * BehaviorWeight
 		: 0.0f;
-	OutFlowField[Pixel] = float4(Direction, bValid ? Signed : 0.0f, Influence);
-	OutInfluence[Pixel] = Influence;
+	OutFlowField[Pixel] = float4(Direction, bValid ? Signed : 0.0f, Influ);
+	OutInfluence[Pixel] = Influ;
 	OutValidity[Pixel] = bValid ? 1.0f : 0.0f;
 }
 #endif
@@ -397,43 +436,83 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 		}
 	}
-	const float Speed = length(Velocity);
+	float Speed = length(Velocity);
 	Valid = Valid && all(isfinite(Velocity)) && Speed > 1.0e-5f;
 	const float2 Direction = Valid ? Velocity / Speed : float2(0.0f, 0.0f);
 	const float Mask = HasMask != 0u ? saturate(FlowMask.Load(int3(Pixel, 0))) : 1.0f;
-	const float Influence = Valid ? Amount * Mask * min(Speed, 1.0f) : 0.0f;
+	float BehaviorWeight = 1.0f;
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		BehaviorWeight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+#if FLOW_STAGE == 9
+	const float DrivenAmount = MixtormatApplyDriver(Amount,
+		FlowSettingsDriverSignal0.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[0], FlowSettingsDriverParamsB[0]);
+#else
+	const float DrivenAmount = Amount;
+#endif
+	const float Influence = Valid ? DrivenAmount * Mask * min(Speed, 1.0f) * BehaviorWeight : 0.0f;
 	OutFlowField[Pixel] = float4(Direction, Signed, Influence);
 	OutInfluence[Pixel] = Influence;
 	OutValidity[Pixel] = Valid ? 1.0f : 0.0f;
 }
 #endif
 
-#if FLOW_STAGE == 3 || FLOW_STAGE == 8
+#if FLOW_STAGE == 3
+// The Behavior's own Strength, driven by its slot-0 signal. An evaluated zero is
+// exact identity; an unavailable signal keeps the authored value.
+float DrivenBehaviorStrength(int2 Pixel)
+{
+	return MixtormatApplyDriver(BehaviorStrength,
+		BehaviorDriverSignal0.Load(int3(Pixel, 0)),
+		BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+}
+#endif
+
+#if FLOW_STAGE == 3 || FLOW_STAGE == 8 || FLOW_STAGE == 10
 // Smoothed direction, bilinear and renormalized. Where the blur cancelled opposing vectors
 // (a medial-axis collision) there is no direction to renormalize, so the raw nearest texel
 // is used instead of inventing one. Influence and distance always come from the raw field.
 float4 FlowAt(float2 UV)
 {
+#if FLOW_STAGE == 10
+	// Canonical Flow owns its magnitude. Neither normalize nor apply the influence
+	// a second time: Add/Mix has already weighted the composed vector.
+	return FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#else
 	const int2 P = FlowWrap(int2(floor(UV * float2(OutputSize))), OutputSize);
 	const float4 Raw = FlowField.Load(int3(P, 0));
 	const float2 Blurred = FlowSmooth.SampleLevel(LinearWrapSampler, UV, 0.0f).xy;
 	const float Length = length(Blurred);
 	const float2 Direction = Length > 0.2f ? Blurred / Length : Raw.xy;
 	return float4(Direction, Raw.z, FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f).w);
+#endif
 }
 
-float2 TraceFlowCoordinate(float2 UV)
+float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 {
 	const int StepCount = max(Steps, 1);
 	float Length = TraceLength;
 	float Strength = WarpStrength;
-#if FLOW_STAGE == 8
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
 	Strength = MixtormatApplyDriver(WarpStrength,
 		FlowDriverSignal0.SampleLevel(LinearWrapSampler, UV, 0.0f),
 		FlowDriverParamsA[0], FlowDriverParamsB[0]);
 	Length = max(0.0f, MixtormatApplyDriver(TraceLength,
 		FlowDriverSignal1.SampleLevel(LinearWrapSampler, UV, 0.0f),
 		FlowDriverParamsA[1], FlowDriverParamsB[1]));
+#elif FLOW_STAGE == 3
+	Length = max(0.0f, MixtormatApplyDriver(TraceLength,
+		FlowSettingsDriverSignal1.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[1], FlowSettingsDriverParamsB[1]));
+	const float DrivenWarpStrength = MixtormatApplyDriver(WarpStrength,
+		FlowSettingsDriverSignal2.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[2], FlowSettingsDriverParamsB[2]);
+	Strength = DrivenWarpStrength * DrivenStrength;
+#else
+	Strength = WarpStrength * DrivenStrength;
 #endif
 	const float H = Length * Strength / (float)StepCount;
 	float2 P = UV;
@@ -441,9 +520,17 @@ float2 TraceFlowCoordinate(float2 UV)
 	for (int I = 0; I < StepCount; I++)
 	{
 		const float4 A = FlowAt(P);
+#if FLOW_STAGE == 10
+		const float2 K1 = A.xy;
+#else
 		const float2 K1 = A.xy * A.w;
+#endif
 		const float4 B = FlowAt(P - 0.5f * H * K1);
+#if FLOW_STAGE == 10
+		const float2 Next = P - H * B.xy;
+#else
 		const float2 Next = P - H * B.xy * B.w;
+#endif
 #if FLOW_STAGE == 3
 		if (Mode == 3u && Source == 0u && GravityDeflection > 0.0f
 			&& A.z <= length(Next - P)
@@ -473,7 +560,7 @@ float2 TraceFlowCoordinate(float2 UV)
 }
 #endif
 
-#if FLOW_STAGE == 8
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
 // A live Flow reference remaps destination source reads without evaluating its producer again.
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -482,7 +569,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(Pixel >= OutputSize)) { return; }
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	OutWarpedUV[Pixel] = FlowValidity.Load(int3(Pixel, 0)) > 0.0f
-		? TraceFlowCoordinate(UV) : UV;
+		? TraceFlowCoordinate(UV, 1.0f, Pixel) : UV;
 }
 #endif
 
@@ -530,8 +617,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		// Shape Deform: one displaced sample. Expand/erode moves the read point across the local
 		// boundary (inward to expand, outward to erode) inside a band of |offset|; bulge/pinch
 		// moves it along the extended direction. Both scale by the feathered influence.
-		float2 Displacement = -Here.xy * Bulge * Here.w;
-		if (ShapeOffset != 0.0f && Here.w != 0.0f)
+		const float DrivenBulge = MixtormatApplyDriver(Bulge,
+			FlowSettingsDriverSignal5.Load(int3(Pixel, 0)),
+			FlowSettingsDriverParamsA[5], FlowSettingsDriverParamsB[5]);
+		const float DrivenShapeOffset = MixtormatApplyDriver(ShapeOffset,
+			FlowSettingsDriverSignal4.Load(int3(Pixel, 0)),
+			FlowSettingsDriverParamsA[4], FlowSettingsDriverParamsB[4]);
+		float2 Displacement = -Here.xy * DrivenBulge * Here.w;
+		if (DrivenShapeOffset != 0.0f && Here.w != 0.0f)
 		{
 			float2 Gradient;
 			float Distance;
@@ -540,19 +633,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				const float Length = length(Gradient);
 				if (Length > 0.5f)
 				{
-					const float Band = abs(ShapeOffset);
+					const float Band = abs(DrivenShapeOffset);
 					const float K = FlowFade(Band, 2.0f * Band + 1.0f / (float)OutputSize.x, abs(Distance));
-					Displacement -= (Gradient / Length) * ShapeOffset * K * Here.w;
+					Displacement -= (Gradient / Length) * DrivenShapeOffset * K * Here.w;
 				}
 			}
 		}
-		const float2 ReadUV = UV + Displacement;
+		const float2 ReadUV = UV + Displacement * DrivenBehaviorStrength(Pixel);
 		const bool Unmoved = GeneratorLayer != 0u && all(Displacement == 0.0f);
 		OutHeight[Pixel] = Unmoved ? Original : SampleHeight(ReadUV);
 		OutWarpedUV[Pixel] = ReadUV;
 		OutCarveMask[Pixel] = 0.0f;
-		OutCoverage[Pixel] = Unmoved && HasCoverage != 0u
-			? Coverage.Load(int3(Pixel, 0)) : SampleCoverage(ReadUV);
+		// Deform preserves coverage in the generator domain; an absent field writes nothing used.
+		OutCoverage[Pixel] = HasCoverage != 0u ? Coverage.Load(int3(Pixel, 0)) : 0.0f;
 		return;
 	}
 
@@ -562,8 +655,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		// Generator Flow / Gravity Flow: midpoint (RK2) trace upstream through the influence-weighted field, so
 		// the displacement feathers out with the influence. One height sample at the end.
-		const float H = TraceLength * WarpStrength / (float)StepCount;
-		const float2 P = TraceFlowCoordinate(UV);
+		const float DrivenStrength = DrivenBehaviorStrength(Pixel);
+		const float DrivenTraceLength = max(0.0f, MixtormatApplyDriver(TraceLength,
+			FlowSettingsDriverSignal1.Load(int3(Pixel, 0)),
+			FlowSettingsDriverParamsA[1], FlowSettingsDriverParamsB[1]));
+		const float DrivenWarpStrength = MixtormatApplyDriver(WarpStrength,
+			FlowSettingsDriverSignal2.Load(int3(Pixel, 0)),
+			FlowSettingsDriverParamsA[2], FlowSettingsDriverParamsB[2]);
+		const float H = DrivenTraceLength * DrivenWarpStrength * DrivenStrength / (float)StepCount;
+		const float2 P = TraceFlowCoordinate(UV, DrivenStrength, Pixel);
 		const bool Unmoved = GeneratorLayer != 0u && all(P == UV);
 		OutHeight[Pixel] = abs(H) > 0.0f && !Unmoved ? SampleHeight(P) : Original;
 		OutWarpedUV[Pixel] = P;
@@ -580,9 +680,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// the lower ground ahead of it, as carve.cl does. Deposit looks upstream and carries the
 	// higher ground behind a pixel down onto it. Either way round, the other mode is a no-op.
 	float Carve = 0.0f;
-	if (Here.w != 0.0f && Depth != 0.0f && TraceLength != 0.0f)
+	const float DrivenDepth = MixtormatApplyDriver(Depth,
+		FlowSettingsDriverSignal3.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[3], FlowSettingsDriverParamsB[3]);
+	const float DrivenCarveTraceLength = max(0.0f, MixtormatApplyDriver(TraceLength,
+		FlowSettingsDriverSignal1.Load(int3(Pixel, 0)),
+		FlowSettingsDriverParamsA[1], FlowSettingsDriverParamsB[1]));
+	if (Here.w != 0.0f && DrivenDepth != 0.0f && DrivenCarveTraceLength != 0.0f)
 	{
-		const float Ds = (CarveMode == 0u ? 1.0f : -1.0f) * TraceLength / (float)StepCount;
+		const float Ds = (CarveMode == 0u ? 1.0f : -1.0f) * DrivenCarveTraceLength / (float)StepCount;
 		float2 P = UV;
 		[loop]
 		for (int I = 1; I <= StepCount; I++)
@@ -596,23 +702,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 			P += Ds * K2;
 			const float Travel = (float)I * abs(Ds);
-			const float Weight = pow(1.0f - Travel / (abs(TraceLength) + abs(Ds)), Falloff);
+			const float Weight = pow(1.0f - Travel / (abs(DrivenCarveTraceLength) + abs(Ds)), Falloff);
 			const float Sample = SampleCarveHeight(P, K2);
 			const float Drop = CarveMode == 0u ? Original - Sample : Sample - Original;
 			Carve = max(Carve, Drop * Weight);
 		}
 		// Depth scales the gathered drop (1 = cut down to the strongest biased sample); nothing
 		// caps it.
-		Carve = Carve * Depth * Here.w;
+		Carve = Carve * DrivenDepth * Here.w;
 	}
 	OutHeight[Pixel] = CarveMode == 0u ? Original - Carve : Original + Carve;
 	// The gathered, weighted drop times influence -- independent of Depth, unclamped.
-	OutCarveMask[Pixel] = Depth != 0.0f ? Carve / Depth : 0.0f;
+	OutCarveMask[Pixel] = DrivenDepth != 0.0f ? Carve / DrivenDepth : 0.0f;
 	OutWarpedUV[Pixel] = UV;
-	// Deposits extend the explicit support field published by generators such as Pebbles.
-	// Grooves preserve that field; it does not gate the module's height combine.
-	const float Covered = SampleCoverage(UV);
-	OutCoverage[Pixel] = CarveMode == 1u && Carve != 0.0f ? 1.0f : Covered;
+	// The driven Strength gates the final carve contribution so an evaluated zero is
+	// exact identity; a negative Strength flips groove and deposit.
+	if (DrivenDepth != 0.0f && DrivenCarveTraceLength != 0.0f)
+	{
+		const float DrivenStrength = DrivenBehaviorStrength(Pixel);
+		OutHeight[Pixel] = lerp(Original, OutHeight[Pixel], DrivenStrength);
+		OutCarveMask[Pixel] *= DrivenStrength;
+	}
+	// Carve is height-only: coverage is preserved in its generator-domain placement.
+	OutCoverage[Pixel] = HasCoverage != 0u ? Coverage.Load(int3(Pixel, 0)) : 0.0f;
 }
 #endif
 

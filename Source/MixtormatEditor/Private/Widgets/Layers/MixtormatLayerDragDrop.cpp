@@ -82,13 +82,6 @@ FReply SMixtormat::HandleLayerDropped(
 	const bool bChangedGroup = ProposedLayers[TargetLayerIndex].GroupId != JoinedGroupId;
 	ProposedLayers[TargetLayerIndex].GroupId = JoinedGroupId;
 	MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
-	FText MoveReason;
-	if (!StructuralLinksPreserved(ProposedLayers, ProposedGroups, MoveReason))
-	{
-		WorkingStatusText = MoveReason.ToString();
-		return FReply::Handled();
-	}
-	SoloLayerIndex = INDEX_NONE;
 	WorkingLayers = MoveTemp(ProposedLayers);
 	WorkingLayerGroups = MoveTemp(ProposedGroups);
 
@@ -306,13 +299,6 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 	// kept it out of another group's run. This is the general backstop for shapes that snap does
 	// not cover -- hand-edited data, a merge -- not the normal path for a group-on-group drop.
 	MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
-	FText MoveReason;
-	if (!StructuralLinksPreserved(ProposedLayers, ProposedGroups, MoveReason))
-	{
-		WorkingStatusText = MoveReason.ToString();
-		return FReply::Handled();
-	}
-	SoloLayerIndex = INDEX_NONE;
 	WorkingLayers = MoveTemp(ProposedLayers);
 	WorkingLayerGroups = MoveTemp(ProposedGroups);
 
@@ -357,13 +343,6 @@ FReply SMixtormat::HandleLayerDroppedOnGroup(
 		TArray<FMixtormatLayerGroup> ProposedGroups = WorkingLayerGroups;
 		ProposedLayers[SourceLayerIndex].GroupId = TargetGroupId;
 		MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
-		FText MoveReason;
-		if (!StructuralLinksPreserved(ProposedLayers, ProposedGroups, MoveReason))
-		{
-			WorkingStatusText = MoveReason.ToString();
-			return FReply::Handled();
-		}
-		WorkingLayers = MoveTemp(ProposedLayers);
 		WorkingLayerGroups = MoveTemp(ProposedGroups);
 		RecordEditHistory();
 		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
@@ -402,6 +381,85 @@ FReply SMixtormat::HandleLayerDroppedOnGroup(
 FGuid SMixtormat::ResolveGroupMembershipAt(const int32 LayerIndex) const
 {
 	return ResolveGroupMembershipForLayers(WorkingLayers, LayerIndex);
+}
+
+bool SMixtormat::CanReparentLayerChild(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex) const
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return false; }
+	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[LayerIndex].Children;
+	if (!Children.IsValidIndex(SourceChildIndex)
+		|| !Children.IsValidIndex(NewParentChildIndex)
+		|| SourceChildIndex == NewParentChildIndex
+		|| IsDescendantOf(Children, NewParentChildIndex, Children[SourceChildIndex].ChildId)
+		|| Children[SourceChildIndex].ScopeOwnerChildId == Children[NewParentChildIndex].ChildId
+		|| !CanKeepScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
+		|| !CanAddScopedChild(Children, NewParentChildIndex))
+	{
+		return false;
+	}
+	const int32 End = FindSubtreeEnd(Children, SourceChildIndex);
+	const int32 NewDepth = GetScopeDepth(Children, NewParentChildIndex) + 1;
+	const int32 OldDepth = GetScopeDepth(Children, SourceChildIndex);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		if (NewDepth + GetScopeDepth(Children, Index) - OldDepth > MaximumScopeDepth)
+		{
+			return false;
+		}
+	}
+	const int32 Insert = FindSubtreeEnd(Children, NewParentChildIndex);
+	return CanMovePublishedOutputs(
+		MakeChildAddress(LayerIndex, SourceChildIndex),
+		MakeChildAddress(LayerIndex, NewParentChildIndex), Insert);
+}
+
+FReply SMixtormat::ReparentLayerChild(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex)
+{
+	if (!CanReparentLayerChild(LayerIndex, SourceChildIndex, NewParentChildIndex))
+	{
+		return FReply::Unhandled();
+	}
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	TArray<FMixtormatLayerChild>& Children = Layer.Children;
+	const FGuid SourceId = Children[SourceChildIndex].ChildId;
+	const FGuid ParentId = Children[NewParentChildIndex].ChildId;
+	if (Children[SourceChildIndex].ScopeOwnerChildId == ParentId)
+	{
+		return FReply::Unhandled();
+	}
+	const int32 End = FindSubtreeEnd(Children, SourceChildIndex);
+	const int32 Count = End - SourceChildIndex;
+	const int32 NewDepth = GetScopeDepth(Children, NewParentChildIndex) + 1;
+	const int32 OldDepth = GetScopeDepth(Children, SourceChildIndex);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		if (NewDepth + GetScopeDepth(Children, Index) - OldDepth > MaximumScopeDepth)
+		{
+			return FReply::Unhandled();
+		}
+	}
+	TArray<FMixtormatLayerChild> Moved;
+	Moved.Reserve(Count);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		Moved.Add(MoveTemp(Children[Index]));
+	}
+	Children.RemoveAt(SourceChildIndex, Count);
+	Moved[0].ScopeOwnerChildId = ParentId;
+	const int32 NewInsert = FindSubtreeEnd(Children, FindChildById(Children, ParentId));
+	for (int32 Index = 0; Index < Moved.Num(); ++Index)
+	{
+		Children.Insert(MoveTemp(Moved[Index]), NewInsert + Index);
+	}
+	SelectWorkingChild(LayerIndex, FindChildById(Children, SourceId));
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
 }
 
 FReply SMixtormat::ReorderLayerChild(
@@ -577,7 +635,8 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
-	if (IsMaskFilter(Group->Children[ChildIndex]) || IsGeneratorFlow(Group->Children[ChildIndex]))
+	if (IsMaskFilter(Group->Children[ChildIndex])
+		|| Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
@@ -659,7 +718,8 @@ FReply SMixtormat::MoveChildToLayer(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
@@ -730,7 +790,8 @@ FReply SMixtormat::MoveChildToGroup(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
@@ -778,105 +839,6 @@ FReply SMixtormat::MoveChildToGroup(
 	return FReply::Handled();
 }
 
-bool SMixtormat::StructuralLinksPreserved(const TArray<FMixtormatLayer>& ProposedLayers,
-	const TArray<FMixtormatLayerGroup>& ProposedGroups, FText& OutReason) const
-{
-	struct FSnapshot
-	{
-		FGuid LayerId;
-		FGuid ChildId;
-		FText Label;
-		MixtormatOutputReferences::FStructuralLinkStatus Status;
-	};
-	const auto Collect = [this](const TArray<FMixtormatLayer>& Layers,
-		const TArray<FMixtormatLayerGroup>& Groups)
-	{
-		TArray<FMixtormatLayer> Effective;
-		MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, Effective);
-		TArray<FSnapshot> Snapshots;
-		for (int32 LayerIndex = 0; LayerIndex < Effective.Num(); ++LayerIndex)
-		{
-			FMixtormatLayer Resolved = Effective[LayerIndex];
-			MixtormatParameterBinding::ApplyDirectReferences(FMixtormatBindingScope{Effective, Groups}, Resolved);
-			for (int32 ChildIndex = 0; ChildIndex < Resolved.Children.Num(); ++ChildIndex)
-			{
-				const FMixtormatLayerChild& Module = Resolved.Children[ChildIndex];
-				if (Module.Type != EMixtormatLayerChildType::HeightPush
-					&& Module.Type != EMixtormatLayerChildType::StructuralWarp) { continue; }
-				FSnapshot Snapshot;
-				Snapshot.LayerId = Resolved.LayerId;
-				Snapshot.ChildId = Module.ChildId;
-				Snapshot.Label = FText::Format(LOCTEXT("StructuralMoveModuleLabel", "{0} · {1}"),
-					Resolved.DisplayName, GetLayerChildName(Module));
-				Snapshot.Status = MixtormatOutputReferences::EvaluateStructuralLinkForGather(
-					Effective, LayerIndex, ChildIndex, Resolved);
-				Snapshots.Add(MoveTemp(Snapshot));
-			}
-		}
-		return Snapshots;
-	};
-	OutReason = FText::GetEmpty();
-	const TArray<FSnapshot> Before = Collect(WorkingLayers, WorkingLayerGroups);
-	const TArray<FSnapshot> After = Collect(ProposedLayers, ProposedGroups);
-	using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
-	for (const FSnapshot& Previous : Before)
-	{
-		// Disabled or already-broken links do not lock their authored rows in place.
-		if (!Previous.Status.bCanExecuteStructurally) { continue; }
-		const FSnapshot* Current = After.FindByPredicate([&Previous](const FSnapshot& Candidate)
-		{
-			return Candidate.LayerId == Previous.LayerId && Candidate.ChildId == Previous.ChildId;
-		});
-		if (Current && Current->Status.bCanExecuteStructurally) { continue; }
-		FText Detail;
-		if (!Current)
-		{
-			Detail = LOCTEXT("StructuralMoveModuleMissing", "the structural module would leave its layer or become unavailable");
-		}
-		else if (Current->Status.Source.Issue != EIssue::None)
-		{
-			switch (Current->Status.Source.Issue)
-			{
-			case EIssue::ForwardSource:
-				Detail = LOCTEXT("StructuralMoveSourceOrder", "the source must evaluate earlier than the module"); break;
-			case EIssue::IncompleteSourceScope:
-				Detail = LOCTEXT("StructuralMoveSourceScopeOrder", "the Flow source's entire generator scope must finish before the module"); break;
-			case EIssue::DisabledSource:
-			case EIssue::DisabledLayer:
-				Detail = LOCTEXT("StructuralMoveSourceDisabled", "the source or its layer would become disabled"); break;
-			case EIssue::WrongOwnerLayer:
-				Detail = LOCTEXT("StructuralMoveSourceLayer", "the source must remain in an eligible Generator layer"); break;
-			case EIssue::MissingLayer:
-			case EIssue::MissingChild:
-				Detail = LOCTEXT("StructuralMoveSourceMissing", "the saved source would become unavailable"); break;
-			default:
-				Detail = LOCTEXT("StructuralMoveSourceInvalid", "the saved source would have invalid type, scope or identity"); break;
-			}
-		}
-		else if (Current->Status.Target.Issue != EIssue::None)
-		{
-			switch (Current->Status.Target.Issue)
-			{
-			case EIssue::ForwardTarget:
-				Detail = LOCTEXT("StructuralMoveTargetOrder", "the target must remain after the structural module"); break;
-			case EIssue::MissingChild:
-				Detail = LOCTEXT("StructuralMoveTargetMissing", "the saved target must remain in the module's layer"); break;
-			case EIssue::ScopedTarget:
-				Detail = LOCTEXT("StructuralMoveTargetScope", "the target must remain an unscoped generator"); break;
-			default:
-				Detail = LOCTEXT("StructuralMoveTargetInvalid", "the saved target would become disabled, incompatible or ambiguous"); break;
-			}
-		}
-		else
-		{
-			Detail = LOCTEXT("StructuralMoveModuleInvalid", "the module would lose its enabled, unscoped Generator-layer placement");
-		}
-		OutReason = FText::Format(LOCTEXT("StructuralMoveRejected", "Cannot move {0}: {1}."), Previous.Label, Detail);
-		return false;
-	}
-	return true;
-}
-
 bool SMixtormat::CanMovePublishedOutputs(
 	const FMixtormatChildAddress& Source,
 	const FMixtormatChildAddress& Dest,
@@ -893,15 +855,16 @@ bool SMixtormat::CanMovePublishedOutputs(
 	const int32 Count = FindSubtreeEnd(*SourceChildren, SourceIndex) - SourceIndex;
 	for (int32 Index = SourceIndex; Index < SourceIndex + Count; ++Index)
 	{
-		const EMixtormatLayerChildType Type = (*SourceChildren)[Index].Type;
-		if ((Type == EMixtormatLayerChildType::HeightPush || Type == EMixtormatLayerChildType::StructuralWarp)
-			&& (Source.OwnerType != Dest.OwnerType || Source.OwnerId != Dest.OwnerId || Dest.ChildId.IsValid()))
+		// A Behavior names its generator through ScopeOwnerChildId, so it only means
+		// anything inside the container that generator lives in. Carrying one across owners,
+		// or landing it under a new owner, would leave it naming a child that is no longer
+		// there -- which gather treats as unowned rather than as a silently broken rewrite.
+		if ((*SourceChildren)[Index].Type == EMixtormatLayerChildType::Behavior
+			&& (Source.OwnerType != Dest.OwnerType || Source.OwnerId != Dest.OwnerId))
 		{
-			// Structural targets are layer-local. A containing subtree cannot carry a module
-			// across owners or turn it into a scoped child behind the direct move guards.
 			if (OutReason)
 			{
-				*OutReason = FText::Format(LOCTEXT("StructuralModuleMovePlacement", "Cannot move {0}: structural modules must remain unscoped in their own layer."),
+				*OutReason = FText::Format(LOCTEXT("BehaviorMovePlacement", "Cannot move {0}: a Behavior must stay in the layer that owns its generator."),
 					GetLayerChildName((*SourceChildren)[Index]));
 			}
 			return false;
@@ -956,12 +919,6 @@ bool SMixtormat::CanMovePublishedOutputs(
 			MixtormatParameterBinding::RemapChildParent(FMixtormatMutableBindingScope{Layers, Groups},
 				(*ProjectedDest)[ProjectedInsert + Index].ChildId, Source.OwnerId, Dest.OwnerId);
 		}
-	}
-	FText StructuralReason;
-	if (!StructuralLinksPreserved(Layers, Groups, StructuralReason))
-	{
-		if (OutReason) { *OutReason = StructuralReason; }
-		return false;
 	}
 	return PublishedOutputPlacementsValid(FMixtormatBindingScope{Layers, Groups});
 }

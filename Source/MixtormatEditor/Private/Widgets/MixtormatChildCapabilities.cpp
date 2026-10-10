@@ -254,6 +254,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseFlow", "Flow"),
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
+			// P1 generated MODE contribution, published only when Write Flow is on. Canonical
+			// layout; previewable through the existing output-key mechanism.
+			if (Child.Generator.Noise.bNoiseWriteFlow)
+			{
+				Result.Outputs.Add({FName(TEXT("GeneratedFlow")),
+					NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGeneratedFlow", "Generated Flow"),
+					EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+					true, EMixtormatPublishedFieldKind::Flow});
+			}
 			if (NoiseType == EMixtormatNoiseType::WorleyF1
 				|| NoiseType == EMixtormatNoiseType::WorleyF2
 				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2)
@@ -263,35 +272,40 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			}
 		}
 		break;
-	case EMixtormatLayerChildType::Effect:
-		if (MixtormatIsGeneratorFlowEffect(EffectType))
+	case EMixtormatLayerChildType::Behavior:
+		if (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
+			|| Child.Behavior.Flow.bUseTracedFlow)
 		{
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputFlowDirection", "Flow Direction"),
-				EMixtormatPreviewOutputKind::FlowDirection, false, true,
-				EffectType != EMixtormatEffectType::ShapeDeform, NAME_None});
-			if (EffectType != EMixtormatEffectType::FlowCarve)
+				NSLOCTEXT("SMixtormat", "BehaviorFlowDirection", "Flow Direction"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
+			if (Child.Behavior.Type != EMixtormatBehaviorType::Carve)
 			{
-				Result.Outputs.Add({FName(TEXT("WarpedUVGrid")),
-					NSLOCTEXT("SMixtormat", "PreviewOutputWarpedUVGrid", "Warped UV Grid"),
-					EMixtormatPreviewOutputKind::WarpedUVGrid, false, true,
-										EffectType != EMixtormatEffectType::GeneratorFlow
-																&& EffectType != EMixtormatEffectType::GravityFlow, NAME_None});
+				Result.Outputs.Add({FName(TEXT("WarpedUV")),
+					NSLOCTEXT("SMixtormat", "BehaviorFlowUV", "Warped UV"),
+					EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, true, NAME_None,
+					true, EMixtormatPublishedFieldKind::UVMap});
 			}
 			Result.Outputs.Add({FName(TEXT("Influence")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputInfluence", "Influence"),
-				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
+				NSLOCTEXT("SMixtormat", "BehaviorFlowInfluence", "Influence"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Scalar01});
 			Result.Outputs.Add({FName(TEXT("Validity")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputValidity", "Validity"),
-				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
-			if (EffectType == EMixtormatEffectType::FlowCarve)
+				NSLOCTEXT("SMixtormat", "BehaviorFlowValidity", "Validity"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Scalar01});
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Carve)
 			{
 				Result.Outputs.Add({FName(TEXT("CarveMask")),
-					NSLOCTEXT("SMixtormat", "PreviewOutputCarveMask", "Carve Mask"),
-					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
+					NSLOCTEXT("SMixtormat", "BehaviorFlowCarveMask", "Carve Mask"),
+					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None,
+					true, EMixtormatPublishedFieldKind::Scalar01});
 			}
 		}
-		else if (EffectType == EMixtormatEffectType::Breakup)
+		break;
+	case EMixtormatLayerChildType::Effect:
+		if (EffectType == EMixtormatEffectType::Breakup)
 		{
 			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
 			// Gap -- so PreviewGapMaskName tells the compositor which published output to borrow
@@ -313,9 +327,6 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputWear", "Wear"), EMixtormatPreviewOutputKind::Mask,
 				true, true, false, NAME_None});
 		}
-		break;
-	case EMixtormatLayerChildType::StructuralWarp:
-		// Structural state is internal to its explicit target; no standalone field or preview.
 		break;
 	case EMixtormatLayerChildType::HeightColorRamp:
 		// The published colour field. Previewable and copyable as a typed field, never as a scalar
@@ -357,6 +368,12 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		{
 			Output.bCopyableAsField = true;
 			Output.FieldKind = EMixtormatPublishedFieldKind::Flow;
+		}
+		if (Output.Name == FName(TEXT("RockEdgeDistance"))
+			|| Output.Name == FName(TEXT("PebbleEdgeDistance")))
+		{
+			Output.bCopyableAsField = true;
+			Output.FieldKind = EMixtormatPublishedFieldKind::SDF;
 		}
 	}
 	if (Result.Outputs.ContainsByPredicate([](const FMixtormatPublishedOutputDesc& Output)

@@ -707,6 +707,22 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 					}
 				}
 
+				// CONTEXT. The viewport hint strip: size, opacity, paddings and inset. Its own tab
+				// rather than rows under Preview, so the strip's knobs are findable as a group.
+				LocateBegin = P.Num();
+				NUM("Context.HintKeycapSize", Context, "Hint Strip", "Keycap Size", ContextLayout.HintKeycapSize, 8, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Context.HintKeycapPadding", Context, "Hint Strip", "Keycap Padding", ContextLayout.HintKeycapPadding, 0, 8, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Context.HintKeyActionGap", Context, "Hint Strip", "Key-Action Gap", ContextLayout.HintKeyActionGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Context.HintItemGap", Context, "Hint Strip", "Item Gap", ContextLayout.HintItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Context.HintStripOpacity", Context, "Hint Strip", "Strip Opacity", ContextLayout.HintStripOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Context.HintStripInset", Context, "Hint Strip", "Strip Inset", ContextLayout.HintStripInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				P.Add(Choice(TEXT("Context.HintStripCorner"), ETab::Context, TEXT("Hint Strip"), TEXT("Strip Position"),
+					{ TEXT("Top Left"), TEXT("Top Center"), TEXT("Top Right"), TEXT("Bottom Left"), TEXT("Bottom Center"), TEXT("Bottom Right") },
+					[](const FMixtormatTheme& T) { return T.ContextLayout.HintStripCorner; },
+					[](FMixtormatTheme& T, int32 V) { T.ContextLayout.HintStripCorner = FMath::Clamp(V, 0, 5); },
+					TEXT(""), EMixtormatThemeRefreshMode::Reconstruct));
+				SetLocateTarget(P, LocateBegin, ETarget::HintStrip);
+
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
 				LocateBegin = P.Num();
 				NUM_DEF("Gallery.BorderWidth", GalleryShell, "Gallery Surface", "Border Width", Gallery.BorderWidth, 0, 4, .25, 2);
@@ -825,6 +841,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		case ETab::GalleryShell: return TEXT("GALLERY / SHELL");
 		case ETab::Typography: return TEXT("TYPOGRAPHY");
 		case ETab::Sources: return TEXT("SOURCES");
+		case ETab::Context: return TEXT("CONTEXT");
 		default: return TEXT("UNKNOWN");
 		}
 	}
@@ -844,6 +861,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		case ETab::GalleryShell: return TEXT("galleryShell");
 		case ETab::Typography: return TEXT("typography");
 		case ETab::Sources: return TEXT("sources");
+		case ETab::Context: return TEXT("context");
 		default: return TEXT("unknown");
 		}
 	}

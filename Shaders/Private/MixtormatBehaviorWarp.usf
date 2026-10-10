@@ -1,0 +1,255 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+
+// Scale an already-lifted destination->source UV map about the identity.
+// Subtracting the identity at each texel preserves periodic displacement
+// and multi-tile winding. Never frac() or shortest-path-wrap this delta.
+int2 OutputSize;
+float Strength;
+uint UseMask;
+Texture2D<float> ScopedMask;
+uint UseInfluence;
+Texture2D<float> InfluenceField;
+Texture2D<float2> SourceCoordinates;
+Texture2D<float> SourceHeight;
+Texture2D<float> BehaviorHeight;
+RWTexture2D<float> OutSignedHeight;
+float GradientReach;
+float4 BehaviorDriverParamsA[2];
+float4 BehaviorDriverParamsB[2];
+Texture2D<float> BehaviorDriverSignal0;
+Texture2D<float> BehaviorDriverSignal1;
+RWTexture2D<float2> OutCoordinates;
+
+// Per-field composition, resolved by gather against the socket's effective kind.
+// Amplitude scales this socket's weight; Reverse flips the sign of its
+// contribution; Blend is the signed-scalar combine and is only ever bound on a
+// socket that was admitted a non-default one.
+float FieldAmplitude;
+uint FieldReversed;
+uint FieldBlend;
+
+// 0 Operation / 1 Add preserve the original additive result; the signed-scalar
+// combines are Push-only, because Warp owns a coordinate rather than a value and
+// Carve's field is a distance rather than a contribution.
+#define MIXTORMAT_FIELD_BLEND_OPERATION 0u
+#define MIXTORMAT_FIELD_BLEND_ADD 1u
+#define MIXTORMAT_FIELD_BLEND_MULTIPLY 2u
+#define MIXTORMAT_FIELD_BLEND_MIN 3u
+#define MIXTORMAT_FIELD_BLEND_MAX 4u
+
+float DrivenBehaviorStrength(int2 Pixel)
+{
+	return MixtormatApplyDriver(Strength,
+		BehaviorDriverSignal0.Load(int3(Pixel, 0)),
+		BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+}
+
+float DrivenBehaviorReach(int2 Pixel)
+{
+	return max(0.0f, MixtormatApplyDriver(GradientReach,
+		BehaviorDriverSignal1.Load(int3(Pixel, 0)),
+		BehaviorDriverParamsA[1], BehaviorDriverParamsB[1]));
+}
+
+// A socket's amplitude multiplies the Behavior's driven Strength. An explicit
+// zero therefore reads as neutral identity rather than as an unavailable field,
+// and a non-finite value can never widen a weight: gather fails it closed.
+float DrivenBehaviorWeight(int2 Pixel)
+{
+	return DrivenBehaviorStrength(Pixel) * FieldAmplitude;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 Source = SourceCoordinates.Load(int3(Pixel, 0));
+	// A scoped Behavior mask gates the displacement, not the generator's
+	// original height/coverage. Flow tracing and UV-map transport share this step.
+	float Weight = DrivenBehaviorWeight(Pixel);
+	if (UseMask != 0u)
+	{
+		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	// An evaluated zero strength is exact identity, even if the input map is
+	// unavailable at this texel. Keep nonzero invalid coordinates invalid.
+	if (!isfinite(Weight) || Weight == 0.0f)
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
+	}
+	if (!all(isfinite(Source)))
+	{
+		const float Invalid = asfloat(0x7fc00000u);
+		OutCoordinates[Pixel] = float2(Invalid, Invalid);
+		return;
+	}
+	// The delta is still lifted at full resolution before it is signed, so a
+	// reverse cannot wrap or shortest-path across a tile seam.
+	const float2 Delta = (FieldReversed != 0u) ? (UV - Source) : (Source - UV);
+	OutCoordinates[Pixel] = UV + Weight * Delta;
+}
+
+
+// The generator-local path derives displacement from the current native
+// signed-height snapshot. It is shared by every generator, not a rock/strata
+// special case. Central differences are in UV units, with periodic neighbours.
+[numthreads(8, 8, 1)]
+void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const int2 Left = int2((Pixel.x + OutputSize.x - 1) % OutputSize.x, Pixel.y);
+	const int2 Right = int2((Pixel.x + 1) % OutputSize.x, Pixel.y);
+	const int2 Down = int2(Pixel.x, (Pixel.y + OutputSize.y - 1) % OutputSize.y);
+	const int2 Up = int2(Pixel.x, (Pixel.y + 1) % OutputSize.y);
+	const float HL = SourceHeight.Load(int3(Left, 0));
+	const float HR = SourceHeight.Load(int3(Right, 0));
+	const float HD = SourceHeight.Load(int3(Down, 0));
+	const float HU = SourceHeight.Load(int3(Up, 0));
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	if (!all(isfinite(float4(HL, HR, HD, HU))))
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
+	}
+	// UV-space derivatives hold their physical slope across resolutions.
+	const float2 Gradient = 0.5f * (float2(HR - HL, HU - HD) * float2(OutputSize));
+	const float Magnitude = length(Gradient);
+	float Weight = DrivenBehaviorWeight(Pixel) * DrivenBehaviorReach(Pixel);
+	if (UseMask != 0u)
+	{
+		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	if (!isfinite(Weight) || Weight == 0.0f)
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
+	}
+	// Smoothly limit large slopes; flat regions remain exactly stationary.
+	const float2 Offset = isfinite(Magnitude) ? Gradient / (1.0f + Magnitude) : float2(0.0f, 0.0f);
+	// Reversing walks the displacement up the slope instead of down it. The
+	// limiter is applied before the sign so magnitude behaviour is unchanged.
+	OutCoordinates[Pixel] = (FieldReversed != 0u)
+		? UV + Weight * Offset : UV - Weight * Offset;
+}
+
+
+// Signed height composition is distinct from UV transport: the producer field
+// contributes an additive native-height delta, without resampling companion maps.
+[numthreads(8, 8, 1)]
+void SignedPushCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Base = SourceHeight.Load(int3(Pixel, 0));
+	float Delta = BehaviorHeight.Load(int3(Pixel, 0));
+	float Weight = DrivenBehaviorWeight(Pixel);
+	if (UseMask != 0u)
+	{
+		const float Gate = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(Gate) ? saturate(Gate) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Influence = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Influence) ? saturate(Influence) : 0.0f;
+	}
+	// Missing/invalid signal data cannot inject an arbitrary native-height delta.
+	if (!isfinite(Weight) || !isfinite(Delta) || Weight == 0.0f)
+	{
+		OutSignedHeight[Pixel] = Base;
+		return;
+	}
+	if (FieldReversed != 0u) { Delta = -Delta; }
+	const float Scaled = Weight * Delta;
+	// Operation and Add are the same additive result. The signed-scalar combines
+	// are Push-only: Warp has no value base and Carve folds a distance, not a
+	// contribution, so neither can be admitted a Blend at all.
+	if (FieldBlend == MIXTORMAT_FIELD_BLEND_MULTIPLY)
+	{
+		OutSignedHeight[Pixel] = Base * (1.0f + Scaled);
+	}
+	else if (FieldBlend == MIXTORMAT_FIELD_BLEND_MIN)
+	{
+		OutSignedHeight[Pixel] = min(Base, Scaled);
+	}
+	else if (FieldBlend == MIXTORMAT_FIELD_BLEND_MAX)
+	{
+		OutSignedHeight[Pixel] = max(Base, Scaled);
+	}
+	else
+	{
+		OutSignedHeight[Pixel] = Base + Scaled;
+	}
+}
+
+// Native signed-height Carve / Deposit: only a typed SDF or a generator's
+// (distance, validity) boundary is accepted. Positive Strength carves, negative
+// Strength deposits. Width is distance in UV units, independent of resolution.
+float CarveWidth;
+uint UseOwnBoundary;
+Texture2D<float> BehaviorDistance;
+Texture2D<float2> BehaviorBoundary;
+
+[numthreads(8, 8, 1)]
+void SignedCarveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Base = SourceHeight.Load(int3(Pixel, 0));
+	float Distance = 0.0f;
+	bool Valid = true;
+	if (UseOwnBoundary != 0u)
+	{
+		const float2 Boundary = BehaviorBoundary.Load(int3(Pixel, 0));
+		Distance = Boundary.x;
+		Valid = isfinite(Distance) && Boundary.y > 0.5f;
+	}
+	else
+	{
+		Distance = BehaviorDistance.Load(int3(Pixel, 0));
+		Valid = isfinite(Distance);
+	}
+	// Reverse mirrors the distance field, so the operation acts on the opposite
+	// side of the boundary rather than merely inverting the sign of the result.
+	// Mirroring before the sign test is what makes that swap total: the side that
+	// was outside becomes inside and carves, and vice versa.
+	if (FieldReversed != 0u) { Distance = -Distance; }
+	if (!Valid || Distance >= 0.0f)
+	{
+		OutSignedHeight[Pixel] = Base;
+		return;
+	}
+	float Weight = DrivenBehaviorWeight(Pixel);
+	if (UseMask != 0u)
+	{
+		const float Gate = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(Gate) ? saturate(Gate) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	const float Profile = saturate(-Distance / max(CarveWidth, 1e-6f));
+	OutSignedHeight[Pixel] = isfinite(Weight) && Weight != 0.0f
+		? Base - Weight * Profile : Base;
+}

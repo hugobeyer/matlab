@@ -12,6 +12,7 @@
 #include "MixtormatMaskBlur.h"
 #include "MixtormatMaskCurvature.h"
 #include "MixtormatOutputReference.h"
+#include "MixtormatBehaviorTypes.h"
 #include "MixtormatParameterTypes.h"
 #include "MixtormatLayerTypes.generated.h"
 
@@ -159,9 +160,16 @@ enum class EMixtormatLayerChildType : uint8
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
-	// Appended: a structural input module, independent of height combination and UV warping.
-	HeightPush UMETA(DisplayName = "Height Push"),
-		StructuralWarp UMETA(DisplayName = "Structural Warp")
+	// DEPRECATED authoring tags. Their values are append-only and must never move, reorder
+	// or be removed: EMixtormatLayerChildType is serialized by value, so renumbering silently
+	// retypes every child in every saved asset. HeightPush is now a Behavior of type Push and
+	// StructuralWarp is a Behavior of type Warp; both are unreachable from authoring, gather
+	// and execution, and their payload structs are gone.
+	HeightPush UMETA(DisplayName = "Height Push", Deprecated = "Use EMixtormatLayerChildType::Behavior"),
+	StructuralWarp UMETA(DisplayName = "Structural Warp", Deprecated = "Use EMixtormatLayerChildType::Behavior"),
+	// Appended: a Generator child that rewrites an earlier Generator's own output.
+	// This is the one and only structural authoring path.
+	Behavior UMETA(DisplayName = "Behavior")
 };
 
 USTRUCT(BlueprintType)
@@ -269,11 +277,14 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightColorRamp"))
 	FMixtormatGeneratorHeightColorRamp HeightColorRamp;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::HeightPush"))
-	FMixtormatGeneratorHeightPush HeightPush;
-
-		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::StructuralWarp"))
-		FMixtormatGeneratorStructuralWarp StructuralWarp;
+	// The one structural authoring payload: a Generator child rewrites an earlier Generator's
+	// own output through typed field slots, an explicit stage, strength and influence.
+	//
+	// The legacy HeightPush / StructuralWarp payload slots were deleted with their structs.
+	// Nothing migrated them because nothing authored them: those two enum values above were
+	// never reachable from a menu, so no saved child can carry either type.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Behavior"))
+	FMixtormatBehavior Behavior;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };

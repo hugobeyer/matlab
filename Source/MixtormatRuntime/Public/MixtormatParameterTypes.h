@@ -40,11 +40,16 @@ enum class EMixtormatParameterOwnerType : uint8
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
-	HeightPush UMETA(DisplayName = "Height Push"),
-		StructuralWarp UMETA(DisplayName = "Structural Warp"),
-	// Appended: the inline Noise payload nested inside an ordinary Mask child.
+	// Deprecated. HeightPush (23), StructuralWarp (24) and StructuralWarpFlow (26) are dead
+	// parameter owners: their authoring path and payloads are gone, and their values are held
+	// back so the enum's remaining indices keep matching what saved bindings stored. Nothing
+	// resolves to them any more, so a binding naming one simply stops driving anything.
 	MaskNoise = 25 UMETA(DisplayName = "Mask Noise"),
-	StructuralWarpFlow = 26 UMETA(DisplayName = "Structural Warp Flow")
+	// The one structural parameter owner. Flow lives inside the Behavior's Direction socket,
+	// so one owner covers the payload and one covers the typed reference inside it.
+	Behavior = 27 UMETA(DisplayName = "Behavior"),
+	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow Ref"),
+	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow")
 };
 
 UENUM(BlueprintType)

@@ -6,6 +6,8 @@
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
 
 uint GeneratorLayer;
+uint UsePreGenerationUV;
+Texture2D<float2> PreGenerationUV;
 float2 GeneratorUVScale;
 float2 GeneratorUVOffset;
 int GeneratorUVRotation;
@@ -14,6 +16,32 @@ uint GeneratorUVFlipV;
 
 float2 MixtormatGeneratorUV(float2 UV)
 {
+	if (UsePreGenerationUV != 0u)
+	{
+		uint W, H;
+		PreGenerationUV.GetDimensions(W, H);
+		const int2 Size = int2(W, H);
+		const float2 Texel = UV * float2(Size) - 0.5f;
+		const int2 Anchor = int2(floor(Texel));
+		const float2 Blend = frac(Texel);
+		float2 Mapped = 0.0f;
+		bool Valid = true;
+		[unroll] for (int Y = 0; Y < 2; ++Y)
+		{
+			[unroll] for (int X = 0; X < 2; ++X)
+			{
+				const int2 Index = Anchor + int2(X, Y);
+				const int2 Wrapped = (Index % Size + Size) % Size;
+				const float2 Tile = floor(float2(Index) / float2(Size));
+				const float2 P = PreGenerationUV.Load(int3(Wrapped, 0));
+				Valid = Valid && all(isfinite(P));
+				const float Weight = (X == 0 ? 1.0f - Blend.x : Blend.x)
+					* (Y == 0 ? 1.0f - Blend.y : Blend.y);
+				Mapped += (P + Tile) * Weight;
+			}
+		}
+		UV = Valid ? Mapped : UV;
+	}
 	// Child generators retain their original evaluation frame, including its last bits.
 	return GeneratorLayer != 0u
 		? MixtormatSourceUV(UV, GeneratorUVScale, GeneratorUVOffset,

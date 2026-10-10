@@ -100,6 +100,9 @@ namespace Mixtormat
 				return Is(Type, TEXT("SMixtormatPreviewPlate"))
 					|| Is(Type, TEXT("SMixtormatPreviewViewport"));
 
+			case EMixtormatStyleTarget::HintStrip:
+				return Is(Type, TEXT("SMixtormatHintStrip"));
+
 			case EMixtormatStyleTarget::Gallery:
 				return Is(Type, TEXT("SMixtormatTile"));
 
@@ -207,6 +210,7 @@ namespace Mixtormat
 		case EMixtormatStyleTarget::Button: return NSLOCTEXT("MixtormatStyleLocator", "Button", "Shared action button");
 		case EMixtormatStyleTarget::Menu: return NSLOCTEXT("MixtormatStyleLocator", "Menu", "Menu / popup");
 		case EMixtormatStyleTarget::Preview: return NSLOCTEXT("MixtormatStyleLocator", "Preview", "Preview controls");
+		case EMixtormatStyleTarget::HintStrip: return NSLOCTEXT("MixtormatStyleLocator", "HintStrip", "Viewport hint strip");
 		case EMixtormatStyleTarget::Gallery: return NSLOCTEXT("MixtormatStyleLocator", "Gallery", "Gallery tiles");
 		case EMixtormatStyleTarget::Shell: return NSLOCTEXT("MixtormatStyleLocator", "Shell", "Editor shell");
 		case EMixtormatStyleTarget::TopBar: return NSLOCTEXT("MixtormatStyleLocator", "TopBar", "Top bar");

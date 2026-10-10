@@ -31,18 +31,6 @@ namespace MixtormatLayersPrivate
 			&& EffectTypeOf(Child) == EMixtormatEffectType::FlowWarp;
 	}
 
-	bool IsGeneratorFlow(const FMixtormatLayerChild& Child)
-	{
-		return Child.Type == EMixtormatLayerChildType::Effect
-			&& MixtormatIsGeneratorFlowEffect(EffectTypeOf(Child));
-	}
-
-	bool CanOwnGeneratorFlow(const FMixtormatLayerChild& Child)
-	{
-		return Child.Type == EMixtormatLayerChildType::Generator
-			&& MixtormatCanOwnGeneratorFlow(Child.Generator.Type);
-	}
-
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		return MixtormatChildScope::CanOwnScopedMasks(Child);
@@ -94,8 +82,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightBlend:     return Child.HeightBlend.bEnabled;
 		case EMixtormatLayerChildType::HeightCurve:     return Child.HeightCurve.bEnabled;
 		case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
-		case EMixtormatLayerChildType::HeightPush:      return Child.HeightPush.bEnabled;
-				case EMixtormatLayerChildType::StructuralWarp:  return Child.StructuralWarp.bEnabled;
+		case EMixtormatLayerChildType::Behavior:        return Child.Behavior.bEnabled;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently reporting the Mask payload's flag.
@@ -129,8 +116,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightBlend:     Child.HeightBlend.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightCurve:     Child.HeightCurve.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightColorRamp: Child.HeightColorRamp.bEnabled = bEnabled; break;
-		case EMixtormatLayerChildType::HeightPush:      Child.HeightPush.bEnabled = bEnabled; break;
-				case EMixtormatLayerChildType::StructuralWarp:  Child.StructuralWarp.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Behavior:        Child.Behavior.bEnabled = bEnabled; break;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
 			// silently mutating the Mask payload's flag.
@@ -534,9 +520,9 @@ namespace MixtormatLayersPrivate
 		}
 		const TArray<FMixtormatLayerChild>* Children = FindChildrenInScope(Scope, DestOwnerId);
 		const int32 SourceIndex = Children ? FindChildById(*Children, SourceChildId) : INDEX_NONE;
-		// One legal ancestor read: an owned generator flow tool may use a named, copyable
+		// One legal ancestor read: an owned Behavior may use a named, copyable
 		// feature from its *own* generator as a gate. The generator pass publishes that
-		// pre-flow snapshot before solving the tool; the final/post-flow output is not
+		// pre-flow snapshot before solving the Behavior; the final/post-flow output is not
 		// consulted here. No other ancestor edge is exempt from feedback rejection.
 		if (Child.Type == EMixtormatLayerChildType::Mask && Children && Source
 			&& Scope.GetLayers().ContainsByPredicate([DestOwnerId](const FMixtormatLayer& Layer)
@@ -548,7 +534,7 @@ namespace MixtormatLayersPrivate
 		{
 			const int32 FlowIndex = FindChildById(*Children, Child.ScopeOwnerChildId);
 			if (Children->IsValidIndex(FlowIndex) && SourceIndex < FlowIndex
-				&& FlowIndex < InsertIndex && IsGeneratorFlow((*Children)[FlowIndex])
+				&& FlowIndex < InsertIndex && (*Children)[FlowIndex].Type == EMixtormatLayerChildType::Behavior
 				&& (*Children)[FlowIndex].ScopeOwnerChildId == SourceChildId)
 			{
 				const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
@@ -694,9 +680,31 @@ namespace MixtormatLayersPrivate
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
-		if (IsGeneratorFlow(Child))
+		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
-			return CanOwnGeneratorFlow(Owner);
+			return Owner.Type == EMixtormatLayerChildType::Generator
+				&& !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
+				&& Child.Generator.Type == EMixtormatGeneratorType::Noise
+				&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
+		}
+		if (Child.Type == EMixtormatLayerChildType::Behavior)
+		{
+			if (Owner.Type == EMixtormatLayerChildType::Generator)
+			{
+				return !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow);
+			}
+			if (Owner.Type != EMixtormatLayerChildType::Behavior)
+			{
+				return false;
+			}
+			// A child Flow Field modifies the immediate parent's input; nested
+			// operations must remain in the existing scoped child tree.
+			return Child.Behavior.Type == EMixtormatBehaviorType::FlowField
+				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Push
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Warp
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform);
 		}
 		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
@@ -758,11 +766,15 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
-		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
-				case EMixtormatChildCreation::StructuralWarp:  return EMixtormatLayerChildType::StructuralWarp;
+		case EMixtormatChildCreation::BehaviorWarp:     return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorPush:     return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorCarve:    return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorDeform:   return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorFlowField: return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
 		default:                                       return EMixtormatLayerChildType::Mask;
 		}
@@ -828,6 +840,39 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Noise:
 			Child.Generator.Type = EMixtormatGeneratorType::Noise;
+			break;
+		case EMixtormatChildCreation::NoiseFlow:
+		{
+			// The Flow creation preset: the same Noise V2 generator, with the P0 Flow defaults
+			// (FINAL_BEHAVIOR_PLAN section 12). Authoring defaults first, exactly like a Noise
+			// mask prototype, so the preset starts configured like its Noise counterpart.
+			FMixtormatLayerChild NoiseDefaults;
+			NoiseDefaults.Type = EMixtormatLayerChildType::Generator;
+			NoiseDefaults.Generator.Type = EMixtormatGeneratorType::Noise;
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(NoiseDefaults);
+			Child.Generator.Type = EMixtormatGeneratorType::Noise;
+			Child.Generator.Noise = NoiseDefaults.Generator.Noise;
+			Child.Generator.Noise.NoisePreset = EMixtormatNoisePreset::Flow;
+			Child.Generator.Noise.bNoiseWriteHeight = false;
+			Child.Generator.Noise.bNoiseWriteFlow = true;
+			Child.Generator.Noise.NoiseDirectionHeightWeight = 0.0f;
+			Child.Generator.Noise.NoiseDirectionCurlWeight = 1.0f;
+			break;
+		}
+		case EMixtormatChildCreation::BehaviorPush:
+			Child.Behavior.Type = EMixtormatBehaviorType::Push;
+			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
+			break;
+		case EMixtormatChildCreation::BehaviorCarve:
+			Child.Behavior.Type = EMixtormatBehaviorType::Carve;
+			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
+			break;
+		case EMixtormatChildCreation::BehaviorFlowField:
+			Child.Behavior.Type = EMixtormatBehaviorType::FlowField;
+			break;
+		case EMixtormatChildCreation::BehaviorDeform:
+			Child.Behavior.Type = EMixtormatBehaviorType::Deform;
+			Child.Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::None;
 			break;
 		case EMixtormatChildCreation::Peeling:
 			Child.Effect.Effect.Reset();
@@ -1024,8 +1069,9 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightPush
-						|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::StructuralWarp))
+			// A Behavior is stored through SelectedMaskIndex too. Without it here the selected
+			// address is invalid and every GetSelectedBehavior*() reports nothing selected.
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Behavior))
 	{
 		return SelectedMaskIndex;
 	}
@@ -1372,10 +1418,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
-			case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
-			case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
-			case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
-			case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 			case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
@@ -1388,10 +1430,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return Child.Effect.StainMode == EMixtormatStainMode::Deposit
 				? LOCTEXT("DepositStainEffectName", "Stain Deposit")
 				: LOCTEXT("WetStainEffectName", "Wet Stain");
-		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
-		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
-		case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
-		case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
@@ -1400,6 +1438,18 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 		case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling");
+		}
+	}
+	if (Child.Type == EMixtormatLayerChildType::Behavior)
+	{
+		switch (Child.Behavior.Type)
+		{
+		case EMixtormatBehaviorType::Warp: return LOCTEXT("BehaviorWarpChildName", "Warp");
+		case EMixtormatBehaviorType::Push: return LOCTEXT("BehaviorPushChildName", "Push");
+		case EMixtormatBehaviorType::Carve: return LOCTEXT("BehaviorCarveChildName", "Carve / Deposit");
+		case EMixtormatBehaviorType::Deform: return LOCTEXT("BehaviorDeformChildName", "Deform");
+		case EMixtormatBehaviorType::FlowField: return LOCTEXT("BehaviorFlowFieldChildName", "Flow Field");
+		default: return LOCTEXT("BehaviorChildName", "Behavior");
 		}
 	}
 	if (Child.Type == EMixtormatLayerChildType::Generated)
@@ -1425,7 +1475,11 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
 		case EMixtormatGeneratorType::Noise:
-			return LOCTEXT("NoiseChildName", "Noise");
+			// Preset identity persists independently of the output toggles: a Flow that later
+			// enables Height stays a Flow (FINAL_BEHAVIOR_PLAN section 12).
+			return Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow
+				? LOCTEXT("FlowChildName", "Flow")
+				: LOCTEXT("NoiseChildName", "Noise");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}
@@ -1531,14 +1585,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("HeightColorRampChildName", "Color Ramp");
 	}
-	if (Child.Type == EMixtormatLayerChildType::HeightPush)
-	{
-		return LOCTEXT("HeightPushChildName", "Height Push");
-	}
-	if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
-	{
-		return LOCTEXT("StructuralWarpChildName", "Structural Warp");
-	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
 		: Child.Mask.MaskTexture.ToSoftObjectPath();
@@ -1574,11 +1620,10 @@ FMixtormatLayerChild* SMixtormat::AppendGroupChild(
 	const FGuid GroupId,
 	const EMixtormatLayerChildType ChildType)
 {
-	if (ChildType == EMixtormatLayerChildType::HeightPush
-		|| ChildType == EMixtormatLayerChildType::StructuralWarp)
-	{
-		return nullptr;
-	}
+	// A Behavior names its generator through ScopeOwnerChildId, and a shared group's generator
+	// set is not one any member owns, so a group can never host one. Structural modules used to
+	// be layer-local for the same reason.
+	if (ChildType == EMixtormatLayerChildType::Behavior) { return nullptr; }
 	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
 	if (!Group)
 	{
@@ -1639,6 +1684,24 @@ bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 	return !Target.IsGroup() && !Target.ScopeOwnerChildId.IsValid()
 		&& WorkingLayers.IsValidIndex(Target.LayerIndex)
 		&& WorkingLayers[Target.LayerIndex].Type == EMixtormatLayerType::Generator;
+}
+
+bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const
+{
+	if (Target.IsGroup() || !Target.ScopeOwnerChildId.IsValid()
+		|| !WorkingLayers.IsValidIndex(Target.LayerIndex)
+		|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator)
+	{
+		return false;
+	}
+	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
+	const int32 Index = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
+	return Children.IsValidIndex(Index)
+		&& Children[Index].Type == EMixtormatLayerChildType::Generator
+		&& !(Children[Index].Generator.Type == EMixtormatGeneratorType::Noise
+			&& Children[Index].Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
+		&& !Children[Index].IsInstance()
+		&& MixtormatLayersPrivate::CanAddScopedChild(Children, Index);
 }
 
 FMixtormatMaskCurvature* SMixtormat::GetSelectedLayerCurvature()
@@ -2069,29 +2132,57 @@ const FMixtormatGeneratorHeightBlend* SMixtormat::GetSelectedHeightBlend() const
 	return nullptr;
 }
 
-FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush()
+
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorWarp()
 {
-	return const_cast<FMixtormatGeneratorHeightPush*>(
-		static_cast<const SMixtormat*>(this)->GetSelectedHeightPush());
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorWarp());
 }
 
-const FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush() const
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorWarp() const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-	return Child && Child->Type == EMixtormatLayerChildType::HeightPush ? &Child->HeightPush : nullptr;
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Warp ? &Child->Behavior : nullptr;
 }
 
-FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp()
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorPush()
 {
-	return const_cast<FMixtormatGeneratorStructuralWarp*>(
-		static_cast<const SMixtormat*>(this)->GetSelectedStructuralWarp());
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorPush());
 }
-
-const FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp() const
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorPush() const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-	return Child && Child->Type == EMixtormatLayerChildType::StructuralWarp ? &Child->StructuralWarp : nullptr;
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Push ? &Child->Behavior : nullptr;
 }
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorDeform()
+{
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorDeform());
+}
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorDeform() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Deform ? &Child->Behavior : nullptr;
+}
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorCarve()
+{
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorCarve());
+}
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorCarve() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Carve ? &Child->Behavior : nullptr;
+}
+
 
 FMixtormatGeneratorHeightCurve* SMixtormat::GetSelectedHeightCurve()
 {
@@ -2421,28 +2512,6 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges() const
 		return nullptr;
 	}
 	return Effect;
-}
-
-bool SMixtormat::CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const
-{
-	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
-	const int32 OwnerIndex = ResolveChildIndexAt(Owner);
-	return Children && Children->IsValidIndex(OwnerIndex)
-		&& CanOwnGeneratorFlow((*Children)[OwnerIndex])
-		&& CanAddScopedChild(*Children, OwnerIndex);
-}
-
-FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow()
-{
-	return const_cast<FMixtormatLayerEffect*>(
-		static_cast<const SMixtormat*>(this)->GetSelectedGeneratorFlow());
-}
-
-const FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow() const
-{
-	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-	return Effect && Effect->Effect.IsNull()
-		&& MixtormatIsGeneratorFlowEffect(Effect->ProceduralType) ? Effect : nullptr;
 }
 
 FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp()

@@ -1,7 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-#include "UI/Layers/SMixtormatSourceRow.h"
 #include "Widgets/SMixtormat.h"
+#include "UI/Layers/SMixtormatSourceRow.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatLocatorOutline.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
@@ -262,7 +262,6 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 {
 	// A fresh history baseline also begins a fresh document-local disclosure session.
 	CollapsedGeneratorAddresses.Reset();
-	StructuralEndpointPreview.Reset();
 	UndoHistory.Reset();
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
@@ -739,6 +738,78 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	{
 		return ToggleBottomLibraryCollapsed();
 	}
+	// Del on the selection: the same removals the context menus offer, no confirmation.
+	// Undoable like every edit -- the removal functions record history themselves.
+	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
+		&& !InKeyEvent.IsRepeat() && InKeyEvent.GetKey() == EKeys::Delete)
+	{
+		// A selected source keeps its own context menu; Del is scoped to layers and children.
+		if (!SelectedSourceId.IsValid())
+		{
+			if (SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE)
+			{
+				// Multi-select: every selected child of the group, one history entry.
+				const TArray<int32> Selected = GetSelectedGroupChildIndices();
+				if (Selected.Num() > 1)
+				{
+					// Remove highest index first so earlier indices stay valid.
+					for (int32 Index = Selected.Last(); Index >= 0; --Index)
+					{
+						if (Selected.Contains(Index))
+						{
+							RemoveGroupChild(SelectedGroupId, Index);
+						}
+					}
+					return FReply::Handled();
+				}
+				return RemoveGroupChild(SelectedGroupId, SelectedGroupChildIndex);
+			}
+			if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+			{
+				// Multi-select: every selected layer, one gesture. Remove highest index first so
+				// earlier indices stay valid; each removal records history, so undo walks back
+				// through them one at a time.
+				const TArray<int32> Selected = GetSelectedLayerIndices();
+				if (Selected.Num() > 1)
+				{
+					for (int32 Index = Selected.Last(); Index >= 0; --Index)
+					{
+						if (Selected.Contains(Index))
+						{
+							DeleteSelectedLayer();
+							// DeleteSelectedLayer acts on SelectedLayerIndex; point it at the next
+							// selected layer before the next call.
+							if (Index > 0)
+							{
+								SelectedLayerIndex = Selected[Index - 1];
+							}
+						}
+					}
+					return FReply::Handled();
+				}
+				return DeleteSelectedLayer();
+			}
+			if (GetSelectedChildIndex() != INDEX_NONE)
+			{
+				const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+				if (Child)
+				{
+					switch (Child->Type)
+					{
+					case EMixtormatLayerChildType::Effect:
+						return RemoveLayerEffect(SelectedLayerIndex, GetSelectedChildIndex());
+					case EMixtormatLayerChildType::Mask:
+					case EMixtormatLayerChildType::Blur:
+					case EMixtormatLayerChildType::Curvature:
+						return RemoveMaskFromLayer(SelectedLayerIndex, GetSelectedChildIndex());
+					default:
+						return RemoveGeneratedFromLayer(SelectedLayerIndex, GetSelectedChildIndex());
+					}
+				}
+			}
+		}
+		return FReply::Unhandled();
+	}
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }
 
@@ -763,8 +834,6 @@ void SMixtormat::RefreshLayeredPreview(const bool bMarkDirty)
 	// Before anything reads the stack: an instance shows what its source says, and the row,
 	// the badge and the inspector all read the authored payload to find that out.
 	SyncChildInstances();
-	StructuralIncomingCountLabels.Reset();
-	StructuralConnectionLabelCache.Reset();
 
 	bInteractiveEdit = IsInteractiveEdit() || bInteractiveEdit;
 	bPreviewSubmitPending = true;

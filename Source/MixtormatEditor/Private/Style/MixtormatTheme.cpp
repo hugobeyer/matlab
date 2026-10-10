@@ -406,6 +406,14 @@ namespace Mixtormat
 		T.PreviewLayout.QuickControlsGuideGlowDiameter = 720.0f;
 		T.PreviewLayout.QuickControlsGuideGlowOpacity = 0.65f;
 
+		T.ContextLayout.HintKeycapSize = 14.0f;
+		T.ContextLayout.HintKeycapPadding = 2.0f;
+		T.ContextLayout.HintKeyActionGap = 4.0f;
+		T.ContextLayout.HintItemGap = 8.0f;
+		T.ContextLayout.HintStripOpacity = 0.75f;
+		T.ContextLayout.HintStripInset = 8.0f;
+		T.ContextLayout.HintStripCorner = 2; // Top Right
+
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
 		T.GalleryLayout.DrawerInitialHeight = 256.0f;
@@ -797,6 +805,13 @@ namespace Mixtormat
 		T.PreviewLayout.ResolutionControlWidth = 122.0f;
 		T.PreviewLayout.TogglePadding = 3.0f;
 		T.PreviewLayout.FinalPopupWidth = 256.0f;
+		T.ContextLayout.HintKeycapSize = 14.0f;
+		T.ContextLayout.HintKeycapPadding = 2.0f;
+		T.ContextLayout.HintKeyActionGap = 4.0f;
+		T.ContextLayout.HintItemGap = 8.0f;
+		T.ContextLayout.HintStripOpacity = 0.75f;
+		T.ContextLayout.HintStripInset = 8.0f;
+		T.ContextLayout.HintStripCorner = 2; // Top Right
 		T.Gallery.BorderWidth = 0.0f;
 		T.Gallery.BorderOpacity = 1.0f;
 		T.Gallery.HoverLiftOpacity = 0.0f;

@@ -20,14 +20,6 @@ enum class EMixtormatChildOwnerType : uint8
 	Source
 };
 
-enum class EStructuralLinkHighlightRole : uint8
-{
-	None,
-	Source,
-	Target,
-	Both
-};
-
 // A child's address, stable across a reorder within its own container (it is never an index).
 // LayerIndex/ChildIndex pairs, which most of SMixtormat still uses, only ever named a layer child;
 // this is their generalization to "layer or group". A layer producer uses OwnerId with an invalid
@@ -56,11 +48,21 @@ struct FMixtormatChildAddress
 	}
 };
 
-// Picker-owned, editor-only endpoints; never serialized or added to selection/history.
-struct FMixtormatStructuralEndpointPreview
+// A display row: one child, plus where it sits in the indented tree. Display only --
+// indices into a row array never address an authored child array, which is why the
+// authored position travels alongside as its own field rather than being implied.
+//
+// A row carries nothing about structural endpoints. Those went with the Height Push
+// and Structural Warp modules: a Behavior names its generator through ScopeOwnerChildId
+// and its fields through typed sockets, so the only nesting a row has is scope.
+struct FMixtormatProjectedChildRow
 {
-	FMixtormatChildAddress Source;
-	FMixtormatChildAddress Target;
+	FMixtormatChildAddress Address;
+	int32 AuthoredChildIndex = INDEX_NONE;
+	int32 VisualParentRowIndex = INDEX_NONE;
+	int32 AuthoredScopeDepth = 0;
+	// Exclusive authored boundary; INDEX_NONE means no safe contiguous subtree boundary.
+	int32 AuthoredSubtreeEnd = INDEX_NONE;
 };
 
 // What the clipboard is holding and what a paste should do with it.

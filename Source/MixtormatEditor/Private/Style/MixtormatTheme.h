@@ -814,6 +814,30 @@ namespace Mixtormat
 		float QuickControlsVignetteFalloff = 2.0f;
 	};
 
+	// Viewport contextual hint strip (CONTEXT tab in UI STYLE).
+	//
+	// Its own inset rather than PreviewLayout.OverlayInset: that one spaces the viewport
+	// toolbars, and the strip must not move when a toolbar inset is retuned -- the same
+	// reasoning as OverlayPanelInset.
+	struct FMixtormatContextMetrics
+	{
+		// Keycap box height; width follows the glyph plus padding.
+		float HintKeycapSize = 14.0f;
+		// Padding inside the keycap plate, each side.
+		float HintKeycapPadding = 2.0f;
+		// Gap between a keycap and its action text.
+		float HintKeyActionGap = 4.0f;
+		// Gap between one key/action pair and the next.
+		float HintItemGap = 8.0f;
+		// Whole-strip render opacity.
+		float HintStripOpacity = 0.75f;
+		// Inset from the pinned edge.
+		float HintStripInset = 8.0f;
+		// Where the strip pins: 0 Top Left, 1 Top Center, 2 Top Right, 3 Bottom Left,
+		// 4 Bottom Center, 5 Bottom Right.
+		int32 HintStripCorner = 2;
+	};
+
 	struct FMixtormatGalleryMetrics
 	{
 		// The gallery's INITIAL tile size, read once in SMixtormat::Construct. It is a seed, not a
@@ -1066,6 +1090,11 @@ namespace Mixtormat
 
 		FMixtormatPreviewTheme Preview;
 		FMixtormatPreviewMetrics PreviewLayout;
+
+		// Viewport contextual hint strip. Its own struct rather than PreviewLayout: the strip is
+		// workspace chrome that must not move when a toolbar inset is retuned, and its tokens
+		// group under the CONTEXT tab in UI STYLE.
+		FMixtormatContextMetrics ContextLayout;
 
 		FMixtormatGalleryTheme Gallery;
 		FMixtormatGalleryMetrics GalleryLayout;

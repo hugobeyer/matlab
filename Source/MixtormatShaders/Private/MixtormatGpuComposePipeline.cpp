@@ -517,9 +517,23 @@ namespace MixtormatGpuCompositor
 					}
 					for (const FChildRenderData& Child : DemandLayer.Children)
 					{
-						if (Child.Type != EMixtormatLayerChildType::StructuralWarp) { continue; }
-						for (const FScalarDriverRenderData& Driver : Child.StructuralWarp.Drivers)
+						const FScalarDriverRenderData* Drivers = nullptr;
+						if (Child.Type == EMixtormatLayerChildType::Behavior)
 						{
+							for (const FScalarDriverRenderData& Driver : Child.Behavior.ScalarDrivers)
+							{
+								if (Driver.bEnabled && !Driver.bRegionSource
+									&& Driver.SourceLayerId != DemandLayer.LayerId)
+								{
+									DriverSnapshotDemand.Add(Driver.SourceLayerId);
+								}
+							}
+							Drivers = Child.Behavior.FlowDrivers;
+						}
+						if (!Drivers) { continue; }
+						for (int32 Slot = 0; Slot < 2; ++Slot)
+						{
+							const FScalarDriverRenderData& Driver = Drivers[Slot];
 							if (Driver.bEnabled && !Driver.bRegionSource
 								&& Driver.SourceLayerId != DemandLayer.LayerId)
 							{
@@ -712,15 +726,31 @@ namespace MixtormatGpuCompositor
 								// Includes scoped group inputs and local alias chains before prefix reuse.
 								Ctx.PublishedFieldDemand.Add(Child.OutputReference.Source);
 							}
-							if (Child.Type == EMixtormatLayerChildType::HeightPush
-								&& Child.HeightPush.Source.Source.ChildIndex != INDEX_NONE)
+							if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& (Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+									|| Child.Behavior.Stage == EMixtormatBehaviorStage::PreGeneration)
+								&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+									|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+								&& Child.Behavior.Direction.Source.ChildIndex != INDEX_NONE)
 							{
-								Ctx.PublishedFieldDemand.Add(Child.HeightPush.Source.Source);
+								// Demand before the producer runs. A neutral flow tool may
+								// otherwise skip the FlowDirection/UV publication entirely.
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Direction.Source);
 							}
-							if (Child.Type == EMixtormatLayerChildType::StructuralWarp
-								&& Child.StructuralWarp.Source.Source.ChildIndex != INDEX_NONE)
+							if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+								&& (Child.Behavior.Type == EMixtormatBehaviorType::Push
+									|| Child.Behavior.Type == EMixtormatBehaviorType::Carve)
+								&& Child.Behavior.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+								&& Child.Behavior.Height.Source.ChildIndex != INDEX_NONE)
+						{
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Height.Source);
+						}
+						if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& Child.Behavior.bHasInfluence
+								&& Child.Behavior.Influence.Source.ChildIndex != INDEX_NONE)
 							{
-								Ctx.PublishedFieldDemand.Add(Child.StructuralWarp.Source.Source);
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Influence.Source);
 							}
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{
@@ -1067,12 +1097,6 @@ namespace MixtormatGpuCompositor
 							}
 
 							const FEffectRenderData& Effect = Child.Effect;
-							if (MixtormatIsGeneratorFlowEffect(Effect.Type))
-							{
-								// Already run inside its owning Rock Formation, before this loop
-								// (AddGeneratorLayerPasses). Must not fall through to the peel default.
-								continue;
-							}
 							FRDGTextureRef FeatureMask =
 								AddScopedFeatureMask(
 									Ctx, LayerCtx, Layer, Child.SourceChildIndex,

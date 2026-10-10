@@ -5,7 +5,6 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
-#include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -36,21 +35,23 @@ namespace
 	}
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
+	TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 {
 	MixtormatMenu::FBuilder Menu;
-	const TPair<FText, EMixtormatGeneratorType> Entries[] = {
-		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatGeneratorType::StrataCarver},
-		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatGeneratorType::Cracks},
-		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatGeneratorType::RockFormation},
-		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatGeneratorType::Pebbles},
-		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatGeneratorType::CliffStrata},
-		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatGeneratorType::Noise},
+	// Noise and Flow are two creation presets of one generator (FINAL_BEHAVIOR_PLAN section 12);
+	// the entries name creation kinds, so Flow carries its own defaults without a second type.
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatChildCreation::StrataCarver},
+		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatChildCreation::Cracks},
+		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatChildCreation::RockFormation},
+		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
+		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
+		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
 	};
 	for (const auto& Entry : Entries)
 	{
 		Menu.Item(Entry.Key, MixtormatIcons::Generator(),
-			FSimpleDelegate::CreateLambda([this, Type = Entry.Value]() { AddGeneratorLayer(Type); }));
+			FSimpleDelegate::CreateLambda([this, Kind = Entry.Value]() { AddGeneratorLayerCreation(Kind); }));
 	}
 	return Menu.Build();
 }
@@ -218,48 +219,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex, const int32 ChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(LOCTEXT("MoveChildToLayerCaption", "Move To"));
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& (IsMaskFilter(*ResolveChild(LayerIndex, ChildIndex))
-			|| IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))))
-	{
-		Menu.Item(
-			IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))
-				? LOCTEXT("MoveFlowWithGenerator", "Move the owning generator instead")
-				: LOCTEXT("MoveMaskFilterWithMask", "Move the owning mask instead"),
-			nullptr,
-			FSimpleDelegate()).Enabled(false);
-		return Menu.Build();
-	}
-	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
-	{
-		if (DestIndex == LayerIndex)
-		{
-			continue;
-		}
-		Menu.Item(
-			WorkingLayers[DestIndex].DisplayName,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, DestIndex]()
-			{
-				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
-			})).Enabled(!WorkingLayers.IsValidIndex(LayerIndex)
-				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-				|| (ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::HeightPush
-					&& ResolveChild(LayerIndex, ChildIndex)->Type != EMixtormatLayerChildType::StructuralWarp));
-	}
-	if (Menu.IsEmpty())
-	{
-		Menu.Item(LOCTEXT("MoveChildNoLayers", "No other layer"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-	}
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatChildAddress Address)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -308,7 +267,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
 				}))
-				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
+				.Enabled(Candidate.Type != EMixtormatLayerChildType::Behavior
+					|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator));
 		}
 	}
 	// A group's shared children are exactly as valid a source as a layer's -- see
@@ -343,7 +303,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
 				}))
-				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
+				.Enabled(Candidate.Type != EMixtormatLayerChildType::Behavior
+					|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator));
 		}
 	}
 	if (Menu.IsEmpty())
@@ -385,15 +346,6 @@ void SMixtormat::AddSharedChildMenuItems(
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const bool bInstance = Child && Child->IsInstance();
 
-	// Generator-flow tools only exist for a generator that can carry them. On anything else the
-	// three rows were permanently disabled -- clutter no state could ever enable -- so they are
-	// omitted rather than shown greyed. A generator that can own them keeps them, disabled only
-	// while the current state (a full scope, say) blocks the add.
-	if (Child && CanOwnGeneratorFlow(*Child))
-	{
-		AddGeneratorFlowMenuItems(Menu, Address);
-		Menu.Separator();
-	}
 	Menu.Item(
 		LOCTEXT("CopyChildContext", "Copy"),
 		MixtormatIcons::Duplicate(),
@@ -449,17 +401,6 @@ void SMixtormat::AddSharedChildMenuItems(
 			MixtormatIcons::Mask(),
 			FSimpleDelegate::CreateLambda([this, Address]() { PasteAsGatingMask(Address); }));
 	}
-	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
-	{
-		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-			[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
-		const int32 ChildIndex = ResolveChildIndexAt(Address);
-		Menu.SubMenu(
-			LOCTEXT("MoveChildToLayerContext", "Move to Layer..."),
-			nullptr,
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildMoveChildToLayerMenu, LayerIndex, ChildIndex));
-	}
-
 	if (Child && Child->Type == EMixtormatLayerChildType::OutputReference && !bInstance)
 	{
 		Menu.Separator();
@@ -511,12 +452,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 {
 	MixtormatMenu::FBuilder Menu;
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	// ID children are movable; scoped mask/flow tools still travel with their owner.
-	const bool bCanLeaveGroup = Group
-		&& Group->Children.IsValidIndex(ChildIndex)
-		&& (!Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
-			|| IsIdGroupChild(Group->Children[ChildIndex]))
-		&& !IsMaskFilter(Group->Children[ChildIndex]);
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
 		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
 	{
@@ -581,17 +516,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			.Enabled(TAttribute<bool>(bCanNestChild));
 		Menu.Separator();
 	}
-	if (bCanLeaveGroup && !WorkingLayers.IsEmpty())
-	{
-		// "Move to Layer", not "Unshare": the destination has to be named, and there is no
-		// sensible default for it -- the child belonged to every member equally.
-		Menu.SubMenu(
-			LOCTEXT("MoveGroupChildToLayerContext", "Move to Layer..."),
-			nullptr,
-			FOnGetContent::CreateSP(
-				this, &SMixtormat::BuildMoveGroupChildToLayerMenu, GroupId, ChildIndex));
-		Menu.Separator();
-	}
 	// Copy / Copy as Instance / Copy Output / Paste, and (for an instance) Go to Source / Break
 	// Instance / Replace Source / Copy Instance Reference -- the same rows a layer child's menus
 	// build via AddSharedChildMenuItems, driven by the same address-based clipboard rather than a
@@ -606,29 +530,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			RemoveGroupChild(GroupId, ChildIndex);
 		}))
 		.Destructive();
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
-	const FGuid GroupId,
-	const int32 ChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(LOCTEXT("MoveGroupChildToLayerCaption", "Move To"));
-	// Every layer, including the group's own members: moving a shared child onto one member is
-	// exactly the "this one only" case, and refusing it there would be the surprising answer.
-	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
-	{
-		Menu.Item(
-			WorkingLayers[DestIndex].DisplayName,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex, DestIndex]()
-			{
-				// INDEX_NONE: no row was aimed at, so it appends -- the same thing the menu
-				// version of the layer-to-layer move does.
-				MoveGroupChildToLayer(GroupId, ChildIndex, DestIndex, INDEX_NONE);
-			}));
-	}
 	return Menu.Build();
 }
 
@@ -939,7 +840,7 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 	// it runs: an effect filters the layer after it has composited, a generator rewrites the
 	// height the layer composites from. Filing it under Effect would be the first step toward
 	// implementing it as one.
-	if (CanAddGeneratorModule(Target))
+	if (CanAddGeneratorModule(Target) || CanAddScopedFlowGenerator(Target))
 	{
 		Menu.SubMenu(
 			LOCTEXT("AddGeneratorChild", "Generators"),
@@ -1175,9 +1076,19 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 	return Menu.Build();
 }
 
+
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
+	if (CanAddScopedFlowGenerator(Target))
+	{
+		Menu.Item(LOCTEXT("AddScopedFlowChild", "Flow"), MixtormatIcons::Generator(),
+			FSimpleDelegate::CreateLambda([this, Target]()
+			{
+				CreateChild(Target, EMixtormatChildCreation::NoiseFlow);
+			}));
+		return Menu.Build();
+	}
 	const bool bCanAdd = CanCreateChild(Target) && CanAddGeneratorModule(Target);
 	const FText Reason = bCanAdd ? FText::GetEmpty()
 		: Target.IsGroup() ? LOCTEXT("GeneratorModuleGroupUnavailable", "Generator modules cannot be authored in groups")
@@ -1225,12 +1136,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
-	Menu.Item(LOCTEXT("AddHeightPushChild", "Height Push"), MixtormatIcons::WarpPush(),
-			FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightPush); }))
-			.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddStructuralWarpChild", "Structural Warp"), MixtormatIcons::WarpStructural(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::StructuralWarp); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1405,94 +1310,69 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
-		|| RowType == EMixtormatLayerChildType::HeightPush
-		|| RowType == EMixtormatLayerChildType::StructuralWarp
+		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
-	if ((RowType == EMixtormatLayerChildType::HeightPush || RowType == EMixtormatLayerChildType::StructuralWarp)
-		&& WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-	{
-		const FMixtormatChildAddress Address = MakeChildAddress(LayerIndex, ChildIndex);
-		const FMixtormatLayerChild& Module = WorkingLayers[LayerIndex].Children[ChildIndex];
-		const FMixtormatStructuralConnectionContext Context(WorkingLayers, WorkingLayerGroups, Address);
-		const auto Status = Context.Evaluate();
-		using EIssue = MixtormatOutputReferences::EStructuralLinkIssue;
-		const FText Reason = Module.IsInstance()
-			? LOCTEXT("StructuralConnectionInstanceEdit", "Break the instance to edit its endpoints")
-			: Module.ScopeOwnerChildId.IsValid() ? MixtormatStructuralConnections::IssueText(EIssue::ScopedModule)
-			: Status.ModuleIssue != EIssue::None && Status.ModuleIssue != EIssue::DisabledLayer
-				? MixtormatStructuralConnections::IssueText(Status.ModuleIssue) : FText::GetEmpty();
-		const bool bEditable = Reason.IsEmpty();
-		FMixtormatChildAddress SourceAddress;
-		FText NavigationReason;
-		const bool bCanNavigate = ResolveStructuralSourceAddress(Address, SourceAddress, NavigationReason);
-		// Omit unavailable operations entirely; invalid endpoints are still explained
-		// in the selected child Inspector and in the shared connection-status model.
-		if (bCanNavigate)
-		{
-			Menu.Item(LOCTEXT("StructuralGoToSource", "Go to source"), MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([this, Address]() { GoToStructuralSource(Address); }));
-		}
-		if (bEditable)
-		{
-			Menu.SubMenu(LOCTEXT("StructuralChangeSource", "Source"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateLambda([this, Address]()
-				{
-					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Source);
-				}));
-			Menu.SubMenu(LOCTEXT("StructuralChangeTarget", "Target"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateLambda([this, Address]()
-				{
-					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Target);
-				}));
-		}
-		if (bCanNavigate && bEditable)
-		{
-			Menu.Item(LOCTEXT("StructuralDisconnectSource", "Disconnect"), nullptr,
-				FSimpleDelegate::CreateLambda([this, Address]()
-				{
-					SetStructuralConnection(Address, EMixtormatStructuralConnectionRole::Source);
-				}));
-		}
-		Menu.Separator();
-	}
-
-	if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
+if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
+		&& WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
 		const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 		const FMixtormatLayerChild& Target = Layer.Children[ChildIndex];
-		const FGuid TargetLayerId = Layer.LayerId;
 		const FGuid TargetChildId = Target.ChildId;
-		const bool bStrata = Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
-		// Target-first authoring: one click inserts an operation as a projected child
-		// of the target. Source/target are then edited on that child row. Do not
-		// create a second search interface over the same hierarchy.
-		const auto AddStructuralChild = [this, &Menu, TargetLayerId, TargetChildId](
-			const EMixtormatLayerChildType ModuleType, const FText& Label)
+		// A Behavior is a genuinely generator-owned child, so it is authored in place
+		// under the generator rather than as a separate module that targets one later.
+		if (!Target.IsInstance() && CanAddScopedChild(Layer.Children, ChildIndex))
 		{
-			TArray<FMixtormatLayer> ProposedLayers;
-			int32 ProposedLayerIndex = INDEX_NONE;
-			int32 InsertIndex = INDEX_NONE;
-			FText Reason;
-			if (!PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
-				ProposedLayers, ProposedLayerIndex, InsertIndex, Reason)) { return false; }
-			Menu.Item(Label, ModuleType == EMixtormatLayerChildType::HeightPush
-				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
-				FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
+			struct FBehaviorEntry
+			{
+				EMixtormatChildCreation Creation;
+				FText Label;
+				bool bPushIcon;
+			};
+			const FBehaviorEntry Entries[] = {
+				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior"), false},
+				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior"), true},
+				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Add Carve / Deposit Behavior"), true},
+				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Add Deform Behavior"), false}};
+			if (Target.Type == EMixtormatLayerChildType::Generator)
+			{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				if (CanAddScopedFlowGenerator(Destination))
 				{
-					CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
-				}));
-			return true;
-		};
-		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
-			LOCTEXT("WarpUsingForTarget", "Add Warp"));
-		if (bStrata)
-		{
-			bAddedStructural |= AddStructuralChild(EMixtormatLayerChildType::HeightPush,
-				LOCTEXT("HeightPushFromForTarget", "Add Height Push"));
+					Menu.Item(LOCTEXT("AddFlowToGenerator", "Add Flow"), MixtormatIcons::Generator(),
+						FSimpleDelegate::CreateLambda([this, Destination]()
+						{
+							CreateChild(Destination, EMixtormatChildCreation::NoiseFlow);
+						}));
+				}
+			}
+			for (const FBehaviorEntry& Entry : Entries)
+			{
+				if (Target.Type == EMixtormatLayerChildType::Generator
+					&& Target.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Target.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow) { continue; }
+				FMixtormatLayerChild Prototype;
+				ApplyChildCreationDefaults(Prototype, Entry.Creation);
+				if (!CanKeepScopedPlacement(Target, Prototype)) { continue; }
+				Menu.Item(Entry.Label,
+					Entry.bPushIcon ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
+					FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId, Entry]()
+					{
+						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+						Destination.ScopeOwnerChildId = TargetChildId;
+						CreateChild(Destination, Entry.Creation);
+					}));
+			}
+			if (CanOwnScopedMasks(Target))
+			{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				Menu.SubMenu(LOCTEXT("AddBehaviorMasks", "Add Masks"), MixtormatIcons::Mask(),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
+			}
 		}
-		if (bAddedStructural) { Menu.Separator(); }
 	}
 
 	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
@@ -1604,11 +1484,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		case EMixtormatLayerChildType::HeightColorRamp:
 			RemoveLabel = LOCTEXT("RemoveHeightColorRampChild", "Remove Height Color Ramp");
 			break;
-		case EMixtormatLayerChildType::HeightPush:
-			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
-			break;
-		case EMixtormatLayerChildType::StructuralWarp:
-			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");
+		case EMixtormatLayerChildType::Behavior:
+			RemoveLabel = LOCTEXT("RemoveBehaviorChild", "Remove Behavior");
 			break;
 		default:
 			break;
@@ -1966,24 +1843,6 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 			}));
 	}
 	return Menu.Build();
-}
-
-void SMixtormat::AddGeneratorFlowMenuItems(
-	MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
-{
-	for (const EMixtormatEffectType Type : {EMixtormatEffectType::ShapeDeform,
-		EMixtormatEffectType::GeneratorFlow, EMixtormatEffectType::GravityFlow, EMixtormatEffectType::FlowCarve})
-	{
-		FMixtormatLayerChild Probe;
-		Probe.Type = EMixtormatLayerChildType::Effect;
-		Probe.Effect.ProceduralType = Type;
-		const FSlateBrush* Icon = Type == EMixtormatEffectType::ShapeDeform ? MixtormatIcons::WarpDeform()
-			: Type == EMixtormatEffectType::GravityFlow ? MixtormatIcons::FlowGravity()
-			: MixtormatIcons::FlowDirection();
-		Menu.Item(GetLayerChildName(Probe), Icon,
-			FSimpleDelegate::CreateLambda([this, Owner, Type]() { AddGeneratorFlow(Owner, Type); }))
-			.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanAddGeneratorFlow(Owner); }));
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

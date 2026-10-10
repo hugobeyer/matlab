@@ -209,6 +209,10 @@ All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requir
   `MixtormatThemeSchema.*`, `MixtormatResolvedStyle.*`, `MixtormatRecipes.*`,
   `MixtormatTypography.*`, `MixtormatFont.*`, `MixtormatGroupButton.*`,
   `MixtormatMutableStyleSet.h`, `MixtormatStyleLocator.*`, `MixtormatCompositing.h`.
+- The CONTEXT tab owns the viewport hint strip's `ContextLayout` tokens
+  (`HintKeycapSize`, `HintKeycapPadding`, `HintKeyActionGap`, `HintItemGap`,
+  `HintStripOpacity`, `HintStripInset`), schema-registered with the `HintStrip`
+  locator target.
 - Authored theme data: `Config/UIStyleTheme.json`.
 
 Use the token/theme system; do not introduce local styling. `MixtormatStyle`
@@ -285,6 +289,14 @@ when their target is in another window. Typography `Body` deliberately has no li
 assembles the preview UI; shared preview state/setters are on `SMixtormat`.
 `Widgets/SMixtormatPreviewViewport.*` owns viewport rendering/scene and input,
 delegating workspace actions back to `SMixtormat`.
+The contextual hint strip (`Widgets/SMixtormat_PreviewHints.cpp::BuildPreviewHintStrip`)
+is one compact line of key/action pairs at the viewport's bottom-left: first matching
+context wins (quick controls > channel view > debug view > selected module > default
+camera keys), at most five pairs on screen. Every pair names a handler that exists in
+the viewport client or workspace key handling; nothing aspirational. The strip is
+hit-test-invisible, follows the H/Space master flag, and collapses when nothing applies.
+Its size, opacity, paddings and inset are the `ContextLayout` tokens, edited under the
+UI STYLE > CONTEXT tab ("Hint Strip" section) with the `HintStrip` locator target.
 Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 

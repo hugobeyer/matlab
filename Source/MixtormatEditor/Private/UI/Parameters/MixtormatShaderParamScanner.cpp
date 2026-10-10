@@ -156,9 +156,9 @@ namespace MixtormatShaderParamScanner
 		TArray<FString> Files;
 		IFileManager::Get().FindFilesRecursive(Files, *Root, TEXT("*.usf"), true, false);
 
-		// Generator payload shaders carry Generator-owned parameter names. Generator Flow and the
-		// height modules stay Effect-owned: their parameters live in EMixtormatEffectType. The
-		// composite is the one Layer-owned shader.
+		// Generator payload shaders carry Generator-owned parameter names. The Behavior flow
+		// solve shader's parameters live on FMixtormatBehaviorFlowSettings. The composite is the
+		// one Layer-owned shader.
 		static const TCHAR* const GeneratorShaders[] =
 		{
 			TEXT("MixtormatStrataCarver.usf"),
@@ -167,6 +167,10 @@ namespace MixtormatShaderParamScanner
 			TEXT("MixtormatPebbles.usf"),
 			TEXT("MixtormatCliffStrata.usf"),
 			TEXT("MixtormatNoise.usf"),
+		};
+		static const TCHAR* const BehaviorFlowSettingsShaders[] =
+		{
+			TEXT("MixtormatGeneratorFlow.usf"),
 		};
 
 		for (const FString& File : Files)
@@ -201,11 +205,22 @@ namespace MixtormatShaderParamScanner
 						break;
 					}
 				}
+				bool bBehaviorFlowSettingsShader = false;
+				for (const TCHAR* BehaviorShader : BehaviorFlowSettingsShaders)
+				{
+					if (ShaderName == BehaviorShader)
+					{
+						bBehaviorFlowSettingsShader = true;
+						break;
+					}
+				}
 				Tag.Owner = ShaderName == TEXT("MixtormatComposite.usf")
 					? EMixtormatParameterOwnerType::Layer
 					: (bGeneratorShader
 						? EMixtormatParameterOwnerType::Generator
-						: EMixtormatParameterOwnerType::Effect);
+						: (bBehaviorFlowSettingsShader
+							? EMixtormatParameterOwnerType::BehaviorFlowSettings
+							: EMixtormatParameterOwnerType::Effect));
 
 				FString Error;
 				if (!ParseTag(Comment.RightChop(3).TrimStart(), Tag, Error))

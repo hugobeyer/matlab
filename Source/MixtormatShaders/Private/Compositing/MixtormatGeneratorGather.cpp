@@ -5,6 +5,7 @@
 #include "Compositing/MixtormatComposeHash.h"
 #include "Compositing/MixtormatNoiseRender.h"
 #include "MixtormatColorRampMath.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatScalarRampMath.h"
@@ -29,6 +30,7 @@ namespace MixtormatGpuCompositor
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::Generator;
 		ChildData.SourceChildIndex = SourceChildIndex;
+		ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 		ChildData.Generator.Type = Generator.Type;
 		const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
 			FGeneratorInputRenderData& Out, const bool bHeight)
@@ -348,66 +350,255 @@ namespace MixtormatGpuCompositor
 	}
 }
 
-void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
-	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer,
-	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
+void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
+	const FMixtormatLayerChild& LayerChild, const int32 BehaviorChildIndex, const int32 LayerIndex,
+	const TArray<FMixtormatLayer>& EffectiveLayers,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
-	// Sublayers exist only on Generator layers, and a disabled layer must not gather them.
-	if (!bGeneratorLayer || !Layer.bEnabled) { return; }
+	// A Behavior is owned by its Generator, not run as an Effect at its own row.
+	// The execution kernel is independent of the generator family.
+	if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
+		|| LayerChild.Type != EMixtormatLayerChildType::Behavior) { return; }
+	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
+	const bool bWarp = Behavior.Type == EMixtormatBehaviorType::Warp;
+	const bool bPush = Behavior.Type == EMixtormatBehaviorType::Push;
+	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
+	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
+	const bool bFlowField = Behavior.Type == EMixtormatBehaviorType::FlowField;
+	const bool bTraced = Behavior.Flow.bUseTracedFlow;
+	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField)
+		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
+				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
+		|| ((bWarp || bDeform) && !bTraced && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None))
+		|| ((bWarp || bDeform) && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
+		|| (bPush && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PreviousRunningHeight)))
+		|| (bCarve && !bTraced && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)))
+		|| !FMath::IsFinite(Behavior.Strength)) { return; }
 
-	switch (LayerChild.Type)
+	const MixtormatChildScope::FBehaviorInputStatus Valid =
+		MixtormatChildScope::ValidateBehaviorInputs(
+			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources, &Layer);
+	if (!Valid.bCanEvaluate || Valid.GeneratorChildIndex == INDEX_NONE) { return; }
+	const bool bPublishedDirection = Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput;
+	const FMixtormatOutputReference& Reference = Behavior.Direction.Published;
+	const int32 SourceIndex = !bPublishedDirection ? INDEX_NONE
+		: Reference.IsShelfSource() ? 0
+		: MixtormatOutputReferences::ResolveGeneratorInputSource(
+			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, Reference);
+	if (bPublishedDirection && SourceIndex == INDEX_NONE) { return; }
+	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+	ChildData.Type = EMixtormatLayerChildType::Behavior;
+	ChildData.SourceChildIndex = BehaviorChildIndex;
+	ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, BehaviorChildIndex);
+	FBehaviorRenderData& Out = ChildData.Behavior;
+	Out.Type = Behavior.Type;
+	Out.bUseTracedFlow = bTraced;
+	// Gather authored Behavior Flow parameters into the native render data.
+	const FMixtormatBehaviorFlowSettings& Flow = Behavior.Flow;
+	FBehaviorFlowRenderData& FlowOut = Out.Flow;
+	FlowOut.Mode = Flow.Mode;
+	Out.Stage = Behavior.Stage;
+	FlowOut.FlowSource = static_cast<uint32>(Flow.FlowSource);
+	FlowOut.FlowAmount = FMath::IsFinite(Flow.FlowAmount) ? Flow.FlowAmount : FMixtormatBehaviorFlowSettings().FlowAmount;
+	FlowOut.FlowTangent = FMath::IsFinite(Flow.FlowTangent) ? Flow.FlowTangent : FMixtormatBehaviorFlowSettings().FlowTangent;
+	FlowOut.FlowAngle = FMath::IsFinite(Flow.FlowAngle) ? Flow.FlowAngle : FMixtormatBehaviorFlowSettings().FlowAngle;
+	FlowOut.GravitySurfaceFollow = FMath::IsFinite(Flow.GravitySurfaceFollow) ? Flow.GravitySurfaceFollow : FMixtormatBehaviorFlowSettings().GravitySurfaceFollow;
+	FlowOut.GravityDeflection = FMath::IsFinite(Flow.GravityDeflection) ? Flow.GravityDeflection : FMixtormatBehaviorFlowSettings().GravityDeflection;
+	FlowOut.FlowBend = FMath::IsFinite(Flow.FlowBend) ? Flow.FlowBend : FMixtormatBehaviorFlowSettings().FlowBend;
+	FlowOut.FlowSeed = static_cast<uint32>(Flow.FlowSeed);
+	FlowOut.FlowRadius = FMath::Max(Flow.FlowRadius, 1);
+	FlowOut.FlowSmooth = FMath::IsFinite(Flow.FlowSmooth) ? Flow.FlowSmooth : FMixtormatBehaviorFlowSettings().FlowSmooth;
+	FlowOut.Reach = FMath::IsFinite(Flow.Reach) ? Flow.Reach : FMixtormatBehaviorFlowSettings().Reach;
+	FlowOut.Feather = FMath::IsFinite(Flow.Feather) ? Flow.Feather : FMixtormatBehaviorFlowSettings().Feather;
+	FlowOut.FlowOffsetAlong = FMath::IsFinite(Flow.FlowOffsetAlong) ? Flow.FlowOffsetAlong : FMixtormatBehaviorFlowSettings().FlowOffsetAlong;
+	FlowOut.FlowOffsetAcross = FMath::IsFinite(Flow.FlowOffsetAcross) ? Flow.FlowOffsetAcross : FMixtormatBehaviorFlowSettings().FlowOffsetAcross;
+	FlowOut.ShapeOffset = FMath::IsFinite(Flow.ShapeOffset) ? Flow.ShapeOffset : FMixtormatBehaviorFlowSettings().ShapeOffset;
+	FlowOut.Bulge = FMath::IsFinite(Flow.Bulge) ? Flow.Bulge : FMixtormatBehaviorFlowSettings().Bulge;
+	FlowOut.TraceLength = FMath::IsFinite(Flow.TraceLength) ? Flow.TraceLength : FMixtormatBehaviorFlowSettings().TraceLength;
+	FlowOut.TraceSteps = FMath::Max(Flow.TraceSteps, 1);
+	FlowOut.WarpStrength = FMath::IsFinite(Flow.WarpStrength) ? Flow.WarpStrength : FMixtormatBehaviorFlowSettings().WarpStrength;
+	FlowOut.CarveMode = static_cast<uint32>(Flow.CarveMode);
+	FlowOut.Depth = FMath::IsFinite(Flow.Depth) ? Flow.Depth : FMixtormatBehaviorFlowSettings().Depth;
+	FlowOut.Width = FMath::IsFinite(Flow.Width) ? Flow.Width : FMixtormatBehaviorFlowSettings().Width;
+	FlowOut.Falloff = FMath::IsFinite(Flow.Falloff) ? Flow.Falloff : FMixtormatBehaviorFlowSettings().Falloff;
+	// Resolve drivers for FMixtormatBehaviorFlowSettings properties:
+	const FName FlowSettingsProperties[8] = {
+		TEXT("FlowAmount"),
+		TEXT("TraceLength"),
+		TEXT("WarpStrength"),
+		TEXT("Depth"),
+		TEXT("ShapeOffset"),
+		TEXT("Bulge"),
+		TEXT("Reach"),
+		TEXT("Feather")
+	};
+	for (int32 Slot = 0; Slot < 8; ++Slot)
 	{
-	case EMixtormatLayerChildType::HeightPush:
-	{
-		const FMixtormatGeneratorHeightPush& Push = LayerChild.HeightPush;
-		if (!Push.bEnabled || LayerChild.ScopeOwnerChildId.IsValid()) { return; }
-		const int32 SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
-			EffectiveLayers, LayerIndex, SourceChildIndex, Push.Source);
-		if (SourceIndex == INDEX_NONE) { return; }
-		const int32 TargetIndex = MixtormatOutputReferences::ResolveHeightPushTarget(
-			Layer, SourceChildIndex, Push.TargetChildId);
-		if (TargetIndex == INDEX_NONE) { return; }
-		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
-		ChildData.Type = EMixtormatLayerChildType::HeightPush;
-		ChildData.SourceChildIndex = SourceChildIndex;
-		ChildData.HeightPush.Source.Source = {Push.Source.SourceLayerId, SourceIndex, Push.Source.OutputName};
-		ChildData.HeightPush.Source.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
-		ChildData.HeightPush.TargetChildIndex = TargetIndex;
-		ChildData.HeightPush.Amount = FMath::IsFinite(Push.Amount) ? Push.Amount : 0.0f;
-		break;
+		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+			[&FlowSettingsProperties, Slot](const FMixtormatParameterBinding& Candidate)
+			{
+				return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlowSettings
+					&& Candidate.DestinationParameter == FlowSettingsProperties[Slot]
+					&& Candidate.Driver.bEnabled
+					&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+					&& Candidate.Driver.SourceLayerId.IsValid();
+			});
+		if (!Binding) { continue; }
+		bool bEarlier = false;
+		for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+		{
+			if (EffectiveLayers.IsValidIndex(Previous)
+				&& EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+				&& EffectiveLayers[Previous].bEnabled)
+			{
+				bEarlier = true;
+				break;
+			}
+		}
+		if (!bEarlier) { continue; }
+		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FScalarDriverRenderData& Driver = FlowOut.SettingsDrivers[Slot];
+		Driver.bEnabled = true;
+		Driver.SourceLayerId = Authored.SourceLayerId;
+		Driver.bInvert = Authored.bInvert;
+		Driver.InputMin = Authored.InputMin;
+		Driver.InputMax = Authored.InputMax;
+		Driver.OutputMin = Authored.OutputMin;
+		Driver.OutputMax = Authored.OutputMax;
+		Driver.Amount = Authored.Amount;
+		Driver.Combine = static_cast<uint32>(Authored.Combine);
 	}
-	case EMixtormatLayerChildType::StructuralWarp:
+	Out.GeneratorChildIndex = Valid.GeneratorChildIndex;
+	Out.Strength = Behavior.Strength;
+	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
+		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
+	Out.CarveWidth = FMath::IsFinite(Behavior.CarveWidth)
+		? FMath::Max(Behavior.CarveWidth, 1e-6f) : 0.02f;
+	// Resolve the canonical Behavior scalar addresses; only earlier completed
+	// layer masks may drive the current shader. Unsupported drivers stay inert.
+	const FName ScalarProperties[2] = { TEXT("Strength"), TEXT("GradientReach") };
+	for (int32 Slot = 0; Slot < 2; ++Slot)
 	{
-		const FMixtormatGeneratorStructuralWarp& Warp = LayerChild.StructuralWarp;
-		if (!Warp.bEnabled || LayerChild.ScopeOwnerChildId.IsValid()) { return; }
-		const int32 SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
-			EffectiveLayers, LayerIndex, SourceChildIndex, Warp.Source);
-		const int32 TargetIndex = MixtormatOutputReferences::ResolveStructuralWarpTarget(
-			EffectiveLayers, LayerIndex, SourceChildIndex, Warp.TargetChildId);
-		if (SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE) { return; }
-		const float FlowAmount = FMath::IsFinite(Warp.Source.FlowAmount) ? Warp.Source.FlowAmount : 0.0f;
-		const float TraceLength = FMath::IsFinite(Warp.Source.FlowTraceLength)
-			? FMath::Max(Warp.Source.FlowTraceLength, 0.0f) : 0.0f;
-		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
-		ChildData.Type = EMixtormatLayerChildType::StructuralWarp;
-		ChildData.SourceChildIndex = SourceChildIndex;
-		FGeneratorStructuralWarpRenderData& Out = ChildData.StructuralWarp;
-		Out.Source.Source = {Warp.Source.SourceLayerId, SourceIndex, Warp.Source.OutputName};
-		Out.Source.Kind = Warp.Source.Kind;
-		Out.Source.FlowAmount = FlowAmount;
-		Out.Source.FlowTraceLength = TraceLength;
-		Out.Source.FlowSteps = FMath::Max(Warp.Source.FlowSteps, 1);
-		Out.TargetChildIndex = TargetIndex;
-		// Structural Flow drivers use the same flattened scalar contract as the
-		// composite. Only completed earlier-layer masks are eligible here; a shelf
-		// producer, future layer or child mask cannot provide that snapshot.
+		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+			[&ScalarProperties, Slot](const FMixtormatParameterBinding& Candidate)
+			{
+				return Candidate.DestinationOwner == EMixtormatParameterOwnerType::Behavior
+					&& Candidate.DestinationParameter == ScalarProperties[Slot]
+					&& Candidate.Driver.bEnabled
+					&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+					&& Candidate.Driver.SourceLayerId.IsValid();
+			});
+		if (!Binding) { continue; }
+		bool bEarlier = false;
+		for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+		{
+			if (EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+				&& EffectiveLayers[Previous].bEnabled)
+			{
+				bEarlier = true;
+				break;
+			}
+		}
+		if (!bEarlier) { continue; }
+		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FScalarDriverRenderData& Driver = Out.ScalarDrivers[Slot];
+		Driver.bEnabled = true;
+		Driver.SourceLayerId = Authored.SourceLayerId;
+		Driver.bInvert = Authored.bInvert;
+		Driver.InputMin = Authored.InputMin;
+		Driver.InputMax = Authored.InputMax;
+		Driver.OutputMin = Authored.OutputMin;
+		Driver.OutputMax = Authored.OutputMax;
+		Driver.Amount = Authored.Amount;
+		Driver.Combine = static_cast<uint32>(Authored.Combine);
+	}
+	// A zero-authored Strength remains neutral unless a valid ordered driver
+	// can replace or combine it. This check must follow driver resolution.
+	const bool bHasActiveFlowSettingsDriver = FlowOut.SettingsDrivers[0].bEnabled
+		|| FlowOut.SettingsDrivers[1].bEnabled || FlowOut.SettingsDrivers[2].bEnabled
+		|| FlowOut.SettingsDrivers[3].bEnabled || FlowOut.SettingsDrivers[4].bEnabled
+		|| FlowOut.SettingsDrivers[5].bEnabled || FlowOut.SettingsDrivers[6].bEnabled
+		|| FlowOut.SettingsDrivers[7].bEnabled;
+	if (!bFlowField && !bTraced && Out.Strength == 0.0f && !Out.ScalarDrivers[0].bEnabled)
+	{
+		Data.Children.Pop();
+		return;
+	}
+	Out.DirectionOrigin = Behavior.Direction.Origin;
+	// Composition is validated by ValidateBehaviorInputs before this point, so the
+	// amplitude is already finite and the reverse/blend pair is already legal for
+	// this socket's kind. Clamping here keeps a non-finite value from ever
+	// reaching a shader uniform even if a caller bypasses validation.
+	Out.DirectionComposition.Amplitude = FMath::IsFinite(Behavior.Direction.Amplitude)
+		? Behavior.Direction.Amplitude : 0.0f;
+	Out.DirectionComposition.bReversed = Behavior.Direction.bReversed ? 1u : 0u;
+	Out.DirectionComposition.Blend = static_cast<uint32>(Behavior.Direction.Blend);
+	Out.Direction.Source.LayerId = Reference.IsShelfSource()
+		? Reference.SourceShelfId : Reference.SourceLayerId;
+	Out.Direction.Source.ChildIndex = SourceIndex;
+	Out.Direction.Source.Output = Reference.OutputName;
+	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
+	Out.Direction.Kind = Reference.Kind;
+	// Flow driver evaluation acts on the authored FlowAmount. Behavior Strength
+	// applies afterward to destination displacement, independent of driver mode.
+	Out.Direction.FlowAmount = FMath::IsFinite(Reference.FlowAmount)
+		? Reference.FlowAmount : 0.0f;
+	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
+		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
+	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+	// Push consumes signed height; Carve consumes a typed SDF or native boundary,
+	// never a signed height silently reinterpreted as distance.
+	Out.HeightOrigin = Behavior.Height.Origin;
+	Out.HeightComposition.Amplitude = FMath::IsFinite(Behavior.Height.Amplitude)
+		? Behavior.Height.Amplitude : 0.0f;
+	Out.HeightComposition.bReversed = Behavior.Height.bReversed ? 1u : 0u;
+	Out.HeightComposition.Blend = static_cast<uint32>(Behavior.Height.Blend);
+	if ((bPush || bCarve) && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+	{
+		const FMixtormatOutputReference& HeightRef = Behavior.Height.Published;
+		int32 HeightIndex = HeightRef.IsShelfSource() ? 0
+			: bCarve ? MixtormatOutputReferences::ResolveSource(
+				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef)
+			: MixtormatOutputReferences::ResolveGeneratorInputSource(
+				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
+		if (HeightIndex == INDEX_NONE && bPush && !HeightRef.IsShelfSource())
+		{
+			HeightIndex = MixtormatOutputReferences::ResolveSource(
+				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
+		}
+		if (HeightIndex == INDEX_NONE || HeightRef.Kind != (bCarve
+			? EMixtormatPublishedFieldKind::SDF : EMixtormatPublishedFieldKind::ScalarSigned))
+		{
+			Data.Children.Pop();
+			return;
+		}
+		Out.Height.Source.LayerId = HeightRef.IsShelfSource()
+			? HeightRef.SourceShelfId : HeightRef.SourceLayerId;
+		Out.Height.Source.ChildIndex = HeightIndex;
+		Out.Height.Source.Output = HeightRef.OutputName;
+		Out.Height.Source.OwnerKind = HeightRef.OwnerKind;
+		Out.Height.Kind = HeightRef.Kind;
+	}
+	if (bPublishedDirection && Reference.Kind == EMixtormatPublishedFieldKind::Flow)
+	{
+		// BehaviorFlow owns the reflected output-reference properties FlowAmount and
+		// FlowTraceLength. Demand only completed earlier-layer mask signals; unsupported or
+		// unavailable drivers retain the authored scalar rather than falling back to zero.
 		const FName DriverProperties[2] = { TEXT("FlowAmount"), TEXT("FlowTraceLength") };
 		for (int32 Slot = 0; Slot < 2; ++Slot)
 		{
 			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
 				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
 				{
-					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::StructuralWarpFlow
+					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
 						&& Candidate.DestinationParameter == DriverProperties[Slot]
 						&& Candidate.Driver.bEnabled
 						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
@@ -427,7 +618,7 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 			}
 			if (!bEarlier) { continue; }
 			const FMixtormatParameterDriver& Authored = Binding->Driver;
-			FScalarDriverRenderData& Driver = Out.Drivers[Slot];
+			FScalarDriverRenderData& Driver = Out.FlowDrivers[Slot];
 			Driver.bEnabled = true;
 			Driver.SourceLayerId = Authored.SourceLayerId;
 			Driver.bInvert = Authored.bInvert;
@@ -438,15 +629,38 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 			Driver.Amount = Authored.Amount;
 			Driver.Combine = static_cast<uint32>(Authored.Combine);
 		}
-		if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-			&& (FlowAmount == 0.0f && !Out.Drivers[0].bEnabled
-				|| TraceLength == 0.0f && !Out.Drivers[1].bEnabled))
+	}
+	if (Behavior.Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+	{
+		const FMixtormatOutputReference& MaskRef = Behavior.Influence.Published;
+		// Generic mask-valued outputs use the ordered field resolver, not the
+		// generator's Height/Warp socket or the Noise Value-to-Coverage coercion.
+		const int32 MaskChildIndex = MixtormatOutputReferences::ResolveSource(
+			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, MaskRef);
+		if (MaskChildIndex == INDEX_NONE || MaskRef.IsShelfSource()
+			|| MaskRef.Kind != EMixtormatPublishedFieldKind::Scalar01)
 		{
-			Data.Children.Pop();
+			Data.Children.RemoveAt(Data.Children.Num() - 1);
 			return;
 		}
-		break;
+		Out.bHasInfluence = true;
+		Out.Influence.Source.LayerId = MaskRef.SourceLayerId;
+		Out.Influence.Source.ChildIndex = MaskChildIndex;
+		Out.Influence.Source.Output = MaskRef.OutputName;
+		Out.Influence.Source.OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
+		Out.Influence.Kind = MaskRef.Kind;
 	}
+}
+
+void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
+	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer,
+	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
+{
+	// Sublayers exist only on Generator layers, and a disabled layer must not gather them.
+	if (!bGeneratorLayer || !Layer.bEnabled) { return; }
+
+	switch (LayerChild.Type)
+	{
 	case EMixtormatLayerChildType::HeightBlend:
 	{
 		const FMixtormatGeneratorHeightBlend& Blend = LayerChild.HeightBlend;

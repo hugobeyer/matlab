@@ -606,57 +606,6 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	{
 		return IsOutputReferenceAvailable(GetSelectedChildAddress());
 	}
-	if (Child.Type == EMixtormatLayerChildType::Effect)
-	{
-		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-		const EMixtormatEffectType Type = Asset ? Asset->EffectType : Child.Effect.ProceduralType;
-		if (MixtormatIsGeneratorFlowEffect(Type))
-		{
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-			if (!Children)
-			{
-				return false;
-			}
-			if (!Child.ScopeOwnerChildId.IsValid())
-			{
-				return false;
-			}
-			const FGuid GroupId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
-				? WorkingLayers[SelectedLayerIndex].GroupId : SelectedGroupId;
-			if (const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId))
-			{
-				if (!Group->bEnabled)
-				{
-					return false;
-				}
-			}
-			int32 CurrentIndex = ResolveChildIndexAt(Address);
-			FGuid OwnerId = Child.ScopeOwnerChildId;
-			bool bImmediateOwner = true;
-			// Require preceding, enabled ancestors. This also rejects cycles and missing owners.
-			while (OwnerId.IsValid())
-			{
-				const int32 OwnerIndex = Children->IndexOfByPredicate(
-					[OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
-				if (OwnerIndex == INDEX_NONE || OwnerIndex >= CurrentIndex)
-				{
-					return false;
-				}
-				const FMixtormatLayerChild& Owner = (*Children)[OwnerIndex];
-				if (!IsGroupChildEnabled(Owner)
-					|| (bImmediateOwner && (Owner.Type != EMixtormatLayerChildType::Generator
-						|| !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type))))
-				{
-					return false;
-				}
-				bImmediateOwner = false;
-				CurrentIndex = OwnerIndex;
-				OwnerId = Owner.ScopeOwnerChildId;
-			}
-			return ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask, NAME_None).IsValid();
-		}
-	}
 	// An ID Group folds however many producers sit inside it -- none, one, several, or nested
 	// groups -- so it always has a map to show.
 
@@ -915,6 +864,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				CycleSelectedModulePreview();
 			}))
+			// Bare 1-4 in the viewport: same path as the geometry rail buttons.
+			.OnSetPreviewMesh(FMixtormatSetPreviewMesh::CreateLambda([this](const EMixtormatPreviewMesh MeshType)
+			{
+				SetPreviewMesh(MeshType);
+			}))
 			// Bare Q in the viewport. The delegate is installed once, on creation, and captures the
 			// workspace -- which survives a rebuild -- so it stays valid across theme refreshes.
 			.OnRequestQuickControls(FSimpleDelegate::CreateLambda([this]()
@@ -966,6 +920,20 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot()
 		[
 			BuildFloatingPanelStack()
+		]
+		// The contextual hint strip: its position is authored (CONTEXT tab: corners plus top/bottom
+		// center), hit-test-invisible, its own inset token so it does not move when a toolbar inset
+		// is retuned. Index: 0 TL, 1 TC, 2 TR, 3 BL, 4 BC, 5 BR.
+		+ SOverlay::Slot()
+		.HAlign(Resolved.ContextLayout.HintStripCorner == 0 || Resolved.ContextLayout.HintStripCorner == 3
+			? HAlign_Left
+			: Resolved.ContextLayout.HintStripCorner == 1 || Resolved.ContextLayout.HintStripCorner == 4
+				? HAlign_Center
+				: HAlign_Right)
+		.VAlign(Resolved.ContextLayout.HintStripCorner <= 2 ? VAlign_Top : VAlign_Bottom)
+		.Padding(Resolved.ContextLayout.HintStripInset)
+		[
+			BuildPreviewHintStrip()
 		]
 		// The Tab quick controls, above the floating panels: it is invoked deliberately, so it takes
 		// the top layer.
