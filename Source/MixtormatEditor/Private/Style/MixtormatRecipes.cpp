@@ -737,6 +737,7 @@ namespace Mixtormat
 		// Ground is the same continuous surface under the layer column and rail.
 		// An optional shared button body may lift it without forcing a separate plate.
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
+		Recipe.Base = MakeColorRef(EMixtormatColorRole::Panel);
 		FMixtormatSurfaceRecipe Button = MakeButtonRecipe(Theme, State, false);
 		const float SurfaceStrength = FMath::Clamp(Layout.LeftRailButtonSurfaceStrength, 0.0f, 1.0f);
 		for (FMixtormatPaintLayer& Layer : Button.Layers)
