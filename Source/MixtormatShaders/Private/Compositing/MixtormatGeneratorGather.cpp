@@ -363,18 +363,20 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bPush = Behavior.Type == EMixtormatBehaviorType::Push;
 	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
 	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
-	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform)
+	const bool bFlowField = Behavior.Type == EMixtormatBehaviorType::FlowField;
+	const bool bTraced = Behavior.Flow.bUseTracedFlow;
+	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField)
 		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
 				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
-		|| ((bWarp || bDeform) && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+		|| ((bWarp || bDeform) && !bTraced && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
 		|| ((bWarp || bDeform) && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
 		|| (bPush && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PreviousRunningHeight)))
-		|| (bCarve && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+		|| (bCarve && !bTraced && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)))
 		|| !FMath::IsFinite(Behavior.Strength)) { return; }
@@ -396,7 +398,40 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	ChildData.ScopeOwnerSourceChildIndex = Valid.GeneratorChildIndex;
 	FBehaviorRenderData& Out = ChildData.Behavior;
 	Out.Type = Behavior.Type;
+	Out.bUseTracedFlow = bTraced;
+	// Copy authoring parameters onto the existing shader layout without retaining
+	// legacy effect execution or authoring. Sanitization stays local to Gather.
+	const FMixtormatBehaviorFlowSettings& Flow = Behavior.Flow;
+	FEffectRenderData& FlowOut = Out.Flow;
+	FlowOut.Type = bFlowField
+		? (Flow.Mode == EMixtormatBehaviorFlowMode::Gravity
+			? EMixtormatEffectType::GravityFlow : EMixtormatEffectType::GeneratorFlow)
+		: bCarve ? EMixtormatEffectType::FlowCarve
+		: bDeform ? EMixtormatEffectType::ShapeDeform : EMixtormatEffectType::GeneratorFlow;
 	Out.Stage = Behavior.Stage;
+	FlowOut.GeneratorFlowSource = static_cast<uint32>(Flow.GeneratorFlowSource);
+	FlowOut.GeneratorFlowAmount = FMath::IsFinite(Flow.GeneratorFlowAmount) ? Flow.GeneratorFlowAmount : FMixtormatBehaviorFlowSettings().GeneratorFlowAmount;
+	FlowOut.GeneratorFlowTangent = FMath::IsFinite(Flow.GeneratorFlowTangent) ? Flow.GeneratorFlowTangent : FMixtormatBehaviorFlowSettings().GeneratorFlowTangent;
+	FlowOut.GeneratorFlowAngle = FMath::IsFinite(Flow.GeneratorFlowAngle) ? Flow.GeneratorFlowAngle : FMixtormatBehaviorFlowSettings().GeneratorFlowAngle;
+	FlowOut.GravityFlowSurfaceFollow = FMath::IsFinite(Flow.GravityFlowSurfaceFollow) ? Flow.GravityFlowSurfaceFollow : FMixtormatBehaviorFlowSettings().GravityFlowSurfaceFollow;
+	FlowOut.GravityFlowDeflection = FMath::IsFinite(Flow.GravityFlowDeflection) ? Flow.GravityFlowDeflection : FMixtormatBehaviorFlowSettings().GravityFlowDeflection;
+	FlowOut.GeneratorFlowBend = FMath::IsFinite(Flow.GeneratorFlowBend) ? Flow.GeneratorFlowBend : FMixtormatBehaviorFlowSettings().GeneratorFlowBend;
+	FlowOut.GeneratorFlowSeed = static_cast<uint32>(Flow.GeneratorFlowSeed);
+	FlowOut.GeneratorFlowRadius = FMath::Max(Flow.GeneratorFlowRadius, 1);
+	FlowOut.GeneratorFlowSmooth = FMath::IsFinite(Flow.GeneratorFlowSmooth) ? Flow.GeneratorFlowSmooth : FMixtormatBehaviorFlowSettings().GeneratorFlowSmooth;
+	FlowOut.GeneratorFlowReach = FMath::IsFinite(Flow.GeneratorFlowReach) ? Flow.GeneratorFlowReach : FMixtormatBehaviorFlowSettings().GeneratorFlowReach;
+	FlowOut.GeneratorFlowFeather = FMath::IsFinite(Flow.GeneratorFlowFeather) ? Flow.GeneratorFlowFeather : FMixtormatBehaviorFlowSettings().GeneratorFlowFeather;
+	FlowOut.GeneratorFlowOffsetAlong = FMath::IsFinite(Flow.GeneratorFlowOffsetAlong) ? Flow.GeneratorFlowOffsetAlong : FMixtormatBehaviorFlowSettings().GeneratorFlowOffsetAlong;
+	FlowOut.GeneratorFlowOffsetAcross = FMath::IsFinite(Flow.GeneratorFlowOffsetAcross) ? Flow.GeneratorFlowOffsetAcross : FMixtormatBehaviorFlowSettings().GeneratorFlowOffsetAcross;
+	FlowOut.GeneratorFlowShapeOffset = FMath::IsFinite(Flow.GeneratorFlowShapeOffset) ? Flow.GeneratorFlowShapeOffset : FMixtormatBehaviorFlowSettings().GeneratorFlowShapeOffset;
+	FlowOut.GeneratorFlowBulge = FMath::IsFinite(Flow.GeneratorFlowBulge) ? Flow.GeneratorFlowBulge : FMixtormatBehaviorFlowSettings().GeneratorFlowBulge;
+	FlowOut.GeneratorFlowTraceLength = FMath::IsFinite(Flow.GeneratorFlowTraceLength) ? Flow.GeneratorFlowTraceLength : FMixtormatBehaviorFlowSettings().GeneratorFlowTraceLength;
+	FlowOut.GeneratorFlowSteps = FMath::Max(Flow.GeneratorFlowSteps, 1);
+	FlowOut.GeneratorFlowWarpStrength = FMath::IsFinite(Flow.GeneratorFlowWarpStrength) ? Flow.GeneratorFlowWarpStrength : FMixtormatBehaviorFlowSettings().GeneratorFlowWarpStrength;
+	FlowOut.GeneratorFlowCarveMode = static_cast<uint32>(Flow.GeneratorFlowCarveMode);
+	FlowOut.GeneratorFlowDepth = FMath::IsFinite(Flow.GeneratorFlowDepth) ? Flow.GeneratorFlowDepth : FMixtormatBehaviorFlowSettings().GeneratorFlowDepth;
+	FlowOut.GeneratorFlowWidth = FMath::IsFinite(Flow.GeneratorFlowWidth) ? Flow.GeneratorFlowWidth : FMixtormatBehaviorFlowSettings().GeneratorFlowWidth;
+	FlowOut.GeneratorFlowFalloff = FMath::IsFinite(Flow.GeneratorFlowFalloff) ? Flow.GeneratorFlowFalloff : FMixtormatBehaviorFlowSettings().GeneratorFlowFalloff;
 	Out.GeneratorChildIndex = Valid.GeneratorChildIndex;
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
@@ -443,7 +478,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	}
 	// A zero-authored Strength remains neutral unless a valid ordered driver
 	// can replace or combine it. This check must follow driver resolution.
-	if (Out.Strength == 0.0f && !Out.ScalarDrivers[0].bEnabled)
+	if (!bFlowField && !bTraced && Out.Strength == 0.0f && !Out.ScalarDrivers[0].bEnabled)
 	{
 		Data.Children.Pop();
 		return;
