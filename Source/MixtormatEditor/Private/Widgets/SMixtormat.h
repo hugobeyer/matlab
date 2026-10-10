@@ -83,6 +83,7 @@ enum class EMixtormatChildCreation : uint8
 	HeightPush,
 	StructuralWarp,
 	BehaviorWarp,
+	BehaviorPush,
 };
 
 // Editor-only connection role; the existing payload remains the serialized truth.
@@ -600,6 +601,10 @@ private:
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
 	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
 	TSharedRef<SWidget> BuildBehaviorWarpInfluenceMenu();
+	FMixtormatBehavior* GetSelectedBehaviorPush();
+	const FMixtormatBehavior* GetSelectedBehaviorPush() const;
+	TSharedRef<SWidget> BuildBehaviorPushControls();
+	TSharedRef<SWidget> BuildBehaviorPushSourceMenu();
 	TSharedRef<SWidget> BuildStructuralWarpControls();
 	TSharedRef<SWidget> BuildStructuralWarpConnectionMenu(bool bTarget);
 	TSharedRef<SWidget> BuildStructuralConnectionMenu(FMixtormatChildAddress Address,

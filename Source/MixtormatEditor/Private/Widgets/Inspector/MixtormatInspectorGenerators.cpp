@@ -1122,6 +1122,140 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpInfluenceMenu()
 	return Menu.Build();
 }
 
+
+TSharedRef<SWidget> SMixtormat::BuildBehaviorPushSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Selected = ResolveChildAt(Address);
+	if (!Selected || Selected->IsInstance()
+		|| Selected->Type != EMixtormatLayerChildType::Behavior
+		|| Selected->Behavior.Type != EMixtormatBehaviorType::Push) { return Menu.Build(); }
+	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+		[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return Menu.Build(); }
+	const FMixtormatLayer& Destination = WorkingLayers[LayerIndex];
+	const int32 ChildIndex = Destination.Children.IndexOfByPredicate(
+		[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+	const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(Destination.Children, ChildIndex);
+	if (OwnerIndex == INDEX_NONE) { return Menu.Build(); }
+	const auto Assign = [this, Address](EMixtormatBehaviorFieldOrigin Origin, const FMixtormatOutputReference* Reference)
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		if (!Child || Child->IsInstance() || Child->Type != EMixtormatLayerChildType::Behavior
+			|| Child->Behavior.Type != EMixtormatBehaviorType::Push) { return; }
+		Child->Behavior.Height.Origin = Origin;
+		Child->Behavior.Height.Published = Reference ? *Reference : FMixtormatOutputReference{};
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	};
+	Menu.Item(LOCTEXT("BehaviorPushChooseLater", "Choose source later"), nullptr,
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::None, nullptr); }));
+	Menu.Item(LOCTEXT("BehaviorPushOwnNative", "Own Native Height"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::OwnNativeHeight, nullptr); }));
+	Menu.Item(LOCTEXT("BehaviorPushPrevious", "Previous Running Height"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::PreviousRunningHeight, nullptr); }));
+	Menu.Separator();
+	for (int32 SourceLayerIndex = 0; SourceLayerIndex <= LayerIndex; ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+		for (const FMixtormatLayerChild& Producer : SourceLayer.Children)
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Producer);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (!Output.bCopyableAsField || Output.FieldKind != EMixtormatPublishedFieldKind::ScalarSigned) { continue; }
+				FMixtormatOutputReference Ref;
+				Ref.SourceLayerId = SourceLayer.LayerId;
+				Ref.SourceChildId = Producer.ChildId;
+				Ref.OutputName = Output.Name;
+				Ref.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
+				const bool bValid = MixtormatOutputReferences::ResolveGeneratorInputSource(
+					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
+				Menu.Item(FText::Format(LOCTEXT("BehaviorPushChoice", "{0} / {1} / {2}"),
+					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
+					MixtormatIcons::Generator(),
+					FSimpleDelegate::CreateLambda([Assign, Ref]()
+					{
+						Assign(EMixtormatBehaviorFieldOrigin::PublishedOutput, &Ref);
+					})).Enabled(bValid);
+			}
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
+{
+	const auto Push = [this]() { return GetSelectedBehaviorPush(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorPushHeight", "Signed Height Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Push]()
+		{
+			const FMixtormatBehavior* B = Push();
+			if (!B) { return LOCTEXT("BehaviorPushUnavailable", "Unavailable"); }
+			switch (B->Height.Origin)
+			{
+			case EMixtormatBehaviorFieldOrigin::OwnNativeHeight:
+				return LOCTEXT("BehaviorPushOwnLabel", "Own Native Height");
+			case EMixtormatBehaviorFieldOrigin::PreviousRunningHeight:
+				return LOCTEXT("BehaviorPushPreviousLabel", "Previous Running Height");
+			case EMixtormatBehaviorFieldOrigin::PublishedOutput:
+				return B->Height.Published.HasSource() && B->Height.Published.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+					? FText::FromName(B->Height.Published.OutputName)
+					: LOCTEXT("BehaviorPushMissingSource", "Source unavailable");
+			default: return LOCTEXT("BehaviorPushUnset", "Choose source");
+			}
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorPushSourceMenu)),
+		LOCTEXT("BehaviorPushHeightHint", "Explicit signed height input; no automatic SDF conversion.")));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorPushInfluence", "Influence Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Push]()
+		{
+			const FMixtormatBehavior* B = Push();
+			return B && B->Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+				? FText::FromName(B->Influence.Published.OutputName)
+				: LOCTEXT("BehaviorPushNone", "None");
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
+		LOCTEXT("BehaviorPushInfluenceHint", "Optional Scalar01 influence, multiplied by scoped masks.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorPushStrength", "Strength"), Push, &FMixtormatBehavior::Strength,
+		-4.0, 4.0, 1.0, 0.01,
+		LOCTEXT("BehaviorPushStrengthHint", "Signed native-height contribution.")));
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Push]() { return Push() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorPushTitle", "PUSH"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Push]()
+					{
+						const FMixtormatBehavior* B = Push();
+						return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Push](ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* B = Push())
+						{
+							B->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 {
 	const auto Warp = [this]() { return GetSelectedBehaviorWarp(); };

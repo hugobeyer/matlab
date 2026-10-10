@@ -256,7 +256,8 @@ bool SMixtormat::HasSelectedChildInspector() const
 		|| GetSelectedHeightColorRamp()
 		|| GetSelectedHeightPush()
 				|| GetSelectedStructuralWarp()
-				|| GetSelectedBehaviorWarp();
+				|| GetSelectedBehaviorWarp()
+		|| GetSelectedBehaviorPush();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
@@ -504,6 +505,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										+ SScrollBox::Slot()[BuildHeightPushControls()]
 															+ SScrollBox::Slot()[BuildStructuralWarpControls()]
 					+ SScrollBox::Slot()[BuildBehaviorWarpControls()]
+			+ SScrollBox::Slot()[BuildBehaviorPushControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

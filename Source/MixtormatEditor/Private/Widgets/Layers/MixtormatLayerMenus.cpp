@@ -1498,6 +1498,14 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 				Destination.ScopeOwnerChildId = TargetChildId;
 				CreateChild(Destination, EMixtormatChildCreation::BehaviorWarp);
 				}));
+			Menu.Item(LOCTEXT("AddBehaviorPushToGenerator", "Add Push Behavior (V2)"),
+				MixtormatIcons::WarpPush(),
+				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
+				{
+					FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+					Destination.ScopeOwnerChildId = TargetChildId;
+					CreateChild(Destination, EMixtormatChildCreation::BehaviorPush);
+				}));
 		}
 		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
 			LOCTEXT("WarpUsingForTarget", "Add Structural Warp (Legacy)"));
@@ -1622,7 +1630,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
 			break;
 		case EMixtormatLayerChildType::Behavior:
-			RemoveLabel = LOCTEXT("RemoveBehaviorWarpChild", "Remove Warp Behavior");
+			RemoveLabel = LOCTEXT("RemoveBehaviorChild", "Remove Behavior");
 			break;
 		case EMixtormatLayerChildType::StructuralWarp:
 			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");
