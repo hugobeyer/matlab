@@ -1042,6 +1042,19 @@ namespace MixtormatParameterBinding
 		// Not a layer id -- may be a group's. A group's shared children are addressed by GroupId
 		// in the same slot a layer's are addressed by LayerId (see FMixtormatBindingScope), the
 		// same convention LocateGroupOwner uses for a direct parameter reference.
+		if (Scope.Sources)
+		{
+			for (const FMixtormatSourceEntry& Source : *Scope.Sources)
+			{
+				if (Source.SourceId != LayerId) { continue; }
+				if (Source.Child.ChildId == ChildId) { return &Source.Child; }
+				for (const FMixtormatLayerChild& Child : Source.OwnedChildren)
+				{
+					if (Child.ChildId == ChildId) { return &Child; }
+				}
+				return nullptr;
+			}
+		}
 		if (!Scope.Groups)
 		{
 			return nullptr;
