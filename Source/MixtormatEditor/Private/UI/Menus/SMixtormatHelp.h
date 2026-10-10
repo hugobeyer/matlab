@@ -18,6 +18,8 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	// For custom widgets that own their pointer events and cannot be wrapped by SMenuAnchor.
+	static TSharedRef<IToolTip> MakeStyledToolTip(const TAttribute<FText>& Text);
 	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
 	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
