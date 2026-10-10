@@ -654,8 +654,8 @@ void AddIconRole(
 				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Layout", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Layout", "Rail Vertical Shade", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadeBias", Preview, "Layout", "Rail Shade Bias", PreviewLayout.LeftRailShadeBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Rail Shadow Offset", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
-				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Rail Shadow Radius", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Layout", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Layers Pop-out Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Layers Pop-out Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
