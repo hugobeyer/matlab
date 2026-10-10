@@ -855,6 +855,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
@@ -1278,9 +1280,10 @@ namespace
 	// A lifted UVMap carries displacement in destination texel space; interpolate
 	// that displacement (not wrapped absolute coordinates) to preserve tile winding.
 	FRDGTextureRef ScaleBehaviorUV(FMixtormatComposeContext& Ctx,
-		FRDGTextureRef Source, const float Strength, const int32 LayerIndex, const int32 ChildIndex)
+		FRDGTextureRef Source, const float Strength, FRDGTextureRef Mask,
+		const bool bUseMask, const int32 LayerIndex, const int32 ChildIndex)
 	{
-		if (Strength == 1.0f) { return Source; }
+		if (Strength == 1.0f && !bUseMask) { return Source; }
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -1288,6 +1291,8 @@ namespace
 		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorUvBlendCS::FParameters>();
 		P->OutputSize = Size;
 		P->Strength = Strength;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
 		P->SourceCoordinates = Source;
 		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorUvBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1326,11 +1331,20 @@ namespace
 			else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
 				&& Published->Texture->Desc.Format == PF_G32R32F)
 			{
-				Coordinates = ScaleBehaviorUV(Ctx, Published->Texture,
-					Child.Behavior.Strength, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				Coordinates = Published->Texture;
 			}
 			if (Coordinates)
 			{
+				// The Behavior's own mask controls its displacement only; its
+				// parent Generator and sibling Behaviors retain their source field.
+				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				const float BlendStrength = Ref.Kind == EMixtormatPublishedFieldKind::UVMap
+					? Child.Behavior.Strength : 1.0f; // Flow strength already multiplies FlowAmount.
+				Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
+					bHasMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
 				RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
 			}
 		}
