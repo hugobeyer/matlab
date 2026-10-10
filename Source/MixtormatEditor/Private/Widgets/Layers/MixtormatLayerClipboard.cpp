@@ -119,7 +119,8 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	ChildClipboardScopedRows.Reset();
 	if (!bAsInstance && (Child->Type == EMixtormatLayerChildType::IdGroup
 		|| Child->Type == EMixtormatLayerChildType::HeightPush
-		|| Child->Type == EMixtormatLayerChildType::StructuralWarp))
+		|| Child->Type == EMixtormatLayerChildType::StructuralWarp
+		|| Child->Type == EMixtormatLayerChildType::Behavior))
 	{
 		Clipboard.Source = Address;
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
@@ -335,11 +336,12 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		if (Clipboard.Mode == EMixtormatChildClipboardMode::Copy
 			&& (Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup
 				|| Clipboard.Payload.Type == EMixtormatLayerChildType::HeightPush
+				|| Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior
 				|| Clipboard.Payload.Type == EMixtormatLayerChildType::StructuralWarp))
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(Clipboard.Payload);
-			Copies[0].ScopeOwnerChildId.Invalidate();
+			Copies[0].ScopeOwnerChildId = Payload.ScopeOwnerChildId;
 			Copies.Append(ChildClipboardScopedRows);
 			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
 			TArray<FMixtormatLayer> Layers = WorkingLayers;
@@ -379,6 +381,26 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			&& (!bPublished || PublishedOutputPlacementsValid(Scope)) ? Insert : INDEX_NONE;
 	};
 
+
+	// V2 Behaviors may only be pasted underneath a Generator module. Do not
+	// allow a copied Behavior to become an invalid root row or a group child.
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
+	{
+		const int32 DestLayerIndex = WorkingLayers.IndexOfByPredicate([&Dest](const FMixtormatLayer& Layer)
+		{
+			return Layer.LayerId == Dest.OwnerId;
+		});
+		if (Dest.OwnerType != EMixtormatChildOwnerType::Layer
+			|| !WorkingLayers.IsValidIndex(DestLayerIndex)
+			|| WorkingLayers[DestLayerIndex].Type != EMixtormatLayerType::Generator
+			|| !DestContainer->IsValidIndex(AnchorChildIndex)
+			|| (*DestContainer)[AnchorChildIndex].Type != EMixtormatLayerChildType::Generator
+			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))
+		{
+			return INDEX_NONE;
+		}
+		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
+	}
 
 	if (IsGeneratorFlow(Clipboard.Payload))
 	{
@@ -709,6 +731,7 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
 		if (Pasted.Type == EMixtormatLayerChildType::IdGroup
 			|| Pasted.Type == EMixtormatLayerChildType::HeightPush
+			|| Pasted.Type == EMixtormatLayerChildType::Behavior
 			|| Pasted.Type == EMixtormatLayerChildType::StructuralWarp)
 		{
 			TArray<FMixtormatLayerChild> Copies;
