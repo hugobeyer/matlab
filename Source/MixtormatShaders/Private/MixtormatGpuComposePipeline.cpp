@@ -524,6 +524,14 @@ namespace MixtormatGpuCompositor
 						}
 						else if (Child.Type == EMixtormatLayerChildType::Behavior)
 						{
+							for (const FScalarDriverRenderData& Driver : Child.Behavior.ScalarDrivers)
+							{
+								if (Driver.bEnabled && !Driver.bRegionSource
+									&& Driver.SourceLayerId != DemandLayer.LayerId)
+								{
+									DriverSnapshotDemand.Add(Driver.SourceLayerId);
+								}
+							}
 							Drivers = Child.Behavior.FlowDrivers;
 						}
 						if (!Drivers) { continue; }
