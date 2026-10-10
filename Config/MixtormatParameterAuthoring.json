@@ -4,9 +4,11 @@
 		"Effect.BreakupRelief":
 		{
 			"default": -0.059999998658895493,
-			"uiMin": -12,
-			"uiMax": 12,
-			"snap": 0.0024999999441206455
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0024999999441206455,
+			"clampMin": -36,
+			"clampMax": 36
 		}
 	},
 	"Worn Edges":
@@ -486,11 +488,12 @@
 		},
 		"Effect.GeneratorFlowSteps:Int":
 		{
-			"default": 16,
+			"default": 64,
 			"uiMin": 1,
-			"uiMax": 512,
+			"uiMax": 128,
 			"snap": 1,
-			"clampMax": 1000
+			"clampMin": 0,
+			"clampMax": 512
 		}
 	},
 	"Mask":

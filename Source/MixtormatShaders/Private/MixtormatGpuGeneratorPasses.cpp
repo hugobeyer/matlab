@@ -2886,6 +2886,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// flow algorithm reads the field's own amplitude for its seed threshold and carve depth.
 		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
 		{
+			// A mask on an owned flow tool may read its generator's *pre-flow* feature.
+			// Publish those existing raw named fields before the flow reads its masks.
+			// The normal publication below replaces these entries with completed/post-flow
+			// fields, so all later consumers retain their original output semantics.
+			for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
+			{
+				Ctx.PublishedMaskOutputs.Add(
+					PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
+			}
 			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}

@@ -534,6 +534,31 @@ namespace MixtormatLayersPrivate
 		}
 		const TArray<FMixtormatLayerChild>* Children = FindChildrenInScope(Scope, DestOwnerId);
 		const int32 SourceIndex = Children ? FindChildById(*Children, SourceChildId) : INDEX_NONE;
+		// One legal ancestor read: an owned generator flow tool may use a named, copyable
+		// feature from its *own* generator as a gate. The generator pass publishes that
+		// pre-flow snapshot before solving the tool; the final/post-flow output is not
+		// consulted here. No other ancestor edge is exempt from feedback rejection.
+		if (Child.Type == EMixtormatLayerChildType::Mask && Children && Source
+			&& Scope.GetLayers().ContainsByPredicate([DestOwnerId](const FMixtormatLayer& Layer)
+				{ return Layer.LayerId == DestOwnerId && Layer.Type == EMixtormatLayerType::Generator; })
+			&& Source->Type == EMixtormatLayerChildType::Generator && !Source->IsInstance()
+			&& Child.Mask.HasPublishedSource()
+			&& Child.Mask.PublishedSourceOutput != FName(TEXT("Value"))
+			&& SourceIndex != INDEX_NONE && SourceIndex < InsertIndex)
+		{
+			const int32 FlowIndex = FindChildById(*Children, Child.ScopeOwnerChildId);
+			if (Children->IsValidIndex(FlowIndex) && SourceIndex < FlowIndex
+				&& FlowIndex < InsertIndex && IsGeneratorFlow((*Children)[FlowIndex])
+				&& (*Children)[FlowIndex].ScopeOwnerChildId == SourceChildId)
+			{
+				const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
+				if (Caps.Outputs.ContainsByPredicate([&Child](const FMixtormatPublishedOutputDesc& Output)
+					{ return Output.bCopyableAsMask && Output.Name == Child.Mask.PublishedSourceOutput; }))
+				{
+					return true;
+				}
+			}
+		}
 		FGuid OwnerId = Child.ScopeOwnerChildId;
 		TSet<FGuid> Visited;
 		while (Children && OwnerId.IsValid())
