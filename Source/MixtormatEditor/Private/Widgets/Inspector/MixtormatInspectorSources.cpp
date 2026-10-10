@@ -108,11 +108,14 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesPanel()
 				{
 					if (FMixtormatSourceEntry* Entry = Source())
 					{
-						Entry->Child.Generator.bEnabled = State == ECheckBoxState::Checked;
-						RecordEditHistory();
-						bIsWorkingMaterialDirty = !IsCurrentStateSaved();
-						WorkingStatusText = bIsWorkingMaterialDirty
-							? TEXT("Unsaved changes") : TEXT("All changes saved");
+						const bool bNewEnabled = State == ECheckBoxState::Checked;
+						if (Entry->Child.Generator.bEnabled == bNewEnabled)
+						{
+							return;
+						}
+
+						Entry->Child.Generator.bEnabled = bNewEnabled;
+						RefreshLayeredPreview();
 					}
 				}),
 				LOCTEXT("SourceEnabledHint", "Gate this source's published outputs for every consumer at once.")))
