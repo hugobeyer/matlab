@@ -105,43 +105,46 @@ Delivered files, UI availability findings, and integration rules for later UI ag
 `old_docs/noise_gate_flow_handoff.md` (archived delivery history). All six generators now expose the flow-tool menu;
 Noise and Cliff use Height steering and explicitly explain why Signed Distance is disabled.
 
-## Generator relationship UX plan
+## Generator relationship UX — compact child-first authoring
 
-The archived `old_docs/generator_relationship_ux_plan.md` records the delivered primary UI implementation. Generator RMB now offers
-`Warp using…` and `Height Push from…` through the searchable, grouped
-`UI/Menus/SMixtormatStructuralSourcePicker.*`. Unavailable rows retain canonical reasons and full
-tooltips; keyboard Up/Down selects eligible rows, Enter activates, and Escape dismisses without edits.
-`MixtormatStructuralConnectionModel.*` owns the effective/resolved context and typed source collector
-shared with existing endpoint menus. `PrepareConnectedStructuralModuleForTarget` revalidates at the
-real insertion boundary; the connected creator commits source and target in one history/preview edit.
-Each source picker now offers `Choose source later`, which creates the operation with its target
-set and no source; this replaces the removed `Advanced → Add unconnected…` submenu. Layer-level
-creation remains available. Generator add menus now match the creator's layer/unscoped ownership
-gates instead of offering clickable no-ops.
-`MixtormatStructuralConnectionProjection.*` now generates target-owned display rows for safe local
-Warp/Push blocks. Every authored child remains represented once; owned masks/tools stay beneath the
-actual operation, while unset/missing/ambiguous target data remains an authored repair row. Incoming
-labels retain source breadcrumbs, typed-output/status tooltips and authored execution-position text.
-Visible descriptors supply scope paint metadata; relation direction is a local chevron, not a permanent
-source-to-target rail. The existing child-row shell gains optional connection content and local halo
-suppression; ordinary rows keep their anatomy and instance-source markers. Selection/menu/enable/drag
-of relation rows resolves the real address; ambiguous repairs keep their precise authored lane.
-Connection RMB exposes Change source/target and Disconnect source without resetting trace controls.
-Layers → Connections now owns Indent, Inset, TextGap, PickerWidth and PickerListMaxHeight through the
-schema/resolved theme and existing persistence/refresh routes; prior authored theme values stay intact.
-Generator-local collapse uses transient address-keyed `CollapsedGeneratorAddresses`; collapsed rows
-show stored incoming counts with active-valid/issue details in tooltips. `RevealChildInHierarchy` and
-`NavigateToChild` reveal ancestors and scroll uniquely addressed rows; ambiguous identities are rejected.
-`BuildStructuralRelationshipHeader()` resolves the live inspector selection and exposes Go to source,
-including uniquely mapped shared-group producers. Existing endpoint editors and instance gates remain.
-Picker-owned `FMixtormatStructuralEndpointPreview` supplies temporary endpoint highlights through a weak
-editor reference, without selection/history/compose edits. Activation, Escape, dismissal, rebuild and
-document/history-baseline changes invalidate previews. Collapse is pruned on rebuild and reset for a
-new document/history baseline. Generator disclosure hit/glyph dimensions are bounded by ChildRowHeight;
-ordinary layer icons retain their default dimensions. No runtime ownership/order migration was made.
-The user confirmed compilation through phase 4; this latest collapse/navigation/highlight slice is
-source-reviewed only. No agent tests, diagnostics, builds or commands, or runtime/visual/performance
-validation, were performed.
+Current implementation:
+- Generator context menu offers `Add Warp`, and `Add Height Push` only for eligible
+  Strata Carver targets. All actions are omitted when the target cannot accept them;
+  no disabled menu row with an explanatory suffix is rendered.
+- A click creates a projected structural operation child with its target already
+  connected and its source unset. The source is authored on the child itself via
+  the compact `Source +` chip, using `BuildStructuralConnectionMenu`.
+- Source/target edit menus list compatible endpoints only, grouped by layer.
+  The selected operation's context menu continues to provide source navigation,
+  target editing and disconnection when applicable. The inspector retains its
+  existing parameter controls, including instantiated/invalid state behavior.
+- The source-search overlay in `SMixtormatStructuralSourcePicker` and
+  `BuildStructuralSourcePickerForTarget` is retained in source for compatibility,
+  but is no longer linked from the generator RMB creation path. Do not reintroduce
+  that redundant UI without explicit approval.
+- The projected relation row shows the operation glyph/name and an editable
+  source chip, not a duplicate text arrow or an inline repeat of its target.
+  The target is indicated by the parent hierarchy. Invalid/repair rows retain
+  their endpoint details and structural diagnostics.
+- Generator layers and generator children no longer print `GEN` source text;
+  their existing glyphs identify the type. Generator target rows use
+  `WarpStructural` and `WarpPush` SVG indicators only when stored incoming
+  operations exist, in the freed right-hand row space.
+- Shared child menus omit invalid Paste and Noise Gate actions; source and
+  target menus omit ineligible candidates while retaining diagnostic status
+  in the connection model and Inspector. Conditional availability remains
+  validated at activation and during actual edits.
+
+The underlying address-based `MixtormatStructuralConnectionModel.*`, atomic
+setter, authored child identity, group expansion, projection and history/preview
+contracts are unchanged. `CreateConnectedStructuralModuleForTarget` and the
+legacy source picker remain available in source. The new card-matched Sources
+add tab uses the registered `Icons/add` SVG and `MakeSourcesAddTabRecipe` to
+share `MakeCardBodyRecipe` styling; `LayerLayout.SourcesAddTabHighlight` and
+`SourcesAddTabHighlightBias` control its accent ramp, without introducing
+a new parallel palette.
+
+No compilation or runtime/visual verification was performed by the agent.
 
 ## Generator Input controls
 
