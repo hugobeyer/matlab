@@ -493,6 +493,8 @@ TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 							[
 								SNew(SButton)
 								.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+								.HAlign(HAlign_Center)
+								.VAlign(VAlign_Center)
 								.ContentPadding(0.0f)
 								.OnClicked_Lambda([this]()
 								{
