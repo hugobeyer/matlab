@@ -372,7 +372,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							SNew(SBox)
 							.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonHeight)
 							[
-								SNew(SMixtormatGroupAction, false, Resolved.LayerLayout.SourcesAddTabHeight)
+								SNew(SMixtormatGroupAction, false)
 								.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 								.ToolTipText(LOCTEXT("AddFillLayerBottomHint", "Create a constant Base Color, Roughness, IOR, and Metallic fill layer."))
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })
