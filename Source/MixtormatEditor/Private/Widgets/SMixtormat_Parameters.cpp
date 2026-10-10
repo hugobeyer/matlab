@@ -256,6 +256,18 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 		}
 	}
 
+	for (const FMixtormatSourceEntry& Source : WorkingSources)
+	{
+		if (Owner == OwnerPointer(Source.Child))
+		{
+			Result.LayerId = Source.SourceId;
+			Result.ChildId = Source.Child.ChildId;
+			Result.Owner = OwnerTypeForChild(Source.Child);
+			return Result;
+		}
+		if (ScanChildren(Source.OwnedChildren, Source.SourceId)) { return Result; }
+	}
+
 	Result.Parameter = NAME_None;
 	return Result;
 }
@@ -305,6 +317,22 @@ FMixtormatParameterBinding* SMixtormat::FindParameterBinding(
 	{
 		return nullptr;
 	}
+	for (FMixtormatSourceEntry& Source : WorkingSources)
+	{
+		if (Source.SourceId != Target.LayerId) { continue; }
+		if (Source.Child.ChildId == Target.ChildId && ChildHasParameterOwner(Source.Child, Target.Owner))
+		{
+			return FindBindingIn(Source.Child.ParameterBindings, Target, bCreate);
+		}
+		for (FMixtormatLayerChild& Child : Source.OwnedChildren)
+		{
+			if (Child.ChildId == Target.ChildId && ChildHasParameterOwner(Child, Target.Owner))
+			{
+				return FindBindingIn(Child.ParameterBindings, Target, bCreate);
+			}
+		}
+		return nullptr;
+	}
 	for (FMixtormatLayerGroup& Group : WorkingLayerGroups)
 	{
 		if (Group.GroupId != Target.LayerId)
@@ -352,6 +380,18 @@ const FMixtormatParameterBinding* SMixtormat::FindParameterBinding(const FMixtor
 	if (!Target.IsValid())
 	{
 		return nullptr;
+	}
+	for (const FMixtormatSourceEntry& Source : WorkingSources)
+	{
+		if (Source.SourceId != Target.LayerId) { continue; }
+		const FMixtormatLayerChild* Child = Source.Child.ChildId == Target.ChildId ? &Source.Child :
+			Source.OwnedChildren.FindByPredicate([&Target](const FMixtormatLayerChild& Candidate)
+			{ return Candidate.ChildId == Target.ChildId; });
+		if (!Child || !ChildHasParameterOwner(*Child, Target.Owner)) { return nullptr; }
+		return Child->ParameterBindings.FindByPredicate([&Target](const FMixtormatParameterBinding& Item)
+		{
+			return Item.DestinationOwner == Target.Owner && Item.DestinationParameter == Target.Parameter;
+		});
 	}
 	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
 	{
