@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
@@ -162,23 +163,24 @@ namespace
 		const auto& Style = FMixtormatThemeStore::GetResolved();
 		const auto BranchIndent = [&Rows, &Style](const int32 Index)
 		{
-			return Rows[Index].Kind == EMixtormatProjectedChildKind::IncomingConnection
-				? 0.0f : Style.LayerHierarchy.Indent + ProjectedScopeIndent(Rows[Index]);
+			// Incoming operations are visually nested under the target while retaining
+			// their authored address and execution position. They need the same
+			// painted branch inset as any other projected child.
+			return Style.LayerHierarchy.Indent + ProjectedScopeIndent(Rows[Index]);
 		};
 		const auto HasLaterSibling = [&Rows](const int32 Index)
 		{
 			for (int32 Later = Index + 1; Later < Rows.Num(); ++Later)
 			{
-				if (Rows[Later].Kind != EMixtormatProjectedChildKind::IncomingConnection
-					&& Rows[Later].VisualParentRowIndex == Rows[Index].VisualParentRowIndex) { return true; }
+				if (Rows[Later].VisualParentRowIndex == Rows[Index].VisualParentRowIndex) { return true; }
 			}
 			return false;
 		};
-		const auto FirstOwnedChild = [&Rows](const int32 Index) -> int32
+		const auto FirstVisualChild = [&Rows](const int32 Index) -> int32
 		{
 			for (int32 Child = Index + 1; Child < Rows.Num(); ++Child)
 			{
-				if (Rows[Child].VisualParentRowIndex == Index && Rows[Child].Kind != EMixtormatProjectedChildKind::IncomingConnection)
+				if (Rows[Child].VisualParentRowIndex == Index)
 				{ return Child; }
 			}
 			return INDEX_NONE;
@@ -188,17 +190,17 @@ namespace
 		Paint.BranchInset = Style.LayerLayout.PaddingX;
 		Paint.Indent = BranchIndent(RowIndex);
 		Paint.bLast = !HasLaterSibling(RowIndex);
-		const int32 OwnedChild = FirstOwnedChild(RowIndex);
-		Paint.bHasChildren = OwnedChild != INDEX_NONE;
-		if (Paint.bHasChildren) { Paint.ChildStemIndent = BranchIndent(OwnedChild); }
+		const int32 FirstChild = FirstVisualChild(RowIndex);
+		Paint.bHasChildren = FirstChild != INDEX_NONE;
+		if (Paint.bHasChildren) { Paint.ChildStemIndent = BranchIndent(FirstChild); }
 		int32 Parent = Rows[RowIndex].VisualParentRowIndex;
 		for (int32 Step = 0; Rows.IsValidIndex(Parent) && Step < Rows.Num(); ++Step)
 		{
 			const float Indent = BranchIndent(Parent);
 			if (Indent > 0.0f && HasLaterSibling(Parent)) { Paint.AncestorIndents.AddUnique(Indent); }
-			// Carry only a real ownership stem across incoming display rows to the target's
-			// subsequent owned children. The incoming relation itself never receives a trunk.
-			const int32 FirstChild = FirstOwnedChild(Parent);
+			// Carry the first visual child's branch across other displayed rows.
+			// This is presentation-only: it never changes module scope or ownership.
+			const int32 FirstChild = FirstVisualChild(Parent);
 			if (FirstChild > RowIndex) { Paint.AncestorIndents.AddUnique(BranchIndent(FirstChild)); }
 			Parent = Rows[Parent].VisualParentRowIndex;
 		}
@@ -1401,7 +1403,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		FText ConnectionToolTip;
 		const TSharedRef<SWidget> ConnectionContent = bConnection
 			? BuildStructuralConnectionContent(ProjectedRow, Child.Type, ConnectionToolTip) : SNullWidget::NullWidget;
-		const TSharedPtr<IToolTip> RowToolTip = bConnection ? SNew(SToolTip).Text(ConnectionToolTip) : BuildMaskPreviewTooltip(LayerIndex, ChildIndex);
+		const TSharedPtr<IToolTip> RowToolTip = bConnection
+			? SMixtormatHelp::MakeStyledToolTip(ConnectionToolTip)
+			: BuildMaskPreviewTooltip(LayerIndex, ChildIndex);
 		const FMixtormatChildAddress RowAddress = ProjectedRow.Address;
 		// New relation actions resolve the authored address at activation, never the visual index.
 		const bool bAddressedConnection = bConnection && RowAddress.IsValid()
