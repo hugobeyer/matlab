@@ -47,7 +47,6 @@ namespace
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
 		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
 		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
-		{LOCTEXT("AddGeneratorLayerFlow", "Flow"), EMixtormatChildCreation::NoiseFlow},
 	};
 	for (const auto& Entry : Entries)
 	{
@@ -841,7 +840,7 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 	// it runs: an effect filters the layer after it has composited, a generator rewrites the
 	// height the layer composites from. Filing it under Effect would be the first step toward
 	// implementing it as one.
-	if (CanAddGeneratorModule(Target))
+	if (CanAddGeneratorModule(Target) || CanAddScopedFlowGenerator(Target))
 	{
 		Menu.SubMenu(
 			LOCTEXT("AddGeneratorChild", "Generators"),
@@ -1077,9 +1076,19 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 	return Menu.Build();
 }
 
+
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
+	if (CanAddScopedFlowGenerator(Target))
+	{
+		Menu.Item(LOCTEXT("AddScopedFlowChild", "Flow"), MixtormatIcons::Generator(),
+			FSimpleDelegate::CreateLambda([this, Target]()
+			{
+				CreateChild(Target, EMixtormatChildCreation::NoiseFlow);
+			}));
+		return Menu.Build();
+	}
 	const bool bCanAdd = CanCreateChild(Target) && CanAddGeneratorModule(Target);
 	const FText Reason = bCanAdd ? FText::GetEmpty()
 		: Target.IsGroup() ? LOCTEXT("GeneratorModuleGroupUnavailable", "Generator modules cannot be authored in groups")
