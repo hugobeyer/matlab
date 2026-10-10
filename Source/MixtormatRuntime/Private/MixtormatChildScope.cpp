@@ -125,8 +125,13 @@ namespace MixtormatChildScope
 				Result.bShelfSource = true;
 				return EBehaviorInputIssue::None;
 			}
-			const int32 Index = MixtormatOutputReferences::ResolveGeneratorInputSource(
-				EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
+			// Generic Scalar01 is not a generator Height/Warp socket. Validate it
+			// through the normal published-field dependency rules instead.
+			const int32 Index = bInfluence
+				? MixtormatOutputReferences::ResolveSource(
+					EffectiveLayers, LayerIndex, BehaviorChildIndex, Ref)
+				: MixtormatOutputReferences::ResolveGeneratorInputSource(
+					EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
 			if (Index == INDEX_NONE) { return EBehaviorInputIssue::InvalidPublishedSource; }
 			Result.SourceChildIndex = Index;
 			return EBehaviorInputIssue::None;
@@ -135,17 +140,12 @@ namespace MixtormatChildScope
 			|| Behavior.Type == EMixtormatBehaviorType::Deform;
 		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
 			|| Behavior.Type == EMixtormatBehaviorType::Carve;
-		for (const auto& Entry : {
-			CheckInput(Behavior.Direction, true, false, bNeedsDirection),
-			CheckInput(Behavior.Height, false, false, bNeedsHeight),
-			CheckInput(Behavior.Influence, false, true, false)})
-		{
-			if (Entry != EBehaviorInputIssue::None)
-			{
-				Result.Issue = Entry;
-				return Result;
-			}
-		}
+		Result.Issue = CheckInput(Behavior.Direction, true, false, bNeedsDirection);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		Result.Issue = CheckInput(Behavior.Height, false, false, bNeedsHeight);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		Result.Issue = CheckInput(Behavior.Influence, false, true, false);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		Result.Issue = EBehaviorInputIssue::None;
 		Result.bCanEvaluate = true;
 		return Result;
