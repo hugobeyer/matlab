@@ -40,9 +40,10 @@ FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FL
 FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
 	FRDGTextureRef FlowIn, FRDGTextureRef Generated, FRDGTextureRef Mask,
 	float Add, float Mix, FRDGTextureRef& OutValidity, const TCHAR* DebugName);
-}
 // Re-sample canonical accumulated Flow and validity after a bundle Distort.
 // The tile-UV vector magnitude is preserved; only its spatial attachment changes.
 FRDGTextureRef AddNoiseFlowTransportPass(FMixtormatComposeContext& Ctx,
 	FRDGTextureRef Flow, FRDGTextureRef Validity, FRDGTextureRef Coordinates,
 	FRDGTextureRef& OutValidity);
+
+}
