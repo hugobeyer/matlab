@@ -154,8 +154,8 @@ namespace MixtormatGpuCompositor
 					for (const FGuid& Root : Roots) { Visit(Root); }
 				}
 			}
-			// V2 Warp is a typed consumer too. Demand its shelf producer before
-			// GPU evaluation; otherwise a valid Shelf reference has no field to read.
+			// V2 Warp and Push are typed consumers. Demand each connected
+			// shelf producer before GPU evaluation or the field will be absent.
 			if (Layer.Type == EMixtormatLayerType::Generator)
 			{
 				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
@@ -163,17 +163,23 @@ namespace MixtormatGpuCompositor
 					const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 					if (Child.Type != EMixtormatLayerChildType::Behavior
 						|| !Child.Behavior.bEnabled
-						|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+						|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+							&& Child.Behavior.Type != EMixtormatBehaviorType::Push)
 						|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 						|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex) == INDEX_NONE)
 					{
 						continue;
 					}
-					const FMixtormatOutputReference& Reference = Child.Behavior.Direction.Published;
-					if (Child.Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+					const bool bPush = Child.Behavior.Type == EMixtormatBehaviorType::Push;
+					const FMixtormatBehaviorFieldInput& Input = bPush
+						? Child.Behavior.Height : Child.Behavior.Direction;
+					const FMixtormatOutputReference& Reference = Input.Published;
+					if (Input.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 						|| !Reference.IsShelfSource() || !Reference.bEnabled
-						|| (Reference.Kind != EMixtormatPublishedFieldKind::Flow
-							&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
+						|| (bPush
+							? Reference.Kind != EMixtormatPublishedFieldKind::ScalarSigned
+							: (Reference.Kind != EMixtormatPublishedFieldKind::Flow
+								&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap))) { continue; }
 					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
 					if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 					{
