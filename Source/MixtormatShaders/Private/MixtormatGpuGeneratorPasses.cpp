@@ -2683,6 +2683,8 @@ namespace
 			P->OutHigh = Rock.DepthMax;
 			P->NormalizeMode = 0u;
 			P->OutputScale = 1.0f;
+			P->HasHeightGate = 0u;
+			P->HeightGate = Outputs[0];
 			P->SourceField = Outputs[0];
 			P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 			P->OutField = GraphBuilder.CreateUAV(Height);
