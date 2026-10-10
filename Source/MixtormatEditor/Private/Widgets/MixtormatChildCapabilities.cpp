@@ -288,34 +288,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	case EMixtormatLayerChildType::Effect:
-		if (MixtormatIsGeneratorFlowEffect(EffectType))
-		{
-			Result.Outputs.Add({FName(TEXT("FlowDirection")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputFlowDirection", "Flow Direction"),
-				EMixtormatPreviewOutputKind::FlowDirection, false, true,
-				EffectType != EMixtormatEffectType::ShapeDeform, NAME_None});
-			if (EffectType != EMixtormatEffectType::FlowCarve)
-			{
-				Result.Outputs.Add({FName(TEXT("WarpedUVGrid")),
-					NSLOCTEXT("SMixtormat", "PreviewOutputWarpedUVGrid", "Warped UV Grid"),
-					EMixtormatPreviewOutputKind::WarpedUVGrid, false, true,
-										EffectType != EMixtormatEffectType::GeneratorFlow
-																&& EffectType != EMixtormatEffectType::GravityFlow, NAME_None});
-			}
-			Result.Outputs.Add({FName(TEXT("Influence")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputInfluence", "Influence"),
-				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
-			Result.Outputs.Add({FName(TEXT("Validity")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputValidity", "Validity"),
-				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None});
-			if (EffectType == EMixtormatEffectType::FlowCarve)
-			{
-				Result.Outputs.Add({FName(TEXT("CarveMask")),
-					NSLOCTEXT("SMixtormat", "PreviewOutputCarveMask", "Carve Mask"),
-					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
-			}
-		}
-		else if (EffectType == EMixtormatEffectType::Breakup)
+		if (EffectType == EMixtormatEffectType::Breakup)
 		{
 			// Region IDs has no invalid-pixel concept of its own -- it is a separate pass from
 			// Gap -- so PreviewGapMaskName tells the compositor which published output to borrow
