@@ -1204,10 +1204,11 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
 	AddSliderRow(Panel,
 		SNew(SBox)
-		.IsEnabled_Lambda([Warp]()
+		.Visibility_Lambda([Warp]()
 		{
 			const FMixtormatBehavior* Selected = Warp();
-			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight;
+			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+				? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
 			MakeMemberSlider<FMixtormatBehavior>(
@@ -1229,10 +1230,13 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		LOCTEXT("BehaviorWarpStepsHint", "Integration steps; UV Maps use their coordinates directly.")));
 	Panel->AddSlot().AutoHeight()
 	[
-		SNew(SBox).IsEnabled_Lambda([Reference]()
+		SNew(SBox).Visibility_Lambda([Warp, Reference]()
 		{
+			const FMixtormatBehavior* Selected = Warp();
 			const FMixtormatOutputReference* Ref = Reference();
-			return Ref && Ref->Kind == EMixtormatPublishedFieldKind::Flow;
+			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+				&& Ref && Ref->Kind == EMixtormatPublishedFieldKind::Flow
+				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
 	return SNew(SVerticalBox)
