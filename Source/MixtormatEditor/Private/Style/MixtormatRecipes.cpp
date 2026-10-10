@@ -780,12 +780,19 @@ namespace Mixtormat
 			Recipe.Layers.Add(Shade);
 		}
 
-		// Keep the shared button hairline blend but expose its thickness and strength
-		// through the existing Navigation Rail tokens.
-		for (FMixtormatBorderLayer& Border : Recipe.Borders)
+		// Rail borders use their own visible Hairline instead of multiplying the
+		// already faint shared Button hairline by a second opacity token.
+		Recipe.Borders.Reset();
+		if (Layout.LeftRailBorderThickness > 0.0f && Layout.LeftRailBorderOpacity > 0.0f)
 		{
-			Border.Width *= Layout.LeftRailBorderThickness;
-			Border.Source.Opacity *= Layout.LeftRailBorderOpacity;
+			FMixtormatBorderLayer Border;
+			Border.Source = MakeColorRef(EMixtormatColorRole::Hairline);
+			Border.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+			Border.Width = Layout.LeftRailBorderThickness;
+			Border.OpacityRamp = MakeLinearRamp(EMixtormatAxis::None,
+				Layout.LeftRailBorderOpacity, Layout.LeftRailBorderOpacity, 2);
+			Border.bTop = Border.bBottom = Border.bLeft = Border.bRight = true;
+			Recipe.Borders.Add(Border);
 		}
 		return Recipe;
 	}
