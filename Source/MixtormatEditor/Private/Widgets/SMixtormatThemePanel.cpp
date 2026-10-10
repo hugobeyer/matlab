@@ -121,16 +121,32 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 	const TSharedRef<SVerticalBox> Content = SNew(SVerticalBox);
 	for (const FSectionKey& Section : Sections)
 	{
+		const FString SectionKey = FString::Printf(TEXT("%d:%s"), static_cast<int32>(Section.Tab), *Section.Name);
 		Content->AddSlot().AutoHeight().Padding(0.0f, SectionGap, 0.0f, 3.0f)
 		[
-			SNew(STextBlock)
-			.Text(FText::FromString(Section.Name.ToUpper()))
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
+			SNew(SButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+			.ContentPadding(2.0f)
 			.Visibility_Lambda([this, Section]()
 			{
 				return SectionVisible(Section.Tab, Section.Name)
-					? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					? EVisibility::Visible : EVisibility::Collapsed;
 			})
+			.OnClicked_Lambda([this, SectionKey]()
+			{
+				if (CollapsedSections.Contains(SectionKey)) { CollapsedSections.Remove(SectionKey); }
+				else { CollapsedSections.Add(SectionKey); }
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this, Section, SectionKey]()
+				{
+					return FText::FromString(FString::Printf(TEXT("%s %s"),
+						CollapsedSections.Contains(SectionKey) ? TEXT(">") : TEXT("v"), *Section.Name.ToUpper()));
+				})
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowCaption")))
+			]
 		];
 
 		for (const Mixtormat::FMixtormatThemeProperty& P : Mixtormat::FMixtormatThemeSchema::Properties())
@@ -145,7 +161,9 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 				SNew(SBox)
 				.Visibility_Lambda([this, Property]()
 				{
-					return PropertyVisible(*Property) ? EVisibility::Visible : EVisibility::Collapsed;
+					const FString Key = FString::Printf(TEXT("%d:%s"), static_cast<int32>(Property->Tab), *Property->Section);
+					return PropertyVisible(*Property) && (!Filter.IsEmpty() || !CollapsedSections.Contains(Key))
+						? EVisibility::Visible : EVisibility::Collapsed;
 				})
 				[MakePropertyRow(P)]
 			];
