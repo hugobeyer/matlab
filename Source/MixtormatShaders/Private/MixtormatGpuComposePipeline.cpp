@@ -1097,12 +1097,6 @@ namespace MixtormatGpuCompositor
 							}
 
 							const FEffectRenderData& Effect = Child.Effect;
-							if (MixtormatIsGeneratorFlowEffect(Effect.Type))
-							{
-								// Already run inside its owning Rock Formation, before this loop
-								// (AddGeneratorLayerPasses). Must not fall through to the peel default.
-								continue;
-							}
 							FRDGTextureRef FeatureMask =
 								AddScopedFeatureMask(
 									Ctx, LayerCtx, Layer, Child.SourceChildIndex,
