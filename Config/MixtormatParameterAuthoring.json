@@ -806,5 +806,337 @@
 			"clampMin": 0,
 			"clampMax": 512
 		}
+	},
+	"Noise": {
+		"Generator.NoiseType:Enum": {
+			"defaultEnum": "Gradient"
+		},
+		"Generator.NoiseSeed:Int": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 9999,
+			"snap": 1
+		},
+		"Generator.NoiseScale": {
+			"default": 8,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 0.1
+		},
+		"Generator.NoiseDetail:Int": {
+			"default": 4,
+			"uiMin": 1,
+			"uiMax": 8,
+			"snap": 1
+		},
+		"Generator.NoiseRoughness": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseLacunarity": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"Generator.NoiseLayerMix": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseOffsetX": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseOffsetY": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseDirection": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 360,
+			"snap": 1
+		},
+		"Generator.NoisePhasorFrequency": {
+			"default": 2,
+			"uiMin": 0,
+			"uiMax": 12,
+			"snap": 0.05
+		},
+		"Generator.NoisePhasorAnisotropy": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0.05
+		},
+		"Generator.NoisePhasorPhaseVariation": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoisePhasorOrientationVariation": {
+			"default": 0.35,
+			"uiMin": 0,
+			"uiMax": 3.14,
+			"snap": 0.01
+		},
+		"Generator.NoisePhasorComponents:Int": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 1
+		},
+		"Generator.NoisePhasorScale": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"Generator.NoisePhasorBias": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseWorleyMetric:Enum": {
+			"defaultEnum": "Euclidean"
+		},
+		"Generator.NoiseWorleyJitter": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseWorleyCellDepth": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseDistortionStrength": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.01
+		},
+		"Generator.NoiseDistortionJaggedness": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.01
+		},
+		"Generator.NoiseDistortionFrequency": {
+			"default": 4,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"Generator.NoiseDistortionOctaves:Int": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 8,
+			"snap": 1
+		},
+		"Generator.NoiseDistortionRoughness": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseDistortionLacunarity": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 0.05
+		},
+		"Generator.NoiseDistortionCurlMix": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseDistortionDirection": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 360,
+			"snap": 1
+		},
+		"Generator.NoiseHeightScale": {
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseType:Enum": {
+			"defaultEnum": "Gradient"
+		},
+		"MaskNoise.NoiseSeed:Int": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 9999,
+			"snap": 1
+		},
+		"MaskNoise.NoiseScale": {
+			"default": 8,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 0.1
+		},
+		"MaskNoise.NoiseDetail:Int": {
+			"default": 4,
+			"uiMin": 1,
+			"uiMax": 8,
+			"snap": 1
+		},
+		"MaskNoise.NoiseRoughness": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseLacunarity": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseLayerMix": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseOffsetX": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseOffsetY": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDirection": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 360,
+			"snap": 1
+		},
+		"MaskNoise.NoisePhasorFrequency": {
+			"default": 2,
+			"uiMin": 0,
+			"uiMax": 12,
+			"snap": 0.05
+		},
+		"MaskNoise.NoisePhasorAnisotropy": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0.05
+		},
+		"MaskNoise.NoisePhasorPhaseVariation": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoisePhasorOrientationVariation": {
+			"default": 0.35,
+			"uiMin": 0,
+			"uiMax": 3.14,
+			"snap": 0.01
+		},
+		"MaskNoise.NoisePhasorComponents:Int": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 1
+		},
+		"MaskNoise.NoisePhasorScale": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"MaskNoise.NoisePhasorBias": {
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseWorleyMetric:Enum": {
+			"defaultEnum": "Euclidean"
+		},
+		"MaskNoise.NoiseWorleyJitter": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseWorleyCellDepth": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDistortionStrength": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDistortionJaggedness": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDistortionFrequency": {
+			"default": 4,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1
+		},
+		"MaskNoise.NoiseDistortionOctaves:Int": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 8,
+			"snap": 1
+		},
+		"MaskNoise.NoiseDistortionRoughness": {
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDistortionLacunarity": {
+			"default": 2,
+			"uiMin": 1,
+			"uiMax": 4,
+			"snap": 0.05
+		},
+		"MaskNoise.NoiseDistortionCurlMix": {
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseDistortionDirection": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 360,
+			"snap": 1
+		}
 	}
 }
