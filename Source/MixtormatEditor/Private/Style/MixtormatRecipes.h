@@ -71,6 +71,10 @@ namespace Mixtormat
 	// The collapsed gallery's restore tab: the foldout anatomy with only the top corners rounded.
 	FMixtormatSurfaceRecipe MakeGalleryTabRecipe(const FMixtormatTheme& Theme, bool bHovered = false);
 
+	// Compact Sources footer is a continuation of the card, with an optional
+	// vertically biased shared-button accent lift rather than a separate plate.
+	FMixtormatSurfaceRecipe MakeSourcesAddTabRecipe(const FMixtormatTheme& Theme, bool bHovered);
+
 	// Callers map geometry to Seam = nominalHeader / (nominalHeader + max(reach, 0))
 	// and TailFraction = min(reach / bodyHeight, .5). Zero tail means a flat body.
 	// Bands stay square: the caller clips the whole group or supplies a compact-card radius.
