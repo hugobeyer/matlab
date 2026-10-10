@@ -301,6 +301,10 @@ namespace MixtormatLayerGroups
 				RemapOutput(Child.OutputReference);
 				RemapOutput(Child.Generator.HeightSource);
 				RemapOutput(Child.Generator.WarpSource);
+				// Behavior sockets follow member-local producers when groups expand.
+				RemapOutput(Child.Behavior.Direction.Published);
+				RemapOutput(Child.Behavior.Height.Published);
+				RemapOutput(Child.Behavior.Influence.Published);
 				RemapOutput(Child.BoundaryId.RegionIdsSource);
 				RemapOutput(Child.StructuralWarp.Source);
 				RemapOutput(Child.HeightPush.Source);
