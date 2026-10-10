@@ -59,14 +59,20 @@ int32 SMixtormatLayerIcon::OnPaint(const FPaintArgs& Args, const FGeometry& Geom
 	}
 	if (Blend != MixtormatCompositing::EMixtormatBlendMode::Normal)
 	{
-		// The row body under the mark: the resolved row ramp's mid colour over the row's base.
+		// Slate cannot multiply the image against the already-painted row at draw time.
+		// Resolve the blend RGB using the row's representative colour, then let the
+		// squircle brush carry its original coverage. Compositing at partial alpha
+		// and forcing A=1 painted an opaque, backdrop-coloured glyph instead.
+		const float Coverage = FMath::Clamp(Source.A, 0.0f, 1.0f);
 		const Mixtormat::FMixtormatResolvedLayerStyle& LayerStyle = FMixtormatThemeStore::GetResolved().Layers;
 		const Mixtormat::FMixtormatResolvedRamp& RowRamp = bHot ? LayerStyle.RowHover : LayerStyle.Row;
 		const FLinearColor RowMid = RowRamp.Colors.IsEmpty()
 			? LayerStyle.Base : RowRamp.Colors[RowRamp.Colors.Num() / 2];
+		FLinearColor FullStrengthSource = Source;
+		FullStrengthSource.A = 1.0f;
 		Source = MixtormatCompositing::ApplyBlend(Blend,
-			MixtormatCompositing::Normal(LayerStyle.Base, RowMid), Source);
-		Source.A = 1.0f;
+			MixtormatCompositing::Normal(LayerStyle.Base, RowMid), FullStrengthSource);
+		Source.A = Coverage;
 	}
 
 	const FSlateBrush* Brush = bVisibility ? MixtormatIcons::Squircle() : Icon.Get();
