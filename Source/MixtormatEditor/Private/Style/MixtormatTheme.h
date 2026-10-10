@@ -731,6 +731,8 @@ namespace Mixtormat
 		float SourcesRowGap = 1.0f;
 		float SourcesAddTabWidth = 28.0f;
 		float SourcesAddTabHeight = 20.0f;
+		float SourcesAddIconSize = 12.0f;
+		float SourcesAddTabBottomRadius = 0.0f;
 		float SourcesAddTabHighlight = 0.14f;
 		float SourcesAddTabHighlightBias = 1.5f;
 	};
