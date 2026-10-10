@@ -5,6 +5,7 @@
 #include "Compositing/MixtormatComposeHash.h"
 #include "Compositing/MixtormatNoiseRender.h"
 #include "MixtormatColorRampMath.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatScalarRampMath.h"
@@ -344,6 +345,54 @@ namespace MixtormatGpuCompositor
 			break;
 		}
 	}
+}
+
+void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
+	const FMixtormatLayerChild& LayerChild, const int32 BehaviorChildIndex, const int32 LayerIndex,
+	const TArray<FMixtormatLayer>& EffectiveLayers,
+	const TArray<FMixtormatSourceEntry>& Sources)
+{
+	// A Behavior is owned by its Generator, not run as an Effect at its own row.
+	// The execution kernel is independent of the generator family.
+	if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
+		|| LayerChild.Type != EMixtormatLayerChildType::Behavior) { return; }
+	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
+	if (!Behavior.bEnabled || Behavior.Type != EMixtormatBehaviorType::Warp
+		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+		|| Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+		|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
+		|| Behavior.Influence.Origin != EMixtormatBehaviorFieldOrigin::None
+		|| !FMath::IsFinite(Behavior.Strength) || Behavior.Strength == 0.0f) { return; }
+
+	const MixtormatChildScope::FBehaviorInputStatus Valid =
+		MixtormatChildScope::ValidateBehaviorInputs(
+			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources);
+	if (!Valid.bCanEvaluate || Valid.GeneratorChildIndex == INDEX_NONE) { return; }
+	const FMixtormatOutputReference& Reference = Behavior.Direction.Published;
+	const int32 SourceIndex = Reference.IsShelfSource() ? 0
+		: MixtormatOutputReferences::ResolveGeneratorInputSource(
+			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, Reference);
+	if (SourceIndex == INDEX_NONE) { return; }
+	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+	ChildData.Type = EMixtormatLayerChildType::Behavior;
+	ChildData.SourceChildIndex = BehaviorChildIndex;
+	ChildData.ScopeOwnerSourceChildIndex = Valid.GeneratorChildIndex;
+	FBehaviorRenderData& Out = ChildData.Behavior;
+	Out.Type = Behavior.Type;
+	Out.Stage = Behavior.Stage;
+	Out.GeneratorChildIndex = Valid.GeneratorChildIndex;
+	Out.Strength = Behavior.Strength;
+	Out.Direction.Source.LayerId = Reference.IsShelfSource()
+		? Reference.SourceShelfId : Reference.SourceLayerId;
+	Out.Direction.Source.ChildIndex = SourceIndex;
+	Out.Direction.Source.Output = Reference.OutputName;
+	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
+	Out.Direction.Kind = Reference.Kind;
+	Out.Direction.FlowAmount = FMath::IsFinite(Reference.FlowAmount)
+		? Reference.FlowAmount * Behavior.Strength : 0.0f;
+	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
+		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
+	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
 }
 
 void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
