@@ -122,6 +122,7 @@ namespace Mixtormat
 			const TOptional<FVector2f>& AnchorCenter)
 		{
 			const FName Type = Widget->GetType();
+			if (!Widget->GetVisibility().IsVisible()) return;
 
 			if (Is(Type, TEXT("SMixtormatThemePanel")))
 			{
@@ -158,6 +159,23 @@ namespace Mixtormat
 				CollectBest(Children->GetChildAt(Index), Target, AnchorCenter);
 			}
 		}
+		void CollectWorkspaceMatches(const TSharedRef<SWidget>& Widget,
+			const EMixtormatStyleTarget Target, const TOptional<FVector2f>& Anchor)
+		{
+			if (!Widget->GetVisibility().IsVisible()) return;
+			if (Is(Widget->GetType(), TEXT("SMixtormat")))
+			{
+				CollectBest(Widget, Target, Anchor);
+				return;
+			}
+			FChildren* Children = Widget->GetChildren();
+			if (!Children) return;
+			for (int32 Index = 0; Index < Children->Num(); ++Index)
+			{
+				CollectWorkspaceMatches(Children->GetChildAt(Index), Target, Anchor);
+			}
+		}
+
 	}
 
 	EMixtormatStyleTarget FMixtormatStyleLocator::TargetFor(const FMixtormatThemeProperty& Property)
@@ -203,7 +221,7 @@ namespace Mixtormat
 
 		for (const TSharedRef<SWindow>& Window : FSlateApplication::Get().GetTopLevelWindows())
 		{
-			CollectBest(Window, Target, AnchorCenter);
+			CollectWorkspaceMatches(Window, Target, AnchorCenter);
 		}
 
 		if (!GLocated.IsSet())
