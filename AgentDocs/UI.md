@@ -302,7 +302,7 @@ Drawer side margins, header/collapsed heights and surface opacity live in `Galle
 Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
 The category popup populates its family list on opening; `All` clears the category filter.
 Inspector remains dockable.
-The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
+The left rail has its own `NavigationRail` icon role (18px glyph, 24px shipped target),
 independent of toolbar sizing. It overlays the full-width left page's leading
 `PreviewLayout.LeftRailContentInset` (28px shipped default); the page surface remains one
 continuous column. All three pages are docked, with no extra Layers grab margin. The tab group has no separate spine, no neck fill and no offset drop
@@ -313,12 +313,12 @@ vertical shade strength, and `PreviewLayout.LeftRailShadeBias` controls the
 vertical distribution (higher means more shading near the bottom).
 `LeftRailButtonGap = 0` keeps the tabs adjoining; the existing corner radius
 applies only to the outside corners, never internal seams. Border opacity
-and thickness still affect the shared group-button hairline.
+and thickness control a dedicated four-edge rail hairline.
 `LeftRailShadowOffset` and `LeftRailShadowRadius` remain serialized for
 existing themes but no longer draw an offset shadow. The retired Layers pop-out
 width/opacity fields also remain serialized for theme compatibility, but have
-no active UI STYLE controls. All painting stays
-inside each tab's bounds rather than overlapping layer rows. The Q marking menu shares the existing 1K/2K/4K composition
+no active UI STYLE controls. The per-button shade and borders stay inside each tab; the separate
+horizontal fade extends across the page beneath the rail. The Q marking menu shares the existing 1K/2K/4K composition
 resolution control. Its backdrop is a centre-dark, edge-transparent vignette behind the cards;
 UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
 IDs remain unchanged for theme compatibility, but no longer describe a light bloom. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
