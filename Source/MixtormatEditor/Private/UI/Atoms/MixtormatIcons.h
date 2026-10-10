@@ -66,6 +66,12 @@ namespace MixtormatIcons
 	const FSlateBrush* Effect();
 	const FSlateBrush* Generator();
 	const FSlateBrush* Generated();
+	const FSlateBrush* FlowDirection();
+	const FSlateBrush* FlowGravity();
+	const FSlateBrush* WarpDeform();
+	const FSlateBrush* WarpNoise();
+	const FSlateBrush* WarpPush();
+	const FSlateBrush* WarpStructural();
 	// IDs and anything derived from them. Distinct from Generated: Generated Mask emits 0..1
 	// coverage and joins the mask chain, an ID map does not.
 	const FSlateBrush* Ids();
