@@ -381,15 +381,6 @@ void SMixtormat::AddSharedChildMenuItems(
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const bool bInstance = Child && Child->IsInstance();
 
-	// Generator-flow tools only exist for a generator that can carry them. On anything else the
-	// three rows were permanently disabled -- clutter no state could ever enable -- so they are
-	// omitted rather than shown greyed. A generator that can own them keeps them, disabled only
-	// while the current state (a full scope, say) blocks the add.
-	if (Child && CanOwnGeneratorFlow(*Child))
-	{
-		AddGeneratorFlowMenuItems(Menu, Address);
-		Menu.Separator();
-	}
 	Menu.Item(
 		LOCTEXT("CopyChildContext", "Copy"),
 		MixtormatIcons::Duplicate(),
@@ -1902,24 +1893,6 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 			}));
 	}
 	return Menu.Build();
-}
-
-void SMixtormat::AddGeneratorFlowMenuItems(
-	MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Owner)
-{
-	for (const EMixtormatEffectType Type : {EMixtormatEffectType::ShapeDeform,
-		EMixtormatEffectType::GeneratorFlow, EMixtormatEffectType::GravityFlow, EMixtormatEffectType::FlowCarve})
-	{
-		FMixtormatLayerChild Probe;
-		Probe.Type = EMixtormatLayerChildType::Effect;
-		Probe.Effect.ProceduralType = Type;
-		const FSlateBrush* Icon = Type == EMixtormatEffectType::ShapeDeform ? MixtormatIcons::WarpDeform()
-			: Type == EMixtormatEffectType::GravityFlow ? MixtormatIcons::FlowGravity()
-			: MixtormatIcons::FlowDirection();
-		Menu.Item(GetLayerChildName(Probe), Icon,
-			FSimpleDelegate::CreateLambda([this, Owner, Type]() { AddGeneratorFlow(Owner, Type); }))
-			.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanAddGeneratorFlow(Owner); }));
-	}
 }
 
 #undef LOCTEXT_NAMESPACE
