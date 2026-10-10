@@ -1482,7 +1482,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			}
 			const FText EntryLabel = bAvailable ? Label : FText::Format(
 				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Reason);
-			Menu.SubMenu(EntryLabel, MixtormatIcons::Generator(),
+			Menu.SubMenu(EntryLabel, ModuleType == EMixtormatLayerChildType::HeightPush ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
 				FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
 				{
 					return BuildStructuralSourcePickerForTarget(TargetLayerId, TargetChildId, ModuleType);
@@ -1693,7 +1693,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		.Enabled(TAttribute<bool>(bCanNestChild));
 	Menu.Item(
 		LOCTEXT("AddFlowWarpToMask", "Add Flow Warp · Targets This Mask"),
-		MixtormatIcons::Effect(),
+		MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
 		{
 			AddFlowWarpToLayer(LayerIndex, MaskIndex);
@@ -1975,7 +1975,10 @@ void SMixtormat::AddGeneratorFlowMenuItems(
 		FMixtormatLayerChild Probe;
 		Probe.Type = EMixtormatLayerChildType::Effect;
 		Probe.Effect.ProceduralType = Type;
-		Menu.Item(GetLayerChildName(Probe), MixtormatIcons::Effect(),
+		const FSlateBrush* Icon = Type == EMixtormatEffectType::ShapeDeform ? MixtormatIcons::WarpDeform()
+			: Type == EMixtormatEffectType::GravityFlow ? MixtormatIcons::FlowGravity()
+			: MixtormatIcons::FlowDirection();
+		Menu.Item(GetLayerChildName(Probe), Icon,
 			FSimpleDelegate::CreateLambda([this, Owner, Type]() { AddGeneratorFlow(Owner, Type); }))
 			.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanAddGeneratorFlow(Owner); }));
 	}
