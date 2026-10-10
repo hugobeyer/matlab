@@ -1630,6 +1630,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.LayerIndex(LayerIndex)
 			.ChildIndex(ChildIndex)
 			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
+			.OnChildCanReparent(this, &SMixtormat::CanReparentLayerChild)
+			.OnChildReparented(this, &SMixtormat::ReparentLayerChild)
 			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
 			.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
 			[
