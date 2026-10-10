@@ -224,6 +224,46 @@ unreadable files are not preserved. Missing recognized keys retain the current i
 (startup seeds defaults first). Known local-literal gaps and the new-UI checklist:
 `auditdocs/ui-style-token-audit.md`.
 
+## Left-column visual contract — Layers / Library / Global
+
+The entire left column and navigation rail use the shared `Palette.Panel` ground.
+The rail's inactive button body uses the same ground by default, with active/hover
+states retaining the shared button recipe; `PreviewLayout.LeftRailButtonSurfaceStrength`
+lifts an inactive plate without hardcoding a colour. `LeftRailShadowOpacity`
+controls the full-height vertical shade, `LeftRailShadeBias` its bias, and
+`bLeftRailShadeInverted` reverses the direction (on by default). These are
+UI STYLE > Preview > Layout controls, not marking-menu properties.
+
+Sources has separate top and bottom layout spacing under UI STYLE > Layers >
+Sources: `LayerLayout.SourcesTopGap` measures header inset, while
+`SourcesBottomGap` separates it from layer creation actions. Both remain
+inside the common left column, whose own `ColumnGutter` is independent.
+
+Global uses existing `SMixtormatInspectorGroup` foldouts and `AddCard` card
+recipes, with `Shell.GlobalPagePadding` and `Shell.GlobalCardGap`
+(UI STYLE > Gallery/Shell > Global Page). Generator and material behavior
+is unchanged. Preview render/lighting/geometry/camera/output widgets are still
+shared with the viewport; **their internal layout remains a known follow-up**:
+give these builders an explicit compact row-mode variant for Global before
+replacing viewport-specific button geometry. Do not delete or fork controls.
+
+Library search is one `SMixtormatWellBox`, including the unplated folder icon,
+with `Shell.LibrarySearchInnerPadding`. Content beneath the search is a
+thumbnail-bearing list of saved mixes and imported user surfaces, using
+`SMixtormatTile` and the shared card-body surface recipe; existing right-click
+asset actions remain. Library no longer shows arbitrary editable-layer counts,
+because that count is not an entry name or asset type. Layout, item spacing and
+thumbnail size are governed by `Shell.LibraryPagePadding`,
+`LibrarySearchBottomGap`, `LibraryItemGap`, and `LibraryThumbnailSize`.
+Text follows shared `CardTitle` / `LayerName` typography and
+`Palette.TextMuted` / `Palette.Text` with additional
+`LibraryHeadingOpacity` and `LibraryLabelOpacity`. All are registered under
+UI STYLE > Gallery/Shell > Library Page / Library Typography.
+
+Do not create a second independent label opacity, card recipe, or marking-menu
+spacing system for these pages. Preserve all editing, import, context-menu,
+navigation, and preview interactions when modifying presentation.
+
 ## UI STYLE locator
 
 `Style/MixtormatStyleLocator.*` selects the visible matching widget nearest the UI STYLE panel,
