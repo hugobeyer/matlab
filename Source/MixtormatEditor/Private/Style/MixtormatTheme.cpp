@@ -458,7 +458,7 @@ namespace Mixtormat
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].GlyphSize = 18.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].ButtonSize = 22.0f;
 		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::GalleryToolbar)].HitSize = 24.0f;
-		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::NavigationRail)] = Icon(18.0f, 0.6f, 6.0f, 6.0f);
+		T.Icons.Roles[static_cast<uint8>(EMixtormatIconRole::NavigationRail)] = Icon(14.0f, 0.6f, 6.0f, 6.0f);
 
 		// ---- Typography ----------------------------------------------------------------
 		// Weights below are the ones tokens.css authors, not a guess from a bold flag. Two
