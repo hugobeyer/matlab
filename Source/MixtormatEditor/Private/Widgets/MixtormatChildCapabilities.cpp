@@ -359,7 +359,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Output.FieldKind = EMixtormatPublishedFieldKind::Flow;
 		}
 		if (Output.Name == FName(TEXT("RockEdgeDistance"))
-			|| Output.Name == FName(TEXT("PebbleEdgeDistance"))
+			|| Output.Name == FName(TEXT("PebbleEdgeDistance")))
 		{
 			Output.bCopyableAsField = true;
 			Output.FieldKind = EMixtormatPublishedFieldKind::SDF;
