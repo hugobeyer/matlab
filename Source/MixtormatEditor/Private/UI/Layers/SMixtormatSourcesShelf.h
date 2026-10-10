@@ -9,8 +9,8 @@
 
 class SButton;
 
-// The Sources shelf: the collapsible bar below the layer rows that lists reusable generator
-// outputs.
+// The Sources shelf: a collapsible header above layer actions with a compact,
+// non-compositing array card for reusable generator outputs.
 //
 // A list, not a composition. Entries publish fields other operations consume; they never blend
 // into one another, and their order here has no bearing on evaluation.
