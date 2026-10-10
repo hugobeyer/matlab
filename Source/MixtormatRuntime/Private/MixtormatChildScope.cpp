@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatChildScope.h"
+#include "MixtormatOutputReference.h"
 
 namespace MixtormatChildScope
 {
@@ -47,6 +48,107 @@ namespace MixtormatChildScope
 		return Children.IsValidIndex(OwnerIndex)
 			&& Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator
 			? OwnerIndex : INDEX_NONE;
+	}
+
+	FBehaviorInputStatus ValidateBehaviorInputs(
+		const TArray<FMixtormatLayer>& EffectiveLayers,
+		const int32 LayerIndex, const int32 BehaviorChildIndex,
+		const TArray<FMixtormatSourceEntry>& Sources)
+	{
+		FBehaviorInputStatus Result;
+		if (!EffectiveLayers.IsValidIndex(LayerIndex)) { return Result; }
+		const FMixtormatLayer& Layer = EffectiveLayers[LayerIndex];
+		const int32 GeneratorIndex = ResolveBehaviorGeneratorIndex(Layer.Children, BehaviorChildIndex);
+		if (!Layer.Children.IsValidIndex(GeneratorIndex) || Layer.Type != EMixtormatLayerType::Generator)
+		{
+			return Result;
+		}
+		Result.GeneratorChildIndex = GeneratorIndex;
+		const FMixtormatLayerChild& Owner = Layer.Children[GeneratorIndex];
+		const FMixtormatBehavior& Behavior = Layer.Children[BehaviorChildIndex].Behavior;
+		if (!Layer.bEnabled || !Owner.Generator.bEnabled || !Behavior.bEnabled)
+		{
+			Result.Issue = EBehaviorInputIssue::Disabled;
+			return Result;
+		}
+		if (!FMath::IsFinite(Behavior.Strength))
+		{
+			Result.Issue = EBehaviorInputIssue::InvalidStrength;
+			return Result;
+		}
+		const auto CheckInput = [&](const FMixtormatBehaviorFieldInput& Input,
+			const bool bDirection, const bool bInfluence, const bool bRequired) -> EBehaviorInputIssue
+		{
+			if (Input.Origin == EMixtormatBehaviorFieldOrigin::None)
+			{
+				return bRequired ? EBehaviorInputIssue::MissingInput : EBehaviorInputIssue::None;
+			}
+			if (Input.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)
+			{
+				if (bDirection || bInfluence) { return EBehaviorInputIssue::WrongFieldKind; }
+				if (Input.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+				{
+					return Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+						? EBehaviorInputIssue::None : EBehaviorInputIssue::InvalidStage;
+				}
+				if (Input.Origin == EMixtormatBehaviorFieldOrigin::OwnBoundary)
+				{
+					if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration)
+					{
+						return EBehaviorInputIssue::InvalidStage;
+					}
+					return MixtormatGeneratorHasFlowBoundary(Owner.Generator.Type)
+						? EBehaviorInputIssue::None : EBehaviorInputIssue::UnsupportedBoundary;
+				}
+				return Input.Origin == EMixtormatBehaviorFieldOrigin::PreviousRunningHeight
+					? EBehaviorInputIssue::None : EBehaviorInputIssue::WrongFieldKind;
+			}
+			const FMixtormatOutputReference& Ref = Input.Published;
+			if (!Ref.bEnabled || !Ref.HasSource())
+			{
+				return EBehaviorInputIssue::InvalidPublishedSource;
+			}
+			const bool bKindCorrect = bDirection
+				? (Ref.Kind == EMixtormatPublishedFieldKind::Flow
+					|| Ref.Kind == EMixtormatPublishedFieldKind::UVMap)
+				: Ref.Kind == (bInfluence
+					? EMixtormatPublishedFieldKind::Scalar01
+					: EMixtormatPublishedFieldKind::ScalarSigned);
+			if (!bKindCorrect) { return EBehaviorInputIssue::WrongFieldKind; }
+			if (Ref.IsShelfSource())
+			{
+				const auto ShelfStatus = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Ref);
+				if (ShelfStatus.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+				{
+					return EBehaviorInputIssue::InvalidPublishedSource;
+				}
+				Result.bShelfSource = true;
+				return EBehaviorInputIssue::None;
+			}
+			const int32 Index = MixtormatOutputReferences::ResolveGeneratorInputSource(
+				EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
+			if (Index == INDEX_NONE) { return EBehaviorInputIssue::InvalidPublishedSource; }
+			Result.SourceChildIndex = Index;
+			return EBehaviorInputIssue::None;
+		};
+		const bool bNeedsDirection = Behavior.Type == EMixtormatBehaviorType::Warp
+			|| Behavior.Type == EMixtormatBehaviorType::Deform;
+		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
+			|| Behavior.Type == EMixtormatBehaviorType::Carve;
+		for (const auto& Entry : {
+			CheckInput(Behavior.Direction, true, false, bNeedsDirection),
+			CheckInput(Behavior.Height, false, false, bNeedsHeight),
+			CheckInput(Behavior.Influence, false, true, false)})
+		{
+			if (Entry != EBehaviorInputIssue::None)
+			{
+				Result.Issue = Entry;
+				return Result;
+			}
+		}
+		Result.Issue = EBehaviorInputIssue::None;
+		Result.bCanEvaluate = true;
+		return Result;
 	}
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
