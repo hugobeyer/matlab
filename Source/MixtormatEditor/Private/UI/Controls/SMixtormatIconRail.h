@@ -20,12 +20,16 @@ public:
 		: _ActiveIndex(0)
 	{}
 		SLATE_ARGUMENT(TArray<const FSlateBrush*>, Options)
+		SLATE_ARGUMENT(TArray<FText>, Labels)
 		SLATE_ARGUMENT(TArray<FText>, ToolTips)
 		SLATE_ATTRIBUTE(int32, ActiveIndex)
 		SLATE_EVENT(FMixtormatOnSegmentChosen, OnChosen)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry, const FSlateRect& CullingRect,
+		FSlateWindowElementList& Elements, int32 LayerId, const FWidgetStyle& WidgetStyle,
+		bool bParentEnabled) const override;
 
 private:
 	TAttribute<int32> ActiveIndex;
