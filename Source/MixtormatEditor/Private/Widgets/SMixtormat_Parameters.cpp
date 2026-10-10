@@ -653,7 +653,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			LOCTEXT("AddParameterDriver", "Add Driver..."),
 			nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterDriverPopover, Target))
-		.Enabled(Target.IsValid());
+		.Enabled(Target.IsValid()
+			&& Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow);
 
 	if (IsParameterDriven(Target))
 	{
