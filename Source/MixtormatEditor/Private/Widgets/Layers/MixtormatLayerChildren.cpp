@@ -1674,7 +1674,8 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 	}
 	const int32 OwnerIndex = FindChildById(*Children, Target.ScopeOwnerChildId);
 	return Children->IsValidIndex(OwnerIndex)
-		&& (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup
+		&& ((*Children)[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup
+			|| CanOwnScopedMasks((*Children)[OwnerIndex]))
 		&& CanAddScopedChild(*Children, OwnerIndex);
 }
 
