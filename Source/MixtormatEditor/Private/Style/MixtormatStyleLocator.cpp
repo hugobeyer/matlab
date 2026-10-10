@@ -73,6 +73,9 @@ namespace Mixtormat
 			case EMixtormatStyleTarget::Foldout:
 				return Is(Type, TEXT("SMixtormatFoldoutHeader"));
 
+			case EMixtormatStyleTarget::SourcesAddButton:
+				return Is(Type, TEXT("SMixtormatSourceAddTarget"));
+
 			case EMixtormatStyleTarget::SourcesShelf:
 				return Is(Type, TEXT("SMixtormatSourcesShelf"));
 
@@ -197,6 +200,7 @@ namespace Mixtormat
 		case EMixtormatStyleTarget::TextField: return NSLOCTEXT("MixtormatStyleLocator", "TextField", "Text fields");
 		case EMixtormatStyleTarget::ControlLayout: return NSLOCTEXT("MixtormatStyleLocator", "ControlLayout", "Inspector controls");
 		case EMixtormatStyleTarget::Foldout: return NSLOCTEXT("MixtormatStyleLocator", "Foldout", "Foldout");
+		case EMixtormatStyleTarget::SourcesAddButton: return NSLOCTEXT("MixtormatStyleLocator", "SourcesAddButton", "Sources add button");
 		case EMixtormatStyleTarget::SourcesShelf: return NSLOCTEXT("MixtormatStyleLocator", "SourcesShelf", "Sources shelf");
 		case EMixtormatStyleTarget::Card: return NSLOCTEXT("MixtormatStyleLocator", "Card", "Inspector card");
 		case EMixtormatStyleTarget::Layer: return NSLOCTEXT("MixtormatStyleLocator", "Layer", "Layer rows");
