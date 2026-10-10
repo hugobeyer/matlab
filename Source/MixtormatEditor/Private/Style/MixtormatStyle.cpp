@@ -944,7 +944,7 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampLinear"), TEXT("Icons/ramp-linear"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampSpline"), TEXT("Icons/ramp-spline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
-	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/ramp-frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
@@ -952,7 +952,7 @@ void FMixtormatStyle::Refresh()
 	// that shapes coverage, a bolt for an effect, a mountain for a procedural generator,
 	// a shoot for generated masks, and a cluster for IDs and data producers.
 	SetSvgIcon(TEXT("Mixtormat.Icon.Mask"), TEXT("Icons/mask"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
-	SetSvgIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effects"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.FlowDirection"), TEXT("Icons/beh-flow"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
