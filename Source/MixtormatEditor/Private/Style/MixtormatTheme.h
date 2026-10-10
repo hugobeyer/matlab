@@ -726,6 +726,7 @@ namespace Mixtormat
 		// the shared Card and Button recipes, not a parallel Sources palette.
 		float SourcesBottomGap = 8.0f;
 		float SourcesEmptyHeight = 20.0f;
+		float SourcesRowHeight = 20.0f;
 		float SourcesRowGap = 1.0f;
 		float SourcesAddTabWidth = 28.0f;
 		float SourcesAddTabHeight = 20.0f;
