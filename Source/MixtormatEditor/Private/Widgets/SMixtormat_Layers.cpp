@@ -282,7 +282,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 						]
 					]
 					// Sources stays above the creation toolbar and the scrolling layer stack.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
+					+ SVerticalBox::Slot().AutoHeight()
 					[
 						BuildSourcesShelf()
 					]
@@ -425,8 +425,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
 {
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
-	// The shelf sits under a FillHeight layer list, so an unbounded body would squeeze the stack
-	// out of the pane. Past a handful of rows the shelf scrolls instead of growing.
+	// The shelf is above the creation buttons and layer list. Limit its expanded body
+	// so sources never consume the full column height; additional rows scroll internally.
 	constexpr int32 MaxVisibleSourceRows = 6;
 
 	TSharedRef<SWidget> Shelf = SNew(SMixtormatSourcesShelf)
