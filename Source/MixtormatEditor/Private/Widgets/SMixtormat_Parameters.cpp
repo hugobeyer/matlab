@@ -700,7 +700,10 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterDriverPopover, Target))
 		.Enabled(Target.IsValid()
-			&& Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow);
+			&& (Target.Owner != EMixtormatParameterOwnerType::StructuralWarpFlow
+				|| (Target.ValueType == EMixtormatParameterValueType::Float
+					&& (Target.Parameter == FName(TEXT("FlowAmount"))
+						|| Target.Parameter == FName(TEXT("FlowTraceLength"))))));
 
 	if (IsParameterDriven(Target))
 	{
@@ -1773,8 +1776,13 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 		FSimpleDelegate::CreateSP(
 			this, &SMixtormat::SetDriverSource, Target, FGuid{}, FGuid{}, EMixtormatDriverSourceKind::None, FName()));
 
+	const bool bStructural = Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow;
 	for (const FMixtormatLayer& Layer : WorkingLayers)
 	{
+		// A structural module can read only a completed mask from an earlier
+		// enabled layer; never offer a later, self or child-level source.
+		if (bStructural && Layer.LayerId == Target.LayerId) { break; }
+		if (bStructural && !Layer.bEnabled) { continue; }
 		Menu.Item(
 			FText::Format(LOCTEXT("DriverLayerMaskSource", "{0} / Layer Mask"), Layer.DisplayName),
 			nullptr,
@@ -1787,6 +1795,7 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 				EMixtormatDriverSourceKind::CombinedMask,
 				FName(TEXT("Mask"))));
 
+		if (bStructural) { continue; }
 		for (const FMixtormatLayerChild& Child : Layer.Children)
 		{
 			EMixtormatDriverSourceKind Kind = EMixtormatDriverSourceKind::None;
@@ -1889,11 +1898,13 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
-	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow)
+	if (Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow
+		&& Target.Parameter != FName(TEXT("FlowAmount"))
+		&& Target.Parameter != FName(TEXT("FlowTraceLength")))
 	{
 		MixtormatMenu::FBuilder Menu;
 		Menu.Caption(LOCTEXT("DriverWarpUnavailable", "Drivers"))
-			.Item(LOCTEXT("DriverWarpUnavailableMessage", "Structural Warp spatial modulation is not supported by the GPU trace yet."), nullptr, FSimpleDelegate())
+			.Item(LOCTEXT("DriverWarpUnavailableMessage", "Only Flow Amount and Trace Length support mask drivers."), nullptr, FSimpleDelegate())
 			.Enabled(false);
 		return Menu.Build();
 	}
