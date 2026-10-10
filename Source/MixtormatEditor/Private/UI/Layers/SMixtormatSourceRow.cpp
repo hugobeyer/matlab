@@ -49,7 +49,7 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 			.InheritWidgetStyle(true)
 			[
 				SNew(SBox)
-				.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.RowHeight)
+				.HeightOverride(FMixtormatThemeStore::GetResolved().LayerLayout.SourcesRowHeight)
 				.Padding(FMargin(
 					MixtormatTokens::LayerRowInsetLeading, 0.0f,
 					MixtormatTokens::LayerRowInsetTrailing, 0.0f))
