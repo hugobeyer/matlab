@@ -232,7 +232,7 @@ The entire left column, Library and navigation rail use the shared darker `Palet
 The rail's inactive button body uses the same ground by default, with active/hover
 states retaining the shared button recipe; `PreviewLayout.LeftRailButtonSurfaceStrength`
 lifts an inactive plate without hardcoding a colour. `LeftRailHoverSurfaceStrength` and `LeftRailSelectedSurfaceStrength` keep active states subtly raised. `LeftRailShadowOpacity`
-controls the full-height vertical shade, `LeftRailShadeBias` its bias, and
+controls a local vertical shade repeated inside each rail button, `LeftRailShadeBias` its bias, and
 `bLeftRailShadeInverted` reverses the direction (on by default). These are
 UI STYLE > Preview > Layout controls, not marking-menu properties.
 
@@ -304,10 +304,10 @@ The category popup populates its family list on opening; `All` clears the catego
 Inspector remains dockable.
 The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
 independent of toolbar sizing. It overlays the full-width left page's leading
-`PreviewLayout.LeftRailContentInset` (34px default); the page surface remains one
+`PreviewLayout.LeftRailContentInset` (28px shipped default); the page surface remains one
 continuous column. All three pages are docked, with no extra Layers grab margin. The tab group has no separate spine, no neck fill and no offset drop
 shadow: `MakeNavigationRailTabRecipe` reuses the shared group-button recipe
-and samples a single continuous vertical shade from first to last tab.
+and shades each rail button independently. A separate horizontal fade is painted above the page and beneath the buttons.
 `PreviewLayout.LeftRailShadowOpacity` retains its saved ID but now means
 vertical shade strength, and `PreviewLayout.LeftRailShadeBias` controls the
 vertical distribution (higher means more shading near the bottom).
