@@ -39,6 +39,10 @@ namespace MixtormatLayersPrivate
 		{
 			Specific = MixtormatIcons::WarpPush();
 		}
+		else if (Child.Type == EMixtormatLayerChildType::Behavior)
+		{
+			Specific = MixtormatIcons::WarpStructural();
+		}
 		else if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
 		{
 			Specific = MixtormatIcons::WarpStructural();
@@ -961,6 +965,10 @@ FText SMixtormat::GetLayerChildSourceText(
 		return LOCTEXT("MissingScopeOwner", "OWNER MISSING");
 	}
 	const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
+	if (Child.Type == EMixtormatLayerChildType::Behavior)
+	{
+		return FText::GetEmpty();
+	}
 	if (IsGeneratorFlow(Child))
 	{
 		return LOCTEXT("GeneratorFlowTarget", "TARGET");
@@ -1468,7 +1476,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			|| Child.Type == EMixtormatLayerChildType::HeightCurve
 			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp
 		|| Child.Type == EMixtormatLayerChildType::HeightPush
-		|| Child.Type == EMixtormatLayerChildType::StructuralWarp;
+		|| Child.Type == EMixtormatLayerChildType::StructuralWarp
+		|| Child.Type == EMixtormatLayerChildType::Behavior;
 		const FText ChildName = GetLayerChildName(Child);
 		const int32 FullIndex = AllRows.IndexOfByPredicate([ChildIndex](const FMixtormatProjectedChildRow& Candidate)
 		{
