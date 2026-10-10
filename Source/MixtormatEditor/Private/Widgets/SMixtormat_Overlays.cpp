@@ -53,49 +53,9 @@ FReply SMixtormat::ToggleInspectorCollapsed()
 
 FReply SMixtormat::ToggleLeftPanelCollapsed()
 {
-	if (bIsBaking)
-	{
-		return FReply::Handled();
-	}
-	switch (LeftPanelPlacement)
-	{
-	case ELeftPanelPlacement::Docked: LeftPanelPlacement = ELeftPanelPlacement::Overlay; break;
-	case ELeftPanelPlacement::Overlay: LeftPanelPlacement = ELeftPanelPlacement::Hidden; break;
-	case ELeftPanelPlacement::Hidden: LeftPanelPlacement = ELeftPanelPlacement::Docked; break;
-	}
-	ApplyLeftPanelPlacement();
-	return FReply::Handled();
-}
-
-void SMixtormat::ApplyLeftPanelPlacement()
-{
-	bLayerHomeDragPending = false;
-	LeftPanelOverlay.bFloating = LeftPanelPlacement == ELeftPanelPlacement::Overlay;
-	if (LeftPanelOverlay.bFloating)
-	{
-		// The layer stack travels alone; the pinned rail and selected page remain in the Preview overlay.
-		MixtormatOverlay::Place(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds(),
-			FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlayWidth, false);
-		MixtormatOverlay::Clamp(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
-	}
-	LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
-	LeftPanelOverlayHost->SetContent(SNullWidget::NullWidget);
-	(LeftPanelOverlay.bFloating ? LeftPanelOverlayHost : LeftPanelDockHost)
-		->SetContent(LeftPanel.ToSharedRef());
-	SyncLeftCellPage();
-}
-
-void SMixtormat::SyncLeftCellPage()
-{
-	// Placement changes choose a valid page directly. Do not route through ShowLeftPage: that
-	// method intentionally toggles the active rail icon's collapse state.
-	const int32 PageIndex = LeftPanelPlacement == ELeftPanelPlacement::Docked
-		? 0 : LastNonLayersPage;
-	LeftTabIndex = PageIndex;
-	if (LeftSwitcher.IsValid())
-	{
-		LeftSwitcher->SetActiveWidgetIndex(PageIndex);
-	}
+	if (bIsBaking) { return FReply::Handled(); }
+	// L toggles the docked Layers page without creating a floating panel.
+	return ShowLeftPage(LeftTabIndex == 0 ? LastNonLayersPage : 0);
 }
 
 FVector2D SMixtormat::GetPreviewViewportBounds() const
@@ -146,50 +106,15 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingPanelStack()
 				? InspectorPanel.ToSharedRef() : SNullWidget::NullWidget]
 		];
 
-	LeftPanelOverlayFrame = SNew(SBox)
-		.Padding_Lambda([this]()
-		{
-			MixtormatOverlay::Clamp(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
-			return FMargin(LeftPanelOverlay.Position.X, LeftPanelOverlay.Position.Y, 0.0f, 0.0f);
-		})
-		.HAlign(HAlign_Left)
-		.VAlign(VAlign_Top)
-		.Visibility(EVisibility::SelfHitTestInvisible)
-		[
-			SAssignNew(LeftPanelOverlayHost, SBox)
-			.WidthOverride_Lambda([this]() { return LeftPanelOverlay.Size.X; })
-			.HeightOverride_Lambda([this]()
-			{
-				return MixtormatOverlay::GetHeight(LeftPanelOverlay, LeftPanel, GetPreviewViewportBounds());
-			})
-			.Clipping(EWidgetClipping::ClipToBounds)
-			.Visibility_Lambda([this]()
-			{
-				return LeftPanelPlacement == ELeftPanelPlacement::Overlay
-					? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[LeftPanelPlacement == ELeftPanelPlacement::Overlay
-				? LeftPanel.ToSharedRef() : SNullWidget::NullWidget]
-		];
-
-	// Back slot first, front slot last: an SOverlay paints and hit-tests in slot order, so the
-	// front slot is the panel a press lands on.
-	bAppliedLeftPanelInFront = bLeftPanelInFront;
+	// Layers always belong to the left column. Only Inspector floats.
 	return SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
 		+ SOverlay::Slot()
 		[
-			SAssignNew(FloatingPanelBackSlot, SBox)
-			.Visibility(EVisibility::SelfHitTestInvisible)
-			[bLeftPanelInFront ? InspectorOverlayFrame.ToSharedRef() : LeftPanelOverlayFrame.ToSharedRef()]
-		]
-		+ SOverlay::Slot()
-		[
-			SAssignNew(FloatingPanelFrontSlot, SBox)
-			.Visibility(EVisibility::SelfHitTestInvisible)
-			[bLeftPanelInFront ? LeftPanelOverlayFrame.ToSharedRef() : InspectorOverlayFrame.ToSharedRef()]
+			InspectorOverlayFrame.ToSharedRef()
 		];
 }
+
 
 TSharedRef<SWidget> SMixtormat::MakeOverlayFitButton(FMixtormatOverlayPanelState& State, const TSharedPtr<SWidget>& Panel)
 {
@@ -232,92 +157,28 @@ TSharedRef<SWidget> SMixtormat::MakeOverlayFitButton(FMixtormatOverlayPanelState
 		];
 }
 
-void SMixtormat::BringFloatingPanelToFront(const bool bLeftPanel)
-{
-	if (bLeftPanelInFront == bLeftPanel)
-	{
-		return;
-	}
-	bLeftPanelInFront = bLeftPanel;
-	// Deferred to the next tick: reparenting the frames mid-event would invalidate the widget path
-	// the press is still travelling down.
-	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float)
-	{
-		ApplyFloatingPanelOrder();
-		return EActiveTimerReturnType::Stop;
-	}));
-}
-
-void SMixtormat::ApplyFloatingPanelOrder()
-{
-	if (!FloatingPanelBackSlot.IsValid() || !FloatingPanelFrontSlot.IsValid()
-		|| !InspectorOverlayFrame.IsValid() || !LeftPanelOverlayFrame.IsValid()
-		|| bAppliedLeftPanelInFront == bLeftPanelInFront)
-	{
-		return;
-	}
-	bAppliedLeftPanelInFront = bLeftPanelInFront;
-	FloatingPanelBackSlot->SetContent(
-		bLeftPanelInFront ? InspectorOverlayFrame.ToSharedRef() : LeftPanelOverlayFrame.ToSharedRef());
-	FloatingPanelFrontSlot->SetContent(
-		bLeftPanelInFront ? LeftPanelOverlayFrame.ToSharedRef() : InspectorOverlayFrame.ToSharedRef());
-}
-
-FReply SMixtormat::OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-	{
-		const FVector2D Local = GetPreviewViewportLocalPosition(MouseEvent.GetScreenSpacePosition());
-		const bool bLeftHit = LeftPanelPlacement == ELeftPanelPlacement::Overlay
-			&& MixtormatOverlay::IsHit(LeftPanelOverlay, Local);
-		const bool bInspectorHit = InspectorPlacement == EInspectorPlacement::Overlay
-			&& MixtormatOverlay::IsHit(InspectorOverlay, Local);
-		// An overlap belongs to the panel already in front; a press on the other one brings it
-		// forward. The press itself is left unhandled so it still reaches the control under it.
-		if (bLeftHit != bInspectorHit)
-		{
-			BringFloatingPanelToFront(bLeftHit);
-		}
-		// Empty marking-menu space passes through for camera orbit. Proximity, Q and Escape
-		// dismiss the menu instead of consuming the start of a viewport drag.
-	}
-	return SCompoundWidget::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
-}
-
 FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		const FVector2D ScreenPosition = MouseEvent.GetScreenSpacePosition();
-		// The front panel is asked first: an overlap belongs to it, and its own chrome takes the
-		// press before the panel behind is considered.
-		const int32 Order[2] = { bLeftPanelInFront ? 1 : 0, bLeftPanelInFront ? 0 : 1 };
-		for (const int32 Index : Order)
+		if (InspectorPlacement == EInspectorPlacement::Overlay)
 		{
-			FMixtormatOverlayPanelState& State = Index == 0 ? InspectorOverlay : LeftPanelOverlay;
-			const bool bFloating = Index == 0
-				? InspectorPlacement == EInspectorPlacement::Overlay
-				: LeftPanelPlacement == ELeftPanelPlacement::Overlay;
-			if (!bFloating)
+			if (const int32 Corner = MixtormatOverlay::HitResizeGrip(InspectorOverlay, ScreenPosition);
+				Corner != INDEX_NONE)
 			{
-				continue;
-			}
-			// Top corner resize targets take priority over the header's drag area.
-			if (const int32 Corner = MixtormatOverlay::HitResizeGrip(State, ScreenPosition); Corner != INDEX_NONE)
-			{
-				MixtormatOverlay::BeginInteraction(State, GetPreviewViewportLocalPosition(ScreenPosition), Corner);
+				MixtormatOverlay::BeginInteraction(InspectorOverlay,
+					GetPreviewViewportLocalPosition(ScreenPosition), Corner);
 				return FReply::Handled().CaptureMouse(SharedThis(this));
 			}
-			if (const TSharedPtr<SWidget> Header = State.Header.Pin();
+			if (const TSharedPtr<SWidget> Header = InspectorOverlay.Header.Pin();
 				Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
 			{
-				MixtormatOverlay::BeginInteraction(State, GetPreviewViewportLocalPosition(ScreenPosition), INDEX_NONE);
+				MixtormatOverlay::BeginInteraction(InspectorOverlay,
+					GetPreviewViewportLocalPosition(ScreenPosition), INDEX_NONE);
 				return FReply::Handled().CaptureMouse(SharedThis(this));
 			}
 		}
-		// Floating Inspector content can cover the home handle; do not grab through that panel.
-		const bool bInspectorCoversHome = InspectorPlacement == EInspectorPlacement::Overlay
-			&& MixtormatOverlay::IsHit(InspectorOverlay, GetPreviewViewportLocalPosition(ScreenPosition));
 		if (!bIsBaking && !bBottomLibraryCollapsed && GalleryDrawerHeader.IsValid()
 			&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(ScreenPosition))
 		{
@@ -329,60 +190,12 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
 			return FReply::Handled().CaptureMouse(SharedThis(this));
 		}
-		if (!bIsBaking && !bInspectorCoversHome && LeftTabIndex == 0
-			&& LeftPanelPlacement == ELeftPanelPlacement::Docked)
-		{
-			const TSharedPtr<SWidget> Header = LeftPanelOverlay.Header.Pin();
-			if (Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
-			{
-				bLayerHomeDragPending = true;
-				LayerHomeDragOriginScreen = ScreenPosition;
-				return FReply::Handled().CaptureMouse(SharedThis(this))
-					.DetectDrag(SharedThis(this), EKeys::LeftMouseButton);
-			}
-		}
 	}
 	return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
 }
 
-FReply SMixtormat::OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	if (!bLayerHomeDragPending)
-	{
-		return SCompoundWidget::OnDragDetected(MyGeometry, MouseEvent);
-	}
-	bLayerHomeDragPending = false;
-	if (bIsBaking || LeftTabIndex != 0 || LeftPanelPlacement != ELeftPanelPlacement::Docked
-		|| !LeftPanel.IsValid())
-	{
-		return FReply::Handled().ReleaseMouseCapture();
-	}
-
-	// Anchor at the actual home geometry rather than the old floating position. Reparent the
-	// existing widget only after Slate's drag threshold; clicks leave it at home.
-	const FGeometry HomeGeometry = LeftPanel->GetCachedGeometry();
-	LeftPanelOverlay.Position = GetPreviewViewportLocalPosition(HomeGeometry.LocalToAbsolute(FVector2D::ZeroVector));
-	if (!LeftPanelOverlay.bPlaced)
-	{
-		LeftPanelOverlay.Size = HomeGeometry.GetLocalSize();
-		LeftPanelOverlay.bPlaced = true;
-	}
-	LeftPanelPlacement = ELeftPanelPlacement::Overlay;
-	ApplyLeftPanelPlacement();
-	MixtormatOverlay::BeginInteraction(LeftPanelOverlay,
-		GetPreviewViewportLocalPosition(LayerHomeDragOriginScreen), INDEX_NONE);
-	MixtormatOverlay::UpdateInteraction(LeftPanelOverlay,
-		GetPreviewViewportLocalPosition(MouseEvent.GetScreenSpacePosition()), GetPreviewViewportBounds());
-	BringFloatingPanelToFront(true);
-	return FReply::Handled().CaptureMouse(SharedThis(this));
-}
-
 FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	if (bLayerHomeDragPending)
-	{
-		return FReply::Handled();
-	}
 	if (bGalleryDrawerResizing)
 	{
 		bGalleryDrawerResizeMoved |= FVector2D::Distance(
@@ -428,12 +241,6 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 			GetPreviewViewportLocalPosition(MouseEvent.GetScreenSpacePosition()), GetPreviewViewportBounds());
 		return FReply::Handled();
 	}
-	if (LeftPanelOverlay.bDragging || LeftPanelOverlay.bResizing)
-	{
-		MixtormatOverlay::UpdateInteraction(LeftPanelOverlay,
-			GetPreviewViewportLocalPosition(MouseEvent.GetScreenSpacePosition()), GetPreviewViewportBounds());
-		return FReply::Handled();
-	}
 	return SCompoundWidget::OnMouseMove(MyGeometry, MouseEvent);
 }
 
@@ -453,26 +260,9 @@ FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEv
 		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}
-	if (bLayerHomeDragPending && MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-	{
-		bLayerHomeDragPending = false;
-		return FReply::Handled().ReleaseMouseCapture();
-	}
 	if (InspectorOverlay.bDragging || InspectorOverlay.bResizing)
 	{
 		MixtormatOverlay::CancelInteraction(InspectorOverlay);
-		return FReply::Handled().ReleaseMouseCapture();
-	}
-	if (LeftPanelOverlay.bDragging || LeftPanelOverlay.bResizing)
-	{
-		const bool bSnapBack = LeftPanelOverlay.bDragging && !LeftPanelOverlay.bResizing
-			&& LeftPanelOverlay.Position.X <= MixtormatTokens::LeftPanelSnapDistance;
-		MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
-		if (bSnapBack)
-		{
-			LeftPanelPlacement = ELeftPanelPlacement::Docked;
-			ApplyLeftPanelPlacement();
-		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}
 	// A gesture cancelled by a rebuild can leave the capture behind; release it here rather than
@@ -487,11 +277,9 @@ FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEv
 void SMixtormat::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 {
 	// Alt-tab or a modal mid-drag: drop the interaction rather than follow a mouse that is gone.
-	bLayerHomeDragPending = false;
 	bGalleryDrawerResizing = false;
 	bGalleryDrawerResizeMoved = false;
 	MixtormatOverlay::CancelInteraction(InspectorOverlay);
-	MixtormatOverlay::CancelInteraction(LeftPanelOverlay);
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
 }
 
@@ -503,22 +291,13 @@ FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPoint
 	{
 		return FCursorReply::Cursor(EMouseCursor::ResizeUpDown);
 	}
-	const int32 Order[2] = { bLeftPanelInFront ? 1 : 0, bLeftPanelInFront ? 0 : 1 };
-	for (const int32 Index : Order)
+	if (InspectorPlacement == EInspectorPlacement::Overlay)
 	{
-		const FMixtormatOverlayPanelState& State = Index == 0 ? InspectorOverlay : LeftPanelOverlay;
-		const bool bFloating = Index == 0
-			? InspectorPlacement == EInspectorPlacement::Overlay
-			: LeftPanelPlacement == ELeftPanelPlacement::Overlay;
-		if (!bFloating)
-		{
-			continue;
-		}
-		const int32 Corner = State.bResizing
-			? State.ResizeCorner : MixtormatOverlay::HitResizeGrip(State, ScreenPosition);
+		const int32 Corner = InspectorOverlay.bResizing
+			? InspectorOverlay.ResizeCorner
+			: MixtormatOverlay::HitResizeGrip(InspectorOverlay, ScreenPosition);
 		if (Corner != INDEX_NONE)
 		{
-			// A corner shows the diagonal it moves; a side grip shows the single axis.
 			switch (static_cast<EMixtormatOverlayGrip>(Corner))
 			{
 			case EMixtormatOverlayGrip::Left:
@@ -531,7 +310,7 @@ FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPoint
 				return FCursorReply::Cursor(EMouseCursor::ResizeSouthWest);
 			}
 		}
-		if (const TSharedPtr<SWidget> Header = State.Header.Pin();
+		if (const TSharedPtr<SWidget> Header = InspectorOverlay.Header.Pin();
 			Header.IsValid() && Header->GetCachedGeometry().IsUnderLocation(ScreenPosition))
 		{
 			return FCursorReply::Cursor(EMouseCursor::GrabHand);
