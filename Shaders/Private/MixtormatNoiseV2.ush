@@ -175,7 +175,7 @@ float2 MixtormatNoiseV2MetricGradient(float2 Delta, int Mode)
 FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 	float2 UV, int Period, uint Seed, float Jitter, int Metric)
 {
-	const int P = clamp(Period, 1, 4096);
+	const int P = max(Period, 1); // Preserve legacy Worley periods when new controls are neutral.
 	const float SafeJitter = saturate(Jitter);
 	const int Mode = clamp(Metric, 0, 2);
 	if (SafeJitter == 1.0f && Mode == 0)
