@@ -573,9 +573,11 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 				// The home grab area uses Slate drag detection, so an ordinary click does not pop it out.
 				+ SVerticalBox::Slot().AutoHeight()
 				[
+					SNew(SMixtormatHelp)
+					.Text(LOCTEXT("LayersGrabHint", "Drag to pop Layers out or move it. Click LAYERS or drag back to the rail to return it home."))
+					[
 					SAssignNew(LeftPanelOverlay.Header, SBox)
 					.HeightOverride(MixtormatTokens::OverlayPanelGrabMargin)
-					.ToolTipText(LOCTEXT("LayersGrabHint", "Drag to pop Layers out or move it. Click LAYERS or drag back to the rail to return it home."))
 					[
 						SNew(SBorder)
 						.Visibility(EVisibility::Visible)
@@ -583,6 +585,7 @@ TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
 						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 						.BorderBackgroundColor(FLinearColor::Transparent)
 						.Cursor(EMouseCursor::GrabHand)
+					]
 					]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
