@@ -53,11 +53,19 @@ namespace MixtormatChildScope
 	FBehaviorInputStatus ValidateBehaviorInputs(
 		const TArray<FMixtormatLayer>& EffectiveLayers,
 		const int32 LayerIndex, const int32 BehaviorChildIndex,
-		const TArray<FMixtormatSourceEntry>& Sources)
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FMixtormatLayer* ResolvedLayer)
 	{
 		FBehaviorInputStatus Result;
 		if (!EffectiveLayers.IsValidIndex(LayerIndex)) { return Result; }
-		const FMixtormatLayer& Layer = EffectiveLayers[LayerIndex];
+		// Validation may inspect binding-resolved settings without copying the full
+		// effective stack or rewriting its producer indices.
+		const FMixtormatLayer& Layer = ResolvedLayer
+			? *ResolvedLayer : EffectiveLayers[LayerIndex];
+		if (ResolvedLayer && Layer.LayerId != EffectiveLayers[LayerIndex].LayerId)
+		{
+			return Result;
+		}
 		const int32 GeneratorIndex = ResolveBehaviorGeneratorIndex(Layer.Children, BehaviorChildIndex);
 		if (!Layer.Children.IsValidIndex(GeneratorIndex) || Layer.Type != EMixtormatLayerType::Generator)
 		{
