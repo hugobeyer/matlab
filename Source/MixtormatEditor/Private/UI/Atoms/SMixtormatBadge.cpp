@@ -8,6 +8,7 @@
 #include "Style/MixtormatTypography.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
@@ -19,7 +20,7 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 	OnGetMenuContent = InArgs._OnGetMenuContent;
 	if (InArgs._ToolTip.IsSet())
 	{
-		SetToolTipText(InArgs._ToolTip);
+		SetToolTip(SMixtormatHelp::MakeStyledToolTip(InArgs._ToolTip));
 	}
 
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
