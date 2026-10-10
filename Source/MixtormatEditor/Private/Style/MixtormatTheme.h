@@ -864,6 +864,7 @@ namespace Mixtormat
 		float LibrarySearchBottomGap = 7.0f;
 		float LibrarySearchInnerPadding = 5.0f;
 		float LibraryItemGap = 2.0f;
+		float LibraryRowHeight = 34.0f;
 		float LibraryThumbnailSize = 28.0f;
 		float LibraryLabelOpacity = 0.82f;
 		float LibraryHeadingOpacity = 0.65f;
