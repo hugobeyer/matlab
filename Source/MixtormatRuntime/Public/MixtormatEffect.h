@@ -55,11 +55,11 @@ enum class EMixtormatEffectType : uint8
 	// Generator-owned flow tools. Appended: serialized recipes store this enum by value. Each is
 	// valid only scoped under a Rock Formation generator, and rewrites that generator's own height
 	// field before its combine -- see Docs/flow_generation_core.md.
-	ShapeDeform = 9 UMETA(DisplayName = "Shape Deform"),
-	GeneratorFlow = 10 UMETA(DisplayName = "Generator Flow"),
-	FlowCarve = 11 UMETA(DisplayName = "Flow Carve"),
+	ShapeDeform = 9 UMETA(DisplayName = "Shape Deform", Hidden),
+	GeneratorFlow = 10 UMETA(DisplayName = "Generator Flow", Hidden),
+	FlowCarve = 11 UMETA(DisplayName = "Flow Carve", Hidden),
 		// Texture-space gravity, optionally steered by the owner's height or signed boundary.
-		GravityFlow = 12 UMETA(DisplayName = "Gravity Flow")
+		GravityFlow = 12 UMETA(DisplayName = "Gravity Flow", Hidden)
 };
 
 // Which field of the owning generator seeds the flow direction.
