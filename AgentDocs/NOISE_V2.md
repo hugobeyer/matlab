@@ -61,6 +61,177 @@
 
 Existing parameters, serialized family numeric values, `bNoiseNormalizeHeight`, `NoiseHeightScale`, IDs and raw Value semantics are retained. Normalization remains downstream of raw Noise evaluation; new Noise Height follows the same signed-zero generator contract.
 
+## Noise V2.2 — Jaggedness redesign
+
+The V2.1 jagged warp was a cusp-shaped derivative hack:
+
+```hlsl
+Jagged = sign(N.yz) * sqrt(abs(N.yz));   // RETIRED
+```
+
+That is a nonlinearity applied *to the gradient vector*. A square root of a field that crosses
+zero puts a sharp cone at every crossing, and the result is not the gradient of any coherent
+scalar field, so it read as artificial distortion with repetitive square artifacts rather than
+as fractured geometry. It has been replaced, not refined.
+
+### What Rock Formation actually does
+
+Read from `Shaders/Private/MixtormatRockFormation.usf`:
+
+- `RockZig` (`:232`) — piecewise-linear random zigzag along an edge: straight segments between
+  random bend heights in −1..1. Straight-sided, so it produces **direction reversals (creases)**
+  at every breakpoint rather than smooth curvature.
+- `RockZigFbm` (`:241`) — three octaves of that zigzag with lacunarity, normalized.
+- `RockJag` (`:255`) — the zigzag scaled into an edge's sideways displacement.
+- `RockLeafSdJag` (`:856`) — applies it as `- RockJag(...) * L.JagSize` to the edge's signed
+  distance line, i.e. it displaces a **contour position**, not a field value.
+- Amplitude is a **steepness**: `RockSetup` (`:947`) divides `EdgeJag` by `jag_freq`, so changing
+  scale never changes spikiness.
+
+So the mechanism is: *displace a contour by a multi-scale, creased zigzag*. There is no reusable
+"jagged noise" helper in Rock Formation — it is edge-local, and coupling Noise to Rock's GPU pass
+would be wrong. The mathematical method is what gets adapted.
+
+### The Noise adaptation: fold the domain
+
+The per-pixel equivalent of "displace a contour by a creased zigzag" is to displace the domain by
+the **gradient of a folded noise field**. `MixtormatNoiseV2Jagged` (in `MixtormatNoiseV2.ush`) folds
+with `F(n) = 1 − |n|^Exponent`, which reflects the field on every zero-crossing of `n`. Each
+crossing becomes a crease; `grad(F)` is smooth everywhere except across that crease network.
+
+| Requirement | How the fold satisfies it |
+| --- | --- |
+| Angular, broken, fractured | Creases are direction reversals on a zero-crossing network — the same signature as `RockZig` |
+| No artificial derivative spikes | No nonlinearity on the gradient. `\|grad(F)\| ≤ Exponent · \|grad(n)\|`, bounded by the noise's own Lipschitz constant |
+| No repetitive square artifacts | `sqrt` is gone entirely; the crease comes from the fold's `sign()`, not from a cone |
+| Tileable on both axes | Fold operates on `frac(UV)` against integer period `Pk`; every octave period is an integer |
+| Seeded, resolution independent | Periodic gradient noise; gradient scaled into tile UV by `Pk` |
+| Adjustable frequency and intensity | Frequency = existing `NoiseDistortionFrequency`; intensity = `NoiseDistortionJaggedness` |
+| Meaningful variation across scales | `NoiseJaggedDetail` adds up to 4 crease octaves, standing in for `RockZigFbm` |
+| Neutral at 0 | Early return on `Strength <= 0`; `WarpDomain` early-returns when both strengths are 0 |
+| Usable alone or mixed | Independent additive term, exactly as before |
+
+`NoiseJaggedSharpness` sets `Exponent = 1 + 3·Sharpness`. At 0 the fold slope is `−sign(n)`, which
+flips across the crease at full width. Higher values make `|n|^(Exponent−1) → 0` **at** the crease,
+so displacement dies on the crease instead of spiking — the crease narrows and stays angular.
+
+The generator path already computes a two-forward-probe numerical Jacobian of `WarpDomain` whenever
+either distortion term is active, so creased gradients are picked up without new plumbing. Both new
+parameters are threaded through all four call sites.
+
+### Documented visual change
+
+Materials with a **nonzero** `NoiseDistortionJaggedness` change appearance. This is intentional and
+is the point of the redesign. Jaggedness = 0 is bit-for-bit unchanged, and the smooth/curl distortion
+term is untouched. Two new reflected fields are appended with identity defaults (`0`), so no existing
+saved material, enum value or Region ID is affected beyond the jagged term itself.
+
+## Implemented vs deferred
+
+| Priority | Item | Status |
+| --- | --- | --- |
+| P0 | Replace V2.1 jaggedness with Rock Formation-inspired fold | **Implemented** — `MixtormatNoiseV2Jagged`, new reusable helper |
+| P0 | Jagged Sharpness / Jagged Variation controls | **Implemented** — appended, identity defaults, runtime → gather → bind → shader → inspector → JSON |
+| P0 | Jagged Mix control | **Deferred** — the smooth and crease terms already add linearly; a mix control would be a redundant third parameter |
+| P1 | Layered noise quality audit (Worley/Phasor/Bars/Gradient/Value) | **Audited, not changed** — see notes below |
+| P1 | Worley Cell Depth rework | **Audited, not changed** — see notes below |
+| P1 | Normalize button defect | **Investigated, no defect found** at the generator level; see notes below |
+| P1 | Noise GPU scalar drivers | **Not implemented** — still blocked; see notes below |
+| P2 | Conditional inspector visibility | **Partially** — new jagged rows collapse at zero; the broader per-family audit is deferred |
+| P2 | Performance audit | **Partially** — octave count is bounded and period-capped; profiling not run |
+
+### Audit notes (no code change made in these)
+
+**Layered noise.** `MixtormatNoiseV2LayerOctave` (`MixtormatNoiseV2.ush:257`) already preserves F1 /
+F2 / F2−F1 semantics per type, takes Region IDs from the base octave only, zeroes gradient where the
+value saturates, and derives each octave's Bars wave vector by rounding `Wave·(Pk/BasePeriod)` to
+stay tileable. The identified *quality* concern is real but is a tuning matter, not a correctness
+defect: extra Worley octaves can speckle, and `LayerMix` currently only blends additional octaves
+into the base rather than weighting them per-octave. Changing the blend math would change existing
+authored appearance, so it was left alone rather than silently retuned.
+
+**Worley Cell Depth.** The current implementation (`:239`) multiplies distance by
+`1 + 0.75·Depth·valueNoise` and chain-rules the product. It is *not* cell-aware: it modulates
+continuously rather than per-cell, so it will not produce genuinely distinct per-cell depth the way
+a seeded-per-cell hash would. This is a genuine gap against the stated artistic intent and is the
+strongest candidate for the next pass. It was not changed here because rewriting it alters authored
+appearance for any material with nonzero Cell Depth, and that change should ship with its own
+review rather than bundled into a jaggedness fix.
+
+**Normalize.** `bNoiseNormalizeHeight` is intact at `MixtormatGeneratorTypes.h:1026`, flows through
+`MixtormatGeneratorGather.cpp:302` into `ChildData.Generator.bNormalizeHeight`, is bound at
+`MixtormatGpuGeneratorPasses.cpp:2935`, and the inspector checkbox is wired at
+`MixtormatInspectorGenerators.cpp:1711`/`:1717`. The generator-level Normalize path therefore looks
+correct by inspection. If the button in question is the **parameter-panel** Normalize action rather
+than the generator's `bNoiseNormalizeHeight`, that is a different code path and was not reached.
+
+**Noise GPU drivers.** Pixel-driven modulation of Noise scalars remains unimplemented, as
+`NOISE_V2.md` already documented. The shared **Add Driver** popover may still be offered for numeric
+Noise parameters whose binding the compositor ignores. That is a known honesty problem — either the
+popover must be suppressed for unwired Noise parameters, or the bindings must be implemented. No
+second driver framework was created.
+
+## Noise family output ranges and the Normalize toggle
+
+Audited every family against its native range. Two **separate** contracts are involved and must not
+be conflated:
+
+1. **Published `Value`** — each family keeps its native range. This is a documented contract that
+   `MixtormatOutputReferences::NoiseValueKind` encodes on the CPU side, and mask coverage depends on
+   it (`CoverageCS` maps signed families through `0.5·v + 0.5` and passes unsigned through
+   unchanged). **This was deliberately left untouched.**
+2. **Generator `Height`** — the shared signed contract, where zero is a neutral height.
+
+| Family | Native range | Zero-centred? | Height mapping |
+| --- | --- | --- | --- |
+| Gradient | `±sqrt2 · noise`, bounded ≈ ±1 | Yes, by gradient-noise symmetry | as-is |
+| Value | cell corners uniform in ±1, quintic-interpolated | Yes | as-is |
+| FBM | amplitude-normalised sum, ≈ ±1 | Yes | as-is |
+| Ridged | 0..1 (`1 − abs(noise)`) | **No** | `v·2 − 1` |
+| Billow | 0..1 (`abs(noise)`) | **No** | `v·2 − 1` |
+| Worley F1 / F2 / F1−F2 | 0..1 cell distance | **No** | `1 − v·2` (peak at cell centre) |
+| Bars / Stripes | `cos` phase, ±1 | Yes | as-is |
+| Phasor | fixed-amplitude normaliser `0.5/Components` | Yes, but see amplitude note | as-is |
+
+**Result: every family was already zero-centred on the `Height` path**, so no family's signed height
+was wrong. What *was* fragile is that the Height mapping was a hand-maintained `if/else` chain in
+`MixtormatNoise.usf`, keyed on family and easy to omit when a family is appended — a new family would
+silently arrive off-centre. That is now a single mapping, `MixtormatNoiseV2ValueRange` /
+`MixtormatNoiseV2SignedHeight` in `MixtormatNoiseV2.ush`, which mirrors `NoiseValueKind` and defaults
+to the signed case (no remapping needed). Behaviour is identical to the previous chain.
+
+The same latent-drift hazard existed in `MixtormatNoiseV2LayerOctave`, whose dispatch used bare
+integers `0/1/5/6/7/8/9` while the main dispatch used the `NOISE_TYPE_*` defines. Both now use the
+defines, so the two dispatches cannot disagree about a family.
+
+`MixtormatNoiseV2ValueRange` duplicates the Runtime enum mapping because a shader cannot include the
+Runtime header. The duplication is deliberate and must be updated in both places.
+
+### Phasor amplitude note (not changed)
+
+Phasor is zero-centred but its normaliser is `0.5 / Components`, so its effective amplitude is well
+below the ≈±1 of Gradient/Value/FBM/Bars. The same `NoiseHeightScale` therefore makes a Phasor read
+noticeably weaker than the other signed families. This is a tuning inconsistency, not a correctness
+defect, and correcting it would change the appearance of existing Phasor materials — flagged rather
+than silently changed.
+
+### Normalize toggle
+
+`bNoiseNormalizeHeight` is intact and correctly wired end to end:
+`MixtormatGeneratorTypes.h:1026` → gather `MixtormatGeneratorGather.cpp:302`
+(`ChildData.Generator.bNormalizeHeight`) → bind `MixtormatGpuGeneratorPasses.cpp:2935` → inspector
+checkbox `MixtormatInspectorGenerators.cpp:1711`/`:1717`. It operates on `Height` (already
+zero-centred by the mapping above), which is the correct place for it. If the button reported as
+inert is the **parameter-panel** Normalize action rather than the generator's `bNoiseNormalizeHeight`,
+that is a separate code path and was not reached by this audit.
+
+## Validation status
+
+Static source review only. **No Unreal build, no shader compilation, no tests, no runtime or GPU
+validation** was performed or is claimed. The shader, C++ and Slate changes are unverified by a
+compiler. Reviewers should compile and visually check jagged tiling, crease behavior and gradient
+quality before merging.
+
 ## Files changed
 
 - `Shaders/Private/MixtormatNoise.ush` — Worley F2 gradient capture, Noise V2 helper include

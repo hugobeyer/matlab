@@ -934,6 +934,18 @@
 			"uiMax": 2,
 			"snap": 0.01
 		},
+		"Generator.NoiseJaggedSharpness": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Generator.NoiseJaggedDetail": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
 		"Generator.NoiseDistortionFrequency": {
 			"default": 4,
 			"uiMin": 1,
@@ -1100,6 +1112,18 @@
 			"default": 0,
 			"uiMin": 0,
 			"uiMax": 2,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseJaggedSharpness": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"MaskNoise.NoiseJaggedDetail": {
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
 			"snap": 0.01
 		},
 		"MaskNoise.NoiseDistortionFrequency": {

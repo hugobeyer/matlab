@@ -66,6 +66,8 @@ namespace
 			SHADER_PARAMETER(float, WorleyCellDepth)
 			SHADER_PARAMETER(float, DistortionStrength)
 			SHADER_PARAMETER(float, DistortionJaggedness)
+			SHADER_PARAMETER(float, JaggedSharpness)
+			SHADER_PARAMETER(float, JaggedDetail)
 			SHADER_PARAMETER(int32, DistortionPeriod)
 			SHADER_PARAMETER(int32, DistortionOctaves)
 			SHADER_PARAMETER(float, DistortionRoughness)
@@ -215,6 +217,8 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.WorleyCellDepth = FMath::Clamp(Finite(Noise.NoiseWorleyCellDepth, Defaults.NoiseWorleyCellDepth), 0.0f, 1.0f);
 	Out.DistortionStrength = FMath::Clamp(Finite(Noise.NoiseDistortionStrength, Defaults.NoiseDistortionStrength), 0.0f, 2.0f);
 	Out.DistortionJaggedness = FMath::Clamp(Finite(Noise.NoiseDistortionJaggedness, Defaults.NoiseDistortionJaggedness), 0.0f, 2.0f);
+	Out.JaggedSharpness = FMath::Clamp(Finite(Noise.NoiseJaggedSharpness, Defaults.NoiseJaggedSharpness), 0.0f, 1.0f);
+	Out.JaggedDetail = FMath::Clamp(Finite(Noise.NoiseJaggedDetail, Defaults.NoiseJaggedDetail), 0.0f, 1.0f);
 	Out.DistortionFrequency = FMath::Clamp(Finite(Noise.NoiseDistortionFrequency, Defaults.NoiseDistortionFrequency), 1.0f, 64.0f);
 	Out.DistortionOctaves = FMath::Clamp(Noise.NoiseDistortionOctaves, 1, 8);
 	Out.DistortionRoughness = FMath::Clamp(Finite(Noise.NoiseDistortionRoughness, Defaults.NoiseDistortionRoughness), 0.0f, 1.0f);
@@ -361,6 +365,8 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		P->WorleyCellDepth = Noise.WorleyCellDepth;
 		P->DistortionStrength = Noise.DistortionStrength;
 		P->DistortionJaggedness = Noise.DistortionJaggedness;
+		P->JaggedSharpness = Noise.JaggedSharpness;
+		P->JaggedDetail = Noise.JaggedDetail;
 		P->DistortionPeriod = FMath::RoundToInt(Noise.DistortionFrequency);
 		P->DistortionOctaves = Noise.DistortionOctaves;
 		P->DistortionRoughness = Noise.DistortionRoughness;

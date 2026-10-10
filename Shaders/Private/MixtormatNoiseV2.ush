@@ -12,6 +12,36 @@ struct FMixtormatNoiseV2Sample
 	float2 Gradient; // analytic d/d(tile UV)
 };
 
+// Noise family output range, in one place.
+//
+// Mirrors MixtormatOutputReferences::NoiseValueKind in Runtime. The duplication is
+// deliberate: a shader cannot include the Runtime enum header, so the two mappings are kept
+// in step by review rather than by an include. Update both together when a family is appended.
+// A new family that is not listed here falls into the signed case, which is the safe default
+// because a signed value needs no remapping to be zero-centred.
+//
+//   0 = signed, already zero-centred around 0
+//   1 = 0..1 where 1 is the high end
+//   2 = 0..1 where 0 is the high end (cellular distance: peaks at the cell centre)
+int MixtormatNoiseV2ValueRange(int Type)
+{
+	if (Type == NOISE_TYPE_RIDGED || Type == NOISE_TYPE_BILLOW) { return 1; }
+	if (Type == NOISE_TYPE_WORLEY_F1 || Type == NOISE_TYPE_WORLEY_F2
+		|| Type == NOISE_TYPE_WORLEY_F1F2) { return 2; }
+	return 0; // Gradient, Value, FBM, Bars, Phasor
+}
+
+// Map a family's native value onto the zero-centred signed generator Height contract.
+// The already-signed families pass through untouched; the remapping is affine, so the
+// separately published Gradient is unaffected and does not need scaling here.
+float MixtormatNoiseV2SignedHeight(int Type, float Value)
+{
+	const int Range = MixtormatNoiseV2ValueRange(Type);
+	if (Range == 1) { return Value * 2.0f - 1.0f; }
+	if (Range == 2) { return 1.0f - Value * 2.0f; }
+	return Value;
+}
+
 // Local Gabor/phasor impulses, NOT global cosine stripes. Each periodic lattice cell has a
 // seeded impulse with smooth compact support. Cell-specific phases and directions overlap
 // into fibers; components adds independent impulse layers. No discontinuous UV rotations.
@@ -119,12 +149,72 @@ float2 MixtormatNoiseV2Curl(
 	return Strength * (Curl + Direction * Bias);
 }
 
+// Paper-fold jagged warp, adapted from Rock Formation's jagged edges (MixtormatRockFormation.usf).
+//
+// Rock Formation makes an angular chunk by displacing a straight edge sideways with a
+// piecewise-linear zigzag (RockZig) summed over three octaves (RockZigFbm). The signature of
+// that look is a hard direction reversal wherever the zigzag breaks, i.e. a network of creases,
+// and amplitude that scales with 1/frequency so a change of scale never changes the spikiness.
+// The per-pixel equivalent of "displace a contour by a zigzag" is to displace the domain by the
+// gradient of a FOLDED noise field. Folding with F(n) = 1 - |n|^Exponent reflects the field on
+// every zero-crossing of n, so each crossing becomes a crease, and grad(F) is smooth everywhere
+// except across that crease network.
+//
+// Two properties this specifically guarantees, because the implementation it replaces had neither:
+//   - No nonlinearity is applied to the gradient. The retired form was sign(g) * sqrt(|g|); a
+//     square root of a field that crosses zero produces a sharp cone at every crossing and is
+//     not the derivative of any coherent field, which is what read as artificial distortion.
+//     Here the fold is on the VALUE and the gradient is taken by the chain rule, so
+//     |grad(F)| <= Exponent * |grad(n)| and the displacement stays bounded by the periodic
+//     noise's own Lipschitz constant. The result is a true, conservative gradient field.
+//   - |n|^(Exponent-1) -> 0 at a crease for Exponent > 1, so displacement vanishes *on* the crease
+//     instead of spiking there. The result is C0-kinked, i.e. creased, which is the intent.
+//
+// Periodic and seeded, so it tiles exactly on both axes and is resolution independent (the
+// gradient is scaled into tile UV by Pk). Identical to a no-op when Strength is 0. Detail adds
+// finer crease scales, standing in for RockZigFbm's octaves; Exponent sharpens them.
+float2 MixtormatNoiseV2Jagged(
+	float2 UV, int Period, uint Seed, float Strength, float Sharpness, float Detail)
+{
+	if (Strength <= 0.0f) { return float2(0.0f, 0.0f); }
+	// Crease narrowness. Exponent 1 is the plain fold; larger values pinch the crease tighter.
+	const float Exponent = 1.0f + 3.0f * saturate(Sharpness);
+	// Scale variation. Detail 0 is a single crease set; Detail 1 weights four octaves. The octave
+	// count is rounded to an integer so a fractional Detail does not cost a partial octave, and the
+	// per-octave weight is a fixed 0.5 halving so Detail controls scale coverage rather than also
+	// reinterpreting persistence (which would make Sharpness and Detail interact).
+	const int Octaves = 1 + (int)floor(saturate(Detail) * 3.0f + 0.5f);
+	float2 Sum = float2(0.0f, 0.0f);
+	float Weight = 1.0f;
+	float WeightSum = 0.0f;
+	float PeriodF = (float)clamp(Period, 1, 4096);
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int Pk = MixtormatNoiseOctavePeriod(PeriodF);
+		if (Pk == 0) { break; }
+		const float3 N = MixtormatPeriodicNoiseD(frac(UV) * (float)Pk, Pk,
+			Seed + (uint)k * 0x2545F491u);
+		// Fold the value, then chain-rule onto the analytic gradient. sign() is the crease's
+		// direction flip; |n|^(Exponent-1) is its narrowing. Both are bounded.
+		const float FoldSlope = -Exponent * pow(abs(N.x), Exponent - 1.0f) * sign(N.x);
+		Sum += Weight * (N.yz * (float)Pk * FoldSlope);
+		WeightSum += Weight;
+		Weight *= 0.5f;
+		PeriodF *= 2.0f;
+	}
+	// Normalizing by accumulated weight keeps Strength comparable across Detail settings.
+	return WeightSum > 1.0e-6f ? Strength * (Sum / WeightSum) : float2(0.0f, 0.0f);
+}
+
 // Periodic domain distortion. CurlMix=0 uses directional scalar displacement;
 // CurlMix=1 uses curl displacement. No solver, no coordinate-contract reinterpretation.
 // Any strength of zero returns UV bit-for-bit; warp remains periodic in both axes.
+// Jaggedness is an independent additive term: it may be authored alone or mixed with the
+// smooth/curl term, and both are zero together for an exact identity.
 float2 MixtormatNoiseV2WarpDomain(
 	float2 UV, int Period, int Octaves, float Roughness, float Lacunarity,
-	uint Seed, float Strength, float2 Direction, float CurlMix, float Jaggedness)
+	uint Seed, float Strength, float2 Direction, float CurlMix,
+	float Jaggedness, float JaggedSharpness, float JaggedDetail)
 {
 	if (Strength == 0.0f && Jaggedness == 0.0f) { return UV; }
 	const int P = clamp(Period, 1, 4096);
@@ -146,17 +236,13 @@ float2 MixtormatNoiseV2WarpDomain(
 		Displacement += Mix * MixtormatNoiseV2Curl(UV, P, Octaves,
 			Roughness, Lacunarity, Seed, float2(0.0f, 0.0f), 0.0f, 1.0f);
 	}
-	// High-frequency, periodic cusp-shaped vector micro-warp. Independent of the
-	// smooth/curl strength: the user can author jaggedness alone or mix both.
-	float2 Jagged = float2(0.0f, 0.0f);
-	if (Jaggedness > 0.0f)
-	{
-		const int SharpPeriod = min(P * 4, 4096);
-		const float3 N = MixtormatPeriodicNoiseD(frac(UV) * (float)SharpPeriod,
-			SharpPeriod, Seed ^ 0x9b9773e9u);
-		Jagged = sign(N.yz) * sqrt(abs(N.yz));
-	}
-	return UV + (Displacement * Strength + Jagged * Jaggedness) / (float)P;
+	// Jagged crease warp, in the same tile-UV units as the smooth displacement above.
+	// The helper applies Jaggedness itself as its Strength, so unlike the smooth term it is
+	// not multiplied again here.
+	Displacement = Displacement * Strength
+		+ MixtormatNoiseV2Jagged(UV, P, Seed ^ 0x9b9773e9u,
+			Jaggedness, JaggedSharpness, JaggedDetail);
+	return UV + Displacement / (float)P;
 }
 
 // Alternative cellular metrics. Mode 0=Euclidean, 1=Manhattan, 2=Chebyshev.
@@ -265,25 +351,28 @@ void MixtormatNoiseV2LayerOctave(
 	Gradient = float2(0.0f, 0.0f);
 	const float2 TiledUV = frac(UV);
 	const int P = max(Period, 1);
-	if (Type == 0)
+	if (Type == NOISE_TYPE_GRADIENT)
 	{
 		const float3 N = MixtormatPeriodicNoiseD(TiledUV * (float)P, P, Seed);
 		Value = N.x * MIXTORMAT_NOISE_SQRT2;
 		Gradient = (float)P * MIXTORMAT_NOISE_SQRT2 * N.yz;
 	}
-	else if (Type == 1)
+	else if (Type == NOISE_TYPE_VALUE)
 	{
 		const float3 N = MixtormatNoiseValueD(TiledUV * (float)P, P, Seed);
 		Value = N.x;
 		Gradient = (float)P * N.yz;
 	}
-	else if (Type == 5 || Type == 6 || Type == 7)
+	else if (Type == NOISE_TYPE_WORLEY_F1 || Type == NOISE_TYPE_WORLEY_F2
+		|| Type == NOISE_TYPE_WORLEY_F1F2)
 	{
 		const FMixtormatNoiseWorley W = MixtormatNoiseV2Worley(
 			TiledUV, P, Seed, WorleyJitter, WorleyMetric);
-		float Distance = Type == 5 ? W.F1 : Type == 6 ? W.F2 : (W.F2 - W.F1);
-		Gradient = Type == 5 ? W.Direction
-			: Type == 6 ? W.SecondDirection : (W.SecondDirection - W.Direction);
+		float Distance = Type == NOISE_TYPE_WORLEY_F1 ? W.F1
+			: Type == NOISE_TYPE_WORLEY_F2 ? W.F2 : (W.F2 - W.F1);
+		Gradient = Type == NOISE_TYPE_WORLEY_F1 ? W.Direction
+			: Type == NOISE_TYPE_WORLEY_F2 ? W.SecondDirection
+			: (W.SecondDirection - W.Direction);
 		MixtormatNoiseV2CellDistanceVariation(TiledUV, P, Seed,
 			WorleyCellDepth, Distance, Gradient);
 		Value = saturate(Distance);
@@ -292,13 +381,13 @@ void MixtormatNoiseV2LayerOctave(
 			Gradient = float2(0.0f, 0.0f);
 		}
 	}
-	else if (Type == 8)
+	else if (Type == NOISE_TYPE_BARS)
 	{
 		// A rounded integer wave vector closes at the tile seam for each octave.
 		const float2 OctaveWave = round(Wave * ((float)P / max(BasePeriod, 1.0f)));
 		MixtormatNoiseBars(TiledUV, OctaveWave, PhaseOffset, Value, Gradient);
 	}
-	else if (Type == 9)
+	else if (Type == NOISE_TYPE_PHASOR)
 	{
 		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2Phasor(TiledUV,
 			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,

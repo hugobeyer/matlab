@@ -31,6 +31,21 @@
 // resolution-independent: the same UV skips the same octaves everywhere.
 #define MIXTORMAT_NOISE_MAX_PERIOD 4096.0f
 
+// Noise family IDs. These mirror EMixtormatNoiseType in Runtime's MixtormatGeneratorTypes.h and
+// are serialized by value, so entries are appended, never reordered. They live here rather than in
+// MixtormatNoise.usf because MixtormatNoiseV2.ush is included from the bottom of this header, and
+// that header needs the same IDs as the entry points do -- one definition, both users.
+#define NOISE_TYPE_GRADIENT    0
+#define NOISE_TYPE_VALUE       1
+#define NOISE_TYPE_FBM         2
+#define NOISE_TYPE_RIDGED      3
+#define NOISE_TYPE_BILLOW      4
+#define NOISE_TYPE_WORLEY_F1   5
+#define NOISE_TYPE_WORLEY_F2   6
+#define NOISE_TYPE_WORLEY_F1F2 7
+#define NOISE_TYPE_BARS        8
+#define NOISE_TYPE_PHASOR      9
+
 // Per-cell value for the value-noise lattice, wrapped to the period so the field repeats.
 float MixtormatNoiseCellValue(int2 Cell, int2 Period, uint Seed)
 {

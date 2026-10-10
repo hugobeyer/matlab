@@ -37,17 +37,10 @@
 #define MIXTORMAT_NOISE_VALUE_ONLY 0
 #endif
 
-// EMixtormatNoiseType, mirrored as plain constants -- the USF cannot include runtime headers.
-#define NOISE_TYPE_GRADIENT    0
-#define NOISE_TYPE_VALUE       1
-#define NOISE_TYPE_FBM         2
-#define NOISE_TYPE_RIDGED      3
-#define NOISE_TYPE_BILLOW      4
-#define NOISE_TYPE_WORLEY_F1   5
-#define NOISE_TYPE_WORLEY_F2   6
-#define NOISE_TYPE_WORLEY_F1F2 7
-#define NOISE_TYPE_BARS        8
-#define NOISE_TYPE_PHASOR      9
+// EMixtormatNoiseType is mirrored as the NOISE_TYPE_* constants in MixtormatNoise.ush, included
+// above. They are defined there rather than here because MixtormatNoiseV2.ush -- also included
+// from the bottom of that header -- needs the same IDs, and a single definition cannot sit after an
+// include that has already consumed it.
 
 int2 OutputSize;
 int NoiseType;
@@ -72,6 +65,8 @@ float WorleyJitter;
 float WorleyCellDepth;
 float DistortionStrength;
 float DistortionJaggedness;
+float JaggedSharpness;
+float JaggedDetail;
 int DistortionPeriod;
 int DistortionOctaves;
 float DistortionRoughness;
@@ -148,7 +143,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		SampleDomain = frac(MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
 			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
 			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
-			DistortionJaggedness));
+			DistortionJaggedness, JaggedSharpness, JaggedDetail));
 	}
 
 	float Value = 0.0f;
@@ -277,15 +272,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float2 WarpAt = MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
 			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
 			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
-			DistortionJaggedness);
+			DistortionJaggedness, JaggedSharpness, JaggedDetail);
 		const float2 WarpX = MixtormatNoiseV2WarpDomain(Domain + float2(Epsilon, 0.0f),
 			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
 			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
-			DistortionJaggedness);
+			DistortionJaggedness, JaggedSharpness, JaggedDetail);
 		const float2 WarpY = MixtormatNoiseV2WarpDomain(Domain + float2(0.0f, Epsilon),
 			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
 			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
-			DistortionJaggedness);
+			DistortionJaggedness, JaggedSharpness, JaggedDetail);
 		Gradient = float2(dot(Gradient, (WarpX - WarpAt) / Epsilon),
 			dot(Gradient, (WarpY - WarpAt) / Epsilon));
 	}
@@ -293,20 +288,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	OutValue[Pixel] = Value;
 #if !MIXTORMAT_NOISE_VALUE_ONLY
-	// The shared signed generator contract: zero-centred, so zero is the neutral height.
-	float Height = Value;
-	if (NoiseType == NOISE_TYPE_RIDGED || NoiseType == NOISE_TYPE_BILLOW)
-	{
-		Height = Value * 2.0f - 1.0f;
-	}
-	else if (NoiseType == NOISE_TYPE_WORLEY_F1
-		|| NoiseType == NOISE_TYPE_WORLEY_F2
-		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
-	{
-		Height = 1.0f - Value * 2.0f;
-	}
-
-	OutHeight[Pixel] = Height;
+	// The shared signed generator contract: zero-centred, so zero is the neutral height. Every
+	// family reaches it through the one range mapping, so no family can be left off the list and
+	// silently arrive off-centre. OutValue above keeps each family's native range untouched --
+	// signed vs 0..1 is a separate published contract and must not be remapped here.
+	OutHeight[Pixel] = MixtormatNoiseV2SignedHeight(NoiseType, Value);
 	OutGradient[Pixel] = Gradient;
 	if (ProducesIds != 0u)
 	{

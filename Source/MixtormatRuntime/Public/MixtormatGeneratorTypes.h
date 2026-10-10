@@ -985,8 +985,23 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 
 	// Independent high-frequency jagged warp mixed with the existing smooth/curl distortion.
 	// Zero is a strict bypass, independently of DistortionStrength.
+	// The warp is a paper fold of the periodic noise field (see MixtormatNoiseV2.ush
+	// MixtormatNoiseV2Jagged), adapted from Rock Formation's jagged edges. Reading it as a
+	// crease warp, not a smooth distortion, changes the appearance of materials that already
+	// had a nonzero value here; see AgentDocs/NOISE_V2.md for the documented change.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float NoiseDistortionJaggedness = 0.0f;
+
+	// Crease narrowness of the jagged fold. 0 is the plain fold, higher values pinch the
+	// crease tighter and more angular. Appended after Noise V2.1; identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseJaggedSharpness = 0.0f;
+
+	// Scale variation of the jagged crease network. 0 is a single crease set, higher values
+	// add finer crease scales, standing in for Rock Formation's jag octaves. Appended after
+	// Noise V2.1; identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseJaggedDetail = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
 	float NoiseDistortionFrequency = 4.0f;
