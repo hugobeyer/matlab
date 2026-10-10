@@ -196,6 +196,15 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 				Result.Owner = EMixtormatParameterOwnerType::MaskNoise;
 				return true;
 			}
+			if (Child.Type == EMixtormatLayerChildType::StructuralWarp
+				&& Owner == &Child.StructuralWarp.Source
+				&& OwnerStruct == FMixtormatOutputReference::StaticStruct())
+			{
+				Result.LayerId = ContainerId;
+				Result.ChildId = Child.ChildId;
+				Result.Owner = EMixtormatParameterOwnerType::StructuralWarpFlow;
+				return true;
+			}
 			if (Owner == OwnerPointer(Child))
 			{
 				Result.LayerId = ContainerId;
@@ -837,7 +846,8 @@ namespace
 
 		const void* OwnerPtr = nullptr;
 		const UScriptStruct* OwnerStruct = nullptr;
-		if (Address.Owner == EMixtormatParameterOwnerType::MaskNoise && Child)
+		if ((Address.Owner == EMixtormatParameterOwnerType::MaskNoise
+			|| Address.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow) && Child)
 		{
 			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
 		}
