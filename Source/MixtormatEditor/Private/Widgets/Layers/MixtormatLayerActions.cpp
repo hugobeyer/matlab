@@ -1961,47 +1961,6 @@ FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
 	return FReply::Handled();
 }
 
-FReply SMixtormat::AddGeneratorFlow(
-	const FMixtormatChildAddress& Owner, const EMixtormatEffectType Type)
-{
-	if (!MixtormatIsGeneratorFlowEffect(Type) || !CanAddGeneratorFlow(Owner))
-	{
-		return FReply::Handled();
-	}
-	FMixtormatLayerChild Child;
-	Child.Type = EMixtormatLayerChildType::Effect;
-	Child.Effect.ProceduralType = Type;
-	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
-	const FMixtormatLayerChild* ScopeOwner = ResolveChildAt(Owner);
-	if (Type == EMixtormatEffectType::GravityFlow
-		|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator
-			&& !MixtormatGeneratorHasFlowBoundary(ScopeOwner->Generator.Type)))
-	{
-		Child.Effect.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
-	}
-	const int32 InsertAt = Owner.ChildId.IsValid()
-		? InsertScopedChild(*ResolveContainer(Owner), ResolveChildIndexAt(Owner), MoveTemp(Child))
-		: ResolveContainer(Owner)->Add(MoveTemp(Child));
-	if (InsertAt == INDEX_NONE)
-	{
-		return FReply::Handled();
-	}
-	if (Owner.OwnerType == EMixtormatChildOwnerType::Group)
-	{
-		FinishGroupChildEdit(Owner.OwnerId, InsertAt);
-	}
-	else
-	{
-		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-			[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; });
-		SetLayerExpanded(LayerIndex, true);
-		SelectWorkingChild(LayerIndex, InsertAt);
-		RefreshLayeredPreview();
-		RebuildLayerList();
-	}
-	return FReply::Handled();
-}
-
 FReply SMixtormat::AddFlowWarpToLayer(
 	const int32 LayerIndex,
 	const int32 OwnerChildIndex)
