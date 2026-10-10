@@ -66,6 +66,10 @@ re-implemented:
   inheritance share the normal parameter pipeline. Exact files and later-UI integration rules:
   `old_docs/noise_gate_flow_handoff.md` (archived delivery history).
 
+Noise V2 extends this shared producer with an appended **Phasor** family, Worley metrics/jitter
+and optional curl-driven domain distortion. Defaults preserve old Value/Height contracts.
+See [NOISE_V2.md](NOISE_V2.md) for new parameters, semantic limits and validation gates.
+
 ## Gravity Flow (texture-space generator child)
 
 - Right-click an eligible generator → **Gravity Flow**. It uses the same ownership rules as
