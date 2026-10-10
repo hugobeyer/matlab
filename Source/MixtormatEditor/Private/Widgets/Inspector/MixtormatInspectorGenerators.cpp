@@ -982,6 +982,21 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpSourceMenu()
 	};
 	Menu.Item(LOCTEXT("BehaviorWarpChooseSourceLater", "Choose source later"), nullptr,
 		FSimpleDelegate::CreateLambda([Assign]() { Assign(nullptr); }));
+	Menu.Item(LOCTEXT("BehaviorWarpOwnHeight", "Own Height Gradient"),
+		MixtormatIcons::WarpStructural(),
+		FSimpleDelegate::CreateLambda([this, Address]()
+		{
+			if (FMixtormatLayerChild* Child = ResolveChildAt(Address))
+			{
+				if (Child->Type == EMixtormatLayerChildType::Behavior && !Child->IsInstance())
+				{
+					Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::OwnNativeHeight;
+					Child->Behavior.Direction.Published = FMixtormatOutputReference{};
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}
+		}));
 	Menu.Separator();
 
 	// All sources are explicit, typed and order-checked by the runtime resolver.
@@ -1057,6 +1072,10 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
 		{
 			const FMixtormatBehavior* Selected = GetSelectedBehaviorWarp();
+			if (Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			{
+				return LOCTEXT("BehaviorWarpOwnHeightSelected", "Own Height Gradient");
+			}
 			if (!Selected || Selected->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 				|| !Selected->Direction.Published.HasSource())
 			{
@@ -1073,6 +1092,19 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddSliderRow(Panel,
+		SNew(SBox)
+		.IsEnabled_Lambda([Warp]()
+		{
+			const FMixtormatBehavior* Selected = Warp();
+			return Selected && Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight;
+		})
+		[
+			MakeMemberSlider<FMixtormatBehavior>(
+				LOCTEXT("BehaviorWarpGradientReach", "Gradient Reach (UV)"),
+				Warp, &FMixtormatBehavior::GradientReach, 0.0, 0.25, 0.02, 0.001,
+				LOCTEXT("BehaviorWarpGradientReachHint", "Maximum UV displacement from the current native-height gradient. Stable across resolutions; zero is neutral."))
+		]);
 	TSharedRef<SVerticalBox> FlowPanel = SNew(SVerticalBox);
 	AddSliderRow(FlowPanel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("BehaviorWarpFlowAmount", "Flow Amount"),
