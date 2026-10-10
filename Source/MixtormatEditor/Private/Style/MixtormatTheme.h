@@ -962,12 +962,14 @@ namespace Mixtormat
 		FLinearColor Shade = FLinearColor::Black;
 		FLinearColor Border = FLinearColor(0.13f, 0.28f, 0.34f, 1.0f);
 		FLinearColor Highlight = FLinearColor(0.04f, 0.32f, 0.58f, 1.0f);
+		FLinearColor SelectionColor = FLinearColor(0.04f, 0.32f, 0.58f, 1.0f);
 		float ShadeOpacity = 0.18f;
 		float BorderOpacity = 0.55f;
 		float BorderThickness = 1.0f;
 		float Radius = 2.0f;
 		float LabelOpacity = 0.9f;
 		float HighlightOpacity = 0.85f;
+		float SelectionOpacity = 0.55f;
 		MixtormatCompositing::EMixtormatBlendMode ShadeBlend = MixtormatCompositing::EMixtormatBlendMode::Multiply;
 		MixtormatCompositing::EMixtormatBlendMode HighlightBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 	};
