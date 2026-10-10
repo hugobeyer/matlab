@@ -1064,8 +1064,27 @@ FMixtormatChildAddress SMixtormat::MakeGroupChildAddress(const FGuid GroupId, co
 	return Address;
 }
 
+FMixtormatChildAddress SMixtormat::MakeSourceChildAddress(const FGuid SourceId) const
+{
+	FMixtormatChildAddress Address;
+	if (const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
+		[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
+	{
+		Address.OwnerType = EMixtormatChildOwnerType::Source;
+		Address.OwnerId = SourceId;
+		Address.ChildId = Entry->Child.ChildId;
+	}
+	return Address;
+}
+
 FMixtormatChildAddress SMixtormat::GetSelectedChildAddress() const
 {
+	// A selected source claims the address first: its lanes are cleared, so the layer/group
+	// branches below would build an invalid address and every gate would see "nothing selected".
+	if (SelectedSourceId.IsValid())
+	{
+		return MakeSourceChildAddress(SelectedSourceId);
+	}
 	const int32 ChildIndex = GetSelectedChildIndex();
 	return SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE
 		? MakeGroupChildAddress(SelectedGroupId, ChildIndex)
@@ -1080,6 +1099,13 @@ TArray<FMixtormatLayerChild>* SMixtormat::ResolveContainer(const FMixtormatChild
 
 const TArray<FMixtormatLayerChild>* SMixtormat::ResolveContainer(const FMixtormatChildAddress& Address) const
 {
+	// A source owns its child outright; there is no FMixtormatLayerChild array to return, so
+	// container-mutating actions (insert/reorder/scope-owner searches) see "unavailable" and
+	// ResolveChildAt handles the Source owner itself below.
+	if (Address.OwnerType == EMixtormatChildOwnerType::Source)
+	{
+		return nullptr;
+	}
 	if (Address.OwnerType == EMixtormatChildOwnerType::Group)
 	{
 		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Address.OwnerId);
@@ -1103,6 +1129,13 @@ FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& A
 
 const FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& Address) const
 {
+	// A source's single child lives in its entry, not in a container array.
+	if (Address.OwnerType == EMixtormatChildOwnerType::Source)
+	{
+		const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
+			[&Address](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == Address.OwnerId; });
+		return Entry && Entry->Child.ChildId == Address.ChildId ? &Entry->Child : nullptr;
+	}
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	if (!Container)
 	{

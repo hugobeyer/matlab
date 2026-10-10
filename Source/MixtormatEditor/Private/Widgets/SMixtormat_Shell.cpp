@@ -1,7 +1,9 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "Widgets/Gallery/SMixtormatGalleryTab.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "UI/Controls/SMixtormatIconRail.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
@@ -465,13 +467,21 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
-		.Padding(FMargin(
-			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSideInset,
-			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset,
-			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerSideInset,
-			FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset))
 		[
-			SAssignNew(GalleryDrawerHost, SBox)
+			// An FOverlaySlot takes a literal padding only, so the collapse-dependent bottom inset
+			// lives on this wrapper box instead.
+			SNew(SBox)
+			.Padding_Lambda([this]()
+			{
+				const Mixtormat::FMixtormatGalleryMetrics& Gallery =
+					FMixtormatThemeStore::GetResolved().GalleryLayout;
+				// Collapsed, the tab sits flush with the workspace bottom -- directly above the status
+				// bar, as a drawer handle should; expanded, the drawer keeps its floating inset.
+				const float Bottom = bBottomLibraryCollapsed ? 0.0f : Gallery.DrawerInset;
+				return FMargin(Gallery.DrawerSideInset, Gallery.DrawerInset, Gallery.DrawerSideInset, Bottom);
+			})
+			[
+				SAssignNew(GalleryDrawerHost, SBox)
 			.HeightOverride_Lambda([this]()
 			{
 				if (bGalleryDrawerAnimating)
@@ -498,54 +508,27 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					})
 					[BuildBottomLibrary()]
 				]
-				+ SOverlay::Slot()
+				+ SOverlay::Slot().HAlign(HAlign_Center)
 				[
-					SNew(SButton)
-					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-					.ContentPadding(FMargin(0.0f))
-					.ToolTipText(LOCTEXT("RestoreGalleryHint", "Open the material and mask gallery (G)."))
+					// A centred handle, not a bar: the collapsed drawer is a fixed-width tab above the
+					// status bar, so it stops competing with the layer column's bottom edge.
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::GalleryTabWidth)
 					.Visibility_Lambda([this]()
 					{
 						return bBottomLibraryCollapsed && !bGalleryDrawerAnimating
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[
-							SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
-							[
-								SNew(SImage)
-								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-							.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.HeaderGap, 0.0f)
-						[
-							SNew(SBox)
-							.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
-							.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::GalleryToolbar)].GlyphSize)
-							[
-								SNew(SImage).Image(MixtormatIcons::Library())
-								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
-							]
-						]
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[
-							SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
-							[
-								SNew(SImage)
-								.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-								.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
-							]
-						]
+						// The action returns FReply; the tab's delegate takes void.
+						SNew(SMixtormatGalleryTab)
+						.OnActivated(FSimpleDelegate::CreateLambda([this]() { ToggleBottomLibraryCollapsed(); }))
 					]
 				]
 			]
+			]
 		]
-		];
+	];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLeftColumn()

@@ -61,12 +61,20 @@ tokens and surface; expansion is session UI state (`bSourcesExpanded`) and never
 document or the render. Sources are document data (`FMixtormatSourceEntry` on
 `UMixtormatMaterial`, mirrored as `WorkingSources` beside -- never inside -- `WorkingLayers`), so
 the compositor, height references and grouping never see a source as a stack member. Add Source
+the document or the render. Add Source
 offers the six generator kinds and starts them through the same `ApplyChildCreationDefaults` a
-generator child uses. Rows select on left click and delete from their context menu; the Inspector
+generator child uses. Rows select on left click and delete from their context menu; selection is
+exclusive — layer, child and group selection clear the source and vice versa. The Inspector
 shows a SOURCE card (name, kind, enabled) above the kind's own generator panel, which resolves
-through the shared `GetSelectedGenerator()` accessor. Save/load, undo/redo and dirty tracking
-cover sources. Not implemented: evaluation/publication, target connections, Paste as Instance
-and the layer-generator Influence Only toggle. Authoring only; no build/runtime validation run.
+through the shared `GetSelectedGenerator()` accessor. Sources have canonical addresses:
+`EMixtormatChildOwnerType::Source` (Owner = SourceId) resolves the entry's child for inspector
+gating, while `ResolveContainer` returns null for it, so container-mutating actions (Copy Output,
+scope-owner searches) see unavailable — Copy's tooltip explains that sources do not publish yet.
+Source adds/deletes/renames break history coalescing like layer/group structure changes, and
+document lifecycle (new/open/save/save-as) snapshots sources alongside layers. Not implemented:
+evaluation/publication, target connections, Paste as Instance, source-aware stable-id repair
+(identity is NewGuid by construction; no inbound references exist yet) and the layer-generator
+Influence Only toggle. Authoring only; no build/runtime validation run.
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
@@ -212,7 +220,10 @@ Workspace layout: Layers/Library/Global occupy a resizable left column; Layers a
 pop out and return by rail click or snap-back drag. The gallery is one resizable bottom
 drawer over the whole workspace, replacing both gallery splitters. Its header reads `GALLERY`;
 `MATERIALS` and `MASKS` label its two panes. A header click collapses it; dragging past the normal
-Slate drag threshold resizes it. Collapse leaves a thin clickable restore strip with the Library icon.
+Slate drag threshold resizes it. Collapse leaves a fixed-width centred restore tab
+(`SMixtormatGalleryTab`, `GalleryTabWidth`) above the status bar: the foldout header surface
+with only its top corners rounded (`MakeGalleryTabRecipe` via the recipe's optional per-corner
+`CornerRadii` override), a disclosure chevron beside the Library icon.
 Fresh layouts allocate 67% to Materials and 33% to Masks. Tile selection borders paint above
 thumbnails; the Masks header also shows the selected mask name without applying it.
 Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.

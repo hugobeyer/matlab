@@ -489,6 +489,9 @@ namespace MixtormatTokens
 	constexpr float MaterialGalleryHeaderGap = 2.0f;
 	constexpr float TileNameStripHeight = 12.0f;
 	constexpr float TileBadgeHeight = 16.0f;
+	// The collapsed gallery's centred restore tab. Fixed width on purpose: it is a handle, not a
+	// bar, so it must not grow with the window the way the old full-width strip did.
+	inline float GalleryTabWidth = 120.0f;
 	// Two different insets: one sits on the picture, the other outside it between the image and
 	// its selection outline.
 	constexpr float TileTextInset = 4.0f;

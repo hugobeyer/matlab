@@ -68,6 +68,9 @@ namespace Mixtormat
 	FMixtormatSurfaceRecipe MakeFoldoutRecipe(
 		const FMixtormatTheme& Theme, bool bHovered = false, bool bEnabled = true);
 
+	// The collapsed gallery's restore tab: the foldout anatomy with only the top corners rounded.
+	FMixtormatSurfaceRecipe MakeGalleryTabRecipe(const FMixtormatTheme& Theme, bool bHovered = false);
+
 	// Callers map geometry to Seam = nominalHeader / (nominalHeader + max(reach, 0))
 	// and TailFraction = min(reach / bodyHeight, .5). Zero tail means a flat body.
 	// Bands stay square: the caller clips the whole group or supplies a compact-card radius.

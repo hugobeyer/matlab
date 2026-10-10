@@ -26,7 +26,9 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SNew(SMenuAnchor)
+		// Assigned, not just constructed: OpenContextMenu() toggles this anchor, so an unassigned
+		// pointer would make every right click silently do nothing.
+		SAssignNew(ContextAnchor, SMenuAnchor)
 		.Placement(MenuPlacement_MenuRight)
 		.OnGetMenuContent(InArgs._OnGetContextMenu.IsBound()
 			? InArgs._OnGetContextMenu

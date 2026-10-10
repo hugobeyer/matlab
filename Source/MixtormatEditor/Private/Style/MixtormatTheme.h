@@ -219,6 +219,10 @@ namespace Mixtormat
 		TArray<FMixtormatPaintLayer, TInlineAllocator<4>> Layers;
 		TArray<FMixtormatBorderLayer, TInlineAllocator<2>> Borders;
 		float Radius = 0.0f;
+		// Optional per-corner override in MakeGradient's order (TL, TR, BR, BL). Unset means every
+		// corner uses Radius. The gallery restore tab is the current reader: it rounds its top only,
+		// because its bottom edge sits flush above the status bar.
+		TOptional<FVector4f> CornerRadii;
 		// Set by a surface that deliberately sits ON something the painter cannot see -- the preview
 		// plate over a rendered viewport -- so its authored alpha has to survive to the draw call.
 		// Every other surface owns its rectangle and is composited opaque.

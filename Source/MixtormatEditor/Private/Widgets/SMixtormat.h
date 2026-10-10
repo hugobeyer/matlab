@@ -355,6 +355,8 @@ private:
 	// clipboard and instance placement now use.
 	FMixtormatChildAddress MakeChildAddress(int32 LayerIndex, int32 ChildIndex) const;
 	FMixtormatChildAddress MakeGroupChildAddress(FGuid GroupId, int32 ChildIndex) const;
+	// A Sources shelf entry's address: OwnerId is the entry's SourceId, ChildId its child's.
+	FMixtormatChildAddress MakeSourceChildAddress(FGuid SourceId) const;
 	FMixtormatChildAddress GetSelectedChildAddress() const;
 	// The child array an address names -- WorkingLayers[x].Children or a group's shared Children --
 	// so every clipboard/placement operation below reads and writes through one lookup rather than

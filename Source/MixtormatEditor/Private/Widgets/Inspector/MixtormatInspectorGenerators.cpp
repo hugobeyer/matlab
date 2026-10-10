@@ -276,7 +276,16 @@ TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildC
 				SNew(SButton)
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 				.Text(LOCTEXT("InspectorCopyChildOutput", "Copy"))
-				.ToolTipText(FText::Format(LOCTEXT("InspectorCopyChildOutputHint", "Copy the live {0} output reference; the producer stays in place."), Label))
+				// A source has no published outputs yet, so Copy is disabled; the tooltip says why
+				// instead of repeating the layer-child promise the button cannot keep.
+				.ToolTipText_Lambda([this, Label]()
+				{
+					return GetSelectedSource()
+						? LOCTEXT("InspectorCopyChildOutputSourceHint",
+							"Sources do not publish outputs yet, so there is nothing to copy.")
+						: FText::Format(LOCTEXT("InspectorCopyChildOutputHint",
+							"Copy the live {0} output reference; the producer stays in place."), Label);
+				})
 				.IsEnabled_Lambda([this, bCopyable, CopyName]()
 				{
 					return bCopyable && CanCopyChildOutput(GetSelectedChildAddress(), CopyName);

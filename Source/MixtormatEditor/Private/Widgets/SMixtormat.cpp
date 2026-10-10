@@ -308,7 +308,10 @@ void SMixtormat::RecordEditHistory()
 	const bool bCoalesceInteractiveEdit = !UndoHistory.IsEmpty()
 		&& Now - LastHistoryRecordTime <= InteractiveEditWindowSeconds
 		&& HaveSameLayerStructure(CurrentHistoryState.Layers, WorkingLayers)
-		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups);
+		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
+		// A source add/delete/rename is a discrete action like a layer/group structure change:
+		// it breaks coalescing instead of merging into a nearby slider drag.
+		&& AreSourcesEqual(CurrentHistoryState.Sources, WorkingSources);
 	if (!bCoalesceInteractiveEdit)
 	{
 		UndoHistory.Add(CurrentHistoryState);

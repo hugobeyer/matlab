@@ -310,6 +310,17 @@ namespace Mixtormat
 		return Recipe;
 	}
 
+	FMixtormatSurfaceRecipe MakeGalleryTabRecipe(const FMixtormatTheme& Theme, const bool bHovered)
+	{
+		// The collapsed gallery's restore tab: the foldout header anatomy (Ground -> lift -> Accent,
+		// enabled-only top hairline) with only the top corners rounded, because the tab's bottom
+		// edge sits flush above the status bar like a drawer handle pointing up.
+		FMixtormatSurfaceRecipe Recipe = MakeFoldoutRecipe(Theme, bHovered, true);
+		const float R = FMath::Max(Theme.FoldoutLayout.Radius, 0.0f);
+		Recipe.CornerRadii = FVector4f(R, R, 0.0f, 0.0f);
+		return Recipe;
+	}
+
 	FMixtormatSurfaceRecipe MakeCardHeaderRecipe(const FMixtormatTheme& Theme, const float Seam)
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();

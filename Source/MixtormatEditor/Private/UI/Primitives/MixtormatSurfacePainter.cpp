@@ -380,7 +380,15 @@ namespace Mixtormat
 		}
 
 		const float Radius = FMath::Max(Recipe.Radius, 0.0f);
-		const FVector4f Radii(Radius, Radius, Radius, Radius);
+		// A per-corner override replaces the uniform radius entirely; unset keeps the historic
+		// four-equal-corners behaviour every existing recipe relies on.
+		const FVector4f Radii = Recipe.CornerRadii.IsSet()
+			? FVector4f(
+				FMath::Max(Recipe.CornerRadii.GetValue().X, 0.0f),
+				FMath::Max(Recipe.CornerRadii.GetValue().Y, 0.0f),
+				FMath::Max(Recipe.CornerRadii.GetValue().Z, 0.0f),
+				FMath::Max(Recipe.CornerRadii.GetValue().W, 0.0f))
+			: FVector4f(Radius, Radius, Radius, Radius);
 		const FSlateBrush* White = FAppStyle::GetBrush("WhiteBrush");
 
 		// The only path that allocates nothing at all.
@@ -390,7 +398,7 @@ namespace Mixtormat
 		// allocates a UObject per paint and is banned outright. A rounded flat surface therefore
 		// goes through MakeGradient as two identical stops, which is a uniform fill that happens to
 		// know about its corners.
-		if (Radius <= 0.0f && BodySamples.Colors.Num() == 1)
+		if (!Recipe.CornerRadii.IsSet() && Radius <= 0.0f && BodySamples.Colors.Num() == 1)
 		{
 			FSlateDrawElement::MakeBox(
 				Elements, LayerId, PaintGeometry, White,

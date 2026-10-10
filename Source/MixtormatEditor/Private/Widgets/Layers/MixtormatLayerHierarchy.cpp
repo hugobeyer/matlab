@@ -446,6 +446,8 @@ FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 	// than leaving two things looking selected at once.
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
+	// One subject for the inspector: a group header claim drops a Sources shelf selection too.
+	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
 	return FReply::Handled();
@@ -586,6 +588,8 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 		== EMixtormatLayerChildType::Effect;
 	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
 	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
+	// A layer child claim drops a Sources shelf selection; the inspector shows one subject.
+	SelectedSourceId.Invalidate();
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
 	if (RevealChildInHierarchy(MakeChildAddress(LayerIndex, ChildIndex))) { RebuildLayerList(); }
@@ -1075,6 +1079,8 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	const bool bEffect = Child && Child->Type == EMixtormatLayerChildType::Effect;
 	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
 	SelectedMaskIndex = (Child && !bEffect) ? ChildIndex : INDEX_NONE;
+	// A shared-child claim drops a Sources shelf selection; the inspector shows one subject.
+	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
 	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }

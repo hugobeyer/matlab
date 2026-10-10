@@ -13,7 +13,11 @@
 enum class EMixtormatChildOwnerType : uint8
 {
 	Layer,
-	Group
+	Group,
+	// A Sources shelf entry: OwnerId is the entry's SourceId, the child is Entry.Child. A source
+	// is one child in its own entry, not a child container, so ResolveContainer returns null for
+	// this owner and ResolveChildAt resolves the entry's single child directly.
+	Source
 };
 
 enum class EStructuralLinkHighlightRole : uint8

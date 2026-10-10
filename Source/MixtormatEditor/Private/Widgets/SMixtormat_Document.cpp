@@ -114,6 +114,9 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	}
 	SavedLayers.Reset();
 	SavedLayerGroups.Reset();
+	// Same reset its neighbours get: a stale saved snapshot would misreport the dirty state
+	// against the sources this new document does not have.
+	SavedSources.Reset();
 	ResetEditHistory(false);
 	bIsWorkingMaterialDirty = true;
 	RefreshLayeredPreview(false);
