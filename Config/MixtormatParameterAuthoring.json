@@ -1138,5 +1138,29 @@
 			"uiMax": 360,
 			"snap": 1
 		}
+	},
+	"Behavior":
+	{
+		"Behavior.Strength":
+		{
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"Behavior.GradientReach":
+		{
+			"default": 0.02,
+			"uiMin": 0,
+			"uiMax": 0.25,
+			"snap": 0.001
+		},
+		"Behavior.CarveWidth":
+		{
+			"default": 0.02,
+			"uiMin": 0.001,
+			"uiMax": 0.25,
+			"snap": 0.001
+		}
 	}
 }
