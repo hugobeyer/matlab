@@ -1,14 +1,14 @@
-# Behavior System — implemented architecture
+# Behavior System — migration in progress
 
 Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; review PR #5 remains draft. Unreal 5.8, UHT, shader compilation, GPU runtime, save/load and performance validation have **not** run. Do not merge without authorized validation.
 
-This document describes the implementation as it exists in source. It is not a proposal.
+This document describes the target architecture and the currently implemented Behavior paths. **Legacy effects remain live in the source**; do not treat the removal sections below as implementation evidence.
 
-## 1. One structural authoring path
+## 1. Target: one structural authoring path
 
 A **Behavior** (`EMixtormatLayerChildType::Behavior`, payload `FMixtormatBehavior`) is the only way to rewrite a Generator's own output. It is an ordinary entry in the flat `Layer.Children` array, scoped to an **earlier Generator child** through `ScopeOwnerChildId`. There is no separate target edge and no module that lives at its own authored position in the child chain.
 
-The legacy modules that used to provide this are gone:
+The following legacy modules are **targeted for removal**, but the legacy flow effects and their dispatch are still live as of this source review:
 
 | Removed | Replacement |
 |---|---|
@@ -19,11 +19,11 @@ The legacy modules that used to provide this are gone:
 | `FlowCarve` effect | Behavior `Carve` |
 | `GravityFlow` effect | Behavior `Warp` with an authored direction field |
 
-`EMixtormatLayerChildType::HeightPush` and `::StructuralWarp` still exist **as enum values**, marked `Deprecated`. They are append-only serialized values: renumbering or removing them would silently retype every child in every saved asset. They are unreachable from authoring, gather and execution, and their payload structs and `FMixtormatLayerChild` slots are deleted.
+`EMixtormatLayerChildType::HeightPush` and `::StructuralWarp` still exist **as enum values**, marked `Deprecated`. They are append-only serialized values: renumbering or removing them would silently retype every child in every saved asset. Their deprecation and removal must be verified per call site; enum metadata alone does not establish that all authoring and execution paths have been removed.
 
 The same applies to `EMixtormatParameterOwnerType::HeightPush` (23), `::StructuralWarp` (24) and `::StructuralWarpFlow` (26). Those indices are held back so the surviving `MaskNoise` (25), `Behavior` (27) and `BehaviorFlow` (28) keep matching what saved bindings stored. Nothing resolves to the dead owners any more.
 
-The whole structural-connection subsystem that existed to draw Height Push and Structural Warp source/target edges — `MixtormatStructuralConnections.cpp`, `MixtormatStructuralConnectionModel.*`, `MixtormatStructuralConnectionProjection.*`, `SMixtormatStructuralSourcePicker.*`, `SMixtormat::StructuralLinksPreserved`, `EvaluateStructuralLink`/`ForGather` and the row's `StructuralLink` / `StructuralCount` / `StructuralHighlightRole` / `bStructuralSource` slots — is deleted. A Behavior names its generator by scope and its fields by typed socket, so it has one editable end rather than an authored source and target pair.
+The target removal includes the structural-connection subsystem that existed to draw Height Push and Structural Warp source/target edges — `MixtormatStructuralConnections.cpp`, `MixtormatStructuralConnectionModel.*`, `MixtormatStructuralConnectionProjection.*`, `SMixtormatStructuralSourcePicker.*`, `SMixtormat::StructuralLinksPreserved`, `EvaluateStructuralLink`/`ForGather` and the row's `StructuralLink` / `StructuralCount` / `StructuralHighlightRole` / `bStructuralSource` slots — which must be verified and cleaned up in source. A Behavior names its generator by scope and its fields by typed socket, so it has one editable end rather than an authored source and target pair.
 
 ## 2. Operations
 
@@ -76,7 +76,15 @@ The supported signal is an enabled `CombinedMask` from an earlier layer. An unsu
 
 C++/UHT compilation, shader compilation, GPU runtime behaviour, six-family visual checks, UV seam/winding, mask/gate/driver behaviour, undo, save/load, clipboard/group/instance migration and performance profiling have **not** been run. Static source review is not compile or GPU evidence.
 
-## 8. Known remaining work
+## 8. Critical migration status (source-reviewed)
+
+- `MixtormatGpuGeneratorPasses.cpp` still calls `HasActiveFlowTools` and `AddGeneratorFlowToolPasses` before `ApplyGeneratorPostBehaviors`. This is a **parallel legacy execution path**.
+- The old producer publishes `FlowDirection` and `WarpedUV` using the jump-flood / resolve / smooth / apply pipeline. Moving its useful producer controls and publication to generator-owned typed field production is Phase 2 and **has not been implemented**.
+- Behavior `Warp`/`Deform` can consume published Flow/UVMap or derive a height-gradient UV map; this is **not equivalent** to migrating the legacy flow solve.
+- Behavior `Carve` presently uses `SignedCarveCS` and does **not** preserve the full traced legacy Flow Carve groove/deposit algorithm.
+- Do not remove legacy producers before a replacement publishes complete typed fields. Do not claim legacy removal, compilation, or runtime validation without evidence.
+
+## 9. Known remaining work
 
 1. PreGeneration currently accepts only a published `Flow`/`UVMap` Direction. `OwnNativeHeight` is necessarily post-stage and is rejected there.
 2. Behavior scalar driver slots support earlier `CombinedMask` only, not the full published-field / region / gate / local-parameter driver source set.
