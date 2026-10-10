@@ -10,6 +10,12 @@
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
+#include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
+#include "UI/Controls/MixtormatEntryCommit.h"
+#include "Framework/Application/SlateApplication.h"
+#include "UI/Layers/SMixtormatLayerIcon.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -18,6 +24,9 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 {
 	Enabled = InArgs._bEnabled;
 	OnSelected = InArgs._OnSelected;
+	OnNameCommitted = InArgs._OnNameCommitted;
+	OnToggleEnabled = InArgs._OnToggleEnabled;
+	EditableName = InArgs._Name;
 	bHasContextMenu = InArgs._OnGetContextMenu.IsBound();
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const FTextBlockStyle NameStyle = Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName"));
@@ -80,16 +89,33 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, MixtormatTokens::LayerNameInset, 0.0f)
 					[
-						SNew(STextBlock)
-						.Text(InArgs._Name)
-						.TextStyle(&NameStyle)
-						.ColorAndOpacity_Lambda([this]()
-						{
-							return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-								Enabled.Get(true)
-									? Mixtormat::EMixtormatColorRole::Text
-									: Mixtormat::EMixtormatColorRole::TextMuted));
-						})
+						SAssignNew(NameSwitcher, SWidgetSwitcher)
+						+ SWidgetSwitcher::Slot()
+						[
+SNew(STextBlock)
+									.Text(InArgs._Name)
+									.TextStyle(&NameStyle)
+									.ColorAndOpacity_Lambda([this]()
+									{
+										return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+											Enabled.Get(true)
+												? Mixtormat::EMixtormatColorRole::Text
+												: Mixtormat::EMixtormatColorRole::TextMuted));
+									})
+						]
+						+ SWidgetSwitcher::Slot()
+						[
+							SNew(SMixtormatTextFieldGradient)
+							[
+								SAssignNew(NameEditBox, SEditableTextBox)
+								.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+								.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& Event)
+								{ return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, Event) : FReply::Unhandled(); })
+								.SelectAllTextWhenFocused(true)
+								.ClearKeyboardFocusOnCommit(true)
+								.OnTextCommitted(this, &SMixtormatSourceRow::HandleNameCommitted)
+							]
+						]
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
@@ -137,4 +163,33 @@ FReply SMixtormatSourceRow::OpenContextMenu()
 	}
 	ContextAnchor->SetIsOpen(true);
 	return FReply::Handled();
+}
+
+void SMixtormatSourceRow::BeginRename()
+{
+	if (!NameSwitcher.IsValid() || !NameEditBox.IsValid()) { return; }
+	NameEditBox->SetText(EditableName.Get(FText::GetEmpty()));
+	NameSwitcher->SetActiveWidgetIndex(1);
+	FSlateApplication::Get().SetKeyboardFocus(NameEditBox, EFocusCause::SetDirectly);
+	if (!NameEntry.IsValid()) { NameEntry = MakeShared<FMixtormatEntryCommit>(); }
+	const TWeakPtr<SMixtormatSourceRow> WeakSelf = StaticCastSharedRef<SMixtormatSourceRow>(AsShared());
+	NameEntry->Begin(NameEditBox.ToSharedRef(), [WeakSelf]()
+	{
+		if (const TSharedPtr<SMixtormatSourceRow> Self = WeakSelf.Pin())
+		{
+			if (Self->NameSwitcher.IsValid()) { Self->NameSwitcher->SetActiveWidgetIndex(0); }
+		}
+	});
+}
+
+void SMixtormatSourceRow::HandleNameCommitted(const FText& Text, ETextCommit::Type CommitType)
+{
+	const bool bCancelled = NameEntry.IsValid() && NameEntry->Finish();
+	if (NameSwitcher.IsValid()) { NameSwitcher->SetActiveWidgetIndex(0); }
+	if (!bCancelled) { OnNameCommitted.ExecuteIfBound(Text, CommitType); }
+}
+
+void SMixtormatSourceRow::ToggleEnabled()
+{
+	OnToggleEnabled.ExecuteIfBound();
 }
