@@ -45,6 +45,13 @@ re-implemented:
   `ScalarSigned`/`Scalar01` field to coverage (`Ctx.NoiseMaskSources` graph-local cache). The mask
   resolver checks typed Value before any legacy `PublishedMaskOutputs` alias, so raw signed
   Value is never consumed directly as coverage.
+- **Sources shelf (`Noise Value from…`).** A Mask can now select a shelf Noise root
+  directly. Its appended `PublishedSourceOwnerKind = Shelf` / `PublishedSourceShelfId`
+  preserves the distinction from legacy layer addresses. Demand scheduling evaluates
+  the valid Noise root before the stack and the mask uses the same typed Value-to-coverage
+  converter, shaped locally by its own UV, blend, filters and scope. This consumer
+  supports Noise Value only; shelf color, vector and generic ID-to-mask conversion
+  are not inferred.
 - The raw typed `Value` publication is unchanged, so Height Push/Warp/reference consumers keep
   full precision. The Noise Gate and mask-source menu/form live in
   `Widgets/Layers/MixtormatMaskSources.cpp`; the inline controls reuse the generator inspector's
