@@ -393,8 +393,10 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.Source.Output = Reference.OutputName;
 	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
 	Out.Direction.Kind = Reference.Kind;
+	// Flow driver evaluation acts on the authored FlowAmount. Behavior Strength
+	// applies afterward to destination displacement, independent of driver mode.
 	Out.Direction.FlowAmount = FMath::IsFinite(Reference.FlowAmount)
-		? Reference.FlowAmount * Behavior.Strength : 0.0f;
+		? Reference.FlowAmount : 0.0f;
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
