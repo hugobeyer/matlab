@@ -44,6 +44,8 @@ namespace
 			SHADER_PARAMETER(int32, GeneratorUVRotation)
 			SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 			SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+			SHADER_PARAMETER(uint32, UsePreGenerationUV)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 			SHADER_PARAMETER(int32, NoiseType)
 			SHADER_PARAMETER(uint32, Seed)
 			SHADER_PARAMETER(float, Scale)
@@ -287,7 +289,8 @@ struct FNoiseFields
 
 // Null Layer selects source-local, value-only dispatch, with no generator companion allocations.
 FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNoiseRenderData& Noise,
-	const FLayerRenderData* Layer, const int32 LayerIndex, const int32 SourceChildIndex)
+	const FLayerRenderData* Layer, const int32 LayerIndex, const int32 SourceChildIndex,
+	FRDGTextureRef PreUV = nullptr)
 {
 	const bool bValueOnly = Layer == nullptr;
 	FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -339,6 +342,8 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		P->GeneratorUVRotation = Layer ? Layer->Rotation : 0;
 		P->GeneratorUVFlipU = Layer && Layer->bFlipU ? 1u : 0u;
 		P->GeneratorUVFlipV = Layer && Layer->bFlipV ? 1u : 0u;
+		P->UsePreGenerationUV = !bValueOnly && PreUV ? 1u : 0u;
+		P->PreGenerationUV = PreUV ? PreUV : Ctx.EmptyPatternUV;
 		P->NoiseType = Noise.Type;
 		P->Seed = static_cast<uint32>(Noise.Seed);
 		P->Scale = Noise.Scale;
@@ -411,7 +416,8 @@ FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatN
 }
 
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-	const FLayerRenderData& Layer, const int32 SourceChildIndex, FGeneratorBundle* Bundle)
+	const FLayerRenderData& Layer, const int32 SourceChildIndex, FGeneratorBundle* Bundle,
+	FRDGTextureRef PreUV)
 {
 	FMixtormatNoiseRenderData Noise;
 	// Preserve the generator's gathered-settings miss behavior.
@@ -421,7 +427,7 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	}
 	const EMixtormatNoiseType NoiseType = static_cast<EMixtormatNoiseType>(Noise.Type);
 	const bool bProducesIds = NoiseProducesIds(NoiseType);
-	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Noise, &Layer, LayerCtx.LayerIndex, SourceChildIndex);
+	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Noise, &Layer, LayerCtx.LayerIndex, SourceChildIndex, PreUV);
 	FRDGTextureRef Value = Fields.Value;
 	FRDGTextureRef Height = Fields.Height;
 	FRDGTextureRef Gradient = Fields.Gradient;
