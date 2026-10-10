@@ -13,6 +13,7 @@
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
@@ -289,56 +290,69 @@ void SMixtormat::HandleUserLibrarySearchChanged(const FText& SearchTextValue)
 
 void SMixtormat::RebuildUserLibraryList()
 {
-	if (!UserLibraryListBox.IsValid())
-	{
-		return;
-	}
-
+	if (!UserLibraryListBox.IsValid()) { return; }
 	UserLibraryListBox->ClearChildren();
-	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const auto& Library = Resolved.Shell;
+	const auto& Palette = Resolved.Palette;
+	const auto HeadingStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::CardTitle),
+		Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const auto LabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerName),
+		Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FLinearColor HeadingColor = Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)
+		.CopyWithNewOpacity(Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted).A * Library.LibraryHeadingOpacity);
+	const FLinearColor LabelColor = Palette.Get(Mixtormat::EMixtormatColorRole::Text)
+		.CopyWithNewOpacity(Palette.Get(Mixtormat::EMixtormatColorRole::Text).A * Library.LibraryLabelOpacity);
+
 	int32 VisibleItemCount = 0;
-	const auto AddHeading = [this, &Style](const FText& Label)
+	const auto AddHeading = [this, &Library, &HeadingStyle, HeadingColor](const FText& Label)
 	{
-		UserLibraryListBox->AddSlot()
-		.AutoHeight()
-		.Padding(2.0f, UserLibraryListBox->GetChildren()->Num() > 0 ? 10.0f : 2.0f, 2.0f, 4.0f)
+		UserLibraryListBox->AddSlot().AutoHeight()
+		.Padding(0.0f, Library.LibraryItemGap, 0.0f, Library.LibraryItemGap)
 		[
 			SNew(STextBlock)
+			.Font(HeadingStyle.Font)
+			.ColorAndOpacity(FSlateColor(HeadingColor))
 			.Text(Label)
-			.Font(Mixtormat::FMixtormatTypography::MakeFont(
-				Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontSliderLabel))
 		];
 	};
-	const auto AddCard = [this, &Style](
-		const FText& Name,
-		const FText& Detail,
+	const auto AddCard = [this, &Library, &LabelStyle, LabelColor](
+		const FText& Name, const FAssetData& ThumbnailAsset,
 		const FOnGetContent& ContextMenu)
 	{
-		UserLibraryListBox->AddSlot()
-		.AutoHeight()
-		.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+		UserLibraryListBox->AddSlot().AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, Library.LibraryItemGap)
 		[
 			SNew(SMixtormatCompositionCard)
 			.OnGetContextMenu(ContextMenu)
 			[
-				SNew(SBorder)
-				.Padding(FMargin(8.0f, 7.0f))
-				.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
-				.ToolTipText(LOCTEXT("UserLibraryItemHint", "Right-click for actions."))
+				SNew(SMixtormatSurfaceBox)
+				.Recipe_Lambda([]()
+				{
+					return Mixtormat::MakeCardBodyRecipe(FMixtormatThemeStore::GetTheme(), 1.0f, 0.0f);
+				})
+				.Padding(FMargin(Library.LibraryItemGap))
 				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight()
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
-						SNew(STextBlock)
-						.Text(Name)
-						.Font(Mixtormat::FMixtormatTypography::MakeFont(
-							Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontSliderLabel))
+						SNew(SMixtormatTile)
+						.TileSize(Library.LibraryThumbnailSize)
+						.ThumbnailAsset(ThumbnailAsset)
+						.ThumbnailPool(ThumbnailPool)
+						.bShowName(false)
+						.bShowNameOnHover(false)
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+					.Padding(Library.LibraryItemGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
-						.Text(Detail)
-						.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+						.Font(LabelStyle.Font)
+						.ColorAndOpacity(FSlateColor(LabelColor))
+						.Text(Name)
+						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 					]
 				]
 			]
@@ -349,65 +363,43 @@ void SMixtormat::RebuildUserLibraryList()
 	for (const FMixtormatCompositionEntry& Composition : FMixtormatRegistry::GetCompositions())
 	{
 		if (!UserLibrarySearchText.IsEmpty()
-			&& !Composition.DisplayName.ToString().Contains(UserLibrarySearchText))
-		{
-			continue;
-		}
+			&& !Composition.DisplayName.ToString().Contains(UserLibrarySearchText)) { continue; }
 		if (!bAddedCompositionHeading)
 		{
 			AddHeading(LOCTEXT("SavedMixesHeading", "SAVED MIXES"));
 			bAddedCompositionHeading = true;
 		}
-		AddCard(
-			Composition.DisplayName,
-			FText::Format(
-				LOCTEXT("CompositionLayerCount", "{0} editable layer(s) · right-click"),
-				FText::AsNumber(Composition.LayerCount)),
-			FOnGetContent::CreateSP(
-				this,
-				&SMixtormat::BuildCompositionLibraryContextMenu,
-				Composition.AssetPath));
+		AddCard(Composition.DisplayName, Composition.ThumbnailAsset,
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildCompositionLibraryContextMenu, Composition.AssetPath));
 		++VisibleItemCount;
 	}
-
 	bool bAddedSurfaceHeading = false;
 	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
 	{
 		if (!MixtormatUI::IsUserLibraryAsset(Surface.AssetPath)
 			|| (!UserLibrarySearchText.IsEmpty()
-				&& !Surface.DisplayName.ToString().Contains(UserLibrarySearchText)))
-		{
-			continue;
-		}
+				&& !Surface.DisplayName.ToString().Contains(UserLibrarySearchText))) { continue; }
 		if (!bAddedSurfaceHeading)
 		{
 			AddHeading(LOCTEXT("ImportedSurfacesHeading", "IMPORTED SURFACES"));
 			bAddedSurfaceHeading = true;
 		}
-		AddCard(
-			Surface.DisplayName,
-			FText::Format(
-				LOCTEXT("ImportedSurfaceDetail", "{0} · right-click"),
-				FText::FromName(Surface.Family)),
-			FOnGetContent::CreateSP(
-				this,
-				&SMixtormat::BuildSurfaceLibraryContextMenu,
-				Surface.AssetPath));
+		AddCard(Surface.DisplayName, Surface.ThumbnailAsset,
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildSurfaceLibraryContextMenu, Surface.AssetPath));
 		++VisibleItemCount;
 	}
-
 	if (VisibleItemCount == 0)
 	{
-		UserLibraryListBox->AddSlot()
-		.AutoHeight()
-		.Padding(2.0f, 8.0f)
+		UserLibraryListBox->AddSlot().AutoHeight()
+		.Padding(0.0f, Library.LibraryItemGap)
 		[
 			SNew(STextBlock)
 			.Text(UserLibrarySearchText.IsEmpty()
 				? LOCTEXT("EmptyUserLibrary", "No saved mixes or imported surfaces yet.")
-				: LOCTEXT("NoMatchingUserLibrary", "No user content matches this search."))
+				: LOCTEXT("NoMatchingUserLibrary", "No matches."))
 			.AutoWrapText(true)
-			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+			.Font(HeadingStyle.Font)
+			.ColorAndOpacity(FSlateColor(HeadingColor))
 		];
 	}
 }
@@ -426,28 +418,46 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 			}
 		});
 	SearchEdit->SetText(FText::FromString(UserLibrarySearchText));
-	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
+	const auto& Layout = FMixtormatThemeStore::GetResolved().Shell;
+	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+		.Padding(Layout.LibrarySearchInnerPadding, 0.0f)
+		[
+			SearchEdit
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, Layout.LibrarySearchInnerPadding, 0.0f)
+		[
+			SNew(SMixtormatHelp)
+			.Text(LOCTEXT("ChooseUserTextureFolderHint", "Import a texture folder"))
+			[
+				SNew(SButton)
+				.ButtonStyle(&FCoreStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("NoBorder")))
+				.ContentPadding(0.0f)
+				.OnClicked_Lambda([this]() { ImportSurfaces(); return FReply::Handled(); })
+				[
+					SNew(SImage)
+					.Image(MixtormatIcons::Folder())
+					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+						Mixtormat::EMixtormatColorRole::TextMuted)))
+				]
+			]
+		]
+	];
 
 	return SNew(SBorder)
-		.Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding)
-		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Panel")))
+		.Padding(Layout.LibraryPagePadding)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(
+			Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+			+ SVerticalBox::Slot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, Layout.LibrarySearchBottomGap)
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
-				[
-					SearchBox
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SMixtormatIconButton)
-					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
-					.Icon(MixtormatIcons::Folder())
-					.ToolTip(LOCTEXT("ChooseUserTextureFolderHint", "Import a texture folder into the user library"))
-					.OnClicked(FSimpleDelegate::CreateLambda([this]() { ImportSurfaces(); }))
-				]
+				SearchBox
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
