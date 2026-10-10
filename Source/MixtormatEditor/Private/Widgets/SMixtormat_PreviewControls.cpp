@@ -1072,10 +1072,6 @@ void SMixtormat::ToggleQuickControls()
 	{
 		return;
 	}
-	if (LeftPanelPlacement == ELeftPanelPlacement::Overlay && MixtormatOverlay::IsHit(LeftPanelOverlay, Local))
-	{
-		return;
-	}
 	QuickControlsPosition = Local;
 	bQuickControlsNeedsCentre = true;
 	bQuickControlsOpen = true;
