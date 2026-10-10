@@ -656,6 +656,13 @@ void AddIconRole(
 				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Layout", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Layout", "Rail Vertical Shade", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadeBias", Preview, "Layout", "Rail Shade Bias", PreviewLayout.LeftRailShadeBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				P.Add(Bool(TEXT("PreviewLayout.bLeftRailShadeInverted"), ETab::Preview,
+					TEXT("Layout"), TEXT("Rail Shade Invert"),
+					[](const FMixtormatTheme& T) { return T.PreviewLayout.bLeftRailShadeInverted; },
+					[](FMixtormatTheme& T, const bool Value) { T.PreviewLayout.bLeftRailShadeInverted = Value; },
+					TEXT("Reverse the shared vertical shade across Layers / Library / Global"),
+					EMixtormatThemeRefreshMode::Paint));
+				NUM("PreviewLayout.LeftRailButtonSurfaceStrength", Preview, "Layout", "Rail Button Surface", PreviewLayout.LeftRailButtonSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Legacy Shadow Offset (Inactive)", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Legacy Shadow Radius (Inactive)", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Layout", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
