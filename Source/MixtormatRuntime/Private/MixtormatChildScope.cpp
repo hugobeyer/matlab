@@ -35,6 +35,20 @@ namespace MixtormatChildScope
 		return OwnerIndex;
 	}
 
+	int32 ResolveBehaviorGeneratorIndex(
+		const TArray<FMixtormatLayerChild>& Children, const int32 BehaviorChildIndex)
+	{
+		if (!Children.IsValidIndex(BehaviorChildIndex)
+			|| Children[BehaviorChildIndex].Type != EMixtormatLayerChildType::Behavior)
+		{
+			return INDEX_NONE;
+		}
+		const int32 OwnerIndex = ResolveOwnerIndex(Children, BehaviorChildIndex);
+		return Children.IsValidIndex(OwnerIndex)
+			&& Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator
+			? OwnerIndex : INDEX_NONE;
+	}
+
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		switch (Child.Type)
