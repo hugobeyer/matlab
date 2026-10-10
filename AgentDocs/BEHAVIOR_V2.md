@@ -25,7 +25,7 @@ The shared evaluator runs all scoped PostGeneration Behavior entries in authored
 ## Drivers and ordered field demand
 - Per-pixel scalar driver slots for Behavior `Strength` and `GradientReach`, and Behavior Flow `FlowAmount` and `FlowTraceLength`, are gathered and bound through the shared GPU contracts.
 - **Current supported driver signal:** enabled `CombinedMask` from an earlier layer. Unsupported source kinds do not acquire a signal. Neutral authored zero may become active through a valid Strength or Gradient Reach driver; an actually evaluated zero produces the identity UV/no native-height delta.
-- Demand scheduling includes published Warp and Deform Direction, published Push and Carve Height/SDF, all connected Influence fields and their ordered mask driver snapshots. Shelf scheduling supports Warp/Deform Flow/UVMap and Push ScalarSigned. The current shelf classifier does not authorize SDF or Scalar01 shelf sources.
+- Demand scheduling includes published Warp and Deform Direction, published Push and Carve Height/SDF, all connected Influence fields and their ordered mask driver snapshots. Shelf scheduling supports Warp/Deform Flow/UVMap and Push ScalarSigned. The current shelf classifier does not authorize SDF or Scalar01 shelf sources; Carve shelf SDF inputs explicitly fail runtime validation. Inactive Height/Direction sockets must remain unconnected for Warp/Deform and Push/Carve respectively.
 - Source/Influence references should resolve at the **owning generator's evaluation point**. A later producer may not be used merely because it precedes the Behavior row in the editor.
 
 ## Not yet complete
