@@ -14,7 +14,7 @@ class SVerticalBox;
 class SMixtormatInspectorCard final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatInspectorCard) : _CompactLayout(false) {}
+	SLATE_BEGIN_ARGS(SMixtormatInspectorCard) : _CompactLayout(false), _HeaderOnly(false) {}
 		// Empty for a card that groups without naming -- a single control that needs the sheet
 		// but has nothing to be called that its own row does not already say. Any HeaderAction
 		// still gets its line.
