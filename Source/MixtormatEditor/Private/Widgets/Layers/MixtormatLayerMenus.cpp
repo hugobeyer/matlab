@@ -438,17 +438,6 @@ void SMixtormat::AddSharedChildMenuItems(
 			MixtormatIcons::Mask(),
 			FSimpleDelegate::CreateLambda([this, Address]() { PasteAsGatingMask(Address); }));
 	}
-	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
-	{
-		const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-			[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
-		const int32 ChildIndex = ResolveChildIndexAt(Address);
-		Menu.SubMenu(
-			LOCTEXT("MoveChildToLayerContext", "Move to Layer..."),
-			nullptr,
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildMoveChildToLayerMenu, LayerIndex, ChildIndex));
-	}
-
 	if (Child && Child->Type == EMixtormatLayerChildType::OutputReference && !bInstance)
 	{
 		Menu.Separator();
