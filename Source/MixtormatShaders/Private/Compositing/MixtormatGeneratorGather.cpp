@@ -362,7 +362,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
 	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
 	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform)
-		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
+				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
 		|| ((bWarp || bDeform) && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
 		|| ((bWarp || bDeform) && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
