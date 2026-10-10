@@ -349,18 +349,20 @@ namespace MixtormatGpuCompositor
 		}
 		if (!Mask.PublishedSourceOutput.IsNone())
 		{
+			const FGuid& PublishedOwner = Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf
+				? Mask.PublishedSourceShelfId : Mask.PublishedSourceLayerId;
 			const FPublishedMaskKey Key{
-				Mask.PublishedSourceLayerId,
+				PublishedOwner,
 				Mask.PublishedSourceChildIndex,
-				Mask.PublishedSourceOutput};
+				Mask.PublishedSourceOutput,
+				Mask.PublishedSourceOwnerKind};
 			if (Mask.PublishedSourceOutput == FName(TEXT("Value")))
 			{
 				if (const FRDGTextureRef* Existing = Ctx.NoiseMaskSources.Find(Key))
 				{
 					return *Existing;
 				}
-				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(FPublishedFieldKey{
-					Mask.PublishedSourceLayerId, Mask.PublishedSourceChildIndex, Mask.PublishedSourceOutput});
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
 				if (!Field || !Field->IsComplete()
 					|| (Field->Kind != EMixtormatPublishedFieldKind::ScalarSigned
 						&& Field->Kind != EMixtormatPublishedFieldKind::Scalar01))
