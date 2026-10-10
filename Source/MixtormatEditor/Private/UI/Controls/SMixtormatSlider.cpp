@@ -5,6 +5,7 @@
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "UI/Controls/MixtormatEntryCommit.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatRecipes.h"
@@ -49,17 +50,11 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlValue),
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 
-	if (InArgs._ToolTip.IsSet())
-	{
-		SetToolTipText(InArgs._ToolTip);
-	}
-	else
-	{
-		SetToolTipText(LOCTEXT(
-			"SliderHint",
+	const TAttribute<FText> HelpText = InArgs._ToolTip.IsSet()
+		? InArgs._ToolTip
+		: TAttribute<FText>(LOCTEXT("SliderHint",
 			"Drag to adjust · click to type · Shift fine · Ctrl+Shift finer · Ctrl snap · MMB or hover + Backspace to reset"));
-	}
-
+	SetToolTip(SMixtormatHelp::MakeStyledToolTip(HelpText));
 
 	ChildSlot
 	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset, 0.0f); }))
