@@ -609,7 +609,7 @@
 		"PreviewLayout.LeftRailInnerPadding": 9.5,
 		"PreviewLayout.LeftRailLabelGap": 6.5,
 		"PreviewLayout.LeftRailBorderOpacity": 0.29999998211860657,
-		"PreviewLayout.LeftRailBorderThickness": 0,
+		"PreviewLayout.LeftRailBorderThickness": 1,
 		"PreviewLayout.LeftRailShadowOpacity": 0.64999997615814209,
 		"PreviewLayout.LeftRailShadowOffset": 3,
 		"PreviewLayout.LeftRailShadowRadius": 0,
