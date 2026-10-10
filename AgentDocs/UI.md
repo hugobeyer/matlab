@@ -64,9 +64,7 @@ Empty cards show no instructional text, but retain the + tab. The layout is auth
 Expansion is session UI state (`bSourcesExpanded`) and never reaches the
 document or the render. Sources are document data (`FMixtormatSourceEntry` on
 `UMixtormatMaterial`, mirrored as `WorkingSources` beside -- never inside -- `WorkingLayers`), so
-the compositor, height references and grouping never see a source as a stack member. Add Source
-the document or the render. Add Source
-offers the six generator kinds and starts them through the same `ApplyChildCreationDefaults` a
+the compositor, height references and grouping never see a source as a stack member. Add Source offers the six generator kinds and starts them through the same `ApplyChildCreationDefaults` a
 generator child uses. Rows select on left click and delete from their context menu; selection is
 exclusive — layer, child and group selection clear the source and vice versa. The Inspector
 shows a SOURCE card (name, kind, enabled) above the kind's own generator panel, which resolves
