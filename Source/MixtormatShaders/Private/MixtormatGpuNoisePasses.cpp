@@ -186,24 +186,24 @@ namespace
 		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseGeneratedFlowCS, FGlobalShader);
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(FIntPoint, OutputSize)
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OwnHeight)
-			// Preceding working-height snapshot. P2 binds the real field; until then UseSlopeHeight
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModeOwnHeight)
+			// Preceding working-height snapshot. P2 binds the real field; until then ModeUseSlopeHeight
 			// stays 0 and the Slope basis contributes exactly zero (no invented movement).
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SlopeHeight)
-			SHADER_PARAMETER(uint32, UseSlopeHeight)
-			SHADER_PARAMETER(float, HeightWeight)
-			SHADER_PARAMETER(float, SlopeWeight)
-			SHADER_PARAMETER(float, CurlWeight)
-			SHADER_PARAMETER(float, ConstantWeight)
-			SHADER_PARAMETER(float, AngleDegrees)
-			SHADER_PARAMETER(float, Strength)
-			SHADER_PARAMETER(int, CurlPeriod)
-			SHADER_PARAMETER(int, CurlOctaves)
-			SHADER_PARAMETER(float, CurlRoughness)
-			SHADER_PARAMETER(float, CurlLacunarity)
-			SHADER_PARAMETER(uint32, CurlSeed)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModeSlopeHeight)
+			SHADER_PARAMETER(uint32, ModeUseSlopeHeight)
+			SHADER_PARAMETER(float, ModeHeightWeight)
+			SHADER_PARAMETER(float, ModeSlopeWeight)
+			SHADER_PARAMETER(float, ModeCurlWeight)
+			SHADER_PARAMETER(float, ModeConstantWeight)
+			SHADER_PARAMETER(float, ModeAngleDegrees)
+			SHADER_PARAMETER(float, ModeStrength)
+			SHADER_PARAMETER(int, ModeCurlPeriod)
+			SHADER_PARAMETER(int, ModeCurlOctaves)
+			SHADER_PARAMETER(float, ModeCurlRoughness)
+			SHADER_PARAMETER(float, ModeCurlLacunarity)
+			SHADER_PARAMETER(uint32, ModeCurlSeed)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutGeneratedFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGeneratedFlowValidity)
 		END_SHADER_PARAMETER_STRUCT()
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
@@ -225,14 +225,14 @@ namespace
 		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseFlowComposeCS, FGlobalShader);
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(FIntPoint, OutputSize)
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowIn)
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, Generated)
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Mask)
-			SHADER_PARAMETER(uint32, UseMask)
-			SHADER_PARAMETER(float, Add)
-			SHADER_PARAMETER(float, Mix)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ComposeFlowIn)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ComposeGenerated)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ComposeMask)
+			SHADER_PARAMETER(uint32, ComposeUseMask)
+			SHADER_PARAMETER(float, ComposeAdd)
+			SHADER_PARAMETER(float, ComposeMix)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutComposedFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutComposedFlowValidity)
 		END_SHADER_PARAMETER_STRUCT()
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
@@ -374,26 +374,26 @@ FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FL
 		TEXT("Mixtormat.Noise.GeneratedFlowValidity"));
 	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseGeneratedFlowCS::FParameters>();
 	P->OutputSize = Size;
-	P->OwnHeight = OwnHeight;
+	P->ModeOwnHeight = OwnHeight;
 	// P2 binds the preceding working-height snapshot; until then the Slope basis is off.
-	P->SlopeHeight = OwnHeight;
-	P->UseSlopeHeight = 0u;
-	P->HeightWeight = Noise.ModeHeightWeight;
-	P->SlopeWeight = Noise.ModeSlopeWeight;
-	P->CurlWeight = Noise.ModeCurlWeight;
-	P->ConstantWeight = Noise.ModeConstantWeight;
-	P->AngleDegrees = Noise.ModeAngle;
-	P->Strength = Noise.ModeStrength;
+	P->ModeSlopeHeight = OwnHeight;
+	P->ModeUseSlopeHeight = 0u;
+	P->ModeHeightWeight = Noise.ModeHeightWeight;
+	P->ModeSlopeWeight = Noise.ModeSlopeWeight;
+	P->ModeCurlWeight = Noise.ModeCurlWeight;
+	P->ModeConstantWeight = Noise.ModeConstantWeight;
+	P->ModeAngleDegrees = Noise.ModeAngle;
+	P->ModeStrength = Noise.ModeStrength;
 	// Curl reuses the module's own periodic settings: base period = the noise lattice period,
 	// octave stack = the distortion settings, so the field tiles and no new serialized
 	// parameters are introduced. Seed is the module's own, distinct from the distortion stream.
-	P->CurlPeriod = FMath::Max(FMath::RoundToInt(Noise.Scale), 1);
-	P->CurlOctaves = FMath::Clamp(Noise.DistortionOctaves, 1, 8);
-	P->CurlRoughness = Noise.DistortionRoughness;
-	P->CurlLacunarity = Noise.DistortionLacunarity;
-	P->CurlSeed = static_cast<uint32>(Noise.Seed);
-	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
-	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
+	P->ModeCurlPeriod = FMath::Max(FMath::RoundToInt(Noise.Scale), 1);
+	P->ModeCurlOctaves = FMath::Clamp(Noise.DistortionOctaves, 1, 8);
+	P->ModeCurlRoughness = Noise.DistortionRoughness;
+	P->ModeCurlLacunarity = Noise.DistortionLacunarity;
+	P->ModeCurlSeed = static_cast<uint32>(Noise.Seed);
+	P->OutGeneratedFlow = Ctx.GraphBuilder.CreateUAV(Flow);
+	P->OutGeneratedFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
 	TShaderMapRef<FMixtormatNoiseGeneratedFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
 		RDG_EVENT_NAME("Mixtormat.Noise.GeneratedFlow.C%d", SourceChildIndex),
@@ -420,14 +420,14 @@ FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
 		TEXT("Mixtormat.Noise.ComposeValidity"));
 	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseFlowComposeCS::FParameters>();
 	P->OutputSize = Size;
-	P->FlowIn = FlowIn;
-	P->Generated = Generated;
-	P->Mask = Mask;
-	P->UseMask = Mask ? 1u : 0u;
-	P->Add = Add;
-	P->Mix = Mix;
-	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
-	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(OutValidity);
+	P->ComposeFlowIn = FlowIn;
+	P->ComposeGenerated = Generated;
+	P->ComposeMask = Mask;
+	P->ComposeUseMask = Mask ? 1u : 0u;
+	P->ComposeAdd = Add;
+	P->ComposeMix = Mix;
+	P->OutComposedFlow = Ctx.GraphBuilder.CreateUAV(Flow);
+	P->OutComposedFlowValidity = Ctx.GraphBuilder.CreateUAV(OutValidity);
 	TShaderMapRef<FMixtormatNoiseFlowComposeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.FlowCompose"),
 		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
