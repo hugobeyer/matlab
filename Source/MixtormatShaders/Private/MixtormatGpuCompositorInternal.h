@@ -1031,6 +1031,8 @@ namespace MixtormatGpuCompositor
 		EMixtormatBehaviorStage Stage = EMixtormatBehaviorStage::PostGeneration;
 		int32 GeneratorChildIndex = INDEX_NONE;
 		float Strength = 1.0f;
+		float GradientReach = 0.02f;
+		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
 	};
 
