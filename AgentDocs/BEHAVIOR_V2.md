@@ -4,7 +4,7 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
-- `ScopeOwnerChildId` must resolve **directly** to an earlier Generator child. The runtime helper `ResolveBehaviorGeneratorIndex` checks this when called; generic owner sanitization does not automatically enforce Behavior-specific ownership. A future evaluator must reject invalid owners.
+- `ScopeOwnerChildId` must resolve **directly** to an earlier Generator child. The runtime helper `ResolveBehaviorGeneratorIndex` checks this at evaluation. `SanitizeStaleOwners` disables Behaviors with missing, invalid, indirect or non-Generator owners without converting them into root operations. Group expansion also disables effective Behavior clones whose owner cannot resolve to an earlier Generator; authored templates remain unchanged.
 - Field inputs are serializable typed sockets on `FMixtormatBehavior`, not nested child arrays.
 - Existing legacy child kinds, enum values, generator module order, source references and saved materials remain untouched.
 - Invalid/unowned Behaviors are skipped by the dedicated V2 gather and never fall into the legacy Effect path.
@@ -31,13 +31,13 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 - Both legacy completed Structural Warp and V2 Warp reuse `RemapGeneratorModuleOutputs`; Noise Value/Gradient publication retains the existing dedicated transport semantics.
 - Legacy Generator Flow tools run before V2 post-generation Behaviors. Legacy Structural Warp for non-Strata remains applied after signed normalization. This is an explicit transitional ordering, not yet an arbitrary interleavable operation chain.
 - **Initial UI authoring is present:** right-click Generator → **Add Warp Behavior (V2)** → choose **Own Height Gradient**, a compatible typed Flow/UV published field, or **Choose source later**. Gradient Reach is enabled only in local mode. **Influence Field** accepts an ordered, published Scalar01 from an earlier layer. Existing scoped-mask authoring (including Noise Gate) also targets Behavior and combines multiplicatively with Influence. Missing/invalid Direction or Influence sources are indicated as unavailable in the chips; the Warp skips unavailable fields instead of silently using full strength. The picker does not yet offer expanded group producers.
-- **Not yet complete:** general field composition, PreGeneration, other Behavior kinds, GPU consumption of parameter drivers, per-socket render source identities and full instance/group authoring. These must not be inferred from the presence of a Warp row.
+- **Not yet complete:** general field composition, PreGeneration, other Behavior kinds, Strength/Gradient Reach GPU drivers, per-socket render source identities and full instance/group authoring. Post-generation published Flow Warp now reuses the existing Flow Amount/Trace Length scalar-driver shader, with enabled earlier-layer CombinedMask snapshots, unchanged authored fallback for unresolved signal textures, and prefix-cache demand propagation. This is a partial driver implementation, not general Behavior driver parity. These must not be inferred from the presence of a Warp row.
 - Shader field demand includes V2 Warp Direction and optional Scalar01 Influence references, preventing neutral or cached producers from silently dropping a required field.
 - Scoped masks are gathered with the canonical `AddScopedFeatureMask` path and blend displacement toward identity through `MixtormatBehaviorWarp.usf`, preserving neutral behavior outside the mask. Additional `Influence` multiplies displacement with that mask for either published Flow/UV or Own Height Gradient. Shader bindings reject incomplete or unsupported formats instead of dropping the influence.
 - No build, shader compile, Unreal launch or GPU validation was performed.
 
 ## Required next code increments
-1. Extend the initial Warp UI with typed source/status messages, reusable mask authoring from gallery/Noise/field sources, GPU-resolved parameter drivers and editable expanded-group sources.
+1. Extend the initial Warp UI with typed source/status messages, reusable mask authoring from gallery/Noise/field sources, remaining Behavior Strength/Gradient Reach drivers, driver source-kind parity, and editable expanded-group sources.
 2. Extend field contracts beyond the implemented local gradient transform and Scalar01 Influence to Own Boundary and general field composition, without changing serialized legacy operations.
 3. Define the next execution phase for PreGeneration and interleaved generator-owned tools while preserving legacy order.
 4. Review group / clipboard / instances / source scheduling under effective projections, and examine typed-transport limits for every generator bundle.
@@ -47,3 +47,8 @@ Status: Universal post-generation Warp now supports typed published Flow/UVMap a
 Noise V2 is merged into `main` through PR #1 (`fb3ebbd`). Behavior V2 does not alter Noise algorithms, serialized enums or GPU producer passes. Its shared Inspector file retains the Noise V2 controls. `main` was merged into this feature branch through PR #2 (`40cb6f6`) and PR #4 (`2883362`), leaving `main` unchanged. Current branch ancestry was checked after PR #4 with zero commits behind `main`.
 
 Repository policy: source/static review only by default; build, test and Unreal launches require user approval.
+
+## Unvalidated October 10 continuation
+- Scope sanitation and group-member clone expansion now fail closed for invalid Behavior owners; existing authored group template data remains intact.
+- Published Flow Warp gathers two existing `BehaviorFlow` scalar-driver slots for `FlowAmount` and `FlowTraceLength`, allows enabled earlier-layer CombinedMask sources, demands their snapshots in composition, and forwards both slots to the existing shared Flow tracing shader. Driver semantics for other source kinds/Behavior parameters remain unimplemented.
+- These changes were source-reviewed only. Unreal 5.8 C++/UHT, shader compilation, viewport behavior, GPU masking, undo/redo, and saved-project compatibility have **not** been validated. Keep PR #5 draft; do not merge before authorization and completion.
