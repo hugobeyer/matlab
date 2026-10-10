@@ -767,6 +767,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
+		case EMixtormatChildCreation::BehaviorWarp:     return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
 				case EMixtormatChildCreation::StructuralWarp:  return EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
@@ -1407,6 +1408,12 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling");
 		}
+	}
+	if (Child.Type == EMixtormatLayerChildType::Behavior)
+	{
+		return Child.Behavior.Type == EMixtormatBehaviorType::Warp
+			? LOCTEXT("BehaviorWarpChildName", "Warp")
+			: LOCTEXT("BehaviorChildName", "Behavior");
 	}
 	if (Child.Type == EMixtormatLayerChildType::Generated)
 	{
@@ -2085,6 +2092,20 @@ const FMixtormatGeneratorHeightPush* SMixtormat::GetSelectedHeightPush() const
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	return Child && Child->Type == EMixtormatLayerChildType::HeightPush ? &Child->HeightPush : nullptr;
+}
+
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorWarp()
+{
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorWarp());
+}
+
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorWarp() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Warp ? &Child->Behavior : nullptr;
 }
 
 FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp()
