@@ -1438,7 +1438,8 @@ namespace
 			FRDGTextureRef Coordinates = nullptr;
 			if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 			{
-				if (!Module.Height || Child.Behavior.GradientReach == 0.0f) { continue; }
+				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
+					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
 				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)

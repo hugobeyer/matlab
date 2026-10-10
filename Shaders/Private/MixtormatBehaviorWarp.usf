@@ -42,13 +42,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(Pixel >= OutputSize)) { return; }
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	const float2 Source = SourceCoordinates.Load(int3(Pixel, 0));
-	// Invalid source maps stay invalid; a later gather never guesses identity.
-	if (!all(isfinite(Source)))
-	{
-		const float Invalid = asfloat(0x7fc00000u);
-		OutCoordinates[Pixel] = float2(Invalid, Invalid);
-		return;
-	}
 	// A scoped Behavior mask gates the displacement, not the generator's
 	// original height/coverage. Flow tracing and UV-map transport share this step.
 	float Weight = DrivenBehaviorStrength(Pixel);
@@ -61,6 +54,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float Value = InfluenceField.Load(int3(Pixel, 0));
 		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	// An evaluated zero strength is exact identity, even if the input map is
+	// unavailable at this texel. Keep nonzero invalid coordinates invalid.
+	if (!isfinite(Weight) || Weight == 0.0f)
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
+	}
+	if (!all(isfinite(Source)))
+	{
+		const float Invalid = asfloat(0x7fc00000u);
+		OutCoordinates[Pixel] = float2(Invalid, Invalid);
+		return;
 	}
 	OutCoordinates[Pixel] = UV + Weight * (Source - UV);
 }
@@ -101,6 +107,11 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float Value = InfluenceField.Load(int3(Pixel, 0));
 		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	if (!isfinite(Weight) || Weight == 0.0f)
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
 	}
 	// Smoothly limit large slopes; flat regions remain exactly stationary.
 	const float2 Offset = isfinite(Magnitude) ? Gradient / (1.0f + Magnitude) : float2(0.0f, 0.0f);

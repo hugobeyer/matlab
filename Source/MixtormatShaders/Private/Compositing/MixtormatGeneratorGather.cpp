@@ -362,7 +362,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		|| (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 		|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
-		|| !FMath::IsFinite(Behavior.Strength) || Behavior.Strength == 0.0f) { return; }
+		|| !FMath::IsFinite(Behavior.Strength)) { return; }
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
 		MixtormatChildScope::ValidateBehaviorInputs(
@@ -423,6 +423,13 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		Driver.OutputMax = Authored.OutputMax;
 		Driver.Amount = Authored.Amount;
 		Driver.Combine = static_cast<uint32>(Authored.Combine);
+	}
+	// A zero-authored Strength remains neutral unless a valid ordered driver
+	// can replace or combine it. This check must follow driver resolution.
+	if (Out.Strength == 0.0f && !Out.ScalarDrivers[0].bEnabled)
+	{
+		Data.Children.Pop();
+		return;
 	}
 	Out.DirectionOrigin = Behavior.Direction.Origin;
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
