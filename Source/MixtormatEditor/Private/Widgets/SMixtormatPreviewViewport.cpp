@@ -1510,7 +1510,12 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 
 FString SMixtormatPreviewViewport::GetChannelPreviewLabel() const
 {
-	switch (ChannelPreview)
+	return GetChannelPreviewLabel(ChannelPreview);
+}
+
+FString SMixtormatPreviewViewport::GetChannelPreviewLabel(const EMixtormatChannelPreview Mode)
+{
+	switch (Mode)
 	{
 	case EMixtormatChannelPreview::BaseColor: return TEXT("Base Color");
 	case EMixtormatChannelPreview::Normal: return TEXT("Normal");

@@ -199,6 +199,9 @@ public:
 	UTextureRenderTarget2D* GetRegionIdPick() const;
 	EMixtormatChannelPreview GetChannelPreview() const { return ChannelPreview; }
 	FString GetChannelPreviewLabel() const;
+	// Label for any mode, so callers that name the NEXT mode (the hint strip) do not have to
+	// duplicate the switch.
+	static FString GetChannelPreviewLabel(EMixtormatChannelPreview Mode);
 	// What the viewport is showing right now: Material, a V-key channel (with the Shift+V hint),
 	// or the debug view a preview eye turned on.
 	FText GetPreviewModeLabel() const;

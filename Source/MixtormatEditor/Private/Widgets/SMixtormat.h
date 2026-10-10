@@ -1758,7 +1758,10 @@ private:
 	// idle instead of re-submitting an unchanged stack every frame while the mouse is held.
 	bool bPreviewSubmitPending = false;
 	bool bShowCompositionBefore = false;
-	bool bPreviewOverlayUiVisible = false;
+	// The H/Space master flag. The default rails it used to hide are gone (their clusters live
+	// in GLOBAL and the Q menu), so its only reader now is the hint strip: visible by default,
+	// H hides it.
+	bool bPreviewOverlayUiVisible = true;
 	// Viewport group visibility, one flag per group, driven by the GLOBAL switches. Session state
 	// on the retained workspace; the H/Space master flag above composes with these rather than
 	// replacing them, and hidden groups keep their hotkeys.

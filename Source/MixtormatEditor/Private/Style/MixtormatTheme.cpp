@@ -412,6 +412,7 @@ namespace Mixtormat
 		T.ContextLayout.HintItemGap = 8.0f;
 		T.ContextLayout.HintStripOpacity = 0.75f;
 		T.ContextLayout.HintStripInset = 8.0f;
+		T.ContextLayout.HintStripCorner = 2; // Top Right
 
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
@@ -810,6 +811,7 @@ namespace Mixtormat
 		T.ContextLayout.HintItemGap = 8.0f;
 		T.ContextLayout.HintStripOpacity = 0.75f;
 		T.ContextLayout.HintStripInset = 8.0f;
+		T.ContextLayout.HintStripCorner = 2; // Top Right
 		T.Gallery.BorderWidth = 0.0f;
 		T.Gallery.BorderOpacity = 1.0f;
 		T.Gallery.HoverLiftOpacity = 0.0f;

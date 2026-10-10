@@ -831,8 +831,11 @@ namespace Mixtormat
 		float HintItemGap = 8.0f;
 		// Whole-strip render opacity.
 		float HintStripOpacity = 0.75f;
-		// Inset from the viewport's bottom-left corner.
+		// Inset from the pinned edge.
 		float HintStripInset = 8.0f;
+		// Where the strip pins: 0 Top Left, 1 Top Center, 2 Top Right, 3 Bottom Left,
+		// 4 Bottom Center, 5 Bottom Right.
+		int32 HintStripCorner = 2;
 	};
 
 	struct FMixtormatGalleryMetrics

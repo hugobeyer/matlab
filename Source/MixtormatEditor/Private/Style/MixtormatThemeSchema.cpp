@@ -716,6 +716,11 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("Context.HintItemGap", Context, "Hint Strip", "Item Gap", ContextLayout.HintItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Context.HintStripOpacity", Context, "Hint Strip", "Strip Opacity", ContextLayout.HintStripOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Context.HintStripInset", Context, "Hint Strip", "Strip Inset", ContextLayout.HintStripInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				P.Add(Choice(TEXT("Context.HintStripCorner"), ETab::Context, TEXT("Hint Strip"), TEXT("Strip Position"),
+					{ TEXT("Top Left"), TEXT("Top Center"), TEXT("Top Right"), TEXT("Bottom Left"), TEXT("Bottom Center"), TEXT("Bottom Right") },
+					[](const FMixtormatTheme& T) { return T.ContextLayout.HintStripCorner; },
+					[](FMixtormatTheme& T, int32 V) { T.ContextLayout.HintStripCorner = FMath::Clamp(V, 0, 5); },
+					TEXT(""), EMixtormatThemeRefreshMode::Reconstruct));
 				SetLocateTarget(P, LocateBegin, ETarget::HintStrip);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.

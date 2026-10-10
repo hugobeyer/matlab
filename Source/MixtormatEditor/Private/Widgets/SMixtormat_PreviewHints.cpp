@@ -4,10 +4,10 @@
 // viewport's bottom-left. Blender-style "what can I do right here", scoped to what the
 // preview viewport actually handles.
 //
-// Every pair is built once and shown or hidden by a visibility lambda reading live
-// workspace state, so the strip tracks context changes without a reconstruction.
-// First-match-wins is expressed as "special pairs visible only in their state, default
-// pairs visible only when no special state is", which keeps at most five pairs on screen.
+// Context-only: the plain material view shows nothing. Pairs appear only for the active
+// context (quick controls open, a channel or debug view, the Plane's orientation flip, a
+// missing material), each shown or hidden by a visibility lambda reading live workspace
+// state, so the strip tracks context changes without a reconstruction.
 //
 // Hit-test-invisible like the light gizmo, so camera navigation passes through. The
 // strip follows the H/Space master flag and collapses when nothing applies.
@@ -73,9 +73,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			FMixtormatThemeStore::GetResolved().Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
 		FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 
-	// The special contexts, evaluated live. Precedence is explicit per pair: quick controls
-	// win over everything (the overlay is on screen), then a channel view, then a debug
-	// view, then a selected module -- the same precedence GetPreviewModeLabel uses.
+	// The special contexts, evaluated live. The strip shows ONLY the active context's pairs:
+	// nothing is on screen in the plain material view. Precedence: quick controls > channel
+	// view > debug view > plane-orientation > no-material nudge.
 	const auto bQuickControls = [this]() { return bQuickControlsOpen; };
 	const auto bChannelView = [this]()
 	{
@@ -86,22 +86,29 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return DebugPreviewMode != EMixtormatDebugPreviewMode::None;
 	};
-	const auto bModuleSelected = [this]() { return bHasSelectedLayer; };
-	const auto bNoneSpecial = [this]()
+	// Plane is the one mesh with a second state: pressing 2 again flips its orientation.
+	const auto bPlaneFlip = [this]()
 	{
-		return !bQuickControlsOpen
-			&& !(DebugPreviewMode != EMixtormatDebugPreviewMode::None)
-			&& !(!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
+		return PreviewMesh == EMixtormatPreviewMesh::Plane;
+	};
+	const auto bNoMaterial = [this]() { return !bHasWorkingMaterial; };
+	const auto bAnyContext = [this]()
+	{
+		return bQuickControlsOpen
+			|| (DebugPreviewMode != EMixtormatDebugPreviewMode::None)
+			|| (!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
 				&& PreviewViewports[0]->GetChannelPreview() != EMixtormatChannelPreview::Material)
-			&& !bHasSelectedLayer;
+			|| PreviewMesh == EMixtormatPreviewMesh::Plane
+			|| !bHasWorkingMaterial;
 	};
 
 	// One pair: optional keycap, action text, and when it is on screen. Visibility lives on
-	// the children -- box-panel slots have no Visibility of their own.
+	// the children -- box-panel slots have no Visibility of their own. Action is an attribute
+	// so a pair can name live state (the next channel's label).
 	const auto AddPair = [&ActionStyle](
 		SHorizontalBox& Box,
 		const FText& Key,
-		const FText& Action,
+		const TAttribute<FText>& Action,
 		const TAttribute<EVisibility>& Visible)
 	{
 		if (!Key.IsEmpty())
@@ -152,13 +159,23 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	});
 	AddPair(*Row, LOCTEXT("HintEsc", "Esc"), LOCTEXT("HintCloseQuickControls", "Close quick controls"), QuickControlsVis);
 
-	// -- Channel view active, unless quick controls are open above it.
+	// -- Channel view active: name the NEXT channel, not "next channel".
 	const TAttribute<EVisibility> ChannelVis = TAttribute<EVisibility>::CreateLambda([bChannelView, bQuickControls]()
 	{
 		return bChannelView() && !bQuickControls() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, ChannelVis);
-	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintNextChannel", "Next channel"), ChannelVis);
+	AddPair(*Row, LOCTEXT("HintV", "V"), TAttribute<FText>::CreateLambda([this]()
+	{
+		if (PreviewViewports.IsEmpty() || !PreviewViewports[0].IsValid())
+		{
+			return LOCTEXT("HintNextChannel", "Next channel");
+		}
+		const uint8 NextMode = (static_cast<uint8>(PreviewViewports[0]->GetChannelPreview()) + 1)
+			% (static_cast<uint8>(EMixtormatChannelPreview::Fuzz) + 1);
+		return FText::FromString(SMixtormatPreviewViewport::GetChannelPreviewLabel(
+			static_cast<EMixtormatChannelPreview>(NextMode)));
+	}), ChannelVis);
 	AddGap(*Row, ChannelVis);
 	AddPair(*Row, LOCTEXT("HintShiftV", "Shift+V"), LOCTEXT("HintMaterial", "Material"), ChannelVis);
 
@@ -171,40 +188,34 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	AddGap(*Row, DebugVis);
 	AddPair(*Row, FText::GetEmpty(), LOCTEXT("HintClearDebug", "Clear button returns to the composite"), DebugVis);
 
-	// -- A module is selected, under every view context.
-	const TAttribute<EVisibility> ModuleVis = TAttribute<EVisibility>::CreateLambda(
-		[bModuleSelected, bDebugView, bChannelView, bQuickControls]()
+	// -- Plane selected: 2 again flips its orientation.
+	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(
+		[bPlaneFlip, bChannelView, bDebugView, bQuickControls]()
 	{
-		return bModuleSelected() && !bDebugView() && !bChannelView() && !bQuickControls()
+		return bPlaneFlip() && !bChannelView() && !bDebugView() && !bQuickControls()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
-	AddGap(*Row, ModuleVis);
-	AddPair(*Row, LOCTEXT("HintM", "M"), LOCTEXT("HintCycleModule", "Cycle module preview"), ModuleVis);
+	AddGap(*Row, PlaneVis);
+	AddPair(*Row, LOCTEXT("HintPlane", "2"), LOCTEXT("HintPlaneFlip", "Flip plane orientation"), PlaneVis);
 
-	// -- Default camera and viewport keys, on screen only when no special context leads.
-	// Five pairs: the compactness contract. U/M and Z are discoverable through their
-	// GLOBAL rows; these five are the ones with no other on-screen readout.
-	const TAttribute<EVisibility> DefaultVis = TAttribute<EVisibility>::CreateLambda([bNoneSpecial]()
+	// -- No working material: a mouse-only nudge, the one thing a new user is stuck on.
+	const TAttribute<EVisibility> NoMaterialVis = TAttribute<EVisibility>::CreateLambda(
+		[bNoMaterial, bPlaneFlip, bChannelView, bDebugView, bQuickControls]()
 	{
-		return bNoneSpecial() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		return bNoMaterial() && !bPlaneFlip() && !bChannelView() && !bDebugView() && !bQuickControls()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
-	AddGap(*Row, DefaultVis);
-	AddPair(*Row, LOCTEXT("HintLMB", "LMB"), LOCTEXT("HintOrbit", "Orbit"), DefaultVis);
-	AddGap(*Row, DefaultVis);
-	AddPair(*Row, LOCTEXT("HintWheel", "Wheel"), LOCTEXT("HintZoom", "Zoom"), DefaultVis);
-	AddGap(*Row, DefaultVis);
-	AddPair(*Row, LOCTEXT("HintMesh", "1-4"), LOCTEXT("HintMeshAction", "Mesh"), DefaultVis);
-	AddGap(*Row, DefaultVis);
-	AddPair(*Row, LOCTEXT("HintQ", "Q"), LOCTEXT("HintQuickControls", "Quick controls"), DefaultVis);
-	AddGap(*Row, DefaultVis);
-	AddPair(*Row, LOCTEXT("HintH", "H"), LOCTEXT("HintHideUi", "Hide UI"), DefaultVis);
+	AddGap(*Row, NoMaterialVis);
+	AddPair(*Row, FText::GetEmpty(), LOCTEXT("HintNoMaterial", "Drag a surface from Library into Layers"), NoMaterialVis);
 
 	TSharedRef<SWidget> Strip = MakePreviewCluster(Row);
 
 	const TSharedRef<Mixtormat::SMixtormatHintStrip> StripWidget = SNew(Mixtormat::SMixtormatHintStrip)
-		.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+		.Visibility(TAttribute<EVisibility>::CreateLambda([this, bAnyContext]()
 		{
-			return bPreviewOverlayUiVisible ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			// Nothing applies -> nothing on screen. The plain material view is hint-free.
+			return bPreviewOverlayUiVisible && bAnyContext()
+				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 		}))
 		[
 			Strip
