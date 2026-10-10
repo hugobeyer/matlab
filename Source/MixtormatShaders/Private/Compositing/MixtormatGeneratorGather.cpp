@@ -386,8 +386,6 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		const float FlowAmount = FMath::IsFinite(Warp.Source.FlowAmount) ? Warp.Source.FlowAmount : 0.0f;
 		const float TraceLength = FMath::IsFinite(Warp.Source.FlowTraceLength)
 			? FMath::Max(Warp.Source.FlowTraceLength, 0.0f) : 0.0f;
-		if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
-			&& (FlowAmount == 0.0f || TraceLength == 0.0f)) { return; }
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::StructuralWarp;
 		ChildData.SourceChildIndex = SourceChildIndex;
@@ -398,6 +396,53 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		Out.Source.FlowTraceLength = TraceLength;
 		Out.Source.FlowSteps = FMath::Max(Warp.Source.FlowSteps, 1);
 		Out.TargetChildIndex = TargetIndex;
+		// Structural Flow drivers use the same flattened scalar contract as the
+		// composite. Only completed earlier-layer masks are eligible here; a shelf
+		// producer, future layer or child mask cannot provide that snapshot.
+		const FName DriverProperties[2] = { TEXT("FlowAmount"), TEXT("FlowTraceLength") };
+		for (int32 Slot = 0; Slot < 2; ++Slot)
+		{
+			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
+				{
+					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::StructuralWarpFlow
+						&& Candidate.DestinationParameter == DriverProperties[Slot]
+						&& Candidate.Driver.bEnabled
+						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+						&& Candidate.Driver.SourceLayerId.IsValid();
+				});
+			if (!Binding) { continue; }
+			bool bEarlier = false;
+			for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+			{
+				if (EffectiveLayers.IsValidIndex(Previous)
+					&& EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+					&& EffectiveLayers[Previous].bEnabled)
+				{
+					bEarlier = true;
+					break;
+				}
+			}
+			if (!bEarlier) { continue; }
+			const FMixtormatParameterDriver& Authored = Binding->Driver;
+			FScalarDriverRenderData& Driver = Out.Drivers[Slot];
+			Driver.bEnabled = true;
+			Driver.SourceLayerId = Authored.SourceLayerId;
+			Driver.bInvert = Authored.bInvert;
+			Driver.InputMin = Authored.InputMin;
+			Driver.InputMax = Authored.InputMax;
+			Driver.OutputMin = Authored.OutputMin;
+			Driver.OutputMax = Authored.OutputMax;
+			Driver.Amount = Authored.Amount;
+			Driver.Combine = static_cast<uint32>(Authored.Combine);
+		}
+		if (Warp.Source.Kind == EMixtormatPublishedFieldKind::Flow
+			&& (FlowAmount == 0.0f && !Out.Drivers[0].bEnabled
+				|| TraceLength == 0.0f && !Out.Drivers[1].bEnabled))
+		{
+			Data.Children.Pop();
+			return;
+		}
 		break;
 	}
 	case EMixtormatLayerChildType::HeightBlend:
