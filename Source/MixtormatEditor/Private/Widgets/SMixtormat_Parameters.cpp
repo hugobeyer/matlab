@@ -1764,8 +1764,26 @@ void SMixtormat::SetDriverCombine(
 
 void SMixtormat::SetDriverEnabled(FMixtormatParameterAddress Target, const bool bEnabled)
 {
+	if (bEnabled && WorkingSources.ContainsByPredicate([&Target](const FMixtormatSourceEntry& Entry)
+		{ return Entry.SourceId == Target.LayerId; })) { return; }
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, bEnabled))
 	{
+		if (bEnabled && Target.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow)
+		{
+			const int32 TargetIndex = WorkingLayers.IndexOfByPredicate([&Target](const FMixtormatLayer& Layer)
+				{ return Layer.LayerId == Target.LayerId; });
+			const int32 SourceIndex = WorkingLayers.IndexOfByPredicate([Binding](const FMixtormatLayer& Layer)
+				{ return Layer.LayerId == Binding->Driver.SourceLayerId && Layer.bEnabled; });
+			if (Target.ValueType != EMixtormatParameterValueType::Float
+				|| (Target.Parameter != FName(TEXT("FlowAmount"))
+					&& Target.Parameter != FName(TEXT("FlowTraceLength")))
+				|| Binding->Driver.SourceKind != EMixtormatDriverSourceKind::CombinedMask
+				|| Binding->Driver.SourceChildId.IsValid()
+				|| SourceIndex == INDEX_NONE || TargetIndex == INDEX_NONE || SourceIndex >= TargetIndex)
+			{
+				return;
+			}
+		}
 		Binding->Driver.bEnabled = bEnabled && Binding->Driver.SourceKind != EMixtormatDriverSourceKind::None;
 		if (Binding->Driver.bEnabled)
 		{
