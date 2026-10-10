@@ -75,7 +75,7 @@ scope-owner searches) see unavailable — Copy's tooltip explains that sources d
 Source adds/deletes/renames break history coalescing like layer/group structure changes, and
 document lifecycle (new/open/save/save-as) snapshots sources alongside layers. Not implemented:
 evaluation/publication, target connections, Paste as Instance and the layer-generator Influence
-Only toggle. Source identity is repaired on load: shelf `SourceId`, root `ChildId` and inert
+Only toggle. Copy Source / Paste Copied Source preserve external source dependencies while assigning new Source/child identities. Internal scoped ownership and structural Height Push/Warp target child GUIDs are remapped to the duplicated children; unresolved external targets remain unchanged. Source identity is repaired on load: shelf `SourceId`, root `ChildId` and inert
 `OwnedChildren` child IDs share the document-wide namespaces; the root is unscoped and each owned
 child is normalised as a direct child of the root. Output references now append a `Layer|Shelf`
 owner kind and `SourceShelfId`; `ClassifyShelfSourceReference` provides explicit repair status for
