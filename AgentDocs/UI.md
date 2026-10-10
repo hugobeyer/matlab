@@ -54,6 +54,14 @@ Existing layer-level creation stays unchanged. The shared procedural removal han
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
 No build/runtime validation has been run.
 
+The Sources shelf is a non-compositing list below the layer rows, built by
+`SMixtormat::BuildSourcesShelf` with `UI/Layers/SMixtormatSourcesShelf.*`. It reuses the
+inspector foldout's header anatomy, tokens and surface; expansion is session UI state
+(`bSourcesExpanded`) and never reaches the document or the render. The body is an empty state
+plus a disabled `Add Source` action -- generator, ramp and float sources are not implemented, so
+nothing is offered as a working control. The shelf sits outside the layer scroll box so its
+header stays reachable. UI shell only; no build/runtime validation run.
+
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
 `Noise Value from…`, wires the mask to a completed earlier Noise generator's live published

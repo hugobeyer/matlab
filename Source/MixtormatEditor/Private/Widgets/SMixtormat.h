@@ -1495,6 +1495,9 @@ private:
 	FReply ToggleBottomLibraryCollapsed();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
+	// Sources shelf expansion. UI only: closing the shelf disables nothing and never reaches the
+	// document.
+	void ToggleSourcesExpanded();
 	// Moves the single layer stack between its dock and overlay hosts, and keeps the rail's
 	// selection pointing at a page the cell can actually show.
 	void ApplyLeftPanelPlacement();
@@ -1514,6 +1517,8 @@ private:
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
 	TSharedRef<SWidget> BuildLayerStackPanel();
+	// The Sources shelf: the collapsible list of reusable outputs below the layer rows.
+	TSharedRef<SWidget> BuildSourcesShelf();
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerThumbnail(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerChildIcon(int32 LayerIndex, int32 ChildIndex);
@@ -1714,6 +1719,9 @@ private:
 	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
 	TSet<FGuid> CollapsedGroupIds;
+	// Sources shelf expansion. UI only, like the group collapse set: closing the shelf disables
+	// nothing and never reaches the asset.
+	bool bSourcesExpanded = false;
 	// Selecting a group clears the layer selection and the other way round, so the inspector
 	// always has exactly one subject.
 	FGuid SelectedGroupId;

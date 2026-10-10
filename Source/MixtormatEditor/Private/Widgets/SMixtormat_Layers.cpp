@@ -6,6 +6,7 @@
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
+#include "UI/Layers/SMixtormatSourcesShelf.h"
 #include "Widgets/Layers/MixtormatStructuralConnectionProjection.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -426,9 +427,55 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
 						]
 					]
+					// The Sources shelf sits under the rows, outside their scroll: it stays put and the
+					// list keeps whatever height is left.
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
+					[
+						BuildSourcesShelf()
+					]
 				]
 			]
 		];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildSourcesShelf()
+{
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+
+	return SNew(SMixtormatSourcesShelf)
+		.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
+		.Title(LOCTEXT("SourcesShelfTitle", "SOURCES"))
+		.Expanded_Lambda([this]() { return bSourcesExpanded; })
+		.OnToggle(FSimpleDelegate::CreateSP(this, &SMixtormat::ToggleSourcesExpanded))
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("SourcesShelfEmpty", "No sources yet. Reusable generators, ramps and shared values will be listed here."))
+				.AutoWrapText(true)
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f)
+			[
+				SNew(SBox)
+				.HeightOverride(Resolved.ControlLayout.ButtonHeight)
+				[
+					SNew(SButton)
+					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.IsEnabled(false)
+					.ToolTipText(LOCTEXT("AddSourceUnavailableHint", "Adding sources is not available yet; sources cannot be stored with the material yet."))
+					[
+						SNew(STextBlock).Text(LOCTEXT("AddSourceAction", "Add Source"))
+					]
+				]
+			]
+		];
+}
+
+void SMixtormat::ToggleSourcesExpanded()
+{
+	bSourcesExpanded = !bSourcesExpanded;
 }
 
 #undef LOCTEXT_NAMESPACE
