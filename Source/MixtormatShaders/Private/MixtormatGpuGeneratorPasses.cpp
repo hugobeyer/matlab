@@ -1932,25 +1932,24 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	}
 
 	// An item that would leave the height unchanged. Still solved while its preview is up.
-	bool IsNeutralFlowTool(const FEffectRenderData& Flow)
+	bool IsNeutralFlowTool(const FBehaviorRenderData& Behavior)
 	{
-		if (Flow.GeneratorFlowAmount == 0.0f)
+		const FBehaviorFlowRenderData& Flow = Behavior.Flow;
+		if (Flow.GeneratorFlowAmount == 0.0f) { return true; }
+		switch (Behavior.Type)
 		{
-			return true;
-		}
-		switch (Flow.Type)
-		{
-		case EMixtormatEffectType::ShapeDeform:
+		case EMixtormatBehaviorType::FlowField:
+			return false;
+		case EMixtormatBehaviorType::Deform:
 			return Flow.GeneratorFlowShapeOffset == 0.0f && Flow.GeneratorFlowBulge == 0.0f;
-		case EMixtormatEffectType::GeneratorFlow:
-		case EMixtormatEffectType::GravityFlow:
+		case EMixtormatBehaviorType::Warp:
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowWarpStrength == 0.0f;
-		case EMixtormatEffectType::FlowCarve:
+		case EMixtormatBehaviorType::Carve:
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
 		default:
 			return true;
-}
-}
+		}
+	}
 
 	bool IsPreviewingAnyFlowTool(
 		const FRenderRequest& Request,
@@ -1988,7 +1987,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		for (const FChildRenderData& Candidate : Layer.Children)
 		{
 			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& (!IsNeutralFlowTool(Candidate.Behavior.Flow)
+				&& (!IsNeutralFlowTool(Candidate.Behavior)
 					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)
 					|| IsFlowFieldDemanded(Ctx, Layer, Candidate.SourceChildIndex)))
 			{
@@ -2071,14 +2070,14 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			{
 				continue;
 			}
-			const FEffectRenderData& Flow = FlowChild.Behavior.Flow;
+			const FBehaviorFlowRenderData& Flow = FlowChild.Behavior.Flow;
 			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
-			const bool bGravity = Flow.Type == EMixtormatEffectType::GravityFlow;
+			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
 			// Height-only producers must never bind a null boundary or invent an SDF.
 			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
-			const bool bNeutral = IsNeutralFlowTool(Flow);
+			const bool bNeutral = IsNeutralFlowTool(FlowChild.Behavior);
 			if (bNeutral && !bPreviewing && !IsFlowFieldDemanded(Ctx, Layer, FlowIndex))
 			{
 				continue;
@@ -2112,8 +2111,9 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->OffsetAlong = Flow.GeneratorFlowOffsetAlong;
 				P->OffsetAcross = Flow.GeneratorFlowOffsetAcross;
 				P->HasMask = bHasMask ? 1u : 0u;
-				P->Mode = bGravity ? 3u : (Flow.Type == EMixtormatEffectType::ShapeDeform ? 0u
-					: (Flow.Type == EMixtormatEffectType::GeneratorFlow ? 1u : 2u));
+				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
+					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
+					: bGravity ? 3u : 1u;
 				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
 				P->Bulge = Flow.GeneratorFlowBulge;
 				P->TraceLength = Flow.GeneratorFlowTraceLength;
@@ -2254,7 +2254,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			Ctx.PublishedFieldOutputs.Add(
 				PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
 				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
-			if (Flow.Type != EMixtormatEffectType::FlowCarve)
+			if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
 			{
 				Ctx.PublishedFieldOutputs.Add(
 					PublishedKey(Layer, FlowIndex, FName(TEXT("WarpedUV"))),
@@ -2310,7 +2310,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				{
 					Bundle->Height = Current;
 					Bundle->Coverage = InOutCoverage;
-					if (Flow.Type != EMixtormatEffectType::FlowCarve)
+					if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
 					{
 						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
 						BoundaryField = Bundle->BoundaryField;

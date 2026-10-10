@@ -399,15 +399,10 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FBehaviorRenderData& Out = ChildData.Behavior;
 	Out.Type = Behavior.Type;
 	Out.bUseTracedFlow = bTraced;
-	// Copy authoring parameters onto the existing shader layout without retaining
-	// legacy effect execution or authoring. Sanitization stays local to Gather.
+	// Gather authored Behavior Flow parameters into the native render data.
 	const FMixtormatBehaviorFlowSettings& Flow = Behavior.Flow;
-	FEffectRenderData& FlowOut = Out.Flow;
-	FlowOut.Type = bFlowField
-		? (Flow.Mode == EMixtormatBehaviorFlowMode::Gravity
-			? EMixtormatEffectType::GravityFlow : EMixtormatEffectType::GeneratorFlow)
-		: bCarve ? EMixtormatEffectType::FlowCarve
-		: bDeform ? EMixtormatEffectType::ShapeDeform : EMixtormatEffectType::GeneratorFlow;
+	FBehaviorFlowRenderData& FlowOut = Out.Flow;
+	FlowOut.Mode = Flow.Mode;
 	Out.Stage = Behavior.Stage;
 	FlowOut.GeneratorFlowSource = static_cast<uint32>(Flow.GeneratorFlowSource);
 	FlowOut.GeneratorFlowAmount = FMath::IsFinite(Flow.GeneratorFlowAmount) ? Flow.GeneratorFlowAmount : FMixtormatBehaviorFlowSettings().GeneratorFlowAmount;
