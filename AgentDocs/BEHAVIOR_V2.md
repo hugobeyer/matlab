@@ -28,6 +28,12 @@ The shared evaluator runs all scoped PostGeneration Behavior entries in authored
 - Demand scheduling includes published Warp and Deform Direction, published Push and Carve Height/SDF, all connected Influence fields and their ordered mask driver snapshots. Shelf scheduling supports Warp/Deform Flow/UVMap and Push ScalarSigned. The current shelf classifier does not authorize SDF or Scalar01 shelf sources; Carve shelf SDF inputs explicitly fail runtime validation. Inactive Height/Direction sockets must remain unconnected for Warp/Deform and Push/Carve respectively.
 - Source/Influence references should resolve at the **owning generator's evaluation point**. A later producer may not be used merely because it precedes the Behavior row in the editor.
 
+## October 10 source correction batch
+- Rock Formation `RockEdgeDistance` and Pebbles `PebbleEdgeDistance` now publish typed `SDF` fields in addition to their historical named-mask outputs. The corresponding Editor capabilities expose these exact fields for typed Copy and Carve source selection; no automatic scalar-to-SDF conversion was added.
+- The shared Influence source picker and Warp/Deform availability use the owning Generator's ordering, not the later Behavior row. The Carve inspector heading identifies Carve / Deposit.
+- Shelf dependencies for Behaviors with disabled Generator owners are not scheduled.
+- The source corrections remain uncompiled and not GPU-validated. BoundaryFromIds.Distance is still a mask output and is not automatically classified as signed SDF.
+
 ## Not yet complete
 1. **PreGeneration:** declared enum stage, no GPU execution. It must transform generator sampling coordinates before generation, not disguise a post-generation bundle resample as pre-generation. Implement a declared capability and shared coordinate binding across all six generator families, with correct lifted UV winding and cache invalidation before exposing UI.
 2. **Full driver source-kind parity:** current Behavior scalar slots support earlier CombinedMask, not all published-field/region/gate/local parameter driver sources.
