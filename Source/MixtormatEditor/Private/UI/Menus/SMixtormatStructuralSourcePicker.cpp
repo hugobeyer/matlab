@@ -10,6 +10,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Menus/SMixtormatMenuItem.h"
 #include "UI/Primitives/SMixtormatWellBox.h"
+#include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -22,6 +23,7 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 {
 	Entries = InArgs._Entries;
 	OnSourcePicked = InArgs._OnSourcePicked;
+	OnSourceLater = InArgs._OnSourceLater;
 	EndpointPreview = InArgs._EndpointPreview;
 	OnPreviewChanged = InArgs._OnPreviewChanged;
 	bPreviewCurrent = InArgs._bPreviewCurrent;
@@ -32,7 +34,7 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 		SNew(SBox)
 		.WidthOverride(Resolved.LayerConnections.PickerWidth)
 		[
-			SNew(SVerticalBox)
+			SAssignNew(ListRoot, SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				MakeCaption(InArgs._Caption)
@@ -79,6 +81,25 @@ void SMixtormatStructuralSourcePicker::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+	if (OnSourceLater.IsBound())
+	{
+		// Pinned below the list so the fallback stays visible without scrolling, and separated
+		// from the source rows it deliberately does not belong to.
+		ListRoot->AddSlot().AutoHeight().Padding(Layout.ItemInset, Layout.CaptionInsetBelow, Layout.ItemInset, 0.0f)
+		[
+			MixtormatRow::MakeHairline()
+		];
+		ListRoot->AddSlot().AutoHeight()
+		[
+			SNew(SMixtormatMenuItem)
+			.Label(LOCTEXT("ChooseSourceLater", "Choose source later"))
+			.Icon(MixtormatIcons::Generator())
+			.ToolTipText(LOCTEXT("ChooseSourceLaterHint", "Create the operation with its target set and no source."))
+			.bEnabled(true)
+			.bChecked_Lambda([this]() { return HasKeyboardFocus() && bLaterActive; })
+			.OnActivate(FSimpleDelegate::CreateSP(this, &SMixtormatStructuralSourcePicker::ActivateLater))
+		];
+	}
 	RebuildList();
 
 	// The popup must be attached before Slate can resolve a focus path to its search field.
@@ -159,6 +180,7 @@ void SMixtormatStructuralSourcePicker::RebuildList()
 {
 	HoveredSource = {};
 	ActiveEntry = INDEX_NONE;
+	bLaterActive = false;
 	RefreshEndpointPreview();
 	Rows->ClearChildren();
 	EligibleEntries.Reset();
@@ -253,16 +275,32 @@ void SMixtormatStructuralSourcePicker::Activate(const FMixtormatOutputReference&
 	Action.ExecuteIfBound(Identity);
 }
 
+void SMixtormatStructuralSourcePicker::ActivateLater()
+{
+	if (!OnSourceLater.IsBound()) { return; }
+	// Keep the delegate alive if dismissal destroys this popup.
+	const FSimpleDelegate Action = OnSourceLater;
+	ReleaseEndpointPreview();
+	FSlateApplication::Get().DismissAllMenus();
+	Action.ExecuteIfBound();
+}
+
 void SMixtormatStructuralSourcePicker::Navigate(const int32 Direction)
 {
-	if (EligibleEntries.IsEmpty()) { return; }
-	const int32 Current = EligibleEntries.IndexOfByKey(ActiveEntry);
-	const int32 Next = Current == INDEX_NONE ? (Direction > 0 ? 0 : EligibleEntries.Num() - 1)
-		: FMath::Clamp(Current + Direction, 0, EligibleEntries.Num() - 1);
+	// Sources navigate first; the footer's "Choose source later" is the position after them, so
+	// keyboard users reach the same fallback mouse users see pinned below the list.
+	const bool bHasLater = OnSourceLater.IsBound();
+	const int32 SourceCount = EligibleEntries.Num();
+	const int32 Count = SourceCount + (bHasLater ? 1 : 0);
+	if (Count == 0) { return; }
+	const int32 Current = bLaterActive ? SourceCount : EligibleEntries.IndexOfByKey(ActiveEntry);
+	const int32 Next = Current == INDEX_NONE ? (Direction > 0 ? 0 : Count - 1)
+		: FMath::Clamp(Current + Direction, 0, Count - 1);
 	HoveredSource = {};
-	ActiveEntry = EligibleEntries[Next];
+	bLaterActive = bHasLater && Next == SourceCount;
+	ActiveEntry = bLaterActive ? INDEX_NONE : EligibleEntries[Next];
 	FSlateApplication::Get().SetKeyboardFocus(SharedThis(this), EFocusCause::SetDirectly);
-	Scroll->SetScrollOffset(EligibleOffsets[Next]);
+	if (!bLaterActive) { Scroll->SetScrollOffset(EligibleOffsets[Next]); }
 	RefreshEndpointPreview();
 }
 
@@ -281,11 +319,15 @@ FReply SMixtormatStructuralSourcePicker::OnPreviewKeyDown(const FGeometry& Geome
 			Navigate(Event.GetKey() == EKeys::Down ? 1 : -1);
 			return FReply::Handled();
 		}
-		if (Event.GetKey() == EKeys::Enter && HasKeyboardFocus() && EligibleEntries.Contains(ActiveEntry))
+		if (Event.GetKey() == EKeys::Enter && HasKeyboardFocus())
 		{
-			const FMixtormatOutputReference Source = Entries[ActiveEntry].Source;
-			Activate(Source);
-			return FReply::Handled();
+			if (bLaterActive) { ActivateLater(); return FReply::Handled(); }
+			if (EligibleEntries.Contains(ActiveEntry))
+			{
+				const FMixtormatOutputReference Source = Entries[ActiveEntry].Source;
+				Activate(Source);
+				return FReply::Handled();
+			}
 		}
 	}
 	return SCompoundWidget::OnPreviewKeyDown(Geometry, Event);

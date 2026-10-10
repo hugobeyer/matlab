@@ -81,8 +81,10 @@ tooltips; keyboard Up/Down selects eligible rows, Enter activates, and Escape di
 `MixtormatStructuralConnectionModel.*` owns the effective/resolved context and typed source collector
 shared with existing endpoint menus. `PrepareConnectedStructuralModuleForTarget` revalidates at the
 real insertion boundary; the connected creator commits source and target in one history/preview edit.
-`Advanced → Add unconnected…` and layer-level creation remain available. Generator add menus now
-match the creator's layer/unscoped ownership gates instead of offering clickable no-ops.
+Each source picker now offers `Choose source later`, which creates the operation with its target
+set and no source; this replaces the removed `Advanced → Add unconnected…` submenu. Layer-level
+creation remains available. Generator add menus now match the creator's layer/unscoped ownership
+gates instead of offering clickable no-ops.
 `MixtormatStructuralConnectionProjection.*` now generates target-owned display rows for safe local
 Warp/Push blocks. Every authored child remains represented once; owned masks/tools stay beneath the
 actual operation, while unset/missing/ambiguous target data remains an authored repair row. Incoming

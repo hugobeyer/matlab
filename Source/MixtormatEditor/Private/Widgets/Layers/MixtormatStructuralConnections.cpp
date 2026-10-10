@@ -608,7 +608,14 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralSourcePickerForTarget(const FGuid
 				{
 					Editor->CreateConnectedStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType, Source);
 				}
-			})));
+			}))
+		.OnSourceLater(FSimpleDelegate::CreateLambda([WeakThis, TargetLayerId, TargetChildId, ModuleType]()
+		{
+			if (const auto Editor = WeakThis.Pin())
+			{
+				Editor->CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
+			}
+		})));
 	return Menu.Build();
 }
 

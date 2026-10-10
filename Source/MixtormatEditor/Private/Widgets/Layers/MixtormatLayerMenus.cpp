@@ -1449,64 +1449,38 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		const FGuid TargetChildId = Target.ChildId;
 		const bool bStrata = Target.Type == EMixtormatLayerChildType::Generator
 			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
-		struct FStructuralAction
+		// One entry point per operation. The picker itself offers "Choose source later", which
+		// replaces the old Advanced → Add unconnected… submenu: the same unconnected creation,
+		// in one place, without a second menu repeating the same two operations.
+		const auto AddStructuralPicker = [this, &Menu, TargetLayerId, TargetChildId, bStrata](
+			const EMixtormatLayerChildType ModuleType, const FText& Label)
 		{
-			EMixtormatLayerChildType Type;
-			FText Label;
 			FText Reason;
 			bool bAvailable = false;
-		};
-		TArray<FStructuralAction> Actions;
-		const auto AddStructuralPicker = [this, &Menu, &Actions, TargetLayerId, TargetChildId, bStrata](
-			const EMixtormatLayerChildType ModuleType, const FText& Label, const FText& UnconnectedLabel)
-		{
-			FStructuralAction Action;
-			Action.Type = ModuleType;
-			Action.Label = UnconnectedLabel;
 			if (ModuleType == EMixtormatLayerChildType::HeightPush && !bStrata)
 			{
-				Action.Reason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
+				Reason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
 			}
 			else
 			{
 				TArray<FMixtormatLayer> ProposedLayers;
 				int32 ProposedLayerIndex = INDEX_NONE;
 				int32 InsertIndex = INDEX_NONE;
-				Action.bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
-					ProposedLayers, ProposedLayerIndex, InsertIndex, Action.Reason);
+				bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+					ProposedLayers, ProposedLayerIndex, InsertIndex, Reason);
 			}
-			const FText EntryLabel = Action.bAvailable ? Label : FText::Format(
-				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Action.Reason);
+			const FText EntryLabel = bAvailable ? Label : FText::Format(
+				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Reason);
 			Menu.SubMenu(EntryLabel, MixtormatIcons::Generator(),
 				FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
 				{
 					return BuildStructuralSourcePickerForTarget(TargetLayerId, TargetChildId, ModuleType);
-				})).Enabled(Action.bAvailable).ToolTip(Action.Reason);
-			if (ModuleType != EMixtormatLayerChildType::HeightPush || bStrata) { Actions.Add(MoveTemp(Action)); }
+				})).Enabled(bAvailable).ToolTip(Reason);
 		};
 		AddStructuralPicker(EMixtormatLayerChildType::StructuralWarp,
-			LOCTEXT("WarpUsingForTarget", "Warp using…"),
-			LOCTEXT("AddStructuralWarpForTarget", "Add Structural Warp"));
+			LOCTEXT("WarpUsingForTarget", "Warp using…"));
 		AddStructuralPicker(EMixtormatLayerChildType::HeightPush,
-			LOCTEXT("HeightPushFromForTarget", "Height Push from…"),
-			LOCTEXT("AddHeightPushForTarget", "Add Height Push"));
-		Menu.SubMenu(LOCTEXT("StructuralCreationAdvanced", "Advanced"), nullptr,
-			FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, Actions]()
-			{
-				MixtormatMenu::FBuilder Advanced;
-				Advanced.Caption(LOCTEXT("StructuralAddUnconnected", "Add unconnected…"));
-				for (const FStructuralAction& Action : Actions)
-				{
-					const FText Label = Action.bAvailable ? Action.Label : FText::Format(
-						LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Action.Label, Action.Reason);
-					Advanced.Item(Label, MixtormatIcons::Generator(),
-						FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType = Action.Type]()
-						{
-							CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
-						})).Enabled(Action.bAvailable).ToolTip(Action.Reason);
-				}
-				return Advanced.Build();
-			}));
+			LOCTEXT("HeightPushFromForTarget", "Height Push from…"));
 		Menu.Separator();
 	}
 
