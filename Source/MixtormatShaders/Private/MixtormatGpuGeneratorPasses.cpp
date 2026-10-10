@@ -2413,7 +2413,7 @@ namespace
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
 		const FRockLayout Layout = ResolveRockLayout(Rock);
-		const auto FillParameters = [&Rock, &Layout, &Layer, Size](FMixtormatRockFormationCS::FParameters* P)
+		const auto FillParameters = [&Rock, &Layout, &Layer, &Child, &Ctx, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
@@ -2712,7 +2712,7 @@ namespace
 		}
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
-		const auto Fill = [&Cracks, &Layer, &Child, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
+		const auto Fill = [&Cracks, &Layer, &Child, &Ctx, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
@@ -2936,7 +2936,7 @@ namespace
 		const FIntPoint Size = Request.Resolution;
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 
-		const auto FillParameters = [&Pebbles, &Layer, Size](FMixtormatPebblesCS::FParameters* P)
+		const auto FillParameters = [&Pebbles, &Layer, &Child, &Ctx, Size](FMixtormatPebblesCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
