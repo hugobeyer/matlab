@@ -1572,6 +1572,9 @@ namespace
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+			// Nested fields execute in their immediate parent's input evaluation,
+			// not as independent operations on the generator's running height.
+			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex) { continue; }
 			if (IsFlowToolChild(Child, Owner.SourceChildIndex))
 			{
 				Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
@@ -1653,6 +1656,29 @@ namespace
 					break;
 				}
 				if (!Delta || !Module.Height || Delta->Desc.Format != PF_R32_FLOAT) { continue; }
+				// Child Flow Fields are modifiers of this Push input, never separate
+				// generator operations. Resolve each field against the current signed
+				// input and transport the input before applying Push's signed delta.
+				for (const FChildRenderData& Nested : Layer.Children)
+				{
+					if (Nested.Type != EMixtormatLayerChildType::Behavior
+						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
+						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
+					FRDGTextureRef UnusedCoverage = nullptr;
+					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+						Owner.SourceChildIndex, Module.BoundaryField, Delta,
+						UnusedCoverage, nullptr, Nested.SourceChildIndex);
+					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
+					if (Warped && Warped->IsComplete()
+						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
+						&& Warped->Texture->Desc.Extent == Size
+						&& Warped->Texture->Desc.Format == PF_G32R32F)
+					{
+						Delta = RemapBundleField(Ctx, Delta, Warped->Texture, 0);
+					}
+				}
 				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
