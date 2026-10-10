@@ -217,45 +217,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex, const int32 ChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(LOCTEXT("MoveChildToLayerCaption", "Move To"));
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& (IsMaskFilter(*ResolveChild(LayerIndex, ChildIndex))
-			|| ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Behavior))
-	{
-		Menu.Item(
-			ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Behavior
-				? LOCTEXT("MoveBehaviorWithGenerator", "Move the owning generator instead")
-				: LOCTEXT("MoveMaskFilterWithMask", "Move the owning mask instead"),
-			nullptr,
-			FSimpleDelegate()).Enabled(false);
-		return Menu.Build();
-	}
-	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
-	{
-		if (DestIndex == LayerIndex)
-		{
-			continue;
-		}
-		Menu.Item(
-			WorkingLayers[DestIndex].DisplayName,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, DestIndex]()
-			{
-				MoveChildToLayer(LayerIndex, ChildIndex, DestIndex);
-			})).Enabled(true);
-	}
-	if (Menu.IsEmpty())
-	{
-		Menu.Item(LOCTEXT("MoveChildNoLayers", "No other layer"), nullptr, FSimpleDelegate())
-			.Enabled(false);
-	}
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatChildAddress Address)
 {
 	MixtormatMenu::FBuilder Menu;
@@ -489,12 +450,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 {
 	MixtormatMenu::FBuilder Menu;
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	// ID children are movable; scoped mask/flow tools still travel with their owner.
-	const bool bCanLeaveGroup = Group
-		&& Group->Children.IsValidIndex(ChildIndex)
-		&& (!Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
-			|| IsIdGroupChild(Group->Children[ChildIndex]))
-		&& !IsMaskFilter(Group->Children[ChildIndex]);
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
 		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
 	{
@@ -573,29 +528,6 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			RemoveGroupChild(GroupId, ChildIndex);
 		}))
 		.Destructive();
-	return Menu.Build();
-}
-
-TSharedRef<SWidget> SMixtormat::BuildMoveGroupChildToLayerMenu(
-	const FGuid GroupId,
-	const int32 ChildIndex)
-{
-	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(LOCTEXT("MoveGroupChildToLayerCaption", "Move To"));
-	// Every layer, including the group's own members: moving a shared child onto one member is
-	// exactly the "this one only" case, and refusing it there would be the surprising answer.
-	for (int32 DestIndex = 0; DestIndex < WorkingLayers.Num(); ++DestIndex)
-	{
-		Menu.Item(
-			WorkingLayers[DestIndex].DisplayName,
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex, DestIndex]()
-			{
-				// INDEX_NONE: no row was aimed at, so it appends -- the same thing the menu
-				// version of the layer-to-layer move does.
-				MoveGroupChildToLayer(GroupId, ChildIndex, DestIndex, INDEX_NONE);
-			}));
-	}
 	return Menu.Build();
 }
 
