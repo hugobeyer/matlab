@@ -90,10 +90,10 @@ public:
   const auto& M = R.PreviewLayout;
   const bool Active = Selected.Get(false);
   const bool Hover = IsHovered();
-  const FLinearColor Base = R.Palette.Get(Mixtormat::EMixtormatColorRole::Surface);
+  const FLinearColor Base = R.Palette.Get(Mixtormat::EMixtormatColorRole::Panel);
   FLinearColor Shade = R.Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
   Shade.A = Active ? 0.42f : Hover ? 0.28f : 0.14f;
-  const FLinearColor Fill = MixtormatCompositing::ApplyBlend(Mixtormat::EMixtormatBlendMode::Normal, Base, Shade);
+  const FLinearColor Fill = MixtormatCompositing::ApplyBlend(MixtormatCompositing::EMixtormatBlendMode::Normal, Base, Shade);
   FLinearColor Edge = R.Palette.Get(Mixtormat::EMixtormatColorRole::Hairline);
   Edge.A *= M.LeftRailBorderOpacity;
   const float Radius = M.LeftRailCornerRadius;
@@ -139,7 +139,7 @@ int32 SMixtormatIconRail::OnPaint(const FPaintArgs& Args, const FGeometry& Geome
  const auto& M = R.PreviewLayout;
  const FVector2D Size = Geometry.GetLocalSize();
  const float SpineWidth = FMath::Max(2.0f, M.LeftRailInnerPadding);
- FSlateRoundedBoxBrush Spine(R.Palette.Get(Mixtormat::EMixtormatColorRole::Surface), 0.0f);
+ FSlateRoundedBoxBrush Spine(R.Palette.Get(Mixtormat::EMixtormatColorRole::Panel), 0.0f);
  FSlateDrawElement::MakeBox(Out, Layer,
   Geometry.ToPaintGeometry(FVector2D(SpineWidth, Size.Y), FSlateLayoutTransform()),
   &Spine, ESlateDrawEffect::None, Style.GetColorAndOpacityTint());
