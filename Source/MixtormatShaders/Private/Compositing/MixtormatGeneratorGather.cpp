@@ -395,7 +395,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 	ChildData.Type = EMixtormatLayerChildType::Behavior;
 	ChildData.SourceChildIndex = BehaviorChildIndex;
-	ChildData.ScopeOwnerSourceChildIndex = Valid.GeneratorChildIndex;
+	ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, BehaviorChildIndex);
 	FBehaviorRenderData& Out = ChildData.Behavior;
 	Out.Type = Behavior.Type;
 	Out.bUseTracedFlow = bTraced;
