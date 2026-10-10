@@ -566,7 +566,7 @@ public:
 	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
 	// 7 one axis of the direction blur, 8 trace a published field into destination UVs,
 	// 9 texture-space gravity with local height or boundary steering.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 10);
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 11);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -937,7 +937,7 @@ namespace
 	FRDGTextureRef AddReferencedFlowUVPass(FMixtormatComposeContext& Ctx,
 		const FOutputReferenceRenderData& Reference, const FPublishedField& Field,
 		const int32 LayerIndex, const int32 ChildIndex,
-		const FScalarDriverRenderData* Drivers = nullptr)
+		const FScalarDriverRenderData* Drivers = nullptr, const bool bCanonical = false)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -945,7 +945,7 @@ namespace
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.OutputReference.FlowUV"));
 		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(bCanonical ? 10 : 8);
 		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
 		P->OutputSize = Size;
@@ -1760,7 +1760,7 @@ namespace
 				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
 					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
 				Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, FlowField,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
+					LayerCtx.LayerIndex, Child.SourceChildIndex, nullptr, true);
 				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
