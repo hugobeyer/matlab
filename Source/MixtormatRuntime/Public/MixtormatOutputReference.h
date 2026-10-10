@@ -8,6 +8,8 @@
 struct FMixtormatLayer;
 struct FMixtormatMaskLayer;
 struct FMixtormatSourceEntry;
+struct FMixtormatGenerator;
+enum class EMixtormatNoiseType : uint8;
 
 // Scalar outputs remain ordinary Mask children with their existing published-source fields.
 //
@@ -118,7 +120,11 @@ namespace MixtormatOutputReferences
 		// A field kind no Sources shelf producer is consumed with. The only shelf consumers are the
 		// generator Height/Warp sockets, which take ScalarSigned / Flow / UVMap; any other kind is a
 		// repairable authoring error rather than an endpoint to resolve.
-		UnsupportedOutputKind
+		UnsupportedOutputKind,
+		// Structurally valid, but the named producer does not publish this typed output at all (e.g.
+		// a Flow read from a generator that emits no flow). Distinguished from a missing endpoint so
+		// the editor can say "this source has no such output" rather than "unknown source".
+		UnpublishedOutput
 	};
 
 	struct FShelfSourceReferenceStatus
@@ -204,6 +210,21 @@ namespace MixtormatOutputReferences
 	MIXTORMATRUNTIME_API FShelfSourceReferenceStatus ClassifyShelfSourceReference(
 		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatOutputReference& Reference);
+
+	// The typed value contract each Noise family publishes. The lattice families and Bars are
+	// zero-centred and signed; Ridged, Billow and the Worley distances are 0..1 magnitudes. Canonical
+	// here so the shader producers and the reference validators agree on one definition.
+	MIXTORMATRUNTIME_API EMixtormatPublishedFieldKind NoiseValueKind(EMixtormatNoiseType Type);
+
+	// The typed outputs a Generator module publishes, and therefore what a Sources shelf root can be
+	// read for. A shelf root is a bare module: every type publishes its completed signed "Height";
+	// Noise additionally publishes "Value" (signed only for the lattice/Bars families) and
+	// "FlowDirection". Nothing else is a valid shelf endpoint, so a reference to any other output
+	// cannot resolve.
+	MIXTORMATRUNTIME_API bool GeneratorPublishesField(
+		const FMixtormatGenerator& Generator,
+		EMixtormatPublishedFieldKind Kind,
+		FName OutputName);
 
 	// Effective layers only: group addresses must first pass through BuildEffectiveLayers.
 	// Returns the authored source-child index, never a compacted render-child index.

@@ -148,23 +148,8 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowCS", SF_Compute);
 
-	// The value contract each family publishes. The lattice families and Bars are zero-centred
-	// and signed; Ridged, Billow and the Worley distances are 0..1 magnitudes. The module height
-	// is the signed remap of whichever of these the family defines -- see the USF header.
-	EMixtormatPublishedFieldKind NoiseValueKind(const EMixtormatNoiseType Type)
-	{
-		switch (Type)
-		{
-		case EMixtormatNoiseType::Ridged:
-		case EMixtormatNoiseType::Billow:
-		case EMixtormatNoiseType::WorleyF1:
-		case EMixtormatNoiseType::WorleyF2:
-		case EMixtormatNoiseType::WorleyF1MinusF2:
-			return EMixtormatPublishedFieldKind::Scalar01;
-		default: // Gradient, Value, FBM, Bars
-			return EMixtormatPublishedFieldKind::ScalarSigned;
-		}
-	}
+	// The family-to-kind contract now lives in Runtime (MixtormatOutputReferences::NoiseValueKind),
+	// so the producer and the reference validators read one definition. See the USF header.
 
 	// Only the Worley family genuinely produces cells; the others have no stable identity to
 	// publish, and faking one to make the output lists match is exactly what not to do.
@@ -248,7 +233,7 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 	// No extra smoothing is authored on this output; the resolved field fills both Flow slots.
 	Ctx.PublishedFieldOutputs.Add(
-		FPublishedFieldKey{Layer.LayerId, SourceChildIndex, FName(TEXT("FlowDirection"))},
+		PublishedKey(Layer, SourceChildIndex, FName(TEXT("FlowDirection"))),
 		FPublishedField{EMixtormatPublishedFieldKind::Flow, Flow, Flow, Validity, false});
 }
 
@@ -363,8 +348,8 @@ FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatN
 {
 	const FMixtormatNoiseRenderData Resolved = ResolveNoiseRenderData(Noise);
 	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Resolved, nullptr, INDEX_NONE, INDEX_NONE);
-	const bool bSigned = NoiseValueKind(static_cast<EMixtormatNoiseType>(Resolved.Type))
-		== EMixtormatPublishedFieldKind::ScalarSigned;
+	const bool bSigned = MixtormatOutputReferences::NoiseValueKind(
+		static_cast<EMixtormatNoiseType>(Resolved.Type)) == EMixtormatPublishedFieldKind::ScalarSigned;
 	return AddNoiseCoveragePass(Ctx, Fields.Value, bSigned);
 }
 
@@ -406,10 +391,10 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	// A completed structural warp transport-samples this declared source-frame data; consumers
 	// requiring destination derivatives must apply their own explicit family-aware conversion.
 	Ctx.PublishedFieldOutputs.Add(
-		FPublishedFieldKey{Layer.LayerId, SourceChildIndex, FName(TEXT("Value"))},
-		FPublishedField{NoiseValueKind(NoiseType), Value, nullptr, nullptr, false});
+		PublishedKey(Layer, SourceChildIndex, FName(TEXT("Value"))),
+		FPublishedField{MixtormatOutputReferences::NoiseValueKind(NoiseType), Value, nullptr, nullptr, false});
 	Ctx.PublishedFieldOutputs.Add(
-		FPublishedFieldKey{Layer.LayerId, SourceChildIndex, FName(TEXT("Gradient"))},
+		PublishedKey(Layer, SourceChildIndex, FName(TEXT("Gradient"))),
 		FPublishedField{EMixtormatPublishedFieldKind::Vector2, Gradient, nullptr, nullptr, false});
 }
 }

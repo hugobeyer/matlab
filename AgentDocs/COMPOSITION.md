@@ -28,27 +28,29 @@ organisational only and never affects scheduling or results.
 
 `GatherSourceProducers` gathers each demanded entry as an explicitly source-owned
 producer (`FLayerRenderData::bIsShelfSource` / `SourceShelfId`, registry address
-`SourceId`, one root child) -- never a synthetic material layer. Producers are
-gathered uncached (their node identity is settings-only and would not notice a
-dependency re-resolving).
+`SourceId` tagged `EMixtormatOutputReferenceOwnerKind::Shelf` via `PublishedKey`) --
+never a synthetic material layer. Producers are gathered uncached (their node
+identity is settings-only and would not notice a dependency re-resolving).
 
 On the render thread the producer section runs ahead of the layer loop and only
 publishes: `AddRegionProducerPasses` + `AddGeneratorLayerPasses` fill
-`Ctx.PublishedFieldOutputs` under `{SourceId, 0, OutputName}`. Producers never
-composite, never touch the output targets, and always run ahead of the stack.
-Consumer input keys resolve through `ClassifyShelfSourceReference`, which now
-rejects a switched-off reference (`DisabledReference`) and any kind outside the
+`Ctx.PublishedFieldOutputs` under `{SourceId, 0, OutputName}` (owner Shelf).
+Producers never composite, never touch the output targets, and always run ahead of
+the stack. Consumer input keys resolve through `ClassifyShelfSourceReference`,
+which rejects a switched-off reference (`DisabledReference`), any kind outside the
 shelf consumer contract -- ScalarSigned / Flow / UVMap (`UnsupportedOutputKind`)
--- alongside the existing malformed/disabled/missing endpoint checks; those stay
-unavailable and never fall back to a layer.
+-- and any output the named producer does not actually publish
+(`UnpublishedOutput`, via `GeneratorPublishesField`), alongside the existing
+malformed/disabled/missing endpoint checks; those stay unavailable and never fall
+back to a layer.
 
-The graph is a DAG, not a position rule: self references and cycles contribute no
-edge, so an offending producer is dropped from the order and its consumer's input
-resolves to nothing (a missing field is treated as unavailable). A producer's
-layer-kind inputs resolve against an empty effective-layer array, so a shelf
-source can never read the material stack. Structural modules and OutputReference
-children remain layer-only until their own shelf paths land; a per-generator-type
-published-output table is still outstanding.
+The graph is a DAG, not a position rule: self references contribute no edge, and a
+producer that can reach itself is excluded (all cycle members dropped from the
+order), so its consumer's input resolves to nothing (a missing field is treated as
+unavailable) and no partial producer is ever emitted. A producer's layer-kind
+inputs resolve against an empty effective-layer array, so a shelf source can never
+read the material stack. Structural modules and OutputReference children remain
+layer-only until their own shelf paths land.
 
 ## Gather
 

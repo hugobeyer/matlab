@@ -206,17 +206,24 @@ namespace MixtormatGpuCompositor
 		FGuid LayerId;
 		int32 ChildIndex = INDEX_NONE;
 		FName Output;
+		// Registry owner discriminator. Both a material layer and a Sources shelf producer are
+		// addressed by a GUID, so this makes the owner explicit rather than inferring it: a shelf
+		// field can never be mistaken for, or collide with, a layer field.
+		EMixtormatOutputReferenceOwnerKind OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
 
 		friend bool operator==(const FPublishedMaskKey& A, const FPublishedMaskKey& B)
 		{
-			return A.LayerId == B.LayerId && A.ChildIndex == B.ChildIndex && A.Output == B.Output;
+			return A.LayerId == B.LayerId && A.ChildIndex == B.ChildIndex
+				&& A.Output == B.Output && A.OwnerKind == B.OwnerKind;
 		}
 
 		friend uint32 GetTypeHash(const FPublishedMaskKey& Key)
 		{
 			return HashCombine(
-				HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
-				GetTypeHash(Key.Output));
+				HashCombine(
+					HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
+					GetTypeHash(Key.Output)),
+				GetTypeHash(static_cast<uint32>(Key.OwnerKind)));
 		}
 	};
 
@@ -1276,6 +1283,22 @@ namespace MixtormatGpuCompositor
 		uint32 HeightSource = 2u;
 		int32 HeightReferenceLayerIndex = INDEX_NONE;
 	};
+
+	// Builds the registry address a render layer publishes under. A material layer is tagged Layer;
+	// a Sources shelf producer tags Shelf, so a shelf field is explicitly owned and can never be
+	// read as, or matched against, a layer field. Every producer publish/lookup uses this.
+	inline FPublishedMaskKey PublishedKey(const FLayerRenderData& Layer,
+		const int32 ChildIndex, const FName Output)
+	{
+		FPublishedMaskKey Key;
+		Key.LayerId = Layer.LayerId;
+		Key.ChildIndex = ChildIndex;
+		Key.Output = Output;
+		Key.OwnerKind = Layer.bIsShelfSource
+			? EMixtormatOutputReferenceOwnerKind::Shelf
+			: EMixtormatOutputReferenceOwnerKind::Layer;
+		return Key;
+	}
 
 	struct FRenderRequest
 	{

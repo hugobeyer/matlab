@@ -60,7 +60,14 @@ namespace MixtormatGpuCompositor
 				SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
 					EffectiveLayers, LayerIndex, SourceChildIndex, Reference);
 			}
-			Out.Reference.Source = {OwnerId, SourceIndex, Reference.OutputName};
+			Out.Reference.Source.LayerId = OwnerId;
+			Out.Reference.Source.ChildIndex = SourceIndex;
+			Out.Reference.Source.Output = Reference.OutputName;
+			// The registry owner is explicit: a resolved shelf input is a Shelf field, everything else a
+			// layer field, so the key matches exactly what the producer published.
+			Out.Reference.Source.OwnerKind = Reference.IsShelfSource()
+				? EMixtormatOutputReferenceOwnerKind::Shelf
+				: EMixtormatOutputReferenceOwnerKind::Layer;
 			Out.Reference.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
 			Out.Reference.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 				? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;

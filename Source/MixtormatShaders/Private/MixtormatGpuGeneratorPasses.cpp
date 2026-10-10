@@ -1484,9 +1484,9 @@ namespace
 		const FLayerRenderData& Layer, const int32 ChildIndex)
 	{
 		return Ctx.PublishedFieldDemand.Contains(
-			FPublishedFieldKey{Layer.LayerId, ChildIndex, FName(TEXT("FlowDirection"))})
+			PublishedKey(Layer, ChildIndex, FName(TEXT("FlowDirection"))))
 			|| Ctx.PublishedFieldDemand.Contains(
-				FPublishedFieldKey{Layer.LayerId, ChildIndex, FName(TEXT("WarpedUV"))});
+				PublishedKey(Layer, ChildIndex, FName(TEXT("WarpedUV"))));
 	}
 
 	bool HasActiveFlowTools(
@@ -1762,12 +1762,12 @@ namespace
 			}
 
 			Ctx.PublishedFieldOutputs.Add(
-				FPublishedFieldKey{Layer.LayerId, FlowIndex, FName(TEXT("FlowDirection"))},
+				PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
 				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
 			if (Flow.Type != EMixtormatEffectType::FlowCarve)
 			{
 				Ctx.PublishedFieldOutputs.Add(
-					FPublishedFieldKey{Layer.LayerId, FlowIndex, FName(TEXT("WarpedUV"))},
+					PublishedKey(Layer, FlowIndex, FName(TEXT("WarpedUV"))),
 					FPublishedField{EMixtormatPublishedFieldKind::UVMap, WarpedUV, nullptr, nullptr, false});
 			}
 
@@ -1827,7 +1827,7 @@ namespace
 						// Noise's raw outputs are published separately from the shared generator bundle.
 						for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient"))})
 						{
-							const FPublishedFieldKey Key{Layer.LayerId, OwnerSourceChildIndex, Name};
+							const FPublishedFieldKey Key = PublishedKey(Layer, OwnerSourceChildIndex, Name);
 							const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Key);
 							if (!Published || !Published->IsComplete()) { continue; }
 							FPublishedField Moved = *Published;
@@ -2618,7 +2618,7 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		// Copy the bundle before Add can reallocate the registry. No producer is reevaluated.
 		const FPublishedField Field = *Source;
 		Ctx.PublishedFieldOutputs.Add(
-			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Reference.Source.Output}, Field);
+			PublishedKey(Layer, Child.SourceChildIndex, Reference.Source.Output), Field);
 		AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Reference.Source.Output, Field);
 		if (Reference.Kind == EMixtormatPublishedFieldKind::UVMap)
 		{
@@ -2649,7 +2649,7 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 			Ctx, Reference, Field, LayerCtx.LayerIndex, Child.SourceChildIndex);
 		LayerCtx.ReferencedUV = Coordinates;
 		Ctx.PublishedFieldOutputs.Add(
-			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("WarpedUV"))},
+			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("WarpedUV"))),
 			FPublishedField{EMixtormatPublishedFieldKind::UVMap, Coordinates, nullptr, nullptr, false});
 	}
 }
@@ -2820,7 +2820,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			const FPublishedField ColorField{
 				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(
-				FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Child.HeightColorRamp.OutputName},
+				PublishedKey(Layer, Child.SourceChildIndex, Child.HeightColorRamp.OutputName),
 				ColorField);
 			if (ColorField.IsComplete()) { GeneratedColor = Color; }
 			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
@@ -2905,8 +2905,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			{
 				const FRDGTextureRef Coordinates = AddStructuralWarpCoordinates(Ctx, *Displacement,
 					LayerCtx.LayerIndex, Child.SourceChildIndex);
-				const FPublishedFieldKey ValueKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Value"))};
-				const FPublishedFieldKey GradientKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Gradient"))};
+				const FPublishedFieldKey ValueKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Value")));
+				const FPublishedFieldKey GradientKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Gradient")));
 				const FPublishedField* NoiseValue = Child.Generator.Type == EMixtormatGeneratorType::Noise
 					? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
 				const FPublishedField* NoiseGradient = Child.Generator.Type == EMixtormatGeneratorType::Noise
@@ -2940,13 +2940,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection"))})
 			{
 				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
-					FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, Name});
+					PublishedKey(Layer, Child.SourceChildIndex, Name));
 				if (!Field) { continue; }
 				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, *Field);
 				// Keep authored mask references to Value working, while Copy preserves its typed payload.
 				if (Name == FName(TEXT("Value")))
 				{
-					Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Name}, Field->Texture);
+					Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Name), Field->Texture);
 				}
 			}
 		}
@@ -2954,7 +2954,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
 		// Explicit inputs address the completed signed module result, never the running sum.
 		Ctx.PublishedFieldOutputs.Add(
-			FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Height"))},
+			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
 			FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
 
 		// The only publication point: every module publishes under its own child index, after its
@@ -2970,7 +2970,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
-			Ctx.PublishedMaskOutputs.Add(FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Mask.Key}, Mask.Value);
+			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
 				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
 			if (IsChildOutputPreviewTarget(Ctx.Request,

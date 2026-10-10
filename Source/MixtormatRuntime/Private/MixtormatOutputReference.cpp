@@ -41,6 +41,44 @@ namespace MixtormatOutputReferences
 		}
 	}
 
+	EMixtormatPublishedFieldKind NoiseValueKind(const EMixtormatNoiseType Type)
+	{
+		switch (Type)
+		{
+		case EMixtormatNoiseType::Ridged:
+		case EMixtormatNoiseType::Billow:
+		case EMixtormatNoiseType::WorleyF1:
+		case EMixtormatNoiseType::WorleyF2:
+		case EMixtormatNoiseType::WorleyF1MinusF2:
+			return EMixtormatPublishedFieldKind::Scalar01;
+		default: // Gradient, Value, FBM, Bars
+			return EMixtormatPublishedFieldKind::ScalarSigned;
+		}
+	}
+
+	bool GeneratorPublishesField(const FMixtormatGenerator& Generator,
+		const EMixtormatPublishedFieldKind Kind, const FName OutputName)
+	{
+		switch (Kind)
+		{
+		case EMixtormatPublishedFieldKind::ScalarSigned:
+			// Every module publishes its completed signed height under the canonical name.
+			if (OutputName == FName(TEXT("Height"))) { return true; }
+			// Noise also publishes its raw Value; only the lattice/Bars families are signed.
+			return Generator.Type == EMixtormatGeneratorType::Noise
+				&& OutputName == FName(TEXT("Value"))
+				&& NoiseValueKind(Generator.Noise.NoiseType) == EMixtormatPublishedFieldKind::ScalarSigned;
+		case EMixtormatPublishedFieldKind::Flow:
+			// Only Noise emits a flow field, as FlowDirection.
+			return Generator.Type == EMixtormatGeneratorType::Noise
+				&& OutputName == FName(TEXT("FlowDirection"));
+		default:
+			// No bare generator module publishes a UV map; WarpedUV comes from flow tools, which a
+			// zero-child shelf root does not carry.
+			return false;
+		}
+	}
+
 	FShelfSourceReferenceStatus ClassifyShelfSourceReference(
 		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatOutputReference& Reference)
@@ -123,6 +161,12 @@ namespace MixtormatOutputReferences
 		if (!Source.Child.Generator.bEnabled)
 		{
 			Status.Issue = EShelfSourceReferenceIssue::DisabledSource;
+			return Status;
+		}
+		// Typed-output capability: the endpoint exists, but must actually publish this field.
+		if (!GeneratorPublishesField(Source.Child.Generator, Reference.Kind, Reference.OutputName))
+		{
+			Status.Issue = EShelfSourceReferenceIssue::UnpublishedOutput;
 			return Status;
 		}
 

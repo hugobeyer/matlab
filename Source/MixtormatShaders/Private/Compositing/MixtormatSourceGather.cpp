@@ -80,12 +80,44 @@ namespace MixtormatGpuCompositor
 		TSet<FGuid> Emitted;
 		TSet<FGuid> OnStack;
 
-		// Post-order DFS: a producer is emitted only after everything it reads. A back-edge (a
-		// reference to a node already on the active path) is a cycle and is dropped rather than
-		// recursed into, which also terminates self and mutual cycles.
+		// A source that can reach itself through producer references is in a cycle. Neither it nor
+		// its cycle-mates can be evaluated -- each reads a field the other has not published yet --
+		// so all of them are excluded rather than emitted with a silently missing input. The
+		// consumer then simply finds no field, which is the same unavailable path a missing endpoint
+		// takes; there is never a partial producer.
+		const auto Reaches = [&](const FGuid& From, const FGuid& Target)
+		{
+			const int32* Start = IndexById.Find(From);
+			if (!Start) { return false; }
+			TArray<FGuid> Pending = Dependencies[*Start];
+			TSet<FGuid> Seen;
+			while (Pending.Num() > 0)
+			{
+				const FGuid Node = Pending.Pop();
+				if (Node == Target) { return true; }
+				if (Seen.Contains(Node)) { continue; }
+				Seen.Add(Node);
+				const int32* Index = IndexById.Find(Node);
+				if (!Index) { continue; }
+				for (const FGuid& Dependency : Dependencies[*Index]) { Pending.Add(Dependency); }
+			}
+			return false;
+		};
+		TSet<FGuid> Cyclic;
+		for (const FMixtormatSourceEntry& Source : Sources)
+		{
+			if (Reaches(Source.SourceId, Source.SourceId)) { Cyclic.Add(Source.SourceId); }
+		}
+
+		// Post-order DFS: a producer is emitted only after everything it reads. Cycle members are
+		// never emitted and are not traversed through -- a field reachable only via a cycle is not
+		// consumable either.
 		TFunction<void(const FGuid&)> Visit = [&](const FGuid& SourceId)
 		{
-			if (Emitted.Contains(SourceId) || OnStack.Contains(SourceId)) { return; }
+			if (Emitted.Contains(SourceId) || OnStack.Contains(SourceId) || Cyclic.Contains(SourceId))
+			{
+				return;
+			}
 			const int32* Index = IndexById.Find(SourceId);
 			if (!Index || !IsEvaluableSource(Sources[*Index])) { return; }
 
