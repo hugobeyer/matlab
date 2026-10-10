@@ -398,6 +398,49 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+	if (bPublishedDirection && Reference.Kind == EMixtormatPublishedFieldKind::Flow)
+	{
+		// BehaviorFlow addresses the same reflected output-reference properties as
+		// StructuralWarpFlow. Demand only completed earlier-layer mask signals;
+		// unsupported or unavailable drivers retain the authored scalar.
+		const FName DriverProperties[2] = { TEXT("FlowAmount"), TEXT("FlowTraceLength") };
+		for (int32 Slot = 0; Slot < 2; ++Slot)
+		{
+			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
+				{
+					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
+						&& Candidate.DestinationParameter == DriverProperties[Slot]
+						&& Candidate.Driver.bEnabled
+						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+						&& Candidate.Driver.SourceLayerId.IsValid();
+				});
+			if (!Binding) { continue; }
+			bool bEarlier = false;
+			for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+			{
+				if (EffectiveLayers.IsValidIndex(Previous)
+					&& EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+					&& EffectiveLayers[Previous].bEnabled)
+				{
+					bEarlier = true;
+					break;
+				}
+			}
+			if (!bEarlier) { continue; }
+			const FMixtormatParameterDriver& Authored = Binding->Driver;
+			FScalarDriverRenderData& Driver = Out.FlowDrivers[Slot];
+			Driver.bEnabled = true;
+			Driver.SourceLayerId = Authored.SourceLayerId;
+			Driver.bInvert = Authored.bInvert;
+			Driver.InputMin = Authored.InputMin;
+			Driver.InputMax = Authored.InputMax;
+			Driver.OutputMin = Authored.OutputMin;
+			Driver.OutputMax = Authored.OutputMax;
+			Driver.Amount = Authored.Amount;
+			Driver.Combine = static_cast<uint32>(Authored.Combine);
+		}
+	}
 	if (Behavior.Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 	{
 		const FMixtormatOutputReference& MaskRef = Behavior.Influence.Published;
