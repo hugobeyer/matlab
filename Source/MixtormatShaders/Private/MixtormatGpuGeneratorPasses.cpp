@@ -1543,6 +1543,54 @@ namespace
 	}
 
 	// Shared, ordered post-generation operations consume the owning native bundle.
+	FRDGTextureRef BuildGeneratorPreCoordinates(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Owner)
+	{
+		FRDGTextureRef Current = nullptr;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type != EMixtormatLayerChildType::Behavior
+				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PreGeneration
+				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				|| Child.Behavior.DirectionOrigin != EMixtormatBehaviorFieldOrigin::PublishedOutput) { continue; }
+			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
+			const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Ref.Source);
+			if (!Field || !Field->IsComplete() || Field->Kind != Ref.Kind
+				|| Field->Texture->Desc.Extent != Size) { continue; }
+			FRDGTextureRef Influence = LayerCtx.CombinedMask;
+			const bool bInfluence = Child.Behavior.bHasInfluence;
+			if (bInfluence)
+			{
+				const FPublishedField* I = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Influence.Source);
+				if (!I || !I->IsComplete() || I->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| I->Texture->Desc.Extent != Size) { continue; }
+				Influence = I->Texture;
+			}
+			FRDGTextureRef UV = nullptr;
+			if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap) { UV = Field->Texture; }
+			else if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+			{
+				if ((Ref.FlowAmount == 0.0f && !Child.Behavior.FlowDrivers[0].bEnabled)
+					|| (Ref.FlowTraceLength == 0.0f && !Child.Behavior.FlowDrivers[1].bEnabled)) { continue; }
+				UV = AddReferencedFlowUVPass(Ctx, Ref, *Field, LayerCtx.LayerIndex,
+					Child.SourceChildIndex, Child.Behavior.FlowDrivers);
+			}
+			if (!UV) { continue; }
+			const bool bMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			FRDGTextureRef Gate = bMask
+				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+				: LayerCtx.CombinedMask;
+			UV = ScaleBehaviorUV(Ctx, UV, Child.Behavior.Strength, Gate, bMask, Influence,
+				bInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+				Child.Behavior.ScalarDrivers);
+			Current = Current ? RemapBundleField(Ctx, Current, UV, 3) : UV;
+		}
+		return Current;
+	}
+
 	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
@@ -3368,7 +3416,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 		FGeneratorBundle Module;
-		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex};
+		const FRDGTextureRef PreUV = BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Child);
+		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, PreUV};
 		switch (Child.Generator.Type)
 		{
 		case EMixtormatGeneratorType::StrataCarver:
@@ -3391,7 +3440,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
-			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module);
+			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV);
 			break;
 		}
 		if (!Module.Height) { continue; }
