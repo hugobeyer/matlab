@@ -769,6 +769,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
 		case EMixtormatChildCreation::BehaviorWarp:     return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::BehaviorPush:     return EMixtormatLayerChildType::Behavior;
+		case EMixtormatChildCreation::BehaviorCarve:    return EMixtormatLayerChildType::Behavior;
 		case EMixtormatChildCreation::HeightPush:      return EMixtormatLayerChildType::HeightPush;
 				case EMixtormatChildCreation::StructuralWarp:  return EMixtormatLayerChildType::StructuralWarp;
 		case EMixtormatChildCreation::Peeling:         return EMixtormatLayerChildType::Effect;
@@ -839,6 +840,10 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::BehaviorPush:
 			Child.Behavior.Type = EMixtormatBehaviorType::Push;
+			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
+			break;
+		case EMixtormatChildCreation::BehaviorCarve:
+			Child.Behavior.Type = EMixtormatBehaviorType::Carve;
 			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
 			break;
 		case EMixtormatChildCreation::Peeling:
@@ -2128,6 +2133,18 @@ const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorPush() const
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	return Child && Child->Type == EMixtormatLayerChildType::Behavior
 		&& Child->Behavior.Type == EMixtormatBehaviorType::Push ? &Child->Behavior : nullptr;
+}
+
+FMixtormatBehavior* SMixtormat::GetSelectedBehaviorCarve()
+{
+	return const_cast<FMixtormatBehavior*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBehaviorCarve());
+}
+const FMixtormatBehavior* SMixtormat::GetSelectedBehaviorCarve() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Behavior
+		&& Child->Behavior.Type == EMixtormatBehaviorType::Carve ? &Child->Behavior : nullptr;
 }
 
 FMixtormatGeneratorStructuralWarp* SMixtormat::GetSelectedStructuralWarp()

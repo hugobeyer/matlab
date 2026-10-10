@@ -1276,6 +1276,159 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Selected = ResolveChildAt(Address);
+	if (!Selected || Selected->IsInstance()
+		|| Selected->Type != EMixtormatLayerChildType::Behavior
+		|| Selected->Behavior.Type != EMixtormatBehaviorType::Carve) { return Menu.Build(); }
+	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+		[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return Menu.Build(); }
+	const FMixtormatLayer& Destination = WorkingLayers[LayerIndex];
+	const int32 ChildIndex = Destination.Children.IndexOfByPredicate(
+		[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+	const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(Destination.Children, ChildIndex);
+	if (OwnerIndex == INDEX_NONE) { return Menu.Build(); }
+	const auto Assign = [this, Address](EMixtormatBehaviorFieldOrigin Origin, const FMixtormatOutputReference* Reference)
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		if (!Child || Child->IsInstance() || Child->Type != EMixtormatLayerChildType::Behavior
+			|| Child->Behavior.Type != EMixtormatBehaviorType::Carve) { return; }
+		Child->Behavior.Height.Origin = Origin;
+		Child->Behavior.Height.Published = Reference ? *Reference : FMixtormatOutputReference{};
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	};
+	Menu.Item(LOCTEXT("BehaviorCarveChooseLater", "Choose source later"), nullptr,
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::None, nullptr); }));
+	Menu.Item(LOCTEXT("BehaviorCarveOwnBoundary", "Own Boundary"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::OwnBoundary, nullptr); }))
+		.Enabled(MixtormatGeneratorHasFlowBoundary(Destination.Children[OwnerIndex].Generator.Type));
+	Menu.Separator();
+	for (int32 SourceLayerIndex = 0; SourceLayerIndex <= LayerIndex; ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+		for (const FMixtormatLayerChild& Producer : SourceLayer.Children)
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Producer);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (!Output.bCopyableAsField || Output.FieldKind != EMixtormatPublishedFieldKind::SDF) { continue; }
+				FMixtormatOutputReference Ref;
+				Ref.SourceLayerId = SourceLayer.LayerId;
+				Ref.SourceChildId = Producer.ChildId;
+				Ref.OutputName = Output.Name;
+				Ref.Kind = EMixtormatPublishedFieldKind::SDF;
+				const bool bValid = MixtormatOutputReferences::ResolveSource(
+					WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+				Menu.Item(FText::Format(LOCTEXT("BehaviorCarveChoice", "{0} / {1} / {2}"),
+					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
+					MixtormatIcons::Generator(),
+					FSimpleDelegate::CreateLambda([Assign, Ref]()
+					{
+						Assign(EMixtormatBehaviorFieldOrigin::PublishedOutput, &Ref);
+					})).Enabled(bValid);
+			}
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
+{
+	const auto Carve = [this]() { return GetSelectedBehaviorCarve(); };
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorCarveHeight", "Signed Boundary / SDF"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Carve]()
+		{
+			const FMixtormatBehavior* B = Carve();
+			if (!B) { return LOCTEXT("BehaviorCarveUnavailable", "Unavailable"); }
+			switch (B->Height.Origin)
+			{
+			case EMixtormatBehaviorFieldOrigin::OwnBoundary:
+				return LOCTEXT("BehaviorCarveOwnLabel", "Own Boundary");
+			case EMixtormatBehaviorFieldOrigin::PublishedOutput:
+			{
+				const FMixtormatOutputReference& Ref = B->Height.Published;
+				const FMixtormatChildAddress Address = GetSelectedChildAddress();
+				const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+					[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+				const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
+					? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
+						[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
+					: INDEX_NONE;
+				const int32 OwnerIndex = ChildIndex != INDEX_NONE
+					? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+						WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
+				const bool bAvailable = Ref.HasSource()
+					&& !Ref.IsShelfSource()
+					&& Ref.Kind == EMixtormatPublishedFieldKind::SDF
+					&& ChildIndex != INDEX_NONE
+					&& OwnerIndex != INDEX_NONE
+					&& MixtormatOutputReferences::ResolveSource(
+						WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+				return bAvailable ? FText::FromName(Ref.OutputName)
+					: LOCTEXT("BehaviorCarveMissingSource", "Source unavailable");
+			}
+			default: return LOCTEXT("BehaviorCarveUnset", "Choose source");
+			}
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorCarveSourceMenu)),
+		LOCTEXT("BehaviorCarveHeightHint", "Requires a typed signed distance field or an owning generator boundary.")));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorCarveInfluence", "Influence Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Carve]()
+		{
+			const FMixtormatBehavior* B = Carve();
+			return B && B->Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+				? FText::FromName(B->Influence.Published.OutputName)
+				: LOCTEXT("BehaviorCarveNone", "None");
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
+		LOCTEXT("BehaviorCarveInfluenceHint", "Optional Scalar01 influence, multiplied by scoped masks.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorCarveStrength", "Strength"), Carve, &FMixtormatBehavior::Strength,
+		-4.0, 4.0, 1.0, 0.01,
+		LOCTEXT("BehaviorCarveStrengthHint", "Positive removes height; negative deposits.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorCarveWidth", "Boundary Width"), Carve, &FMixtormatBehavior::CarveWidth,
+		0.001, 0.25, 0.02, 0.001,
+		LOCTEXT("BehaviorCarveWidthHint", "Signed-distance transition width in UV units.")));
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Carve]() { return Carve() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorCarveTitle", "PUSH"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Carve]()
+					{
+						const FMixtormatBehavior* B = Carve();
+						return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Carve](ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* B = Carve())
+						{
+							B->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 {
 	const auto Warp = [this]() { return GetSelectedBehaviorWarp(); };
