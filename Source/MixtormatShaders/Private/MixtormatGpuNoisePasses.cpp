@@ -363,7 +363,7 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 }
 
 FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
-	const int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight)
+	const int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight, FRDGTextureRef PrecedingHeight)
 {
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Flow = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -375,9 +375,9 @@ FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FL
 	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseGeneratedFlowCS::FParameters>();
 	P->OutputSize = Size;
 	P->ModeOwnHeight = OwnHeight;
-	// P2 binds the preceding working-height snapshot; until then the Slope basis is off.
-	P->ModeSlopeHeight = OwnHeight;
-	P->ModeUseSlopeHeight = 0u;
+	// Slope always samples the already-produced surface, never this Noise node's own height.
+	P->ModeSlopeHeight = PrecedingHeight ? PrecedingHeight : OwnHeight;
+	P->ModeUseSlopeHeight = PrecedingHeight ? 1u : 0u;
 	P->ModeHeightWeight = Noise.ModeHeightWeight;
 	P->ModeSlopeWeight = Noise.ModeSlopeWeight;
 	P->ModeCurlWeight = Noise.ModeCurlWeight;
@@ -586,7 +586,7 @@ FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatN
 
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 	const FLayerRenderData& Layer, const int32 SourceChildIndex, FGeneratorBundle* Bundle,
-	FRDGTextureRef PreUV)
+	FRDGTextureRef PreUV, FRDGTextureRef PrecedingHeight)
 {
 	FMixtormatNoiseRenderData Noise;
 	// Preserve the generator's gathered-settings miss behavior.
@@ -648,7 +648,7 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	// node's downhill diagnostic, so the intrinsic vectors are never applied twice.
 	if (Noise.bWriteFlow)
 	{
-		AddNoiseGeneratedFlowPass(Ctx, Layer, SourceChildIndex, Noise, Height);
+		AddNoiseGeneratedFlowPass(Ctx, Layer, SourceChildIndex, Noise, Height, PrecedingHeight);
 	}
 }
 }
