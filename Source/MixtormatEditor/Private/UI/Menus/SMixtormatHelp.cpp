@@ -10,6 +10,8 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/SToolTip.h"
+#include "Styling/CoreStyle.h"
 
 namespace
 {
@@ -99,6 +101,27 @@ void SMixtormatHelp::OpenHelp(const uint64 Request)
 	{
 		SetIsOpen(true, false);
 	}
+}
+
+TSharedRef<IToolTip> SMixtormatHelp::MakeStyledToolTip(const TAttribute<FText>& Text)
+{
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle Style = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	return SNew(SToolTip)
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
+		[
+			SNew(SBox).MaxDesiredWidth(MixtormatTokens::HelpMaxWidth)
+			[
+				SNew(SMixtormatMenuPanel)
+				.Padding(FMargin(MixtormatTokens::HelpPadding))
+				[
+					SNew(STextBlock).Font(Style.Font).ColorAndOpacity(Style.ColorAndOpacity)
+					.Text(Text).AutoWrapText(true)
+				]
+			]
+		];
 }
 
 TSharedRef<SWidget> SMixtormatHelp::BuildHelpContent()
