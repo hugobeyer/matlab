@@ -386,6 +386,44 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
 		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
+	// Resolve the canonical Behavior scalar addresses; only earlier completed
+	// layer masks may drive the current shader. Unsupported drivers stay inert.
+	const FName ScalarProperties[2] = { TEXT("Strength"), TEXT("GradientReach") };
+	for (int32 Slot = 0; Slot < 2; ++Slot)
+	{
+		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
+			[&ScalarProperties, Slot](const FMixtormatParameterBinding& Candidate)
+			{
+				return Candidate.DestinationOwner == EMixtormatParameterOwnerType::Behavior
+					&& Candidate.DestinationParameter == ScalarProperties[Slot]
+					&& Candidate.Driver.bEnabled
+					&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
+					&& Candidate.Driver.SourceLayerId.IsValid();
+			});
+		if (!Binding) { continue; }
+		bool bEarlier = false;
+		for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+		{
+			if (EffectiveLayers[Previous].LayerId == Binding->Driver.SourceLayerId
+				&& EffectiveLayers[Previous].bEnabled)
+			{
+				bEarlier = true;
+				break;
+			}
+		}
+		if (!bEarlier) { continue; }
+		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FScalarDriverRenderData& Driver = Out.ScalarDrivers[Slot];
+		Driver.bEnabled = true;
+		Driver.SourceLayerId = Authored.SourceLayerId;
+		Driver.bInvert = Authored.bInvert;
+		Driver.InputMin = Authored.InputMin;
+		Driver.InputMax = Authored.InputMax;
+		Driver.OutputMin = Authored.OutputMin;
+		Driver.OutputMax = Authored.OutputMax;
+		Driver.Amount = Authored.Amount;
+		Driver.Combine = static_cast<uint32>(Authored.Combine);
+	}
 	Out.DirectionOrigin = Behavior.Direction.Origin;
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
 		? Reference.SourceShelfId : Reference.SourceLayerId;
