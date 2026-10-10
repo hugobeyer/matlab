@@ -449,6 +449,14 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		return;
 	}
 	Out.DirectionOrigin = Behavior.Direction.Origin;
+	// Composition is validated by ValidateBehaviorInputs before this point, so the
+	// amplitude is already finite and the reverse/blend pair is already legal for
+	// this socket's kind. Clamping here keeps a non-finite value from ever
+	// reaching a shader uniform even if a caller bypasses validation.
+	Out.DirectionComposition.Amplitude = FMath::IsFinite(Behavior.Direction.Amplitude)
+		? Behavior.Direction.Amplitude : 0.0f;
+	Out.DirectionComposition.bReversed = Behavior.Direction.bReversed ? 1u : 0u;
+	Out.DirectionComposition.Blend = static_cast<uint32>(Behavior.Direction.Blend);
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
 		? Reference.SourceShelfId : Reference.SourceLayerId;
 	Out.Direction.Source.ChildIndex = SourceIndex;
@@ -465,6 +473,10 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	// Push consumes signed height; Carve consumes a typed SDF or native boundary,
 	// never a signed height silently reinterpreted as distance.
 	Out.HeightOrigin = Behavior.Height.Origin;
+	Out.HeightComposition.Amplitude = FMath::IsFinite(Behavior.Height.Amplitude)
+		? Behavior.Height.Amplitude : 0.0f;
+	Out.HeightComposition.bReversed = Behavior.Height.bReversed ? 1u : 0u;
+	Out.HeightComposition.Blend = static_cast<uint32>(Behavior.Height.Blend);
 	if ((bPush || bCarve) && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 	{
 		const FMixtormatOutputReference& HeightRef = Behavior.Height.Published;

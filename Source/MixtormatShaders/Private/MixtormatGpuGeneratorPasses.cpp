@@ -790,6 +790,10 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
+		// Per-field composition for the Direction socket. Amplitude scales this
+		// socket's weight; Reverse flips the transported displacement.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -818,6 +822,9 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		// Per-field composition for the Direction socket on the local-gradient path.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -846,6 +853,11 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorHeight)
+		// Per-field composition for the Height socket: amplitude, sign and the
+		// signed-scalar combine. Gather admits Blend only where one was authored.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
+		SHADER_PARAMETER(uint32, FieldBlend)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -877,6 +889,10 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BehaviorBoundary)
+		// Per-field composition for the Height socket. Reverse flips which side of
+		// the distance field is carved, so it exchanges Carve and Deposit.
+		SHADER_PARAMETER(float, FieldAmplitude)
+		SHADER_PARAMETER(uint32, FieldReversed)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -1335,10 +1351,16 @@ namespace
 		FRDGTextureRef Source, const float Strength, FRDGTextureRef Mask,
 		const bool bUseMask, FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex,
-		const FScalarDriverRenderData* Drivers)
+		const FScalarDriverRenderData* Drivers,
+		const FBehaviorFieldComposition& Composition)
 	{
+		// A neutral socket must not cost a pass: identity amplitude and no reverse
+		// reproduce the source map exactly, so only composition beyond the default
+		// joins Strength, the masks and the drivers as reasons to run.
+		const bool bCompositionNeutral = Composition.Amplitude == 1.0f
+			&& Composition.bReversed == 0;
 		if (Strength == 1.0f && !bUseMask && !bUseInfluence
-			&& !Drivers[0].bEnabled) { return Source; }
+			&& !Drivers[0].bEnabled && bCompositionNeutral) { return Source; }
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -1346,6 +1368,8 @@ namespace
 		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorUvBlendCS::FParameters>();
 		P->OutputSize = Size;
 		P->Strength = Strength;
+		P->FieldAmplitude = Composition.Amplitude;
+		P->FieldReversed = Composition.bReversed;
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->ScopedMask = Mask;
 		P->UseInfluence = bUseInfluence ? 1u : 0u;
@@ -1367,7 +1391,8 @@ namespace
 		FRDGTextureRef Mask, const bool bUseMask,
 		FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex,
-		const FScalarDriverRenderData* Drivers)
+		const FScalarDriverRenderData* Drivers,
+		const FBehaviorFieldComposition& Composition)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -1376,6 +1401,8 @@ namespace
 		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorHeightGradientCS::FParameters>();
 		P->OutputSize = Size;
 		P->Strength = Strength;
+		P->FieldAmplitude = Composition.Amplitude;
+		P->FieldReversed = Composition.bReversed;
 		P->GradientReach = Reach;
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->ScopedMask = Mask;
@@ -1412,6 +1439,9 @@ namespace
 		P->InfluenceField = Influence;
 		P->SourceHeight = BaseHeight;
 		P->BehaviorHeight = DeltaHeight;
+		P->FieldAmplitude = Behavior.HeightComposition.Amplitude;
+		P->FieldReversed = Behavior.HeightComposition.bReversed;
+		P->FieldBlend = Behavior.HeightComposition.Blend;
 		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
 		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorSignedPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1447,6 +1477,8 @@ namespace
 		// Only the selected distance binding is accessed by the shader.
 		P->BehaviorDistance = bOwnBoundary ? Ctx.EmptyDriverSignal : Distance;
 		P->BehaviorBoundary = bOwnBoundary ? Distance : Ctx.EmptyPatternUV;
+		P->FieldAmplitude = Behavior.HeightComposition.Amplitude;
+		P->FieldReversed = Behavior.HeightComposition.bReversed;
 		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
 		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorSignedCarveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -1501,7 +1533,7 @@ namespace
 				: LayerCtx.CombinedMask;
 			UV = ScaleBehaviorUV(Ctx, UV, Child.Behavior.Strength, Gate, bMask, Influence,
 				bInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
-				Child.Behavior.ScalarDrivers);
+				Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			Current = Current ? RemapBundleField(Ctx, Current, UV, 3) : UV;
 		}
 		return Current;
@@ -1612,7 +1644,7 @@ namespace
 				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
 					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
 					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
-					Child.Behavior.ScalarDrivers);
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			}
 			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
@@ -1647,7 +1679,7 @@ namespace
 					const float BlendStrength = Child.Behavior.Strength;
 					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
 						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
-					Child.Behavior.ScalarDrivers);
+					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 				}
 			}
 			if (Coordinates)

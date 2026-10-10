@@ -1017,6 +1017,16 @@ namespace MixtormatGpuCompositor
 	// A Generator child that rewrites an earlier Generator's own output. Warp, Push, Carve and
 	// Deform share the one ordered executor; stage/kind combinations that do not apply fail
 	// closed in Gather rather than running at an arbitrary point in the pass list.
+	// Per-socket field composition, already validated and clamped by gather.
+	// Amplitude multiplies the Behavior's driven Strength for this socket only, so
+	// one Behavior can weight its direction and height fields independently.
+	struct FBehaviorFieldComposition
+	{
+		float Amplitude = 1.0f;
+		uint32 bReversed = 0;
+		uint32 Blend = 0;
+	};
+
 	struct FBehaviorRenderData
 	{
 		EMixtormatBehaviorType Type = EMixtormatBehaviorType::Warp;
@@ -1027,8 +1037,10 @@ namespace MixtormatGpuCompositor
 		float CarveWidth = 0.02f;
 		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
+		FBehaviorFieldComposition DirectionComposition;
 		EMixtormatBehaviorFieldOrigin HeightOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Height;
+		FBehaviorFieldComposition HeightComposition;
 		// Reuse the scalar-driver signal contract for published Flow Amount/Trace Length.
 		FScalarDriverRenderData FlowDrivers[2];
 		// Shared per-pixel drivers for Strength and Gradient Reach.

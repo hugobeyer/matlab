@@ -881,6 +881,16 @@ private:
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		TFunction<FMixtormatMaskShaping*()> Resolve);
 
+	// The per-field composition block: amplitude, direction reverse, and the
+	// signed-scalar blend where the operation has a base to fold into. One resolver
+	// so Warp, Deform, Push and Carve cannot drift apart on which socket offers
+	// what. What a socket may legally carry is the runtime's decision, read back
+	// through the shared effective-kind helper rather than re-decided per panel.
+	void AddBehaviorFieldCompositionRows(
+		const TSharedRef<SVerticalBox>& TargetPanel,
+		TFunction<FMixtormatBehaviorFieldInput*()> ResolveField,
+		bool bAllowBlend);
+
 	FMixtormatParameterAddress BuildParameterAddress(
 		const void* Owner,
 		UScriptStruct* OwnerStruct,

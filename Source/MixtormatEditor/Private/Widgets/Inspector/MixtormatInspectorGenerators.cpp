@@ -1129,6 +1129,135 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushSourceMenu()
 	return Menu.Build();
 }
 
+// The shared composition block behind Warp, Deform, Push and Carve. Each caller
+// passes the socket it owns; whether that socket may carry a reverse or a blend
+// is read back from the runtime's own effective-kind rule rather than restated
+// per panel, so a kind that gains or loses reverse support cannot leave one
+// operation offering a control the gather would reject.
+void SMixtormat::AddBehaviorFieldCompositionRows(
+	const TSharedRef<SVerticalBox>& TargetPanel,
+	TFunction<FMixtormatBehaviorFieldInput*()> ResolveField,
+	const bool bAllowBlend)
+{
+	const auto Kind = [ResolveField]()
+	{
+		const FMixtormatBehaviorFieldInput* Field = ResolveField();
+		return Field ? MixtormatBehaviorFieldEffectiveKind(*Field) : EMixtormatBehaviorFieldKind::None;
+	};
+	const auto Connected = [ResolveField, Kind]()
+	{
+		const FMixtormatBehaviorFieldInput* Field = ResolveField();
+		return Field && Field->Origin != EMixtormatBehaviorFieldOrigin::None;
+	};
+	// TAttribute<bool> has no constructor from a functor in UE, so a raw lambda
+	// compiles into a "cannot convert OtherType to bool" error. CreateLambda is
+	// the idiom everywhere else in this file.
+	const TAttribute<bool> bVisible = TAttribute<bool>::CreateLambda(Connected);
+	const TAttribute<bool> bCanReverse = TAttribute<bool>::CreateLambda([Kind]()
+	{
+		return FMixtormatBehaviorFieldInput::KindSupportsReverse(Kind());
+	});
+	AddSliderRow(TargetPanel,
+		SNew(SBox).Visibility_Lambda([bVisible]() { return bVisible.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			MakeMemberSlider<FMixtormatBehaviorFieldInput>(
+				LOCTEXT("BehaviorFieldAmplitude", "Field Amplitude"), ResolveField,
+				&FMixtormatBehaviorFieldInput::Amplitude, -4.0, 4.0, 1.0, 0.01,
+				LOCTEXT("BehaviorFieldAmplitudeHint", "Scales this field's own weight after the Behavior Strength, so one Behavior can weight its fields independently. Zero neutralizes this field alone."))
+		]);
+	// A kind with no sign has no reverse. The control stays visible and disabled
+	// rather than vanishing, so the socket's full composition reads as one block.
+	AddSliderRow(TargetPanel,
+		SNew(SBox).Visibility_Lambda([bVisible]() { return bVisible.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SBox).IsEnabled_Lambda([bCanReverse]() { return bCanReverse.Get(); })
+			[
+				MixtormatRow::MakeTrailing(
+					LOCTEXT("BehaviorFieldReverse", "Reverse"),
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([ResolveField]()
+						{
+							const FMixtormatBehaviorFieldInput* Field = ResolveField();
+							return Field && Field->bReversed ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this, ResolveField](const ECheckBoxState State)
+						{
+							if (FMixtormatBehaviorFieldInput* Field = ResolveField())
+							{
+								Field->bReversed = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("BehaviorFieldReverseHint", "Flips this field's sign. On a direction field it transports the opposite way; on a Carve distance field it exchanges which side of the boundary is carved and deposited.")),
+					LOCTEXT("BehaviorFieldReverseHint", "Flips this field's sign."))
+			]
+		]);
+	if (!bAllowBlend) { return; }
+	AddSliderRow(TargetPanel,
+		SNew(SBox).Visibility_Lambda([bVisible]() { return bVisible.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			MixtormatRow::MakeDropdown(
+				LOCTEXT("BehaviorFieldBlend", "Combine"),
+				MixtormatRow::MakeChip(
+					TAttribute<FText>::CreateLambda([ResolveField, Kind]()
+					{
+						const FMixtormatBehaviorFieldInput* Field = ResolveField();
+						const EMixtormatBehaviorFieldKind Effective = Kind();
+						// Show the effective combine rather than a stored value the
+						// runtime would refuse: a blend on a kind that cannot fold is
+						// reported as the operation default it will actually run.
+						if (!Field || !FMixtormatBehaviorFieldInput::KindSupportsBlend(Effective))
+						{
+							return LOCTEXT("BehaviorFieldBlendDefault", "Operation Default");
+						}
+						switch (Field->Blend)
+						{
+						case EMixtormatBehaviorFieldBlend::Add: return LOCTEXT("BehaviorFieldBlendAdd", "Add");
+						case EMixtormatBehaviorFieldBlend::Multiply: return LOCTEXT("BehaviorFieldBlendMultiply", "Multiply");
+						case EMixtormatBehaviorFieldBlend::Min: return LOCTEXT("BehaviorFieldBlendMin", "Minimum");
+						case EMixtormatBehaviorFieldBlend::Max: return LOCTEXT("BehaviorFieldBlendMax", "Maximum");
+						default: return LOCTEXT("BehaviorFieldBlendDefault", "Operation Default");
+						}
+					}),
+					FOnGetContent::CreateLambda([this, ResolveField, Kind]() -> TSharedRef<SWidget>
+					{
+						MixtormatMenu::FBuilder Menu;
+						const TAttribute<bool> bUsable = TAttribute<bool>::CreateLambda([Kind]()
+						{
+							return FMixtormatBehaviorFieldInput::KindSupportsBlend(Kind());
+						});
+						const auto Choose = [this, ResolveField](const EMixtormatBehaviorFieldBlend Blend)
+						{
+							if (FMixtormatBehaviorFieldInput* Field = ResolveField())
+							{
+								Field->Blend = Blend;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						};
+						Menu.Item(LOCTEXT("BehaviorFieldBlendOperation", "Operation Default"), nullptr,
+							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Operation); }));
+						Menu.Item(LOCTEXT("BehaviorFieldBlendAddItem", "Add"), nullptr,
+							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Add); }))
+							.Enabled(bUsable);
+						Menu.Item(LOCTEXT("BehaviorFieldBlendMultiplyItem", "Multiply"), nullptr,
+							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Multiply); }))
+							.Enabled(bUsable);
+						Menu.Item(LOCTEXT("BehaviorFieldBlendMinItem", "Minimum"), nullptr,
+							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Min); }))
+							.Enabled(bUsable);
+						Menu.Item(LOCTEXT("BehaviorFieldBlendMaxItem", "Maximum"), nullptr,
+							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Max); }))
+							.Enabled(bUsable);
+						return Menu.Build();
+					}),
+					nullptr,
+					LOCTEXT("BehaviorFieldBlendHint", "How this signed height field folds into the current native height. Operation Default keeps Push additive; the others are Push-only because a coordinate field and a distance field have no base to fold into.")),
+				LOCTEXT("BehaviorFieldBlendHint", "Signed-scalar combine for this field."))
+		]);
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 {
 	const auto Push = [this]() { return GetSelectedBehaviorPush(); };
@@ -1189,6 +1318,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 		LOCTEXT("BehaviorPushStrength", "Strength"), Push, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorPushStrengthHint", "Signed native-height contribution.")));
+	AddBehaviorFieldCompositionRows(Panel,
+		[Push]() -> FMixtormatBehaviorFieldInput* { return Push() ? &Push()->Height : nullptr; }, true);
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Push]() { return Push() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
@@ -1342,6 +1473,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
 		LOCTEXT("BehaviorCarveWidth", "Boundary Width"), Carve, &FMixtormatBehavior::CarveWidth,
 		0.001, 0.25, 0.02, 0.001,
 		LOCTEXT("BehaviorCarveWidthHint", "Signed-distance transition width in UV units.")));
+	AddBehaviorFieldCompositionRows(Panel,
+		[Carve]() -> FMixtormatBehaviorFieldInput* { return Carve() ? &Carve()->Height : nullptr; }, false);
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Carve]() { return Carve() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
@@ -1487,6 +1620,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddBehaviorFieldCompositionRows(Panel,
+		[Warp]() -> FMixtormatBehaviorFieldInput* { return Warp() ? &Warp()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,
 		SNew(SBox)
 		.Visibility_Lambda([Warp]()
@@ -1755,6 +1890,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformControls()
 		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorDeformStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddBehaviorFieldCompositionRows(Panel,
+		[Deform]() -> FMixtormatBehaviorFieldInput* { return Deform() ? &Deform()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,
 		SNew(SBox)
 		.Visibility_Lambda([Deform]()

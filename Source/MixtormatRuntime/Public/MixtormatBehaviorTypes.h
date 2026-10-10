@@ -82,6 +82,28 @@ enum class EMixtormatBehaviorStage : uint8
 	PostGeneration UMETA(DisplayName = "After Generation")
 };
 
+// How a field is folded into the operation's result.
+//
+// Operation is value 0 on purpose: it is the combine each operation documents
+// (Push adds a signed delta, Carve subtracts a distance profile, Warp/Deform
+// transport a coordinate map), so a Behavior saved before this enum existed
+// resolves to Operation and produces exactly the result it used to.
+//
+// The remaining values are signed-scalar combines and are only accepted where a
+// base actually exists to combine against -- Push. Warp/Deform own a coordinate
+// contract rather than a value, and Carve's field is a distance rather than a
+// contribution, so Gather rejects a non-Operation blend on both instead of
+// quietly treating it as if it had been authored as Operation.
+UENUM(BlueprintType)
+enum class EMixtormatBehaviorFieldBlend : uint8
+{
+	Operation = 0 UMETA(DisplayName = "Operation Default"),
+	Add UMETA(DisplayName = "Add"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Min UMETA(DisplayName = "Minimum"),
+	Max UMETA(DisplayName = "Maximum")
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatBehaviorFieldOrigin : uint8
 {
@@ -120,7 +142,75 @@ struct MIXTORMATRUNTIME_API FMixtormatBehaviorFieldInput
 	{
 		return Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput && Published.HasSource();
 	}
+
+	// Per-field scalar weight, applied after the Behavior's own (drivable) Strength.
+	// Keeping it on the socket rather than only on the Behavior is what lets one
+	// Behavior weight a direction field and a height field independently.
+	// A non-finite amplitude fails validation closed instead of defaulting to 1.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Field",
+		meta = (UIMin = "-4.0", UIMax = "4.0"))
+	float Amplitude = 1.0f;
+
+	// Sign flip for the fields where a sign is meaningful: a Flow/UVMap direction
+	// and a signed height or distance. Scalar01 coverage and Color have no sign,
+	// so a reverse on them is rejected rather than silently ignored.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Field")
+	bool bReversed = false;
+
+	// Signed-scalar combine. Only Push has a base to combine against.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Field")
+	EMixtormatBehaviorFieldBlend Blend = EMixtormatBehaviorFieldBlend::Operation;
+
+	// Which kinds carry a sign that can be flipped.
+	static bool KindSupportsReverse(const EMixtormatBehaviorFieldKind Kind)
+	{
+		return Kind == EMixtormatBehaviorFieldKind::Flow
+			|| Kind == EMixtormatBehaviorFieldKind::UVMap
+			|| Kind == EMixtormatBehaviorFieldKind::ScalarSigned
+			|| Kind == EMixtormatBehaviorFieldKind::SDF;
+	}
+
+	// Which kinds carry a value that can be folded into a base rather than only
+	// transported as a coordinate or read as a distance.
+	static bool KindSupportsBlend(const EMixtormatBehaviorFieldKind Kind)
+	{
+		return Kind == EMixtormatBehaviorFieldKind::ScalarSigned;
+	}
 };
+
+// The kind a socket actually carries, which is what the composition rules and
+// the renderer must both judge. A local snapshot has a fixed semantic; a
+// published reference takes its contract from the reference kind, because that
+// is what will actually be bound. Authoring Kind alone is not enough to judge
+// a local snapshot -- an Own Native Height direction is signed whether or not
+// the author remembered to say so -- so every caller resolves through here
+// rather than re-deriving the rule per site.
+inline EMixtormatBehaviorFieldKind MixtormatBehaviorFieldEffectiveKind(
+	const FMixtormatBehaviorFieldInput& Input)
+{
+	switch (Input.Origin)
+	{
+	case EMixtormatBehaviorFieldOrigin::OwnBoundary:
+		return EMixtormatBehaviorFieldKind::SDF;
+	case EMixtormatBehaviorFieldOrigin::OwnNativeHeight:
+	case EMixtormatBehaviorFieldOrigin::PreviousRunningHeight:
+		return EMixtormatBehaviorFieldKind::ScalarSigned;
+	case EMixtormatBehaviorFieldOrigin::PublishedOutput:
+		switch (Input.Published.Kind)
+		{
+		case EMixtormatPublishedFieldKind::Flow: return EMixtormatBehaviorFieldKind::Flow;
+		case EMixtormatPublishedFieldKind::UVMap: return EMixtormatBehaviorFieldKind::UVMap;
+		case EMixtormatPublishedFieldKind::Vector2: return EMixtormatBehaviorFieldKind::Vector2;
+		case EMixtormatPublishedFieldKind::SDF: return EMixtormatBehaviorFieldKind::SDF;
+		case EMixtormatPublishedFieldKind::Scalar01: return EMixtormatBehaviorFieldKind::Scalar01;
+		case EMixtormatPublishedFieldKind::ScalarSigned: return EMixtormatBehaviorFieldKind::ScalarSigned;
+		case EMixtormatPublishedFieldKind::Color: return EMixtormatBehaviorFieldKind::Color;
+		default: return EMixtormatBehaviorFieldKind::None;
+		}
+	default:
+		return EMixtormatBehaviorFieldKind::None;
+	}
+}
 
 // Behaviors are ordinary children owned through ScopeOwnerChildId by an earlier Generator.
 // Field inputs are slots on the Behavior, not extra serialized layer children.

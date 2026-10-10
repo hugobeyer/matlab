@@ -200,6 +200,36 @@ namespace MixtormatChildScope
 			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
 			return Result;
 		}
+		// Field composition. Amplitude and reverse are per-socket and judged against
+		// the kind the socket actually carries; blend folds a value into a base and
+		// only Push has one. An unconnected socket carries no composition at all.
+		const auto CheckComposition = [](const FMixtormatBehaviorFieldInput& Input,
+			const bool bAllowsBlend) -> EBehaviorInputIssue
+		{
+			if (Input.Origin == EMixtormatBehaviorFieldOrigin::None) { return EBehaviorInputIssue::None; }
+			if (!FMath::IsFinite(Input.Amplitude))
+			{
+				return EBehaviorInputIssue::InvalidStrength;
+			}
+			const EMixtormatBehaviorFieldKind Kind = MixtormatBehaviorFieldEffectiveKind(Input);
+			if (Input.bReversed && !FMixtormatBehaviorFieldInput::KindSupportsReverse(Kind))
+			{
+				return EBehaviorInputIssue::WrongFieldKind;
+			}
+			if (Input.Blend != EMixtormatBehaviorFieldBlend::Operation
+				&& !(bAllowsBlend && FMixtormatBehaviorFieldInput::KindSupportsBlend(Kind)))
+			{
+				return EBehaviorInputIssue::UnsupportedOperation;
+			}
+			return EBehaviorInputIssue::None;
+		};
+		Result.Issue = CheckComposition(Behavior.Direction, false);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		Result.Issue = CheckComposition(Behavior.Height,
+			Behavior.Type == EMixtormatBehaviorType::Push);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		Result.Issue = CheckComposition(Behavior.Influence, false);
+		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		Result.Issue = CheckInput(Behavior.Direction, true, false, bNeedsDirection);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		if (Behavior.Type == EMixtormatBehaviorType::Carve && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
