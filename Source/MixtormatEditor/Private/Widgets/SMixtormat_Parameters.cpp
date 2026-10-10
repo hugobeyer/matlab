@@ -298,6 +298,9 @@ namespace
 		else if (Binding
 			&& (Binding->ValueType != Target.ValueType || Binding->TypeName != Target.TypeName))
 		{
+			// Reading state must not modify authored bindings. Only an explicit authoring
+			// operation is allowed to retype the stored binding for this parameter.
+			if (!bCreate) { return nullptr; }
 			// The parameter under this address changed type, so whatever was bound to it no
 			// longer describes anything. Reset rather than reinterpret.
 			Binding->ValueType = Target.ValueType;
