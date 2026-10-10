@@ -95,6 +95,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightCurve:     return Child.HeightCurve.bEnabled;
 		case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
 		case EMixtormatLayerChildType::HeightPush:      return Child.HeightPush.bEnabled;
+		case EMixtormatLayerChildType::Behavior:        return Child.Behavior.bEnabled;
 				case EMixtormatLayerChildType::StructuralWarp:  return Child.StructuralWarp.bEnabled;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
@@ -130,6 +131,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::HeightCurve:     Child.HeightCurve.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightColorRamp: Child.HeightColorRamp.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightPush:      Child.HeightPush.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Behavior:        Child.Behavior.bEnabled = bEnabled; break;
 				case EMixtormatLayerChildType::StructuralWarp:  Child.StructuralWarp.bEnabled = bEnabled; break;
 		default:
 			// A new child type that carries its own enable flag must be named here rather than
@@ -694,6 +696,10 @@ namespace MixtormatLayersPrivate
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::Behavior)
+		{
+			return Owner.Type == EMixtormatLayerChildType::Generator;
+		}
 		if (IsGeneratorFlow(Child))
 		{
 			return CanOwnGeneratorFlow(Owner);
