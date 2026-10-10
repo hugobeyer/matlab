@@ -309,7 +309,7 @@ void FlowComposeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Out = float4(0.0f, 0.0f, 0.0f, 0.0f);
 	}
 	OutComposedFlow[Pixel] = Out;
-	OutComposedFlowValidity[Pixel] = (FlowIn.a > 0.0f || Generated.a > 0.0f) ? 1.0f : 0.0f;
+	OutComposedFlowValidity[Pixel] = (Out.a > 0.0f && dot(Out.xy, Out.xy) > 1.0e-12f) ? 1.0f : 0.0f;
 }
 
 [numthreads(8, 8, 1)]
