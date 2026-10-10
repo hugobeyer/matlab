@@ -44,10 +44,22 @@ namespace MixtormatChildScope
 		{
 			return INDEX_NONE;
 		}
-		const int32 OwnerIndex = ResolveOwnerIndex(Children, BehaviorChildIndex);
-		return Children.IsValidIndex(OwnerIndex)
-			&& Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator
-			? OwnerIndex : INDEX_NONE;
+		int32 OwnerIndex = ResolveOwnerIndex(Children, BehaviorChildIndex);
+		TSet<int32> Visited;
+		while (Children.IsValidIndex(OwnerIndex) && !Visited.Contains(OwnerIndex))
+		{
+			Visited.Add(OwnerIndex);
+			if (Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator)
+			{
+				return OwnerIndex;
+			}
+			if (Children[OwnerIndex].Type != EMixtormatLayerChildType::Behavior)
+			{
+				return INDEX_NONE;
+			}
+			OwnerIndex = ResolveOwnerIndex(Children, OwnerIndex);
+		}
+		return INDEX_NONE;
 	}
 
 	FBehaviorInputStatus ValidateBehaviorInputs(
@@ -305,8 +317,8 @@ namespace MixtormatChildScope
 			FMixtormatLayerChild& Child = Children[Index];
 			if (Child.Type == EMixtormatLayerChildType::Behavior)
 			{
-				// A Behavior has no valid root or indirect scope. Keep any authored
-				// owner identity for repair, but fail closed if it is not a Generator.
+				// Behaviors may be owned indirectly through other Behaviors.
+				// Preserve invalid owner IDs for repair while disabling invalid operations.
 				if (ResolveBehaviorGeneratorIndex(Children, Index) == INDEX_NONE
 					&& Child.Behavior.bEnabled)
 				{
