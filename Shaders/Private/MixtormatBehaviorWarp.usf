@@ -145,3 +145,51 @@ void SignedPushCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutSignedHeight[Pixel] = isfinite(Weight) && isfinite(Delta) && Weight != 0.0f
 		? Base + Weight * Delta : Base;
 }
+
+// Native signed-height Carve / Deposit: only a typed SDF or a generator's
+// (distance, validity) boundary is accepted. Positive Strength carves, negative
+// Strength deposits. Width is distance in UV units, independent of resolution.
+float CarveWidth;
+uint UseOwnBoundary;
+Texture2D<float> BehaviorDistance;
+Texture2D<float2> BehaviorBoundary;
+
+[numthreads(8, 8, 1)]
+void SignedCarveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Base = SourceHeight.Load(int3(Pixel, 0));
+	float Distance = 0.0f;
+	bool Valid = true;
+	if (UseOwnBoundary != 0u)
+	{
+		const float2 Boundary = BehaviorBoundary.Load(int3(Pixel, 0));
+		Distance = Boundary.x;
+		Valid = isfinite(Distance) && Boundary.y > 0.5f;
+	}
+	else
+	{
+		Distance = BehaviorDistance.Load(int3(Pixel, 0));
+		Valid = isfinite(Distance);
+	}
+	if (!Valid || Distance >= 0.0f)
+	{
+		OutSignedHeight[Pixel] = Base;
+		return;
+	}
+	float Weight = DrivenBehaviorStrength(Pixel);
+	if (UseMask != 0u)
+	{
+		const float Gate = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(Gate) ? saturate(Gate) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Value = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	const float Profile = saturate(-Distance / max(CarveWidth, 1e-6f));
+	OutSignedHeight[Pixel] = isfinite(Weight) && Weight != 0.0f
+		? Base - Weight * Profile : Base;
+}

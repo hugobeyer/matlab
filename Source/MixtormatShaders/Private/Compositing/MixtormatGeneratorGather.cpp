@@ -359,7 +359,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
 	const bool bWarp = Behavior.Type == EMixtormatBehaviorType::Warp;
 	const bool bPush = Behavior.Type == EMixtormatBehaviorType::Push;
-	if (!Behavior.bEnabled || (!bWarp && !bPush)
+	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
+	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve)
 		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 		|| (bWarp && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
@@ -368,6 +369,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
 				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PreviousRunningHeight)))
+		|| (bCarve && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)))
 		|| !FMath::IsFinite(Behavior.Strength)) { return; }
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
@@ -392,6 +396,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
 		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
+	Out.CarveWidth = FMath::IsFinite(Behavior.CarveWidth)
+		? FMath::Max(Behavior.CarveWidth, 1e-6f) : 0.02f;
 	// Resolve the canonical Behavior scalar addresses; only earlier completed
 	// layer masks may drive the current shader. Unsupported drivers stay inert.
 	const FName ScalarProperties[2] = { TEXT("Strength"), TEXT("GradientReach") };
@@ -451,15 +457,19 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
-	// Push consumes a signed height socket, never the Direction flow/UV socket.
+	// Push consumes signed height; Carve consumes a typed SDF or native boundary,
+	// never a signed height silently reinterpreted as distance.
 	Out.HeightOrigin = Behavior.Height.Origin;
-	if (bPush && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+	if ((bPush || bCarve) && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 	{
 		const FMixtormatOutputReference& HeightRef = Behavior.Height.Published;
 		const int32 HeightIndex = HeightRef.IsShelfSource() ? 0
+			: bCarve ? MixtormatOutputReferences::ResolveSource(
+				EffectiveLayers, LayerIndex, BehaviorChildIndex, HeightRef)
 			: MixtormatOutputReferences::ResolveGeneratorInputSource(
-					EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
-		if (HeightIndex == INDEX_NONE || HeightRef.Kind != EMixtormatPublishedFieldKind::ScalarSigned)
+				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
+		if (HeightIndex == INDEX_NONE || HeightRef.Kind != (bCarve
+			? EMixtormatPublishedFieldKind::SDF : EMixtormatPublishedFieldKind::ScalarSigned))
 		{
 			Data.Children.Pop();
 			return;

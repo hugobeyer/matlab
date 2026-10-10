@@ -1023,8 +1023,8 @@ namespace MixtormatGpuCompositor
 		FScalarDriverRenderData Drivers[2];
 	};
 
-	// Generator-owned V2 operation. Only the PostGeneration Warp stage currently
-	// has a GPU implementation; other stages retain their authored data untouched.
+	// Generator-owned V2 operation. PostGeneration Warp, Push, and Carve share the
+	// ordered executor; unimplemented stage/kind combinations fail closed.
 	struct FBehaviorRenderData
 	{
 		EMixtormatBehaviorType Type = EMixtormatBehaviorType::Warp;
@@ -1032,6 +1032,7 @@ namespace MixtormatGpuCompositor
 		int32 GeneratorChildIndex = INDEX_NONE;
 		float Strength = 1.0f;
 		float GradientReach = 0.02f;
+		float CarveWidth = 0.02f;
 		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
 		EMixtormatBehaviorFieldOrigin HeightOrigin = EMixtormatBehaviorFieldOrigin::None;

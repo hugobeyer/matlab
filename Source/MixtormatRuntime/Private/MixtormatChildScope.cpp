@@ -78,7 +78,8 @@ namespace MixtormatChildScope
 		// inputs to a gather, source picker, or later capability query.
 		if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			|| (Behavior.Type != EMixtormatBehaviorType::Warp
-				&& Behavior.Type != EMixtormatBehaviorType::Push))
+				&& Behavior.Type != EMixtormatBehaviorType::Push
+				&& Behavior.Type != EMixtormatBehaviorType::Carve))
 		{
 			Result.Issue = EBehaviorInputIssue::UnsupportedOperation;
 			return Result;
@@ -116,7 +117,7 @@ namespace MixtormatChildScope
 				}
 				if (Input.Origin == EMixtormatBehaviorFieldOrigin::OwnBoundary)
 				{
-					if (Behavior.Type == EMixtormatBehaviorType::Push)
+					if (Behavior.Type != EMixtormatBehaviorType::Carve)
 					{
 						return EBehaviorInputIssue::WrongFieldKind;
 					}
@@ -141,7 +142,9 @@ namespace MixtormatChildScope
 					|| Ref.Kind == EMixtormatPublishedFieldKind::UVMap)
 				: Ref.Kind == (bInfluence
 					? EMixtormatPublishedFieldKind::Scalar01
-					: EMixtormatPublishedFieldKind::ScalarSigned);
+					: Behavior.Type == EMixtormatBehaviorType::Carve
+						? EMixtormatPublishedFieldKind::SDF
+						: EMixtormatPublishedFieldKind::ScalarSigned);
 			if (!bKindCorrect) { return EBehaviorInputIssue::WrongFieldKind; }
 			if (Ref.IsShelfSource())
 			{
@@ -159,7 +162,8 @@ namespace MixtormatChildScope
 			}
 			// Generic Scalar01 is not a generator Height/Warp socket. Validate it
 			// through the normal published-field dependency rules instead.
-			const int32 Index = bInfluence
+			const int32 Index = (bInfluence || (!bDirection
+				&& Behavior.Type == EMixtormatBehaviorType::Carve))
 				? MixtormatOutputReferences::ResolveSource(
 					EffectiveLayers, LayerIndex, BehaviorChildIndex, Ref)
 				: MixtormatOutputReferences::ResolveGeneratorInputSource(
@@ -174,6 +178,12 @@ namespace MixtormatChildScope
 			|| Behavior.Type == EMixtormatBehaviorType::Carve;
 		Result.Issue = CheckInput(Behavior.Direction, true, false, bNeedsDirection);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		if (Behavior.Type == EMixtormatBehaviorType::Carve && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
+			&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)
+		{
+			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
+			return Result;
+		}
 		Result.Issue = CheckInput(Behavior.Height, false, false, bNeedsHeight);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		Result.Issue = CheckInput(Behavior.Influence, false, true, false);

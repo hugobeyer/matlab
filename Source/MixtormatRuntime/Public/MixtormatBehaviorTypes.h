@@ -81,6 +81,11 @@ struct MIXTORMATRUNTIME_API FMixtormatBehavior
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "0.0", UIMax = "0.25"))
 	float GradientReach = 0.02f;
 
+	// Signed boundary/SDF Carve footprint width in UV-distance units.
+	// Positive Strength removes height; negative Strength deposits it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "0.001", UIMax = "0.25"))
+	float CarveWidth = 0.02f;
+
 	// Vector transport / UV source for Warp and Deform.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Fields")
 	FMixtormatBehaviorFieldInput Direction;
