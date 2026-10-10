@@ -177,6 +177,20 @@ namespace MixtormatChildScope
 					EffectiveLayers, LayerIndex, GeneratorIndex, Ref)
 				: MixtormatOutputReferences::ResolveGeneratorInputSource(
 					EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
+			// Same-generator Behavior-to-Behavior ordering: when both belong to the same generator,
+			// the source Behavior must appear before this consumer Behavior in authored order.
+			if (Index != INDEX_NONE && Ref.SourceLayerId == Layer.LayerId)
+			{
+				const FMixtormatLayerChild& SourceChild = Layer.Children[Index];
+				if (SourceChild.Type == EMixtormatLayerChildType::Behavior
+					&& SourceChild.ScopeOwnerChildId == Owner.ChildId)
+				{
+					if (Index >= BehaviorChildIndex)
+					{
+						return EBehaviorInputIssue::InvalidPublishedSource;
+					}
+				}
+			}
 		// Behavior Push may consume published generic ScalarSigned outputs (Noise
 		// Value, or a copy), not only the legacy generator's canonical Height.
 		if (Index == INDEX_NONE && !bDirection && !bInfluence

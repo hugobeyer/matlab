@@ -539,8 +539,9 @@ namespace MixtormatOutputReferences
 		// Noise's explicit Flow is derived from its completed height, not its raw Vector2 Gradient.
 		const bool bNoiseFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
 			&& Source.Generator.Type == EMixtormatGeneratorType::Noise;
-		if (!bNoiseFlow && Source.Type != EMixtormatLayerChildType::Effect) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
-		if (bNoiseFlow ? !Source.Generator.bEnabled : !Source.Effect.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
+		const bool bBehaviorFlow = (bFlow || bUV) && Source.Type == EMixtormatLayerChildType::Behavior;
+		if (!bNoiseFlow && !bBehaviorFlow && Source.Type != EMixtormatLayerChildType::Effect) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+		if (bNoiseFlow ? !Source.Generator.bEnabled : (bBehaviorFlow ? !Source.Behavior.bEnabled : !Source.Effect.bEnabled)) { return Reject(EStructuralLinkIssue::DisabledSource); }
 		if (bNoiseFlow ? Source.ScopeOwnerChildId.IsValid() : !Source.ScopeOwnerChildId.IsValid())
 		{
 			return Reject(EStructuralLinkIssue::WrongSourceScope);
@@ -549,23 +550,37 @@ namespace MixtormatOutputReferences
 		{
 			return Child.ChildId == Source.ScopeOwnerChildId;
 		});
-		if (OwnerIndex == INDEX_NONE || (!bNoiseFlow && OwnerIndex >= SourceIndex)) { return INDEX_NONE; }
+		if (OwnerIndex == INDEX_NONE) { return INDEX_NONE; }
 		const FMixtormatLayerChild& Owner = SourceLayer.Children[OwnerIndex];
 		if (Owner.Type == EMixtormatLayerChildType::Generator && !Owner.Generator.bEnabled)
 		{
 			return Reject(EStructuralLinkIssue::DisabledSource);
 		}
 		if (Owner.Type != EMixtormatLayerChildType::Generator || !Owner.Generator.bEnabled
-			|| Owner.ScopeOwnerChildId.IsValid() || !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type)
-			|| (SourceLayerIndex == DestinationLayerIndex && OwnerIndex >= DestinationChildIndex))
+			|| Owner.ScopeOwnerChildId.IsValid() || !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type))
 		{
 			return INDEX_NONE;
 		}
-		// The two ordering rules Structural Warp used to need -- one unambiguous completed
-		// generator scope, and no source row whose scope finishes after the module row -- are
-		// enforced by MixtormatChildScope::ValidateBehaviorInputs, which evaluates them against
-		// the owning Behavior itself rather than against an authored-position module. Nothing
-		// reaches here as a Warp any more, so nothing here needs Warp's extra gating.
+		if (SourceLayerIndex == DestinationLayerIndex && OwnerIndex > DestinationChildIndex)
+		{
+			return Reject(EStructuralLinkIssue::ForwardSource);
+		}
+		if (bBehaviorFlow)
+		{
+			const bool bFieldProducer = Source.Behavior.Type == EMixtormatBehaviorType::FlowField;
+			const bool bTracedFlow = Source.Behavior.Flow.bUseTracedFlow;
+			if (!bFieldProducer && !bTracedFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+			if (bUV && Source.Behavior.Type == EMixtormatBehaviorType::Carve)
+			{
+				return Reject(EStructuralLinkIssue::WrongSourceKind);
+			}
+			Status.Issue = EStructuralLinkIssue::None;
+			return SourceIndex;
+		}
+		if (SourceLayerIndex == DestinationLayerIndex && OwnerIndex == DestinationChildIndex)
+		{
+			return Reject(EStructuralLinkIssue::ForwardSource);
+		}
 		if (bNoiseFlow)
 		{
 			Status.Issue = EStructuralLinkIssue::None;

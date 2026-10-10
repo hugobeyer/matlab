@@ -597,6 +597,13 @@ public:
 		SHADER_PARAMETER(float, TraceLength)
 		SHADER_PARAMETER(int32, Steps)
 		SHADER_PARAMETER(float, WarpStrength)
+		SHADER_PARAMETER(float, BehaviorStrength)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
 		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
@@ -1539,6 +1546,12 @@ namespace
 		return Current;
 	}
 
+	bool IsFlowToolChild(const FChildRenderData& Candidate, int32 OwnerSourceChildIndex);
+	FRDGTextureRef AddBehaviorFlowFieldPasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		int32 OwnerSourceChildIndex, FRDGTextureRef BoundaryField, FRDGTextureRef RockField,
+		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex);
+
 	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
@@ -1548,12 +1561,18 @@ namespace
 		{
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
-				|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
-					&& Child.Behavior.Type != EMixtormatBehaviorType::Push
-					&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
-					&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
-				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
-				|| Child.Behavior.bUseTracedFlow) { continue; }
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+			if (IsFlowToolChild(Child, Owner.SourceChildIndex))
+			{
+				Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
+					Module.Coverage, &Module, Child.SourceChildIndex);
+				continue;
+			}
+			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Push
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
+				&& Child.Behavior.Type != EMixtormatBehaviorType::Deform) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
 			// A connected Influence that is unavailable must NOT turn into full strength.
 			FRDGTextureRef Influence = LayerCtx.CombinedMask;
@@ -1951,23 +1970,6 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		}
 	}
 
-	bool IsPreviewingAnyFlowTool(
-		const FRenderRequest& Request,
-		const int32 LayerIndex,
-		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex)
-	{
-		for (const FChildRenderData& Candidate : Layer.Children)
-		{
-			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
 	bool IsFlowFieldDemanded(const FMixtormatComposeContext& Ctx,
 		const FLayerRenderData& Layer, const int32 ChildIndex)
 	{
@@ -1975,26 +1977,6 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			PublishedKey(Layer, ChildIndex, FName(TEXT("FlowDirection"))))
 			|| Ctx.PublishedFieldDemand.Contains(
 				PublishedKey(Layer, ChildIndex, FName(TEXT("WarpedUV"))));
-	}
-
-	bool HasActiveFlowTools(
-		const FMixtormatComposeContext& Ctx,
-		const int32 LayerIndex,
-		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex)
-	{
-		const FRenderRequest& Request = Ctx.Request;
-		for (const FChildRenderData& Candidate : Layer.Children)
-		{
-			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& (!IsNeutralFlowTool(Candidate.Behavior)
-					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)
-					|| IsFlowFieldDemanded(Ctx, Layer, Candidate.SourceChildIndex)))
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	// Pebbles publishes a scalar signed distance with a 1e9 no-hit sentinel; the seed stage
@@ -2038,7 +2020,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		FRDGTextureRef BoundaryField,
 		FRDGTextureRef RockField,
 		FRDGTextureRef& InOutCoverage,
-		FGeneratorBundle* Bundle = nullptr)
+		FGeneratorBundle* Bundle,
+		const int32 OnlyBehaviorChildIndex)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
@@ -2066,7 +2049,9 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		FRDGTextureRef Current = RockField;
 		for (const FChildRenderData& FlowChild : Layer.Children)
 		{
-			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex))
+			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex)
+				|| (OnlyBehaviorChildIndex != INDEX_NONE
+					&& FlowChild.SourceChildIndex != OnlyBehaviorChildIndex))
 			{
 				continue;
 			}
@@ -2089,6 +2074,21 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
 				: Current;
+			FRDGTextureRef BehaviorInfluence = Ctx.EmptyDriverSignal;
+			const bool bUseBehaviorInfluence = !bFieldProducer && FlowChild.Behavior.bHasInfluence;
+			if (bUseBehaviorInfluence)
+			{
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(FlowChild.Behavior.Influence.Source);
+				if (!Field || !Field->IsComplete()
+					|| Field->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| Field->Texture->Desc.Extent != Size
+					|| (Field->Texture->Desc.Format != PF_R16F
+						&& Field->Texture->Desc.Format != PF_R32_FLOAT))
+				{
+					continue;
+				}
+				BehaviorInfluence = Field->Texture;
+			}
 
 			const auto Fill = [&](FMixtormatGeneratorFlowCS::FParameters* P)
 			{
@@ -2114,11 +2114,32 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
 					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
 					: bGravity ? 3u : 1u;
+				const float BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
 				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
 				P->Bulge = Flow.GeneratorFlowBulge;
 				P->TraceLength = Flow.GeneratorFlowTraceLength;
 				P->Steps = Flow.GeneratorFlowSteps;
 				P->WarpStrength = Flow.GeneratorFlowWarpStrength;
+				P->BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
+				P->UseInfluence = bUseBehaviorInfluence ? 1u : 0u;
+				P->InfluenceField = BehaviorInfluence;
+				FRDGTextureRef DriverSignals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+				for (int32 Slot = 0; Slot < 2; ++Slot)
+				{
+					const FScalarDriverRenderData& Driver = FlowChild.Behavior.ScalarDrivers[Slot];
+					FRDGTextureRef* Snapshot = Driver.bEnabled
+						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+					const bool bResolved = Snapshot != nullptr;
+					DriverSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+					P->BehaviorDriverParamsA[Slot] = FVector4f(
+						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+						Driver.InputMin, Driver.InputMax);
+					P->BehaviorDriverParamsB[Slot] = FVector4f(
+						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+						static_cast<float>(Driver.Combine));
+				}
+				P->BehaviorDriverSignal0 = DriverSignals[0];
+				P->BehaviorDriverSignal1 = DriverSignals[1];
 				P->CarveMode = Flow.GeneratorFlowCarveMode;
 				P->Depth = Flow.GeneratorFlowDepth;
 				P->Width = Flow.GeneratorFlowWidth;
@@ -2254,6 +2275,18 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			Ctx.PublishedFieldOutputs.Add(
 				PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
 				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, FlowIndex, FName(TEXT("Influence"))),
+				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Influence, nullptr, nullptr, false});
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
+				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
+			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve)
+			{
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, FlowIndex, FName(TEXT("CarveMask"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, CarveMask, nullptr, nullptr, false});
+			}
 			if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
 			{
 				Ctx.PublishedFieldOutputs.Add(
@@ -2296,13 +2329,14 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 						Shader, P, Groups);
 				};
 				BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
-				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUVGrid"));
+				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUV"));
 			}
 
 			if (!bNeutral && !bFieldProducer)
 			{
 				Current = Transformed;
-				if (InOutCoverage)
+				const bool bWarp = FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp;
+				if (InOutCoverage && bWarp)
 				{
 					InOutCoverage = MovedCoverage;
 				}
@@ -2310,7 +2344,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				{
 					Bundle->Height = Current;
 					Bundle->Coverage = InOutCoverage;
-					if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
+					if (bWarp)
 					{
 						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
 						BoundaryField = Bundle->BoundaryField;
@@ -3291,24 +3325,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		}
 		if (!Module.Height) { continue; }
-		// Flow runs on the generator's native field, before the shared signed normalization: the
-		// flow algorithm reads the field's own amplitude for its seed threshold and carve depth.
-		if (HasActiveFlowTools(Ctx, LayerCtx.LayerIndex, Layer, Child.SourceChildIndex))
+		// Publish raw generator masks before any owned Behavior may consume them.
+		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
-			// A mask on an owned flow tool may read its generator's *pre-flow* feature.
-			// Publish those existing raw named fields before the flow reads its masks.
-			// The normal publication below replaces these entries with completed/post-flow
-			// fields, so all later consumers retain their original output semantics.
-			for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
-			{
-				Ctx.PublishedMaskOutputs.Add(
-					PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
-			}
-			Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
-				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
+			Ctx.PublishedMaskOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 		}
-		// The ordered Behaviors own this generator's bundle from here: they transform the
-		// native bundle before the same normalize/scale step all generator families use.
+		// One authored-order pass processes producers and height operations on the native field.
 		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 		// Normalize the unmasked Noise native height, then apply its scoped gate to the
 		// resolved signed result. Gating before centring turns masked zeros into negative height.
