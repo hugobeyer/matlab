@@ -103,6 +103,12 @@ namespace MixtormatMenu
 		return *this;
 	}
 
+	FBuilder& FBuilder::BehaviorStyle()
+	{
+		LastRow().bBehaviorStyle = true;
+		return *this;
+	}
+
 	FBuilder& FBuilder::Widget(const TSharedRef<SWidget>& InWidget)
 	{
 		FEntry Entry;
@@ -168,6 +174,7 @@ namespace MixtormatMenu
 					.bChecked(Entry.bChecked)
 					.bEnabled(Entry.bEnabled)
 					.bDestructive(Entry.bDestructive)
+					.bBehaviorStyle(Entry.bBehaviorStyle)
 					.OnActivate(Entry.OnActivate)
 					.OnGetSubMenu(Entry.OnGetSubMenu)
 				];
