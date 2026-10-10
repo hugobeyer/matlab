@@ -324,6 +324,14 @@ namespace MixtormatLayerGroups
 				}
 			};
 
+			// Layer-level parameter links and drivers may also name a shared child.
+			// They must follow the member-local clone, not an authored group template.
+			for (FMixtormatParameterBinding& Binding : Layer.ParameterBindings)
+			{
+				RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+				RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+			}
+
 			// A member's local child may deliberately read an authored group child. The compositor
 			// only sees effective layers, so convert that stable authored address for this member.
 			for (FMixtormatLayerChild& LocalChild : Layer.Children)
