@@ -56,6 +56,7 @@ float Scale;
 int Detail;
 float Roughness;
 float Lacunarity;
+float LayerMix;
 float2 OffsetUV;
 float2 Wave;
 float PhaseOffset;
@@ -64,9 +65,13 @@ float PhasorAnisotropy;
 float PhasorPhaseVariation;
 float PhasorOrientationVariation;
 int PhasorComponents;
+float PhasorScale;
+float PhasorBias;
 int WorleyMetric;
 float WorleyJitter;
+float WorleyCellDepth;
 float DistortionStrength;
+float DistortionJaggedness;
 int DistortionPeriod;
 int DistortionOctaves;
 float DistortionRoughness;
@@ -138,11 +143,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 Domain = frac(UV + OffsetUV);
 	// Zero strength is a strict legacy identity: no warp math or extra texture samples.
 	float2 SampleDomain = Domain;
-	if (DistortionStrength > 0.0f)
+	if (DistortionStrength > 0.0f || DistortionJaggedness > 0.0f)
 	{
 		SampleDomain = frac(MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
 			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
-			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix));
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
+			DistortionJaggedness));
 	}
 
 	float Value = 0.0f;
@@ -181,16 +187,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const FMixtormatNoiseWorley w = MixtormatNoiseV2Worley(SampleDomain,
 			max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyJitter, WorleyMetric);
-		const float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
+		float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.F2 : (w.F2 - w.F1);
 		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
 		// farthest corners of a cell past one width; the clamp is part of the contract.
-		Value = saturate(Distance);
 		// Worley publishes the derivative of the selected distance, in cell-width units.
 		// F2-F1 must subtract both gradients; reusing F1's direction was incorrect.
 		Gradient = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.Direction
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.SecondDirection
 			: (w.SecondDirection - w.Direction);
+		MixtormatNoiseV2CellDistanceVariation(w, WorleyCellDepth, Distance, Gradient);
+		Value = saturate(Distance);
 		// Value is saturated above. Its derivative is zero on the flat plateaus;
 		// exactly on a clamp boundary the derivative is not unique, so choose zero.
 		if (Distance <= 0.0f || Distance >= 1.0f)
@@ -213,22 +220,69 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		MixtormatNoiseBars(SampleDomain, Wave, PhaseOffset, Value, Gradient);
 	}
 
+
+	// Optional finer octaves for families originally authored as a single frequency.
+	// Keep the base field and published region IDs unchanged when the mix is zero.
+	if (LayerMix > 0.0f && Detail > 1
+		&& NoiseType != NOISE_TYPE_FBM && NoiseType != NOISE_TYPE_RIDGED
+		&& NoiseType != NOISE_TYPE_BILLOW)
+	{
+		float WeightedValue = Value;
+		float2 WeightedGradient = Gradient;
+		float WeightSum = 1.0f;
+		float Weight = 1.0f;
+		float Period = max(Scale, 1.0f);
+		[loop]
+		for (int k = 1; k < clamp(Detail, 1, 8); ++k)
+		{
+			Weight *= saturate(Roughness);
+			if (Weight <= 1.0e-6f) { break; }
+			Period *= max(Lacunarity, 1.0f);
+			const int P = MixtormatNoiseOctavePeriod(Period);
+			if (P == 0) { break; }
+			float OctaveValue;
+			float2 OctaveGradient;
+			MixtormatNoiseV2LayerOctave(SampleDomain, NoiseType, P,
+				Seed + (uint)k * 0x2545F491u, Wave, PhaseOffset, Scale,
+				WorleyMetric, WorleyJitter, WorleyCellDepth,
+				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+				PhasorOrientationVariation, PhasorComponents,
+				OctaveValue, OctaveGradient);
+			WeightedValue += Weight * OctaveValue;
+			WeightedGradient += Weight * OctaveGradient;
+			WeightSum += Weight;
+		}
+		Value = lerp(Value, WeightedValue / WeightSum, saturate(LayerMix));
+		Gradient = lerp(Gradient, WeightedGradient / WeightSum, saturate(LayerMix));
+	}
+
+	if (NoiseType == NOISE_TYPE_PHASOR)
+	{
+		const float AdjustedValue = Value * PhasorScale + PhasorBias;
+		Gradient *= AdjustedValue > -1.0f && AdjustedValue < 1.0f
+			? PhasorScale : 0.0f;
+		Value = clamp(AdjustedValue, -1.0f, 1.0f);
+	}
+
 #if !MIXTORMAT_NOISE_VALUE_ONLY
 	// Gradient is evaluated in the warped source domain. Chain-rule it into the
 	// generator domain only for distortion-enabled paths. Use two forward probes
 	// of the same periodic warp; the legacy zero path remains bit-for-bit intact.
-	if (DistortionStrength > 0.0f)
+	if (DistortionStrength > 0.0f || DistortionJaggedness > 0.0f)
 	{
 		const float Epsilon = max(1.0e-4f, 0.01f / (float)max(DistortionPeriod, 1));
 		const float2 WarpAt = MixtormatNoiseV2WarpDomain(Domain, DistortionPeriod,
 			DistortionOctaves, DistortionRoughness, DistortionLacunarity,
-			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
+			DistortionJaggedness);
 		const float2 WarpX = MixtormatNoiseV2WarpDomain(Domain + float2(Epsilon, 0.0f),
 			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
-			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
+			DistortionJaggedness);
 		const float2 WarpY = MixtormatNoiseV2WarpDomain(Domain + float2(0.0f, Epsilon),
 			DistortionPeriod, DistortionOctaves, DistortionRoughness, DistortionLacunarity,
-			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix);
+			Seed ^ 0x68bc21ebu, DistortionStrength, DistortionDirectionUV, DistortionCurlMix,
+			DistortionJaggedness);
 		Gradient = float2(dot(Gradient, (WarpX - WarpAt) / Epsilon),
 			dot(Gradient, (WarpY - WarpAt) / Epsilon));
 	}
