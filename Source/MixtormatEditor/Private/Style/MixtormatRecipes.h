@@ -171,6 +171,12 @@ enum class EMixtormatButtonState : uint8
 	// on every button but the last in a run, and the recipe does not know what a run is.
 	FMixtormatSurfaceRecipe MakeButtonRecipe(const FMixtormatTheme& Theme, EMixtormatButtonState State = EMixtormatButtonState::Rest, bool bShowSeparator = false);
 
+	// A button recipe plus one global top-to-bottom shade across the contiguous
+	// navigation tabs. TabIndex/TabCount select each segment of the same ramp.
+	// Never draws an offset shadow outside the tab geometry.
+	FMixtormatSurfaceRecipe MakeNavigationRailTabRecipe(
+		const FMixtormatTheme& Theme, EMixtormatButtonState State, int32 TabIndex, int32 TabCount);
+
 	// The label colour for a button state, from the resolved palette rather than the legacy one.
 	//
 	// Returned separately from the recipe because text is not a paint layer: it reaches the screen
