@@ -74,6 +74,8 @@ float DistortionLacunarity;
 float DistortionCurlMix;
 float2 DistortionDirectionUV;
 uint ProducesIds;
+uint HasMask;
+Texture2D<float> ScopedMask;
 
 RWTexture2D<float> OutValue;
 #if !MIXTORMAT_NOISE_VALUE_ONLY
@@ -292,7 +294,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// family reaches it through the one range mapping, so no family can be left off the list and
 	// silently arrive off-centre. OutValue above keeps each family's native range untouched --
 	// signed vs 0..1 is a separate published contract and must not be remapped here.
-	OutHeight[Pixel] = MixtormatNoiseV2SignedHeight(NoiseType, Value);
+	//
+	// A scoped mask gates the module height only. Value and Gradient stay ungated so Noise keeps
+	// working as a mask source and Height Push/Warp consumers read what they always read. HasMask 0
+	// substitutes 1 rather than a black default, so an unmasked module is unaffected.
+	const float Gate = HasMask != 0u ? ScopedMask.Load(int3(Pixel, 0)) : 1.0f;
+	OutHeight[Pixel] = MixtormatNoiseV2SignedHeight(NoiseType, Value) * Gate;
 	OutGradient[Pixel] = Gradient;
 	if (ProducesIds != 0u)
 	{

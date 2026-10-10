@@ -75,11 +75,10 @@ namespace
 			SHADER_PARAMETER(float, DistortionCurlMix)
 			SHADER_PARAMETER(FVector2f, DistortionDirectionUV)
 			SHADER_PARAMETER(uint32, ProducesIds)
-			// Scoped mask, mirroring the other generators. Noise used to bind neither of these and
-			// added its height ungated, so any mask scoped beneath a Noise generator -- Noise Gate
-			// included -- was gathered correctly and then silently discarded.
+			// Scoped mask, mirroring Rock/Cracks/Pebbles/Cliff. Noise used to bind neither flag nor
+			// texture and added its height ungated, so any mask scoped beneath a Noise generator --
+			// Noise Gate included -- was gathered correctly and then silently discarded.
 			SHADER_PARAMETER(uint32, HasMask)
-			SHADER_PARAMETER(float, MaskInfluence)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValue)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
@@ -296,8 +295,11 @@ struct FNoiseFields
 };
 
 // Null Layer selects source-local, value-only dispatch, with no generator companion allocations.
-FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNoiseRenderData& Noise,
-	const FLayerRenderData* Layer, const int32 LayerIndex, const int32 SourceChildIndex)
+// LayerCtx is null on that path, and a scoped mask is never resolved there: an inline mask source
+// has no generator to be scoped beneath.
+FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext* LayerCtx,
+	const FMixtormatNoiseRenderData& Noise, const FLayerRenderData* Layer,
+	const int32 LayerIndex, const int32 SourceChildIndex)
 {
 	const bool bValueOnly = Layer == nullptr;
 	FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -381,24 +383,16 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		const float WarpAngle = FMath::DegreesToRadians(Noise.DistortionDirection);
 		P->DistortionDirectionUV = FVector2f(FMath::Sin(WarpAngle), FMath::Cos(WarpAngle));
 		P->ProducesIds = bProducesIds ? 1u : 0u;
-		// Scoped mask. Height-only: Value and Gradient stay ungated so Noise keeps working as a
-		// mask source and Height Push/Warp consumers are unaffected. Influence stays inert when no
-		// mask exists -- "no mask" and "a white mask" must not collapse to the same picture.
-		if (Layer && !bValueOnly)
-		{
-			const bool bHasMask = HasScopedMasks(*Layer, SourceChildIndex);
-			P->HasMask = bHasMask ? 1u : 0u;
-			P->MaskInfluence = bHasMask ? Noise.MaskInfluence : 0.0f;
-			P->ScopedMask = bHasMask
-				? AddScopedFeatureMask(Ctx, *LayerCtx, *Layer, SourceChildIndex, true)
-				: Value;
-		}
-		else
-		{
-			P->HasMask = 0u;
-			P->MaskInfluence = 0.0f;
-			P->ScopedMask = Value;
-		}
+		// Scoped mask. Height-only by design: Value and Gradient stay ungated so Noise keeps
+		// working as a mask source and Height Push/Warp consumers are unaffected. No mask means
+		// HasMask 0 and the shader substitutes 1 -- "no mask" and "a white mask" must not collapse
+		// to the same picture.
+		const bool bHasMask = LayerCtx && Layer && !bValueOnly
+			&& HasScopedGeneratorMasks(*Layer, SourceChildIndex);
+		P->HasMask = bHasMask ? 1u : 0u;
+		P->ScopedMask = bHasMask
+			? AddScopedFeatureMask(Ctx, *LayerCtx, *Layer, SourceChildIndex, true)
+			: Value;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
@@ -434,7 +428,7 @@ FRDGTextureRef AddNoiseCoveragePass(FMixtormatComposeContext& Ctx, FRDGTextureRe
 FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatNoise& Noise)
 {
 	const FMixtormatNoiseRenderData Resolved = ResolveNoiseRenderData(Noise);
-	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Resolved, nullptr, INDEX_NONE, INDEX_NONE);
+	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, nullptr, Resolved, nullptr, INDEX_NONE, INDEX_NONE);
 	const bool bSigned = MixtormatOutputReferences::NoiseValueKind(
 		static_cast<EMixtormatNoiseType>(Resolved.Type)) == EMixtormatPublishedFieldKind::ScalarSigned;
 	return AddNoiseCoveragePass(Ctx, Fields.Value, bSigned);
@@ -451,7 +445,7 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	}
 	const EMixtormatNoiseType NoiseType = static_cast<EMixtormatNoiseType>(Noise.Type);
 	const bool bProducesIds = NoiseProducesIds(NoiseType);
-	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, Noise, &Layer, LayerCtx.LayerIndex, SourceChildIndex);
+	const FNoiseFields Fields = AddNoiseFieldPass(Ctx, &LayerCtx, Noise, &Layer, LayerCtx.LayerIndex, SourceChildIndex);
 	FRDGTextureRef Value = Fields.Value;
 	FRDGTextureRef Height = Fields.Height;
 	FRDGTextureRef Gradient = Fields.Gradient;

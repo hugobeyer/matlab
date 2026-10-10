@@ -82,6 +82,22 @@ namespace
 	}
 }
 
+// Shared with the Noise passes, which resolve a scoped mask the same way. Declared in
+// MixtormatGpuCompositorInternal.h.
+bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
+{
+	for (const FChildRenderData& Child : Layer.Children)
+	{
+		if (Child.Type == EMixtormatLayerChildType::Mask
+			&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
+			&& Child.Mask.Weight != 0.0f)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
 // position inside each bed and per-bed random alongside the signed height.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
@@ -1494,8 +1510,8 @@ namespace
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
 		default:
 			return true;
-		}
-	}
+}
+}
 
 	bool IsPreviewingAnyFlowTool(
 		const FRenderRequest& Request,
