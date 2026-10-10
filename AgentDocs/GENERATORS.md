@@ -119,6 +119,8 @@ zero yields no flow, and negative Height Scale reverses direction. It requires a
 explicit later, enabled, unscoped same-layer generator target: Strata, Rock Formation, Pebbles,
 Cracks, Cliff Strata, or Noise. Group targets remain gated.
 
+Structural Warp's Flow Amount and Trace Length currently reach GPU Flow tracing as constant scalars. The parameter wells retain numeric and Follow/Link editing; spatial driver creation is disabled in the context menu and driver popover until the render path accepts spatial modulation. Existing serialized bindings are preserved. Flow Steps remains numeric/reference-only.
+
 `GatherGeneratorHeightModuleChild` fills `FGeneratorStructuralWarpRenderData.Source` and
 `TargetChildIndex`. Published source demand is registered before prefix reuse. GPU state
 is per target: `GeneratorStructuralDisplacements` (RG32F) and the existing
