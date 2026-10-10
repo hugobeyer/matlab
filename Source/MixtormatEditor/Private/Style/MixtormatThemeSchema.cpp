@@ -987,12 +987,22 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		for (const FMixtormatThemeProperty& P : Properties())
 		{
 			const TSharedPtr<FJsonObject>* Section = nullptr;
-			if (!Root->TryGetObjectField(TabKey(P.Tab), Section) || !Section || !Section->IsValid())
-			{
-				continue;
-			}
 			const FString PropertyId = P.Id.ToString();
-			if (!(*Section)->HasField(PropertyId))
+			const bool bCurrentSection = Root->TryGetObjectField(TabKey(P.Tab), Section)
+				&& Section && Section->IsValid() && (*Section)->HasField(PropertyId);
+			// Old themes saved Shelf metrics under Layers. Read them only when the new
+			// Sources section does not already author that property.
+			if (!bCurrentSection && P.Tab == ETab::Sources)
+			{
+				const TSharedPtr<FJsonObject>* LegacySection = nullptr;
+				if (Root->TryGetObjectField(TEXT("layers"), LegacySection)
+					&& LegacySection && LegacySection->IsValid()
+					&& (*LegacySection)->HasField(PropertyId))
+				{
+					Section = LegacySection;
+				}
+			}
+			if (!Section || !Section->IsValid() || !(*Section)->HasField(PropertyId))
 			{
 				continue;
 			}
