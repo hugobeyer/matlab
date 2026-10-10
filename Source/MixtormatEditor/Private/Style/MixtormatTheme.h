@@ -721,6 +721,14 @@ namespace Mixtormat
 		// from the group header instead of sitting at the same left edge.
 		float LayerIndent = 14.0f;
 		float ChildIndent = 28.0f;
+
+		// Non-compositing Sources array card. Geometry only: styling comes from
+		// the shared Card and Button recipes, not a parallel Sources palette.
+		float SourcesBottomGap = 8.0f;
+		float SourcesEmptyHeight = 20.0f;
+		float SourcesRowGap = 1.0f;
+		float SourcesAddTabWidth = 28.0f;
+		float SourcesAddTabHeight = 20.0f;
 	};
 
 	struct FMixtormatLayerConnectionMetrics
