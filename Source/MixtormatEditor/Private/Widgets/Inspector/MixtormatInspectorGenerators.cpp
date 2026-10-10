@@ -2717,10 +2717,8 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 						LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field.")))]);
 	}
 	{
-		// MODE: weighted directional generation (P0 contract section 3). All shown weights are
-		// simultaneous contributions -- there is no source dropdown. Slope is compiled in the GPU
-		// pass but reads the preceding working-height snapshot, which P2 supplies, so its control
-		// is not exposed yet; Add/Mix compose the working Flow field, also P2.
+		// MODE uses the node's own Height, plus the current ordered surface Height
+		// for Slope. Scoped Flow contributions accumulate automatically through Add/Mix.
 		const auto bFlowOutput = [Noise]()
 		{
 			const FMixtormatNoise* N = Noise();
@@ -2747,9 +2745,23 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 					LOCTEXT("NoiseModeAngleHint", "Constant-direction orientation in degrees.")))]);
 		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
 			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeStrength", "Strength"),
-				Noise, &FMixtormatNoise::NoiseDirectionStrength, 0.0, 4.0, 1.0, 0.01,
-				LOCTEXT("NoiseModeStrengthHint", "Final scalar on the combined generated Flow."))]);
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeSlope", "Slope"),
+					Noise, &FMixtormatNoise::NoiseDirectionSlopeWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeSlopeHint", "Downhill direction of the preceding working surface height.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeStrength", "Strength"),
+					Noise, &FMixtormatNoise::NoiseDirectionStrength, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseModeStrengthHint", "Final scalar on the combined generated Flow.")))]);
+		const TSharedRef<SVerticalBox> Composition = AddCard(Cards, LOCTEXT("NoiseFlowComposition", "COMPOSITION"));
+		AddSliderRow(Composition, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowAdd", "Add"),
+					Noise, &FMixtormatNoise::NoiseFlowAdd, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseFlowAddHint", "Add this generated Flow to the preceding working Flow.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowMix", "Mix"),
+					Noise, &FMixtormatNoise::NoiseFlowMix, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseFlowMixHint", "Replace or interpolate the accumulated Flow inside this node's mask.")))]);
 	}
 	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 
