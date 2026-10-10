@@ -308,6 +308,8 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.ModeConstantWeight = FMath::Clamp(Finite(Noise.NoiseDirectionConstantWeight, Defaults.NoiseDirectionConstantWeight), 0.0f, 4.0f);
 	Out.ModeAngle = FMath::Clamp(Finite(Noise.NoiseDirectionAngle, Defaults.NoiseDirectionAngle), 0.0f, 360.0f);
 	Out.ModeStrength = FMath::Clamp(Finite(Noise.NoiseDirectionStrength, Defaults.NoiseDirectionStrength), 0.0f, 4.0f);
+	Out.FlowAdd = FMath::Clamp(Finite(Noise.NoiseFlowAdd, Defaults.NoiseFlowAdd), 0.0f, 4.0f);
+	Out.FlowMix = FMath::Clamp(Finite(Noise.NoiseFlowMix, Defaults.NoiseFlowMix), 0.0f, 1.0f);
 	return Out;
 }
 
