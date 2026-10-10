@@ -117,7 +117,7 @@ with zero influence/validity at flat or non-finite slopes. It does not reinterpr
 heterogeneous raw `Gradient`. Flow Amount and Trace Length control travel; Height Scale
 zero yields no flow, and negative Height Scale reverses direction. It requires a completed earlier source and an
 explicit later, enabled, unscoped same-layer generator target: Strata, Rock Formation, Pebbles,
-Cracks, Cliff Strata, or Noise. Group targets remain gated.
+Cracks, Cliff Strata, or Noise. Shared group Warp/Height Push modules remain disabled on expansion. Member-local structural modules and their parameter/input references now remap authored shared-child GUIDs to the member's effective child IDs; this does not expose new shared-module authoring.
 
 Structural Warp Flow Amount and Trace Length now accept the existing scalar Driver chain from an earlier enabled layer's completed combined mask. Gather validates the producer order and snapshots the signal; stage-8 Flow tracing applies `MixtormatApplyDriver` per destination texel before RK2 integration. Missing or unavailable snapshots preserve authored scalar values. Self/later-layer, child-mask and Region-ID drivers are not offered for these wells. Direct numeric editing and Follow/Link remain supported; Flow Steps stays integer numeric/reference-only. Existing serialized bindings are preserved.
 
