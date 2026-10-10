@@ -196,7 +196,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Gradient = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.Direction
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.SecondDirection
 			: (w.SecondDirection - w.Direction);
-		MixtormatNoiseV2CellDistanceVariation(w, WorleyCellDepth, Distance, Gradient);
+		MixtormatNoiseV2CellDistanceVariation(SampleDomain,
+			max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyCellDepth,
+			Distance, Gradient);
 		Value = saturate(Distance);
 		// Value is saturated above. Its derivative is zero on the flat plateaus;
 		// exactly on a clamp boundary the derivative is not unique, so choose zero.
