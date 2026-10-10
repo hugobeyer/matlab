@@ -464,6 +464,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					// selected, the matching generator panel below resolves through the same
 					// GetSelectedGenerator() accessor.
 					+ SScrollBox::Slot()[BuildSourcesPanel()]
+					+ SScrollBox::Slot()[BuildGeneratorInputControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildRunoffControls()]

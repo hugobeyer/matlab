@@ -672,6 +672,7 @@ namespace MixtormatParameterBinding
 				Child.ChildId = FGuid::NewGuid();
 			}
 			ChildIds.Add(Child.ChildId);
+			Child.ScopeOwnerChildId.Invalidate();
 
 			for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
 			{
@@ -680,6 +681,7 @@ namespace MixtormatParameterBinding
 					OwnedChild.ChildId = FGuid::NewGuid();
 				}
 				ChildIds.Add(OwnedChild.ChildId);
+				OwnedChild.ScopeOwnerChildId = Child.ChildId;
 			}
 		}
 	}

@@ -1620,6 +1620,8 @@ private:
 	// The selected Sources shelf entry's card: name, kind, enabled. The kind's own parameter
 	// panel opens beneath it through the shared generator resolver.
 	TSharedRef<SWidget> BuildSourcesPanel();
+	TSharedRef<SWidget> BuildGeneratorInputControls();
+	TSharedRef<SWidget> BuildGeneratorInputMenu(bool bHeightInput);
 	// The one list of child types that own the child-inspector scrollbox. Both master visibility
 	// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel
 	// and still leave the layer inspector showing underneath.
