@@ -31,6 +31,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 
 #define FLOW_PI 3.14159265358979f
 #define FLOW_BIG 1e20f
@@ -68,6 +69,12 @@ float Bulge;          // UV, signed
 float TraceLength;    // UV
 int Steps;
 float WarpStrength;
+#if FLOW_STAGE == 8
+float4 FlowDriverParamsA[2];
+float4 FlowDriverParamsB[2];
+Texture2D<float> FlowDriverSignal0;
+Texture2D<float> FlowDriverSignal1;
+#endif
 uint CarveMode;       // 0 groove, 1 deposit
 float Depth;
 float Width;          // UV
@@ -418,7 +425,17 @@ float4 FlowAt(float2 UV)
 float2 TraceFlowCoordinate(float2 UV)
 {
 	const int StepCount = max(Steps, 1);
-	const float H = TraceLength * WarpStrength / (float)StepCount;
+	float Length = TraceLength;
+	float Strength = WarpStrength;
+#if FLOW_STAGE == 8
+	Strength = MixtormatApplyDriver(WarpStrength,
+		FlowDriverSignal0.SampleLevel(LinearWrapSampler, UV, 0.0f),
+		FlowDriverParamsA[0], FlowDriverParamsB[0]);
+	Length = max(0.0f, MixtormatApplyDriver(TraceLength,
+		FlowDriverSignal1.SampleLevel(LinearWrapSampler, UV, 0.0f),
+		FlowDriverParamsA[1], FlowDriverParamsB[1]));
+#endif
+	const float H = Length * Strength / (float)StepCount;
 	float2 P = UV;
 	[loop]
 	for (int I = 0; I < StepCount; I++)
