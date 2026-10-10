@@ -1484,6 +1484,35 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpSourceMenu)),
 		LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Choose source later leaves Warp neutral.")));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorWarpStageLabel", "Execution Stage"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Warp]()
+		{
+			const FMixtormatBehavior* B = Warp();
+			return B && B->Stage == EMixtormatBehaviorStage::PreGeneration
+				? LOCTEXT("BehaviorWarpPreStage", "Before Generation")
+				: LOCTEXT("BehaviorWarpPostStage", "After Generation");
+		}), FOnGetContent::CreateLambda([this]() -> TSharedRef<SWidget>
+		{
+			MixtormatMenu::FBuilder Menu;
+			const auto SetStage = [this](EMixtormatBehaviorStage Stage)
+			{
+				FMixtormatBehavior* B = GetSelectedBehaviorWarp();
+				if (!B || (Stage == EMixtormatBehaviorStage::PreGeneration
+					&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)) { return; }
+				B->Stage = Stage;
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			};
+			Menu.Item(LOCTEXT("BehaviorWarpStagePostChoice", "After Generation"), nullptr,
+				FSimpleDelegate::CreateLambda([SetStage]() { SetStage(EMixtormatBehaviorStage::PostGeneration); }));
+			Menu.Item(LOCTEXT("BehaviorWarpStagePreChoice", "Before Generation"), nullptr,
+				FSimpleDelegate::CreateLambda([SetStage]() { SetStage(EMixtormatBehaviorStage::PreGeneration); }))
+				.Enabled(GetSelectedBehaviorWarp()
+					&& GetSelectedBehaviorWarp()->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput);
+			return Menu.Build();
+		})),
+		LOCTEXT("BehaviorWarpStageHint", "Before Generation warps native sampling and generated IDs; Own Height Gradient requires After Generation.")));
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("BehaviorWarpInfluenceLabel", "Influence Field"),
 		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
 		{
