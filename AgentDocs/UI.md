@@ -68,20 +68,28 @@ the compositor, height references and grouping never see a source as a stack mem
 generator child uses. Rows select on left click and delete from their context menu; selection is
 exclusive — layer, child and group selection clear the source and vice versa. The Inspector
 shows a SOURCE card (name, kind, enabled) above the kind's own generator panel, which resolves
-through the shared `GetSelectedGenerator()` accessor. Sources have canonical addresses:
-`EMixtormatChildOwnerType::Source` (Owner = SourceId) resolves the entry's child for inspector
-gating, while `ResolveContainer` returns null for it, so container-mutating actions (Copy Output,
-scope-owner searches) see unavailable — Copy's tooltip explains that sources do not publish yet.
-Source adds/deletes/renames break history coalescing like layer/group structure changes, and
-document lifecycle (new/open/save/save-as) snapshots sources alongside layers. Not implemented:
-evaluation/publication, target connections, Paste as Instance and the layer-generator Influence
-Only toggle. Copy Source / Paste Copied Source preserve external source dependencies while assigning new Source/child identities. Internal scoped ownership and structural Height Push/Warp target child GUIDs are remapped to the duplicated children; unresolved external targets remain unchanged. Source identity is repaired on load: shelf `SourceId`, root `ChildId` and inert
-`OwnedChildren` child IDs share the document-wide namespaces; the root is unscoped and each owned
-child is normalised as a direct child of the root. Output references now append a `Layer|Shelf`
-owner kind and `SourceShelfId`; `ClassifyShelfSourceReference` provides explicit repair status for
-shelf links, but existing layer-only resolvers reject them until source evaluation exists. There is
-no shelf hierarchy/tool UI or evaluator yet, so `OwnedChildren` and shelf references are persisted
-ownership/address data only. Authoring only.
+through the shared `GetSelectedGenerator()` accessor. Sources use `EMixtormatChildOwnerType::Source` (Owner = SourceId) for selection and
+Inspector routing. The canonical Runtime `FMixtormatBindingScope` now also accepts
+Sources: root-generator and owned-child parameter addresses use their real SourceId
+and ChildId; Copy/Paste Reference, Follow/Link, linked writes and Go to Source use
+that same scope, never synthetic layer IDs. A transient producer copy applies
+direct parameter references before GPU gather. Spatial parameter Drivers on the
+shelf remain disabled until a supported signal consumer exists.
+
+Sources are document data: new/open/save/save-as, undo and copy/paste preserve
+source identities and bindings. Copy Source / Paste Copied Source create fresh
+root/owned-child IDs, remap internal structural target GUIDs and shelf output
+references, and retain valid external dependencies. Source IDs, root child IDs and
+owned-child IDs are repaired against document-wide namespaces on load. The root
+is unscoped and owned children are normalized to the root.
+
+Demanded Sources already evaluate and publish signed Height, Flow and UVMap
+fields for generator HeightSource/WarpSource through the producer graph, ahead
+of the ordinary stack (see `COMPOSITION.md`). `ResolveContainer` remains null
+for Source rows: there is no shelf child hierarchy/tool authoring UI, generic
+Copy Output/paste-as-instance authoring, or general mask/ID/colour consumption
+there yet. Existing layer-only published-output resolvers remain gated; the
+future shelf evaluator extensions must use typed owner-kind keys, not fake layers.
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
