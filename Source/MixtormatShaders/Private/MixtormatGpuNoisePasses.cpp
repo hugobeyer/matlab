@@ -75,6 +75,12 @@ namespace
 			SHADER_PARAMETER(float, DistortionCurlMix)
 			SHADER_PARAMETER(FVector2f, DistortionDirectionUV)
 			SHADER_PARAMETER(uint32, ProducesIds)
+			// Scoped mask, mirroring the other generators. Noise used to bind neither of these and
+			// added its height ungated, so any mask scoped beneath a Noise generator -- Noise Gate
+			// included -- was gathered correctly and then silently discarded.
+			SHADER_PARAMETER(uint32, HasMask)
+			SHADER_PARAMETER(float, MaskInfluence)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValue)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutGradient)
@@ -375,6 +381,24 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, const FMixtormatNo
 		const float WarpAngle = FMath::DegreesToRadians(Noise.DistortionDirection);
 		P->DistortionDirectionUV = FVector2f(FMath::Sin(WarpAngle), FMath::Cos(WarpAngle));
 		P->ProducesIds = bProducesIds ? 1u : 0u;
+		// Scoped mask. Height-only: Value and Gradient stay ungated so Noise keeps working as a
+		// mask source and Height Push/Warp consumers are unaffected. Influence stays inert when no
+		// mask exists -- "no mask" and "a white mask" must not collapse to the same picture.
+		if (Layer && !bValueOnly)
+		{
+			const bool bHasMask = HasScopedMasks(*Layer, SourceChildIndex);
+			P->HasMask = bHasMask ? 1u : 0u;
+			P->MaskInfluence = bHasMask ? Noise.MaskInfluence : 0.0f;
+			P->ScopedMask = bHasMask
+				? AddScopedFeatureMask(Ctx, *LayerCtx, *Layer, SourceChildIndex, true)
+				: Value;
+		}
+		else
+		{
+			P->HasMask = 0u;
+			P->MaskInfluence = 0.0f;
+			P->ScopedMask = Value;
+		}
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
