@@ -6,6 +6,8 @@
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
 
 uint GeneratorLayer;
+uint UsePreGenerationUV;
+Texture2D<float2> PreGenerationUV;
 float2 GeneratorUVScale;
 float2 GeneratorUVOffset;
 int GeneratorUVRotation;
@@ -14,6 +16,14 @@ uint GeneratorUVFlipV;
 
 float2 MixtormatGeneratorUV(float2 UV)
 {
+	if (UsePreGenerationUV != 0u)
+	{
+		uint W, H;
+		PreGenerationUV.GetDimensions(W, H);
+		const int2 Pixel = clamp(int2(floor(UV * float2(W, H))), int2(0, 0), int2(W, H) - 1);
+		const float2 P = PreGenerationUV.Load(int3(Pixel, 0));
+		UV = all(isfinite(P)) ? P : UV;
+	}
 	// Child generators retain their original evaluation frame, including its last bits.
 	return GeneratorLayer != 0u
 		? MixtormatSourceUV(UV, GeneratorUVScale, GeneratorUVOffset,
