@@ -107,8 +107,7 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 		Clipboard.Source = Address;
 	}
 	ChildClipboardScopedRows.Reset();
-	if (!bAsInstance && (Child->Type == EMixtormatLayerChildType::IdGroup
-		|| Child->Type == EMixtormatLayerChildType::Behavior))
+	if (!bAsInstance)
 	{
 		Clipboard.Source = Address;
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
@@ -308,7 +307,8 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		}
 		if (Clipboard.Mode == EMixtormatChildClipboardMode::Copy
 			&& (Clipboard.Payload.Type == EMixtormatLayerChildType::IdGroup
-				|| Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior))
+				|| Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior
+				|| !ChildClipboardScopedRows.IsEmpty()))
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(Clipboard.Payload);
@@ -365,7 +365,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			|| !WorkingLayers.IsValidIndex(DestLayerIndex)
 			|| WorkingLayers[DestLayerIndex].Type != EMixtormatLayerType::Generator
 			|| !DestContainer->IsValidIndex(AnchorChildIndex)
-			|| (*DestContainer)[AnchorChildIndex].Type != EMixtormatLayerChildType::Generator
+			|| !CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Clipboard.Payload)
 			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))
 		{
 			return INDEX_NONE;
@@ -376,6 +376,12 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
+		if (DestContainer->IsValidIndex(AnchorChildIndex)
+			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Clipboard.Payload)
+			&& CanAddScopedChild(*DestContainer, AnchorChildIndex))
+		{
+			return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
+		}
 		// Ordinary copies are detached from instance identity; live output dependencies are
 		// checked below. A mask filter only ever travels scoped beneath the mask it filters
 		// and can never be pasted as a standalone row.
@@ -625,7 +631,8 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		Pasted.SourceChildId = FGuid();
 		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
 		if (Pasted.Type == EMixtormatLayerChildType::IdGroup
-			|| Pasted.Type == EMixtormatLayerChildType::Behavior)
+			|| Pasted.Type == EMixtormatLayerChildType::Behavior
+			|| !ChildClipboardScopedRows.IsEmpty())
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(MoveTemp(Pasted));
