@@ -45,7 +45,8 @@ namespace MixtormatChildScope
 	MIXTORMATRUNTIME_API FBehaviorInputStatus ValidateBehaviorInputs(
 		const TArray<FMixtormatLayer>& EffectiveLayers,
 		int32 LayerIndex, int32 BehaviorChildIndex,
-		const TArray<FMixtormatSourceEntry>& Sources);
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FMixtormatLayer* ResolvedLayer = nullptr);
 
 	// Clears ScopeOwnerChildId when ResolveOwnerIndex would return INDEX_NONE. Returns true if
 	// any child changed.
