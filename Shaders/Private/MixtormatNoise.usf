@@ -240,6 +240,38 @@ void GeneratedFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutGeneratedFlowValidity[Pixel] = bValid ? 1.0f : 0.0f;
 }
 
+// Transport an accumulated displacement vector through a Distort coordinate remap.
+// All vectors are expressed in the same destination tile UV axes: sample at the
+// remapped location without normalization or arbitrary rotation. The vector's
+// magnitude and influence are interpolated; validity is sampled conservatively.
+Texture2D<float4> TransportFlow;
+Texture2D<float> TransportValidity;
+Texture2D<float2> TransportCoordinates;
+SamplerState TransportLinearWrapSampler;
+SamplerState TransportPointWrapSampler;
+RWTexture2D<float4> OutTransportFlow;
+RWTexture2D<float> OutTransportValidity;
+
+[numthreads(8, 8, 1)]
+void FlowTransportCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 Pixel = int2(DispatchThreadId.xy);
+    if (any(Pixel >= OutputSize)) { return; }
+    const float2 Lifted = TransportCoordinates.Load(int3(Pixel, 0));
+    if (!all(isfinite(Lifted)))
+    {
+        OutTransportFlow[Pixel] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        OutTransportValidity[Pixel] = 0.0f;
+        return;
+    }
+    const float2 UV = frac(Lifted);
+    const float4 Field = TransportFlow.SampleLevel(TransportLinearWrapSampler, UV, 0);
+    const float Valid = TransportValidity.SampleLevel(TransportPointWrapSampler, UV, 0);
+    const bool bValid = all(isfinite(Field)) && Valid > 0.5f;
+    OutTransportFlow[Pixel] = bValid ? Field : float4(0.0f, 0.0f, 0.0f, 0.0f);
+    OutTransportValidity[Pixel] = bValid ? 1.0f : 0.0f;
+}
+
 // Reusable Add/Mix composition over canonical Flow fields. P1 ships the operation; P2 connects
 // it to the ordered working-field accumulation. The formula is the P0 contract exactly:
 //   MixWeight = saturate(Mix * Mask); AddWeight = Add * Mask;
