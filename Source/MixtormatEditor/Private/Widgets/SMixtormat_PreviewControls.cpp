@@ -65,14 +65,17 @@ namespace
 			const Mixtormat::FMixtormatPreviewMetrics& Preview = FMixtormatThemeStore::GetResolved().PreviewLayout;
 			const int32 RingCount = MixtormatTokens::QuickControlsGuideGlowRings;
 			const float CenterOpacity = FMath::Clamp(Preview.QuickControlsGuideGlowOpacity
-				* WidgetStyle.GetColorAndOpacityTint().A * Fade, 0.0f, 1.0f);
+				* Preview.QuickControlsVignetteIntensity * WidgetStyle.GetColorAndOpacityTint().A * Fade, 0.0f, 1.0f);
 			float PreviousOpacity = 0.0f;
 			for (int32 Ring = 0; Ring < RingCount && Preview.QuickControlsGuideGlowDiameter > 0.0f; ++Ring)
 			{
 				const float T = static_cast<float>(Ring + 1) / RingCount;
 				const float Diameter = Preview.QuickControlsGuideGlowDiameter
 					* (1.0f - static_cast<float>(Ring) / RingCount);
-				const float Opacity = CenterOpacity * T * T * (3.0f - 2.0f * T);
+				const float Inner = FMath::Clamp(Preview.QuickControlsVignetteInnerRadius, 0.0f, 0.95f);
+				const float Radial = FMath::Clamp((T - Inner) / FMath::Max(1.0f - Inner, SMALL_NUMBER), 0.0f, 1.0f);
+				const float Biased = FMath::Pow(Radial, FMath::Max(Preview.QuickControlsVignetteBias, 0.1f));
+				const float Opacity = CenterOpacity * FMath::Pow(Biased, FMath::Max(Preview.QuickControlsVignetteFalloff, 0.25f));
 				const float RingOpacity = (Opacity - PreviousOpacity)
 					/ FMath::Max(1.0f - PreviousOpacity, SMALL_NUMBER);
 				PreviousOpacity = Opacity;
