@@ -826,6 +826,19 @@ enum class EMixtormatNoiseWorleyMetric : uint8
 	Chebyshev UMETA(DisplayName = "Chebyshev")
 };
 
+// Which creation preset a Noise module was authored as. Noise and Flow are two presets of one
+// generator implementation (AgentDocs/FINAL_BEHAVIOR_PLAN.md section 2): both run the existing
+// Noise V2 algorithms and differ only in output defaults and preview behavior. The preset
+// records the authoring role so display name and preview behavior persist independently of the
+// output toggles -- a Flow that later enables Height stays a Flow.
+// New enum; serialized by value. Noise = 0 keeps every existing asset on the Noise preset.
+UENUM(BlueprintType)
+enum class EMixtormatNoisePreset : uint8
+{
+	Noise UMETA(DisplayName = "Noise"),
+	Flow UMETA(DisplayName = "Flow")
+};
+
 // Noise: a tileable, seeded, resolution-independent scalar field producer.
 //
 // It publishes what the algorithm genuinely produces -- a Value, a Gradient with directional
@@ -983,6 +996,72 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	// after Noise V2.2; identity default.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float NoiseHeightBias = 0.0f;
+
+	// ---- P0 unified field contract (AgentDocs/FIELD_CONTRACT_P0.md) ----
+	// Appended serialized properties; every default is the Noise preset's identity state, so
+	// existing assets load unchanged.
+
+	// Creation preset identity. Records the authoring role independently of the output toggles
+	// below: a Flow that later enables Height keeps its name and preview behavior. This changes
+	// defaults only; both presets run the same Noise V2 implementation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
+	EMixtormatNoisePreset NoisePreset = EMixtormatNoisePreset::Noise;
+
+	// Independent output gates. Write Height OFF contributes zero height -- the internal scalar
+	// noise still evaluates wherever gradients or directional generation need it, and Flow
+	// calculations never trigger height normalization or add hidden relief. Write Flow OFF does
+	// not remove the module's published Gradient or FlowDirection outputs; it only stops the
+	// module adding its generated Flow to the working field.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
+	bool bNoiseWriteHeight = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
+	bool bNoiseWriteFlow = false;
+
+	// MODE: weighted directional generation. All four contributions combine simultaneously;
+	// there is no source dropdown. With the bases defined in FIELD_CONTRACT_P0.md:
+	//   GeneratedFlow = HeightWeight * OwnHeightDirection + SlopeWeight * SurfaceSlopeDirection
+	//                 + CurlWeight * CurlDirection + ConstantWeight * ConstantDirection;
+	//   GeneratedFlow *= Strength.
+	// A zero-weight term is an exact identity; the combined vector is never normalized, so a
+	// zero result stays exactly zero and opposing weights can cancel.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseDirectionHeightWeight = 1.0f;
+
+	// Downhill gradient of the height accumulated from preceding operations, not this node's
+	// own noise. Zero on a flat or unavailable surface: no invented movement.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseDirectionSlopeWeight = 0.0f;
+
+	// The existing Noise V2 curl helper, reused; not a second solver.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseDirectionCurlWeight = 0.0f;
+
+	// Uniform direction from Angle, scaled by this weight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseDirectionConstantWeight = 0.0f;
+
+	// Constant-direction orientation in degrees, counterclockwise from +U in tile UV with V up;
+	// the GPU writes (cos Angle, -sin Angle) into the texture's V-down frame. 0 points +U.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float NoiseDirectionAngle = 0.0f;
+
+	// Final scalar on the combined GeneratedFlow. Zero is a neutral generated contribution;
+	// with Mix > 0 it intentionally interpolates the existing Flow toward zero (see the
+	// composition contract -- exact identity requires Add = 0 and Mix = 0).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseDirectionStrength = 1.0f;
+
+	// COMPOSITION. With the child mask M:
+	//   MixWeight = saturate(Mix * M); AddWeight = Add * M;
+	//   FlowOut = lerp(FlowIn, GeneratedFlow, MixWeight) + GeneratedFlow * AddWeight.
+	// Add = 0 and Mix = 0 (or Mask = 0) is the exact identity. Add may be negative to subtract
+	// the generated contribution; Mix is clamped by saturate.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Composition", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float NoiseFlowAdd = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Composition", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseFlowMix = 0.0f;
 };
 
 

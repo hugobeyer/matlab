@@ -4,7 +4,35 @@ Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; revi
 
 This document describes the target architecture and the currently implemented Behavior paths. **Legacy effects remain live in the source**; do not treat the removal sections below as implementation evidence.
 
+> **P0 field contract (supersedes conflicting architecture below).**
+> `AgentDocs/FINAL_BEHAVIOR_PLAN.md` and `AgentDocs/FIELD_CONTRACT_P0.md` are the source of
+> truth for the final architecture. Where this document conflicts, they win:
+>
+> 1. Flow is a **Generator preset** of the Noise V2 implementation, not a Behavior. The
+>    `FlowField` Behavior type and the flow-solve parameters on `FMixtormatBehaviorFlowSettings`
+>    are legacy paths, removed in P3 — not part of the final architecture.
+> 2. Typed field sockets with published references (`Direction` / `Height` / `Influence`
+>    source routing) are replaced by **automatic field inheritance**: children read the
+>    working fields of preceding siblings. No Inspector target/source routing survives;
+>    socket and picker removal is P3/P4 work.
+> 3. The Behavior flow float4 packing (direction, signed distance, influence) is superseded
+>    by the canonical Flow layout in `FIELD_CONTRACT_P0.md` section 1 (VectorXY with
+>    magnitude in RG, influence in A, validity in a separate texture, signed distance a
+>    separate field). Migration happens in P2; existing channels are not silently
+>    reinterpreted.
+> 4. FlowDirection publication after post-generation Behaviors (section 8 below) is the
+>    known evaluation-order defect; the required order evaluates intrinsic Flow **before**
+>    scoped children (P2).
+>
+> Sections 1–9 below remain an accurate description of the *currently implemented* paths.
+
 ## 1. Target: one structural authoring path
+
+> *Superseded in part:* under the final architecture a Flow preset child of a Generator is a
+> field producer (a second authoring path that produces rather than rewrites), and Behaviors
+> consume working fields automatically instead of through typed socket references. The
+> description below is the current implementation; migration assignments are in
+> `FIELD_CONTRACT_P0.md` section 7.
 
 A **Behavior** (`EMixtormatLayerChildType::Behavior`, payload `FMixtormatBehavior`) is the only way to rewrite a Generator's own output. It is an ordinary entry in the flat `Layer.Children` array, scoped to an **earlier Generator child** through `ScopeOwnerChildId`. There is no separate target edge and no module that lives at its own authored position in the child chain.
 
