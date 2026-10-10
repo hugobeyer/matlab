@@ -1071,8 +1071,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpInfluenceMenu()
 	const FMixtormatLayer& Dest = WorkingLayers[LayerIndex];
 	const int32 ChildIndex = Dest.Children.IndexOfByPredicate(
 		[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
-	if (!Dest.Children.IsValidIndex(ChildIndex)
-		|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Dest.Children, ChildIndex) == INDEX_NONE)
+	const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(Dest.Children, ChildIndex);
+	if (!Dest.Children.IsValidIndex(ChildIndex) || OwnerIndex == INDEX_NONE)
 	{
 		return Menu.Build();
 	}
@@ -1110,7 +1110,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpInfluenceMenu()
 				Ref.OutputName = Output.Name;
 				Ref.Kind = Output.FieldKind;
 				const bool bValid = MixtormatOutputReferences::ResolveSource(
-					WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 				Menu.Item(FText::Format(LOCTEXT("BehaviorWarpInfluenceChoice", "{0} / {1} / {2}"),
 					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
 					MixtormatIcons::Mask(),
@@ -1412,7 +1412,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorCarveTitle", "PUSH"))
+				.Title(LOCTEXT("BehaviorCarveTitle", "CARVE / DEPOSIT"))
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Carve]()
@@ -1503,7 +1503,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 				: INDEX_NONE;
 			const bool bValid = Ref.Kind == EMixtormatPublishedFieldKind::Scalar01
 				&& !Ref.IsShelfSource() && ChildIndex != INDEX_NONE
-				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 			return bValid ? FText::FromName(Ref.OutputName)
 				: FText::Format(LOCTEXT("BehaviorWarpInfluenceUnavailable", "Unavailable / {0}"),
 					FText::FromName(Ref.OutputName));
