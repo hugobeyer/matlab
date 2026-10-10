@@ -1,5 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
+#include "UI/Layers/SMixtormatSourceRow.h"
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatLocatorOutline.h"
@@ -694,6 +695,18 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	// F12 is an alias for F2, not a second gesture: on a laptop whose F-row is media keys by
 	// default, F2 is the one most likely to be stolen by the OS before Slate ever sees it.
 	// F2 stays the shortcut the menus advertise.
+	if (!bModifierDown && SelectedSourceId.IsValid()
+		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12))
+	{
+		if (const TWeakPtr<SMixtormatSourceRow>* WeakRow = SourceRowWidgets.Find(SelectedSourceId))
+		{
+			if (const TSharedPtr<SMixtormatSourceRow> Row = WeakRow->Pin())
+			{
+				Row->BeginRename();
+				return FReply::Handled();
+			}
+		}
+	}
 	if (!bModifierDown
 		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12)
 		&& BeginRenameSelection())
