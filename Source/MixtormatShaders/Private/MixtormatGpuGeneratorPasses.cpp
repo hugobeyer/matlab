@@ -1738,6 +1738,34 @@ namespace
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 				}
 			}
+			// Directly nested Flow Fields transport this operation's input coordinates.
+			// A field without a mask uses its own generator-derived flow and full scope.
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+				|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+			{
+				for (const FChildRenderData& Nested : Layer.Children)
+				{
+					if (Nested.Type != EMixtormatLayerChildType::Behavior
+						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
+						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
+					FRDGTextureRef UnusedCoverage = nullptr;
+					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+						Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
+						UnusedCoverage, nullptr, Nested.SourceChildIndex);
+					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
+					if (Warped && Warped->IsComplete()
+						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
+						&& Warped->Texture->Desc.Extent == Size
+						&& Warped->Texture->Desc.Format == PF_G32R32F)
+					{
+						Coordinates = Coordinates
+							? RemapBundleField(Ctx, Coordinates, Warped->Texture, 3)
+							: Warped->Texture;
+					}
+				}
+			}
 			if (Coordinates)
 			{
 				if (Child.Behavior.Type == EMixtormatBehaviorType::Deform)
