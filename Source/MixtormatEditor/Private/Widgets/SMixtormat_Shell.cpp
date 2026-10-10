@@ -647,8 +647,21 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 	// list of every preview control reads as a wall; each card is one feature, and the icon buttons
 	// run inline inside it rather than as a column of full-width bars.
 	TSharedRef<SVerticalBox> PreviewSection = SNew(SVerticalBox);
+	// Reuse the Inspector's Card builder; page-level gaps remain independent
+	// of preview-overlay button spacing or marking-menu geometry.
+	const auto AddGlobalCard = [this](const TSharedRef<SVerticalBox>& Panel, const FText& Title)
 	{
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewVisibility", "VISIBILITY"));
+		if (Panel->GetChildren()->Num() > 0)
+		{
+			Panel->AddSlot().AutoHeight()
+			[
+				SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().Shell.GlobalCardGap)
+			];
+		}
+		return AddCard(Panel, Title);
+	};
+	{
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewVisibility", "VISIBILITY"));
 		AddGroupToggle(Card, LOCTEXT("PreviewGroupRender", "Render strip"),
 			LOCTEXT("PreviewGroupRenderHint", "Render scale and the Final popup on the viewport."),
 			bPreviewGroupRenderVisible);
@@ -666,12 +679,12 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 			bPreviewGroupOutputVisible);
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewRender", "RENDER"));
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewRender", "RENDER"));
 		AddSliderRow(Card, BuildPreviewRenderControls());
 	}
 	{
 		// Presets and the light sliders are one feature: what the surface is lit by.
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING"));
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING"));
 		AddGroupToggle(Card, LOCTEXT("PreviewLightGizmo", "Light Gizmo"),
 			LOCTEXT("PreviewLightGizmoHint", "Show the lighting direction gizmo while rotating lighting with RMB."),
 			bPreviewLightGizmoVisible);
@@ -679,22 +692,22 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 		AddSliderRow(Card, BuildPreviewSceneControls());
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY"));
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY"));
 		AddSliderRow(Card, BuildPreviewGeometryControls(EPreviewControlLayout::Inline));
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewCamera", "CAMERA"));
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewCamera", "CAMERA"));
 		AddSliderRow(Card, BuildPreviewCameraControls());
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddCard(PreviewSection, LOCTEXT("GlobalPreviewOutput", "OUTPUT"));
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewOutput", "OUTPUT"));
 		AddSliderRow(Card, BuildPreviewOutputControls());
 	}
 
 	return SNew(SScrollBox)
 		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 		+ SScrollBox::Slot()
-		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.GroupOuterGap, 0.0f))
+		.Padding(FMargin(FMixtormatThemeStore::GetResolved().Shell.GlobalPagePadding, 0.0f))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
