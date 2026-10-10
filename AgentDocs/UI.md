@@ -54,10 +54,16 @@ Existing layer-level creation stays unchanged. The shared procedural removal han
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
 No build/runtime validation has been run.
 
-The Sources shelf is a non-compositing list below the layer rows, built by
+The Sources shelf is a non-compositing array card above the layer creation toolbar, built by
 `SMixtormat::BuildSourcesShelf` with `UI/Layers/SMixtormatSourcesShelf.*` shell and
 `UI/Layers/SMixtormatSourceRow.*` rows. It reuses the inspector foldout's header anatomy,
-tokens and surface; expansion is session UI state (`bSourcesExpanded`) and never reaches the
+tokens and surface; the body now uses the shared Card recipe, compact Menu-row styling,
+and an always-visible (when expanded) + tab attached at the card's bottom-right edge.
+The tab reuses GroupAction button styling and opens the existing six-generator menu.
+Empty cards show no instructional text, but retain the + tab. The layout is authored by
+`LayerLayout.SourcesBottomGap`, `SourcesEmptyHeight`, `SourcesRowHeight`, `SourcesRowGap`,
+`SourcesAddTabWidth`, and `SourcesAddTabHeight` under UI STYLE > Layers > Sources.
+Expansion is session UI state (`bSourcesExpanded`) and never reaches the
 document or the render. Sources are document data (`FMixtormatSourceEntry` on
 `UMixtormatMaterial`, mirrored as `WorkingSources` beside -- never inside -- `WorkingLayers`), so
 the compositor, height references and grouping never see a source as a stack member. Add Source
@@ -136,6 +142,15 @@ ordinary layer icons retain their default dimensions. No runtime ownership/order
 The user confirmed compilation through phase 4; this latest collapse/navigation/highlight slice is
 source-reviewed only. No agent tests, diagnostics, builds or commands, or runtime/visual/performance
 validation, were performed.
+
+## Generator Input controls
+
+`BuildGeneratorInputControls()` is still mounted in `SMixtormat_Inspector.cpp`.
+Generator `HeightSource` / `WarpSource` are persisted, disabled-by-default inputs and
+are distinct from the Height Push / Structural Warp child module sockets. Do not
+remove, alias, or migrate these fields until their runtime/gather behavior is
+verified and removal is explicitly approved. The visible hierarchy remains the
+canonical authoring surface for Push/Warp operations.
 
 ## Inspector builders
 
