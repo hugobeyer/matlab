@@ -589,7 +589,7 @@ NUM("LayerLayout.SourcesAddTabHighlight", Sources, "Add Button", "Add Tab Highli
 NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("LayerLayout.SourcesAddIconSize", Sources, "Add Button", "Icon Size (Square)", LayerLayout.SourcesAddIconSize, 4, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesAddTabBottomRadius", Sources, "Add Button", "Bottom Radius", LayerLayout.SourcesAddTabBottomRadius, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Paint);
-		SetLocateTarget(P, LocateBegin, ETarget::Card);
+		SetLocateTarget(P, LocateBegin, ETarget::SourcesShelf);
 
 // BUTTONS
 		LocateBegin = P.Num();
