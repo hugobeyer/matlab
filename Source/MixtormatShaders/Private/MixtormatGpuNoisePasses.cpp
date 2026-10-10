@@ -102,9 +102,9 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseCoverageCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "CoverageCS", SF_Compute);
 
-	// Bars: the authored direction snapped to the integer wave vector that tiles.
+	// Bars / Phasor: the authored direction snapped to a tileable integer wave vector.
 	//
-	// A stripe at an arbitrary angle does not close on the tile, so the phase direction snaps to
+	// A global stripe at an arbitrary angle does not close on the tile, so the phase direction snaps to
 	// the nearest small coprime integer vector and is scaled so a whole number of cycles crosses
 	// the tile -- the same lattice snap Strata Carver's bedding uses, kept local here because the
 	// original is file-private to the generator-pass file. Scale is cycles across the tile; the
