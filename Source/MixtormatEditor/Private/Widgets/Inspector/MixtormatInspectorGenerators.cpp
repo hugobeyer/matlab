@@ -941,6 +941,189 @@ TSharedRef<SWidget> SMixtormat::BuildHeightPushControls()
 		];
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpSourceMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Selected = ResolveChildAt(Address);
+	if (!Selected || Selected->Type != EMixtormatLayerChildType::Behavior
+		|| Selected->IsInstance()) { return Menu.Build(); }
+
+	const int32 DestinationLayerIndex = WorkingLayers.IndexOfByPredicate(
+		[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+	if (!WorkingLayers.IsValidIndex(DestinationLayerIndex)) { return Menu.Build(); }
+	const FMixtormatLayer& Destination = WorkingLayers[DestinationLayerIndex];
+	const int32 BehaviorIndex = Destination.Children.IndexOfByPredicate(
+		[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+	if (!Destination.Children.IsValidIndex(BehaviorIndex)) { return Menu.Build(); }
+	const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+		Destination.Children, BehaviorIndex);
+	if (OwnerIndex == INDEX_NONE) { return Menu.Build(); }
+
+	const auto Assign = [this, Address](const FMixtormatOutputReference* Source)
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		if (!Child || Child->IsInstance()
+			|| Child->Type != EMixtormatLayerChildType::Behavior) { return; }
+		if (Source)
+		{
+			Child->Behavior.Direction.Published = *Source;
+			Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::PublishedOutput;
+		}
+		else
+		{
+			Child->Behavior.Direction.Published = FMixtormatOutputReference{};
+			Child->Behavior.Direction.Origin = EMixtormatBehaviorFieldOrigin::None;
+		}
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	};
+	Menu.Item(LOCTEXT("BehaviorWarpChooseSourceLater", "Choose source later"), nullptr,
+		FSimpleDelegate::CreateLambda([Assign]() { Assign(nullptr); }));
+	Menu.Separator();
+
+	// All sources are explicit, typed and order-checked by the runtime resolver.
+	// The generic Vector2 type is deliberately not accepted as transport.
+	for (int32 SourceLayerIndex = 0;
+		SourceLayerIndex <= DestinationLayerIndex; ++SourceLayerIndex)
+	{
+		const FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
+		for (const FMixtormatLayerChild& Producer : SourceLayer.Children)
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(Producer);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (!Output.bCopyableAsField
+					|| (Output.FieldKind != EMixtormatPublishedFieldKind::Flow
+						&& Output.FieldKind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
+				FMixtormatOutputReference Ref;
+				Ref.SourceLayerId = SourceLayer.LayerId;
+				Ref.SourceChildId = Producer.ChildId;
+				Ref.OutputName = Output.Name;
+				Ref.Kind = Output.FieldKind;
+				const bool bAvailable = MixtormatOutputReferences::ResolveGeneratorInputSource(
+					WorkingLayers, DestinationLayerIndex, OwnerIndex, Ref) != INDEX_NONE;
+				Menu.Item(FText::Format(LOCTEXT("BehaviorWarpSourceEntry", "{0} / {1} / {2}"),
+					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
+					MixtormatIcons::Generator(),
+					FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }))
+					.Enabled(bAvailable);
+			}
+		}
+	}
+
+	// Sources shelf producers are separately addressed and evaluated before layers.
+	for (const FMixtormatSourceEntry& Shelf : WorkingSources)
+	{
+		if (Shelf.Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+		for (const EMixtormatPublishedFieldKind Kind : {
+			EMixtormatPublishedFieldKind::Flow, EMixtormatPublishedFieldKind::UVMap})
+		{
+			FMixtormatOutputReference Ref;
+			Ref.OwnerKind = EMixtormatOutputReferenceOwnerKind::Shelf;
+			Ref.SourceShelfId = Shelf.SourceId;
+			Ref.SourceChildId = Shelf.Child.ChildId;
+			Ref.Kind = Kind;
+			Ref.OutputName = Kind == EMixtormatPublishedFieldKind::Flow
+				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV"));
+			const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(
+				WorkingSources, Ref);
+			if (Status.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+			{
+				continue;
+			}
+			Menu.Item(FText::Format(LOCTEXT("BehaviorWarpShelfSource", "Sources / {0} / {1}"),
+				Shelf.DisplayName, FText::FromName(Ref.OutputName)),
+				MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }));
+		}
+	}
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
+{
+	const auto Warp = [this]() { return GetSelectedBehaviorWarp(); };
+	const auto Reference = [Warp]() -> FMixtormatOutputReference*
+	{
+		FMixtormatBehavior* Selected = Warp();
+		return Selected ? &Selected->Direction.Published : nullptr;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorWarpSourceLabel", "Direction Field"),
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
+		{
+			const FMixtormatBehavior* Selected = GetSelectedBehaviorWarp();
+			if (!Selected || Selected->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+				|| !Selected->Direction.Published.HasSource())
+			{
+				return LOCTEXT("BehaviorWarpUnset", "Choose source");
+			}
+			const FMixtormatOutputReference& Ref = Selected->Direction.Published;
+			return FText::Format(LOCTEXT("BehaviorWarpSourceChip", "{0} / {1}"),
+				Ref.IsShelfSource() ? LOCTEXT("BehaviorWarpShelfChip", "Sources")
+					: LOCTEXT("BehaviorWarpLayerChip", "Layer"),
+				FText::FromName(Ref.OutputName));
+		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpSourceMenu)),
+		LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Choose source later leaves Warp neutral.")));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
+		-4.0, 4.0, 1.0, 0.01,
+		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	TSharedRef<SVerticalBox> FlowPanel = SNew(SVerticalBox);
+	AddSliderRow(FlowPanel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("BehaviorWarpFlowAmount", "Flow Amount"),
+			Reference, &FMixtormatOutputReference::FlowAmount, -4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("BehaviorWarpFlowAmountHint", "Multiplies Warp Strength during Flow trace.")),
+		MakeMemberSlider<FMixtormatOutputReference>(LOCTEXT("BehaviorWarpTraceLength", "Trace Length (UV)"),
+			Reference, &FMixtormatOutputReference::FlowTraceLength, 0.0, 1.0, 0.05, 0.001,
+			LOCTEXT("BehaviorWarpTraceHint", "Length of the Flow integration path."))));
+	AddSliderRow(FlowPanel, MakeMemberSliderInt<FMixtormatOutputReference>(
+		LOCTEXT("BehaviorWarpSteps", "Flow Steps"), Reference, &FMixtormatOutputReference::FlowSteps,
+		1.0, 64.0, 16,
+		LOCTEXT("BehaviorWarpStepsHint", "Integration steps; UV Maps use their coordinates directly.")));
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SBox).IsEnabled_Lambda([Reference]()
+		{
+			const FMixtormatOutputReference* Ref = Reference();
+			return Ref && Ref->Kind == EMixtormatPublishedFieldKind::Flow;
+		})[FlowPanel]
+	];
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Warp]() { return Warp() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorWarpHeading", "WARP"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Warp]()
+					{
+						const FMixtormatBehavior* Selected = Warp();
+						return Selected && Selected->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Warp](const ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* Selected = Warp())
+						{
+							Selected->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildStructuralWarpConnectionMenu(const bool bTarget)
 {
 	return BuildStructuralConnectionMenu(GetSelectedChildAddress(), bTarget
