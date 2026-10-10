@@ -3,6 +3,7 @@
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "MixtormatLayerGroups.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
@@ -1449,9 +1450,11 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			|| !Target.ScopeOwnerChildId.IsValid()) { return FReply::Handled(); }
 		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
 		const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);
+		FMixtormatLayerChild Prototype;
+		MixtormatLayersPrivate::ApplyChildCreationDefaults(Prototype, Kind);
 		if (!Children.IsValidIndex(OwnerIndex)
-			|| Children[OwnerIndex].Type != EMixtormatLayerChildType::Generator
 			|| Children[OwnerIndex].IsInstance()
+			|| !MixtormatLayersPrivate::CanKeepScopedPlacement(Children[OwnerIndex], Prototype)
 			|| !MixtormatLayersPrivate::CanAddScopedChild(Children, OwnerIndex))
 		{
 			return FReply::Handled();
@@ -1489,12 +1492,17 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 		FMixtormatLayerChild Child;
 		ApplyChildCreationDefaults(Child, Kind);
-		// Flow Field requires a real owner boundary for SDF steering.
+		// A nested Flow reads the owning generator through its Behavior ancestors.
+		// Height is also a valid self fallback for any generator without boundary output.
 		if (Kind == EMixtormatChildCreation::BehaviorFlowField)
 		{
-			const FMixtormatLayerChild* Generator = ResolveChildAt(Owner);
-			if (Generator && Generator->Type == EMixtormatLayerChildType::Generator
-				&& !MixtormatGeneratorHasFlowBoundary(Generator->Generator.Type))
+			const int32 ParentIndex = ResolveChildIndexAt(Owner);
+			const int32 GeneratorIndex = Children->IsValidIndex(ParentIndex)
+				&& (*Children)[ParentIndex].Type == EMixtormatLayerChildType::Generator
+				? ParentIndex
+				: MixtormatChildScope::ResolveBehaviorGeneratorIndex(*Children, ParentIndex);
+			if (Children->IsValidIndex(GeneratorIndex)
+				&& !MixtormatGeneratorHasFlowBoundary((*Children)[GeneratorIndex].Generator.Type))
 			{
 				Child.Behavior.Flow.FlowSource = EMixtormatBehaviorFlowSource::Height;
 			}
