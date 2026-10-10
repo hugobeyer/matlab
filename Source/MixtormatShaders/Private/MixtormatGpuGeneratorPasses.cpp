@@ -60,26 +60,7 @@ namespace
 			FMath::Max(Resolution.Y / Divisor, 1));
 	}
 
-	// True when this generator has at least one enabled mask scoped beneath it.
-	//
-	// Asked before the scoped mask is resolved, because "there is no mask" and "there is a mask
-	// that happens to be white" are different: the first must leave Mask Influence completely
-	// inert whatever it is set to, and the second must honour it. Collapsing the two would make
-	// a generator with no mask behave as though Mask Influence were always 1, which is the same
-	// picture only by accident.
-	bool HasScopedMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
-	{
-		for (const FChildRenderData& Child : Layer.Children)
-		{
-			if (Child.Type == EMixtormatLayerChildType::Mask
-				&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
-				&& Child.Mask.Weight != 0.0f)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
+
 }
 
 // Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
@@ -452,6 +433,7 @@ public:
 		SHADER_PARAMETER(float, OutHigh)
 		SHADER_PARAMETER(uint32, NormalizeMode)
 		SHADER_PARAMETER(float, OutputScale)
+		SHADER_PARAMETER(float, HeightBias)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceField)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, OutRange)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, Range)
@@ -523,11 +505,13 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	const FIntPoint Size,
 	const bool bNormalize,
 	const float OutputScale,
+	const float HeightBias,
+	const bool bCenterNoise,
 	const TCHAR* Name)
 {
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-	// The reduce is only needed for the zero-preserving normalization. Normalize off uses the raw
-	// signed field, so the min/max dispatch is skipped entirely.
+	// The reduce is only needed for the centring path. Normalize off uses the raw signed field, so
+	// the min/max dispatch is skipped entirely.
 	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
 		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
 	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
@@ -553,8 +537,11 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		P->OutputSize = Size;
 		P->OutLow = -1.0f;
 		P->OutHigh = 1.0f;
-		P->NormalizeMode = bNormalize ? 1u : 2u;
+		// Mode 3 centres Noise height; mode 1 preserves max-absolute normalization
+		// for all other generators. Normalize-off leaves the raw signed height.
+		P->NormalizeMode = bNormalize ? (bCenterNoise ? 3u : 1u) : 2u;
 		P->OutputScale = FMath::IsFinite(OutputScale) ? OutputScale : 1.0f;
+		P->HeightBias = FMath::IsFinite(HeightBias) ? HeightBias : 0.0f;
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Signed);
@@ -2019,8 +2006,8 @@ namespace
 			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
 		default:
 			return true;
-		}
-	}
+}
+}
 
 	bool IsPreviewingAnyFlowTool(
 		const FRenderRequest& Request,
@@ -2155,7 +2142,7 @@ namespace
 
 			// Independent scope, as under Strata Carver: the item's mask says where this item
 			// acts, not where the layer is.
-			const bool bHasMask = HasScopedMasks(Layer, FlowIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, FlowIndex);
 			FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
 				: Current;
@@ -3248,7 +3235,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					Child.SourceChildIndex, Warp.Drivers)
 				: Source.Texture;
 			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			const FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : RunningHeight;
 			const FRDGTextureRef* OldD = LayerCtx.GeneratorStructuralDisplacements.Find(Warp.TargetChildIndex);
@@ -3291,7 +3278,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				|| Source->Texture->Desc.Extent != Size) { continue; }
 			const FRDGTextureRef Height = Source->Texture;
 			AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-			const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			const FRDGTextureRef Mask = bHasMask
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Height;
 			const FRDGTextureRef* Found = LayerCtx.GeneratorHeightPushFields.Find(Push.TargetChildIndex);
@@ -3371,7 +3358,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// A Mask scoped under this ramp gates where its colour shows, using the same independent
 			// scope the generator flow tools use: the mask says where this module acts, not where
 			// the layer is. The mask's own Weight dials how strongly it gates.
-			const bool bHasGate = HasScopedMasks(Layer, Child.SourceChildIndex);
+			const bool bHasGate = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 			FRDGTextureRef RampGate = bHasGate
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 				: RampSource;
@@ -3463,11 +3450,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// V2 transforms the native bundle before the same normalize/scale step
 		// all generator families already use. Legacy flow tools retain their order.
 		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
-		// The shared signed output contract: zero-preserving max-absolute normalization to -1..1,
-		// then Height Scale (which may exceed -1..1). Applied after flow.
+		// Noise uses centred normalization for Height Blend; all other generators retain
+		// zero-preserving max-absolute normalization. Both apply after post Behaviors.
 		Module.Height = AddSignedGeneratorHeightPasses(
 			Ctx.GraphBuilder, Module.Height, Size,
 			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+			Child.Generator.HeightBias,
+			Child.Generator.Type == EMixtormatGeneratorType::Noise,
 			TEXT("Mixtormat.Generator.SignedHeight"));
 
 		// Strata regenerates in its structural frame. Every other supported target instead owns

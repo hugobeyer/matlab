@@ -983,6 +983,7 @@ namespace MixtormatGpuCompositor
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		bool bNormalizeHeight = true;
 		float HeightScale = 1.0f;
+		float HeightBias = 0.0f;
 		FStrataCarverRenderData StrataCarver;
 		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;
@@ -1830,6 +1831,23 @@ namespace MixtormatGpuCompositor
 		return Found;
 	}
 
+
+	// A scoped mask is present when an owned Mask child contributes nonzero weight.
+	// Shared inline with Noise to avoid cross-translation-unit linker dependencies.
+	// Distinguishes no mask from an authored white mask.
+	inline bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
+	{
+		for (const FChildRenderData& Child : Layer.Children)
+		{
+			if (Child.Type == EMixtormatLayerChildType::Mask
+				&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
+				&& Child.Mask.Weight != 0.0f)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 
 	// MixtormatGpuMaskPasses.cpp -- mask processing, generated masks, mask shaping.
 	FRDGTextureRef AddScopedFeatureMask(

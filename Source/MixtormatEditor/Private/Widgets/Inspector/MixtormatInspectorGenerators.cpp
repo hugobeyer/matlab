@@ -2643,9 +2643,12 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 		AddSliderRow(Output, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatNoise>(
 				LOCTEXT("NoiseHeightScale", "Scale"), Noise, &FMixtormatNoise::NoiseHeightScale, -4.0, 4.0, 1.0, 0.01,
-				LOCTEXT("NoiseHeightScaleHint", "Scales the signed generator height after normalization.")),
-			MixtormatRow::MakeTrailing(
-				LOCTEXT("NoiseNormalizeHeight", "Normalize"),
+				LOCTEXT("NoiseHeightScaleHint", "Scales the signed generator height after centring.")),
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseHeightBias", "Bias"), Noise, &FMixtormatNoise::NoiseHeightBias, -1.0, 1.0, 0.0, 0.01,
+				LOCTEXT("NoiseHeightBiasHint", "Offsets the centred height, before Scale."))));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("NoiseNormalizeHeight", "Normalize"),
 				MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Noise]()
 					{
@@ -2660,7 +2663,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 							RefreshLayeredPreview();
 						}
 					}),
-					LOCTEXT("NoiseNormalizeHeightHint", "Zero-preserving max-absolute normalize of the module height.")))));
+					LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field."))));
 	}
 	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 
@@ -2844,7 +2847,23 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 		AddSliderRow(Distort, MakeMemberSlider<FMixtormatNoise>(
 			LOCTEXT("NoiseDistortionJaggedness", "Jaggedness"), Noise,
 			&FMixtormatNoise::NoiseDistortionJaggedness, 0.0, 2.0, 0.0, 0.01,
-			LOCTEXT("NoiseDistortionJaggednessHint", "Independent periodic sharp-domain variation. Blends with curl and directional distortion.")));
+			LOCTEXT("NoiseDistortionJaggednessHint", "Angular crease warp, blended with the smooth distortion.")));
+		// Crease shaping only matters once a jagged warp is actually authored, so the rows are
+		// collapsed at zero rather than left greyed out.
+		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
+			{
+				const FMixtormatNoise* N = Noise();
+				return N && N->NoiseDistortionJaggedness > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseJaggedSharpness", "Jagged Sharpness"), Noise,
+					&FMixtormatNoise::NoiseJaggedSharpness, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseJaggedSharpnessHint", "Breaks per cell edge. Higher packs tighter; amplitude follows.")),
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseJaggedDetail", "Jagged Variation"), Noise,
+					&FMixtormatNoise::NoiseJaggedDetail, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseJaggedDetailHint", "Fracture scales stacked. 0 is a single scale.")))]);
 		AddSliderRow(Distort, MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoiseDistortionOctaves", "Octaves"),
 				Noise, &FMixtormatNoise::NoiseDistortionOctaves, 1.0, 8.0, 2),

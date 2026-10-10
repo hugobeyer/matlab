@@ -983,10 +983,25 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float NoiseDistortionStrength = 0.0f;
 
-	// Independent high-frequency jagged warp mixed with the existing smooth/curl distortion.
-	// Zero is a strict bypass, independently of DistortionStrength.
+	// Independent angular warp mixed with the existing smooth/curl distortion. Zero is a strict
+	// bypass, independently of DistortionStrength. The warp displaces the domain along the
+	// normals of straight-edged cellular planes (a polygon SDF ported from Rock Formation's
+	// jagged edges; see MixtormatNoiseV2.ush MixtormatNoiseV2Jagged), so it breaks along hard
+	// edges instead of curving. Reading it as angular rather than smooth changes the appearance
+	// of materials that already had a nonzero value here; see AgentDocs/NOISE_V2.md.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float NoiseDistortionJaggedness = 0.0f;
+
+	// Break count along each cell edge of the jagged warp, with amplitude divided to match so
+	// scale never changes spikiness. Appended after Noise V2.1; identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseJaggedSharpness = 0.0f;
+
+	// Scale variation of the jagged fracture network. 0 is a single scale, higher values add
+	// finer scales, standing in for Rock Formation's jag octaves. Appended after Noise V2.1;
+	// identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseJaggedDetail = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Distortion", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "1.0"))
 	float NoiseDistortionFrequency = 4.0f;
@@ -1012,6 +1027,13 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseHeightScale = 1.0f;
+
+	// Signed-height offset applied after centring and before Height Scale. Zero is identity.
+	// Centring alone puts every module on a symmetric -1..1; this is the deliberate offset for a
+	// module that should sit high or low in a Height Blend rather than straddling zero. Appended
+	// after Noise V2.2; identity default.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float NoiseHeightBias = 0.0f;
 };
 
 

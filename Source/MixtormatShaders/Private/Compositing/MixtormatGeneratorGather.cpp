@@ -302,6 +302,8 @@ namespace MixtormatGpuCompositor
 		};
 		ChildData.Generator.bNormalizeHeight = Noise.bNoiseNormalizeHeight;
 		ChildData.Generator.HeightScale = Finite(Noise.NoiseHeightScale, Defaults.NoiseHeightScale);
+		ChildData.Generator.HeightBias = FMath::Clamp(
+			Finite(Noise.NoiseHeightBias, Defaults.NoiseHeightBias), -1.0f, 1.0f);
 
 		const FMixtormatNoiseRenderData Out = ResolveNoiseRenderData(Noise);
 		// The settings ride the store to the pass; see MixtormatNoiseRender.h for why.

@@ -44,6 +44,8 @@ struct FMixtormatNoiseRenderData
 	float WorleyCellDepth = 0.0f;
 	float DistortionStrength = 0.0f;
 	float DistortionJaggedness = 0.0f;
+	float JaggedSharpness = 0.0f;
+	float JaggedDetail = 0.0f;
 	float DistortionFrequency = 4.0f;
 	int32 DistortionOctaves = 2;
 	float DistortionRoughness = 0.5f;
