@@ -590,6 +590,13 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		NUM("LayerLayout.SourcesAddIconSize", Sources, "Add Button", "Icon Size (Square)", LayerLayout.SourcesAddIconSize, 4, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("LayerLayout.SourcesAddTabBottomRadius", Sources, "Add Button", "Bottom Radius", LayerLayout.SourcesAddTabBottomRadius, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Paint);
 		SetLocateTarget(P, LocateBegin, ETarget::SourcesShelf);
+		for (FMixtormatThemeProperty& Property : P)
+		{
+			if (Property.Tab == ETab::Sources && Property.Section == TEXT("Add Button"))
+			{
+				Property.LocateTarget = ETarget::SourcesAddButton;
+			}
+		}
 
 // BUTTONS
 		LocateBegin = P.Num();
