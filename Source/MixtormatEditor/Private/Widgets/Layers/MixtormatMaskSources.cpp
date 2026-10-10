@@ -38,6 +38,8 @@ void SMixtormat::SelectMaskSource(const FMixtormatChildAddress& Destination, con
 	Child->Mask.Source = Source;
 	// Explicit inline selection must beat the published-address precedence rule.
 	Child->Mask.PublishedSourceLayerId.Invalidate();
+	Child->Mask.PublishedSourceShelfId.Invalidate();
+	Child->Mask.PublishedSourceOwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
 	Child->Mask.PublishedSourceChildId.Invalidate();
 	Child->Mask.PublishedSourceOutput = NAME_None;
 	RefreshLayeredPreview(false);
@@ -70,6 +72,20 @@ bool SMixtormat::CanSelectMaskNoiseValue(const FMixtormatChildAddress& Destinati
 		{ return Output.Name == TEXT("Value") && Output.bCopyableAsMask; }))
 	{
 		Reason = LOCTEXT("NoiseMaskWrongOutput", "Value is not available as a mask");
+		return false;
+	}
+	if (Source.OwnerType == EMixtormatChildOwnerType::Source)
+	{
+		const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate([&Source](const FMixtormatSourceEntry& Item)
+			{ return Item.SourceId == Source.OwnerId && Item.Child.ChildId == Source.ChildId; });
+		if (Entry && Entry->Child.Generator.bEnabled
+			&& WorkingSources.FilterByPredicate([&Source](const FMixtormatSourceEntry& Item)
+				{ return Item.SourceId == Source.OwnerId; }).Num() == 1)
+		{
+			Reason = FText::GetEmpty();
+			return true;
+		}
+		Reason = LOCTEXT("ShelfNoiseMaskUnavailable", "Missing, disabled or ambiguous Sources Noise producer");
 		return false;
 	}
 	TArray<FMixtormatLayer> Layers = WorkingLayers;
@@ -117,7 +133,10 @@ void SMixtormat::SelectMaskNoiseValue(const FMixtormatChildAddress& Destination,
 		return;
 	}
 	FMixtormatMaskLayer& Mask = ResolveChildAt(Destination)->Mask;
-	Mask.PublishedSourceLayerId = Source.OwnerId;
+	Mask.PublishedSourceOwnerKind = Source.OwnerType == EMixtormatChildOwnerType::Source
+		? EMixtormatOutputReferenceOwnerKind::Shelf : EMixtormatOutputReferenceOwnerKind::Layer;
+	Mask.PublishedSourceShelfId = Source.OwnerType == EMixtormatChildOwnerType::Source ? Source.OwnerId : FGuid{};
+	Mask.PublishedSourceLayerId = Source.OwnerType == EMixtormatChildOwnerType::Source ? FGuid{} : Source.OwnerId;
 	Mask.PublishedSourceChildId = Source.ChildId;
 	Mask.PublishedSourceOutput = TEXT("Value");
 	RefreshLayeredPreview(false);
@@ -135,6 +154,15 @@ FText SMixtormat::GetMaskSourceLabel(const FMixtormatChildAddress& Destination) 
 	if (!Child || Child->Type != EMixtormatLayerChildType::Mask) { return FText::GetEmpty(); }
 	const FMixtormatMaskLayer& Mask = Child->Mask;
 	if (!Mask.HasPublishedSource()) { return MixtormatUI::MaskSourceText(Mask.Source); }
+	if (Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf)
+	{
+		const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate([&Mask](const FMixtormatSourceEntry& Entry)
+			{ return Entry.SourceId == Mask.PublishedSourceShelfId
+				&& Entry.Child.ChildId == Mask.PublishedSourceChildId; });
+		return Source
+			? FText::Format(LOCTEXT("ShelfNoiseMaskSourceLabel", "Noise Value from {0}"), Source->DisplayName)
+			: LOCTEXT("MissingShelfNoiseMaskSource", "Missing Sources Noise Value");
+	}
 	const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(
 		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Mask.PublishedSourceLayerId, Mask.PublishedSourceChildId);
 	const bool bNoise = Source && Source->Type == EMixtormatLayerChildType::Generator
@@ -171,6 +199,12 @@ TSharedRef<SWidget> SMixtormat::BuildMaskNoiseValueMenu(const FMixtormatChildAdd
 	{ AddChoices(Layer.Children, EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.DisplayName); }
 	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
 	{ AddChoices(Group.Children, EMixtormatChildOwnerType::Group, Group.GroupId, Group.DisplayName); }
+	for (const FMixtormatSourceEntry& Source : WorkingSources)
+	{
+		TArray<FMixtormatLayerChild> Root;
+		Root.Add(Source.Child);
+		AddChoices(Root, EMixtormatChildOwnerType::Source, Source.SourceId, Source.DisplayName);
+	}
 	for (const bool bAvailable : {true, false})
 	{
 		for (const FChoice& Choice : Choices)
