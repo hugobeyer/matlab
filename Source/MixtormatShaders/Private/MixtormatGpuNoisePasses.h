@@ -12,7 +12,8 @@ namespace MixtormatGpuCompositor
 // and gradient fields under this child's address. Settings come from the gather's store; a miss
 // leaves the module out, the same as a disabled generator.
 void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-	const FLayerRenderData& Layer, int32 SourceChildIndex, FGeneratorBundle* Bundle);
+	const FLayerRenderData& Layer, int32 SourceChildIndex, FGeneratorBundle* Bundle,
+	FRDGTextureRef PreUV = nullptr);
 
 // Source-local R32_FLOAT coverage. No generator publication/height or mask placement/shaping.
 FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatNoise& Noise);
