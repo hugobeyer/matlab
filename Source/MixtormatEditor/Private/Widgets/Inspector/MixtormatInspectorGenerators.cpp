@@ -1202,9 +1202,29 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 			case EMixtormatBehaviorFieldOrigin::PreviousRunningHeight:
 				return LOCTEXT("BehaviorPushPreviousLabel", "Previous Running Height");
 			case EMixtormatBehaviorFieldOrigin::PublishedOutput:
-				return B->Height.Published.HasSource() && B->Height.Published.Kind == EMixtormatPublishedFieldKind::ScalarSigned
-					? FText::FromName(B->Height.Published.OutputName)
+			{
+				const FMixtormatOutputReference& Ref = B->Height.Published;
+				const FMixtormatChildAddress Address = GetSelectedChildAddress();
+				const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+					[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
+				const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
+					? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
+						[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
+					: INDEX_NONE;
+				const int32 OwnerIndex = ChildIndex != INDEX_NONE
+					? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+						WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
+				const bool bAvailable = Ref.HasSource()
+					&& Ref.Kind == EMixtormatPublishedFieldKind::ScalarSigned
+					&& OwnerIndex != INDEX_NONE
+					&& (Ref.IsShelfSource()
+						? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
+							== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
+						: MixtormatOutputReferences::ResolveGeneratorInputSource(
+							WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
+				return bAvailable ? FText::FromName(Ref.OutputName)
 					: LOCTEXT("BehaviorPushMissingSource", "Source unavailable");
+			}
 			default: return LOCTEXT("BehaviorPushUnset", "Choose source");
 			}
 		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorPushSourceMenu)),
