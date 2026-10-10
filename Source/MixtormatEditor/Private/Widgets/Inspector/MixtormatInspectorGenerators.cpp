@@ -1217,16 +1217,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 			}
 		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorPushSourceMenu)),
 		LOCTEXT("BehaviorPushHeightHint", "Explicit signed height input; no automatic SDF conversion.")));
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorPushInfluence", "Influence Field"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Push]()
-		{
-			const FMixtormatBehavior* B = Push();
-			return B && B->Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
-				? FText::FromName(B->Influence.Published.OutputName)
-				: LOCTEXT("BehaviorPushNone", "None");
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
-		LOCTEXT("BehaviorPushInfluenceHint", "Optional Scalar01 influence, multiplied by scoped masks.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorPushStrength", "Strength"), Push, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
@@ -1409,16 +1399,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorCarveSourceMenu)),
 					LOCTEXT("BehaviorCarveHeightHint", "Requires a typed signed distance field or an owning generator boundary."))
 			]);
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorCarveInfluence", "Influence Field"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Carve]()
-		{
-			const FMixtormatBehavior* B = Carve();
-			return B && B->Influence.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
-				? FText::FromName(B->Influence.Published.OutputName)
-				: LOCTEXT("BehaviorCarveNone", "None");
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
-		LOCTEXT("BehaviorCarveInfluenceHint", "Optional Scalar01 influence, multiplied by scoped masks.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorCarveStrength", "Strength"), Carve, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
@@ -1623,35 +1603,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			return Menu.Build();
 		})),
 		LOCTEXT("BehaviorWarpStageHint", "Before Generation warps native sampling and generated IDs; Own Height Gradient requires After Generation.")));
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorWarpInfluenceLabel", "Influence Field"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
-		{
-			const FMixtormatBehavior* Warp = GetSelectedBehaviorWarp();
-			if (!Warp || Warp->Influence.Origin == EMixtormatBehaviorFieldOrigin::None)
-			{
-				return LOCTEXT("BehaviorWarpInfluenceUnset", "None");
-			}
-			const FMixtormatOutputReference& Ref = Warp->Influence.Published;
-			if (!Ref.HasSource()) { return LOCTEXT("BehaviorWarpInfluenceMissing", "Source missing"); }
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-				[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
-			const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
-				? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
-					[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
-				: INDEX_NONE;
-			const int32 OwnerIndex = ChildIndex != INDEX_NONE
-				? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
-					WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
-			const bool bValid = Ref.Kind == EMixtormatPublishedFieldKind::Scalar01
-				&& !Ref.IsShelfSource() && OwnerIndex != INDEX_NONE
-				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
-			return bValid ? FText::FromName(Ref.OutputName)
-				: FText::Format(LOCTEXT("BehaviorWarpInfluenceUnavailable", "Unavailable / {0}"),
-					FText::FromName(Ref.OutputName));
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
-		LOCTEXT("BehaviorWarpInfluenceHint", "Optional Scalar 0..1 field. Multiplies the Warp displacement and any scoped mask; missing fields disable this Warp.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
@@ -1984,35 +1935,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformSourceMenu)),
 					LOCTEXT("BehaviorDeformDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Deform resamples native height only, leaving IDs and coverage fixed."))
 			]);
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorDeformInfluenceLabel", "Influence Field"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
-		{
-			const FMixtormatBehavior* Deform = GetSelectedBehaviorDeform();
-			if (!Deform || Deform->Influence.Origin == EMixtormatBehaviorFieldOrigin::None)
-			{
-				return LOCTEXT("BehaviorDeformInfluenceUnset", "None");
-			}
-			const FMixtormatOutputReference& Ref = Deform->Influence.Published;
-			if (!Ref.HasSource()) { return LOCTEXT("BehaviorDeformInfluenceMissing", "Source missing"); }
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
-				[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
-			const int32 ChildIndex = WorkingLayers.IsValidIndex(LayerIndex)
-				? WorkingLayers[LayerIndex].Children.IndexOfByPredicate(
-					[&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; })
-				: INDEX_NONE;
-			const int32 OwnerIndex = ChildIndex != INDEX_NONE
-				? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
-					WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
-			const bool bValid = Ref.Kind == EMixtormatPublishedFieldKind::Scalar01
-				&& !Ref.IsShelfSource() && OwnerIndex != INDEX_NONE
-				&& MixtormatOutputReferences::ResolveSource(WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
-			return bValid ? FText::FromName(Ref.OutputName)
-				: FText::Format(LOCTEXT("BehaviorDeformInfluenceUnavailable", "Unavailable / {0}"),
-					FText::FromName(Ref.OutputName));
-		}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpInfluenceMenu)),
-		LOCTEXT("BehaviorDeformInfluenceHint", "Optional Scalar 0..1 field. Multiplies relief displacement and any scoped mask; missing fields disable Deform.")));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
