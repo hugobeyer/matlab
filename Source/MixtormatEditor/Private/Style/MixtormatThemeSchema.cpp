@@ -294,6 +294,23 @@ void AddIconRole(
 				AddIconRole(P, EMixtormatIconRole::NavigationRail, TEXT("NavigationRail"), TEXT("Navigation Rail"), ETarget::NavigationRail);
 
 
+
+				// Editable typing fields: shared rename and authoring input visuals.
+				LocateBegin = P.Num();
+				COL("TextField.Surface", Controls, "Text Fields", "Surface", TextField.Surface, EMixtormatThemeRefreshMode::Reconstruct);
+				COL("TextField.Shade", Controls, "Text Fields", "Shade", TextField.Shade, EMixtormatThemeRefreshMode::Reconstruct);
+				COL("TextField.Border", Controls, "Text Fields", "Border", TextField.Border, EMixtormatThemeRefreshMode::Reconstruct);
+				COL("TextField.Highlight", Controls, "Text Fields", "Highlight", TextField.Highlight, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.ShadeOpacity", Controls, "Text Fields", "Shade Opacity", TextField.ShadeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.BorderOpacity", Controls, "Text Fields", "Border Opacity", TextField.BorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.BorderThickness", Controls, "Text Fields", "Border Thickness", TextField.BorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.Radius", Controls, "Text Fields", "Radius", TextField.Radius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.LabelOpacity", Controls, "Text Fields", "Text Opacity", TextField.LabelOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("TextField.HighlightOpacity", Controls, "Text Fields", "Highlight Opacity", TextField.HighlightOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
+				BLEND("TextField.ShadeBlend", Controls, "Text Fields", "Shade Blend", TextField.ShadeBlend, EMixtormatThemeRefreshMode::Reconstruct);
+				BLEND("TextField.HighlightBlend", Controls, "Text Fields", "Highlight Blend", TextField.HighlightBlend, EMixtormatThemeRefreshMode::Reconstruct);
+				SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
+
 // CONTROLS
 		LocateBegin = P.Num();
 		NUM_DEF("Well.Radius", Controls, "Well", "Radius", Well.Radius, 0, 12, .5, 1);

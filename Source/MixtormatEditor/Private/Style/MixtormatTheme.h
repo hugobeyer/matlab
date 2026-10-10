@@ -955,6 +955,22 @@ namespace Mixtormat
 		EMixtormatFontFamily Family = EMixtormatFontFamily::NativeDefault;
 	};
 
+	struct FMixtormatTextFieldTheme
+	{
+		FLinearColor Surface = FLinearColor(0.04f, 0.05f, 0.055f, 1.0f);
+		FLinearColor Shade = FLinearColor::Black;
+		FLinearColor Border = FLinearColor(0.13f, 0.28f, 0.34f, 1.0f);
+		FLinearColor Highlight = FLinearColor(0.04f, 0.32f, 0.58f, 1.0f);
+		float ShadeOpacity = 0.18f;
+		float BorderOpacity = 0.55f;
+		float BorderThickness = 1.0f;
+		float Radius = 2.0f;
+		float LabelOpacity = 0.9f;
+		float HighlightOpacity = 0.85f;
+		MixtormatCompositing::EMixtormatBlendMode ShadeBlend = MixtormatCompositing::EMixtormatBlendMode::Multiply;
+		MixtormatCompositing::EMixtormatBlendMode HighlightBlend = MixtormatCompositing::EMixtormatBlendMode::Normal;
+	};
+
 	// ---- Theme ------------------------------------------------------------------------------
 
 	// The complete editable theme. Fields map one-to-one onto UI STYLE tabs.
@@ -968,6 +984,7 @@ namespace Mixtormat
 		FMixtormatToggleTheme Toggle;
 
 		FMixtormatControlMetrics ControlLayout;
+		FMixtormatTextFieldTheme TextField;
 
 		FMixtormatFoldoutTheme Foldout;
 		FMixtormatFoldoutMetrics FoldoutLayout;

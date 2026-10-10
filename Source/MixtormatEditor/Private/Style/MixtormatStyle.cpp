@@ -545,6 +545,30 @@ void FMixtormatStyle::Refresh()
 	BadgeText.SetFont(BadgeFont);
 	StyleInstance->Set(TEXT("Mixtormat.BadgeText"), BadgeText);
 
+
+	// Common typography and states for Slate text-entry widgets (rename and authoring fields).
+	{
+		const Mixtormat::FMixtormatTextFieldTheme& T = FMixtormatThemeStore::GetTheme().TextField;
+		FLinearColor ShadeSource = T.Shade;
+		ShadeSource.A = T.ShadeOpacity;
+		const FLinearColor Background = MixtormatCompositing::ApplyBlend(T.ShadeBlend, T.Surface, ShadeSource);
+		FLinearColor BorderColor = T.Border;
+		BorderColor.A *= T.BorderOpacity;
+		FLinearColor Highlight = T.Highlight;
+		Highlight.A *= T.HighlightOpacity;
+		const FLinearColor Focused = MixtormatCompositing::ApplyBlend(T.HighlightBlend, Background, Highlight);
+		FEditableTextBoxStyle Edit = FCoreStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
+		Edit.SetBackgroundImageNormal(FSlateRoundedBoxBrush(Background, T.Radius, BorderColor, T.BorderThickness));
+		Edit.SetBackgroundImageHovered(FSlateRoundedBoxBrush(Background, T.Radius, BorderColor, T.BorderThickness));
+		Edit.SetBackgroundImageFocused(FSlateRoundedBoxBrush(Focused, T.Radius, Highlight, T.BorderThickness));
+		Edit.SetBackgroundImageReadOnly(FSlateRoundedBoxBrush(Background, T.Radius));
+		FLinearColor TextColor = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
+		TextColor.A *= T.LabelOpacity;
+		Edit.SetForegroundColor(FSlateColor(TextColor));
+		Edit.SetFocusedForegroundColor(FSlateColor(TextColor));
+		StyleInstance->Set(TEXT("Mixtormat.TextField"), Edit);
+	}
+
 	// A circle is a rounded box whose radius is half its size.
 	StyleInstance->Set(
 		TEXT("Mixtormat.StatusDot.Filled"),

@@ -164,6 +164,7 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 							+ SWidgetSwitcher::Slot()
 							[
 								SAssignNew(NameEditBox, SEditableTextBox)
+								.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
 								.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
 								{
 									return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, KeyEvent) : FReply::Unhandled();

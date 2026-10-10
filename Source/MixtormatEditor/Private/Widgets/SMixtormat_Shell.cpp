@@ -506,6 +506,23 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				SNew(SBox)
+				[
+					SNew(SMixtormatIconRail)
+					.Options({
+						MixtormatIcons::Layers(),
+						MixtormatIcons::Library(),
+						MixtormatIcons::Global() })
+					.ToolTips({
+						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
+						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),
+						LOCTEXT("GlobalRailHint", "Document-wide variables and preview settings.") })
+					.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
+					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
+				]
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
 				SNew(SBox)
