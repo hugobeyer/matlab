@@ -1025,6 +1025,21 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 {
 	MixtormatMenu::FBuilder Menu;
 	const bool bEnabled = CanCreateChild(Target);
+	const TArray<FMixtormatLayerChild>* ScopedChildren = nullptr;
+	if (Target.IsGroup())
+	{
+		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Target.GroupId);
+		ScopedChildren = Group ? &Group->Children : nullptr;
+	}
+	else if (WorkingLayers.IsValidIndex(Target.LayerIndex))
+	{
+		ScopedChildren = &WorkingLayers[Target.LayerIndex].Children;
+	}
+	const int32 ScopedOwnerIndex = ScopedChildren
+		? MixtormatLayersPrivate::FindChildById(*ScopedChildren, Target.ScopeOwnerChildId)
+		: INDEX_NONE;
+	const bool bScopedGateOwner = ScopedChildren && ScopedChildren->IsValidIndex(ScopedOwnerIndex)
+		&& (*ScopedChildren)[ScopedOwnerIndex].Type != EMixtormatLayerChildType::IdGroup;
 
 	// Texture Mask first, and it takes whatever the gallery has selected. The ellipsis is the
 	// honest part of the label: unlike everything below it, this one cannot create anything until
@@ -1057,7 +1072,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
 		// Generator/Behavior ownership accepts scoped Mask producers, not arbitrary ID tools.
-		if (Target.ScopeOwnerChildId.IsValid()
+		if (bScopedGateOwner
 			&& Entry.Value != EMixtormatChildCreation::NoiseMask
 			&& Entry.Value != EMixtormatChildCreation::LayerValuesMask) { continue; }
 		// The glyph is the node this creates, not the menu it happens to be filed under: Color ID
