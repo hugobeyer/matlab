@@ -9,8 +9,8 @@
 class SMenuAnchor;
 
 // One Sources shelf row: glyph, name, kind. Left click selects; right click opens the row's
-// context menu. Paint comes from SMixtormatLayerSurface, so a source row reads like the rows
-// above it without inheriting any of a layer row's layer semantics.
+// context menu. Its background uses the shared menu-row recipe inside the Sources
+// card, without adopting material-layer appearance or composition semantics.
 //
 // All content is attribute-bound by SourceId, so a parameter edit elsewhere (an enabled toggle in
 // the inspector, a rename) updates the row without a list rebuild. The list is rebuilt only when
