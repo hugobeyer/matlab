@@ -51,6 +51,7 @@ namespace MixtormatMenu
 		FBuilder& Checked(const TAttribute<bool>& InChecked);
 		FBuilder& Enabled(const TAttribute<bool>& InEnabled);
 		FBuilder& Destructive();
+		FBuilder& BehaviorStyle();
 
 		// Anything that is not a row: a mask grid, a colour picker. It gets the panel's ground and
 		// nothing else -- no hover, no inset -- because it brings its own.
@@ -75,6 +76,7 @@ namespace MixtormatMenu
 			TAttribute<bool> bChecked = false;
 			TAttribute<bool> bEnabled = true;
 			bool bDestructive = false;
+			bool bBehaviorStyle = false;
 			TSharedPtr<SWidget> Content;
 		};
 
