@@ -1222,15 +1222,16 @@ namespace
 		Bundle = MoveTemp(Moved);
 	}
 
-	// A step-7 completed-bundle operation owns every moved output. It is intentionally separate
-	// from flow apply, which has already authored Height/Coverage before companion remapping.
+	// A completed-bundle operation owns every moved output. The signed height
+	// supplied here may be native (V2 post-generation) or already normalized
+	// (legacy structural pullback). Flow apply authors Height/Coverage separately.
 	void RemapCompletedGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle,
 		FRDGTextureRef CompletedSignedHeight, FRDGTextureRef WarpedUV)
 	{
 		const FGeneratorBundle Source = Bundle;
 		if (!CompletedSignedHeight) { return; }
-		// Shared normalization/Height Scale already resolved Module.Height; remap that exact
-		// published signed result rather than the bundle's pre-normalized native height.
+		// Remap the caller's exact signed height snapshot, without introducing
+		// any normalization here or silently converting its units.
 		Bundle.Height = RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 0);
 		if (Source.Coverage)
 		{
