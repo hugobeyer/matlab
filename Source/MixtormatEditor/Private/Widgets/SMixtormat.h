@@ -166,10 +166,8 @@ public:
 	// The floating inspector's drag and resize. Unhandled unless Overlay is active and the press
 	// landed on the panel's own chrome, so nothing else in the workspace changes.
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-		virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	// Tunnel phase: a press inside a floating panel brings it to the front before the press is
 	// routed to the control under it (D25).
-	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
@@ -1495,10 +1493,8 @@ private:
 	void RebuildMaskList();
 	TSharedRef<SWidget> BuildTopBar();
 	TSharedRef<SWidget> BuildAuthoringPage();
-	// The viewport-pinned rail and its shared Layers/Library/Global page surface. Only Layers travels.
+	// Docked Layers, Library and Global pages under the attached navigation rail.
 	TSharedRef<SWidget> BuildLeftColumn();
-	// What floats when the layer stack pops out: the stack, its grab margin and its grips.
-	TSharedRef<SWidget> BuildFloatingLayerStack();
 	TSharedRef<SWidget> BuildGlobalPage();
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
@@ -1508,21 +1504,13 @@ private:
 	// Sources shelf expansion. UI only: closing the shelf disables nothing and never reaches the
 	// document.
 	void ToggleSourcesExpanded();
-	// Moves the single layer stack between its dock and overlay hosts, and keeps the rail's
-	// selection pointing at a page the cell can actually show.
-	void ApplyLeftPanelPlacement();
-	void SyncLeftCellPage();
-	// Floating panels: the shared stack both panels float in, and the fronting that decides which
-	// one a press lands on. Geometry, clamping, auto-fit height and the drag/resize interaction
-	// are shared free functions (SMixtormatOverlayPanel.h).
+	// Inspector overlay uses shared geometry and drag/resize helpers.
+	// Layers always remain docked in the left-column page switcher.
 	FVector2D GetPreviewViewportBounds() const;
 	FVector2D GetPreviewViewportLocalPosition(const FVector2D& ScreenPosition) const;
 	TSharedRef<SWidget> BuildFloatingPanelStack();
-	// The Fit height action both floating panels share: a small chevron on the panel's bottom
-	// edge, shown only while the height is explicit (D23).
+	// Inspector overlay fit-height action.
 	TSharedRef<SWidget> MakeOverlayFitButton(FMixtormatOverlayPanelState& State, const TSharedPtr<SWidget>& Panel);
-	void BringFloatingPanelToFront(bool bLeftPanel);
-	void ApplyFloatingPanelOrder();
 	TSharedRef<SWidget> BuildLibraryPage();
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
@@ -1659,31 +1647,16 @@ private:
 	float ShellCenterFraction = 0.60f;
 	float ShellRightFraction = 0.21f;
 	enum class EInspectorPlacement : uint8 { Docked, Overlay, Hidden };
-	enum class ELeftPanelPlacement : uint8 { Docked, Overlay, Hidden };
 	EInspectorPlacement InspectorPlacement = EInspectorPlacement::Docked;
-	ELeftPanelPlacement LeftPanelPlacement = ELeftPanelPlacement::Docked;
 	bool bInspectorCollapsed = false; // Derived: the docked column is absent in Overlay and Hidden.
 	TSharedPtr<SWidget> InspectorPanel;
 	TSharedPtr<SWidget> LeftPanel;
 	TSharedPtr<SBox> InspectorDockHost;
 	TSharedPtr<SBox> InspectorOverlayHost;
 	TSharedPtr<SBox> LeftPanelDockHost;
-	TSharedPtr<SBox> LeftPanelOverlayHost;
-	// The floating panels' geometry and gesture state. Both live here rather than on the widgets
-	// so a theme reconstruction preserves them; the placement, clamping and drag/resize code is
-	// shared (SMixtormatOverlayPanel.h).
+	// Inspector overlay geometry survives theme reconstruction.
 	FMixtormatOverlayPanelState InspectorOverlay;
-	FMixtormatOverlayPanelState LeftPanelOverlay;
-		bool bLayerHomeDragPending = false;
-		FVector2D LayerHomeDragOriginScreen = FVector2D::ZeroVector;
-	// The two floating panels share one stack of two slots; the front slot paints and hit-tests
-	// last. A press inside a panel brings it forward on the next tick (D25).
-	TSharedPtr<SBox> FloatingPanelBackSlot;
-	TSharedPtr<SBox> FloatingPanelFrontSlot;
 	TSharedPtr<SWidget> InspectorOverlayFrame;
-	TSharedPtr<SWidget> LeftPanelOverlayFrame;
-	bool bLeftPanelInFront = false;
-	bool bAppliedLeftPanelInFront = false;
 	// The gallery is one bottom overlay drawer; its open state and height survive rebuilds.
 	bool bBottomLibraryCollapsed = false;
 	float GalleryDrawerHeight = 0.0f;
