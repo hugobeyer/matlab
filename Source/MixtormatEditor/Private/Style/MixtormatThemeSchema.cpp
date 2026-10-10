@@ -676,7 +676,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 					TEXT("Navigation Rail"), TEXT("Rail Shade Invert"),
 					[](const FMixtormatTheme& T) { return T.PreviewLayout.bLeftRailShadeInverted; },
 					[](FMixtormatTheme& T, const bool Value) { T.PreviewLayout.bLeftRailShadeInverted = Value; },
-					TEXT("Reverse the shared vertical shade across Layers / Library / Global"),
+					TEXT("Invert the vertical shade repeated independently inside each navigation rail button"),
 					EMixtormatThemeRefreshMode::Paint));
 				NUM("PreviewLayout.LeftRailButtonSurfaceStrength", Preview, "Navigation Rail", "Rail Button Surface", PreviewLayout.LeftRailButtonSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftRailHoverSurfaceStrength", Preview, "Navigation Rail", "Rail Hover Surface", PreviewLayout.LeftRailHoverSurfaceStrength, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
