@@ -344,3 +344,28 @@ Not performed (requires local Unreal Engine 5.8):
 - Save/load round-trip of the new properties (expected safe: appended UPROPERTYs
   with identity defaults; verify with an existing asset).
 - Undo/redo, clipboard, instance and group parity with the new properties.
+
+---
+
+## 10. P1 implementation notes (clarifications only)
+
+Recorded where P1's implementation fixed or sharpened this contract. No rule above
+changed.
+
+1. **Publication names.** The generated MODE field publishes under `GeneratedFlow`
+   (kind `Flow`, canonical layout, with its own validity texture). The intrinsic
+   `FlowDirection` keeps its legacy normalized-direction layout and every existing
+   consumer until P2 migrates them. Two distinct outputs; the intrinsic vectors are
+   never applied twice.
+2. **Write Height OFF and intrinsic FlowDirection.** A height-less Noise module has
+   no completed (normalized/scaled) height, so its intrinsic `FlowDirection`
+   diagnostic derives from the native field instead. Same output name and consumers;
+   the diagnostic reflects the only height the module has.
+3. **Composition op granularity.** `FlowComposeCS` applies the Add/Mix formula
+   component-wise over the canonical float4 (VectorXY, reserved, influence). The
+   composed validity texture is 1 where either operand carries directional data.
+4. **Slope input contract.** The generated-flow pass carries a `SlopeHeight` texture
+   input plus a `UseSlopeHeight` flag. Until P2 binds the preceding working-height
+   snapshot the flag is 0 and the basis is an exact zero — never the node's own
+   height, which is the Height basis. The Slope Inspector control stays hidden until
+   the input is real; Add/Mix controls stay hidden for the same reason.

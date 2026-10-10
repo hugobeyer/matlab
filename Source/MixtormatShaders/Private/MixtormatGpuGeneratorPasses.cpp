@@ -3414,7 +3414,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV);
 			break;
 		}
-		if (!Module.Height) { continue; }
+		if (!Module.Height && Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
+		// A Noise module with Write Height OFF produces no height: it contributes nothing to the
+		// running height, runs no normalization, and its scoped Behaviors -- which all modify
+		// relief -- have nothing to act on. Its Value/Gradient/FlowDirection/GeneratedFlow
+		// publications and Region IDs still run below (P0 contract section 2).
+		const bool bNoiseHeightless = Child.Generator.Type == EMixtormatGeneratorType::Noise
+			&& !Module.Height;
 		// Publish raw generator masks before any owned Behavior may consume them.
 		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
@@ -3422,27 +3428,33 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 		}
 		// One authored-order pass processes producers and height operations on the native field.
-		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
-		// Normalize the unmasked Noise native height, then apply its scoped gate to the
-		// resolved signed result. Gating before centring turns masked zeros into negative height.
-		// Other generators keep the historical zero-preserving max-abs contract.
-		const FRDGTextureRef NoiseHeightGate =
-			Child.Generator.Type == EMixtormatGeneratorType::Noise
-			&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-				: nullptr;
-		Module.Height = AddSignedGeneratorHeightPasses(
-			Ctx.GraphBuilder, Module.Height, Size,
-			Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
-			Child.Generator.HeightBias,
-			Child.Generator.Type == EMixtormatGeneratorType::Noise,
-			NoiseHeightGate,
-			TEXT("Mixtormat.Generator.SignedHeight"));
+		if (!bNoiseHeightless)
+		{
+			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
+			// Normalize the unmasked Noise native height, then apply its scoped gate to the
+			// resolved signed result. Gating before centring turns masked zeros into negative height.
+			// Other generators keep the historical zero-preserving max-abs contract.
+			const FRDGTextureRef NoiseHeightGate =
+				Child.Generator.Type == EMixtormatGeneratorType::Noise
+				&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: nullptr;
+			Module.Height = AddSignedGeneratorHeightPasses(
+				Ctx.GraphBuilder, Module.Height, Size,
+				Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+				Child.Generator.HeightBias,
+				Child.Generator.Type == EMixtormatGeneratorType::Noise,
+				NoiseHeightGate,
+				TEXT("Mixtormat.Generator.SignedHeight"));
 
+			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+			}
+		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
-			AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
-			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection"))})
+			for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient")), FName(TEXT("FlowDirection")), FName(TEXT("GeneratedFlow"))})
 			{
 				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
 					PublishedKey(Layer, Child.SourceChildIndex, Name));
@@ -3456,11 +3468,16 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
-		LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
-		// Explicit inputs address the completed signed module result, never the running sum.
-		Ctx.PublishedFieldOutputs.Add(
-			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
-			FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+		// Height-less Noise retains nothing and combines nothing: zero contribution, no phantom
+		// relief through Height Blend, no normalization side effects.
+		if (Module.Height)
+		{
+			LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
+			// Explicit inputs address the completed signed module result, never the running sum.
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
+				FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+		}
 
 		// The only publication point: every module publishes under its own child index, after its
 		// flow. The layer's default IDs are therefore the last module that produced any.
@@ -3500,7 +3517,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 
-		AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+		// Height-less Noise contributes nothing to the running height.
+		if (Module.Height)
+		{
+			AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+		}
 	}
 	// Color Ramp only publishes Color. The Generator layer owns whether the last valid ordered
 	// Color result becomes this layer's Base Color input. When nothing in the stack produced a

@@ -125,6 +125,161 @@ void FlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutFlowValidity[Pixel] = Valid ? 1.0f : 0.0f;
 }
 
+// ---- P1 generated Flow (AgentDocs/FIELD_CONTRACT_P0.md sections 1, 3, 4) ----
+//
+// The weighted MODE contribution, in the canonical layout: RG = VectorXY with magnitude,
+// B = 0, A = influence; validity in a separate R16F texture. This is the node's generated
+// contribution -- distinct from the intrinsic FlowDirection diagnostic above, which keeps its
+// legacy normalized-direction layout and consumers until P2.
+//
+//   GeneratedFlow = HeightWeight * Downhill(OwnHeight)
+//                 + SlopeWeight  * Downhill(SlopeHeight)      // P2 binds the snapshot
+//                 + CurlWeight   * Curl(UV)
+//                 + ConstantWeight * float2(cos A, -sin A);
+//   GeneratedFlow *= Strength;
+//
+// Bases carry magnitude; the combination is never normalized, so zero stays exactly zero and
+// opposing weights cancel. Gradients are per-UV (resolution-independent) and wrapped taps keep
+// the field tileable. An invalid or unavailable basis contributes zero and never invents
+// movement.
+
+Texture2D<float> ModeOwnHeight;
+Texture2D<float> ModeSlopeHeight;
+uint ModeUseSlopeHeight;
+RWTexture2D<float4> OutGeneratedFlow;
+RWTexture2D<float> OutGeneratedFlowValidity;
+float ModeHeightWeight;
+float ModeSlopeWeight;
+float ModeCurlWeight;
+float ModeConstantWeight;
+float ModeAngleDegrees;
+float ModeStrength;
+int ModeCurlPeriod;
+int ModeCurlOctaves;
+float ModeCurlRoughness;
+float ModeCurlLacunarity;
+uint ModeCurlSeed;
+
+// Wrapped per-UV central difference; downhill (negative gradient), magnitude preserved.
+// Returns false on flat or non-finite slopes: no invented movement.
+bool ModeDownhill(Texture2D<float> Height, int2 Pixel, out float2 OutVector)
+{
+	const int2 XP = (Pixel + int2(1, 0)) % OutputSize;
+	const int2 XM = (Pixel + OutputSize - int2(1, 0)) % OutputSize;
+	const int2 YP = (Pixel + int2(0, 1)) % OutputSize;
+	const int2 YM = (Pixel + OutputSize - int2(0, 1)) % OutputSize;
+	const float2 Slope = 0.5f * float2(OutputSize) * float2(
+		Height.Load(int3(XP, 0)) - Height.Load(int3(XM, 0)),
+		Height.Load(int3(YP, 0)) - Height.Load(int3(YM, 0)));
+	if (!all(isfinite(Slope)) || length(Slope) <= 1.0e-5f)
+	{
+		OutVector = float2(0.0f, 0.0f);
+		return false;
+	}
+	OutVector = -Slope;
+	return true;
+}
+
+[numthreads(8, 8, 1)]
+void GeneratedFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+
+	float2 Result = float2(0.0f, 0.0f);
+	bool bValid = false;
+
+	if (ModeHeightWeight != 0.0f)
+	{
+		float2 Basis;
+		if (ModeDownhill(ModeOwnHeight, Pixel, Basis))
+		{
+			Result += ModeHeightWeight * Basis;
+			bValid = true;
+		}
+	}
+	// Slope reads the preceding working height. P2 binds the snapshot; until then the flag is 0
+	// and the basis is an exact zero -- never the node's own height, which is the Height basis.
+	if (ModeSlopeWeight != 0.0f && ModeUseSlopeHeight != 0u)
+	{
+		float2 Basis;
+		if (ModeDownhill(ModeSlopeHeight, Pixel, Basis))
+		{
+			Result += ModeSlopeWeight * Basis;
+			bValid = true;
+		}
+	}
+	if (ModeCurlWeight != 0.0f)
+	{
+		// Destination tile UV at the module's base period: periodic, so the curl field tiles.
+		const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+		const float2 Basis = MixtormatNoiseV2Curl(UV, ModeCurlPeriod, ModeCurlOctaves,
+			ModeCurlRoughness, ModeCurlLacunarity, ModeCurlSeed, float2(0.0f, 0.0f), 0.0f, 1.0f);
+		if (all(isfinite(Basis)) && dot(Basis, Basis) > 1.0e-10f)
+		{
+			Result += ModeCurlWeight * Basis;
+			bValid = true;
+		}
+	}
+	if (ModeConstantWeight != 0.0f)
+	{
+		// Degrees CCW from +U with V up; the texture frame is V-down, hence the negated sine.
+		const float Radians = radians(ModeAngleDegrees);
+		Result += ModeConstantWeight * float2(cos(Radians), -sin(Radians));
+		bValid = true;
+	}
+
+	Result *= ModeStrength;
+	if (!all(isfinite(Result)))
+	{
+		Result = float2(0.0f, 0.0f);
+		bValid = false;
+	}
+	// All weights zero (or no valid basis): exact zero, no influence, no invented movement.
+	OutGeneratedFlow[Pixel] = float4(Result, 0.0f, bValid ? 1.0f : 0.0f);
+	OutGeneratedFlowValidity[Pixel] = bValid ? 1.0f : 0.0f;
+}
+
+// Reusable Add/Mix composition over canonical Flow fields. P1 ships the operation; P2 connects
+// it to the ordered working-field accumulation. The formula is the P0 contract exactly:
+//   MixWeight = saturate(Mix * Mask); AddWeight = Add * Mask;
+//   FlowOut = lerp(FlowIn, Generated, MixWeight) + Generated * AddWeight.
+// Applied component-wise over (VectorXY, reserved, influence); Strength=0 with Mix>0 therefore
+// interpolates the existing field toward the (zero) generated contribution, by design. The
+// validity texture is 1 where either operand carries directional data.
+Texture2D<float4> ComposeFlowIn;
+Texture2D<float4> ComposeGenerated;
+Texture2D<float> ComposeMask;
+uint ComposeUseMask;
+float ComposeAdd;
+float ComposeMix;
+RWTexture2D<float4> OutComposedFlow;
+RWTexture2D<float> OutComposedFlowValidity;
+
+[numthreads(8, 8, 1)]
+void FlowComposeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float4 FlowIn = ComposeFlowIn.Load(int3(Pixel, 0));
+	const float4 Generated = ComposeGenerated.Load(int3(Pixel, 0));
+	float Mask = 1.0f;
+	if (ComposeUseMask != 0u)
+	{
+		const float Value = ComposeMask.Load(int3(Pixel, 0));
+		Mask = isfinite(Value) ? saturate(Value) : 0.0f;
+	}
+	const float MixWeight = saturate(ComposeMix * Mask);
+	const float AddWeight = ComposeAdd * Mask;
+	float4 Out = lerp(FlowIn, Generated, MixWeight) + Generated * AddWeight;
+	if (!all(isfinite(Out)))
+	{
+		Out = float4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+	OutComposedFlow[Pixel] = Out;
+	OutComposedFlowValidity[Pixel] = (FlowIn.a > 0.0f || Generated.a > 0.0f) ? 1.0f : 0.0f;
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {

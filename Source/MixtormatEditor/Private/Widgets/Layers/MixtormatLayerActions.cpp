@@ -62,6 +62,11 @@ void SMixtormat::InitializeNewLayer(
 
 FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 {
+	return AddGeneratorLayerCreation(CreationKindForGenerator(Type));
+}
+
+FReply SMixtormat::AddGeneratorLayerCreation(const EMixtormatChildCreation Kind)
+{
 	AddLayerOrStartMaterial(EMixtormatLayerType::Generator);
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator)
@@ -70,7 +75,7 @@ FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
 	}
 
 	// The first module is the layer's first child; CreateChild selects it and refreshes the stack.
-	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), CreationKindForGenerator(Type));
+	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), Kind);
 }
 
 FReply SMixtormat::AddLayerOrStartMaterial(const EMixtormatLayerType LayerType)

@@ -2647,30 +2647,109 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 	{
 		const TSharedRef<SVerticalBox> Output = AddCard(Cards, LOCTEXT("NoiseOutput", "OUTPUT"));
+		// Independent output gates (P0 contract section 2). Both presets show the same controls;
+		// the toggles change what is written, not the node's identity.
 		AddSliderRow(Output, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatNoise>(
-				LOCTEXT("NoiseHeightScale", "Scale"), Noise, &FMixtormatNoise::NoiseHeightScale, -4.0, 4.0, 1.0, 0.01,
-				LOCTEXT("NoiseHeightScaleHint", "Scales the signed generator height after centring.")),
-			MakeMemberSlider<FMixtormatNoise>(
-				LOCTEXT("NoiseHeightBias", "Bias"), Noise, &FMixtormatNoise::NoiseHeightBias, -1.0, 1.0, 0.0, 0.01,
-				LOCTEXT("NoiseHeightBiasHint", "Offsets the centred height, before Scale."))));
-		AddSliderRow(Output, MixtormatRow::MakeTrailing(
-			LOCTEXT("NoiseNormalizeHeight", "Normalize"),
+			MixtormatRow::MakeTrailing(LOCTEXT("NoiseWriteHeight", "Height"),
 				MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Noise]()
 					{
 						const FMixtormatNoise* N = Noise();
-						return N && N->bNoiseNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						return N && N->bNoiseWriteHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 					}),
 					FOnCheckStateChanged::CreateLambda([this, Noise](const ECheckBoxState State)
 					{
 						if (FMixtormatNoise* N = Noise())
 						{
-							N->bNoiseNormalizeHeight = State == ECheckBoxState::Checked;
+							N->bNoiseWriteHeight = State == ECheckBoxState::Checked;
 							RefreshLayeredPreview();
 						}
 					}),
-					LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field."))));
+					LOCTEXT("NoiseWriteHeightHint", "Contribute signed height to the generator layer. Off leaves the scalar field available for gradients and Flow."))),
+			MixtormatRow::MakeTrailing(LOCTEXT("NoiseWriteFlow", "Flow"),
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Noise]()
+					{
+						const FMixtormatNoise* N = Noise();
+						return N && N->bNoiseWriteFlow ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this, Noise](const ECheckBoxState State)
+					{
+						if (FMixtormatNoise* N = Noise())
+						{
+							N->bNoiseWriteFlow = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+						}
+					}),
+					LOCTEXT("NoiseWriteFlowHint", "Generate and publish the weighted MODE Flow. Off keeps the Gradient and FlowDirection outputs.")))));
+		const auto bHeightOutput = [Noise]()
+		{
+			const FMixtormatNoise* N = Noise();
+			return N && N->bNoiseWriteHeight;
+		};
+		AddSliderRow(Output, SNew(SBox).Visibility_Lambda([bHeightOutput]()
+			{ return bHeightOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseHeightScale", "Scale"), Noise, &FMixtormatNoise::NoiseHeightScale, -4.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseHeightScaleHint", "Scales the signed generator height after centring.")),
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseHeightBias", "Bias"), Noise, &FMixtormatNoise::NoiseHeightBias, -1.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseHeightBiasHint", "Offsets the centred height, before Scale.")))]);
+		AddSliderRow(Output, SNew(SBox).Visibility_Lambda([bHeightOutput]()
+			{ return bHeightOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakeTrailing(
+				LOCTEXT("NoiseNormalizeHeight", "Normalize"),
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([Noise]()
+						{
+							const FMixtormatNoise* N = Noise();
+							return N && N->bNoiseNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this, Noise](const ECheckBoxState State)
+						{
+							if (FMixtormatNoise* N = Noise())
+							{
+								N->bNoiseNormalizeHeight = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+							}
+						}),
+						LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field.")))]);
+	}
+	{
+		// MODE: weighted directional generation (P0 contract section 3). All shown weights are
+		// simultaneous contributions -- there is no source dropdown. Slope is compiled in the GPU
+		// pass but reads the preceding working-height snapshot, which P2 supplies, so its control
+		// is not exposed yet; Add/Mix compose the working Flow field, also P2.
+		const auto bFlowOutput = [Noise]()
+		{
+			const FMixtormatNoise* N = Noise();
+			return N && N->bNoiseWriteFlow;
+		};
+		const TSharedRef<SVerticalBox> Mode = AddCard(Cards, LOCTEXT("NoiseMode", "MODE"));
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeHeight", "Height"),
+					Noise, &FMixtormatNoise::NoiseDirectionHeightWeight, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseModeHeightHint", "Downhill vectors from this node's own noise height.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeCurl", "Curl"),
+					Noise, &FMixtormatNoise::NoiseDirectionCurlWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeCurlHint", "Rotational variation from the shared periodic curl.")))]);
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeConstant", "Constant"),
+					Noise, &FMixtormatNoise::NoiseDirectionConstantWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeConstantHint", "Uniform direction from Angle, scaled by this weight.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeAngle", "Angle"),
+					Noise, &FMixtormatNoise::NoiseDirectionAngle, 0.0, 360.0, 0.0, 1.0,
+					LOCTEXT("NoiseModeAngleHint", "Constant-direction orientation in degrees.")))]);
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeStrength", "Strength"),
+				Noise, &FMixtormatNoise::NoiseDirectionStrength, 0.0, 4.0, 1.0, 0.01,
+				LOCTEXT("NoiseModeStrengthHint", "Final scalar on the combined generated Flow."))]);
 	}
 	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 
@@ -2679,7 +2758,8 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("NoiseHeading", "NOISE"))
+			.Title(GetSelectedNoise() && GetSelectedNoise()->NoisePreset == EMixtormatNoisePreset::Flow
+				? LOCTEXT("FlowHeading", "FLOW") : LOCTEXT("NoiseHeading", "NOISE"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)

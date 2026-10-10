@@ -254,6 +254,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseFlow", "Flow"),
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
+			// P1 generated MODE contribution, published only when Write Flow is on. Canonical
+			// layout; previewable through the existing output-key mechanism.
+			if (Child.Generator.Noise.bNoiseWriteFlow)
+			{
+				Result.Outputs.Add({FName(TEXT("GeneratedFlow")),
+					NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGeneratedFlow", "Generated Flow"),
+					EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+					true, EMixtormatPublishedFieldKind::Flow});
+			}
 			if (NoiseType == EMixtormatNoiseType::WorleyF1
 				|| NoiseType == EMixtormatNoiseType::WorleyF2
 				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2)

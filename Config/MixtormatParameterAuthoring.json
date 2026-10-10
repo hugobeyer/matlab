@@ -997,6 +997,62 @@
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
+		"Generator.NoiseDirectionHeightWeight":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseDirectionSlopeWeight":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseDirectionCurlWeight":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseDirectionConstantWeight":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseDirectionAngle":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 360,
+			"snap": 1
+		},
+		"Generator.NoiseDirectionStrength":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseFlowAdd":
+		{
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
+		},
+		"Generator.NoiseFlowMix":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
+		},
 		"MaskNoise.NoiseType:Enum":
 		{
 			"defaultEnum": "Gradient"

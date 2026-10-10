@@ -74,6 +74,9 @@ enum class EMixtormatChildCreation : uint8
 	Pebbles,
 	CliffStrata,
 	Noise,
+	// The Flow creation preset: the same Noise generator with the P0 Flow defaults
+	// (Write Height OFF, Write Flow ON, Curl weight 1). Editor-only, never serialized.
+	NoiseFlow,
 	// Generator-layer sublayers.
 	HeightBlend,
 	HeightCurve,
@@ -287,6 +290,9 @@ private:
 	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
 	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
 	FReply AddGeneratorLayer(EMixtormatGeneratorType Type);
+	// Creation-kind entry so the Flow preset (same Noise generator, different defaults) can
+	// share the Add menu without a second generator type.
+	FReply AddGeneratorLayerCreation(EMixtormatChildCreation Kind);
 	TSharedRef<SWidget> BuildAddGeneratorLayerMenu();
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();

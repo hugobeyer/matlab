@@ -52,6 +52,18 @@ struct FMixtormatNoiseRenderData
 	float DistortionLacunarity = 2.0f;
 	float DistortionCurlMix = 1.0f;
 	float DistortionDirection = 0.0f;
+
+	// ---- P1 unified field contract (AgentDocs/FIELD_CONTRACT_P0.md) ----
+	// Output gates and weighted MODE settings, resolved from the P0 serialized properties.
+	// Add/Mix are not bound here: composition runs on the working field, which P2 supplies.
+	bool bWriteHeight = true;
+	bool bWriteFlow = false;
+	float ModeHeightWeight = 1.0f;
+	float ModeSlopeWeight = 0.0f;
+	float ModeCurlWeight = 0.0f;
+	float ModeConstantWeight = 0.0f;
+	float ModeAngle = 0.0f;
+	float ModeStrength = 1.0f;
 };
 
 // Shared field sanitization for generator gather and inline source-local masks.

@@ -69,9 +69,12 @@ namespace MixtormatOutputReferences
 				&& OutputName == FName(TEXT("Value"))
 				&& NoiseValueKind(Generator.Noise.NoiseType) == EMixtormatPublishedFieldKind::ScalarSigned;
 		case EMixtormatPublishedFieldKind::Flow:
-			// Only Noise emits a flow field, as FlowDirection.
+			// Only Noise emits flow fields: the intrinsic FlowDirection diagnostic and, since P1,
+			// the canonical GeneratedFlow MODE contribution (AgentDocs/FIELD_CONTRACT_P0.md).
 			return Generator.Type == EMixtormatGeneratorType::Noise
-				&& OutputName == FName(TEXT("FlowDirection"));
+				&& (OutputName == FName(TEXT("FlowDirection"))
+					|| (Generator.Noise.bNoiseWriteFlow
+						&& OutputName == FName(TEXT("GeneratedFlow"))));
 		default:
 			// No bare generator module publishes a UV map; WarpedUV comes from flow tools, which a
 			// zero-child shelf root does not carry.

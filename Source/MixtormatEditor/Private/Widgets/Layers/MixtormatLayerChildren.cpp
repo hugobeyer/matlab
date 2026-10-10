@@ -757,6 +757,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
@@ -831,6 +832,24 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Noise:
 			Child.Generator.Type = EMixtormatGeneratorType::Noise;
 			break;
+		case EMixtormatChildCreation::NoiseFlow:
+		{
+			// The Flow creation preset: the same Noise V2 generator, with the P0 Flow defaults
+			// (FINAL_BEHAVIOR_PLAN section 12). Authoring defaults first, exactly like a Noise
+			// mask prototype, so the preset starts configured like its Noise counterpart.
+			FMixtormatLayerChild NoiseDefaults;
+			NoiseDefaults.Type = EMixtormatLayerChildType::Generator;
+			NoiseDefaults.Generator.Type = EMixtormatGeneratorType::Noise;
+			MixtormatParameterAuthoring::ApplyAuthoringDefaults(NoiseDefaults);
+			Child.Generator.Type = EMixtormatGeneratorType::Noise;
+			Child.Generator.Noise = NoiseDefaults.Generator.Noise;
+			Child.Generator.Noise.NoisePreset = EMixtormatNoisePreset::Flow;
+			Child.Generator.Noise.bNoiseWriteHeight = false;
+			Child.Generator.Noise.bNoiseWriteFlow = true;
+			Child.Generator.Noise.NoiseDirectionHeightWeight = 0.0f;
+			Child.Generator.Noise.NoiseDirectionCurlWeight = 1.0f;
+			break;
+		}
 		case EMixtormatChildCreation::BehaviorPush:
 			Child.Behavior.Type = EMixtormatBehaviorType::Push;
 			Child.Behavior.Height.Origin = EMixtormatBehaviorFieldOrigin::None;
@@ -1447,7 +1466,11 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
 		case EMixtormatGeneratorType::Noise:
-			return LOCTEXT("NoiseChildName", "Noise");
+			// Preset identity persists independently of the output toggles: a Flow that later
+			// enables Height stays a Flow (FINAL_BEHAVIOR_PLAN section 12).
+			return Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow
+				? LOCTEXT("FlowChildName", "Flow")
+				: LOCTEXT("NoiseChildName", "Noise");
 		}
 		return LOCTEXT("GeneratorChildName", "Generator");
 	}

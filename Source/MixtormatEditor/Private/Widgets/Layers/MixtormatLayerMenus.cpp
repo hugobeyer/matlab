@@ -35,21 +35,24 @@ namespace
 	}
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
+	TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 {
 	MixtormatMenu::FBuilder Menu;
-	const TPair<FText, EMixtormatGeneratorType> Entries[] = {
-		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatGeneratorType::StrataCarver},
-		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatGeneratorType::Cracks},
-		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatGeneratorType::RockFormation},
-		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatGeneratorType::Pebbles},
-		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatGeneratorType::CliffStrata},
-		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatGeneratorType::Noise},
+	// Noise and Flow are two creation presets of one generator (FINAL_BEHAVIOR_PLAN section 12);
+	// the entries name creation kinds, so Flow carries its own defaults without a second type.
+	const TPair<FText, EMixtormatChildCreation> Entries[] = {
+		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatChildCreation::StrataCarver},
+		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatChildCreation::Cracks},
+		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatChildCreation::RockFormation},
+		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
+		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
+		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
+		{LOCTEXT("AddGeneratorLayerFlow", "Flow"), EMixtormatChildCreation::NoiseFlow},
 	};
 	for (const auto& Entry : Entries)
 	{
 		Menu.Item(Entry.Key, MixtormatIcons::Generator(),
-			FSimpleDelegate::CreateLambda([this, Type = Entry.Value]() { AddGeneratorLayer(Type); }));
+			FSimpleDelegate::CreateLambda([this, Kind = Entry.Value]() { AddGeneratorLayerCreation(Kind); }));
 	}
 	return Menu.Build();
 }

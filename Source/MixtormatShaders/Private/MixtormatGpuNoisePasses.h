@@ -24,4 +24,20 @@ FRDGTextureRef AddNoiseCoveragePass(FMixtormatComposeContext& Ctx, FRDGTextureRe
 // Explicit downhill transport from completed destination-space height, with flat-slope validity.
 void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
 	int32 SourceChildIndex, FRDGTextureRef Height);
+
+// P1 generated Flow: the weighted Height/Slope/Curl/Constant MODE field in the canonical
+// layout (FIELD_CONTRACT_P0.md section 1), published under "GeneratedFlow". OwnHeight is the
+// module's native signed field (the Height basis). The Slope basis is compiled in but disabled
+// until P2 supplies the preceding working-height snapshot.
+FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
+	int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight);
+
+// Reusable Add/Mix composition over two canonical Flow fields (FIELD_CONTRACT_P0.md section 4):
+//   MixWeight = saturate(Mix * Mask); AddWeight = Add * Mask;
+//   FlowOut = lerp(FlowIn, Generated, MixWeight) + Generated * AddWeight.
+// Mask may be null (weight 1). Writes the composed vector and its validity texture. P1 ships
+// the operation; P2 connects it to the ordered working-field accumulation.
+FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
+	FRDGTextureRef FlowIn, FRDGTextureRef Generated, FRDGTextureRef Mask,
+	float Add, float Mix, FRDGTextureRef& OutValidity, const TCHAR* DebugName);
 }

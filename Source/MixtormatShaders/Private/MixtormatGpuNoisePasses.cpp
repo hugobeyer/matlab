@@ -176,6 +176,72 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowCS,
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowCS", SF_Compute);
 
+	// P1 generated Flow (canonical contract: AgentDocs/FIELD_CONTRACT_P0.md section 1).
+	// Weighted Height/Slope/Curl/Constant MODE combination, written in the canonical layout:
+	// RG = VectorXY with magnitude, B = 0, A = influence; validity in a separate R16F texture.
+	class FMixtormatNoiseGeneratedFlowCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatNoiseGeneratedFlowCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseGeneratedFlowCS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OwnHeight)
+			// Preceding working-height snapshot. P2 binds the real field; until then UseSlopeHeight
+			// stays 0 and the Slope basis contributes exactly zero (no invented movement).
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SlopeHeight)
+			SHADER_PARAMETER(uint32, UseSlopeHeight)
+			SHADER_PARAMETER(float, HeightWeight)
+			SHADER_PARAMETER(float, SlopeWeight)
+			SHADER_PARAMETER(float, CurlWeight)
+			SHADER_PARAMETER(float, ConstantWeight)
+			SHADER_PARAMETER(float, AngleDegrees)
+			SHADER_PARAMETER(float, Strength)
+			SHADER_PARAMETER(int, CurlPeriod)
+			SHADER_PARAMETER(int, CurlOctaves)
+			SHADER_PARAMETER(float, CurlRoughness)
+			SHADER_PARAMETER(float, CurlLacunarity)
+			SHADER_PARAMETER(uint32, CurlSeed)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseGeneratedFlowCS,
+		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "GeneratedFlowCS", SF_Compute);
+
+	// Reusable Add/Mix composition over canonical Flow fields (FIELD_CONTRACT_P0.md section 4):
+	//   MixWeight = saturate(Mix * Mask); AddWeight = Add * Mask;
+	//   FlowOut = lerp(FlowIn, Generated, MixWeight) + Generated * AddWeight.
+	// P1 ships the operation; P2 connects it to the working-field accumulation. Not enqueued
+	// anywhere in P1, so no temporary FlowIn approximation exists.
+	class FMixtormatNoiseFlowComposeCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatNoiseFlowComposeCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatNoiseFlowComposeCS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowIn)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, Generated)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Mask)
+			SHADER_PARAMETER(uint32, UseMask)
+			SHADER_PARAMETER(float, Add)
+			SHADER_PARAMETER(float, Mix)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatNoiseFlowComposeCS,
+		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowComposeCS", SF_Compute);
+
 	// The family-to-kind contract now lives in Runtime (MixtormatOutputReferences::NoiseValueKind),
 	// so the producer and the reference validators read one definition. See the USF header.
 
@@ -232,6 +298,16 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.DistortionLacunarity = FMath::Clamp(Finite(Noise.NoiseDistortionLacunarity, Defaults.NoiseDistortionLacunarity), 1.0f, 4.0f);
 	Out.DistortionCurlMix = FMath::Clamp(Finite(Noise.NoiseDistortionCurlMix, Defaults.NoiseDistortionCurlMix), 0.0f, 1.0f);
 	Out.DistortionDirection = Finite(Noise.NoiseDistortionDirection, Defaults.NoiseDistortionDirection);
+	// P0 field contract settings. Weights clamp to the serialized UI range; a non-finite weight
+	// falls back to its default so a corrupt asset cannot inject NaN into the vector field.
+	Out.bWriteHeight = Noise.bNoiseWriteHeight;
+	Out.bWriteFlow = Noise.bNoiseWriteFlow;
+	Out.ModeHeightWeight = FMath::Clamp(Finite(Noise.NoiseDirectionHeightWeight, Defaults.NoiseDirectionHeightWeight), 0.0f, 4.0f);
+	Out.ModeSlopeWeight = FMath::Clamp(Finite(Noise.NoiseDirectionSlopeWeight, Defaults.NoiseDirectionSlopeWeight), 0.0f, 4.0f);
+	Out.ModeCurlWeight = FMath::Clamp(Finite(Noise.NoiseDirectionCurlWeight, Defaults.NoiseDirectionCurlWeight), 0.0f, 4.0f);
+	Out.ModeConstantWeight = FMath::Clamp(Finite(Noise.NoiseDirectionConstantWeight, Defaults.NoiseDirectionConstantWeight), 0.0f, 4.0f);
+	Out.ModeAngle = FMath::Clamp(Finite(Noise.NoiseDirectionAngle, Defaults.NoiseDirectionAngle), 0.0f, 360.0f);
+	Out.ModeStrength = FMath::Clamp(Finite(Noise.NoiseDirectionStrength, Defaults.NoiseDirectionStrength), 0.0f, 4.0f);
 	return Out;
 }
 
@@ -284,6 +360,78 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 	Ctx.PublishedFieldOutputs.Add(
 		PublishedKey(Layer, SourceChildIndex, FName(TEXT("FlowDirection"))),
 		FPublishedField{EMixtormatPublishedFieldKind::Flow, Flow, Flow, Validity, false});
+}
+
+FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
+	const int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight)
+{
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Flow = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.GeneratedFlow"));
+	FRDGTextureRef Validity = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.GeneratedFlowValidity"));
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseGeneratedFlowCS::FParameters>();
+	P->OutputSize = Size;
+	P->OwnHeight = OwnHeight;
+	// P2 binds the preceding working-height snapshot; until then the Slope basis is off.
+	P->SlopeHeight = OwnHeight;
+	P->UseSlopeHeight = 0u;
+	P->HeightWeight = Noise.ModeHeightWeight;
+	P->SlopeWeight = Noise.ModeSlopeWeight;
+	P->CurlWeight = Noise.ModeCurlWeight;
+	P->ConstantWeight = Noise.ModeConstantWeight;
+	P->AngleDegrees = Noise.ModeAngle;
+	P->Strength = Noise.ModeStrength;
+	// Curl reuses the module's own periodic settings: base period = the noise lattice period,
+	// octave stack = the distortion settings, so the field tiles and no new serialized
+	// parameters are introduced. Seed is the module's own, distinct from the distortion stream.
+	P->CurlPeriod = FMath::Max(FMath::RoundToInt(Noise.Scale), 1);
+	P->CurlOctaves = FMath::Clamp(Noise.DistortionOctaves, 1, 8);
+	P->CurlRoughness = Noise.DistortionRoughness;
+	P->CurlLacunarity = Noise.DistortionLacunarity;
+	P->CurlSeed = static_cast<uint32>(Noise.Seed);
+	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
+	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
+	TShaderMapRef<FMixtormatNoiseGeneratedFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+		RDG_EVENT_NAME("Mixtormat.Noise.GeneratedFlow.C%d", SourceChildIndex),
+		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	// Canonical layout (FIELD_CONTRACT_P0.md section 1): RG = VectorXY with magnitude,
+	// B = 0, A = influence; validity separate. Published under its own name -- the intrinsic
+	// FlowDirection keeps its existing normalized-direction layout and consumers until P2.
+	Ctx.PublishedFieldOutputs.Add(
+		PublishedKey(Layer, SourceChildIndex, FName(TEXT("GeneratedFlow"))),
+		FPublishedField{EMixtormatPublishedFieldKind::Flow, Flow, Flow, Validity, false});
+	return Flow;
+}
+
+FRDGTextureRef AddNoiseFlowComposePass(FMixtormatComposeContext& Ctx,
+	FRDGTextureRef FlowIn, FRDGTextureRef Generated, FRDGTextureRef Mask,
+	const float Add, const float Mix, FRDGTextureRef& OutValidity, const TCHAR* DebugName)
+{
+	const FIntPoint Size = Ctx.Request.Resolution;
+	FRDGTextureRef Flow = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		DebugName);
+	OutValidity = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+		Size, PF_R16F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+		TEXT("Mixtormat.Noise.ComposeValidity"));
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNoiseFlowComposeCS::FParameters>();
+	P->OutputSize = Size;
+	P->FlowIn = FlowIn;
+	P->Generated = Generated;
+	P->Mask = Mask;
+	P->UseMask = Mask ? 1u : 0u;
+	P->Add = Add;
+	P->Mix = Mix;
+	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
+	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(OutValidity);
+	TShaderMapRef<FMixtormatNoiseFlowComposeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+	FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Noise.FlowCompose"),
+		Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+	return Flow;
 }
 
 namespace
@@ -390,10 +538,13 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		// Generate unmasked native Height and publish unmasked Value/Gradient/IDs.
 		// The generator resolve gates Height *after* Noise-specific centring and Bias.
 		// Retain the existing shader resource bindings for compatibility.
+		// Write Height OFF leaves the UAV unbound: the module's native field still exists (the
+		// intrinsic FlowDirection diagnostic and the MODE Height basis read it), but no height
+		// is written and the compositor contributes nothing (see AddNoisePasses).
 		P->HasMask = 0u;
 		P->ScopedMask = Value;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
-		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
+		P->OutHeight = Height && Noise.bWriteHeight ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
 		P->OutIds = Ids ? GraphBuilder.CreateUAV(Ids) : nullptr;
 		ClearUnusedGraphResources(Shader, P);
@@ -453,7 +604,10 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 
 	if (Bundle)
 	{
-		Bundle->Height = Height;
+		// Write Height OFF: the module contributes no height. The native field texture stays
+		// alive for the intrinsic FlowDirection diagnostic and the MODE Height basis; the
+		// compositor below skips normalization, publication and combination for this module.
+		Bundle->Height = Noise.bWriteHeight ? Height : nullptr;
 		// Only the Worley family produces stable cell IDs. EmptyRegionIds is non-null (a
 		// binding placeholder), so gating on Ids alone would publish a fake ID map for every
 		// non-Worley family.
@@ -477,5 +631,24 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	Ctx.PublishedFieldOutputs.Add(
 		PublishedKey(Layer, SourceChildIndex, FName(TEXT("Gradient"))),
 		FPublishedField{EMixtormatPublishedFieldKind::Vector2, Gradient, nullptr, nullptr, false});
+
+	// Write Height OFF: the intrinsic FlowDirection diagnostic is derived here from the native
+	// field, because the completed-height publication after post behaviors does not run for a
+	// height-less module. Same output name, same consumers; the diagnostic reflects the native
+	// rather than the normalized field, which is the only height this module has.
+	if (!Noise.bWriteHeight)
+	{
+		AddNoiseFlowPass(Ctx, Layer, SourceChildIndex, Height);
+	}
+
+	// P1 generated Flow: the weighted MODE field in the canonical layout, published ahead of
+	// post-generation Behaviors (FINAL_BEHAVIOR_PLAN section 10 -- the late publication of the
+	// intrinsic FlowDirection is the known defect P2 fixes; the generated field does not repeat
+	// it). Distinct from the intrinsic FlowDirection: this is the MODE contribution, not the
+	// node's downhill diagnostic, so the intrinsic vectors are never applied twice.
+	if (Noise.bWriteFlow)
+	{
+		AddNoiseGeneratedFlowPass(Ctx, Layer, SourceChildIndex, Noise, Height);
+	}
 }
 }
