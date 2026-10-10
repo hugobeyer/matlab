@@ -1,10 +1,10 @@
 # Behavior System V2 — implementation contract
 
-Status: P0 serialization and direct-ownership validation are present on this branch; GPU evaluation and UI authoring are not implemented.
+Status: P0 serialization, direct-ownership lookup, editor enable-state handling, scoped placement rules, and group/clipboard reference remaps are present. GPU evaluation, field resolution, parameter registration and UI authoring are not implemented.
 
 ## Ownership
 - A Behavior is an appended `EMixtormatLayerChildType::Behavior` in the existing flat `Layer.Children` array.
-- `ScopeOwnerChildId` must resolve **directly** to an earlier Generator child. The runtime helper `ResolveBehaviorGeneratorIndex` enforces this condition.
+- `ScopeOwnerChildId` must resolve **directly** to an earlier Generator child. The runtime helper `ResolveBehaviorGeneratorIndex` checks this when called; generic owner sanitization does not automatically enforce Behavior-specific ownership. A future evaluator must reject invalid owners.
 - Field inputs are serializable typed sockets on `FMixtormatBehavior`, not nested child arrays.
 - Existing legacy child kinds, enum values, generator module order, source references and saved materials remain untouched.
 - Invalid/unowned Behaviors must be ignored by future GPU evaluation rather than interpreted as global effects.
@@ -21,11 +21,12 @@ Status: P0 serialization and direct-ownership validation are present on this bra
 - `PublishedOutput`: explicit `FMixtormatOutputReference` (Layer/Shelf), validated for kind, endpoint and dependency order.
 - `None`: unconnected; execution must not guess a source.
 - `ScalarSigned` is not automatically SDF. `Vector2` is not automatically Flow or UVMap. Direction/Height/Influence sockets need per-behavior kind eligibility and neutral handling.
+- A Warp Direction input cannot consume `OwnNativeHeight` as a vector without an **explicit** scalar-to-direction operation, such as a height-gradient field producer. That operation is not implemented. Do not silently reinterpret scalar textures as Flow.
 
 ## Required next code increments
 1. Implement a non-mutating typed resolver for each Behavior input; report invalid/forward/missing/scope-incompatible sources. Respect source shelf scheduling and group-expanded identity.
 2. Add a stage-aware gather representation, based on original child GUID rather than an ambiguous authored/effective index.
-3. Implement the Rock Formation **PostGeneration Warp** prototype using existing native flow/UV transport code. Preserve height and companion field remapping contracts.
+3. Define and implement explicit height-to-direction field conversion (if Own Height is chosen) before the Rock Formation **PostGeneration Warp** prototype. Reuse existing native flow/UV transport code and preserve height and companion field remapping contracts.
 4. Opt-in dispatch only for valid, enabled scoped Behavior children. Explicitly define stage ordering between generator modules and post-generator child tools.
 5. Add compact row and Inspector controls through shared UI recipes/tokens, parameter metadata, copy/paste, undo and instance support.
 6. Verify saved-project parity, disable/enable semantics, mask scope, normalization and source publishing before expanding to other generators.
