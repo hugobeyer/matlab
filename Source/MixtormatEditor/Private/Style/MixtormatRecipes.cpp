@@ -714,7 +714,14 @@ namespace Mixtormat
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeButtonRecipe(Theme, State, false);
 		const FMixtormatPreviewMetrics& Layout = Theme.PreviewLayout;
-		Recipe.Radius = Layout.LeftRailCornerRadius;
+		const int32 Count = FMath::Max(TabCount, 1);
+		const int32 Index = FMath::Clamp(TabIndex, 0, Count - 1);
+		// Only the outside corners may round. Every shared seam stays square,
+		// including when an older theme still stores a nonzero corner radius.
+		const float R = FMath::Max(Layout.LeftRailCornerRadius, 0.0f);
+		Recipe.CornerRadii = FVector4f(
+			Index == 0 ? R : 0.0f, Index == 0 ? R : 0.0f,
+			Index == Count - 1 ? R : 0.0f, Index == Count - 1 ? R : 0.0f);
 
 		// The old drop shadow extended beyond the widget and into layer rows.
 		// Shade is now an in-bounds, shared vertical ramp across every tab.
@@ -726,8 +733,7 @@ namespace Mixtormat
 			Shade.Strength = FMath::Clamp(Layout.LeftRailShadowOpacity, 0.0f, 1.0f);
 			Shade.OpacityRamp.Axis = EMixtormatAxis::Vertical;
 			constexpr int32 Samples = 8;
-			const int32 Count = FMath::Max(TabCount, 1);
-			const int32 Index = FMath::Clamp(TabIndex, 0, Count - 1);
+
 			const float Bias = FMath::Max(Layout.LeftRailShadeBias, 0.1f);
 			Shade.OpacityRamp.Points.Reserve(Samples);
 			for (int32 Point = 0; Point < Samples; ++Point)
