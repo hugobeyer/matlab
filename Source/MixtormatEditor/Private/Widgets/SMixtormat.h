@@ -85,6 +85,7 @@ enum class EMixtormatChildCreation : uint8
 	BehaviorPush,
 	BehaviorCarve,
 	BehaviorDeform,
+	BehaviorFlowField,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
