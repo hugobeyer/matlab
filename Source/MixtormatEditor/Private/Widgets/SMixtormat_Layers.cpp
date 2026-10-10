@@ -281,32 +281,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 						]
 					]
-					+ SVerticalBox::Slot().FillHeight(1.0f)
-					[
-						// Empty-space presses deselect; individual rows handle their own presses.
-						SNew(SBorder)
-						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
-						.Padding(0.0f)
-						.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent& MouseEvent)
-						{
-							if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !HasAnySelection())
-							{
-								return FReply::Unhandled();
-							}
-							ClearLayerSelection();
-							return FReply::Handled();
-						})
-						[
-							SAssignNew(LayerScrollBox, SScrollBox)
-							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
-						]
-					]
-					// Sources expands upward into the flexible layer list, above creation actions.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
+					// Sources stays above the creation toolbar and the scrolling layer stack.
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, LayerLayout.Gap)
 					[
 						BuildSourcesShelf()
-					]					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)[SNew(SSeparator)]
-					// Creation controls stay below Sources at the foot of the layer column.
+					]
+					// Layer, Group, and Fill Layer actions sit immediately beneath Sources.
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
 					[
 						SNew(SHorizontalBox)
@@ -410,6 +390,30 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									]
 								]
 							]
+						]
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f)
+					[
+						SNew(SSeparator)
+					]
+					+ SVerticalBox::Slot().FillHeight(1.0f)
+					[
+						// Empty-space presses deselect; individual rows handle their own presses.
+						SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
+						.Padding(0.0f)
+						.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent& MouseEvent)
+						{
+							if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !HasAnySelection())
+							{
+								return FReply::Unhandled();
+							}
+							ClearLayerSelection();
+							return FReply::Handled();
+						})
+						[
+							SAssignNew(LayerScrollBox, SScrollBox)
+							+ SScrollBox::Slot()[SAssignNew(LayerListBox, SVerticalBox)]
 						]
 					]
 
