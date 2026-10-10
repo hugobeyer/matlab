@@ -830,7 +830,7 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddIdsMenu, Target));
 	Menu.SubMenu(
 		LOCTEXT("AddFilterChild", "Filter"),
-		MixtormatIcons::Ids(),
+		MixtormatIcons::Filter(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFiltersMenu, Target));
 	Menu.SubMenu(
 		LOCTEXT("AddMasksChild", "Masks"),
