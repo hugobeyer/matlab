@@ -255,7 +255,21 @@ Child gallery backgrounds stay transparent so the drawer opacity can reveal the 
 The category popup populates its family list on opening; `All` clears the category filter.
 Inspector remains dockable. These gallery changes have source review only, not visual validation.
 The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
-independent of toolbar sizing. The Q marking menu shares the existing 1K/2K/4K composition
+independent of toolbar sizing. It overlays the full-width left page's leading
+`PreviewLayout.LeftRailContentInset` (34px default); the page surface remains one
+continuous column. This inset only affects docked pages, not a floating Layers
+window. The tab group has no separate spine, no neck fill and no offset drop
+shadow: `MakeNavigationRailTabRecipe` reuses the shared group-button recipe
+and samples a single continuous vertical shade from first to last tab.
+`PreviewLayout.LeftRailShadowOpacity` retains its saved ID but now means
+vertical shade strength, and `PreviewLayout.LeftRailShadeBias` controls the
+vertical distribution (higher means more shading near the bottom).
+`LeftRailButtonGap = 0` keeps the tabs adjoining; the existing corner radius
+applies only to the outside corners, never internal seams. Border opacity
+and thickness still affect the shared group-button hairline.
+`LeftRailShadowOffset` and `LeftRailShadowRadius` remain serialized for
+existing themes but no longer draw an offset shadow. All painting stays
+inside each tab's bounds rather than overlapping layer rows. The Q marking menu shares the existing 1K/2K/4K composition
 resolution control. Its backdrop is a centre-dark, edge-transparent vignette behind the cards;
 UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
 IDs remain unchanged for theme compatibility, but no longer describe a light bloom. Ctrl+wheel changes shared camera FOV within its existing bounds; plain wheel
