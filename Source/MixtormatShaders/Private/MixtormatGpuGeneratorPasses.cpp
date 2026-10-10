@@ -868,6 +868,29 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "MainCS", SF_Compute);
 
+class FMixtormatBehaviorHeightGradientCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorHeightGradientCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorHeightGradientCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(float, GradientReach)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorHeightGradientCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "HeightGradientCS", SF_Compute);
+
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -1304,6 +1327,32 @@ namespace
 		return Result;
 	}
 
+	FRDGTextureRef MakeBehaviorHeightGradientUV(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef SourceHeight, const float Strength, const float Reach,
+		FRDGTextureRef Mask, const bool bUseMask,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.HeightGradientUV"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorHeightGradientCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Strength;
+		P->GradientReach = Reach;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->SourceHeight = SourceHeight;
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorHeightGradientCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.HeightGradient.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
 	// Universal PostGeneration Warp: the owner provides a completed native bundle.
 	// Neither the gather nor this executor switches on its generator family.
 	void ApplyGeneratorPostWarpBehaviors(FMixtormatComposeContext& Ctx,
@@ -1318,33 +1367,49 @@ namespace
 				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
-			const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
-			if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
-				|| Published->Texture->Desc.Extent != Size) { continue; }
 			FRDGTextureRef Coordinates = nullptr;
-			if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+			if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 			{
-				if (Ref.FlowAmount == 0.0f || Ref.FlowTraceLength == 0.0f) { continue; }
-				Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
-			}
-			else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
-				&& Published->Texture->Desc.Format == PF_G32R32F)
-			{
-				Coordinates = Published->Texture;
-			}
-			if (Coordinates)
-			{
-				// The Behavior's own mask controls its displacement only; its
-				// parent Generator and sibling Behaviors retain their source field.
+				if (!Module.Height || Child.Behavior.GradientReach == 0.0f) { continue; }
 				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
-				const float BlendStrength = Ref.Kind == EMixtormatPublishedFieldKind::UVMap
-					? Child.Behavior.Strength : 1.0f; // Flow strength already multiplies FlowAmount.
-				Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
-					bHasMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
+					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+			}
+			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+			{
+				const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
+				if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
+					|| Published->Texture->Desc.Extent != Size) { continue; }
+				if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
+				{
+					if (Ref.FlowAmount == 0.0f || Ref.FlowTraceLength == 0.0f) { continue; }
+					Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
+						LayerCtx.LayerIndex, Child.SourceChildIndex);
+				}
+				else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
+					&& Published->Texture->Desc.Format == PF_G32R32F)
+				{
+					Coordinates = Published->Texture;
+				}
+				if (Coordinates)
+				{
+					// Flow strength is already included in FlowAmount at gather.
+					const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef Gate = bHasMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: LayerCtx.CombinedMask;
+					const float BlendStrength = Ref.Kind == EMixtormatPublishedFieldKind::UVMap
+						? Child.Behavior.Strength : 1.0f;
+					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
+						bHasMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				}
+			}
+			if (Coordinates)
+			{
 				RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
 			}
 		}
