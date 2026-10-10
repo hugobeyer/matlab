@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MixtormatOutputReference.h"
+#include "MixtormatEffect.h"
 #include "MixtormatBehaviorTypes.generated.h"
 
 // The Behavior authoring contract. There is exactly one system: a Behavior is a child of an
@@ -64,7 +65,8 @@ enum class EMixtormatBehaviorType : uint8
 	Warp UMETA(DisplayName = "Warp"),
 	Push UMETA(DisplayName = "Push"),
 	Carve UMETA(DisplayName = "Carve / Deposit"),
-	Deform UMETA(DisplayName = "Deform")
+	Deform UMETA(DisplayName = "Deform"),
+	FlowField UMETA(DisplayName = "Flow Field")
 };
 
 // The stage is an explicit part of the behavior contract, not inferred from its UI parent.
@@ -212,6 +214,119 @@ inline EMixtormatBehaviorFieldKind MixtormatBehaviorFieldEffectiveKind(
 	}
 }
 
+UENUM(BlueprintType)
+enum class EMixtormatBehaviorFlowMode : uint8
+{
+	Transport = 1 UMETA(DisplayName = "Flow"),
+	Gravity = 3 UMETA(DisplayName = "Gravity")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBehaviorFlowSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow")
+	EMixtormatBehaviorFlowMode Mode = EMixtormatBehaviorFlowMode::Transport;
+
+	// A traced operation consumes its own solved field; a Flow Field child only publishes.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow")
+	bool bUseTracedFlow = false;
+
+	// ---- Behavior-owned Flow Field solver parameters ---------------
+	// One shared direction field, derived from the owning generator and extended by a
+	// tile-aware jump-flood solve; see Docs/flow_generation_core.md. Distances are UV units.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow")
+	EMixtormatGeneratorFlowSource GeneratorFlowSource = EMixtormatGeneratorFlowSource::SignedDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowAmount = 1.0f;
+
+	// 0 follows the boundary normal (or downhill), 1 its perpendicular contour direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowTangent = 0.0f;
+
+	// Constant rotation of the seeded direction, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float GeneratorFlowAngle = 0.0f;
+
+	// Gravity Flow: bounded downhill steering of texture-space gravity by the owner's height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Gravity", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float GravityFlowSurfaceFollow = 1.0f;
+
+	// Gravity Flow, Signed Distance source: remove incoming motion near the owner's boundary.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Gravity", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GravityFlowDeflection = 1.0f;
+
+	// Peak rotation from low-frequency periodic noise, in degrees.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float GeneratorFlowBend = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0", UIMax = "1024", Delta = "1"))
+	int32 GeneratorFlowSeed = 1;
+
+	// Texel radius of the gradient kernel the seed directions are derived with.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "1", UIMax = "16", Delta = "1"))
+	int32 GeneratorFlowRadius = 2;
+
+	// Bartlett (tent) blur of the extended direction field: half-width in output texels. The jump flood hands
+	// each pixel its nearest seed's direction, which is piecewise constant; this smooths it.
+	// 0 keeps the raw field.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "64.0", Delta = "0.5"))
+	float GeneratorFlowSmooth = 8.0f;
+
+	// Propagation distance (UV) over which influence falls to zero.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float GeneratorFlowReach = 0.1f;
+
+	// Fraction of Reach spent fading out. 0 is a hard cut at Reach.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowFeather = 0.5f;
+
+	// Signed offsets, in fractions of Reach, along and across the extended direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowOffsetAlong = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float GeneratorFlowOffsetAcross = 0.0f;
+
+	// Shape Deform: signed boundary expansion (+) or erosion (-), UV. Signed Distance only.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Shape Deform", meta = (UIMin = "-0.25", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowShapeOffset = 0.0f;
+
+	// Shape Deform: UV displacement along (+, bulge) or against (-, pinch) the direction.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Shape Deform", meta = (UIMin = "-0.25", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowBulge = 0.0f;
+
+	// Generator Flow / Flow Carve: total traced distance (UV) and its RK2 step count.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float GeneratorFlowTraceLength = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
+	int32 GeneratorFlowSteps = 16;
+
+	// Generator Flow: signed multiplier on the traced displacement.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Trace", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float GeneratorFlowWarpStrength = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve")
+	EMixtormatFlowCarveMode GeneratorFlowCarveMode = EMixtormatFlowCarveMode::Groove;
+
+	// Flow Carve: gain on the gathered height difference. 1 cuts (Groove) or raises (Deposit)
+	// all the way to the strongest distance-weighted sample; nothing caps it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float GeneratorFlowDepth = 1.0f;
+
+	// Flow Carve: half-width (UV) of the groove across the flow.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.0", UIMax = "0.25", Delta = "0.001"))
+	float GeneratorFlowWidth = 0.01f;
+
+	// Flow Carve: exponent on the along-trace distance falloff.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Flow|Carve", meta = (UIMin = "0.1", UIMax = "8.0", Delta = "0.01"))
+	float GeneratorFlowFalloff = 1.0f;
+
+};
+
 // Behaviors are ordinary children owned through ScopeOwnerChildId by an earlier Generator.
 // Field inputs are slots on the Behavior, not extra serialized layer children.
 USTRUCT(BlueprintType)
@@ -244,6 +359,10 @@ struct MIXTORMATRUNTIME_API FMixtormatBehavior
 	// changing at all rather than a softness parameter.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "0.001", UIMax = "0.25"))
 	float CarveWidth = 0.02f;
+
+	// Flow production settings are authored on Behaviors, never on legacy Effect children.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow")
+	FMixtormatBehaviorFlowSettings Flow;
 
 	// Coordinate source. Only Warp and Deform read it, and only Flow or UVMap may be
 	// authored here: both are destination->source coordinate contracts, which is what
