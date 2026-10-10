@@ -41,10 +41,86 @@ namespace MixtormatOutputReferences
 		}
 	}
 
+	FShelfSourceReferenceStatus ClassifyShelfSourceReference(
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FMixtormatOutputReference& Reference)
+	{
+		FShelfSourceReferenceStatus Status;
+		if (!Reference.HasKnownOwnerKind())
+		{
+			Status.Issue = EShelfSourceReferenceIssue::InvalidOwnerKind;
+			return Status;
+		}
+		if (!Reference.IsShelfSource())
+		{
+			Status.Issue = EShelfSourceReferenceIssue::NotShelfReference;
+			return Status;
+		}
+		if (!Reference.HasSource())
+		{
+			Status.Issue = EShelfSourceReferenceIssue::Unset;
+			return Status;
+		}
+		if (!IsValidFieldKind(Reference.Kind))
+		{
+			Status.Issue = EShelfSourceReferenceIssue::InvalidFieldKind;
+			return Status;
+		}
+		const FName Expected = CanonicalFieldOutputName(Reference.Kind);
+		if (Expected != NAME_None && Reference.OutputName != Expected)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::WrongOutputName;
+			return Status;
+		}
+
+		int32 SourceMatches = 0;
+		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		{
+			if (Sources[Index].SourceId == Reference.SourceShelfId)
+			{
+				Status.SourceIndex = Index;
+				++SourceMatches;
+			}
+		}
+		if (SourceMatches == 0)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::MissingSource;
+			return Status;
+		}
+		if (SourceMatches != 1)
+		{
+			Status.SourceIndex = INDEX_NONE;
+			Status.Issue = EShelfSourceReferenceIssue::DuplicateSourceIdentity;
+			return Status;
+		}
+		const FMixtormatSourceEntry& Source = Sources[Status.SourceIndex];
+		if (Source.Child.ChildId != Reference.SourceChildId)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::MissingChild;
+			return Status;
+		}
+		if (Source.Child.Type != EMixtormatLayerChildType::Generator)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::WrongSourceKind;
+			return Status;
+		}
+		if (!Source.Child.Generator.bEnabled)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::DisabledSource;
+			return Status;
+		}
+
+		// The endpoint is stable and eligible, but Phase B has not scheduled or materialized its
+		// fields. Do not return success until that producer contract actually exists.
+		Status.Issue = EShelfSourceReferenceIssue::Unevaluated;
+		Status.bHasResolvedEndpoint = true;
+		return Status;
+	}
+
 	int32 ResolveEarlierSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const FMixtormatOutputReference& Reference)
 	{
-		if (!Reference.bEnabled || !Reference.HasSource()
+		if (!Reference.bEnabled || Reference.IsShelfSource() || !Reference.HasSource()
 			|| !Layers.IsValidIndex(DestinationLayerIndex))
 		{
 			return INDEX_NONE;
@@ -119,7 +195,7 @@ namespace MixtormatOutputReferences
 		const FGuid& DestinationLayerId, const FGuid& DestinationChildId,
 		const FMixtormatOutputReference& Reference)
 	{
-		if (!Reference.bEnabled || !Reference.HasSource()) { return false; }
+		if (!Reference.bEnabled || Reference.IsShelfSource() || !Reference.HasSource()) { return false; }
 		const int32 DestinationLayer = Layers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
 		{
 			return Layer.LayerId == DestinationLayerId;
@@ -305,6 +381,9 @@ namespace MixtormatOutputReferences
 		// The remaining scope failures are deliberately not described as missing/type errors.
 		Status.Issue = EStructuralLinkIssue::InvalidSourceScope;
 		if (!Layers.IsValidIndex(DestinationLayerIndex)) { return Reject(EStructuralLinkIssue::MissingLayer); }
+		// Shelf endpoints are classified by ClassifyShelfSourceReference and remain unavailable to
+		// structural modules until producer scheduling exists; never reinterpret them as layers.
+		if (Reference.IsShelfSource()) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 		if (!Reference.SourceLayerId.IsValid() || !Reference.SourceChildId.IsValid())
 		{
 			return Reject(EStructuralLinkIssue::Unset);

@@ -75,9 +75,11 @@ document lifecycle (new/open/save/save-as) snapshots sources alongside layers. N
 evaluation/publication, target connections, Paste as Instance and the layer-generator Influence
 Only toggle. Source identity is repaired on load: shelf `SourceId`, root `ChildId` and inert
 `OwnedChildren` child IDs share the document-wide namespaces; the root is unscoped and each owned
-child is normalised as a direct child of the root. There is no shelf hierarchy/tool UI or evaluator
-yet, so `OwnedChildren` is persisted ownership data only. Authoring only; no build/runtime
-validation run.
+child is normalised as a direct child of the root. Output references now append a `Layer|Shelf`
+owner kind and `SourceShelfId`; `ClassifyShelfSourceReference` provides explicit repair status for
+shelf links, but existing layer-only resolvers reject them until source evaluation exists. There is
+no shelf hierarchy/tool UI or evaluator yet, so `OwnedChildren` and shelf references are persisted
+ownership/address data only. Authoring only; no build/runtime validation run.
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,

@@ -7,6 +7,7 @@
 
 struct FMixtormatLayer;
 struct FMixtormatMaskLayer;
+struct FMixtormatSourceEntry;
 
 // Scalar outputs remain ordinary Mask children with their existing published-source fields.
 //
@@ -30,6 +31,15 @@ enum class EMixtormatPublishedFieldKind : uint8
 	// Generic 2-component vector field. Not a Flow (directional transport) and not a UVMap
 	// (absolute/transformed coordinates).
 	Vector2 UMETA(DisplayName = "Vector 2")
+};
+
+// Where a published output lives. Layer remains zero for serialized compatibility: every existing
+// reference has only SourceLayerId/SourceChildId and therefore retains its established meaning.
+UENUM(BlueprintType)
+enum class EMixtormatOutputReferenceOwnerKind : uint8
+{
+	Layer UMETA(DisplayName = "Layer"),
+	Shelf UMETA(DisplayName = "Sources Shelf")
 };
 
 USTRUCT(BlueprintType)
@@ -63,14 +73,56 @@ struct MIXTORMATRUNTIME_API FMixtormatOutputReference
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference|Flow", meta = (EditCondition = "Kind == EMixtormatPublishedFieldKind::Flow", ClampMin = "1", UIMax = "64"))
 	int32 FlowSteps = 16;
 
+	// Appended owner discriminator. Layer is the legacy default and continues to use
+	// SourceLayerId/SourceChildId; Shelf uses SourceShelfId/SourceChildId instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference")
+	EMixtormatOutputReferenceOwnerKind OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
+
+	// Stable Sources shelf entry identity. Ignored for legacy Layer references.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference")
+	FGuid SourceShelfId;
+
+	bool IsShelfSource() const { return OwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf; }
+	bool IsLayerSource() const { return OwnerKind == EMixtormatOutputReferenceOwnerKind::Layer; }
+	bool HasKnownOwnerKind() const { return IsLayerSource() || IsShelfSource(); }
+
 	bool HasSource() const
 	{
-		return SourceLayerId.IsValid() && SourceChildId.IsValid() && !OutputName.IsNone();
+		if (!HasKnownOwnerKind()) { return false; }
+		const FGuid& OwnerId = IsShelfSource() ? SourceShelfId : SourceLayerId;
+		return OwnerId.IsValid() && SourceChildId.IsValid() && !OutputName.IsNone();
 	}
 };
 
 namespace MixtormatOutputReferences
 {
+	// Shelf endpoints are representable before producer evaluation exists. This status intentionally
+	// separates a malformed/missing endpoint from one that is structurally valid but not yet
+	// executable, so callers can offer repair instead of guessing a layer fallback.
+	enum class EShelfSourceReferenceIssue : uint8
+	{
+		None,
+		NotShelfReference,
+		InvalidOwnerKind,
+		Unset,
+		InvalidFieldKind,
+		WrongOutputName,
+		MissingSource,
+		DuplicateSourceIdentity,
+		MissingChild,
+		WrongSourceKind,
+		DisabledSource,
+		Unevaluated
+	};
+
+	struct FShelfSourceReferenceStatus
+	{
+		EShelfSourceReferenceIssue Issue = EShelfSourceReferenceIssue::Unset;
+		int32 SourceIndex = INDEX_NONE;
+		bool bHasResolvedEndpoint = false;
+		bool bCanExecute = false;
+	};
+
 	// Transient structural eligibility only; never serialized or a guarantee of GPU availability.
 	enum class EStructuralLinkIssue : uint8
 	{
@@ -139,6 +191,13 @@ namespace MixtormatOutputReferences
 	// UVMap and Color keep their established names; the generic scalar/vector field kinds are
 	// addressed by whatever name the producer published.
 	MIXTORMATRUNTIME_API FName CanonicalFieldOutputName(EMixtormatPublishedFieldKind Kind);
+
+	// Validates an explicit Sources shelf endpoint without treating it as a layer producer. Until
+	// Phase B adds producer evaluation, a well-formed enabled endpoint reports Unevaluated rather
+	// than becoming a valid material dependency.
+	MIXTORMATRUNTIME_API FShelfSourceReferenceStatus ClassifyShelfSourceReference(
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FMixtormatOutputReference& Reference);
 
 	// Effective layers only: group addresses must first pass through BuildEffectiveLayers.
 	// Returns the authored source-child index, never a compacted render-child index.
