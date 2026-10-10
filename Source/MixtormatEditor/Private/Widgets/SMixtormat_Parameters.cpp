@@ -892,6 +892,7 @@ namespace
 					case EMixtormatLayerChildType::HeightPush: return FMixtormatGeneratorHeightPush::StaticStruct();
 								case EMixtormatLayerChildType::StructuralWarp: return FMixtormatGeneratorStructuralWarp::StaticStruct();
 
+		case EMixtormatLayerChildType::Behavior: return FMixtormatBehavior::StaticStruct();
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
 		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
