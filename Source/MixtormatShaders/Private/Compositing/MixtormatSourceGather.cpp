@@ -139,19 +139,35 @@ namespace MixtormatGpuCompositor
 		// demands nothing; each well-formed, enabled shelf endpoint is visited once.
 		for (const FMixtormatLayer& Layer : EffectiveLayers)
 		{
-			if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator) { continue; }
+			if (!Layer.bEnabled) { continue; }
+			if (Layer.Type == EMixtormatLayerType::Generator)
+			{
+				for (const FMixtormatLayerChild& Child : Layer.Children)
+				{
+					if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled)
+					{
+						continue;
+					}
+					TArray<FGuid> Roots;
+					CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
+					for (const FGuid& Root : Roots) { Visit(Root); }
+				}
+			}
+			// The mask pipeline consumes Noise Value as typed scalar coverage, with
+			// the same placement/shaping as layer-published Value. This is a separate
+			// consumer contract from the generator Height/Warp input kinds.
 			for (const FMixtormatLayerChild& Child : Layer.Children)
 			{
-				if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled)
-				{
-					continue;
-				}
-				TArray<FGuid> Roots;
-				CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
-				for (const FGuid& Root : Roots)
-				{
-					Visit(Root);
-				}
+				if (Child.Type != EMixtormatLayerChildType::Mask || !Child.Mask.bEnabled
+					|| !Child.Mask.HasPublishedSource()
+					|| Child.Mask.PublishedSourceOwnerKind != EMixtormatOutputReferenceOwnerKind::Shelf
+					|| Child.Mask.PublishedSourceOutput != FName(TEXT("Value"))) { continue; }
+				const int32* Index = IndexById.Find(Child.Mask.PublishedSourceShelfId);
+				if (!Index) { continue; }
+				const FMixtormatSourceEntry& Source = Sources[*Index];
+				if (!IsEvaluableSource(Source) || Source.Child.ChildId != Child.Mask.PublishedSourceChildId
+					|| Source.Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
+				Visit(Source.SourceId);
 			}
 		}
 	}
