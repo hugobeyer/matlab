@@ -61,6 +61,7 @@ namespace Mixtormat
 		Splitter,
 		ScrollArea,
 		SourcesShelf,
+		SourcesAddButton,
 	};
 
 	// Refresh mode for a theme property change. Strongest wins when coalescing.
