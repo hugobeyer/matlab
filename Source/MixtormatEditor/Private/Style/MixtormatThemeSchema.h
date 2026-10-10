@@ -59,6 +59,7 @@ namespace Mixtormat
 		// one the artist is actually tuning.
 		Splitter,
 		ScrollArea,
+		SourcesShelf,
 	};
 
 	// Refresh mode for a theme property change. Strongest wins when coalescing.
