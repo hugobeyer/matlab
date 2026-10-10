@@ -773,28 +773,28 @@ namespace Mixtormat
 		float TogglePadding = 2.0f;
 		float FinalPopupWidth = 232.0f;
 		float LeftRailButtonGap = 0.0f;
-		float LeftRailButtonWidth = 30.0f;
-		float LeftRailButtonHeight = 98.0f;
+		float LeftRailButtonWidth = 24.0f;
+		float LeftRailButtonHeight = 100.0f;
 		// Shared column inset: the full-width page stays behind the overlaid rail.
-		float LeftRailContentInset = 34.0f;
-		float LeftRailInnerPadding = 3.0f;
-		float LeftRailBorderOpacity = 0.24f;
+		float LeftRailContentInset = 28.0f;
+		float LeftRailInnerPadding = 9.5f;
+		float LeftRailBorderOpacity = 1.0f;
 		float LeftRailBorderThickness = 1.0f;
-		// Saved shadow opacity now controls the continuous vertical shade over all tabs.
-		float LeftRailShadowOpacity = 0.25f;
+		// Vertical shade repeats locally in each rail button; the page shadow is separate.
+		float LeftRailShadowOpacity = 0.97f;
 		// Bias < 1 darkens earlier; > 1 concentrates shade near the bottom.
-		float LeftRailShadeBias = 1.0f;
+		float LeftRailShadeBias = 8.0f;
 		float LeftRailFadeExtension = 72.0f;
-		float LeftRailFadeOpacity = 0.7f;
+		float LeftRailFadeOpacity = 1.0f;
 		bool bLeftRailShadeInverted = true;
-		float LeftRailButtonSurfaceStrength = 0.0f;
-		float LeftRailHoverSurfaceStrength = 0.08f;
-		float LeftRailSelectedSurfaceStrength = 0.15f;
+		float LeftRailButtonSurfaceStrength = 0.33f;
+		float LeftRailHoverSurfaceStrength = 0.56f;
+		float LeftRailSelectedSurfaceStrength = 0.14f;
 		// Legacy positional-shadow settings retained for serialized theme compatibility.
-		float LeftRailShadowOffset = 2.0f;
-		float LeftRailShadowRadius = 5.0f;
+		float LeftRailShadowOffset = 3.0f;
+		float LeftRailShadowRadius = 0.0f;
 		float LeftRailCornerRadius = 0.0f;
-		float LeftRailLabelGap = 3.0f;
+		float LeftRailLabelGap = 6.5f;
 		float LeftOverlayWidth = 320.0f;
 		float LeftOverlaySurfaceOpacity = 0.82f;
 		float QuickControlsCentreGap = 210.0f;
