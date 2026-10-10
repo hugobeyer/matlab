@@ -1764,10 +1764,23 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 
 TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise)
 {
-	const auto IsBars = [Noise]()
+	const auto IsDirectional = [Noise]()
 	{
 		const FMixtormatNoise* N = Noise();
-		return N && N->NoiseType == EMixtormatNoiseType::Bars;
+		return N && (N->NoiseType == EMixtormatNoiseType::Bars
+			|| N->NoiseType == EMixtormatNoiseType::Phasor);
+	};
+	const auto IsPhasor = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N && N->NoiseType == EMixtormatNoiseType::Phasor;
+	};
+	const auto IsWorley = [Noise]()
+	{
+		const FMixtormatNoise* N = Noise();
+		return N && (N->NoiseType == EMixtormatNoiseType::WorleyF1
+			|| N->NoiseType == EMixtormatNoiseType::WorleyF2
+			|| N->NoiseType == EMixtormatNoiseType::WorleyF1MinusF2);
 	};
 	const auto IsMultiOctave = [Noise]()
 	{
@@ -1781,7 +1794,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 		const TSharedRef<SVerticalBox> Pattern = AddCard(Cards, LOCTEXT("NoisePattern", "PATTERN"));
 		AddSliderRow(Pattern, MakeMemberEnum<FMixtormatNoise, EMixtormatNoiseType>(
 			LOCTEXT("NoiseType", "Type"), Noise, &FMixtormatNoise::NoiseType,
-			LOCTEXT("NoiseTypeHint", "Noise family. Bars uses Direction; Worley generators also publish Region IDs."),
+			LOCTEXT("NoiseTypeHint", "Noise family. Bars and Phasor use Direction; Worley produces cell IDs."),
 			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
 		AddSliderRow(Pattern, MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatNoise>(
@@ -1789,6 +1802,32 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 			MakeMemberSlider<FMixtormatNoise>(
 				LOCTEXT("NoiseScale", "Scale"), Noise, &FMixtormatNoise::NoiseScale, 1.0, 64.0, 8.0, 0.1,
 				LOCTEXT("NoiseScaleHint", "Lattice cells across the tile."))));
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorFrequency", "Frequency"),
+					Noise, &FMixtormatNoise::NoisePhasorFrequency, 0.0, 12.0, 2.0, 0.05),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorAnisotropy", "Anisotropy"),
+					Noise, &FMixtormatNoise::NoisePhasorAnisotropy, 0.0, 8.0, 0.0, 0.05))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorPhase", "Phase Variation"),
+					Noise, &FMixtormatNoise::NoisePhasorPhaseVariation, 0.0, 1.0, 0.5, 0.01),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorOrientation", "Orientation Variation"),
+					Noise, &FMixtormatNoise::NoisePhasorOrientationVariation, 0.0, 3.14, 0.35, 0.01))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoisePhasorComponents", "Components"),
+				Noise, &FMixtormatNoise::NoisePhasorComponents, 1.0, 4.0, 2,
+				LOCTEXT("NoisePhasorComponentsHint", "Overlapping seeded impulse layers."))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsWorley]()
+			{ return IsWorley() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberEnum<FMixtormatNoise, EMixtormatNoiseWorleyMetric>(
+					LOCTEXT("NoiseWorleyMetric", "Metric"), Noise, &FMixtormatNoise::NoiseWorleyMetric),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseWorleyJitter", "Jitter"),
+					Noise, &FMixtormatNoise::NoiseWorleyJitter, 0.0, 1.0, 1.0, 0.01))]);
 		AddSliderRow(Pattern,
 			SNew(SBox)
 			.IsEnabled_Lambda([IsMultiOctave]() { return IsMultiOctave(); })
@@ -1818,12 +1857,40 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 				LOCTEXT("NoiseOffsetY", "Offset Y"), Noise, &FMixtormatNoise::NoiseOffsetY, -1.0, 1.0, 0.0, 0.01)));
 		AddSliderRow(Place,
 			SNew(SBox)
-			.IsEnabled_Lambda([IsBars]() { return IsBars(); })
+			.IsEnabled_Lambda([IsDirectional]() { return IsDirectional(); })
 			[
 				MakeMemberSlider<FMixtormatNoise>(
 					LOCTEXT("NoiseDirection", "Direction"), Noise, &FMixtormatNoise::NoiseDirection, 0.0, 360.0, 0.0, 1.0,
-					LOCTEXT("NoiseDirectionHint", "Bars only: stripe advance angle; snaps to a tileable direction."))
+					LOCTEXT("NoiseDirectionHint", "Stripe or phasor orientation, snapped to a tileable direction."))
 			]);
+	}
+
+	{
+		const TSharedRef<SVerticalBox> Distort = AddCard(Cards, LOCTEXT("NoiseDistortion", "DISTORTION"));
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionStrength", "Strength"),
+				Noise, &FMixtormatNoise::NoiseDistortionStrength, 0.0, 2.0, 0.0, 0.01,
+				LOCTEXT("NoiseDistortionStrengthHint", "Zero bypasses distortion and preserves the original noise.")),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionFrequency", "Frequency"),
+				Noise, &FMixtormatNoise::NoiseDistortionFrequency, 1.0, 64.0, 4.0, 1.0)));
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoiseDistortionOctaves", "Octaves"),
+				Noise, &FMixtormatNoise::NoiseDistortionOctaves, 1.0, 8.0, 2),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionRoughness", "Roughness"),
+				Noise, &FMixtormatNoise::NoiseDistortionRoughness, 0.0, 1.0, 0.5, 0.01)));
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionLacunarity", "Lacunarity"),
+					Noise, &FMixtormatNoise::NoiseDistortionLacunarity, 1.0, 4.0, 2.0, 0.05),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionCurlMix", "Curl Mix"),
+					Noise, &FMixtormatNoise::NoiseDistortionCurlMix, 0.0, 1.0, 1.0, 0.01,
+					LOCTEXT("NoiseDistortionCurlMixHint", "0 = directional, 1 = curl-driven domain distortion."))));
+		AddSliderRow(Distort, SNew(SBox).IsEnabled_Lambda([Noise]()
+			{
+				const FMixtormatNoise* N = Noise();
+				return N && N->NoiseDistortionCurlMix < 1.0f;
+			})[
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionDirection", "Direction"),
+				Noise, &FMixtormatNoise::NoiseDistortionDirection, 0.0, 360.0, 0.0, 1.0)]);
 	}
 
 	return Cards;
