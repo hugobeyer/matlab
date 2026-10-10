@@ -3459,6 +3459,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
 				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+			// Preserve legacy mask consumers while publishing the declared signed
+			// UV-distance metric for typed Carve / Deposit consumers.
+			if (bDistance && Mask.Value && Mask.Value->Desc.Format == PF_R32_FLOAT)
+			{
+				Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key),
+					FPublishedField{EMixtormatPublishedFieldKind::SDF, Mask.Value, nullptr, nullptr, false});
+			}
 			if (IsChildOutputPreviewTarget(Ctx.Request,
 				bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
 				Mask.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
