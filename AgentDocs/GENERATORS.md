@@ -119,7 +119,7 @@ zero yields no flow, and negative Height Scale reverses direction. It requires a
 explicit later, enabled, unscoped same-layer generator target: Strata, Rock Formation, Pebbles,
 Cracks, Cliff Strata, or Noise. Group targets remain gated.
 
-Structural Warp's Flow Amount and Trace Length currently reach GPU Flow tracing as constant scalars. The parameter wells retain numeric and Follow/Link editing; spatial driver creation is disabled in the context menu and driver popover until the render path accepts spatial modulation. Existing serialized bindings are preserved. Flow Steps remains numeric/reference-only.
+Structural Warp Flow Amount and Trace Length now accept the existing scalar Driver chain from an earlier enabled layer's completed combined mask. Gather validates the producer order and snapshots the signal; stage-8 Flow tracing applies `MixtormatApplyDriver` per destination texel before RK2 integration. Missing or unavailable snapshots preserve authored scalar values. Self/later-layer, child-mask and Region-ID drivers are not offered for these wells. Direct numeric editing and Follow/Link remain supported; Flow Steps stays integer numeric/reference-only. Existing serialized bindings are preserved.
 
 `GatherGeneratorHeightModuleChild` fills `FGeneratorStructuralWarpRenderData.Source` and
 `TargetChildIndex`. Published source demand is registered before prefix reuse. GPU state
