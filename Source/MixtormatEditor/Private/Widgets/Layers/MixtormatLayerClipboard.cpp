@@ -353,7 +353,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 	};
 
 
-	// V2 Behaviors may only be pasted underneath a Generator module. Do not
+	// Behaviors may only be pasted underneath a Generator module. Do not
 	// allow a copied Behavior to become an invalid root row or a group child.
 	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
 	{
@@ -373,20 +373,6 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
 	}
 
-	if (IsGeneratorFlow(Clipboard.Payload))
-	{
-		if (CanAddGeneratorFlow(Dest) && !Dest.ChildId.IsValid())
-		{
-			return ValidateInsert(DestContainer->Num(), false);
-		}
-		if (!DestContainer->IsValidIndex(AnchorChildIndex)
-			|| !CanOwnGeneratorFlow((*DestContainer)[AnchorChildIndex])
-			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))
-		{
-			return INDEX_NONE;
-		}
-		return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
-	}
 
 	if (Clipboard.Mode != EMixtormatChildClipboardMode::Instance)
 	{
@@ -452,11 +438,11 @@ FText SMixtormat::GetChildPasteReason(
 			? LOCTEXT("PasteIntoIdGroupReady", "Add a live Region IDs source; the producer stays where it is.")
 			: LOCTEXT("PasteIntoIdGroupBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.");
 	}
-	if (IsGeneratorFlow(Clipboard.Payload))
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
-			? LOCTEXT("PasteGeneratorFlowReady", "Place under this generator.")
-			: LOCTEXT("PasteGeneratorFlowOwner", "Requires a Generator layer or an eligible generator child and valid instance ordering.");
+			? LOCTEXT("PasteBehaviorReady", "Place under this generator.")
+			: LOCTEXT("PasteBehaviorOwner", "Requires a generator module in a Generator layer and valid source ordering.");
 	}
 	FGuid PublishedOwnerId, PublishedChildId;
 	if (GetPublishedOutputSource(Clipboard.Payload, PublishedOwnerId, PublishedChildId))
