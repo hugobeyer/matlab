@@ -359,7 +359,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
 	if (!Behavior.bEnabled || Behavior.Type != EMixtormatBehaviorType::Warp
 		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
-		|| Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+		|| (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 		|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
 		|| Behavior.Influence.Origin != EMixtormatBehaviorFieldOrigin::None
 		|| !FMath::IsFinite(Behavior.Strength) || Behavior.Strength == 0.0f) { return; }
@@ -368,11 +369,13 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		MixtormatChildScope::ValidateBehaviorInputs(
 			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources, &Layer);
 	if (!Valid.bCanEvaluate || Valid.GeneratorChildIndex == INDEX_NONE) { return; }
+	const bool bPublishedDirection = Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput;
 	const FMixtormatOutputReference& Reference = Behavior.Direction.Published;
-	const int32 SourceIndex = Reference.IsShelfSource() ? 0
+	const int32 SourceIndex = !bPublishedDirection ? INDEX_NONE
+		: Reference.IsShelfSource() ? 0
 		: MixtormatOutputReferences::ResolveGeneratorInputSource(
 			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, Reference);
-	if (SourceIndex == INDEX_NONE) { return; }
+	if (bPublishedDirection && SourceIndex == INDEX_NONE) { return; }
 	FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 	ChildData.Type = EMixtormatLayerChildType::Behavior;
 	ChildData.SourceChildIndex = BehaviorChildIndex;
@@ -382,6 +385,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Stage = Behavior.Stage;
 	Out.GeneratorChildIndex = Valid.GeneratorChildIndex;
 	Out.Strength = Behavior.Strength;
+	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
+		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
+	Out.DirectionOrigin = Behavior.Direction.Origin;
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
 		? Reference.SourceShelfId : Reference.SourceLayerId;
 	Out.Direction.Source.ChildIndex = SourceIndex;
