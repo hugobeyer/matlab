@@ -697,34 +697,25 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 			}
 		}
 	}
-	// Keep eligible choices first; layer captions avoid repeating long origin paths on every row.
-	for (const bool bAvailable : {true, false})
+	// A connection picker is a compact hierarchy menu, not a diagnostic report.
+	// Ineligible choices remain in the model for Inspector issue reporting.
+	FGuid LastLayerId;
+	for (const FEntry& Entry : Entries)
 	{
-		FGuid LastLayerId;
-		bool bStarted = false;
-		for (const FEntry& Entry : Entries)
+		if (Entry.Issue != EIssue::None || !bEditable) { continue; }
+		if (Role == ERole::Source && Entry.LayerId != LastLayerId)
 		{
-			if ((Entry.Issue == EIssue::None) != bAvailable) { continue; }
-			if (!bStarted && !bAvailable)
-			{
-				Menu.Separator();
-				Menu.Caption(LOCTEXT("StructuralMenuUnavailable", "Unavailable"));
-			}
-			bStarted = true;
-			if (Role == ERole::Source && Entry.LayerId != LastLayerId)
-			{
-				Menu.Caption(Entry.LayerId == Address.OwnerId
-					? LOCTEXT("StructuralMenuThisLayer", "This layer") : Entry.LayerLabel);
-				LastLayerId = Entry.LayerId;
-			}
-			const FText Label = bAvailable ? Entry.Label : FText::Format(
-				LOCTEXT("StructuralMenuShortReason", "{0} · {1}"), Entry.Label, ConnectionMenuReason(Entry.Issue));
-			Menu.Item(Label, MixtormatIcons::Generator(), FSimpleDelegate::CreateLambda([this, Address, Role, Entry]()
+			Menu.Caption(Entry.LayerId == Address.OwnerId
+				? LOCTEXT("StructuralMenuThisLayer", "This layer") : Entry.LayerLabel);
+			LastLayerId = Entry.LayerId;
+		}
+		Menu.Item(Entry.Label,
+			Role == ERole::Source && !bPush ? MixtormatIcons::WarpStructural() : MixtormatIcons::Generator(),
+			FSimpleDelegate::CreateLambda([this, Address, Role, Entry]()
 			{
 				SetStructuralConnection(Address, Role, Role == ERole::Source ? &Entry.Source : nullptr,
 					Role == ERole::Target ? &Entry.Target : nullptr);
-			})).Enabled(bEditable && bAvailable);
-		}
+			}));
 	}
 	return Menu.Build();
 }
