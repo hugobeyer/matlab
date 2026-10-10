@@ -133,41 +133,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.ToolTipText(LOCTEXT("RedoMaterialEditHint", "Redo the last Mixtormat recipe edit (Ctrl+Y or Ctrl+Shift+Z)."))
 					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.Text_Lambda([this]()
-					{
-						switch (LeftPanelPlacement)
-						{
-						case ELeftPanelPlacement::Docked: return LOCTEXT("LayersHome", "Layers: Home");
-						case ELeftPanelPlacement::Overlay: return LOCTEXT("LayersPoppedOut", "Layers: Popped Out");
-						default: return LOCTEXT("LayersHidden", "Layers: Hidden");
-						}
-					})
-					.ToolTipText(LOCTEXT("ToggleLeftPanelHint", "Cycle Layers: Home → Popped Out → Hidden → Home (L). Click LAYERS to return it home."))
-					.IsEnabled_Lambda([this]() { return !bIsBaking; })
-					.OnClicked(this, &SMixtormat::ToggleLeftPanelCollapsed)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.Text_Lambda([this]()
-					{
-						switch (InspectorPlacement)
-												{
-												case EInspectorPlacement::Docked: return LOCTEXT("InspectorDocked", "Inspector: Docked");
-												case EInspectorPlacement::Overlay: return LOCTEXT("InspectorOverlay", "Inspector: Overlay");
-												default: return LOCTEXT("InspectorHidden", "Inspector: Hidden");
-												}
-					})
-					.ToolTipText(LOCTEXT("ToggleInspectorHint", "Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."))
-					.IsEnabled_Lambda([this]() { return !bIsBaking; })
-					.OnClicked(this, &SMixtormat::ToggleInspectorCollapsed)
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return FText::FromString(WorkingMaterialName); })
@@ -540,23 +506,6 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SBox)
-				[
-					SNew(SMixtormatIconRail)
-					.Options({
-						MixtormatIcons::Layers(),
-						MixtormatIcons::Library(),
-						MixtormatIcons::Global() })
-					.ToolTips({
-						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
-						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),
-						LOCTEXT("GlobalRailHint", "Document-wide variables and preview settings.") })
-					.ActiveIndex_Lambda([this]() { return LeftTabIndex; })
-					.OnChosen_Lambda([this](const int32 Index) { ShowLeftPage(Index); })
-				]
-			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
 				SNew(SBox)

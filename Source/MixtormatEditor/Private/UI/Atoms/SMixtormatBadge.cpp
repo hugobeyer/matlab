@@ -43,22 +43,9 @@ void SMixtormatBadge::Construct(const FArguments& InArgs)
 				[
 					SNew(SMixtormatGradientBox)
 					.StartColor(this, &SMixtormatBadge::GetTop)
-					.EndColor(this, &SMixtormatBadge::GetBottom)
+					.EndColor(this, &SMixtormatBadge::GetTop)
 					.Orientation(Orient_Vertical)
 					.CornerRadius(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeCornerRadius)
-				]
-				// The lip along the top edge, like the layer rows carry.
-				+ SOverlay::Slot()
-				.VAlign(VAlign_Top)
-				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeCornerRadius, 0.0f))
-				[
-					SNew(SBox)
-					.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
-					[
-						SNew(SImage)
-						.Image(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.ColorAndOpacity(FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Hairline)))
-					]
 				]
 				+ SOverlay::Slot()
 				.Padding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.BadgeTextInset, 0.0f))

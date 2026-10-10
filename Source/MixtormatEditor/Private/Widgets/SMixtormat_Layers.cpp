@@ -281,27 +281,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 						]
 					]
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						SNew(SBox)
-						.HeightOverride(MixtormatTokens::LayerStackHeaderHeight)
-						[
-							SNew(SHorizontalBox)
-							.Visibility_Lambda([this]() { return bHasWorkingMaterial ? EVisibility::Visible : EVisibility::Collapsed; })
-							// Keep the count above the permanent creation controls.
-							+ SHorizontalBox::Slot().FillWidth(1.0f)
-							.HAlign(HAlign_Left).VAlign(VAlign_Center)
-							.Padding(MixtormatTokens::LayerRowInsetLeading, 0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.ItemGap, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text_Lambda([this]()
-								{
-									return FText::Format(LOCTEXT("LayerCountCompact", "{0} LAYERS"), FText::AsNumber(WorkingLayers.Num()));
-								})
-								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
-							]
-						]
-					]
 					// Creation controls stay above the scrolling rows.
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, LayerLayout.Gap, 0.0f, 0.0f)
 					[
@@ -321,13 +300,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
-										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.WidthOverride(16.0f)
+										.HeightOverride(16.0f)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerMaterial())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerBottom", "Layer"))
 									]
@@ -367,13 +346,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
-										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.WidthOverride(16.0f)
+										.HeightOverride(16.0f)
 										[
 											SNew(SImage).Image(MixtormatIcons::Folder())
 										]
 									]
-									+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("CreateGroupBottom", "Group"))
 									]
@@ -394,13 +373,13 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
-										.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
+										.WidthOverride(16.0f)
+										.HeightOverride(16.0f)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerFill())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddFillLayerBottom", "Fill Layer"))
 									]
