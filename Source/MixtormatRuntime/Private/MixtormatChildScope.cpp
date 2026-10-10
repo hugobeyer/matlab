@@ -93,6 +93,12 @@ namespace MixtormatChildScope
 			}
 			if (Input.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
+				if (bDirection && Input.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+				{
+					return Behavior.Type == EMixtormatBehaviorType::Warp
+						&& Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+						? EBehaviorInputIssue::None : EBehaviorInputIssue::InvalidStage;
+				}
 				if (bDirection || bInfluence) { return EBehaviorInputIssue::WrongFieldKind; }
 				if (Input.Origin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 				{
