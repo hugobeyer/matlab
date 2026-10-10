@@ -1,7 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "UI/Controls/SMixtormatIconRail.h"
-#include "Style/MixtormatCompositing.h"
 #include "Style/MixtormatRecipes.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Style/MixtormatThemeStore.h"
@@ -16,7 +15,6 @@
 #include "Rendering/SlateRenderer.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SLeafWidget.h"
-#include "Styling/CoreStyle.h"
 
 namespace
 {
@@ -29,6 +27,8 @@ namespace
             SLATE_ARGUMENT(const FSlateBrush*, Icon)
             SLATE_ARGUMENT(FText, Label)
             SLATE_ATTRIBUTE(bool, Selected)
+            SLATE_ARGUMENT(int32, TabIndex)
+            SLATE_ARGUMENT(int32, TabCount)
             SLATE_EVENT(FSimpleDelegate, OnChosen)
         SLATE_END_ARGS()
 
@@ -37,6 +37,8 @@ namespace
             Icon = InArgs._Icon;
             Label = InArgs._Label;
             Selected = InArgs._Selected;
+            TabIndex = InArgs._TabIndex;
+            TabCount = FMath::Max(1, InArgs._TabCount);
             OnChosen = InArgs._OnChosen;
         }
 
@@ -84,79 +86,19 @@ namespace
 
             const bool bActive = Selected.Get(false);
             const bool bHover = IsHovered();
-            const float SpineWidth = FMath::Clamp(Layout.LeftRailInnerPadding, 2.0f, Size.X * 0.25f);
-            const float Shoulder = FMath::Clamp(Layout.LeftRailCornerRadius * 2.0f,
-                2.0f, FMath::Min(12.0f, Size.Y * 0.16f));
-            const float BodyHeight = FMath::Max(Size.Y - 2.0f * Shoulder, 1.0f);
-            const FVector2f BodyOffset(SpineWidth - 1.0f, Shoulder);
-            const FVector2f BodySize(FMath::Max(1.0f, Size.X - BodyOffset.X), BodyHeight);
-
-            // Use the exact shared group-button recipe. A local rounded Slate brush
-            // cannot survive the deferred Slate paint pass, and ad-hoc compositing
-            // cannot reproduce the button's vertical gradient and hairline blend.
-            Mixtormat::FMixtormatSurfaceRecipe FaceRecipe = Mixtormat::MakeButtonRecipe(
-                Theme, bActive ? Mixtormat::EMixtormatButtonState::Selected
-                    : bHover ? Mixtormat::EMixtormatButtonState::Hover
-                    : Mixtormat::EMixtormatButtonState::Rest, false);
-            const float Radius = FMath::Clamp(Layout.LeftRailCornerRadius,
-                0.0f, FMath::Min(BodySize.X, BodySize.Y) * 0.5f);
-            FaceRecipe.Radius = Radius;
-            Mixtormat::FMixtormatSurfaceSamples FaceSamples;
-            Mixtormat::CompositeSurface(FaceRecipe, Palette,
-                Mixtormat::FMixtormatStateModifier(), FaceSamples);
-            const FLinearColor FaceTop = FaceSamples.Colors.IsEmpty()
-                ? Palette.Get(Mixtormat::EMixtormatColorRole::Ground)
-                : FaceSamples.Colors[0];
-
-            if (Layout.LeftRailShadowOpacity > 0.0f && Layout.LeftRailShadowOffset > 0.0f)
-            {
-                Mixtormat::FMixtormatSurfaceRecipe ShadowRecipe = FaceRecipe;
-                ShadowRecipe.Radius = Radius + Layout.LeftRailShadowRadius;
-                Mixtormat::FMixtormatSurfaceDrawStyle ShadowStyle;
-                ShadowStyle.Tint = FLinearColor(0.0f, 0.0f, 0.0f,
-                    Layout.LeftRailShadowOpacity * WidgetStyle.GetColorAndOpacityTint().A);
-                Mixtormat::FMixtormatSurfacePainter::PaintBody(Elements, LayerId,
-                    Geometry.ToPaintGeometry(BodySize,
-                        FSlateLayoutTransform(BodyOffset + FVector2f(
-                            Layout.LeftRailShadowOffset, Layout.LeftRailShadowOffset))),
-                    ShadowRecipe, FaceSamples, ShadowStyle);
-            }
-
-            Mixtormat::FMixtormatSurfaceDrawStyle FaceStyle;
-            FaceStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
-            Mixtormat::FMixtormatSurfacePainter::PaintBody(Elements, LayerId + 1,
-                Geometry.ToPaintGeometry(BodySize, FSlateLayoutTransform(BodyOffset)),
-                FaceRecipe, FaceSamples, FaceStyle);
-
-            // Fill the neck against the common spine. It uses the same resolved
-            // recipe colour, never a separate white/native plate.
-            const FSlateBrush* White = FCoreStyle::Get().GetBrush(TEXT("WhiteBrush"));
-            FSlateDrawElement::MakeBox(Elements, LayerId + 2,
-                Geometry.ToPaintGeometry(
-                    FVector2f(SpineWidth + 1.0f, Size.Y), FSlateLayoutTransform()),
-                White, ESlateDrawEffect::None, FaceTop * WidgetStyle.GetColorAndOpacityTint());
-
-            // Carry the authored group-button top hairline over the protruding face.
-            if (!FaceRecipe.Borders.IsEmpty())
-            {
-                const auto& Hairline = FaceRecipe.Borders[0];
-                FLinearColor Source = Palette.Get(Mixtormat::EMixtormatColorRole::Accent);
-                Source.A = Hairline.Source.Opacity
-                    * Mixtormat::EvaluateRamp(Hairline.OpacityRamp, 0.0f)
-                    * Layout.LeftRailBorderOpacity;
-                const FLinearColor Edge = MixtormatCompositing::ApplyBlend(
-                    Hairline.Blend, FaceTop, Source);
-                const float BorderWidth = FMath::Clamp(Layout.LeftRailBorderThickness
-                    * Hairline.Width, 0.0f, BodyHeight);
-                if (BorderWidth > 0.0f && BodySize.X > Radius * 2.0f)
-                {
-                    FSlateDrawElement::MakeBox(Elements, LayerId + 3,
-                        Geometry.ToPaintGeometry(
-                            FVector2f(BodySize.X - Radius * 2.0f, BorderWidth),
-                            FSlateLayoutTransform(BodyOffset + FVector2f(Radius, 0.0f))),
-                        White, ESlateDrawEffect::None, Edge * WidgetStyle.GetColorAndOpacityTint());
-                }
-            }
+            // Full-rect, contiguous tabs. One shared recipe provides the
+            // group-button body, hairline and globally biased vertical shade.
+            // No spine, neck, outside shadow or independent edge plate.
+            const Mixtormat::EMixtormatButtonState State = bActive
+                ? Mixtormat::EMixtormatButtonState::Selected
+                : bHover ? Mixtormat::EMixtormatButtonState::Hover
+                : Mixtormat::EMixtormatButtonState::Rest;
+            const Mixtormat::FMixtormatSurfaceRecipe Recipe =
+                Mixtormat::MakeNavigationRailTabRecipe(Theme, State, TabIndex, TabCount);
+            Mixtormat::FMixtormatSurfaceDrawStyle DrawStyle;
+            DrawStyle.Tint = WidgetStyle.GetColorAndOpacityTint();
+            const int32 SurfaceLayer = Mixtormat::FMixtormatSurfacePainter::PaintSurface(
+                Elements, LayerId, Geometry, Recipe, Palette, WidgetStyle, DrawStyle);
 
             const auto& IconRole = Resolved.Icons.Roles[
                 static_cast<uint8>(Mixtormat::EMixtormatIconRole::NavigationRail)];
@@ -173,7 +115,7 @@ namespace
 
             if (Icon)
             {
-                FSlateDrawElement::MakeBox(Elements, LayerId + 4,
+                FSlateDrawElement::MakeBox(Elements, SurfaceLayer + 1,
                     Geometry.ToPaintGeometry(FVector2f(Glyph, Glyph),
                         FSlateLayoutTransform(FVector2f((Size.X - Glyph) * 0.5f, GlyphTop))),
                     Icon, ESlateDrawEffect::None, Foreground);
@@ -193,19 +135,21 @@ namespace
                 const FVector2D TextCenter(
                     Size.X * 0.5f, TextStart + FMath::Max(0.0f, Size.Y - TextStart) * 0.5f);
                 const FVector2D Origin = TextCenter - TextSize * 0.5f;
-                FSlateDrawElement::MakeText(Elements, LayerId + 5,
+                FSlateDrawElement::MakeText(Elements, SurfaceLayer + 2,
                     Geometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(Origin),
                         FSlateRenderTransform(FQuat2D(-HALF_PI)), FVector2D(0.5f, 0.5f)),
                     Label, Font, ESlateDrawEffect::None, Foreground);
             }
 
-            return LayerId + 5;
+            return SurfaceLayer + 2;
         }
 
     private:
         const FSlateBrush* Icon = nullptr;
         FText Label;
         TAttribute<bool> Selected;
+        int32 TabIndex = 0;
+        int32 TabCount = 1;
         FSimpleDelegate OnChosen;
     };
 }
@@ -228,6 +172,8 @@ void SMixtormatIconRail::Construct(const FArguments& InArgs)
                 .Icon(InArgs._Options[Index])
                 .Label(InArgs._Labels.IsValidIndex(Index)
                     ? InArgs._Labels[Index] : FText::GetEmpty())
+                .TabIndex(Index)
+                .TabCount(InArgs._Options.Num())
                 .Selected_Lambda([Active = ActiveIndex, Index]()
                 {
                     return Active.Get(0) == Index;
@@ -246,20 +192,7 @@ int32 SMixtormatIconRail::OnPaint(const FPaintArgs& Args, const FGeometry& Geome
     const FSlateRect& CullingRect, FSlateWindowElementList& Elements, int32 LayerId,
     const FWidgetStyle& WidgetStyle, bool bParentEnabled) const
 {
-    const auto& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
-    const FVector2f Size(Geometry.GetLocalSize());
-    const float SpineWidth = FMath::Clamp(Layout.LeftRailInnerPadding, 2.0f, 5.0f);
-    FLinearColor SpineColor = FMixtormatThemeStore::GetResolved().Palette.Get(
-        Mixtormat::EMixtormatColorRole::Panel);
-    SpineColor.A = 1.0f;
-    if (Size.X > 0.0f && Size.Y > 0.0f)
-    {
-        FSlateDrawElement::MakeBox(Elements, LayerId,
-            Geometry.ToPaintGeometry(FVector2f(SpineWidth, Size.Y),
-                FSlateLayoutTransform()),
-            FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None,
-            SpineColor * WidgetStyle.GetColorAndOpacityTint());
-    }
+    // No left-side spine: the tabs are painted within the page's own inset.
     return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements,
-        LayerId + 1, WidgetStyle, bParentEnabled);
+        LayerId, WidgetStyle, bParentEnabled);
 }
