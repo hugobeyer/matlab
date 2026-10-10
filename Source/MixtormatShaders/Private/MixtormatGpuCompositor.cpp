@@ -1553,13 +1553,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
 	if (!DemandedShelfSources.IsEmpty())
 	{
-		TSet<FGuid> DemandedSet;
-		DemandedSet.Reserve(DemandedShelfSources.Num());
-		for (const FGuid& SourceId : DemandedShelfSources) { DemandedSet.Add(SourceId); }
+		// Follow/Link parameter values can come from another shelf entry even when
+		// that entry does not publish a GPU field. Hash all shelf entries whenever
+		// a producer is demanded so changing such a parameter invalidates the stack.
 		uint64 ShelfContentHash = 0;
 		for (const FMixtormatSourceEntry& Source : Sources)
 		{
-			if (!DemandedSet.Contains(Source.SourceId)) { continue; }
 			MixtormatComposeHash::FHasher ShelfHasher;
 			ShelfHasher.Struct(FMixtormatSourceEntry::StaticStruct(), &Source);
 			// XOR: shelf arrangement is organisational only, so a reorder with identical content
