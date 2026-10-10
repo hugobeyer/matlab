@@ -770,13 +770,19 @@ namespace Mixtormat
 		float LeftRailButtonGap = 0.0f;
 		float LeftRailButtonWidth = 30.0f;
 		float LeftRailButtonHeight = 98.0f;
+		// Shared column inset: the full-width page stays behind the overlaid rail.
+		float LeftRailContentInset = 34.0f;
 		float LeftRailInnerPadding = 3.0f;
 		float LeftRailBorderOpacity = 0.24f;
 		float LeftRailBorderThickness = 1.0f;
+		// Saved shadow opacity now controls the continuous vertical shade over all tabs.
 		float LeftRailShadowOpacity = 0.25f;
+		// Bias < 1 darkens earlier; > 1 concentrates shade near the bottom.
+		float LeftRailShadeBias = 1.0f;
+		// Legacy positional-shadow settings retained for serialized theme compatibility.
 		float LeftRailShadowOffset = 2.0f;
 		float LeftRailShadowRadius = 5.0f;
-		float LeftRailCornerRadius = 5.0f;
+		float LeftRailCornerRadius = 0.0f;
 		float LeftRailLabelGap = 3.0f;
 		float LeftOverlayWidth = 320.0f;
 		float LeftOverlaySurfaceOpacity = 0.82f;
