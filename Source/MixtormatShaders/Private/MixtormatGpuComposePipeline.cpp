@@ -751,7 +751,8 @@ namespace MixtormatGpuCompositor
 							}
 							if (Child.Type == EMixtormatLayerChildType::Behavior
 								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
-								&& Child.Behavior.Type == EMixtormatBehaviorType::Push
+								&& (Child.Behavior.Type == EMixtormatBehaviorType::Push
+									|| Child.Behavior.Type == EMixtormatBehaviorType::Carve)
 								&& Child.Behavior.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput
 								&& Child.Behavior.Height.Source.ChildIndex != INDEX_NONE)
 						{
