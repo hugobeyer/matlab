@@ -51,8 +51,8 @@ namespace
 			Stops.Add(FSlateGradientStop(FVector2D(Edge, 0.0f), Shade));
 			Shade.A = 0.0f;
 			Stops.Add(FSlateGradientStop(FVector2D(Width, 0.0f), Shade));
-			FSlateDrawElement::MakeGradient(Elements, Layer + 10, G.ToPaintGeometry(), Stops, Orient_Horizontal);
-			return Layer + 11;
+			FSlateDrawElement::MakeGradient(Elements, Layer, G.ToPaintGeometry(), Stops, Orient_Horizontal);
+			return Layer + 1;
 		}
 	};
 
@@ -89,8 +89,7 @@ FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 	LeftTabIndex = PageIndex;
 	if (PageIndex != 0)
 	{
-		SelectedChildIndex = INDEX_NONE;
-		SelectedChildScope = EMixtormatChildScope::Layer;
+		LastNonLayersPage = PageIndex;
 	}
 	if (LeftSwitcher.IsValid())
 	{
@@ -98,6 +97,34 @@ FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 	}
 	return FReply::Handled();
 }
+
+FReply SMixtormat::OpenDocumentation()
+{
+	FString LaunchError;
+	FPlatformProcess::LaunchURL(
+		TEXT("https://hugobeyer.github.io/mixtormat/"),
+		nullptr,
+		&LaunchError);
+	if (!LaunchError.IsEmpty())
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::Format(
+				LOCTEXT("DocumentationLaunchFailed", "Could not open Mixtormat documentation:\n{0}"),
+				FText::FromString(LaunchError)));
+	}
+	return FReply::Handled();
+}
+
+FReply SMixtormat::OpenSettings()
+{
+	if (ISettingsModule* SettingsModule = FModuleManager::GetModulePtr<ISettingsModule>("Settings"))
+	{
+		SettingsModule->ShowViewer("Editor", "Plugins", "Mixtormat");
+	}
+	return FReply::Handled();
+}
+
 
 TSharedRef<SWidget> SMixtormat::BuildTopBar()
 {
@@ -110,16 +137,16 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	return SNew(SBox)
 		.HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.TopBarHeight)
-		[\
+		[
 			SNew(SBorder)
 			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f))
 			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 			.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
-			[\
+			[
 				SNew(SHorizontalBox)
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return !UndoHistory.IsEmpty(); })
@@ -128,7 +155,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.OnClicked(this, &SMixtormat::UndoMaterialEdit)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.IsEnabled_Lambda([this]() { return !RedoHistory.IsEmpty(); })
@@ -137,7 +164,7 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					.OnClicked(this, &SMixtormat::RedoMaterialEdit)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f)
-				[\
+				[
 					SNew(STextBlock)
 					.Text_Lambda([this]() { return FText::FromString(WorkingMaterialName); })
 					.Clipping(EWidgetClipping::ClipToBounds)
@@ -146,25 +173,25 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.ToolTipText(LOCTEXT("NewMaterialTopHint", "Start a new material workspace, confirming unsaved changes first."))
 					.IsEnabled_Lambda([this]() { return !bIsBaking; })
 					.OnClicked(this, &SMixtormat::NewWorkingMaterial)
-					[\
+					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
+						[
 							SNew(SBox)
 							.WidthOverride(TopBarIconSize())
 							.HeightOverride(TopBarIconSize())
-							[\
+							[
 								SNew(SImage).Image(MixtormatIcons::Add()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
+						[
 							SNew(STextBlock).Text(LOCTEXT("NewMaterialTop", "NEW"))
 							.Font(TopBarTextStyle.Font)
 							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
@@ -173,23 +200,23 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.OnClicked(this, &SMixtormat::OpenWorkingMaterial)
-					[\
+					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
+						[
 							SNew(SBox)
 							.WidthOverride(TopBarIconSize())
 							.HeightOverride(TopBarIconSize())
-							[\
+							[
 								SNew(SImage).Image(MixtormatIcons::Folder()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
+						[
 							SNew(STextBlock).Text(LOCTEXT("LoadMaterialTop", "LOAD"))
 							.Font(TopBarTextStyle.Font)
 							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
@@ -198,25 +225,24 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial && !bIsBaking; })
-					.ToolTipText(LOCTEXT("SaveMaterialTopHint", "Save changes to the active material recipe."))
+					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 					.OnClicked(this, &SMixtormat::SaveWorkingMaterial)
-					[\
+					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
+						[
 							SNew(SBox)
 							.WidthOverride(TopBarIconSize())
 							.HeightOverride(TopBarIconSize())
-							[\
+							[
 								SNew(SImage).Image(MixtormatIcons::Save()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
+						[
 							SNew(STextBlock).Text(LOCTEXT("SaveMaterialTop", "SAVE"))
 							.Font(TopBarTextStyle.Font)
 							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
@@ -225,26 +251,25 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial && !bIsBaking; })
-					.ToolTipText(LOCTEXT("SaveAsMaterialTopHint", "Save the active material recipe under a new name."))
-					.OnClicked(this, &SMixtormat::SaveAsWorkingMaterial)
-					[\
+					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+					.OnClicked(this, &SMixtormat::SaveWorkingMaterialAs)
+					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
+						[
 							SNew(SBox)
 							.WidthOverride(TopBarIconSize())
 							.HeightOverride(TopBarIconSize())
-							[\
-								SNew(SImage).Image(MixtormatIcons::Save()).ColorAndOpacity(TopBarIconTint())
+							[
+								SNew(SImage).Image(MixtormatIcons::SaveAs()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
-							SNew(STextBlock).Text(LOCTEXT("SaveAsMaterialTop", "SAVE AS..."))
+						[
+							SNew(STextBlock).Text(LOCTEXT("SaveAsTop", "SAVE AS..."))
 							.Font(TopBarTextStyle.Font)
 							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
 							.ColorAndOpacity(FSlateColor::UseForeground())
@@ -252,120 +277,37 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
+				[
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
+					.Visibility(bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.Text(LOCTEXT("OpenLiveTheme", "UI STYLE"))
+					.ToolTipText(LOCTEXT("OpenLiveThemeHint", "Developer popup: edit shared UI spacing, sizes, typography and colors live."))
+					.IsEnabled_Lambda([this]() { return !bIsBaking; })
+					.OnClicked(this, &SMixtormat::OpenThemePanel)
+				]
+				// Bake is a peer toolbar action, so it uses the same tokenized button, spacing,
+				// icon and label structure as New, Load, Save and Save As.
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
 					SNew(SMixtormatShellAction, true, TopBarActionHeight())
 					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.Visibility_Lambda([bHasDeveloperSources]()
-					{
-						return bHasDeveloperSources ? EVisibility::Visible : EVisibility::Collapsed;
-					})
-					.ToolTipText(LOCTEXT("ImportShippedSourcesTopHint", "Import every unpacked texture folder found in Content/Mixtormat/Sources into UMixtormatSurface assets."))
-					.OnClicked_Lambda([this]()
-					{
-						const int32 Count = FMixtormatSurfaceImporter::ImportAllShippedSources();
-						RefreshGallerySurfaces();
-						SetStatusMessage(FString::Printf(TEXT("Imported %d surfaces"), Count));
-						return FReply::Handled();
-					})
-					[\
+					.IsEnabled_Lambda([this]() { return WorkingMaterialAsset.IsValid() && bHasWorkingMaterial; })
+					.ToolTipText(LOCTEXT("BakeMaterialHint", "Bake the current GPU-composited BC, Normal, and RAM outputs."))
+					.OnClicked(this, &SMixtormat::BakeWorkingMaterial)
+					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
+						[
 							SNew(SBox)
 							.WidthOverride(TopBarIconSize())
 							.HeightOverride(TopBarIconSize())
-							[\
-								SNew(SImage).Image(MixtormatIcons::ImportSources()).ColorAndOpacity(TopBarIconTint())
+							[
+								SNew(SImage).Image(MixtormatIcons::Cube()).ColorAndOpacity(TopBarIconTint())
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
-							SNew(STextBlock).Text(LOCTEXT("ImportShippedSourcesTop", "IMPORT SOURCES"))
-							.Font(TopBarTextStyle.Font)
-							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
-							.ColorAndOpacity(FSlateColor::UseForeground())
-						]
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT("OpenDocumentationTopHint", "Open the offline HTML manual."))
-					.OnClicked_Lambda([]()
-					{
-						const FString DocsPath = FPaths::Combine(
-							FPaths::ProjectPluginsDir(), TEXT("Mixtormat"), TEXT("Docs"), TEXT("Documentation.html"));
-						const FString AbsolutePath = FPaths::ConvertRelativePathToFull(DocsPath);
-						FPlatformProcess::LaunchFileInDefaultExternalApplication(*AbsolutePath);
-						return FReply::Handled();
-					})
-					[\
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
-							SNew(SBox)
-							.WidthOverride(TopBarIconSize())
-							.HeightOverride(TopBarIconSize())
-							[\
-								SNew(SImage).Image(MixtormatIcons::Docs()).ColorAndOpacity(TopBarIconTint())
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
-							SNew(STextBlock).Text(LOCTEXT("DocsTop", "DOCS"))
-							.Font(TopBarTextStyle.Font)
-							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
-							.ColorAndOpacity(FSlateColor::UseForeground())
-						]
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT("ThemeEditorTopHint", "Author and customize UI tokens, layout metrics, and color palettes live."))
-					.OnClicked(this, &SMixtormat::OpenThemeEditor)
-					[\
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
-							SNew(SBox)
-							.WidthOverride(TopBarIconSize())
-							.HeightOverride(TopBarIconSize())
-							[\
-								SNew(SImage).Image(MixtormatIcons::Theme()).ColorAndOpacity(TopBarIconTint())
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
-							SNew(STextBlock).Text(LOCTEXT("ThemeEditorTop", "THEME"))
-							.Font(TopBarTextStyle.Font)
-							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
-							.ColorAndOpacity(FSlateColor::UseForeground())
-						]
-					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[\
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
-					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial && !bIsBaking; })
-					.ToolTipText(LOCTEXT("BakeDialogTopHint", "Bake the active material to textures and create a material instance."))
-					.OnClicked(this, &SMixtormat::OpenBakeDialog)
-					[\
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[\
-							SNew(SBox)
-							.WidthOverride(TopBarIconSize())
-							.HeightOverride(TopBarIconSize())
-							[\
-								SNew(SImage).Image(MixtormatIcons::Bake()).ColorAndOpacity(TopBarIconTint())
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[\
+						[
 							SNew(STextBlock).Text(LOCTEXT("BakeMaterialTop", "BAKE"))
 							.Font(TopBarTextStyle.Font)
 							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
@@ -373,151 +315,186 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 						]
 					]
 				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatShellAction, true, TopBarActionHeight())
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.ToolTipText(LOCTEXT("DocumentationTopHint", "Open Mixtormat documentation."))
+					.OnClicked(this, &SMixtormat::OpenDocumentation)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
+							[
+								SNew(SImage).Image(MixtormatIcons::Documentation()).ColorAndOpacity(TopBarIconTint())
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
+							.ColorAndOpacity(FSlateColor::UseForeground())
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SMixtormatShellAction, false, TopBarActionHeight())
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+					.OnClicked(this, &SMixtormat::OpenSettings)
+					.ToolTipText(LOCTEXT("SettingsTopHint", "Open Mixtormat settings."))
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+							.WidthOverride(TopBarIconSize())
+							.HeightOverride(TopBarIconSize())
+							[
+								SNew(SImage).Image(MixtormatIcons::Settings()).ColorAndOpacity(TopBarIconTint())
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock).Text(LOCTEXT("SettingsTop", "SETTINGS"))
+							.Font(TopBarTextStyle.Font)
+							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
+							.ColorAndOpacity(FSlateColor::UseForeground())
+						]
+					]
+				]
+
 			]
 		];
 }
 
-void SMixtormat::ReconstructLeftPanel()
+TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 {
+	// Detach the old tree before creating the single replacement panels on theme refresh.
+	if (InspectorDockHost.IsValid()) InspectorDockHost->SetContent(SNullWidget::NullWidget);
+	if (InspectorOverlayHost.IsValid()) InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
 	if (LeftPanelDockHost.IsValid()) LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
-	LeftPanel.Reset();
+	InspectorPanel = BuildInspectorPanel();
 	LeftPanel = BuildLayerStackPanel();
-	if (LeftPanelDockHost.IsValid() && LeftPanel.IsValid())
+	// Every rebuild runs a full layout pass, and that pass reports slot values back through
+	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
+	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
+	bSuppressSplitWriteBack = true;
+	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float)
 	{
-		LeftPanelDockHost->SetContent(LeftPanel.ToSharedRef());
-	}
-}
+		bSuppressSplitWriteBack = false;
+		return EActiveTimerReturnType::Stop;
+	}));
+	return SNew(SBorder)
+		.Padding(0.0f)
+		.IsEnabled_Lambda([this]() { return !bIsBaking; })
+		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Shell.Ground)
+		[
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SSplitter)
+				.Style(&MixtormatShell::GetSplitterStyle())
+			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
+			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 
-TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
-{
-	return SNew(SScrollBox)
-		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
-		+ SScrollBox::Slot()
-		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.GlobalPagePadding, 0.0f))
-		[\
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
-			[\
-				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("UserLibraryHeading", "LIBRARY"))
-				.InitiallyExpanded(true)
-				[\
-					SNew(STextBlock)
-					.Text(LOCTEXT("UserLibraryEmpty", "Saved materials and user assets will appear here."))
-					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-						Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
-				]
+			+ SSplitter::Slot()
+				.Value_Lambda([this]() { return ShellLeftFraction; })
+				.OnSlotResized_Lambda([this](float Value)
+				{
+					if (!bSuppressSplitWriteBack)
+					{
+						ShellLeftFraction = Value;
+					}
+				})
+			[
+				BuildLeftColumn()
 			]
-		];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildShell()
-{
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
-	const float Gutter = Resolved.ShellLayout.PanelGutter;
-
-	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()[BuildTopBar()]
-		+ SVerticalBox::Slot().FillHeight(1.0f)
-		[\
-			SNew(SBorder)
-			.Padding(0.0f)
-			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			.BorderBackgroundColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
-			[\
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot().AutoWidth()
-				[\
-					BuildLeftColumn()
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth()
-				[\
-					SNew(SBox)
-					.WidthOverride(Gutter)
-					[\
-						SNew(SBorder)
-						.Padding(0.0f)
-						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.BorderBackgroundColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Ground))
-					]
-				]
-
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
-				[\
-					SNew(SMixtormatSplitter)
-					.Orientation(Orient_Horizontal)
-					.Style(&FMixtormatShellSplitterStyle::Get())
-					.PhysicalSplitterHandleSize(Resolved.ShellLayout.SplitterHandleSize)
-					.HitDetectionSplitterHandleSize(Resolved.ShellLayout.SplitterHitSize)
-
-					+ SMixtormatSplitter::Slot()
-					.Value_Lambda([this]() -> float
-					{
-						return InspectorPlacementMode == EMixtormatInspectorPlacement::DockRight
-							? CenterFraction : 1.0f;
-					})
-					.OnSlotResized_Lambda([this](float NewValue)
-					{
-						if (InspectorPlacementMode == EMixtormatInspectorPlacement::DockRight)
+			+ SSplitter::Slot()
+						.Value_Lambda([this]()
 						{
-							CenterFraction = FMath::Clamp(NewValue, 0.1f, 0.9f);
-						}
-					})
-					[\
-						BuildCenterColumn()
-					]
-
-					+ SMixtormatSplitter::Slot()
-					.Value_Lambda([this]() -> float
-					{
-						return InspectorPlacementMode == EMixtormatInspectorPlacement::DockRight
-							? (1.0f - CenterFraction) : 0.0f;
-					})
-					.OnSlotResized_Lambda([this](float NewValue)
-					{
-						if (InspectorPlacementMode == EMixtormatInspectorPlacement::DockRight)
-						{
-							CenterFraction = 1.0f - FMath::Clamp(NewValue, 0.1f, 0.9f);
-						}
-					})
-					[\
-						SAssignNew(InspectorDockHost, SBox)
-						.Visibility_Lambda([this]()
-						{
-							return InspectorPlacementMode == EMixtormatInspectorPlacement::DockRight
-								? EVisibility::Visible : EVisibility::Collapsed;
+							// While the inspector column is away the centre slot carries its share, so the
+							// splitter still divides the full width and a drag on the left handle reports
+							// values in the units the expanded layout stores.
+							return ShellCenterFraction + (bInspectorCollapsed ? ShellRightFraction : 0.0f);
 						})
-						[InspectorPanel.ToSharedRef()]
-					]
-				]
+						.OnSlotResized_Lambda([this](float Value)
+						{
+							if (bSuppressSplitWriteBack)
+							{
+								return;
+							}
+							// Hand every borrowed share back before storing, so the centre column returns to
+							// its own width rather than the one it was carrying for an absent panel -- the
+							// same pattern for the left panel as for the inspector.
+							if (bInspectorCollapsed)
+							{
+								Value = FMath::Max(0.0f, Value - ShellRightFraction);
+							}
+
+							ShellCenterFraction = Value;
+						})
+			[
+				BuildPreviewPanel()
+			]
++ SSplitter::Slot()
+						// Zero, not a sliver: a collapsed slot is skipped by the splitter, so this keeps
+						// the left and centre coefficients summing to one while the column is away.
+						.Value_Lambda([this]() { return bInspectorCollapsed ? 0.0f : ShellRightFraction; })
+						.OnSlotResized_Lambda([this](float Value)
+						{
+							// The right slot's value is a fraction of the full width in every placement, so the
+							// docked inspector stays resizable while the left panel floats or is hidden.
+							if (!bSuppressSplitWriteBack && !bInspectorCollapsed)
+							{
+								ShellRightFraction = Value;
+							}
+						})
+			[
+				SAssignNew(InspectorDockHost, SBox)
+				.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
+				[InspectorPlacement == EInspectorPlacement::Overlay ? SNullWidget::NullWidget : InspectorPanel.ToSharedRef()]
 			]
 		]
-		+ SVerticalBox::Slot().AutoHeight()[BuildStatusBar()];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildCenterColumn()
-{
-	const ISlateStyle& Style = FMixtormatStyle::Get();
-
-	return SNew(SOverlay)
-		+ SOverlay::Slot()
-		[\
-			SNew(SVerticalBox)
-
-			+ SVerticalBox::Slot().FillHeight(1.0f)
-			[\
-				SAssignNew(PreviewViewportHost, SBox)
-				[BuildPreviewViewport()]
-			]
-
-			+ SVerticalBox::Slot().AutoHeight()
-			[\
+		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
+		[
+			// An FOverlaySlot takes a literal padding only, so the collapse-dependent bottom inset
+			// lives on this wrapper box instead.
+			SNew(SBox)
+			.Padding_Lambda([this]()
+			{
+				const Mixtormat::FMixtormatGalleryMetrics& Gallery =
+					FMixtormatThemeStore::GetResolved().GalleryLayout;
+				// Collapsed, the tab sits flush with the workspace bottom -- directly above the status
+				// bar, as a drawer handle should; expanded, the drawer keeps its floating inset.
+				const float Bottom = bBottomLibraryCollapsed ? 0.0f : Gallery.DrawerInset;
+				return FMargin(Gallery.DrawerSideInset, Gallery.DrawerInset, Gallery.DrawerSideInset, Bottom);
+			})
+			[
+				SAssignNew(GalleryDrawerHost, SBox)
+			.HeightOverride_Lambda([this]()
+			{
+				if (bGalleryDrawerAnimating)
+				{
+					return GalleryDrawerAnimatedHeight;
+				}
+				if (bBottomLibraryCollapsed)
+				{
+					return FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight;
+				}
+			return GalleryDrawerHeight > 0.0f
+				? GalleryDrawerHeight
+				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			})
+			[
 				SNew(SOverlay)
 				+ SOverlay::Slot()
-				[\
+				[
 					SNew(SBox)
 					.Visibility_Lambda([this]()
 					{
@@ -527,7 +504,7 @@ TSharedRef<SWidget> SMixtormat::BuildCenterColumn()
 					[BuildBottomLibrary()]
 				]
 				+ SOverlay::Slot().HAlign(HAlign_Center)
-				[\
+				[
 					// A centred handle, not a bar: the collapsed drawer is a fixed-width tab above the
 					// status bar, so it stops competing with the layer column's bottom edge.
 					SNew(SBox)
@@ -537,11 +514,11 @@ TSharedRef<SWidget> SMixtormat::BuildCenterColumn()
 						return bBottomLibraryCollapsed && !bGalleryDrawerAnimating
 							? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					[\
+					[
 						// The action returns FReply; the tab's delegate takes void.
 						SNew(SMixtormatHelp)
 						.Text(LOCTEXT("RestoreGalleryStyledHint", "Open the material and mask gallery (G)."))
-						[\
+						[
 							SNew(SMixtormatGalleryTab)
 							.OnActivated(FSimpleDelegate::CreateLambda([this]() { ToggleBottomLibraryCollapsed(); }))
 						]
@@ -550,7 +527,7 @@ TSharedRef<SWidget> SMixtormat::BuildCenterColumn()
 			]
 			]
 		]
-	;
+	];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
@@ -563,18 +540,18 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell))
-		[\
+		[
 			SNew(SOverlay)
 			+ SOverlay::Slot()
-			[\
+			[
 				// Only page content is inset; the rail overlays the same dark column.
 				SNew(SBox)
 				.Padding(FMargin(Layout.LeftRailContentInset, 0.0f, 0.0f, 0.0f))
-				[\
+				[
 					SAssignNew(LeftSwitcher, SWidgetSwitcher)
 					.WidgetIndex(LeftTabIndex)
 					+ SWidgetSwitcher::Slot()
-					[\
+					[
 						SAssignNew(LeftPanelDockHost, SBox)
 						[LeftPanel.ToSharedRef()]
 					]
@@ -583,26 +560,26 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 				]
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
-			[\
+			[
 				SNew(SBox)
 				.WidthOverride(Layout.LeftRailButtonWidth + Layout.LeftRailFadeExtension)
 				[SNew(SMixtormatRailFade)]
 			]
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
-			[\
+			[
 				SNew(SBox)
 				.WidthOverride(Layout.LeftRailButtonWidth)
-				[\
+				[
 					SNew(SMixtormatIconRail)
-					.Options({\
-						MixtormatIcons::Layers(),\
-						MixtormatIcons::Library(),\
+					.Options({
+						MixtormatIcons::Layers(),
+						MixtormatIcons::Library(),
 						MixtormatIcons::Global() })
-					.Labels({\
-						LOCTEXT("LayersRailLabel", "Layers"),\
-						LOCTEXT("LibraryRailLabel", "Library"),\
+					.Labels({
+						LOCTEXT("LayersRailLabel", "Layers"),
+						LOCTEXT("LibraryRailLabel", "Library"),
 						LOCTEXT("GlobalRailLabel", "Global") })
-					.ToolTips({\
+					.ToolTips({
 						LOCTEXT("LayersRailHint", "The layer stack: layers, their masks, effects and filters."),
 						LOCTEXT("LibraryRailHint", "Saved mixes and imported user surfaces."),
 						LOCTEXT("GlobalRailHint", "Document-wide variables and preview settings.") })
@@ -646,7 +623,7 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 		if (Panel->GetChildren()->Num() > 0)
 		{
 			Panel->AddSlot().AutoHeight()
-			[\
+			[
 				SNew(SBox).HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.GlobalCardGap)
 			];
 		}
@@ -700,14 +677,14 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 		.ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 		+ SScrollBox::Slot()
 		.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.GlobalPagePadding, 0.0f))
-		[\
+		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
-			[\
+			[
 				SNew(SMixtormatInspectorGroup)
 				.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
 				.InitiallyExpanded(true)
-				[\
+				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
@@ -720,7 +697,7 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()
-			[\
+			[
 				SNew(SMixtormatInspectorGroup)
 				.Title(LOCTEXT("GlobalPreviewHeading", "PREVIEW / VIEWPORT"))
 				.InitiallyExpanded(true)
@@ -737,20 +714,20 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 
 	return SNew(SBox)
 		.HeightOverride(FMixtormatThemeStore::GetResolved().ShellLayout.StatusBarHeight)
-		[\
+		[
 			SNew(SBorder)
 			.Padding(FMargin(FMixtormatThemeStore::GetResolved().ShellLayout.PanelPadding, 0.0f))
 			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
 			.BorderBackgroundColor(
 				FMixtormatThemeStore::GetResolved().Palette.Get(
 					Mixtormat::EMixtormatColorRole::Ground))
-			[\
+			[
 				SNew(SOverlay)
 
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Left)
 				.VAlign(VAlign_Center)
-				[\
+				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
@@ -765,7 +742,7 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
-				[\
+				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
@@ -789,7 +766,7 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 				+ SOverlay::Slot()
 				.HAlign(HAlign_Right)
 				.VAlign(VAlign_Center)
-				[\
+				[
 					SNew(STextBlock)
 					.Text_Lambda([this]()
 					{
