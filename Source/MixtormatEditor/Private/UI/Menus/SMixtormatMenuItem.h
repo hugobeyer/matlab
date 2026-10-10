@@ -31,6 +31,7 @@ public:
 		, _bChecked(false)
 		, _bEnabled(true)
 		, _bDestructive(false)
+		, _bBehaviorStyle(false)
 	{}
 		SLATE_ATTRIBUTE(FText, Label)
 		// Printed quietly on the right. Never a control -- it teaches the shortcut, it does not
@@ -46,6 +47,7 @@ public:
 		// Destructive rows keep the hover's shape and change only its hue: the gesture reads the
 		// same, the consequence does not.
 		SLATE_ARGUMENT(bool, bDestructive)
+		SLATE_ARGUMENT(bool, bBehaviorStyle)
 
 		SLATE_EVENT(FSimpleDelegate, OnActivate)
 		SLATE_EVENT(FSimpleDelegate, OnHovered)
@@ -72,6 +74,7 @@ private:
 	TAttribute<bool> bChecked;
 	TAttribute<bool> bRowEnabled;
 	bool bDestructive = false;
+	bool bBehaviorStyle = false;
 	FSimpleDelegate OnActivate;
 	FSimpleDelegate OnHovered;
 	FSimpleDelegate OnUnhovered;
