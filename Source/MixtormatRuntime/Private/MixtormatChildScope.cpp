@@ -76,7 +76,10 @@ namespace MixtormatChildScope
 		const FMixtormatBehavior& Behavior = Layer.Children[BehaviorChildIndex].Behavior;
 		// Serialized but not executable operations must never appear as valid
 		// inputs to a gather, source picker, or later capability query.
-		if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+		if ((Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration
+				&& Behavior.Type == EMixtormatBehaviorType::Warp
+				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
 			|| (Behavior.Type != EMixtormatBehaviorType::Warp
 				&& Behavior.Type != EMixtormatBehaviorType::Push
 				&& Behavior.Type != EMixtormatBehaviorType::Carve
