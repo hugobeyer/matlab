@@ -7,6 +7,8 @@
 // and multi-tile winding. Never frac() or shortest-path-wrap this delta.
 int2 OutputSize;
 float Strength;
+uint UseMask;
+Texture2D<float> ScopedMask;
 Texture2D<float2> SourceCoordinates;
 RWTexture2D<float2> OutCoordinates;
 
@@ -24,5 +26,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		OutCoordinates[Pixel] = float2(Invalid, Invalid);
 		return;
 	}
-	OutCoordinates[Pixel] = UV + Strength * (Source - UV);
+	// A scoped Behavior mask gates the displacement, not the generator's
+	// original height/coverage. Flow tracing and UV-map transport share this step.
+	float Weight = Strength;
+	if (UseMask != 0u)
+	{
+		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	OutCoordinates[Pixel] = UV + Weight * (Source - UV);
 }
