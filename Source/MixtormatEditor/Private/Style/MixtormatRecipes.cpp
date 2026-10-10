@@ -739,10 +739,13 @@ namespace Mixtormat
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
 		Recipe.Base = MakeColorRef(EMixtormatColorRole::Shell);
 		FMixtormatSurfaceRecipe Button = MakeButtonRecipe(Theme, State, false);
-		const float SurfaceStrength = FMath::Clamp(Layout.LeftRailButtonSurfaceStrength, 0.0f, 1.0f);
+		const float SurfaceStrength = FMath::Clamp(
+			State == EMixtormatButtonState::Selected ? Layout.LeftRailSelectedSurfaceStrength
+			: State == EMixtormatButtonState::Hover ? Layout.LeftRailHoverSurfaceStrength
+			: Layout.LeftRailButtonSurfaceStrength, 0.0f, 1.0f);
 		for (FMixtormatPaintLayer& Layer : Button.Layers)
 		{
-			Layer.Strength *= State == EMixtormatButtonState::Rest ? SurfaceStrength : 1.0f;
+			Layer.Strength *= SurfaceStrength;
 			Recipe.Layers.Add(Layer);
 		}
 		Recipe.Borders = Button.Borders;
