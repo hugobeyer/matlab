@@ -51,12 +51,6 @@ namespace
 
 FReply SMixtormat::ShowLeftPage(const int32 PageIndex)
 {
-	// Layers is the only page that can pop out; choosing it returns the retained stack home.
-	if (PageIndex == 0 && LeftPanelPlacement != ELeftPanelPlacement::Docked)
-	{
-		LeftPanelPlacement = ELeftPanelPlacement::Docked;
-		ApplyLeftPanelPlacement();
-	}
 	LeftTabIndex = PageIndex;
 	if (PageIndex != 0)
 	{
@@ -349,9 +343,8 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 	if (InspectorDockHost.IsValid()) InspectorDockHost->SetContent(SNullWidget::NullWidget);
 	if (InspectorOverlayHost.IsValid()) InspectorOverlayHost->SetContent(SNullWidget::NullWidget);
 	if (LeftPanelDockHost.IsValid()) LeftPanelDockHost->SetContent(SNullWidget::NullWidget);
-	if (LeftPanelOverlayHost.IsValid()) LeftPanelOverlayHost->SetContent(SNullWidget::NullWidget);
 	InspectorPanel = BuildInspectorPanel();
-	LeftPanel = BuildFloatingLayerStack();
+	LeftPanel = BuildLayerStackPanel();
 	// Every rebuild runs a full layout pass, and that pass reports slot values back through
 	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
 	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
@@ -511,13 +504,12 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 	return SNew(SBorder)
 		.Padding(0.0f)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Panel))
+		.BorderBackgroundColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell))
 		[
 			SNew(SOverlay)
 			+ SOverlay::Slot()
 			[
-				// Only page content is inset; the parent column background remains
-				// continuous under the nav tabs. Floating Layers still uses its own layout.
+				// Only page content is inset; the rail overlays the same dark column.
 				SNew(SBox)
 				.Padding(FMargin(Layout.LeftRailContentInset, 0.0f, 0.0f, 0.0f))
 				[
@@ -526,8 +518,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 					+ SWidgetSwitcher::Slot()
 					[
 						SAssignNew(LeftPanelDockHost, SBox)
-						[LeftPanelPlacement == ELeftPanelPlacement::Docked
-							? LeftPanel.ToSharedRef() : SNullWidget::NullWidget]
+						[LeftPanel.ToSharedRef()]
 					]
 					+ SWidgetSwitcher::Slot()[BuildUserLibraryPage()]
 					+ SWidgetSwitcher::Slot()[BuildGlobalPage()]
@@ -556,69 +547,6 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 				]
 			]
 		];
-}
-
-TSharedRef<SWidget> SMixtormat::BuildFloatingLayerStack()
-{
-	// The same grab margin starts a home pop-out or moves the floating stack; resize grips remain floating-only.
-	return SNew(SOverlay)
-		+ SOverlay::Slot()
-		[
-			SNew(SBorder)
-			.Padding(0.0f)
-			.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-			// Docked, the column keeps the ground colour it always had. Floating, it takes the
-			// inspector overlay's square, borderless, translucent surface -- the same tokens.
-			.BorderBackgroundColor_Lambda([this]()
-			{
-				FLinearColor Background = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shell);
-				Background.A *= FMixtormatThemeStore::GetResolved().PreviewLayout.LeftOverlaySurfaceOpacity;
-				return Background;
-			})
-			[
-				SNew(SVerticalBox)
-				// The home grab area uses Slate drag detection, so an ordinary click does not pop it out.
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(SMixtormatHelp)
-					.Text(LOCTEXT("LayersGrabHint", "Drag to pop Layers out or move it. Click LAYERS or drag back to the rail to return it home."))
-					[
-					SAssignNew(LeftPanelOverlay.Header, SBox)
-					.HeightOverride(MixtormatTokens::OverlayPanelGrabMargin)
-					[
-						SNew(SBorder)
-						.Visibility(EVisibility::Visible)
-						.Padding(0.0f)
-						.BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-						.BorderBackgroundColor(FLinearColor::Transparent)
-						.Cursor(EMouseCursor::GrabHand)
-					]
-					]
-				]
-				+ SVerticalBox::Slot().FillHeight(1.0f)
-				[
-					BuildLayerStackPanel()
-				]
-			]
-		]
-		// Overlay only; docked resizing remains the splitter's responsibility.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 0, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 1, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 2, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 3, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		// The two side edges: width only, so the height stays auto and re-measures at the new width.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 4, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
-		[MixtormatOverlay::MakeResizeGrip(LeftPanelOverlay, 5, LOCTEXT("ResizeLeftPanelOverlayHint", "Drag to resize the Layers panel."))]
-		// The way back to auto-fit after a corner drag has frozen the height (D23): bottom-centre,
-		// the edge the height is about.
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom)
-		[MakeOverlayFitButton(LeftPanelOverlay, LeftPanel)];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
