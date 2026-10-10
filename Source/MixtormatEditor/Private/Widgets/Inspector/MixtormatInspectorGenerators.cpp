@@ -1782,13 +1782,14 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 			|| N->NoiseType == EMixtormatNoiseType::WorleyF2
 			|| N->NoiseType == EMixtormatNoiseType::WorleyF1MinusF2);
 	};
-	const auto IsMultiOctave = [Noise]()
+	const auto LayerMixAddress = MakeAddressResolver(Noise, &FMixtormatNoise::NoiseLayerMix);
+	const auto IsMultiOctave = [this, Noise, LayerMixAddress]()
 	{
 		const FMixtormatNoise* N = Noise();
 		return N && (N->NoiseType == EMixtormatNoiseType::FBM
 			|| N->NoiseType == EMixtormatNoiseType::Ridged
 			|| N->NoiseType == EMixtormatNoiseType::Billow
-			|| N->NoiseLayerMix > 0.0f);
+			|| GetEffectiveFloatParameter(LayerMixAddress(), N->NoiseLayerMix) > 0.0f);
 	};
 	const auto HasNativeOctaves = [Noise]()
 	{
