@@ -30,7 +30,8 @@ void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Lay
 // module's native signed field (the Height basis). The Slope basis is compiled in but disabled
 // with Slope sampling the height snapshot preceding this generator in authored order.
 FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
-	int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight);
+	int32 SourceChildIndex, const FMixtormatNoiseRenderData& Noise, FRDGTextureRef OwnHeight,
+	FRDGTextureRef PrecedingHeight);
 
 // Reusable Add/Mix composition over two canonical Flow fields (FIELD_CONTRACT_P0.md section 4):
 //   MixWeight = saturate(Mix * Mask); AddWeight = Add * Mask;
