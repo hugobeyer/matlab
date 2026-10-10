@@ -175,6 +175,10 @@ toolbar. Its icon buttons opt into `ScalarRampButton`: an Accent gradient, prebl
 sampling the containing surface. State precedence is Active → Hover → Rest; Auto Zoom is active.
 The plate currently does not apply inherited tint/opacity or a disabled-specific plate state.
 
+## Tooltip styling contract
+
+All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requiring direct `IToolTip`, use its `MakeStyledToolTip` adapter. Do not add Unreal/Slate default white tooltips, `.ToolTipText(...)`, `SetToolTipText(...)`, or independently styled `SToolTip`. Existing group actions own their styled help internally. New controls must preserve user input handling and retrieve their help styling from shared tokens and theme store. See `AgentDocs/HELPERS.md`.
+
 ## Theme / style / tokens
 
 - Layout + palette tokens: `Style/MixtormatDesignTokens.h` (`MixtormatTokens`).
