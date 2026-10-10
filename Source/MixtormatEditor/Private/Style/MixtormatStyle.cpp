@@ -558,10 +558,16 @@ void FMixtormatStyle::Refresh()
 		Highlight.A *= T.HighlightOpacity;
 		const FLinearColor Focused = MixtormatCompositing::ApplyBlend(T.HighlightBlend, Background, Highlight);
 		FEditableTextBoxStyle Edit = FCoreStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("NormalEditableTextBox"));
-		Edit.SetBackgroundImageNormal(FSlateRoundedBoxBrush(Background, T.Radius, BorderColor, T.BorderThickness));
-		Edit.SetBackgroundImageHovered(FSlateRoundedBoxBrush(Background, T.Radius, BorderColor, T.BorderThickness));
-		Edit.SetBackgroundImageFocused(FSlateRoundedBoxBrush(Focused, T.Radius, Highlight, T.BorderThickness));
-		Edit.SetBackgroundImageReadOnly(FSlateRoundedBoxBrush(Background, T.Radius));
+		// Gradient is painted by SMixtormatTextFieldGradient behind this transparent entry.
+		// Keep border and focus states in the native editable box for normal keyboard behavior.
+		Edit.SetBackgroundImageNormal(FSlateRoundedBoxBrush(FLinearColor::Transparent, T.Radius, BorderColor, T.BorderThickness));
+		Edit.SetBackgroundImageHovered(FSlateRoundedBoxBrush(FLinearColor::Transparent, T.Radius, BorderColor, T.BorderThickness));
+		Edit.SetBackgroundImageFocused(FSlateRoundedBoxBrush(FLinearColor::Transparent, T.Radius, Highlight, T.BorderThickness));
+		Edit.SetBackgroundImageReadOnly(FSlateRoundedBoxBrush(FLinearColor::Transparent, T.Radius));
+		Edit.SetPadding(FMargin(T.PaddingX, T.PaddingY));
+		FSlateFontInfo EntryFont = Edit.TextStyle.Font;
+		EntryFont.Size = FMath::RoundToInt(T.FontSize);
+		Edit.TextStyle.SetFont(EntryFont);
 		FLinearColor TextColor = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 		TextColor.A *= T.LabelOpacity;
 		Edit.SetForegroundColor(FSlateColor(TextColor));
