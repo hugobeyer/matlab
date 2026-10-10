@@ -850,7 +850,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 // Which algorithm the Noise module evaluates.
 //
 // Serialised by value. Append only. The families split by their natural output contract:
-// the lattice families (Gradient, Value, FBM) and Bars are zero-centred and signed; Ridged,
+// the lattice families (Gradient, Value, FBM), Bars and Phasor are zero-centred and signed; Ridged,
 // Billow and the Worley distances are 0..1 magnitudes. The module's height output is the signed
 // remap of whichever contract the family defines -- see FMixtormatNoise.
 UENUM(BlueprintType)
@@ -894,7 +894,7 @@ enum class EMixtormatNoiseWorleyMetric : uint8
 //
 // Every family is periodic by construction -- the lattice is wrapped to an integer period
 // before it is hashed -- so the field tiles exactly at any Scale, and Offset translates it
-// without breaking the wrap. Direction exists only where rotation means anything: Bars, where
+// without breaking the wrap. Direction is used by Bars and Phasor, where
 // it snaps to the nearest angle that tiles, exactly like Strata Carver's bedding.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatNoise
@@ -935,7 +935,7 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float NoiseOffsetY = 0.0f;
 
-	// Bars only: the direction the stripes advance across, in degrees. 0 is horizontal stripes;
+	// Bars / Phasor: the direction the waves advance across, in degrees. 0 is horizontal stripes;
 	// the angle snaps to the nearest one that tiles, like Strata Carver's bedding direction.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "0", UIMax = "360", Delta = "1"))
 	float NoiseDirection = 0.0f;
