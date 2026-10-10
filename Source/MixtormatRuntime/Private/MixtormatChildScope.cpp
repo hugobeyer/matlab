@@ -107,6 +107,10 @@ namespace MixtormatChildScope
 				}
 				if (Input.Origin == EMixtormatBehaviorFieldOrigin::OwnBoundary)
 				{
+					if (Behavior.Type == EMixtormatBehaviorType::Push)
+					{
+						return EBehaviorInputIssue::WrongFieldKind;
+					}
 					if (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration)
 					{
 						return EBehaviorInputIssue::InvalidStage;
@@ -115,6 +119,7 @@ namespace MixtormatChildScope
 						? EBehaviorInputIssue::None : EBehaviorInputIssue::UnsupportedBoundary;
 				}
 				return Input.Origin == EMixtormatBehaviorFieldOrigin::PreviousRunningHeight
+					&& Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
 					? EBehaviorInputIssue::None : EBehaviorInputIssue::WrongFieldKind;
 			}
 			const FMixtormatOutputReference& Ref = Input.Published;

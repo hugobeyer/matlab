@@ -1034,6 +1034,8 @@ namespace MixtormatGpuCompositor
 		float GradientReach = 0.02f;
 		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
+		EMixtormatBehaviorFieldOrigin HeightOrigin = EMixtormatBehaviorFieldOrigin::None;
+		FOutputReferenceRenderData Height;
 		// Reuse the scalar-driver signal contract for published Flow Amount/Trace Length.
 		FScalarDriverRenderData FlowDrivers[2];
 		// Shared per-pixel drivers for Strength and Gradient Reach.

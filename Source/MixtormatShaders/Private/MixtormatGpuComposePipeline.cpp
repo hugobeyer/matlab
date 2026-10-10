@@ -750,6 +750,14 @@ namespace MixtormatGpuCompositor
 								Ctx.PublishedFieldDemand.Add(Child.Behavior.Direction.Source);
 							}
 							if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+								&& Child.Behavior.Type == EMixtormatBehaviorType::Push
+								&& Child.Behavior.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+								&& Child.Behavior.Height.Source.ChildIndex != INDEX_NONE)
+						{
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Height.Source);
+						}
+						if (Child.Type == EMixtormatLayerChildType::Behavior
 								&& Child.Behavior.bHasInfluence
 								&& Child.Behavior.Influence.Source.ChildIndex != INDEX_NONE)
 							{

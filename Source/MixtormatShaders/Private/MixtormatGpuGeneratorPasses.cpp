@@ -902,6 +902,34 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorHeightGradientCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "HeightGradientCS", SF_Compute);
 
+class FMixtormatBehaviorSignedPushCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorSignedPushCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorSignedPushCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedPushCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedPushCS", SF_Compute);
+
 
 namespace
 {
@@ -1405,18 +1433,48 @@ namespace
 		return Result;
 	}
 
-	// Universal PostGeneration Warp: the owner provides a completed native bundle.
-	// Neither the gather nor this executor switches on its generator family.
-	void ApplyGeneratorPostWarpBehaviors(FMixtormatComposeContext& Ctx,
+	FRDGTextureRef AddBehaviorSignedPushPass(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef BaseHeight, FRDGTextureRef DeltaHeight, const FBehaviorRenderData& Behavior,
+		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.SignedPush"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorSignedPushCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Behavior.Strength;
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->ScopedMask = Mask;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->InfluenceField = Influence;
+		P->SourceHeight = BaseHeight;
+		P->BehaviorHeight = DeltaHeight;
+		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
+		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
+		TShaderMapRef<FMixtormatBehaviorSignedPushCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.Push.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	// Shared, ordered post-generation operations consume the owning native bundle.
+	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
-		const FChildRenderData& Owner, FGeneratorBundle& Module)
+		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
 		for (const FChildRenderData& Child : Layer.Children)
 		{
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
-				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+					&& Child.Behavior.Type != EMixtormatBehaviorType::Push)
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
 			// A connected Influence that is unavailable must NOT turn into full strength.
@@ -1434,6 +1492,41 @@ namespace
 					continue;
 				}
 				Influence = Field->Texture;
+			}
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Push)
+			{
+				FRDGTextureRef Delta = nullptr;
+				switch (Child.Behavior.HeightOrigin)
+				{
+				case EMixtormatBehaviorFieldOrigin::OwnNativeHeight:
+					Delta = Module.Height;
+					break;
+				case EMixtormatBehaviorFieldOrigin::PreviousRunningHeight:
+					Delta = PreviousRunningHeight;
+					break;
+				case EMixtormatBehaviorFieldOrigin::PublishedOutput:
+				{
+					const FPublishedField* HeightField = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Height.Source);
+					if (HeightField && HeightField->IsComplete()
+						&& HeightField->Kind == EMixtormatPublishedFieldKind::ScalarSigned
+						&& HeightField->Texture->Desc.Extent == Size)
+					{
+						Delta = HeightField->Texture;
+					}
+					break;
+				}
+				default:
+					break;
+				}
+				if (!Delta || !Module.Height || Delta->Desc.Format != PF_R32_FLOAT) { continue; }
+				const bool bHasMask = HasScopedMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bHasMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: LayerCtx.CombinedMask;
+				Module.Height = AddBehaviorSignedPushPass(Ctx, Module.Height, Delta,
+					Child.Behavior, Gate, bHasMask, Influence, bUseInfluence,
+					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				continue;
 			}
 			FRDGTextureRef Coordinates = nullptr;
 			if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
@@ -3203,7 +3296,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 		// V2 transforms the native bundle before the same normalize/scale step
 		// all generator families already use. Legacy flow tools retain their order.
-		ApplyGeneratorPostWarpBehaviors(Ctx, LayerCtx, Layer, Child, Module);
+		ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 		// The shared signed output contract: zero-preserving max-absolute normalization to -1..1,
 		// then Height Scale (which may exceed -1..1). Applied after flow.
 		Module.Height = AddSignedGeneratorHeightPasses(

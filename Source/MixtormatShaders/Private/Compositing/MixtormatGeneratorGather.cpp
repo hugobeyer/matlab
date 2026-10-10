@@ -357,11 +357,17 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
 		|| LayerChild.Type != EMixtormatLayerChildType::Behavior) { return; }
 	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
-	if (!Behavior.bEnabled || Behavior.Type != EMixtormatBehaviorType::Warp
+	const bool bWarp = Behavior.Type == EMixtormatBehaviorType::Warp;
+	const bool bPush = Behavior.Type == EMixtormatBehaviorType::Push;
+	if (!Behavior.bEnabled || (!bWarp && !bPush)
 		|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
-		|| (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
-			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
-		|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
+		|| (bWarp && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
+		|| (bWarp && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
+		|| (bPush && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+				&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PreviousRunningHeight)))
 		|| !FMath::IsFinite(Behavior.Strength)) { return; }
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
@@ -445,6 +451,26 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
+	// Push consumes a signed height socket, never the Direction flow/UV socket.
+	Out.HeightOrigin = Behavior.Height.Origin;
+	if (bPush && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+	{
+		const FMixtormatOutputReference& HeightRef = Behavior.Height.Published;
+		const int32 HeightIndex = HeightRef.IsShelfSource() ? 0
+			: MixtormatOutputReferences::ResolveGeneratorInputSource(
+					EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
+		if (HeightIndex == INDEX_NONE || HeightRef.Kind != EMixtormatPublishedFieldKind::ScalarSigned)
+		{
+			Data.Children.Pop();
+			return;
+		}
+		Out.Height.Source.LayerId = HeightRef.IsShelfSource()
+			? HeightRef.SourceShelfId : HeightRef.SourceLayerId;
+		Out.Height.Source.ChildIndex = HeightIndex;
+		Out.Height.Source.Output = HeightRef.OutputName;
+		Out.Height.Source.OwnerKind = HeightRef.OwnerKind;
+		Out.Height.Kind = HeightRef.Kind;
+	}
 	if (bPublishedDirection && Reference.Kind == EMixtormatPublishedFieldKind::Flow)
 	{
 		// BehaviorFlow addresses the same reflected output-reference properties as

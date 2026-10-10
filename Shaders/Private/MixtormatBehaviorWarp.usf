@@ -14,6 +14,8 @@ uint UseInfluence;
 Texture2D<float> InfluenceField;
 Texture2D<float2> SourceCoordinates;
 Texture2D<float> SourceHeight;
+Texture2D<float> BehaviorHeight;
+RWTexture2D<float> OutSignedHeight;
 float GradientReach;
 float4 BehaviorDriverParamsA[2];
 float4 BehaviorDriverParamsB[2];
@@ -116,4 +118,30 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Smoothly limit large slopes; flat regions remain exactly stationary.
 	const float2 Offset = isfinite(Magnitude) ? Gradient / (1.0f + Magnitude) : float2(0.0f, 0.0f);
 	OutCoordinates[Pixel] = UV - Weight * Offset;
+}
+
+
+// Signed height composition is distinct from UV transport: the producer field
+// contributes an additive native-height delta, without resampling companion maps.
+[numthreads(8, 8, 1)]
+void SignedPushCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Base = SourceHeight.Load(int3(Pixel, 0));
+	const float Delta = BehaviorHeight.Load(int3(Pixel, 0));
+	float Weight = DrivenBehaviorStrength(Pixel);
+	if (UseMask != 0u)
+	{
+		const float Gate = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(Gate) ? saturate(Gate) : 0.0f;
+	}
+	if (UseInfluence != 0u)
+	{
+		const float Influence = InfluenceField.Load(int3(Pixel, 0));
+		Weight *= isfinite(Influence) ? saturate(Influence) : 0.0f;
+	}
+	// Missing/invalid signal data cannot inject an arbitrary native-height delta.
+	OutSignedHeight[Pixel] = isfinite(Weight) && isfinite(Delta) && Weight != 0.0f
+		? Base + Weight * Delta : Base;
 }
