@@ -5,6 +5,7 @@
 #include "Compositing/MixtormatGeneratorGather.h"
 #include "Compositing/MixtormatLayerGather.h"
 #include "MixtormatMaterial.h"
+#include "MixtormatChildScope.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatParameterBinding.h"
 
@@ -151,6 +152,33 @@ namespace MixtormatGpuCompositor
 					TArray<FGuid> Roots;
 					CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
 					for (const FGuid& Root : Roots) { Visit(Root); }
+				}
+			}
+			// V2 Warp is a typed consumer too. Demand its shelf producer before
+			// GPU evaluation; otherwise a valid Shelf reference has no field to read.
+			if (Layer.Type == EMixtormatLayerType::Generator)
+			{
+				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+				{
+					const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+					if (Child.Type != EMixtormatLayerChildType::Behavior
+						|| !Child.Behavior.bEnabled
+						|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
+						|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+						|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex) == INDEX_NONE)
+					{
+						continue;
+					}
+					const FMixtormatOutputReference& Reference = Child.Behavior.Direction.Published;
+					if (Child.Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
+						|| !Reference.IsShelfSource() || !Reference.bEnabled
+						|| (Reference.Kind != EMixtormatPublishedFieldKind::Flow
+							&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap)) { continue; }
+					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
+					if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
+					{
+						Visit(Reference.SourceShelfId);
+					}
 				}
 			}
 			// The mask pipeline consumes Noise Value as typed scalar coverage, with
