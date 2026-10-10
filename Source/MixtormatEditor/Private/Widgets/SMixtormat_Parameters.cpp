@@ -20,6 +20,7 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -1338,18 +1339,26 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		[
 			MixtormatRow::Make(
 				LOCTEXT("DevAuthoringLabel", "Label"),
-				SNew(SEditableTextBox)
-				.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
-				.Text(FText::FromString(Current.Label))
-				.ClearKeyboardFocusOnCommit(false)
-				.HintText(LOCTEXT("DevAuthoringLabelHint", "Display label override"))
-				.OnTextChanged(FOnTextChanged::CreateLambda([Update](const FText& Text)
-				{
-					Update([&Text](FMixtormatParameterAuthoringEntry& Entry)
-					{
-						Entry.Label = Text.ToString();
-					});
-				})))
+				SNew(SMixtormatTextFieldGradient)
+				[
+					SNew(SBox)
+					.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+					.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+					[
+						SNew(SEditableTextBox)
+						.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+						.Text(FText::FromString(Current.Label))
+						.ClearKeyboardFocusOnCommit(false)
+						.HintText(LOCTEXT("DevAuthoringLabelHint", "Display label override"))
+						.OnTextChanged(FOnTextChanged::CreateLambda([Update](const FText& Text)
+						{
+							Update([&Text](FMixtormatParameterAuthoringEntry& Entry)
+							{
+								Entry.Label = Text.ToString();
+							});
+						}))
+				]
+				])
 		];
 
 
