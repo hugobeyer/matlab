@@ -200,8 +200,8 @@ namespace
 			if (Indent > 0.0f && HasLaterSibling(Parent)) { Paint.AncestorIndents.AddUnique(Indent); }
 			// Carry the first visual child's branch across other displayed rows.
 			// This is presentation-only: it never changes module scope or ownership.
-			const int32 FirstChild = FirstVisualChild(Parent);
-			if (FirstChild > RowIndex) { Paint.AncestorIndents.AddUnique(BranchIndent(FirstChild)); }
+			const int32 ParentFirstChild = FirstVisualChild(Parent);
+			if (ParentFirstChild > RowIndex) { Paint.AncestorIndents.AddUnique(BranchIndent(ParentFirstChild)); }
 			Parent = Rows[Parent].VisualParentRowIndex;
 		}
 		return Paint;
