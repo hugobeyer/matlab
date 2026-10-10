@@ -961,10 +961,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			]
 		]
 
-		// The floating panels
-		// The floating panels -- the Inspector and the Layers stack -- share one stack, so a press
-		// can bring either to the front (D25). The stack is self-hit-test-invisible: empty viewport
-		// still reaches the viewport underneath.
+		// Inspector overlay only. Layers remains docked in the left column;
+		// the frame is self-hit-test-invisible outside its content.
 		+ SOverlay::Slot()
 		[
 			BuildFloatingPanelStack()
