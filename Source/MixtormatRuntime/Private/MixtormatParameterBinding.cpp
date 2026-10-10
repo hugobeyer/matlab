@@ -900,16 +900,18 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.ScopeOwnerChildId, ChildIdRemap);
 				RemapGuid(Child.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
-				RemapGuid(Child.OutputReference.SourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.OutputReference.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.BoundaryId.RegionIdsSource.SourceChildId, ChildIdRemap);
+				// Only legacy Layer-owned masks follow regenerated layer/child IDs.
+				// A shelf Value mask has a distinct SourceId/ChildId identity.
+				if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer)
+				{
+					RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
+					RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
+				}
 				// Structural sources are owner/child pairs: a coincident child GUID in another
 				// owner must not make an external or dangling address follow this copied set.
 				const auto RemapStructuralSource = [&](FMixtormatOutputReference& Source)
 				{
+					if (!Source.IsLayerSource()) { return; }
 					const TSet<FGuid>* SourceChildren = OriginalOwnerChildIds.Find(Source.SourceLayerId);
 					if (SourceChildren && SourceChildren->Contains(Source.SourceChildId))
 					{
@@ -917,11 +919,25 @@ namespace MixtormatParameterBinding
 						RemapGuid(Source.SourceChildId, ChildIdRemap);
 					}
 				};
+				RemapStructuralSource(Child.OutputReference);
+				RemapStructuralSource(Child.BoundaryId.RegionIdsSource);
+				RemapStructuralSource(Child.Generator.HeightSource);
+				RemapStructuralSource(Child.Generator.WarpSource);
 				RemapStructuralSource(Child.HeightPush.Source);
 				RemapStructuralSource(Child.StructuralWarp.Source);
+				const TSet<FGuid>* HeightSourceChildren = OriginalOwnerChildIds.Find(Child.HeightBlend.SourceLayerId);
+				if (HeightSourceChildren && HeightSourceChildren->Contains(Child.HeightBlend.SourceChildId))
+				{
+					RemapGuid(Child.HeightBlend.SourceLayerId, OwnerIdRemap);
+					RemapGuid(Child.HeightBlend.SourceChildId, ChildIdRemap);
+				}
 				const TSet<FGuid>* OwnerChildren = OriginalOwnerChildIds.Find(OldOwnerId);
 				if (OwnerChildren)
 				{
+					if (OwnerChildren->Contains(Child.HeightColorRamp.SourceChildId))
+					{
+						RemapGuid(Child.HeightColorRamp.SourceChildId, ChildIdRemap);
+					}
 					if (OwnerChildren->Contains(Child.HeightPush.TargetChildId))
 					{
 						RemapGuid(Child.HeightPush.TargetChildId, ChildIdRemap);
