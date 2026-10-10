@@ -86,7 +86,7 @@ int Steps;
 	Texture2D<float> FlowSettingsDriverSignal5;
 	Texture2D<float> FlowSettingsDriverSignal6;
 	Texture2D<float> FlowSettingsDriverSignal7;
-#if FLOW_STAGE == 8
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
 	float4 FlowDriverParamsA[2];
 	float4 FlowDriverParamsB[2];
 	Texture2D<float> FlowDriverSignal0;
@@ -471,18 +471,24 @@ float DrivenBehaviorStrength(int2 Pixel)
 }
 #endif
 
-#if FLOW_STAGE == 3 || FLOW_STAGE == 8
+#if FLOW_STAGE == 3 || FLOW_STAGE == 8 || FLOW_STAGE == 10
 // Smoothed direction, bilinear and renormalized. Where the blur cancelled opposing vectors
 // (a medial-axis collision) there is no direction to renormalize, so the raw nearest texel
 // is used instead of inventing one. Influence and distance always come from the raw field.
 float4 FlowAt(float2 UV)
 {
+#if FLOW_STAGE == 10
+	// Canonical Flow owns its magnitude. Neither normalize nor apply the influence
+	// a second time: Add/Mix has already weighted the composed vector.
+	return FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#else
 	const int2 P = FlowWrap(int2(floor(UV * float2(OutputSize))), OutputSize);
 	const float4 Raw = FlowField.Load(int3(P, 0));
 	const float2 Blurred = FlowSmooth.SampleLevel(LinearWrapSampler, UV, 0.0f).xy;
 	const float Length = length(Blurred);
 	const float2 Direction = Length > 0.2f ? Blurred / Length : Raw.xy;
 	return float4(Direction, Raw.z, FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f).w);
+#endif
 }
 
 float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
@@ -490,7 +496,7 @@ float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 	const int StepCount = max(Steps, 1);
 	float Length = TraceLength;
 	float Strength = WarpStrength;
-#if FLOW_STAGE == 8
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
 	Strength = MixtormatApplyDriver(WarpStrength,
 		FlowDriverSignal0.SampleLevel(LinearWrapSampler, UV, 0.0f),
 		FlowDriverParamsA[0], FlowDriverParamsB[0]);
@@ -514,9 +520,17 @@ float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 	for (int I = 0; I < StepCount; I++)
 	{
 		const float4 A = FlowAt(P);
+#if FLOW_STAGE == 10
+		const float2 K1 = A.xy;
+#else
 		const float2 K1 = A.xy * A.w;
+#endif
 		const float4 B = FlowAt(P - 0.5f * H * K1);
+#if FLOW_STAGE == 10
+		const float2 Next = P - H * B.xy;
+#else
 		const float2 Next = P - H * B.xy * B.w;
+#endif
 #if FLOW_STAGE == 3
 		if (Mode == 3u && Source == 0u && GravityDeflection > 0.0f
 			&& A.z <= length(Next - P)
@@ -546,7 +560,7 @@ float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 }
 #endif
 
-#if FLOW_STAGE == 8
+#if FLOW_STAGE == 8 || FLOW_STAGE == 10
 // A live Flow reference remaps destination source reads without evaluating its producer again.
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
