@@ -386,6 +386,14 @@ namespace MixtormatLayerGroups
 			}
 
 				RemapChildReferences(Clone);
+				// A remapped scope is still invalid if it points forward or to a
+				// non-Generator group child. Disable only the effective clone.
+				if (Clone.Type == EMixtormatLayerChildType::Behavior
+					&& MixtormatChildScope::ResolveBehaviorGeneratorIndex(
+						Layer.Children, Layer.Children.Num() - 1) == INDEX_NONE)
+				{
+					Clone.Behavior.bEnabled = false;
+				}
 			}
 		}
 	}
