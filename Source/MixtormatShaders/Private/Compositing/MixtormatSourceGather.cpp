@@ -171,6 +171,9 @@ namespace MixtormatGpuCompositor
 					{
 						continue;
 					}
+					const int32 OwnerIndex = MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex);
+					if (!Layer.Children.IsValidIndex(OwnerIndex)
+						|| !Layer.Children[OwnerIndex].Generator.bEnabled) { continue; }
 					const bool bPush = Child.Behavior.Type == EMixtormatBehaviorType::Push;
 					const FMixtormatBehaviorFieldInput& Input = bPush
 						? Child.Behavior.Height : Child.Behavior.Direction;
