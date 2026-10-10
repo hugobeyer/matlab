@@ -383,21 +383,46 @@ FGuid SMixtormat::ResolveGroupMembershipAt(const int32 LayerIndex) const
 	return ResolveGroupMembershipForLayers(WorkingLayers, LayerIndex);
 }
 
-FReply SMixtormat::ReparentLayerChild(
-	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex)
+bool SMixtormat::CanReparentLayerChild(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex) const
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return FReply::Unhandled(); }
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	TArray<FMixtormatLayerChild>& Children = Layer.Children;
+	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return false; }
+	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[LayerIndex].Children;
 	if (!Children.IsValidIndex(SourceChildIndex)
 		|| !Children.IsValidIndex(NewParentChildIndex)
 		|| SourceChildIndex == NewParentChildIndex
 		|| IsDescendantOf(Children, NewParentChildIndex, Children[SourceChildIndex].ChildId)
+		|| Children[SourceChildIndex].ScopeOwnerChildId == Children[NewParentChildIndex].ChildId
 		|| !CanKeepScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
 		|| !CanAddScopedChild(Children, NewParentChildIndex))
 	{
+		return false;
+	}
+	const int32 End = FindSubtreeEnd(Children, SourceChildIndex);
+	const int32 NewDepth = GetScopeDepth(Children, NewParentChildIndex) + 1;
+	const int32 OldDepth = GetScopeDepth(Children, SourceChildIndex);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		if (NewDepth + GetScopeDepth(Children, Index) - OldDepth > MaximumScopeDepth)
+		{
+			return false;
+		}
+	}
+	const int32 Insert = FindSubtreeEnd(Children, NewParentChildIndex);
+	return CanMovePublishedOutputs(
+		MakeChildAddress(LayerIndex, SourceChildIndex),
+		MakeChildAddress(LayerIndex, NewParentChildIndex), Insert);
+}
+
+FReply SMixtormat::ReparentLayerChild(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex)
+{
+	if (!CanReparentLayerChild(LayerIndex, SourceChildIndex, NewParentChildIndex))
+	{
 		return FReply::Unhandled();
 	}
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	TArray<FMixtormatLayerChild>& Children = Layer.Children;
 	const FGuid SourceId = Children[SourceChildIndex].ChildId;
 	const FGuid ParentId = Children[NewParentChildIndex].ChildId;
 	if (Children[SourceChildIndex].ScopeOwnerChildId == ParentId)
@@ -414,15 +439,6 @@ FReply SMixtormat::ReparentLayerChild(
 		{
 			return FReply::Unhandled();
 		}
-	}
-	const int32 Insert = FindSubtreeEnd(Children, NewParentChildIndex);
-	const FMixtormatChildAddress Source = MakeChildAddress(LayerIndex, SourceChildIndex);
-	const FMixtormatChildAddress Dest = MakeChildAddress(LayerIndex, NewParentChildIndex);
-	FText Reason;
-	if (!CanMovePublishedOutputs(Source, Dest, Insert, &Reason))
-	{
-		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); return FReply::Handled(); }
-		return FReply::Unhandled();
 	}
 	TArray<FMixtormatLayerChild> Moved;
 	Moved.Reserve(Count);
