@@ -1552,7 +1552,8 @@ namespace
 					&& Child.Behavior.Type != EMixtormatBehaviorType::Push
 					&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
 					&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
-				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+				|| Child.Behavior.bUseTracedFlow) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
 			// A connected Influence that is unavailable must NOT turn into full strength.
 			FRDGTextureRef Influence = LayerCtx.CombinedMask;
@@ -1914,9 +1915,13 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 
 	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
 	{
-		return Candidate.Type == EMixtormatLayerChildType::Effect
-			&& MixtormatIsGeneratorFlowEffect(Candidate.Effect.Type)
-			&& Candidate.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex;
+		return Candidate.Type == EMixtormatLayerChildType::Behavior
+			&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
+				|| (Candidate.Behavior.bUseTracedFlow
+					&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
+						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve)))
+			&& Candidate.Behavior.GeneratorChildIndex == OwnerSourceChildIndex;
 	}
 
 	bool IsPreviewingChild(const FRenderRequest& Request, const int32 LayerIndex, const int32 ChildIndex)
@@ -1983,7 +1988,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		for (const FChildRenderData& Candidate : Layer.Children)
 		{
 			if (IsFlowToolChild(Candidate, OwnerSourceChildIndex)
-				&& (!IsNeutralFlowTool(Candidate.Effect)
+				&& (!IsNeutralFlowTool(Candidate.Behavior.Flow)
 					|| IsPreviewingChild(Request, LayerIndex, Candidate.SourceChildIndex)
 					|| IsFlowFieldDemanded(Ctx, Layer, Candidate.SourceChildIndex)))
 			{
@@ -2015,7 +2020,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		return Packed;
 	}
 
-	// Shape Deform / Generator Flow / Flow Carve under one generator, in authored order.
+	// Flow Fields and traced Behaviors under their owning generator; no Effect execution.
 	//
 	// Each item solves its own direction field (its Source, Radius and bend differ) against the
 	// height the previous item left, then transforms that height. RockField is the owner's cached
@@ -2026,7 +2031,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	//
 	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height.
 	// Generator modules retain it for the named PebbleCoverage output, not height blending.
-	FRDGTextureRef AddGeneratorFlowToolPasses(
+	FRDGTextureRef AddBehaviorFlowFieldPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
@@ -2066,7 +2071,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			{
 				continue;
 			}
-			const FEffectRenderData& Flow = FlowChild.Effect;
+			const FEffectRenderData& Flow = FlowChild.Behavior.Flow;
+			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
 			const bool bGravity = Flow.Type == EMixtormatEffectType::GravityFlow;
 			// Height-only producers must never bind a null boundary or invent an SDF.
 			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
@@ -2293,7 +2299,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUVGrid"));
 			}
 
-			if (!bNeutral)
+			if (!bNeutral && !bFieldProducer)
 			{
 				Current = Transformed;
 				if (InOutCoverage)
@@ -3298,7 +3304,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				Ctx.PublishedMaskOutputs.Add(
 					PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 			}
-			Module.Height = AddGeneratorFlowToolPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
+			Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex,
 				Module.BoundaryField, Module.Height, Module.Coverage, &Module);
 		}
 		// The ordered Behaviors own this generator's bundle from here: they transform the
