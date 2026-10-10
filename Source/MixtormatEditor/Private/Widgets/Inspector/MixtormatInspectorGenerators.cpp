@@ -1191,7 +1191,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("BehaviorPushHeight", "Signed Height Field"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Push]()
+		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Push]()
 		{
 			const FMixtormatBehavior* B = Push();
 			if (!B) { return LOCTEXT("BehaviorPushUnavailable", "Unavailable"); }
