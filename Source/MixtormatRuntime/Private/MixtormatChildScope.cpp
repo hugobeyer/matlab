@@ -83,7 +83,8 @@ namespace MixtormatChildScope
 			|| (Behavior.Type != EMixtormatBehaviorType::Warp
 				&& Behavior.Type != EMixtormatBehaviorType::Push
 				&& Behavior.Type != EMixtormatBehaviorType::Carve
-				&& Behavior.Type != EMixtormatBehaviorType::Deform))
+				&& Behavior.Type != EMixtormatBehaviorType::Deform
+				&& Behavior.Type != EMixtormatBehaviorType::FlowField))
 		{
 			Result.Issue = EBehaviorInputIssue::UnsupportedOperation;
 			return Result;
@@ -188,14 +189,21 @@ namespace MixtormatChildScope
 			Result.SourceChildIndex = Index;
 			return EBehaviorInputIssue::None;
 		};
-		const bool bNeedsDirection = Behavior.Type == EMixtormatBehaviorType::Warp
-			|| Behavior.Type == EMixtormatBehaviorType::Deform;
+		const bool bTraced = Behavior.Flow.bUseTracedFlow;
+		const bool bNeedsDirection = !bTraced && (Behavior.Type == EMixtormatBehaviorType::Warp
+			|| Behavior.Type == EMixtormatBehaviorType::Deform);
 		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
-			|| Behavior.Type == EMixtormatBehaviorType::Carve;
+			|| (Behavior.Type == EMixtormatBehaviorType::Carve && !bTraced);
 		// Reject inactive operation sockets too: gather does not evaluate a Warp
 		// with Height connected, or a Push/Carve with Direction connected.
 		if ((bNeedsDirection && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
-			|| (bNeedsHeight && Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None))
+			|| (bNeedsHeight && Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None)
+			|| ((bTraced || Behavior.Type == EMixtormatBehaviorType::FlowField)
+				&& (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
+					|| Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None))
+			|| (bTraced && Behavior.Type != EMixtormatBehaviorType::Warp
+				&& Behavior.Type != EMixtormatBehaviorType::Carve
+				&& Behavior.Type != EMixtormatBehaviorType::Deform))
 		{
 			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
 			return Result;
@@ -230,9 +238,17 @@ namespace MixtormatChildScope
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		Result.Issue = CheckComposition(Behavior.Influence, false);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
+		if ((bTraced || Behavior.Type == EMixtormatBehaviorType::FlowField)
+			&& Behavior.Flow.GeneratorFlowSource == EMixtormatGeneratorFlowSource::SignedDistance
+			&& !MixtormatGeneratorHasFlowBoundary(Owner.Generator.Type))
+		{
+			Result.Issue = EBehaviorInputIssue::UnsupportedBoundary;
+			return Result;
+		}
 		Result.Issue = CheckInput(Behavior.Direction, true, false, bNeedsDirection);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
-		if (Behavior.Type == EMixtormatBehaviorType::Carve && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
+		if (Behavior.Type == EMixtormatBehaviorType::Carve && !bTraced
+			&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::OwnBoundary
 			&& Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)
 		{
 			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
