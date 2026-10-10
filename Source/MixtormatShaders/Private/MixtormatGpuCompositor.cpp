@@ -1716,6 +1716,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
+			if (LayerChild.Type == EMixtormatLayerChildType::Behavior)
+			{
+				GatherGeneratorBehaviorChild(Data, Layer, LayerChild, SourceChildIndex,
+					LayerIndex, EffectiveLayers, Sources);
+				continue;
+			}
+
 			if (LayerChild.Type == EMixtormatLayerChildType::HeightBlend
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightCurve
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp
