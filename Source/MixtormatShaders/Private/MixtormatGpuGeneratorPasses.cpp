@@ -1572,20 +1572,17 @@ namespace
 				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Generator.WorkingFlow"));
 		AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(WorkingFlow), FLinearColor::Black);
 		FRDGTextureRef WorkingFlowValidity = nullptr;
-		// Noise's intrinsic field is a unit downhill vector with influence and validity.
-		// Unit length is an explicit canonical magnitude of 1; it is seeded once,
-		// and scoped generated Flow later contributes only through Add/Mix.
-		if (Owner.Generator.Type == EMixtormatGeneratorType::Noise)
+		// Intrinsic Noise supplies a unit downhill vector; other generators can
+		// supply the same explicit unit-magnitude fallback from native height.
+		// The original directional publication is never added to itself twice.
+		const FPublishedField* Intrinsic = Ctx.PublishedFieldOutputs.Find(
+			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("FlowDirection"))));
+		if (Intrinsic && Intrinsic->IsComplete()
+			&& Intrinsic->Kind == EMixtormatPublishedFieldKind::Flow
+			&& Intrinsic->Texture->Desc.Extent == Size)
 		{
-			const FPublishedField* Intrinsic = Ctx.PublishedFieldOutputs.Find(
-				PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("FlowDirection"))));
-			if (Intrinsic && Intrinsic->IsComplete()
-				&& Intrinsic->Kind == EMixtormatPublishedFieldKind::Flow
-				&& Intrinsic->Texture->Desc.Extent == Size)
-			{
-				WorkingFlow = Intrinsic->Texture;
-				WorkingFlowValidity = Intrinsic->Validity;
-			}
+			WorkingFlow = Intrinsic->Texture;
+			WorkingFlowValidity = Intrinsic->Validity;
 		}
 		for (const FChildRenderData& Child : Layer.Children)
 		{
@@ -3524,9 +3521,20 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// One authored-order pass processes producers and height operations on the native field.
 		if (!bNoiseHeightless)
 		{
-			// Snapshot intrinsic downhill Flow before scoped children. The completed
-			// diagnostic is still republished after normalization for compatibility.
-			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			// Generate a native-height Flow snapshot only when a scoped consumer
+			// needs it. Noise's completed diagnostic still overwrites this temporary
+			// publication after its normal output normalization.
+			const bool bNeedsWorkingFlow = Algo::AnyOf(Layer.Children,
+				[&Child](const FChildRenderData& Candidate)
+				{
+					return Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+						&& ((Candidate.Type == EMixtormatLayerChildType::Generator
+							&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
+							|| (Candidate.Type == EMixtormatLayerChildType::Behavior
+								&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+									|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform)));
+				});
+			if (bNeedsWorkingFlow)
 			{
 				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
