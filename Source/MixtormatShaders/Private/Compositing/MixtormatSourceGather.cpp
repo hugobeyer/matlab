@@ -6,6 +6,7 @@
 #include "Compositing/MixtormatLayerGather.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatOutputReference.h"
+#include "MixtormatParameterBinding.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -174,6 +175,7 @@ namespace MixtormatGpuCompositor
 		// nothing. An empty effective-layer array is exactly that: no shelf producer can silently
 		// read a layer by index.
 		const TArray<FMixtormatLayer> NoLayers;
+		const TArray<FMixtormatLayerGroup> NoGroups;
 
 		OutProducers.Reserve(DemandedOrder.Num());
 		for (const FGuid& SourceId : DemandedOrder)
@@ -190,6 +192,10 @@ namespace MixtormatGpuCompositor
 			Container.Type = EMixtormatLayerType::Generator;
 			Container.bEnabled = true;
 			Container.Children.Add(Entry.Child);
+			// Apply the same Follow/Link resolution as layer generators to a transient
+			// producer copy. The shelf's authored values and bindings stay untouched.
+			MixtormatParameterBinding::ApplyDirectReferences(
+				{NoLayers, NoGroups, Sources}, Container);
 
 			FLayerRenderData& Data = OutProducers.AddDefaulted_GetRef();
 			// Explicit shelf ownership: addressed by the entry's SourceId, never a material layer.
