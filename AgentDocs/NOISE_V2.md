@@ -78,46 +78,75 @@ as fractured geometry. It has been replaced, not refined.
 
 Read from `Shaders/Private/MixtormatRockFormation.usf`:
 
-- `RockZig` (`:232`) — piecewise-linear random zigzag along an edge: straight segments between
-  random bend heights in −1..1. Straight-sided, so it produces **direction reversals (creases)**
-  at every breakpoint rather than smooth curvature.
-- `RockZigFbm` (`:241`) — three octaves of that zigzag with lacunarity, normalized.
+- `RockLeafSdJag` (`:856`) — the jagged field is a **max of half-planes**:
+  `sd = max over edges of ( dot(E.xy, q) - E.z - RockJag(...) * L.JagSize )`.
+  That is the SDF of a convex polygon. Every boundary is a **straight segment**, and the gradient
+  is the normal of the nearest edge — piecewise constant, so direction changes are **hard**.
+- `RockZig` (`:232`) — piecewise-linear zigzag in −1..1: straight segments between seeded bend
+  heights. Straight-sided by construction.
+- `RockZigFbm` (`:241`) — three octaves of that zigzag, with lacunarity.
 - `RockJag` (`:255`) — the zigzag scaled into an edge's sideways displacement.
-- `RockLeafSdJag` (`:856`) — applies it as `- RockJag(...) * L.JagSize` to the edge's signed
-  distance line, i.e. it displaces a **contour position**, not a field value.
 - Amplitude is a **steepness**: `RockSetup` (`:947`) divides `EdgeJag` by `jag_freq`, so changing
   scale never changes spikiness.
 
-So the mechanism is: *displace a contour by a multi-scale, creased zigzag*. There is no reusable
-"jagged noise" helper in Rock Formation — it is edge-local, and coupling Noise to Rock's GPU pass
-would be wrong. The mathematical method is what gets adapted.
+**Angularity here comes from the SDF, not from a noise field.** The cells are convex polygons built
+by clipping (`RockClip`), and the field is a max of their edge planes. There is no reusable
+"jagged noise" helper — it is edge-local — so the *mathematical method* is what gets adapted.
 
-### The Noise adaptation: fold the domain
+### Why an intermediate noise-fold attempt was wrong
 
-The per-pixel equivalent of "displace a contour by a creased zigzag" is to displace the domain by
-the **gradient of a folded noise field**. `MixtormatNoiseV2Jagged` (in `MixtormatNoiseV2.ush`) folds
-with `F(n) = 1 − |n|^Exponent`, which reflects the field on every zero-crossing of `n`. Each
-crossing becomes a crease; `grad(F)` is smooth everywhere except across that crease network.
+The first V2.2 attempt folded a smooth periodic gradient-noise field, `F(n) = 1 − |n|^Exponent`, and
+displaced the domain by `grad(F)`. It was mathematically clean — no nonlinearity on the gradient,
+displacement bounded by the noise's own Lipschitz constant — but it **rendered curvy**, and the
+reason was structural rather than a tuning problem:
 
-| Requirement | How the fold satisfies it |
+> A quintic-interpolated scalar field has smooth, curved iso-contours and a smoothly rotating
+> gradient. Every crease it can produce therefore follows a curve. No choice of exponent, amplitude
+> or octave count changes that, because the smoothness is in the interpolant, not in the shaping.
+
+Replacing a polygon SDF with a smooth field cannot produce angular geometry. That attempt was
+discarded, not tuned.
+
+### The Noise adaptation: the polygon SDF on the periodic lattice
+
+`MixtormatNoiseV2Jagged` ports Rock's construction directly:
+
+- A Voronoi cell is the **intersection** of its bisector half-planes, and the SDF of an intersection
+  is the **max** of the individual plane distances — so clipping against the neighbours and taking a
+  max are the same operation, not an approximation of one.
+- Each plane is displaced sideways by a zigzag, exactly as Rock displaces each edge by `RockJag`, so
+  boundaries are straight **and** broken.
+- Zigzag amplitude is divided by the break count, preserving Rock's steepness-over-scale rule.
+
+**Continuity across cell borders** is what makes this usable as a domain warp, and it comes from
+evaluating the cell that **owns** the pixel rather than the pixel's own lattice cell: the real
+Voronoi diagram is a partition, so both sides of a shared bisector agree it is the active plane.
+Building the pixel's lattice cell instead would leave a seam on every cell boundary. Hence two
+passes — find the owner over 3×3, then build that cell from its own 3×3.
+
+The displacement is the gradient of that max, so it is the normal of the nearest, zigzagged wall:
+piecewise constant with hard switches at the walls. That is the angular, fractured signature.
+
+| Requirement | How the SDF satisfies it |
 | --- | --- |
-| Angular, broken, fractured | Creases are direction reversals on a zero-crossing network — the same signature as `RockZig` |
-| No artificial derivative spikes | No nonlinearity on the gradient. `\|grad(F)\| ≤ Exponent · \|grad(n)\|`, bounded by the noise's own Lipschitz constant |
-| No repetitive square artifacts | `sqrt` is gone entirely; the crease comes from the fold's `sign()`, not from a cone |
-| Tileable on both axes | Fold operates on `frac(UV)` against integer period `Pk`; every octave period is an integer |
-| Seeded, resolution independent | Periodic gradient noise; gradient scaled into tile UV by `Pk` |
+| Angular, broken, fractured | Boundaries are straight planes; the gradient is a wall normal, so direction changes are hard |
+| No artificial derivative spikes | No nonlinearity on a gradient; the field is a max of affine planes, so magnitude is bounded and smooth within each cell |
+| No repetitive square artifacts | Cell shapes come from jittered Voronoi bisectors, not an axis-aligned grid |
+| Tileable on both axes | Cell coordinates wrap before hashing; the diagram is periodic, so the warp is periodic. Fracture discontinuities are interior to the diagram, not seams |
+| Seeded, resolution independent | Shared `MixtormatCellPoint` / `MixtormatCellHash`; pure lattice maths, no texel term |
 | Adjustable frequency and intensity | Frequency = existing `NoiseDistortionFrequency`; intensity = `NoiseDistortionJaggedness` |
-| Meaningful variation across scales | `NoiseJaggedDetail` adds up to 4 crease octaves, standing in for `RockZigFbm` |
+| Meaningful variation across scales | `NoiseJaggedDetail` adds up to 3 fracture scales, standing in for `RockZigFbm` |
 | Neutral at 0 | Early return on `Strength <= 0`; `WarpDomain` early-returns when both strengths are 0 |
 | Usable alone or mixed | Independent additive term, exactly as before |
 
-`NoiseJaggedSharpness` sets `Exponent = 1 + 3·Sharpness`. At 0 the fold slope is `−sign(n)`, which
-flips across the crease at full width. Higher values make `|n|^(Exponent−1) → 0` **at** the crease,
-so displacement dies on the crease instead of spiking — the crease narrows and stays angular.
+`NoiseJaggedSharpness` sets the break count (1–4 breaks per cell edge) with amplitude divided by that
+count, so it is a steepness control in Rock's sense rather than a raw scale multiplier.
 
-The generator path already computes a two-forward-probe numerical Jacobian of `WarpDomain` whenever
-either distortion term is active, so creased gradients are picked up without new plumbing. Both new
-parameters are threaded through all four call sites.
+**Cost.** About eighteen feature-point hashes per octave, against one noise evaluation for the
+retired version. That is the honest price of straight edges, and it is why `NoiseJaggedDetail` is
+capped at three scales here where the noise fold could afford four. Optimizing duplicated work was
+the first step; the overlap between the two 3×3 scans is the obvious next target if profiling
+demands it.
 
 ### Documented visual change
 

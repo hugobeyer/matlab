@@ -149,40 +149,72 @@ float2 MixtormatNoiseV2Curl(
 	return Strength * (Curl + Direction * Bias);
 }
 
-// Paper-fold jagged warp, adapted from Rock Formation's jagged edges (MixtormatRockFormation.usf).
+// Periodic piecewise-linear zigzag in -1..1: straight segments between seeded heights.
+// This is Rock Formation's RockZig (MixtormatRockFormation.usf:232) reduced to what a domain warp
+// needs. Break indices wrap by `Breaks`, so the pattern repeats exactly with that period.
+// Returns the value and its slope, both constant-slope per segment so the caller stays piecewise
+// linear rather than smooth.
+void MixtormatNoiseV2Zig(float x, int Breaks, uint Key, out float Value, out float Slope)
+{
+	const float Fl = floor(x);
+	const int I = (int)Fl;
+	const float F = x - Fl;
+	const int I0 = MixtormatWrapI(I, Breaks);
+	const int I1 = MixtormatWrapI(I + 1, Breaks);
+	const float A = MixtormatCellRandom01(
+		MixtormatHashU(Key * 0x9e3779b9u + (uint)I0)) * 2.0f - 1.0f;
+	const float B = MixtormatCellRandom01(
+		MixtormatHashU(Key * 0x9e3779b9u + (uint)I1)) * 2.0f - 1.0f;
+	Value = lerp(A, B, F);
+	Slope = B - A;
+}
+
+// Angular jagged warp: the noise-domain port of Rock Formation's jagged edges.
 //
-// Rock Formation makes an angular chunk by displacing a straight edge sideways with a
-// piecewise-linear zigzag (RockZig) summed over three octaves (RockZigFbm). The signature of
-// that look is a hard direction reversal wherever the zigzag breaks, i.e. a network of creases,
-// and amplitude that scales with 1/frequency so a change of scale never changes the spikiness.
-// The per-pixel equivalent of "displace a contour by a zigzag" is to displace the domain by the
-// gradient of a FOLDED noise field. Folding with F(n) = 1 - |n|^Exponent reflects the field on
-// every zero-crossing of n, so each crossing becomes a crease, and grad(F) is smooth everywhere
-// except across that crease network.
+// WHY THIS IS AN SDF. An earlier attempt folded a smooth periodic gradient-noise field and displaced
+// the domain by its gradient. That can never look angular, and the reason is structural rather than
+// a tuning mistake: a quintic-interpolated scalar field has smooth, curved iso-contours and a
+// smoothly rotating gradient, so every crease it produced had to follow a curve. It read as wavy.
 //
-// Two properties this specifically guarantees, because the implementation it replaces had neither:
-//   - No nonlinearity is applied to the gradient. The retired form was sign(g) * sqrt(|g|); a
-//     square root of a field that crosses zero produces a sharp cone at every crossing and is
-//     not the derivative of any coherent field, which is what read as artificial distortion.
-//     Here the fold is on the VALUE and the gradient is taken by the chain rule, so
-//     |grad(F)| <= Exponent * |grad(n)| and the displacement stays bounded by the periodic
-//     noise's own Lipschitz constant. The result is a true, conservative gradient field.
-//   - |n|^(Exponent-1) -> 0 at a crease for Exponent > 1, so displacement vanishes *on* the crease
-//     instead of spiking there. The result is C0-kinked, i.e. creased, which is the intent.
+// Angularity in Rock Formation does not come from a noise field at all. Rock builds convex polygons
+// and evaluates RockLeafSdJag (MixtormatRockFormation.usf:856) as a MAX OF HALF-PLANES:
 //
-// Periodic and seeded, so it tiles exactly on both axes and is resolution independent (the
-// gradient is scaled into tile UV by Pk). Identical to a no-op when Strength is 0. Detail adds
-// finer crease scales, standing in for RockZigFbm's octaves; Exponent sharpens them.
+//     sd = max over edges of ( dot(E.xy, q) - E.z - RockJag(...) * L.JagSize )
+//
+// That is the SDF of a polygon. Every boundary is a straight segment, and the gradient is the normal
+// of whichever edge is nearest -- piecewise constant, so the displacement direction changes HARD at
+// edges instead of easing. This function is that construction, on the periodic lattice.
+//
+// Per Voronoi cell, the cell is the intersection of its bisector half-planes, and the SDF of an
+// intersection is the max of the individual plane distances -- so clipping against the neighbours and
+// taking a max are the same operation, not an approximation of it. Each plane is then displaced
+// sideways by a zigzag, exactly as Rock displaces each edge by RockJag, so the boundaries are
+// straight AND broken.
+//
+// Continuity across a cell border is what makes this a usable domain warp, and it comes from
+// evaluating the cell that *owns* the pixel rather than the pixel's own lattice cell: the real
+// Voronoi diagram is a partition, so both sides of a shared bisector agree it is the active plane.
+// Building the pixel's lattice cell instead would leave a visible seam on every cell boundary.
+// Hence two passes: find the owner over 3x3, then build that cell from its own 3x3.
+//
+// Properties: tileable (cell coordinates wrap before hashing, so sites and the whole diagram repeat);
+// seeded; resolution independent (pure lattice maths, no texel term); exact no-op at Strength 0.
+// It is a domain warp, so it applies to every family without a per-family value remap.
+//
+// Cost: about eighteen feature-point hashes per octave, against one noise evaluation for the
+// retired version. That is the honest price of straight edges, and it is why Detail is capped at
+// three scales rather than the four the noise fold could afford.
 float2 MixtormatNoiseV2Jagged(
 	float2 UV, int Period, uint Seed, float Strength, float Sharpness, float Detail)
 {
 	if (Strength <= 0.0f) { return float2(0.0f, 0.0f); }
-	// Crease narrowness. Exponent 1 is the plain fold; larger values pinch the crease tighter.
-	const float Exponent = 1.0f + 3.0f * saturate(Sharpness);
-	// Scale variation. Detail 0 is a single crease set; Detail 1 weights four octaves. The octave
-	// count is rounded to an integer so a fractional Detail does not cost a partial octave, and the
-	// per-octave weight is a fixed 0.5 halving so Detail controls scale coverage rather than also
-	// reinterpreting persistence (which would make Sharpness and Detail interact).
+	// Jaggedness of the boundaries. Rock treats this as a steepness: bigger bends (lower jag scale)
+	// get a proportionally larger amplitude, so changing scale never changes spikiness. Same here,
+	// which is why the amplitude below is divided by the break count.
+	const float Sharp = saturate(Sharpness);
+	const int Breaks = 1 + (int)floor(Sharp * 3.0f + 0.5f);
+	const float ZigAmp = 0.6f / (float)Breaks;
+	// Scale variation. Detail 0 is a single fracture scale, Detail 1 adds three more.
 	const int Octaves = 1 + (int)floor(saturate(Detail) * 3.0f + 0.5f);
 	float2 Sum = float2(0.0f, 0.0f);
 	float Weight = 1.0f;
@@ -192,12 +224,71 @@ float2 MixtormatNoiseV2Jagged(
 	{
 		const int Pk = MixtormatNoiseOctavePeriod(PeriodF);
 		if (Pk == 0) { break; }
-		const float3 N = MixtormatPeriodicNoiseD(frac(UV) * (float)Pk, Pk,
-			Seed + (uint)k * 0x2545F491u);
-		// Fold the value, then chain-rule onto the analytic gradient. sign() is the crease's
-		// direction flip; |n|^(Exponent-1) is its narrowing. Both are bounded.
-		const float FoldSlope = -Exponent * pow(abs(N.x), Exponent - 1.0f) * sign(N.x);
-		Sum += Weight * (N.yz * (float)Pk * FoldSlope);
+		const uint OctaveSeed = Seed + (uint)k * 0x2545F491u;
+		const float2 q = frac(UV) * (float)Pk;
+
+		// Pass one: which cell owns this pixel. Full jitter, matching the Voronoi the plane set
+		// below assumes -- a partially-jittered site would not be the site the bisectors describe.
+		const int2 Base = (int2)floor(q);
+		int2 Owner = Base;
+		float BestSq = 1.0e30f;
+		for (int y = -1; y <= 1; ++y)
+		{
+			for (int x = -1; x <= 1; ++x)
+			{
+				const float2 Offset = MixtormatCellPoint(Base + int2(x, y), Pk, OctaveSeed, 1.0f) - q;
+				const float DistSq = dot(Offset, Offset);
+				if (DistSq < BestSq)
+				{
+					BestSq = DistSq;
+					Owner = Base + int2(x, y);
+				}
+			}
+		}
+
+		// Pass two: max over the owner's bisector planes, each zigzagged.
+		//
+		// Everything here is in the owner's local frame, so the plane offsets must be too.
+		// MixtormatCellPoint returns a position consistent with the cell index it was handed --
+		// it wraps for hashing but returns the coordinate as given -- so q and Own are already
+		// in one frame and the relative offset is small (a pixel is inside the cell that owns it).
+		// The bisector sits halfway along Axis, which is the offset that belongs in this frame.
+		const float2 Own = MixtormatCellPoint(Owner, Pk, OctaveSeed, 1.0f);
+		const float2 Local = q - Own;
+		float MaxPlane = -1.0e30f;
+		float2 MaxGradient = float2(0.0f, 0.0f);
+		for (int y = -1; y <= 1; ++y)
+		{
+			for (int x = -1; x <= 1; ++x)
+			{
+				if (x == 0 && y == 0) { continue; }
+				const int2 OffsetCell = int2(x, y);
+				const float2 Other = MixtormatCellPoint(Owner + OffsetCell, Pk, OctaveSeed, 1.0f);
+				const float2 Axis = Other - Own;
+				const float LengthSq = dot(Axis, Axis);
+				if (LengthSq < 1.0e-9f) { continue; } // coincident site
+				const float2 Normal = Axis * rsqrt(LengthSq);
+				// Keep the half-space dot(Normal, p) <= Half. Half is measured from Own, not from
+				// the lattice origin, because Local is measured from Own.
+				const float Half = 0.5f * dot(Normal, Axis);
+				const float2 Side = float2(-Normal.y, Normal.x);
+				// A key per edge, so two edges of one cell never share a zigzag by accident.
+				const uint EdgeKey = MixtormatCellHash(Owner + OffsetCell, Pk, OctaveSeed)
+					^ (uint)(x + y * 3) * 0x85ebca6bu;
+				float Zig;
+				float ZigSlope;
+				MixtormatNoiseV2Zig(dot(Local, Side) * (float)Breaks, Breaks, EdgeKey, Zig, ZigSlope);
+				const float Plane = dot(Normal, Local) - Half - ZigAmp * Zig;
+				if (Plane > MaxPlane)
+				{
+					MaxPlane = Plane;
+					// Chain rule through the sideways zigzag: displacing the plane along Side
+					// tilts it, so the gradient picks up a Side component.
+					MaxGradient = Normal - ZigAmp * ZigSlope * (float)Breaks * Side;
+				}
+			}
+		}
+		Sum += Weight * MaxGradient;
 		WeightSum += Weight;
 		Weight *= 0.5f;
 		PeriodF *= 2.0f;
@@ -236,7 +327,7 @@ float2 MixtormatNoiseV2WarpDomain(
 		Displacement += Mix * MixtormatNoiseV2Curl(UV, P, Octaves,
 			Roughness, Lacunarity, Seed, float2(0.0f, 0.0f), 0.0f, 1.0f);
 	}
-	// Jagged crease warp, in the same tile-UV units as the smooth displacement above.
+	// Jagged angular warp, in the same tile-UV units as the smooth displacement above.
 	// The helper applies Jaggedness itself as its Strength, so unlike the smooth term it is
 	// not multiplied again here.
 	Displacement = Displacement * Strength

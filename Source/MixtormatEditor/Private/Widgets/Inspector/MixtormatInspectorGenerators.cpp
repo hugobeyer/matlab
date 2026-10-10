@@ -1902,7 +1902,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 		AddSliderRow(Distort, MakeMemberSlider<FMixtormatNoise>(
 			LOCTEXT("NoiseDistortionJaggedness", "Jaggedness"), Noise,
 			&FMixtormatNoise::NoiseDistortionJaggedness, 0.0, 2.0, 0.0, 0.01,
-			LOCTEXT("NoiseDistortionJaggednessHint", "Independent crease warp: the noise field is folded so its zero crossings become sharp creases, giving angular, fractured geometry. Blends with curl and directional distortion.")));
+			LOCTEXT("NoiseDistortionJaggednessHint", "Independent angular warp: straight-edged cellular planes displace the domain, so boundaries break along hard edges rather than curving. Blends with curl and directional distortion.")));
 		// Crease shaping only matters once a jagged warp is actually authored, so the rows are
 		// collapsed at zero rather than left greyed out.
 		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
@@ -1914,11 +1914,11 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 				MakeMemberSlider<FMixtormatNoise>(
 					LOCTEXT("NoiseJaggedSharpness", "Jagged Sharpness"), Noise,
 					&FMixtormatNoise::NoiseJaggedSharpness, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("NoiseJaggedSharpnessHint", "0 = plain fold; higher values pinch the creases tighter and more angular.")),
+					LOCTEXT("NoiseJaggedSharpnessHint", "0 = one break per cell edge; higher values add more, with amplitude divided to match so scale never changes spikiness.")),
 				MakeMemberSlider<FMixtormatNoise>(
 					LOCTEXT("NoiseJaggedDetail", "Jagged Variation"), Noise,
 					&FMixtormatNoise::NoiseJaggedDetail, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("NoiseJaggedDetailHint", "0 = one crease scale; higher values add finer creases, standing in for Rock Formation's jag octaves.")))]);
+					LOCTEXT("NoiseJaggedDetailHint", "0 = one fracture scale; higher values add finer scales, standing in for Rock Formation's jag octaves.")))]);
 		AddSliderRow(Distort, MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoiseDistortionOctaves", "Octaves"),
 				Noise, &FMixtormatNoise::NoiseDistortionOctaves, 1.0, 8.0, 2),
