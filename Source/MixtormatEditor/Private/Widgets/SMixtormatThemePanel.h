@@ -56,6 +56,7 @@ private:
 	FOnThemeChanged OnThemeChanged;
 	int32 SelectedTab = INDEX_NONE; // INDEX_NONE = All, otherwise enum index.
 	FString Filter;
+	TSet<FString> CollapsedSections;
 	FString Status;
 	TMap<FName, float> PendingNumbers;
 	TSharedPtr<SScrollBox> PropertyScroll;
