@@ -10,6 +10,8 @@ float Strength;
 uint UseMask;
 Texture2D<float> ScopedMask;
 Texture2D<float2> SourceCoordinates;
+Texture2D<float> SourceHeight;
+float GradientReach;
 RWTexture2D<float2> OutCoordinates;
 
 [numthreads(8, 8, 1)]
@@ -35,4 +37,41 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
 	}
 	OutCoordinates[Pixel] = UV + Weight * (Source - UV);
+}
+
+
+// The generator-local path derives displacement from the current native
+// signed-height snapshot. It is shared by every generator, not a rock/strata
+// special case. Central differences are in UV units, with periodic neighbours.
+[numthreads(8, 8, 1)]
+void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const int2 Left = int2((Pixel.x + OutputSize.x - 1) % OutputSize.x, Pixel.y);
+	const int2 Right = int2((Pixel.x + 1) % OutputSize.x, Pixel.y);
+	const int2 Down = int2(Pixel.x, (Pixel.y + OutputSize.y - 1) % OutputSize.y);
+	const int2 Up = int2(Pixel.x, (Pixel.y + 1) % OutputSize.y);
+	const float HL = SourceHeight.Load(int3(Left, 0));
+	const float HR = SourceHeight.Load(int3(Right, 0));
+	const float HD = SourceHeight.Load(int3(Down, 0));
+	const float HU = SourceHeight.Load(int3(Up, 0));
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	if (!all(isfinite(float4(HL, HR, HD, HU))))
+	{
+		OutCoordinates[Pixel] = UV;
+		return;
+	}
+	// UV-space derivatives hold their physical slope across resolutions.
+	const float2 Gradient = 0.5f * (float2(HR - HL, HU - HD) * float2(OutputSize));
+	const float Magnitude = length(Gradient);
+	float Weight = Strength * GradientReach;
+	if (UseMask != 0u)
+	{
+		const float RawMask = ScopedMask.Load(int3(Pixel, 0));
+		Weight *= isfinite(RawMask) ? saturate(RawMask) : 0.0f;
+	}
+	// Smoothly limit large slopes; flat regions remain exactly stationary.
+	const float2 Offset = isfinite(Magnitude) ? Gradient / (1.0f + Magnitude) : float2(0.0f, 0.0f);
+	OutCoordinates[Pixel] = UV - Weight * Offset;
 }
