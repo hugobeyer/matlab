@@ -8,6 +8,9 @@
 #include "Widgets/Layers/MixtormatStructuralConnectionModel.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -56,6 +59,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActions()
 {
 	return SNew(SComboButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+		.HasDownArrow(false)
 		.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsActionMenuOpen = bOpen; })
 		.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
 		{
@@ -180,7 +184,14 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActions()
 		})
 		.ButtonContent()
 		[
-			SNew(STextBlock).Text(LOCTEXT("QuickActions", "ACTIONS"))
+			SNew(SBox)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SImage).Image(MixtormatIcons::ChevronDown())
+			]
 		];
 }
 
