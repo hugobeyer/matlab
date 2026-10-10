@@ -1407,6 +1407,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::OutputReference
 		|| RowType == EMixtormatLayerChildType::HeightPush
 		|| RowType == EMixtormatLayerChildType::StructuralWarp
+		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
 	if ((RowType == EMixtormatLayerChildType::HeightPush || RowType == EMixtormatLayerChildType::StructuralWarp)
@@ -1485,8 +1486,21 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 				}));
 			return true;
 		};
+		// V2 is a genuinely generator-owned child; unlike the legacy authored-position
+		// structural module it can be nested directly under this generator.
+		if (!Target.IsInstance() && CanAddScopedChild(Layer.Children, ChildIndex))
+		{
+			Menu.Item(LOCTEXT("AddBehaviorWarpToGenerator", "Add Warp Behavior (V2)"),
+				MixtormatIcons::WarpStructural(),
+				FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
+				{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				CreateChild(Destination, EMixtormatChildCreation::BehaviorWarp);
+				}));
+		}
 		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
-			LOCTEXT("WarpUsingForTarget", "Add Warp"));
+			LOCTEXT("WarpUsingForTarget", "Add Structural Warp (Legacy)"));
 		if (bStrata)
 		{
 			bAddedStructural |= AddStructuralChild(EMixtormatLayerChildType::HeightPush,
@@ -1606,6 +1620,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			break;
 		case EMixtormatLayerChildType::HeightPush:
 			RemoveLabel = LOCTEXT("RemoveHeightPushChild", "Remove Height Push");
+			break;
+		case EMixtormatLayerChildType::Behavior:
+			RemoveLabel = LOCTEXT("RemoveBehaviorWarpChild", "Remove Warp Behavior");
 			break;
 		case EMixtormatLayerChildType::StructuralWarp:
 			RemoveLabel = LOCTEXT("RemoveStructuralWarpChild", "Remove Structural Warp");
