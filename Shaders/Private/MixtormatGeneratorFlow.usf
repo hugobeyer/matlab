@@ -340,7 +340,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	bool bValid = NearestSeed(UV, Data, Distance);
 	float2 Direction = bValid ? OrientedDirection(UV, Data.xy) : 0.0f;
 
-	float SampleOffset = UV - (Direction * OffsetAlong + Across * OffsetAcross) * Reach;
 #if FLOW_STAGE == 2
 	const float DrivenAmount = MixtormatApplyDriver(Amount,
 		FlowSettingsDriverSignal0.Load(int3(Pixel, 0)),
@@ -556,7 +555,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(Pixel >= OutputSize)) { return; }
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	OutWarpedUV[Pixel] = FlowValidity.Load(int3(Pixel, 0)) > 0.0f
-		? TraceFlowCoordinate(UV, 1.0f) : UV;
+		? TraceFlowCoordinate(UV, 1.0f, Pixel) : UV;
 }
 #endif
 
