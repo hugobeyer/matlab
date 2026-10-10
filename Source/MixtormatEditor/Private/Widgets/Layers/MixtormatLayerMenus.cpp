@@ -1430,24 +1430,34 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		FMixtormatChildAddress SourceAddress;
 		FText NavigationReason;
 		const bool bCanNavigate = ResolveStructuralSourceAddress(Address, SourceAddress, NavigationReason);
-		Menu.Item(LOCTEXT("StructuralGoToSource", "Go to source"), MixtormatIcons::Generator(),
-			FSimpleDelegate::CreateLambda([this, Address]() { GoToStructuralSource(Address); }))
-			.Enabled(bCanNavigate).ToolTip(NavigationReason);
-		Menu.SubMenu(LOCTEXT("StructuralChangeSource", "Change source…"), MixtormatIcons::Generator(),
-			FOnGetContent::CreateLambda([this, Address]()
-			{
-				return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Source);
-			})).Enabled(bEditable).ToolTip(Reason);
-		Menu.SubMenu(LOCTEXT("StructuralChangeTarget", "Change target…"), MixtormatIcons::Generator(),
-			FOnGetContent::CreateLambda([this, Address]()
-			{
-				return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Target);
-			})).Enabled(bEditable).ToolTip(Reason);
-		Menu.Item(LOCTEXT("StructuralDisconnectSource", "Disconnect source"), nullptr,
-			FSimpleDelegate::CreateLambda([this, Address]()
-			{
-				SetStructuralConnection(Address, EMixtormatStructuralConnectionRole::Source);
-			})).Enabled(bEditable).ToolTip(Reason);
+		// Omit unavailable operations entirely; invalid endpoints are still explained
+		// in the selected child Inspector and in the shared connection-status model.
+		if (bCanNavigate)
+		{
+			Menu.Item(LOCTEXT("StructuralGoToSource", "Go to source"), MixtormatIcons::Generator(),
+				FSimpleDelegate::CreateLambda([this, Address]() { GoToStructuralSource(Address); }));
+		}
+		if (bEditable)
+		{
+			Menu.SubMenu(LOCTEXT("StructuralChangeSource", "Source"), MixtormatIcons::Generator(),
+				FOnGetContent::CreateLambda([this, Address]()
+				{
+					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Source);
+				}));
+			Menu.SubMenu(LOCTEXT("StructuralChangeTarget", "Target"), MixtormatIcons::Generator(),
+				FOnGetContent::CreateLambda([this, Address]()
+				{
+					return BuildStructuralConnectionMenu(Address, EMixtormatStructuralConnectionRole::Target);
+				}));
+		}
+		if (bCanNavigate && bEditable)
+		{
+			Menu.Item(LOCTEXT("StructuralDisconnectSource", "Disconnect"), nullptr,
+				FSimpleDelegate::CreateLambda([this, Address]()
+				{
+					SetStructuralConnection(Address, EMixtormatStructuralConnectionRole::Source);
+				}));
+		}
 		Menu.Separator();
 	}
 
@@ -1458,41 +1468,35 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		const FMixtormatLayerChild& Target = Layer.Children[ChildIndex];
 		const FGuid TargetLayerId = Layer.LayerId;
 		const FGuid TargetChildId = Target.ChildId;
-		const bool bStrata = Target.Type == EMixtormatLayerChildType::Generator
-			&& Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
-		// One entry point per operation. The picker itself offers "Choose source later", which
-		// replaces the old Advanced → Add unconnected… submenu: the same unconnected creation,
-		// in one place, without a second menu repeating the same two operations.
-		const auto AddStructuralPicker = [this, &Menu, TargetLayerId, TargetChildId, bStrata](
+		const bool bStrata = Target.Generator.Type == EMixtormatGeneratorType::StrataCarver;
+		// Target-first authoring: one click inserts an operation as a projected child
+		// of the target. Source/target are then edited on that child row. Do not
+		// create a second search interface over the same hierarchy.
+		const auto AddStructuralChild = [this, &Menu, TargetLayerId, TargetChildId](
 			const EMixtormatLayerChildType ModuleType, const FText& Label)
 		{
+			TArray<FMixtormatLayer> ProposedLayers;
+			int32 ProposedLayerIndex = INDEX_NONE;
+			int32 InsertIndex = INDEX_NONE;
 			FText Reason;
-			bool bAvailable = false;
-			if (ModuleType == EMixtormatLayerChildType::HeightPush && !bStrata)
-			{
-				Reason = LOCTEXT("StructuralCreationPushTarget", "Height Push requires a Strata Carver target");
-			}
-			else
-			{
-				TArray<FMixtormatLayer> ProposedLayers;
-				int32 ProposedLayerIndex = INDEX_NONE;
-				int32 InsertIndex = INDEX_NONE;
-				bAvailable = PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
-					ProposedLayers, ProposedLayerIndex, InsertIndex, Reason);
-			}
-			const FText EntryLabel = bAvailable ? Label : FText::Format(
-				LOCTEXT("StructuralCreationDisabledLabel", "{0} — {1}"), Label, Reason);
-			Menu.SubMenu(EntryLabel, ModuleType == EMixtormatLayerChildType::HeightPush ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
-				FOnGetContent::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
+			if (!PrepareStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType,
+				ProposedLayers, ProposedLayerIndex, InsertIndex, Reason)) { return false; }
+			Menu.Item(Label, ModuleType == EMixtormatLayerChildType::HeightPush
+				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
+				FSimpleDelegate::CreateLambda([this, TargetLayerId, TargetChildId, ModuleType]()
 				{
-					return BuildStructuralSourcePickerForTarget(TargetLayerId, TargetChildId, ModuleType);
-				})).Enabled(bAvailable).ToolTip(Reason);
+					CreateStructuralModuleForTarget(TargetLayerId, TargetChildId, ModuleType);
+				}));
+			return true;
 		};
-		AddStructuralPicker(EMixtormatLayerChildType::StructuralWarp,
-			LOCTEXT("WarpUsingForTarget", "Warp using…"));
-		AddStructuralPicker(EMixtormatLayerChildType::HeightPush,
-			LOCTEXT("HeightPushFromForTarget", "Height Push from…"));
-		Menu.Separator();
+		bool bAddedStructural = AddStructuralChild(EMixtormatLayerChildType::StructuralWarp,
+			LOCTEXT("WarpUsingForTarget", "Add Warp"));
+		if (bStrata)
+		{
+			bAddedStructural |= AddStructuralChild(EMixtormatLayerChildType::HeightPush,
+				LOCTEXT("HeightPushFromForTarget", "Add Height Push"));
+		}
+		if (bAddedStructural) { Menu.Separator(); }
 	}
 
 	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
@@ -1505,6 +1509,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		const FText SelectedGeneratorMaskName = SelectedLibraryMaskName.IsEmpty()
 			? LOCTEXT("NoSelectedGeneratorMask", "Select Mask from Gallery")
 			: SelectedLibraryMaskName;
+		if (!SelectedGeneratorMaskPath.IsNull() && bCanNestChild)
+		{
 		Menu.Item(
 			FText::Format(
 				LOCTEXT("AddSelectedMaskToGenerator", "Add Gating Mask · {0}"),
@@ -1515,8 +1521,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 			{
 				AssignScopedMaskToChild(LayerIndex, ChildIndex, SelectedGeneratorMaskPath);
 			}))
-			.Enabled(TAttribute<bool>(!SelectedGeneratorMaskPath.IsNull() && bCanNestChild));
-		Menu.Separator();
+			;
+			Menu.Separator();
+		}
 	}
 
 	// Copy Instance Mask from Gap used to be hardcoded here for a PatternId row; it is now the
