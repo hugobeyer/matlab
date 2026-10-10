@@ -572,6 +572,7 @@ private:
 	TSharedRef<SWidget> BuildHeightColorRampControls();
 	FMixtormatBehavior* GetSelectedBehaviorWarp();
 	const FMixtormatBehavior* GetSelectedBehaviorWarp() const;
+	TSharedRef<SWidget> BuildBehaviorFlowFieldControls();
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
 	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
 	TSharedRef<SWidget> BuildBehaviorWarpInfluenceMenu();
