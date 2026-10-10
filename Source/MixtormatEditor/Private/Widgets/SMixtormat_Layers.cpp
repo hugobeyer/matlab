@@ -611,12 +611,70 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::CliffStrata); }));
 	Menu.Item(LOCTEXT("AddNoiseSource", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Noise); }));
+	Menu.Item(LOCTEXT("PasteCopiedSource", "Paste Copied Source"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			if (!bHasWorkingMaterial || !SourceClipboard.IsSet()) return;
+			FMixtormatSourceEntry Copy = SourceClipboard.GetValue();
+			Copy.SourceId = FGuid::NewGuid();
+			TMap<FGuid, FGuid> Ids;
+			const auto Renew = [&Ids](FMixtormatLayerChild& Child)
+			{
+				const FGuid Old = Child.ChildId;
+				MixtormatParameterBinding::RegenerateChildIdentity(Child);
+				Ids.Add(Old, Child.ChildId);
+			};
+			Renew(Copy.Child);
+			for (FMixtormatLayerChild& Child : Copy.OwnedChildren) Renew(Child);
+			const FGuid OriginalSourceId = SourceClipboard->SourceId;
+			const auto Remap = [&Ids, OriginalSourceId, &Copy](FGuid& Owner, FGuid& Child)
+			{
+				if (Owner != OriginalSourceId) return;
+				if (const FGuid* Next = Ids.Find(Child)) { Owner = Copy.SourceId; Child = *Next; }
+			};
+			for (FMixtormatLayerChild* Child : [&Copy]()
+			{
+				TArray<FMixtormatLayerChild*> All;
+				All.Add(&Copy.Child);
+				for (FMixtormatLayerChild& Owned : Copy.OwnedChildren) All.Add(&Owned);
+				return All;
+			}())
+			{
+				if (const FGuid* Parent = Ids.Find(Child->ScopeOwnerChildId)) Child->ScopeOwnerChildId = *Parent;
+				Remap(Child->SourceLayerId, Child->SourceChildId);
+				Remap(Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId);
+				Remap(Child->HeightPush.Source.SourceLayerId, Child->HeightPush.Source.SourceChildId);
+				Remap(Child->StructuralWarp.Source.SourceLayerId, Child->StructuralWarp.Source.SourceChildId);
+				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
+				{
+					Remap(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+					Remap(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+				}
+			}
+			Copy.DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), Copy.DisplayName);
+			const FGuid NewSourceId = Copy.SourceId;
+			WorkingSources.Add(MoveTemp(Copy));
+			SelectSource(NewSourceId);
+			RecordEditHistory();
+			bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+			WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
+			RebuildSourcesList();
+		})).Enabled(SourceClipboard.IsSet());
 	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 {
 	MixtormatMenu::FBuilder Menu;
+	Menu.Item(LOCTEXT("CopyShelfSource", "Copy Source"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, SourceId]()
+		{
+			if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+				[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
+			{
+				SourceClipboard = *Source;
+			}
+		}));
 	Menu.Item(LOCTEXT("RenameSource", "Rename"), nullptr,
 		FSimpleDelegate::CreateLambda([this, SourceId]()
 		{
