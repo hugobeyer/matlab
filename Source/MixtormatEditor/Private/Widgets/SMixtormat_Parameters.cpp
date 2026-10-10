@@ -713,6 +713,14 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 		Menu.Item(
 			LOCTEXT("ClearParameterDriver", "Clear Driver"),
 			nullptr,
+			FSimpleDelegate::CreateSP(this, &SMixtormat::ClearParameterDriver, Target));
+	}
+
+	// Developer-only surface. Gated by one console variable, compiled only into the editor
+	// module -- a packaged build carries neither the flag's consumer nor this code.
+	if (MixtormatParameterUi::IsDeveloperMetaEnabled() && Target.IsValid())
+	{
+		const TOptional<FMixtormatParameterDefinitionKey> DevKey =
 			MixtormatParameterUi::DefinitionKeyOf(Target);
 		const bool bPersistentlyEditable = DevKey.IsSet()
 			&& MixtormatParameterAuthoring::IsPersistentlyEditable(*DevKey);
@@ -891,7 +899,7 @@ namespace
 		const void* OwnerPtr = nullptr;
 		const UScriptStruct* OwnerStruct = nullptr;
 		if ((Address.Owner == EMixtormatParameterOwnerType::MaskNoise
-			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow
+			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow) && Child)
 		{
 			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
 		}

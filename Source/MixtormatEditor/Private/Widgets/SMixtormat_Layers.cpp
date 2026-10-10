@@ -29,7 +29,6 @@ public:
 
 void SMixtormat::RebuildLayerList()
 {
-	StructuralEndpointPreview.Reset();
 	for (auto It = CollapsedGeneratorAddresses.CreateIterator(); It; ++It)
 	{
 		int32 OwnerIndex, ChildIndex;

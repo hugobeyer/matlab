@@ -683,8 +683,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightBlend
 	float BlendBias = 0.0f;
 };
 
-// A Generator-layer sublayer that combines the running signed height with another module's
-// USTRUCT(BlueprintType)
+// A Generator-layer sublayer that remaps the running signed height through the shared scalar ramp.
+// The ramp is authored in -1..1 with zero at the centre; the signed field is never converted to
+// 0..1 first.
+USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 {
 	GENERATED_BODY()

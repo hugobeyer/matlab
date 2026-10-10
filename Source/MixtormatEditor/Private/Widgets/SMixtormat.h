@@ -41,7 +41,6 @@ class UScriptStruct;
 struct FAssetData;
 struct FMixtormatBakeSettings;
 struct FMixtormatProjectedChildRow;
-struct FMixtormatStructuralRelationshipPresentation;
 struct FMixtormatLayerHierarchyPaint;
 struct FMixtormatSurfaceEntry;
 
@@ -1684,7 +1683,6 @@ private:
 	TOptional<FMixtormatSourceEntry> SourceClipboard;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
-	TWeakPtr<FMixtormatStructuralEndpointPreview> StructuralEndpointPreview;
 	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;
 	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.

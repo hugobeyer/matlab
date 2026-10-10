@@ -561,31 +561,11 @@ namespace MixtormatOutputReferences
 		{
 			return INDEX_NONE;
 		}
-		if (bWarp)
-		{
-			// Structural sources must identify one completed generator scope, not an ambiguous owner.
-			for (int32 Index = OwnerIndex + 1; Index < SourceLayer.Children.Num(); ++Index)
-			{
-				if (SourceLayer.Children[Index].ChildId == Owner.ChildId) { return Reject(EStructuralLinkIssue::DuplicateIdentity); }
-			}
-		}
-		if (bWarp && SourceLayerIndex == DestinationLayerIndex)
-		{
-			// A tool row before the module is not enough if its generator scope finishes later.
-			for (int32 Index = DestinationChildIndex; Index < SourceLayer.Children.Num(); ++Index)
-			{
-				FGuid ParentId = SourceLayer.Children[Index].ScopeOwnerChildId;
-				for (int32 Depth = 0; ParentId.IsValid() && Depth < SourceLayer.Children.Num(); ++Depth)
-				{
-					if (ParentId == Owner.ChildId) { return Reject(EStructuralLinkIssue::IncompleteSourceScope); }
-					const int32 ParentIndex = SourceLayer.Children.IndexOfByPredicate(
-						[&](const FMixtormatLayerChild& Child) { return Child.ChildId == ParentId; });
-					if (ParentIndex == INDEX_NONE) { return INDEX_NONE; }
-					ParentId = SourceLayer.Children[ParentIndex].ScopeOwnerChildId;
-				}
-				if (ParentId.IsValid()) { return INDEX_NONE; }
-			}
-		}
+		// The two ordering rules Structural Warp used to need -- one unambiguous completed
+		// generator scope, and no source row whose scope finishes after the module row -- are
+		// enforced by MixtormatChildScope::ValidateBehaviorInputs, which evaluates them against
+		// the owning Behavior itself rather than against an authored-position module. Nothing
+		// reaches here as a Warp any more, so nothing here needs Warp's extra gating.
 		if (bNoiseFlow)
 		{
 			Status.Issue = EStructuralLinkIssue::None;

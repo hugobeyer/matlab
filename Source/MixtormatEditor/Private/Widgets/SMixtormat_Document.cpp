@@ -72,7 +72,6 @@ FReply SMixtormat::StartNewMaterialWith(const EMixtormatLayerType LayerType)
 	WorkingFinalSettings = FMixtormatFinalSettings();
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	CollapsedGeneratorAddresses.Reset();
-	StructuralEndpointPreview.Reset();
 	ChildRowWidgets.Reset();
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers.Reset();
@@ -146,7 +145,6 @@ FReply SMixtormat::NewWorkingMaterial()
 	bSavedGlobalUVRotation90 = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	CollapsedGeneratorAddresses.Reset();
-	StructuralEndpointPreview.Reset();
 	ChildRowWidgets.Reset();
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers.Reset();
@@ -218,7 +216,6 @@ FReply SMixtormat::OpenWorkingMaterial()
 
 	WorkingMaterialAsset.Reset(MaterialAsset);
 	CollapsedGeneratorAddresses.Reset();
-	StructuralEndpointPreview.Reset();
 	ChildRowWidgets.Reset();
 	AmbiguousChildRowAddresses.Reset();
 	WorkingLayers = MaterialAsset->Layers;

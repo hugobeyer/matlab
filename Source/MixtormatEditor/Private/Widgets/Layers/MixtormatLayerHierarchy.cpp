@@ -148,10 +148,11 @@ namespace
 {
 	float ProjectedScopeIndent(const FMixtormatProjectedChildRow& Row)
 	{
+		// Scope depth is the only nesting a row has. The incoming-connection blocks that used
+		// to indent separately came from the Height Push / Structural Warp projection, which
+		// is gone: a Behavior is nested by scope like any other owned child.
 		const auto& Style = FMixtormatThemeStore::GetResolved();
-		return Row.bInIncomingBlock
-			? Style.LayerConnections.Indent + Style.LayerConnections.Inset + Row.ScopeDepthWithinIncoming * Style.LayerHierarchy.Indent
-			: Row.AuthoredScopeDepth * Style.LayerHierarchy.Indent;
+		return Row.AuthoredScopeDepth * Style.LayerHierarchy.Indent;
 	}
 
 	FMixtormatLayerHierarchyPaint ProjectedHierarchyPaint(const TArray<FMixtormatProjectedChildRow>& Rows, const int32 RowIndex)

@@ -1,7 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-#include "UI/Layers/SMixtormatSourceRow.h"
 #include "Widgets/SMixtormat.h"
+#include "UI/Layers/SMixtormatSourceRow.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatLocatorOutline.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
@@ -262,7 +262,6 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 {
 	// A fresh history baseline also begins a fresh document-local disclosure session.
 	CollapsedGeneratorAddresses.Reset();
-	StructuralEndpointPreview.Reset();
 	UndoHistory.Reset();
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
