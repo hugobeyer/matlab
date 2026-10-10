@@ -1339,6 +1339,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 			MixtormatRow::Make(
 				LOCTEXT("DevAuthoringLabel", "Label"),
 				SNew(SEditableTextBox)
+				.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
 				.Text(FText::FromString(Current.Label))
 				.ClearKeyboardFocusOnCommit(false)
 				.HintText(LOCTEXT("DevAuthoringLabelHint", "Display label override"))
