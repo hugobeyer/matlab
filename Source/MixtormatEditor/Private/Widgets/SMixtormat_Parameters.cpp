@@ -104,6 +104,7 @@ namespace
 		case EMixtormatLayerChildType::IdGroup: return EMixtormatParameterOwnerType::IdGroup;
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
+		case EMixtormatLayerChildType::Behavior: return EMixtormatParameterOwnerType::Behavior;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
@@ -144,6 +145,7 @@ namespace
 		// The payload, not the wrapper -- it has to be the same pointer ChildOwner exposes for
 		// EMixtormatParameterOwnerType::Generator, or an address built from a generator slider
 		// would fail to find the child it came from.
+		case EMixtormatLayerChildType::Behavior: return &Child.Behavior;
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Data(Child.Generator);
 		default: return nullptr;
@@ -194,6 +196,15 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 				Result.LayerId = ContainerId;
 				Result.ChildId = Child.ChildId;
 				Result.Owner = EMixtormatParameterOwnerType::MaskNoise;
+				return true;
+			}
+			if (Child.Type == EMixtormatLayerChildType::Behavior
+				&& Owner == &Child.Behavior.Direction.Published
+				&& OwnerStruct == FMixtormatOutputReference::StaticStruct())
+			{
+				Result.LayerId = ContainerId;
+				Result.ChildId = Child.ChildId;
+				Result.Owner = EMixtormatParameterOwnerType::BehaviorFlow;
 				return true;
 			}
 			if (Child.Type == EMixtormatLayerChildType::StructuralWarp
@@ -909,6 +920,7 @@ namespace
 		const void* OwnerPtr = nullptr;
 		const UScriptStruct* OwnerStruct = nullptr;
 		if ((Address.Owner == EMixtormatParameterOwnerType::MaskNoise
+			|| Address.Owner == EMixtormatParameterOwnerType::BehaviorFlow
 			|| Address.Owner == EMixtormatParameterOwnerType::StructuralWarpFlow) && Child)
 		{
 			OwnerPtr = MixtormatParameterBinding::GetChildOwnerData(*Child, Address.Owner, OwnerStruct);
