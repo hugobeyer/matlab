@@ -1,65 +1,86 @@
-# Noise System V2 — Agent B implementation and integration handoff
+# Mixtormat — Noise System V2
 
-Base: `main` at `f94c9e3062939bdca87ceedbdc355adc4261fce1`.
-Branch: `feature/noise-v2`.
-Scope: noise-specific shaders only; no Behavior V2, serialized runtime, common compositor, inspector, or mask changes.
+**Agent B branch:** `feature/noise-v2` (started from `main` `f94c9e3`).  
+**Scope:** Noise producer and Noise-specific reflected settings/Inspector; no Behavior V2 architecture or execution changes.  
+**Validation:** static source inspection only. No builds, automated tests, Unreal startup, shader compilation, visual comparison or GPU profiling were authorized or performed.
 
-## Source-traced baseline
+## Pipeline
 
-- `FMixtormatNoise` in `MixtormatGeneratorTypes.h` owns the nine existing serialized types and their defaults.
-- `ResolveNoiseRenderData` sanitizes the payload. The generator gather transfers settings to `FMixtormatNoiseRenderStore`. `AddNoiseFieldPass` binds the same `MixtormatNoise.usf` for generator and inline-mask value-only production.
-- `AddNoiseMaskPass` converts the raw signed/unsigned Value to 0..1 Coverage with a separate pass. Live and shelf Noise Value references use the typed published-field resolution rather than shader duplication.
-- Main generator dispatch writes R32 Value, R32 signed Height, RG32 Gradient, and only for Worley R32 cell IDs. Flow is derived separately from completed Height, not from the heterogeneous Gradient.
-- `MixtormatGully.ush` already provides `MixtormatPeriodicNoiseD` and `MixtormatPeriodicCurlField/Warp`; `MixtormatCellular.ush` already provides wrapped seeded cell points and hashes. Avoid duplicating them.
+`FMixtormatNoise` (generator or inline Mask) → `ResolveNoiseRenderData` → `FMixtormatNoiseRenderData` → `MixtormatGpuNoisePasses.cpp` → `MixtormatNoise.usf` → signed generator Height or published typed Value/Gradient/IDs, or inline mask coverage. A shelf Noise root uses the generator Value publication, then the mask Value-to-Coverage path. No separate generator, mask or Source implementation of the algorithms.
 
-## Stage status
+- Existing `MixtormatGully.ush` supplies periodic gradient noise, analytic derivatives and existing curl. `MixtormatCellular.ush` supplies wrapped seeded cells/hashes.
+- `MixtormatNoiseV2.ush` adds opt-in compact-support multi-impulse phasor, multiscale periodic curl vector evaluation, three-metric Worley/Jitter and mixed directional/curl domain warp.
+- Phasor is appended as `EMixtormatNoiseType::Phasor = 9`; old Noise family numeric values 0–8 and all old fields are unchanged. `EMixtormatNoiseWorleyMetric` is a new property enum (0 Euclidean, 1 Manhattan, 2 Chebyshev).
+- `NoiseDistortionStrength = 0` bypasses distortion exactly. `NoiseWorleyMetric = Euclidean` / `NoiseWorleyJitter = 1` delegates to the original Worley sampler, including pre-existing large periods.
+- `MixtormatNoise.usf` computes warped gradients with a two-forward-probe numerical Jacobian only when distortion is nonzero, preserving the unwarped derivative path.
+- The same noise-specific Inspector builder is used by generator Noise and inline Mask Noise. Phasor and Worley controls are conditional. The separate Distortion panel is shown for all families.
+- Curl remains a `float2` helper used by domain warp. This branch **does not** publish Curl as FlowDirection, UV or a new generic Vector2 output. Future Behavior V2 typed field consumption must be coordinated.
 
-| Stage | Result | Files | Compatibility / limits |
-| --- | --- | --- | --- |
-| P0 audit | Source-traced all nine algorithms, hashes, period rounding, derivative meanings, producer paths, and texture allocations | No file required | Static inspection only; no visual/runtime proof of seam or quality |
-| P0 Worley | Track the second-nearest feature delta; publish family-correct F2 / F2-F1 gradients and zero the derivative on saturated Value plateaus | `MixtormatNoise.ush`, `MixtormatNoise.usf` | **Intentional correction** to published Gradient for saved F2 / F2-F1 projects; Value, Height, IDs, seeds and controls unchanged |
-| P1 Phasor shader core | Seeded, compact-support periodic Gabor/phasor impulses, local orientation/phase variation, 1–4 overlapping layers, frequency and anisotropy, analytic UV-space derivative | `MixtormatNoiseV2.ush`, included by `MixtormatNoise.ush` | Opt-in helper only; not an authorable NoiseType until shared runtime/UI coordination |
-| P2 Curl shader core | Multi-octave periodic curl of the shared analytic gradient noise with deterministic seed, constant direction bias, and scalar strength | `MixtormatNoiseV2.ush` | Opt-in Vector2 helper, **not** a Flow/UV publication or a solver |
-| P3 Worley shader core | Opt-in Euclidean / Manhattan / Chebyshev distances, jitter 0–1, nearest/second-nearest gradients, wrapped stable cell ID | `MixtormatNoiseV2.ush` | Existing full-jitter Euclidean path is directly delegated to legacy Worley |
-| P4 Distortion shader core | Directional scalar or curl-driven periodic domain displacement, 1–8 octaves, strength and mix; strength zero returns UV exactly | `MixtormatNoiseV2.ush` | Opt-in coordinate helper; not attached to legacy evaluation/Gradient publication |
-| P5 inspection | Legacy producer runs one value dispatch; generator also allocates Gradient and Height, and Worley alone allocates IDs. Inline masks use one value texture plus one conversion pass. Phasor multi-component cost scales up to 36 local impulses per pixel | No pass rewrites | No GPU timings; shader compile, 512/2048/4096 images, tests and runtime validation **not performed** |
+## Completed stages
 
-## Findings and remaining risks
-
-1. **Confirmed and fixed:** F2 and F2-F1 returned the F1 gradient, despite their different distance functions.
-2. **Existing semantic compromise:** Worley publishes cell-width directional derivatives, while lattice families publish tile-UV analytic derivatives and Bars publishes a unit phase direction. The output type is generic `Vector2`; downstream consumers must not infer Flow, UV or a common derivative scale.
-3. **Worley clamp:** Values outside 0..1 are constant after saturation, and P0 now publishes a zero gradient there. Exactly at distance 0 or 1 and at closest-feature ties, the analytic derivative is undefined; the shader picks a stable convention.
-4. **Period and placement:** Native lattice evaluation is periodic in both axes and uses UV, not texel coordinates. Arbitrary generator placement (especially fractional scale or rotation) can alter where the boundaries of a *placed* tile lie; it is not proof that transformed output always matches at unit-square edges.
-5. **Phasor cost:** 9 cell samples per component, up to four components, with transcendentals. Avoid forcing this cost onto existing Bars. Profile GPU instruction count when authorized.
-6. **Domain distortion gradient:** Warping sample positions requires a Jacobian when publishing a transformed analytic Gradient. No such publication is wired in this branch; do not reuse an unwarped derivative as a warped derivative.
-7. **Unverified:** Shader compilation, physical output, deterministic cross-resolution comparisons, border-seam images, profiler counters, mask/shelf visual parity and high-frequency aliasing require permission to run builds/tests/runtime validation.
+| Priority | Outcome | Compatibility |
+| --- | --- | --- |
+| P0 | Audited nine prior families, typed outputs, gather, mask, shelf, hashes, derivatives and GPU allocations | Existing Value/Height/IDs retained |
+| P0 | Fixed F2/F2-F1 nearest-point gradient reuse and set gradient to zero where Worley Value saturates | **Intentional correction to published Gradient for old Worley F2/F2-F1 materials** |
+| P1 | New tileable multi-impulse Phasor family with analytic gradients, direction, frequency, anisotropy and seeded local phase/orientation variation | Appended type, old Bars unchanged |
+| P2 | Reusable 1–8 octave periodic Curl vector helper, no duplicate flow solver | Consumed by distortion, not separately published |
+| P3 | Euclidean, Manhattan, Chebyshev, adjustable jitter, same stable cell-ID hashing | Defaults route through legacy implementation |
+| P4 | Optional multiscale periodic domain distortion: directional / curl mixed at authored strength, direction, frequency and detail | Strength zero exact identity |
+| P5 | Static review of RDG allocations and algorithmic costs | Profiling and shader validation pending |
 
 ## Before / after feature matrix
 
-| Feature | Before (main) | This branch |
+| Feature | Before | Noise V2 branch |
 | --- | --- | --- |
-| Legacy nine noise modes | Generator, inline mask, shelf typed Value | Preserved, same authored controls |
-| Legacy Worley Value/Height/IDs | F1, F2, F2-F1 | Unchanged |
-| Legacy Worley Gradient | Incorrect F1 reuse in F2/F2-F1; nonzero plateau gradients | Correct F2/F2-F1 direction and zero plateau gradients |
-| Generalized phasor | Only existing Bars cosine wave | Opt-in periodic impulse phasor helper, not yet UI-exposed |
-| Curl | Shared two-octave curl in Gully | Reused foundation; opt-in multi-octave curl field |
-| Worley metrics/jitter | Euclidean, fixed jitter=1 | Opt-in metrics + jitter helper |
-| Domain warp | Shared curl helper in Gully | Opt-in mixed directional/curl periodic domain warp |
+| Gradient, Value, FBM, Ridged, Billow | All available | Same algorithms, default appearance preserved |
+| Worley F1/F2/F2-F1 | Euclidean, jitter=1, stable IDs | Adds metric and jitter selectors, fixes incorrect gradients |
+| Bars / Stripes | Global integer snapped cosine phase | Unchanged |
+| Phasor | None | Authorable independent family, locally overlapping periodic impulses |
+| Curl | Two-octave shared utility | Multiscale general vector utility and curl distortion |
+| Domain warp | No Noise-local authoring | Shared noise family Distortion panel, zero-neutral |
+| Generator / mask / shelf | Common Value producer / typed mask conversion | New families and controls use same producer, no duplicated noise implementation |
 
-## Proposed shared-system work — NOT changed on Agent B branch
+## Added parameters and shipped defaults
 
-Coordinate these with Agent A or the owner of serialized types before authoring:
+| Parameter | Default | Applicability |
+| --- | --- | --- |
+| `NoisePhasorFrequency` | `2.0` | Phasor |
+| `NoisePhasorAnisotropy` | `0.0` | Phasor |
+| `NoisePhasorPhaseVariation` | `0.5` | Phasor |
+| `NoisePhasorOrientationVariation` | `0.35` | Phasor |
+| `NoisePhasorComponents` | `2` | Phasor, 1–4 |
+| `NoiseWorleyMetric` | `Euclidean` | Worley |
+| `NoiseWorleyJitter` | `1.0` | Worley |
+| `NoiseDistortionStrength` | `0.0` | All Noise, exact bypass |
+| `NoiseDistortionFrequency` | `4.0` | Distortion |
+| `NoiseDistortionOctaves` | `2` | Distortion |
+| `NoiseDistortionRoughness` | `0.5` | Distortion |
+| `NoiseDistortionLacunarity` | `2.0` | Distortion |
+| `NoiseDistortionCurlMix` | `1.0` | Distortion, 0 directional to 1 curl |
+| `NoiseDistortionDirection` | `0.0` | Directional distortion |
 
-- Append `Phasor` to `EMixtormatNoiseType` (existing indices 0–8 unchanged); classify its Value as signed in `MixtormatOutputReferences::NoiseValueKind`.
-- Append reflected `NoisePhasorFrequency=2.0`, `NoisePhasorAnisotropy=0`, `NoisePhasorPhaseVariation=0.5`, `NoisePhasorOrientationVariation=0.35`, `NoisePhasorComponents=2`. These are **proposed defaults**, not present or persisted in the runtime.
-- For new Worley editing: `NoiseWorleyMetric=Euclidean(0)`, `NoiseWorleyJitter=1.0`; neither has been added to `FMixtormatNoise`.
-- For domain warp: `NoiseDistortionStrength=0.0`, `NoiseDistortionFrequency=4.0`, `NoiseDistortionOctaves=2`, `NoiseDistortionRoughness=0.5`, `NoiseDistortionLacunarity=2.0`, `NoiseDistortionCurlMix=1.0` (all proposed, none serialized). Direction should be explicit and sampled periodically.
-- Expose an independent typed `Vector2` output (suggested name `Curl`) only after the published-field declarations, validation, gather and source menus all agree; **never** publish it as `FlowDirection` or UV implicitly.
-- Trace any additions end-to-end: runtime `FMixtormatNoise` → reflected parameter metadata / instance owner → `ResolveNoiseRenderData` → `FMixtormatNoiseRenderData` → GPU pass uniforms → `MixtormatNoise.usf` dispatch → OutputReferences/value type → inspector → masks/shelf/reference compatibility → copy/paste/undo/cache/hash.
-- After coordination, integrate new algorithms into the existing generator and mask producer dispatch, preferably behind explicit appended family values and zero-neutral distortion, without a separate incompatible pipeline.
+Existing parameters, serialized family numeric values, `bNoiseNormalizeHeight`, `NoiseHeightScale`, IDs and raw Value semantics are retained. Normalization remains downstream of raw Noise evaluation; new Noise Height follows the same signed-zero generator contract.
 
-## Merge readiness
+## Files changed
 
-- **P0 shader fix:** ready for a source-level review, but not validated or GPU-compiled.
-- **P1–P4 helpers:** ready for API review, **not feature-complete authoring**. Do not describe these algorithms as available in UI or existing saved materials.
-- **Full Noise V2:** not merge-ready until shared-schema coordination, dispatch integration, and authorized validation.
+- `Shaders/Private/MixtormatNoise.ush` — Worley F2 gradient capture, Noise V2 helper include
+- `Shaders/Private/MixtormatNoise.usf` — Phasor and metric Worley dispatch, distortion and source-frame gradient chain rule
+- `Shaders/Private/MixtormatNoiseV2.ush` — new reusable algorithms
+- `Source/MixtormatRuntime/Public/MixtormatGeneratorTypes.h` — noise-local enum and reflected parameters (Agent A coordination point)
+- `Source/MixtormatShaders/Private/Compositing/MixtormatNoiseRender.h` — resolved render data
+- `Source/MixtormatShaders/Private/MixtormatGpuNoisePasses.cpp` — bindings/sanitization, shared producer
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` — generator/mask conditional controls
+- `AgentDocs/NOISE_V2.md` — this report
+
+## Static risks and merge gates
+
+1. Unreal C++/HLSL/UHT compile compatibility remains unverified. The reflection fields and Shader parameters have been inspected by source only.
+2. Phasor uses up to 9 local impulses × 4 components per pixel, each with phase trigonometry. It should be profiled at 512/2048/4096; the legacy Bars cost is unchanged.
+3. Distortion-enabled generator fields evaluate additional warp probes for the chain-rule derivative. Numerically approximate; compare published gradients around seam/feature boundaries in a GPU preview before shipping.
+4. Published `Gradient` still has heterogeneous family semantics: lattice/Phasor tile derivatives, Worley cell-distance gradients, and Bars phase direction. Do not reinterpret it as Flow, UV or a globally unified derivative semantic.
+5. Fixed Worley F2/F2-F1 Gradient output differs in existing saved materials referencing that output; their Value/Height/RegionIds remain unchanged. Review downstream use before merge.
+6. Noise output tileability is for periodic source UV. Arbitrary fractional/rotated **layer placement** can move the visible output seam; authored placement does not imply that destination edges always agree.
+7. A separate public typed Curl Vector2 field requires agreement with Agent A on publication, reference resolution, source menu and interpolation. **No Behavior V2 change was made here.**
+8. Coordinate runtime header edits with Agent A before integrating into the main development branch. This Noise branch is not merged.
+
+**Merge readiness:** code is source-review ready; not build-verified or runtime-verified. Keep as feature branch until the above gates are closed.
