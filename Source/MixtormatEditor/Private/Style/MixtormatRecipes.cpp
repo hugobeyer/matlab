@@ -327,7 +327,7 @@ namespace Mixtormat
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeCardBodyRecipe(Theme, 1.0f, 0.0f);
 		// The tab touches the card on its top edge; only its outer lower corner rounds.
-		Recipe.CornerRadii = FVector4f(0.0f, 0.0f, Theme.Card.Radius, 0.0f);
+		Recipe.CornerRadii = FVector4f(0.0f, 0.0f, Theme.LayerLayout.SourcesAddTabBottomRadius, Theme.LayerLayout.SourcesAddTabBottomRadius);
 		const auto& Layout = Theme.LayerLayout;
 		const float Strength = FMath::Clamp(Layout.SourcesAddTabHighlight
 			* (bHovered ? 1.0f : 0.35f), 0.0f, 1.0f);
