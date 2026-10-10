@@ -44,6 +44,18 @@ DECLARE_DELEGATE_RetVal_ThreeParams(
 	int32,
 	int32,
 	int32);
+DECLARE_DELEGATE_RetVal_ThreeParams(
+	bool,
+	FOnMixtormatChildCanReparent,
+	int32,
+	int32,
+	int32);
+DECLARE_DELEGATE_RetVal_ThreeParams(
+	FReply,
+	FOnMixtormatChildReparented,
+	int32,
+	int32,
+	int32);
 // Source layer, source child, destination layer, destination child. A cross-layer drop is a move,
 // not a reorder, so it carries the layer it came from -- which a reorder never had to.
 DECLARE_DELEGATE_RetVal_FourParams(
@@ -733,6 +745,8 @@ public:
 		SLATE_ARGUMENT(int32, LayerIndex)
 		SLATE_ARGUMENT(int32, ChildIndex)
 		SLATE_EVENT(FOnMixtormatChildReordered, OnChildReordered)
+		SLATE_EVENT(FOnMixtormatChildCanReparent, OnChildCanReparent)
+		SLATE_EVENT(FOnMixtormatChildReparented, OnChildReparented)
 		SLATE_EVENT(FOnMixtormatChildMovedToLayer, OnChildMovedToLayer)
 		SLATE_EVENT(FOnMixtormatGroupChildMovedToLayer, OnGroupChildMovedToLayer)
 	SLATE_END_ARGS()
@@ -742,9 +756,29 @@ public:
 		LayerIndex = InArgs._LayerIndex;
 		ChildIndex = InArgs._ChildIndex;
 		OnChildReordered = InArgs._OnChildReordered;
+		OnChildCanReparent = InArgs._OnChildCanReparent;
+		OnChildReparented = InArgs._OnChildReparented;
 		OnChildMovedToLayer = InArgs._OnChildMovedToLayer;
 		OnGroupChildMovedToLayer = InArgs._OnGroupChildMovedToLayer;
-		ChildSlot[InArgs._Content.Widget];
+		ChildSlot
+		[
+			SNew(SOverlay)
+			+ SOverlay::Slot()[InArgs._Content.Widget]
+			+ SOverlay::Slot()
+			[
+				MixtormatDropZone::MakeInsertionOverlay([this]() { return Zone; })
+			]
+		];
+	}
+
+	virtual void OnDragLeave(const FDragDropEvent& Event) override
+	{
+		Zone = EMixtormatRowDropZone::None;
+		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
+			Event.GetOperationAs<FMixtormatChildDragDropOp>())
+		{
+			Operation->ResetToDefaultToolTip();
+		}
 	}
 
 	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
@@ -753,29 +787,55 @@ public:
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		if (!Operation.IsValid())
 		{
+			Zone = EMixtormatRowDropZone::None;
 			return FReply::Unhandled();
 		}
-		// A group-sourced child leaves its group and lands here, aimed at this row. It shares no
-		// layer with this target, so the "started from this row" test below cannot apply to it;
-		// bCanLeaveLayer is the only thing that can refuse it, and a scoped filter must stay with
-		// the owner it filters whichever container that owner sits in.
-		if (Operation->GroupId.IsValid())
+		if (Operation->GroupId.IsValid() || Operation->LayerIndex != LayerIndex)
 		{
-			return Operation->bCanLeaveLayer ? FReply::Handled() : FReply::Unhandled();
+			Zone = Operation->bCanLeaveLayer ? EMixtormatRowDropZone::Into
+				: EMixtormatRowDropZone::None;
+			return Zone == EMixtormatRowDropZone::Into
+				? FReply::Handled() : FReply::Unhandled();
 		}
-		// A drop onto the row it started from is the only one with nothing to do.
-		return Operation->LayerIndex != LayerIndex || Operation->ChildIndex != ChildIndex
-			? FReply::Handled() : FReply::Unhandled();
+		if (Operation->ChildIndex == ChildIndex)
+		{
+			Zone = EMixtormatRowDropZone::None;
+			return FReply::Unhandled();
+		}
+		Zone = MixtormatDropZone::ForGroupRow(Geometry, Event, true);
+		if (Zone == EMixtormatRowDropZone::Into)
+		{
+			if (!OnChildCanReparent.IsBound()
+				|| !OnChildCanReparent.Execute(LayerIndex, Operation->ChildIndex, ChildIndex))
+			{
+				Zone = EMixtormatRowDropZone::None;
+				Operation->ResetToDefaultToolTip();
+				return FReply::Unhandled();
+			}
+			Operation->SetToolTip(LOCTEXT("ReparentChildIntoRow", "Release to move under this child"),
+				MixtormatIcons::Add());
+		}
+		else
+		{
+			Operation->SetToolTip(Zone == EMixtormatRowDropZone::Before
+				? LOCTEXT("ReorderChildAboveRow", "Release to reorder above")
+				: LOCTEXT("ReorderChildBelowRow", "Release to reorder below"),
+				MixtormatIcons::Add());
+		}
+		return FReply::Handled();
 	}
 
 	virtual FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
-		if (!Operation.IsValid())
+		const EMixtormatRowDropZone DropZone = Zone;
+		Zone = EMixtormatRowDropZone::None;
+		if (!Operation.IsValid() || DropZone == EMixtormatRowDropZone::None)
 		{
 			return FReply::Unhandled();
 		}
+		Operation->ResetToDefaultToolTip();
 		if (Operation->GroupId.IsValid())
 		{
 			return Operation->bCanLeaveLayer && OnGroupChildMovedToLayer.IsBound()
@@ -785,6 +845,12 @@ public:
 		}
 		if (Operation->LayerIndex == LayerIndex)
 		{
+			if (DropZone == EMixtormatRowDropZone::Into)
+			{
+				return OnChildReparented.IsBound()
+					? OnChildReparented.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
+					: FReply::Unhandled();
+			}
 			return OnChildReordered.IsBound()
 				? OnChildReordered.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
 				: FReply::Unhandled();
@@ -798,8 +864,11 @@ private:
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
 	FOnMixtormatChildReordered OnChildReordered;
+	FOnMixtormatChildCanReparent OnChildCanReparent;
+	FOnMixtormatChildReparented OnChildReparented;
 	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
 	FOnMixtormatGroupChildMovedToLayer OnGroupChildMovedToLayer;
+	EMixtormatRowDropZone Zone = EMixtormatRowDropZone::None;
 };
 
 // A group's shared child row, keyed by (GroupId, ChildIndex) the way SMixtormatChildDropTarget is
