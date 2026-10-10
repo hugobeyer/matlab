@@ -343,8 +343,16 @@ struct MIXTORMATRUNTIME_API FMixtormatSourceEntry
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
 	FText DisplayName;
 
+	// The source's root generator. It stays a standalone field for serialized compatibility; it is
+	// the implicit first child and never has a scope owner.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
 	FMixtormatLayerChild Child;
+
+	// Additive source-owned subtree. Entries are scoped directly to Child (the root generator),
+	// never to each other or to a layer/group child. The shelf remains non-compositing: these are
+	// persisted ownership data only until the source evaluator consumes supported tools and masks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
+	TArray<FMixtormatLayerChild> OwnedChildren;
 };
 
 namespace MixtormatHue

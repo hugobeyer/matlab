@@ -234,7 +234,7 @@ FReply SMixtormat::OpenWorkingMaterial()
 			Viewport->SetGlobalUVRotation90(bGlobalUVRotation90);
 		}
 	}
-	MixtormatParameterBinding::EnsureStableIds(WorkingLayers, WorkingLayerGroups);
+	MixtormatParameterBinding::EnsureStableIds(WorkingLayers, WorkingLayerGroups, WorkingSources);
 	// The asset repairs itself on load, but a working copy can also come from an older in-memory
 	// edit, so reconcile membership against the layers actually opened.
 	MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);

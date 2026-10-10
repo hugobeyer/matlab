@@ -227,21 +227,43 @@ void UMixtormatMaterial::PostLoad()
 	Super::PostLoad();
 	// Layer identity first: group validation reconciles group children against the layer child
 	// IDs, so those have to be settled before it looks at them.
-	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups);
+	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups, Sources);
 	MixtormatLayerGroups::ValidateGroups(Layers, LayerGroups);
-	const auto SanitizeChildren = [](TArray<FMixtormatLayerChild>& Children)
+	// A source is not a layer container. Its root generator is implicit at position zero, and the
+	// additive OwnedChildren array holds only direct children of that root. Normalise the persisted
+	// scopes here so no source tool can accidentally claim a layer/group or sibling as its owner.
+	for (FMixtormatSourceEntry& Source : Sources)
 	{
-		for (FMixtormatLayerChild& Child : Children)
+		Source.Child.ScopeOwnerChildId.Invalidate();
+		for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
 		{
-			Child.Mask.Shaping.CurveBias.Sanitize();
-			Child.Generated.Shaping.CurveBias.Sanitize();
-			Child.Craquelure.Shaping.CurveBias.Sanitize();
-			Child.ColorId.Shaping.CurveBias.Sanitize();
-			Child.RandomId.Shaping.CurveBias.Sanitize();
+			OwnedChild.ScopeOwnerChildId = Source.Child.ChildId;
 		}
+	}
+	const auto SanitizeChild = [](FMixtormatLayerChild& Child)
+	{
+		Child.Mask.Shaping.CurveBias.Sanitize();
+		Child.Generated.Shaping.CurveBias.Sanitize();
+		Child.Craquelure.Shaping.CurveBias.Sanitize();
+		Child.ColorId.Shaping.CurveBias.Sanitize();
+		Child.RandomId.Shaping.CurveBias.Sanitize();
 	};
-	for (FMixtormatLayer& Layer : Layers) { SanitizeChildren(Layer.Children); }
-	for (FMixtormatLayerGroup& Group : LayerGroups) { SanitizeChildren(Group.Children); }
+	for (FMixtormatLayer& Layer : Layers)
+	{
+		for (FMixtormatLayerChild& Child : Layer.Children) { SanitizeChild(Child); }
+	}
+	for (FMixtormatLayerGroup& Group : LayerGroups)
+	{
+		for (FMixtormatLayerChild& Child : Group.Children) { SanitizeChild(Child); }
+	}
+	for (FMixtormatSourceEntry& Source : Sources)
+	{
+		SanitizeChild(Source.Child);
+		for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
+		{
+			SanitizeChild(OwnedChild);
+		}
+	}
 }
 
 FPrimaryAssetId UMixtormatMaterial::GetPrimaryAssetId() const

@@ -637,6 +637,53 @@ namespace MixtormatParameterBinding
 		}
 	}
 
+	void EnsureStableIds(
+		TArray<FMixtormatLayer>& Layers,
+		TArray<FMixtormatLayerGroup>& Groups,
+		TArray<FMixtormatSourceEntry>& Sources)
+	{
+		// Repair layer/group identities first; their established IDs keep precedence over shelf IDs.
+		EnsureStableIds(Layers, Groups);
+
+		TSet<FGuid> OwnerIds;
+		TSet<FGuid> ChildIds;
+		for (const FMixtormatLayer& Layer : Layers)
+		{
+			OwnerIds.Add(Layer.LayerId);
+			for (const FMixtormatLayerChild& Child : Layer.Children) { ChildIds.Add(Child.ChildId); }
+		}
+		for (const FMixtormatLayerGroup& Group : Groups)
+		{
+			OwnerIds.Add(Group.GroupId);
+			for (const FMixtormatLayerChild& Child : Group.Children) { ChildIds.Add(Child.ChildId); }
+		}
+
+		for (FMixtormatSourceEntry& Source : Sources)
+		{
+			if (!Source.SourceId.IsValid() || OwnerIds.Contains(Source.SourceId))
+			{
+				Source.SourceId = FGuid::NewGuid();
+			}
+			OwnerIds.Add(Source.SourceId);
+
+			FMixtormatLayerChild& Child = Source.Child;
+			if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
+			{
+				Child.ChildId = FGuid::NewGuid();
+			}
+			ChildIds.Add(Child.ChildId);
+
+			for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
+			{
+				if (!OwnedChild.ChildId.IsValid() || ChildIds.Contains(OwnedChild.ChildId))
+				{
+					OwnedChild.ChildId = FGuid::NewGuid();
+				}
+				ChildIds.Add(OwnedChild.ChildId);
+			}
+		}
+	}
+
 	void RegenerateLayerIdentity(FMixtormatLayer& Layer, const bool bRegenerateChildren)
 	{
 		const FGuid OldLayerId = Layer.LayerId;

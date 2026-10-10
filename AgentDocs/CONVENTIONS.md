@@ -50,7 +50,9 @@ Never duplicate a default. Never widen a hard bound from the editor.
 
 ## IDs / GUIDs
 
-- `MixtormatParameterBinding::EnsureStableIds` — assign persistent identity.
+- `MixtormatParameterBinding::EnsureStableIds` — assign persistent identity; the document overload
+  with Sources repairs shelf SourceIds/root-child IDs after layer/group IDs, preserving established
+  layer/group identity precedence.
 - `RegenerateLayerIdentity` / `RegenerateLayerIdentities` — duplicates get new
   IDs; internal references follow the copy.
 - `MixtormatLayerGroups::MakeEffectiveChildId` — deterministic per-member child

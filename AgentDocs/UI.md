@@ -72,9 +72,12 @@ gating, while `ResolveContainer` returns null for it, so container-mutating acti
 scope-owner searches) see unavailable — Copy's tooltip explains that sources do not publish yet.
 Source adds/deletes/renames break history coalescing like layer/group structure changes, and
 document lifecycle (new/open/save/save-as) snapshots sources alongside layers. Not implemented:
-evaluation/publication, target connections, Paste as Instance, source-aware stable-id repair
-(identity is NewGuid by construction; no inbound references exist yet) and the layer-generator
-Influence Only toggle. Authoring only; no build/runtime validation run.
+evaluation/publication, target connections, Paste as Instance and the layer-generator Influence
+Only toggle. Source identity is repaired on load: shelf `SourceId`, root `ChildId` and inert
+`OwnedChildren` child IDs share the document-wide namespaces; the root is unscoped and each owned
+child is normalised as a direct child of the root. There is no shelf hierarchy/tool UI or evaluator
+yet, so `OwnedChildren` is persisted ownership data only. Authoring only; no build/runtime
+validation run.
 
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,

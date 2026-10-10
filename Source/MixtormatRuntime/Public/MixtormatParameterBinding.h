@@ -85,6 +85,12 @@ namespace MixtormatParameterBinding
 	MIXTORMATRUNTIME_API void EnsureStableIds(
 		TArray<FMixtormatLayer>& Layers,
 		TArray<FMixtormatLayerGroup>& Groups);
+	// Sources extend those same document-wide identity namespaces. Existing layer/group IDs retain
+	// precedence so adding shelf identity repair cannot retarget established material references.
+	MIXTORMATRUNTIME_API void EnsureStableIds(
+		TArray<FMixtormatLayer>& Layers,
+		TArray<FMixtormatLayerGroup>& Groups,
+		TArray<FMixtormatSourceEntry>& Sources);
 
 	// A duplicated layer/child must not share identity with its source. References inside a
 	// duplicated layer are intentionally preserved; only the duplicated objects receive new IDs.
