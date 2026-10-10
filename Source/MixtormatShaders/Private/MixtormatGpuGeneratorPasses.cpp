@@ -1572,6 +1572,21 @@ namespace
 				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Generator.WorkingFlow"));
 		AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(WorkingFlow), FLinearColor::Black);
 		FRDGTextureRef WorkingFlowValidity = nullptr;
+		// Noise's intrinsic field is a unit downhill vector with influence and validity.
+		// Unit length is an explicit canonical magnitude of 1; it is seeded once,
+		// and scoped generated Flow later contributes only through Add/Mix.
+		if (Owner.Generator.Type == EMixtormatGeneratorType::Noise)
+		{
+			const FPublishedField* Intrinsic = Ctx.PublishedFieldOutputs.Find(
+				PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("FlowDirection"))));
+			if (Intrinsic && Intrinsic->IsComplete()
+				&& Intrinsic->Kind == EMixtormatPublishedFieldKind::Flow
+				&& Intrinsic->Texture->Desc.Extent == Size)
+			{
+				WorkingFlow = Intrinsic->Texture;
+				WorkingFlowValidity = Intrinsic->Validity;
+			}
+		}
 		for (const FChildRenderData& Child : Layer.Children)
 		{
 			if (Child.Type == EMixtormatLayerChildType::Generator
@@ -1833,6 +1848,15 @@ namespace
 				else
 				{
 					RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+					if (WorkingFlowValidity)
+					{
+						WorkingFlow = AddNoiseFlowTransportPass(Ctx, WorkingFlow,
+							WorkingFlowValidity, Coordinates, WorkingFlowValidity);
+						Ctx.PublishedFieldOutputs.Add(
+							PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
+							FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow,
+								WorkingFlow, WorkingFlowValidity, false});
+					}
 				}
 			}
 		}
@@ -3487,6 +3511,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// One authored-order pass processes producers and height operations on the native field.
 		if (!bNoiseHeightless)
 		{
+			// Snapshot intrinsic downhill Flow before scoped children. The completed
+			// diagnostic is still republished after normalization for compatibility.
+			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+			}
 			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 			// Normalize the unmasked Noise native height, then apply its scoped gate to the
 			// resolved signed result. Gating before centring turns masked zeros into negative height.
