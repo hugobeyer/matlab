@@ -198,6 +198,17 @@ namespace MixtormatChildScope
 			}
 			if (ResolveOwnerIndex(Children, Index) == INDEX_NONE)
 			{
+				// An orphaned Behavior must never become an unscoped/root operation.
+				// Keep its unresolved identity for repair, but disable execution.
+				if (Children[Index].Type == EMixtormatLayerChildType::Behavior)
+				{
+					if (Children[Index].Behavior.bEnabled)
+					{
+						Children[Index].Behavior.bEnabled = false;
+						bChanged = true;
+					}
+						continue;
+				}
 				Children[Index].ScopeOwnerChildId.Invalidate();
 				bChanged = true;
 			}
