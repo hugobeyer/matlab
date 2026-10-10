@@ -722,6 +722,15 @@ namespace MixtormatGpuCompositor
 							{
 								Ctx.PublishedFieldDemand.Add(Child.StructuralWarp.Source.Source);
 							}
+							if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+								&& Child.Behavior.Type == EMixtormatBehaviorType::Warp
+								&& Child.Behavior.Direction.Source.ChildIndex != INDEX_NONE)
+							{
+								// Demand before the producer runs. A neutral flow tool may
+								// otherwise skip the FlowDirection/UV publication entirely.
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Direction.Source);
+							}
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{
 								const auto DemandInput = [&](const FGeneratorInputRenderData& Input)
