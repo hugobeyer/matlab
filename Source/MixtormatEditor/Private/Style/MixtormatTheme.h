@@ -772,6 +772,10 @@ namespace Mixtormat
 		// Saved field names retained; these now author the dark marking-menu vignette.
 		float QuickControlsGuideGlowDiameter = 720.0f;
 		float QuickControlsGuideGlowOpacity = 0.65f;
+		float QuickControlsVignetteBias = 1.0f;
+		float QuickControlsVignetteIntensity = 1.0f;
+		float QuickControlsVignetteInnerRadius = 0.0f;
+		float QuickControlsVignetteFalloff = 2.0f;
 	};
 
 	struct FMixtormatGalleryMetrics
