@@ -651,6 +651,10 @@ void AddIconRole(
 				NUM("PreviewLayout.QuickControlsGuideAxisOpacity", Preview, "Layout", "Quick Controls Guide Opacity", PreviewLayout.QuickControlsGuideAxisOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsGuideGlowDiameter", Preview, "Layout", "Marking Menu Vignette Diameter", PreviewLayout.QuickControlsGuideGlowDiameter, 0, 1200, 2, 0, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsGuideGlowOpacity", Preview, "Layout", "Marking Menu Vignette Darkness", PreviewLayout.QuickControlsGuideGlowOpacity, 0, 1, .001, 3, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteBias", Preview, "Layout", "Vignette Gradient Bias", PreviewLayout.QuickControlsVignetteBias, .1, 5, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteIntensity", Preview, "Layout", "Vignette Intensity", PreviewLayout.QuickControlsVignetteIntensity, 0, 3, .05, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteInnerRadius", Preview, "Layout", "Vignette Inner Radius", PreviewLayout.QuickControlsVignetteInnerRadius, 0, .95, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.QuickControlsVignetteFalloff", Preview, "Layout", "Vignette Falloff", PreviewLayout.QuickControlsVignetteFalloff, .25, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 				SetLocateTarget(P, LocateBegin, ETarget::Preview);
 
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
