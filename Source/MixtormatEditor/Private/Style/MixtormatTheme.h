@@ -552,8 +552,8 @@ namespace Mixtormat
 		float ItemHoverOpacity = 1.0f;
 		float ItemCheckedOpacity = 1.0f;
 		float ItemDisabledOpacity = 0.32f;
-		float BehaviorItemOpacity = 0.68f;
-		float BehaviorItemIndent = 12.0f;
+		float BehaviorItemOpacity = 1.0f;
+		float BehaviorItemIndent = 0.0f;
 		FLinearColor DestructiveText = FLinearColor(0.78f, 0.28f, 0.24f, 1.0f);
 		FLinearColor DestructiveHover = FLinearColor(0.45f, 0.12f, 0.12f, 1.0f);
 		float CornerRadius = 0.0f;
