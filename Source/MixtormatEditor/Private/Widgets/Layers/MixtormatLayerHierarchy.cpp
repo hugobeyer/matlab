@@ -43,10 +43,6 @@ namespace MixtormatLayersPrivate
 		{
 			switch (EffectTypeOf(Child))
 			{
-			case EMixtormatEffectType::ShapeDeform: Specific = MixtormatIcons::WarpDeform(); break;
-			case EMixtormatEffectType::GravityFlow: Specific = MixtormatIcons::FlowGravity(); break;
-			case EMixtormatEffectType::FlowCarve: Specific = MixtormatIcons::FlowDirection(); break;
-			case EMixtormatEffectType::GeneratorFlow: Specific = MixtormatIcons::FlowDirection(); break;
 			case EMixtormatEffectType::FlowWarp: Specific = MixtormatIcons::WarpStructural(); break;
 			default: break;
 			}
@@ -1000,10 +996,6 @@ FText SMixtormat::GetLayerChildSourceText(
 	{
 		return FText::GetEmpty();
 	}
-	if (IsGeneratorFlow(Child))
-	{
-		return LOCTEXT("GeneratorFlowTarget", "TARGET");
-	}
 	if (IsFlowWarp(Child))
 	{
 		return Owner.Type == EMixtormatLayerChildType::Mask
@@ -1627,7 +1619,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
 					[this, ResolveRow, ChildName,
-										 bCanLeaveLayer = !IsMaskFilter(Child) && !IsGeneratorFlow(Child)]
+										 bCanLeaveLayer = !IsMaskFilter(Child)
+											&& Child.Type != EMixtormatLayerChildType::Behavior]
 					(const FGeometry&, const FPointerEvent&)
 				{
 					int32 LayerIndex, ChildIndex;

@@ -224,11 +224,11 @@ TSharedRef<SWidget> SMixtormat::BuildMoveChildToLayerMenu(const int32 LayerIndex
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
 		&& (IsMaskFilter(*ResolveChild(LayerIndex, ChildIndex))
-			|| IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))))
+			|| ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Behavior))
 	{
 		Menu.Item(
-			IsGeneratorFlow(*ResolveChild(LayerIndex, ChildIndex))
-				? LOCTEXT("MoveFlowWithGenerator", "Move the owning generator instead")
+			ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Behavior
+				? LOCTEXT("MoveBehaviorWithGenerator", "Move the owning generator instead")
 				: LOCTEXT("MoveMaskFilterWithMask", "Move the owning mask instead"),
 			nullptr,
 			FSimpleDelegate()).Enabled(false);
@@ -304,7 +304,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
 				}))
-				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
+				.Enabled(Candidate.Type != EMixtormatLayerChildType::Behavior
+					|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator));
 		}
 	}
 	// A group's shared children are exactly as valid a source as a layer's -- see
@@ -339,7 +340,8 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 				{
 					ReplaceChildInstanceSource(Address, NewSource);
 				}))
-				.Enabled(!IsGeneratorFlow(Candidate) || (ScopeOwner && CanOwnGeneratorFlow(*ScopeOwner)));
+				.Enabled(Candidate.Type != EMixtormatLayerChildType::Behavior
+					|| (ScopeOwner && ScopeOwner->Type == EMixtormatLayerChildType::Generator));
 		}
 	}
 	if (Menu.IsEmpty())

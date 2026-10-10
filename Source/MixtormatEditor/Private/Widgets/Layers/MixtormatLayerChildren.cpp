@@ -31,18 +31,6 @@ namespace MixtormatLayersPrivate
 			&& EffectTypeOf(Child) == EMixtormatEffectType::FlowWarp;
 	}
 
-	bool IsGeneratorFlow(const FMixtormatLayerChild& Child)
-	{
-		return Child.Type == EMixtormatLayerChildType::Effect
-			&& MixtormatIsGeneratorFlowEffect(EffectTypeOf(Child));
-	}
-
-	bool CanOwnGeneratorFlow(const FMixtormatLayerChild& Child)
-	{
-		return Child.Type == EMixtormatLayerChildType::Generator
-			&& MixtormatCanOwnGeneratorFlow(Child.Generator.Type);
-	}
-
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		return MixtormatChildScope::CanOwnScopedMasks(Child);
@@ -532,9 +520,9 @@ namespace MixtormatLayersPrivate
 		}
 		const TArray<FMixtormatLayerChild>* Children = FindChildrenInScope(Scope, DestOwnerId);
 		const int32 SourceIndex = Children ? FindChildById(*Children, SourceChildId) : INDEX_NONE;
-		// One legal ancestor read: an owned generator flow tool may use a named, copyable
+		// One legal ancestor read: an owned Behavior may use a named, copyable
 		// feature from its *own* generator as a gate. The generator pass publishes that
-		// pre-flow snapshot before solving the tool; the final/post-flow output is not
+		// pre-flow snapshot before solving the Behavior; the final/post-flow output is not
 		// consulted here. No other ancestor edge is exempt from feedback rejection.
 		if (Child.Type == EMixtormatLayerChildType::Mask && Children && Source
 			&& Scope.GetLayers().ContainsByPredicate([DestOwnerId](const FMixtormatLayer& Layer)
@@ -546,7 +534,7 @@ namespace MixtormatLayersPrivate
 		{
 			const int32 FlowIndex = FindChildById(*Children, Child.ScopeOwnerChildId);
 			if (Children->IsValidIndex(FlowIndex) && SourceIndex < FlowIndex
-				&& FlowIndex < InsertIndex && IsGeneratorFlow((*Children)[FlowIndex])
+				&& FlowIndex < InsertIndex && (*Children)[FlowIndex].Type == EMixtormatLayerChildType::Behavior
 				&& (*Children)[FlowIndex].ScopeOwnerChildId == SourceChildId)
 			{
 				const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
@@ -695,10 +683,6 @@ namespace MixtormatLayersPrivate
 		if (Child.Type == EMixtormatLayerChildType::Behavior)
 		{
 			return Owner.Type == EMixtormatLayerChildType::Generator;
-		}
-		if (IsGeneratorFlow(Child))
-		{
-			return CanOwnGeneratorFlow(Owner);
 		}
 		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
@@ -1390,10 +1374,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 			case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
-			case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
-			case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
-			case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
-			case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
 		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 			case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
@@ -1406,10 +1386,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return Child.Effect.StainMode == EMixtormatStainMode::Deposit
 				? LOCTEXT("DepositStainEffectName", "Stain Deposit")
 				: LOCTEXT("WetStainEffectName", "Wet Stain");
-		case EMixtormatEffectType::ShapeDeform: return LOCTEXT("ShapeDeformEffectName", "Shape Deform");
-		case EMixtormatEffectType::GeneratorFlow: return LOCTEXT("GeneratorFlowEffectName", "Generator Flow");
-		case EMixtormatEffectType::GravityFlow: return LOCTEXT("GravityFlowEffectName", "Gravity Flow");
-		case EMixtormatEffectType::FlowCarve: return LOCTEXT("FlowCarveEffectName", "Flow Carve");
 		case EMixtormatEffectType::Erosion: return LOCTEXT("ErosionEffectName", "Erosion");
 		case EMixtormatEffectType::Grade:   return LOCTEXT("GradeEffectName", "Grade");
 		case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");

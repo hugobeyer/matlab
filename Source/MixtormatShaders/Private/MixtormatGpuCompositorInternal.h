@@ -1007,33 +1007,33 @@ namespace MixtormatGpuCompositor
 	{
 		EMixtormatBehaviorFlowMode Mode = EMixtormatBehaviorFlowMode::Transport;
 		// Native Behavior flow solve data. UV distances and degree angles.
-		uint32 GeneratorFlowSource = 0;
-		float GeneratorFlowAmount = 1.0f;
-		float GeneratorFlowTangent = 0.0f;
-		float GeneratorFlowAngle = 0.0f;
-		float GravityFlowSurfaceFollow = 1.0f;
-		float GravityFlowDeflection = 1.0f;
-		float GeneratorFlowBend = 0.0f;
-		uint32 GeneratorFlowSeed = 1;
-		int32 GeneratorFlowRadius = 2;
-		float GeneratorFlowSmooth = 8.0f;
-		float GeneratorFlowReach = 0.1f;
-		float GeneratorFlowFeather = 0.5f;
-		float GeneratorFlowOffsetAlong = 0.0f;
-		float GeneratorFlowOffsetAcross = 0.0f;
-		float GeneratorFlowShapeOffset = 0.0f;
-		float GeneratorFlowBulge = 0.0f;
-		float GeneratorFlowTraceLength = 0.1f;
-		int32 GeneratorFlowSteps = 16;
-		float GeneratorFlowWarpStrength = 1.0f;
-		uint32 GeneratorFlowCarveMode = 0;
-		float GeneratorFlowDepth = 1.0f;
-		float GeneratorFlowWidth = 0.01f;
-		float GeneratorFlowFalloff = 1.0f;
+		uint32 FlowSource = 0;
+		float FlowAmount = 1.0f;
+		float FlowTangent = 0.0f;
+		float FlowAngle = 0.0f;
+		float GravitySurfaceFollow = 1.0f;
+		float GravityDeflection = 1.0f;
+		float FlowBend = 0.0f;
+		uint32 FlowSeed = 1;
+		int32 FlowRadius = 2;
+		float FlowSmooth = 8.0f;
+		float Reach = 0.1f;
+		float Feather = 0.5f;
+		float FlowOffsetAlong = 0.0f;
+		float FlowOffsetAcross = 0.0f;
+		float ShapeOffset = 0.0f;
+		float Bulge = 0.0f;
+		float TraceLength = 0.1f;
+		int32 TraceSteps = 16;
+		float WarpStrength = 1.0f;
+		uint32 CarveMode = 0;
+		float Depth = 1.0f;
+		float Width = 0.01f;
+		float Falloff = 1.0f;
 		// Dedicated per-pixel drivers for BehaviorFlowSettings:
-		// 0: GeneratorFlowAmount, 1: GeneratorFlowTraceLength, 2: GeneratorFlowWarpStrength,
-		// 3: GeneratorFlowDepth, 4: GeneratorFlowShapeOffset, 5: GeneratorFlowBulge,
-		// 6: GeneratorFlowReach, 7: GeneratorFlowFeather
+		// 0: FlowAmount, 1: TraceLength, 2: WarpStrength,
+		// 3: Depth, 4: ShapeOffset, 5: Bulge,
+		// 6: Reach, 7: Feather
 		FScalarDriverRenderData SettingsDrivers[8];
 	};
 

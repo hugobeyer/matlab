@@ -556,7 +556,8 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
-	if (IsMaskFilter(Group->Children[ChildIndex]) || IsGeneratorFlow(Group->Children[ChildIndex]))
+	if (IsMaskFilter(Group->Children[ChildIndex])
+		|| Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
@@ -638,7 +639,8 @@ FReply SMixtormat::MoveChildToLayer(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
@@ -709,7 +711,8 @@ FReply SMixtormat::MoveChildToGroup(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex]) || IsGeneratorFlow(SourceLayer.Children[ChildIndex]))
+	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
+		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}

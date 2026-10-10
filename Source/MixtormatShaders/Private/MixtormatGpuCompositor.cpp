@@ -1765,8 +1765,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			}
 			const EMixtormatEffectType ResolvedType =
 				EffectAsset ? EffectAsset->EffectType : LayerEffect.ProceduralType;
-			// Only Behavior children execute generator flow.
-			if (MixtormatIsGeneratorFlowEffect(ResolvedType)) { continue; }
 			if (ResolvedType == EMixtormatEffectType::Grade)
 			{
 				int32 GradeCount = 0;

@@ -43,10 +43,10 @@ int JumpStep;
 // Shared solve controls.
 uint Source;          // 0 signed distance, 1 height
 float Tangent;        // 0 normal, 1 contour (90 degrees)
-float Angle;          // degrees; Gravity Flow: rotation of (0,-1)
-// @param GravityFlowSurfaceFollow
+float Angle;          // degrees; Gravity mode: rotation of (0,-1)
+// @param GravitySurfaceFollow
 float GravitySurfaceFollow;
-// @param GravityFlowDeflection
+// @param GravityDeflection
 float GravityDeflection;
 float Bend;           // degrees, peak of the periodic bend noise
 uint Seed;
@@ -63,7 +63,7 @@ uint HasCoverage;
 uint GeneratorLayer;
 
 // Apply controls.
-uint Mode;            // 0 Shape Deform, 1 Generator Flow, 2 Flow Carve, 3 Gravity Flow
+uint Mode;            // 0 Deform, 1 Warp, 2 Carve, 3 Gravity
 float ShapeOffset;    // UV, signed
 float Bulge;          // UV, signed
 float TraceLength;    // UV

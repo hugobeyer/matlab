@@ -253,7 +253,7 @@ namespace MixtormatChildScope
 		Result.Issue = CheckComposition(Behavior.Influence, false);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		if ((bTraced || Behavior.Type == EMixtormatBehaviorType::FlowField)
-			&& Behavior.Flow.GeneratorFlowSource == EMixtormatGeneratorFlowSource::SignedDistance
+			&& Behavior.Flow.FlowSource == EMixtormatBehaviorFlowSource::SignedDistance
 			&& !MixtormatGeneratorHasFlowBoundary(Owner.Generator.Type))
 		{
 			Result.Issue = EBehaviorInputIssue::UnsupportedBoundary;

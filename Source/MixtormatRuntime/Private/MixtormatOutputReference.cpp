@@ -540,8 +540,8 @@ namespace MixtormatOutputReferences
 		const bool bNoiseFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
 			&& Source.Generator.Type == EMixtormatGeneratorType::Noise;
 		const bool bBehaviorFlow = (bFlow || bUV) && Source.Type == EMixtormatLayerChildType::Behavior;
-		if (!bNoiseFlow && !bBehaviorFlow && Source.Type != EMixtormatLayerChildType::Effect) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
-		if (bNoiseFlow ? !Source.Generator.bEnabled : (bBehaviorFlow ? !Source.Behavior.bEnabled : !Source.Effect.bEnabled)) { return Reject(EStructuralLinkIssue::DisabledSource); }
+		if (!bNoiseFlow && !bBehaviorFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+		if (bNoiseFlow ? !Source.Generator.bEnabled : !Source.Behavior.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
 		if (bNoiseFlow ? Source.ScopeOwnerChildId.IsValid() : !Source.ScopeOwnerChildId.IsValid())
 		{
 			return Reject(EStructuralLinkIssue::WrongSourceScope);
@@ -581,25 +581,7 @@ namespace MixtormatOutputReferences
 		{
 			return Reject(EStructuralLinkIssue::ForwardSource);
 		}
-		if (bNoiseFlow)
-		{
-			Status.Issue = EStructuralLinkIssue::None;
-			return SourceIndex;
-		}
-		EMixtormatEffectType Type = Source.Effect.ProceduralType;
-		if (!Source.Effect.Effect.IsNull())
-		{
-			const UMixtormatEffect* Asset = Source.Effect.Effect.Get();
-			if (!Asset && IsInGameThread()) { Asset = Source.Effect.Effect.LoadSynchronous(); }
-			if (!Asset) { return Reject(EStructuralLinkIssue::UnavailableEffectAsset); }
-			Type = Asset->EffectType;
-		}
-		if (!MixtormatIsGeneratorFlowEffect(Type) || (bUV && Type == EMixtormatEffectType::FlowCarve)
-					|| (Owner.Generator.Type == EMixtormatGeneratorType::Noise
-						&& Source.Effect.GeneratorFlowSource != EMixtormatGeneratorFlowSource::Height))
-		{
-			return Reject(EStructuralLinkIssue::WrongSourceKind);
-		}
+		// bNoiseFlow is the only remaining producer kind.
 		Status.Issue = EStructuralLinkIssue::None;
 		return SourceIndex;
 	}

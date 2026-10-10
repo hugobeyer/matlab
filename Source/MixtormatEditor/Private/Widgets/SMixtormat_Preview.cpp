@@ -606,57 +606,6 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	{
 		return IsOutputReferenceAvailable(GetSelectedChildAddress());
 	}
-	if (Child.Type == EMixtormatLayerChildType::Effect)
-	{
-		const UMixtormatEffect* Asset = Child.Effect.Effect.LoadSynchronous();
-		const EMixtormatEffectType Type = Asset ? Asset->EffectType : Child.Effect.ProceduralType;
-		if (MixtormatIsGeneratorFlowEffect(Type))
-		{
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-			if (!Children)
-			{
-				return false;
-			}
-			if (!Child.ScopeOwnerChildId.IsValid())
-			{
-				return false;
-			}
-			const FGuid GroupId = WorkingLayers.IsValidIndex(SelectedLayerIndex)
-				? WorkingLayers[SelectedLayerIndex].GroupId : SelectedGroupId;
-			if (const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId))
-			{
-				if (!Group->bEnabled)
-				{
-					return false;
-				}
-			}
-			int32 CurrentIndex = ResolveChildIndexAt(Address);
-			FGuid OwnerId = Child.ScopeOwnerChildId;
-			bool bImmediateOwner = true;
-			// Require preceding, enabled ancestors. This also rejects cycles and missing owners.
-			while (OwnerId.IsValid())
-			{
-				const int32 OwnerIndex = Children->IndexOfByPredicate(
-					[OwnerId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == OwnerId; });
-				if (OwnerIndex == INDEX_NONE || OwnerIndex >= CurrentIndex)
-				{
-					return false;
-				}
-				const FMixtormatLayerChild& Owner = (*Children)[OwnerIndex];
-				if (!IsGroupChildEnabled(Owner)
-					|| (bImmediateOwner && (Owner.Type != EMixtormatLayerChildType::Generator
-						|| !MixtormatCanOwnGeneratorFlow(Owner.Generator.Type))))
-				{
-					return false;
-				}
-				bImmediateOwner = false;
-				CurrentIndex = OwnerIndex;
-				OwnerId = Owner.ScopeOwnerChildId;
-			}
-			return ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask, NAME_None).IsValid();
-		}
-	}
 	// An ID Group folds however many producers sit inside it -- none, one, several, or nested
 	// groups -- so it always has a map to show.
 

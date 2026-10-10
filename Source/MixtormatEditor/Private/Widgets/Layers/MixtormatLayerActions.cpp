@@ -875,7 +875,8 @@ FReply SMixtormat::ReplaceChildInstanceSource(
 	}
 	const FMixtormatLayerChild* NewSourceChild = MixtormatParameterBinding::FindChild(
 		FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, NewSource.OwnerId, NewSource.ChildId);
-	if (NewSourceChild && IsGeneratorFlow(*NewSourceChild) && !Placement->ScopeOwnerChildId.IsValid())
+	if (NewSourceChild && NewSourceChild->Type == EMixtormatLayerChildType::Behavior
+		&& !Placement->ScopeOwnerChildId.IsValid())
 	{
 		return FReply::Unhandled();
 	}
@@ -937,8 +938,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	}
 
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
-		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -1200,8 +1200,7 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath EffectPath)
 {
 	const UMixtormatEffect* Effect = Cast<UMixtormatEffect>(EffectPath.TryLoad());
-	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling
-		|| MixtormatIsGeneratorFlowEffect(Effect->EffectType))
+	if (!Effect || Effect->EffectType == EMixtormatEffectType::Peeling)
 	{
 		return FReply::Handled();
 	}
@@ -1498,7 +1497,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			if (Generator && Generator->Type == EMixtormatLayerChildType::Generator
 				&& !MixtormatGeneratorHasFlowBoundary(Generator->Generator.Type))
 			{
-				Child.Behavior.Flow.GeneratorFlowSource = EMixtormatGeneratorFlowSource::Height;
+				Child.Behavior.Flow.FlowSource = EMixtormatBehaviorFlowSource::Height;
 			}
 		}
 		const int32 CreatedIndex = InsertScopedChild(*Children, ResolveChildIndexAt(Owner), MoveTemp(Child));

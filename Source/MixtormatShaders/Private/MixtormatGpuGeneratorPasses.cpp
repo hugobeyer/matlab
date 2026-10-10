@@ -1964,17 +1964,17 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	bool IsNeutralFlowTool(const FBehaviorRenderData& Behavior)
 	{
 		const FBehaviorFlowRenderData& Flow = Behavior.Flow;
-		if (Flow.GeneratorFlowAmount == 0.0f) { return true; }
+		if (Flow.FlowAmount == 0.0f) { return true; }
 		switch (Behavior.Type)
 		{
 		case EMixtormatBehaviorType::FlowField:
 			return false;
 		case EMixtormatBehaviorType::Deform:
-			return Flow.GeneratorFlowShapeOffset == 0.0f && Flow.GeneratorFlowBulge == 0.0f;
+			return Flow.ShapeOffset == 0.0f && Flow.Bulge == 0.0f;
 		case EMixtormatBehaviorType::Warp:
-			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowWarpStrength == 0.0f;
+			return Flow.TraceLength == 0.0f || Flow.WarpStrength == 0.0f;
 		case EMixtormatBehaviorType::Carve:
-			return Flow.GeneratorFlowTraceLength == 0.0f || Flow.GeneratorFlowDepth == 0.0f;
+			return Flow.TraceLength == 0.0f || Flow.Depth == 0.0f;
 		default:
 			return true;
 		}
@@ -2069,7 +2069,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
 			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
 			// Height-only producers must never bind a null boundary or invent an SDF.
-			if (!BoundaryField && Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance)) { continue; }
+			if (!BoundaryField && Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
 			const bool bNeutral = IsNeutralFlowTool(FlowChild.Behavior);
@@ -2105,31 +2105,31 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->OutputSize = Size;
 				P->SolveSize = SolveSize;
 				P->JumpStep = 1;
-				P->Source = Flow.GeneratorFlowSource;
-				P->Tangent = Flow.GeneratorFlowTangent;
-				P->Angle = Flow.GeneratorFlowAngle;
-				P->GravitySurfaceFollow = Flow.GravityFlowSurfaceFollow;
-				P->GravityDeflection = Flow.GravityFlowDeflection;
-				P->Bend = Flow.GeneratorFlowBend;
-				P->Seed = Flow.GeneratorFlowSeed;
-				P->Radius = Flow.GeneratorFlowRadius;
-				P->Smooth = Flow.GeneratorFlowSmooth;
+				P->Source = Flow.FlowSource;
+				P->Tangent = Flow.FlowTangent;
+				P->Angle = Flow.FlowAngle;
+				P->GravitySurfaceFollow = Flow.GravitySurfaceFollow;
+				P->GravityDeflection = Flow.GravityDeflection;
+				P->Bend = Flow.FlowBend;
+				P->Seed = Flow.FlowSeed;
+				P->Radius = Flow.FlowRadius;
+				P->Smooth = Flow.FlowSmooth;
 				P->BlurAxis = FIntPoint(1, 0);
-				P->Reach = Flow.GeneratorFlowReach;
-				P->Feather = Flow.GeneratorFlowFeather;
-				P->Amount = Flow.GeneratorFlowAmount;
-				P->OffsetAlong = Flow.GeneratorFlowOffsetAlong;
-				P->OffsetAcross = Flow.GeneratorFlowOffsetAcross;
+				P->Reach = Flow.Reach;
+				P->Feather = Flow.Feather;
+				P->Amount = Flow.FlowAmount;
+				P->OffsetAlong = Flow.FlowOffsetAlong;
+				P->OffsetAcross = Flow.FlowOffsetAcross;
 				P->HasMask = bHasMask ? 1u : 0u;
 				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
 					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
 					: bGravity ? 3u : 1u;
 				const float BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
-				P->ShapeOffset = Flow.GeneratorFlowShapeOffset;
-				P->Bulge = Flow.GeneratorFlowBulge;
-				P->TraceLength = Flow.GeneratorFlowTraceLength;
-				P->Steps = Flow.GeneratorFlowSteps;
-				P->WarpStrength = Flow.GeneratorFlowWarpStrength;
+				P->ShapeOffset = Flow.ShapeOffset;
+				P->Bulge = Flow.Bulge;
+				P->TraceLength = Flow.TraceLength;
+				P->Steps = Flow.TraceSteps;
+				P->WarpStrength = Flow.WarpStrength;
 				P->BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
 				P->UseInfluence = bUseBehaviorInfluence ? 1u : 0u;
 				P->InfluenceField = BehaviorInfluence;
@@ -2176,10 +2176,10 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->FlowSettingsDriverSignal5 = SettingsSignals[5];
 				P->FlowSettingsDriverSignal6 = SettingsSignals[6];
 				P->FlowSettingsDriverSignal7 = SettingsSignals[7];
-				P->CarveMode = Flow.GeneratorFlowCarveMode;
-				P->Depth = Flow.GeneratorFlowDepth;
-				P->Width = Flow.GeneratorFlowWidth;
-				P->Falloff = Flow.GeneratorFlowFalloff;
+				P->CarveMode = Flow.CarveMode;
+				P->Depth = Flow.Depth;
+				P->Width = Flow.Width;
+				P->Falloff = Flow.Falloff;
 				P->LinearWrapSampler = Sampler;
 				P->RockHeight = Current;
 				P->BoundaryField = BoundaryField ? BoundaryField : Ctx.EmptyPatternUV;
@@ -2192,7 +2192,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			// Gravity + Height is evaluated directly at full resolution, including flat texels.
 			FRDGTextureRef SeedData = Ctx.EmptyPatternUV;
 			FRDGTextureRef JumpResult = Ctx.EmptyPatternUV;
-			if (!bGravity || Flow.GeneratorFlowSource == static_cast<uint32>(EMixtormatGeneratorFlowSource::SignedDistance))
+			if (!bGravity || Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance))
 			{
 				SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
 				FRDGTextureRef Jump[2] = {
@@ -2264,7 +2264,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 
 			// Smooth: X then Y. Skipped at zero, where the raw field doubles as the smoothed one.
 			FRDGTextureRef FlowSmooth = FlowField;
-			if (Flow.GeneratorFlowSmooth != 0.0f)
+			if (Flow.FlowSmooth != 0.0f)
 			{
 				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(7);
 				FRDGTextureRef Blurred[2] = {

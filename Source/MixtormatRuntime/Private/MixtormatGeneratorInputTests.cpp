@@ -30,10 +30,10 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 			Child.Generator.bEnabled = true;
 		}
 		FMixtormatLayerChild& Tool = Layer.Children[1];
-		Tool.Type = EMixtormatLayerChildType::Effect;
+		Tool.Type = EMixtormatLayerChildType::Behavior;
 		Tool.ScopeOwnerChildId = Layer.Children[0].ChildId;
-		Tool.Effect.bEnabled = true;
-		Tool.Effect.ProceduralType = EMixtormatEffectType::GeneratorFlow;
+		Tool.Behavior.bEnabled = true;
+		Tool.Behavior.Type = EMixtormatBehaviorType::FlowField;
 	}
 	FMixtormatOutputReference Reference;
 	Reference.SourceLayerId = Layers[0].LayerId;
@@ -97,17 +97,20 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::CliffStrata;
 	TestEqual(TEXT("Cliff flow ownership remains unavailable"), Resolve(0, 2), INDEX_NONE);
 	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::StrataCarver;
-	Layers[0].Children[1].Effect.bEnabled = false;
+	Layers[0].Children[1].Behavior.bEnabled = false;
 	TestEqual(TEXT("Disabled flow tool"), Resolve(0, 2), INDEX_NONE);
-	Layers[0].Children[1].Effect.bEnabled = true;
+	Layers[0].Children[1].Behavior.bEnabled = true;
 	Reference.Kind = EMixtormatPublishedFieldKind::UVMap;
 	Reference.OutputName = FName(TEXT("WarpedUV"));
-	TestEqual(TEXT("Generator Flow publishes UVMap"), Resolve(0, 2), 1);
-	Layers[0].Children[1].Effect.ProceduralType = EMixtormatEffectType::FlowCarve;
-	TestEqual(TEXT("Flow Carve has no UVMap output"), Resolve(0, 2), INDEX_NONE);
+	TestEqual(TEXT("Flow Field has no UVMap output"), Resolve(0, 2), INDEX_NONE);
+	Layers[0].Children[1].Behavior.Type = EMixtormatBehaviorType::Warp;
+	Layers[0].Children[1].Behavior.Flow.bUseTracedFlow = true;
+	TestEqual(TEXT("Traced Warp publishes UVMap"), Resolve(0, 2), 1);
+	Layers[0].Children[1].Behavior.Type = EMixtormatBehaviorType::Carve;
+	TestEqual(TEXT("Traced Carve has no UVMap output"), Resolve(0, 2), INDEX_NONE);
 	Reference.Kind = EMixtormatPublishedFieldKind::Flow;
 	Reference.OutputName = FName(TEXT("FlowDirection"));
-	TestEqual(TEXT("Flow Carve still publishes Flow"), Resolve(0, 2), 1);
+	TestEqual(TEXT("Traced Carve still publishes Flow"), Resolve(0, 2), 1);
 	Reference.bEnabled = false;
 	TestEqual(TEXT("Disabled connection"), Resolve(0, 2), INDEX_NONE);
 	return true;

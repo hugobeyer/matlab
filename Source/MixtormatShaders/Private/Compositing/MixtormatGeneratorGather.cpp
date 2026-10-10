@@ -404,39 +404,39 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FBehaviorFlowRenderData& FlowOut = Out.Flow;
 	FlowOut.Mode = Flow.Mode;
 	Out.Stage = Behavior.Stage;
-	FlowOut.GeneratorFlowSource = static_cast<uint32>(Flow.GeneratorFlowSource);
-	FlowOut.GeneratorFlowAmount = FMath::IsFinite(Flow.GeneratorFlowAmount) ? Flow.GeneratorFlowAmount : FMixtormatBehaviorFlowSettings().GeneratorFlowAmount;
-	FlowOut.GeneratorFlowTangent = FMath::IsFinite(Flow.GeneratorFlowTangent) ? Flow.GeneratorFlowTangent : FMixtormatBehaviorFlowSettings().GeneratorFlowTangent;
-	FlowOut.GeneratorFlowAngle = FMath::IsFinite(Flow.GeneratorFlowAngle) ? Flow.GeneratorFlowAngle : FMixtormatBehaviorFlowSettings().GeneratorFlowAngle;
-	FlowOut.GravityFlowSurfaceFollow = FMath::IsFinite(Flow.GravityFlowSurfaceFollow) ? Flow.GravityFlowSurfaceFollow : FMixtormatBehaviorFlowSettings().GravityFlowSurfaceFollow;
-	FlowOut.GravityFlowDeflection = FMath::IsFinite(Flow.GravityFlowDeflection) ? Flow.GravityFlowDeflection : FMixtormatBehaviorFlowSettings().GravityFlowDeflection;
-	FlowOut.GeneratorFlowBend = FMath::IsFinite(Flow.GeneratorFlowBend) ? Flow.GeneratorFlowBend : FMixtormatBehaviorFlowSettings().GeneratorFlowBend;
-	FlowOut.GeneratorFlowSeed = static_cast<uint32>(Flow.GeneratorFlowSeed);
-	FlowOut.GeneratorFlowRadius = FMath::Max(Flow.GeneratorFlowRadius, 1);
-	FlowOut.GeneratorFlowSmooth = FMath::IsFinite(Flow.GeneratorFlowSmooth) ? Flow.GeneratorFlowSmooth : FMixtormatBehaviorFlowSettings().GeneratorFlowSmooth;
-	FlowOut.GeneratorFlowReach = FMath::IsFinite(Flow.GeneratorFlowReach) ? Flow.GeneratorFlowReach : FMixtormatBehaviorFlowSettings().GeneratorFlowReach;
-	FlowOut.GeneratorFlowFeather = FMath::IsFinite(Flow.GeneratorFlowFeather) ? Flow.GeneratorFlowFeather : FMixtormatBehaviorFlowSettings().GeneratorFlowFeather;
-	FlowOut.GeneratorFlowOffsetAlong = FMath::IsFinite(Flow.GeneratorFlowOffsetAlong) ? Flow.GeneratorFlowOffsetAlong : FMixtormatBehaviorFlowSettings().GeneratorFlowOffsetAlong;
-	FlowOut.GeneratorFlowOffsetAcross = FMath::IsFinite(Flow.GeneratorFlowOffsetAcross) ? Flow.GeneratorFlowOffsetAcross : FMixtormatBehaviorFlowSettings().GeneratorFlowOffsetAcross;
-	FlowOut.GeneratorFlowShapeOffset = FMath::IsFinite(Flow.GeneratorFlowShapeOffset) ? Flow.GeneratorFlowShapeOffset : FMixtormatBehaviorFlowSettings().GeneratorFlowShapeOffset;
-	FlowOut.GeneratorFlowBulge = FMath::IsFinite(Flow.GeneratorFlowBulge) ? Flow.GeneratorFlowBulge : FMixtormatBehaviorFlowSettings().GeneratorFlowBulge;
-	FlowOut.GeneratorFlowTraceLength = FMath::IsFinite(Flow.GeneratorFlowTraceLength) ? Flow.GeneratorFlowTraceLength : FMixtormatBehaviorFlowSettings().GeneratorFlowTraceLength;
-	FlowOut.GeneratorFlowSteps = FMath::Max(Flow.GeneratorFlowSteps, 1);
-	FlowOut.GeneratorFlowWarpStrength = FMath::IsFinite(Flow.GeneratorFlowWarpStrength) ? Flow.GeneratorFlowWarpStrength : FMixtormatBehaviorFlowSettings().GeneratorFlowWarpStrength;
-	FlowOut.GeneratorFlowCarveMode = static_cast<uint32>(Flow.GeneratorFlowCarveMode);
-	FlowOut.GeneratorFlowDepth = FMath::IsFinite(Flow.GeneratorFlowDepth) ? Flow.GeneratorFlowDepth : FMixtormatBehaviorFlowSettings().GeneratorFlowDepth;
-	FlowOut.GeneratorFlowWidth = FMath::IsFinite(Flow.GeneratorFlowWidth) ? Flow.GeneratorFlowWidth : FMixtormatBehaviorFlowSettings().GeneratorFlowWidth;
-	FlowOut.GeneratorFlowFalloff = FMath::IsFinite(Flow.GeneratorFlowFalloff) ? Flow.GeneratorFlowFalloff : FMixtormatBehaviorFlowSettings().GeneratorFlowFalloff;
+	FlowOut.FlowSource = static_cast<uint32>(Flow.FlowSource);
+	FlowOut.FlowAmount = FMath::IsFinite(Flow.FlowAmount) ? Flow.FlowAmount : FMixtormatBehaviorFlowSettings().FlowAmount;
+	FlowOut.FlowTangent = FMath::IsFinite(Flow.FlowTangent) ? Flow.FlowTangent : FMixtormatBehaviorFlowSettings().FlowTangent;
+	FlowOut.FlowAngle = FMath::IsFinite(Flow.FlowAngle) ? Flow.FlowAngle : FMixtormatBehaviorFlowSettings().FlowAngle;
+	FlowOut.GravitySurfaceFollow = FMath::IsFinite(Flow.GravitySurfaceFollow) ? Flow.GravitySurfaceFollow : FMixtormatBehaviorFlowSettings().GravitySurfaceFollow;
+	FlowOut.GravityDeflection = FMath::IsFinite(Flow.GravityDeflection) ? Flow.GravityDeflection : FMixtormatBehaviorFlowSettings().GravityDeflection;
+	FlowOut.FlowBend = FMath::IsFinite(Flow.FlowBend) ? Flow.FlowBend : FMixtormatBehaviorFlowSettings().FlowBend;
+	FlowOut.FlowSeed = static_cast<uint32>(Flow.FlowSeed);
+	FlowOut.FlowRadius = FMath::Max(Flow.FlowRadius, 1);
+	FlowOut.FlowSmooth = FMath::IsFinite(Flow.FlowSmooth) ? Flow.FlowSmooth : FMixtormatBehaviorFlowSettings().FlowSmooth;
+	FlowOut.Reach = FMath::IsFinite(Flow.Reach) ? Flow.Reach : FMixtormatBehaviorFlowSettings().Reach;
+	FlowOut.Feather = FMath::IsFinite(Flow.Feather) ? Flow.Feather : FMixtormatBehaviorFlowSettings().Feather;
+	FlowOut.FlowOffsetAlong = FMath::IsFinite(Flow.FlowOffsetAlong) ? Flow.FlowOffsetAlong : FMixtormatBehaviorFlowSettings().FlowOffsetAlong;
+	FlowOut.FlowOffsetAcross = FMath::IsFinite(Flow.FlowOffsetAcross) ? Flow.FlowOffsetAcross : FMixtormatBehaviorFlowSettings().FlowOffsetAcross;
+	FlowOut.ShapeOffset = FMath::IsFinite(Flow.ShapeOffset) ? Flow.ShapeOffset : FMixtormatBehaviorFlowSettings().ShapeOffset;
+	FlowOut.Bulge = FMath::IsFinite(Flow.Bulge) ? Flow.Bulge : FMixtormatBehaviorFlowSettings().Bulge;
+	FlowOut.TraceLength = FMath::IsFinite(Flow.TraceLength) ? Flow.TraceLength : FMixtormatBehaviorFlowSettings().TraceLength;
+	FlowOut.TraceSteps = FMath::Max(Flow.TraceSteps, 1);
+	FlowOut.WarpStrength = FMath::IsFinite(Flow.WarpStrength) ? Flow.WarpStrength : FMixtormatBehaviorFlowSettings().WarpStrength;
+	FlowOut.CarveMode = static_cast<uint32>(Flow.CarveMode);
+	FlowOut.Depth = FMath::IsFinite(Flow.Depth) ? Flow.Depth : FMixtormatBehaviorFlowSettings().Depth;
+	FlowOut.Width = FMath::IsFinite(Flow.Width) ? Flow.Width : FMixtormatBehaviorFlowSettings().Width;
+	FlowOut.Falloff = FMath::IsFinite(Flow.Falloff) ? Flow.Falloff : FMixtormatBehaviorFlowSettings().Falloff;
 	// Resolve drivers for FMixtormatBehaviorFlowSettings properties:
 	const FName FlowSettingsProperties[8] = {
-		TEXT("GeneratorFlowAmount"),
-		TEXT("GeneratorFlowTraceLength"),
-		TEXT("GeneratorFlowWarpStrength"),
-		TEXT("GeneratorFlowDepth"),
-		TEXT("GeneratorFlowShapeOffset"),
-		TEXT("GeneratorFlowBulge"),
-		TEXT("GeneratorFlowReach"),
-		TEXT("GeneratorFlowFeather")
+		TEXT("FlowAmount"),
+		TEXT("TraceLength"),
+		TEXT("WarpStrength"),
+		TEXT("Depth"),
+		TEXT("ShapeOffset"),
+		TEXT("Bulge"),
+		TEXT("Reach"),
+		TEXT("Feather")
 	};
 	for (int32 Slot = 0; Slot < 8; ++Slot)
 	{
