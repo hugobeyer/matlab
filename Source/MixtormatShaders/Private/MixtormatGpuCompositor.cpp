@@ -1574,7 +1574,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	{
 		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
 		MixtormatParameterBinding::ApplyDirectReferences(
-			FMixtormatBindingScope{EffectiveLayers, Groups}, Layer);
+			FMixtormatBindingScope{EffectiveLayers, Groups, Sources}, Layer);
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
 		if (bCacheLayers)
 		{
