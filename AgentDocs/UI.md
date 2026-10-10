@@ -226,10 +226,10 @@ unreadable files are not preserved. Missing recognized keys retain the current i
 
 ## Left-column visual contract — Layers / Library / Global
 
-The entire left column and navigation rail use the shared `Palette.Panel` ground.
+The entire left column, Library and navigation rail use the shared darker `Palette.Shell` ground, matching `Mixtormat.Panel`; `Palette.Panel` is reserved for raised/internal controls.
 The rail's inactive button body uses the same ground by default, with active/hover
 states retaining the shared button recipe; `PreviewLayout.LeftRailButtonSurfaceStrength`
-lifts an inactive plate without hardcoding a colour. `LeftRailShadowOpacity`
+lifts an inactive plate without hardcoding a colour. `LeftRailHoverSurfaceStrength` and `LeftRailSelectedSurfaceStrength` keep active states subtly raised. `LeftRailShadowOpacity`
 controls the full-height vertical shade, `LeftRailShadeBias` its bias, and
 `bLeftRailShadeInverted` reverses the direction (on by default). These are
 UI STYLE > Preview > Layout controls, not marking-menu properties.
@@ -253,7 +253,7 @@ thumbnail-bearing list of saved mixes and imported user surfaces, using
 `SMixtormatTile` and the shared card-body surface recipe; existing right-click
 asset actions remain. Library no longer shows arbitrary editable-layer counts,
 because that count is not an entry name or asset type. Layout, item spacing and
-thumbnail size are governed by `Shell.LibraryPagePadding`,
+thumbnail size (28px default, with a 2px item gap) are governed by `Shell.LibraryPagePadding`,
 `LibrarySearchBottomGap`, `LibraryItemGap`, and `LibraryThumbnailSize`.
 Text follows shared `CardTitle` / `LayerName` typography and
 `Palette.TextMuted` / `Palette.Text` with additional
@@ -283,8 +283,11 @@ delegating workspace actions back to `SMixtormat`.
 Scene/lighting constants: `Preview/MixtormatPreviewSceneSettings.*`.
 Light gizmo: `Preview/SMixtormatLightGizmo.*`.
 
-Workspace layout: Layers/Library/Global occupy a resizable left column; Layers alone can
-pop out and return by rail click or snap-back drag. The gallery is one resizable bottom
+Workspace layout: Layers/Library/Global occupy a single resizable left column.
+Layers no longer has a draggable header or pop-out mode; it is always docked under
+the navigation rail. The L shortcut switches between Layers and the previously
+selected Library/Global page. The Inspector alone retains Docked / Overlay / Hidden.
+The gallery is one resizable bottom
 drawer over the whole workspace, replacing both gallery splitters. Its header reads `GALLERY`;
 `MATERIALS` and `MASKS` label its two panes. A header click collapses it; dragging past the normal
 Slate drag threshold resizes it. Collapse leaves a fixed-width centred restore tab
@@ -300,8 +303,7 @@ Inspector remains dockable. These gallery changes have source review only, not v
 The left rail has its own `NavigationRail` icon role (18px glyph, 30px target by default),
 independent of toolbar sizing. It overlays the full-width left page's leading
 `PreviewLayout.LeftRailContentInset` (34px default); the page surface remains one
-continuous column. This inset only affects docked pages, not a floating Layers
-window. The tab group has no separate spine, no neck fill and no offset drop
+continuous column. All three pages are docked, with no extra Layers grab margin. The tab group has no separate spine, no neck fill and no offset drop
 shadow: `MakeNavigationRailTabRecipe` reuses the shared group-button recipe
 and samples a single continuous vertical shade from first to last tab.
 `PreviewLayout.LeftRailShadowOpacity` retains its saved ID but now means
@@ -311,7 +313,9 @@ vertical distribution (higher means more shading near the bottom).
 applies only to the outside corners, never internal seams. Border opacity
 and thickness still affect the shared group-button hairline.
 `LeftRailShadowOffset` and `LeftRailShadowRadius` remain serialized for
-existing themes but no longer draw an offset shadow. All painting stays
+existing themes but no longer draw an offset shadow. The retired Layers pop-out
+width/opacity fields also remain serialized for theme compatibility, but have
+no active UI STYLE controls. All painting stays
 inside each tab's bounds rather than overlapping layer rows. The Q marking menu shares the existing 1K/2K/4K composition
 resolution control. Its backdrop is a centre-dark, edge-transparent vignette behind the cards;
 UI STYLE exposes its diameter and darkness under Preview. The saved `QuickControlsGuideGlow*`
