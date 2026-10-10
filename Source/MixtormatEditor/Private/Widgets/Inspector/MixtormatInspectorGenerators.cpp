@@ -1258,6 +1258,107 @@ void SMixtormat::AddBehaviorFieldCompositionRows(
 		]);
 }
 
+TSharedRef<SWidget> SMixtormat::BuildBehaviorFlowFieldControls()
+{
+	const auto Get = [this]() -> FMixtormatBehavior* 
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return Child && Child->Type == EMixtormatLayerChildType::Behavior
+			&& Child->Behavior.Type == EMixtormatBehaviorType::FlowField ? &Child->Behavior : nullptr;
+	};
+	const auto Flow = [Get]() -> FMixtormatBehaviorFlowSettings*
+	{
+		FMixtormatBehavior* B = Get();
+		return B ? &B->Flow : nullptr;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorFlowMode", "Flow Mode"), Flow,
+		&FMixtormatBehaviorFlowSettings::Mode));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorFlowSource", "Steering Source"), Flow,
+		&FMixtormatBehaviorFlowSettings::GeneratorFlowSource));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowAmount", "Amount"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowAmount,
+		0, 1, 1, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowTangent", "Normal / Tangent"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowTangent,
+		0, 1, 0, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowAngle", "Angle"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowAngle,
+		-180, 180, 0, 1));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowBend", "Bend"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowBend,
+		-180, 180, 0, 1));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowSeed", "Seed"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowSeed,
+		0, 1024, 1));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowRadius", "Radius (texels)"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowRadius,
+		1, 16, 2));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowSmooth", "Smooth"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowSmooth,
+		0, 64, 8, 0.5));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowReach", "Reach"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowReach,
+		0, 1, 0.1, 0.001));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowFeather", "Feather"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowFeather,
+		0, 1, 0.5, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowOffsetAlong", "Offset Along"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowOffsetAlong,
+		-1, 1, 0, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowOffsetAcross", "Offset Across"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowOffsetAcross,
+		-1, 1, 0, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGravityFlowSurfaceFollow", "Surface Follow"), Flow, &FMixtormatBehaviorFlowSettings::GravityFlowSurfaceFollow,
+		0, 2, 1, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGravityFlowDeflection", "Boundary Deflection"), Flow, &FMixtormatBehaviorFlowSettings::GravityFlowDeflection,
+		0, 1, 1, 0.01));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowTraceLength", "Trace Length"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowTraceLength,
+		0, 1, 0.1, 0.001));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowSteps", "Trace Steps"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowSteps,
+		1, 64, 16));
+	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+		LOCTEXT("BehaviorGeneratorFlowWarpStrength", "Trace Strength"), Flow, &FMixtormatBehaviorFlowSettings::GeneratorFlowWarpStrength,
+		-4, 4, 1, 0.01));
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Get]() { return Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorFlowFieldHeading", "FLOW FIELD"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Get]()
+					{
+						const FMixtormatBehavior* B = Get();
+						return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Get](ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* B = Get())
+						{
+							B->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 {
 	const auto Push = [this]() { return GetSelectedBehaviorPush(); };
