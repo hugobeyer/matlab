@@ -371,7 +371,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
 				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
 		|| ((bWarp || bDeform) && !bTraced && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
-			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight))
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None))
 		|| ((bWarp || bDeform) && Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None)
 		|| (bPush && (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 			|| (Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput
