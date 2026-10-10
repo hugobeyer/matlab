@@ -618,7 +618,13 @@
 		"PreviewLayout.QuickControlsVignetteBias": 1,
 		"PreviewLayout.QuickControlsVignetteIntensity": 1,
 		"PreviewLayout.QuickControlsVignetteInnerRadius": 0,
-		"PreviewLayout.QuickControlsVignetteFalloff": 2
+		"PreviewLayout.QuickControlsVignetteFalloff": 2,
+		"PreviewLayout.LeftRailContentInset": 34,
+		"PreviewLayout.LeftRailShadeBias": 1,
+		"PreviewLayout.bLeftRailShadeInverted": true,
+		"PreviewLayout.LeftRailButtonSurfaceStrength": 0,
+		"PreviewLayout.LeftRailHoverSurfaceStrength": 0.079999998211860657,
+		"PreviewLayout.LeftRailSelectedSurfaceStrength": 0.15000000596046448
 	},
 	"galleryShell":
 	{
@@ -661,7 +667,17 @@
 		"Shell.SplitterHitWidth": 24,
 		"ShellTheme.ColumnShadowOpacity": 0.045000001788139343,
 		"ShellTheme.ColumnShadowRange": 14,
-		"ShellTheme.ColumnShadowFalloffPower": 1.7000000476837158
+		"ShellTheme.ColumnShadowFalloffPower": 1.7000000476837158,
+		"Shell.GlobalPagePadding": 7,
+		"Shell.GlobalCardGap": 6,
+		"Shell.LibraryPagePadding": 7,
+		"Shell.LibrarySearchBottomGap": 7,
+		"Shell.LibrarySearchInnerPadding": 5,
+		"Shell.LibraryItemGap": 2,
+		"Shell.LibraryRowHeight": 34,
+		"Shell.LibraryThumbnailSize": 28,
+		"Shell.LibraryLabelOpacity": 0.81999999284744263,
+		"Shell.LibraryHeadingOpacity": 0.64999997615814209
 	},
 	"typography":
 	{
@@ -735,5 +751,19 @@
 		"Typography.TopBar.MonospacedNumbers": false,
 		"Typography.PreviewLabel.MonospacedNumbers": false,
 		"Typography.Badge.MonospacedNumbers": false
+	},
+	"sources":
+	{
+		"LayerLayout.SourcesTopGap": 0,
+		"LayerLayout.SourcesBottomGap": 2,
+		"LayerLayout.SourcesEmptyHeight": 24,
+		"LayerLayout.SourcesRowHeight": 20,
+		"LayerLayout.SourcesRowGap": 1,
+		"LayerLayout.SourcesAddTabWidth": 20,
+		"LayerLayout.SourcesAddTabHeight": 16,
+		"LayerLayout.SourcesAddTabHighlight": 0.019999999552965164,
+		"LayerLayout.SourcesAddTabHighlightBias": 0.10000000149011612,
+		"LayerLayout.SourcesAddIconSize": 10,
+		"LayerLayout.SourcesAddTabBottomRadius": 4
 	}
 }
