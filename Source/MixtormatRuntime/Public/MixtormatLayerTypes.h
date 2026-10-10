@@ -12,6 +12,7 @@
 #include "MixtormatMaskBlur.h"
 #include "MixtormatMaskCurvature.h"
 #include "MixtormatOutputReference.h"
+#include "MixtormatBehaviorTypes.h"
 #include "MixtormatParameterTypes.h"
 #include "MixtormatLayerTypes.generated.h"
 
@@ -161,7 +162,9 @@ enum class EMixtormatLayerChildType : uint8
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
 	// Appended: a structural input module, independent of height combination and UV warping.
 	HeightPush UMETA(DisplayName = "Height Push"),
-		StructuralWarp UMETA(DisplayName = "Structural Warp")
+		StructuralWarp UMETA(DisplayName = "Structural Warp"),
+	// Appended: Behavior V2 is opt-in and has genuine scoped generator ownership.
+	Behavior UMETA(DisplayName = "Behavior")
 };
 
 USTRUCT(BlueprintType)
@@ -274,6 +277,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::StructuralWarp"))
 		FMixtormatGeneratorStructuralWarp StructuralWarp;
+
+	// V2 opt-in payload; the old generator/structural paths remain authoritative.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Behavior"))
+	FMixtormatBehavior Behavior;
 
 	bool IsInstance() const { return SourceChildId.IsValid(); }
 };
