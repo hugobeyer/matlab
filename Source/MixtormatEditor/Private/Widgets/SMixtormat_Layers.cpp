@@ -644,9 +644,8 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 			{
 				if (const FGuid* Parent = Ids.Find(Child->ScopeOwnerChildId)) Child->ScopeOwnerChildId = *Parent;
 				Remap(Child->SourceLayerId, Child->SourceChildId);
-				Remap(Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId);
-				Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
-				Remap(Child->BoundaryId.RegionIdsSource.SourceLayerId, Child->BoundaryId.RegionIdsSource.SourceChildId);
+				// Shelf references carry their own owner GUID. Remap before the legacy
+				// layer/child pair so the old child identity remains available as a key.
 				if (Child->OutputReference.IsShelfSource()
 					&& Child->OutputReference.SourceShelfId == OriginalSourceId)
 				{
@@ -656,6 +655,12 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 						Child->OutputReference.SourceChildId = *Mapped;
 					}
 				}
+				else
+				{
+					Remap(Child->OutputReference.SourceLayerId, Child->OutputReference.SourceChildId);
+				}
+				Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
+				Remap(Child->BoundaryId.RegionIdsSource.SourceLayerId, Child->BoundaryId.RegionIdsSource.SourceChildId);
 				Remap(Child->HeightPush.Source.SourceLayerId, Child->HeightPush.Source.SourceChildId);
 				Remap(Child->StructuralWarp.Source.SourceLayerId, Child->StructuralWarp.Source.SourceChildId);
 				if (const FGuid* Target = Ids.Find(Child->HeightPush.TargetChildId)) Child->HeightPush.TargetChildId = *Target;
