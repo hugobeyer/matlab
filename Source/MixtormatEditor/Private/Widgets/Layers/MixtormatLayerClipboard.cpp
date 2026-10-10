@@ -36,6 +36,15 @@ namespace MixtormatLayersPrivate
 				}
 			}
 		};
+		const auto RemapOutput = [&RemapPair](FMixtormatOutputReference& Reference)
+		{
+			// A Shelf owner is external to a layer/group subtree even when its
+			// legacy unused SourceLayerId happens to match the copied owner.
+			if (Reference.IsLayerSource())
+			{
+				RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
+			}
+		};
 		for (FMixtormatLayerChild& Copy : Copies)
 		{
 			if (const FGuid* Owner = ChildIdRemap.Find(Copy.ScopeOwnerChildId))
@@ -43,15 +52,22 @@ namespace MixtormatLayersPrivate
 				Copy.ScopeOwnerChildId = *Owner;
 			}
 			// Only addresses inside the copied subtree follow it; arbitrary producers stay external.
-			RemapPair(Copy.OutputReference.SourceLayerId, Copy.OutputReference.SourceChildId);
-			RemapPair(Copy.BoundaryId.RegionIdsSource.SourceLayerId, Copy.BoundaryId.RegionIdsSource.SourceChildId);
+			RemapOutput(Copy.OutputReference);
+			RemapOutput(Copy.Generator.HeightSource);
+			RemapOutput(Copy.Generator.WarpSource);
+			RemapOutput(Copy.BoundaryId.RegionIdsSource);
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
-			RemapPair(Copy.HeightPush.Source.SourceLayerId, Copy.HeightPush.Source.SourceChildId);
+			RemapOutput(Copy.HeightPush.Source);
+			RemapPair(Copy.HeightBlend.SourceLayerId, Copy.HeightBlend.SourceChildId);
+			if (const FGuid* Input = ChildIdRemap.Find(Copy.HeightColorRamp.SourceChildId))
+			{
+				Copy.HeightColorRamp.SourceChildId = *Input;
+			}
 			if (const FGuid* Target = ChildIdRemap.Find(Copy.HeightPush.TargetChildId))
 			{
 				Copy.HeightPush.TargetChildId = *Target;
 			}
-			RemapPair(Copy.StructuralWarp.Source.SourceLayerId, Copy.StructuralWarp.Source.SourceChildId);
+			RemapOutput(Copy.StructuralWarp.Source);
 			if (const FGuid* Target = ChildIdRemap.Find(Copy.StructuralWarp.TargetChildId))
 			{
 				Copy.StructuralWarp.TargetChildId = *Target;
