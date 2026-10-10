@@ -70,6 +70,12 @@ namespace MixtormatIcons
 	const FSlateBrush* Effect()       { return Get(TEXT("Mixtormat.Icon.Effect")); }
 	const FSlateBrush* Generator()    { return Get(TEXT("Mixtormat.Icon.Generator")); }
 	const FSlateBrush* Generated()    { return Get(TEXT("Mixtormat.Icon.Generated")); }
+	const FSlateBrush* FlowDirection() { return Get(TEXT("Mixtormat.Icon.FlowDirection")); }
+	const FSlateBrush* FlowGravity() { return Get(TEXT("Mixtormat.Icon.FlowGravity")); }
+	const FSlateBrush* WarpDeform() { return Get(TEXT("Mixtormat.Icon.WarpDeform")); }
+	const FSlateBrush* WarpNoise() { return Get(TEXT("Mixtormat.Icon.WarpNoise")); }
+	const FSlateBrush* WarpPush() { return Get(TEXT("Mixtormat.Icon.WarpPush")); }
+	const FSlateBrush* WarpStructural() { return Get(TEXT("Mixtormat.Icon.WarpStructural")); }
 	const FSlateBrush* Ids()          { return Get(TEXT("Mixtormat.Icon.Ids")); }
 
 	const FSlateBrush* LayerMaterial() { return Get(TEXT("Mixtormat.Icon.LayerMaterial")); }
