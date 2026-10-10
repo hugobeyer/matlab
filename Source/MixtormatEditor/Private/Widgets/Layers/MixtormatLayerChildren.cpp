@@ -692,7 +692,8 @@ namespace MixtormatLayersPrivate
 		{
 			if (Owner.Type == EMixtormatLayerChildType::Generator)
 			{
-				return true;
+				return !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow);
 			}
 			if (Owner.Type != EMixtormatLayerChildType::Behavior)
 			{
