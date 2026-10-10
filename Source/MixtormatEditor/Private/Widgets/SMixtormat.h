@@ -1716,6 +1716,7 @@ private:
 	// The selected Sources shelf entry, by identity like every other selection. Selecting a
 	// source clears the layer and group selection, so the inspector has one subject.
 	FGuid SelectedSourceId;
+	TOptional<FMixtormatSourceEntry> SourceClipboard;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
 	TWeakPtr<FMixtormatStructuralEndpointPreview> StructuralEndpointPreview;
