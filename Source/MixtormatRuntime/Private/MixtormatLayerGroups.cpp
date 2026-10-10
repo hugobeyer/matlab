@@ -293,6 +293,7 @@ namespace MixtormatLayerGroups
 				RemapPair(Child.OutputReference.SourceLayerId, Child.OutputReference.SourceChildId);
 				RemapPair(Child.BoundaryId.RegionIdsSource.SourceLayerId, Child.BoundaryId.RegionIdsSource.SourceChildId);
 				RemapPair(Child.StructuralWarp.Source.SourceLayerId, Child.StructuralWarp.Source.SourceChildId);
+				RemapPair(Child.HeightPush.Source.SourceLayerId, Child.HeightPush.Source.SourceChildId);
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
 					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
@@ -318,6 +319,10 @@ namespace MixtormatLayerGroups
 				if (Clone.Type == EMixtormatLayerChildType::StructuralWarp)
 				{
 					Clone.StructuralWarp.bEnabled = false;
+				}
+				else if (Clone.Type == EMixtormatLayerChildType::HeightPush)
+				{
+					Clone.HeightPush.bEnabled = false;
 				}
 
 				if (Clone.ScopeOwnerChildId.IsValid())
