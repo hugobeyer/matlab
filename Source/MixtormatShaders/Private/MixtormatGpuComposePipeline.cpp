@@ -839,7 +839,12 @@ namespace MixtormatGpuCompositor
 							const FLayerRenderData& SourceLayer = Request.SourceProducers[SourceIndex];
 							if (!SourceLayer.bEnabled) { continue; }
 							FMixtormatLayerPassContext SourceCtx(Ctx);
-							SourceCtx.BeginLayer(SourceIndex);
+							// INDEX_NONE, never SourceIndex: a producer is not a layer and must not share the layer-
+							// index space the debug predicates compare against. A ChildOutput selection resolves to a
+							// real layer index, or to INDEX_NONE with ChildIndex INDEX_NONE; a producer always passes
+							// a real child index, so it can never match either and can never write the material's
+							// OutputDebug / RegionIdPick targets.
+							SourceCtx.BeginLayer(INDEX_NONE);
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatSourceProducer, "Mixtormat.SourceProducer%d", SourceIndex);
 							AddRegionProducerPasses(Ctx, SourceCtx, SourceLayer);
 							AddGeneratorLayerPasses(Ctx, SourceCtx, SourceLayer);

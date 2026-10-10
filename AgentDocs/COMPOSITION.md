@@ -127,6 +127,14 @@ FlowWarp,Grade,LayerBlur,WornEdges}Passes.cpp`, `MixtormatEffectCommon.cpp`.
 parameters that shape them. `ResetCaches()` on resolution change or when final
 normal settings change. `LastPrefixHashes` finds the lowest changed layer.
 
+Sources shelf content is folded into the layer-prefix seed
+(`RequestComposeInternal`), because producers run uncached and are not layers, so
+they never enter the prefix chain themselves. Editing a demanded source therefore
+invalidates every cached layer above it and a resumed prefix can never serve a
+composite that sampled a stale shelf field. Generator module node caches stay
+settings-only and are safe: they hold input-independent fields, while input
+combination is never node-cached.
+
 ## Published fields / preview / debug
 
 - `EMixtormatDebugPreviewMode`, `EMixtormatPreviewOutputKind`,

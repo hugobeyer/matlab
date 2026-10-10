@@ -1545,6 +1545,31 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	// Scheduler readiness, Pair/Min shader modes and configurable boundaries change cached results.
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
 
+	// Sources shelf producers run uncached and are not layers, so they never enter the layer prefix
+	// chain. Fold every demanded producer's content into the seed instead: editing a source then
+	// invalidates every cached layer above it, so a resumed prefix can never serve a composite that
+	// sampled a stale shelf field. The demand is collected once here and reused by the gather below.
+	TArray<FGuid> DemandedShelfSources;
+	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
+	if (!DemandedShelfSources.IsEmpty())
+	{
+		TSet<FGuid> DemandedSet;
+		DemandedSet.Reserve(DemandedShelfSources.Num());
+		for (const FGuid& SourceId : DemandedShelfSources) { DemandedSet.Add(SourceId); }
+		uint64 ShelfContentHash = 0;
+		for (const FMixtormatSourceEntry& Source : Sources)
+		{
+			if (!DemandedSet.Contains(Source.SourceId)) { continue; }
+			MixtormatComposeHash::FHasher ShelfHasher;
+			ShelfHasher.Struct(FMixtormatSourceEntry::StaticStruct(), &Source);
+			// XOR: shelf arrangement is organisational only, so a reorder with identical content
+			// must not invalidate the cache, while any content change must.
+			ShelfContentHash ^= MixtormatComposeHash::Combine(
+				ShelfHasher.Get(), static_cast<uint64>(GetTypeHash(Source.SourceId)));
+		}
+		PrefixHash = MixtormatComposeHash::Combine(PrefixHash, ShelfContentHash);
+	}
+
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
 		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
@@ -1893,10 +1918,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 	// Shelf producers gather after the stack: the stack's gather resolved its shelf input keys
 	// against the authored Sources, and this pass now materializes exactly the producers those keys
-	// demand, transitively, in dependency order. Shelf order is never used and uncached by design --
-	// see GatherSourceProducers.
-	TArray<FGuid> DemandedShelfSources;
-	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
+	// demand, transitively, in dependency order -- the same set folded into the prefix seed above.
+	// Shelf order is never used and uncached by design -- see GatherSourceProducers.
 	GatherSourceProducers(Sources, DemandedShelfSources, Request.SourceProducers);
 
 	const int32 CompositedTargetIndex = Request.Layers.IsEmpty()
