@@ -859,6 +859,10 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 		SHADER_PARAMETER(uint32, UseInfluence)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
@@ -883,6 +887,10 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 		SHADER_PARAMETER(uint32, UseInfluence)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
 	END_SHADER_PARAMETER_STRUCT()
@@ -1304,14 +1312,45 @@ namespace
 		}
 	}
 
+	template<typename TParameters>
+	void SetBehaviorScalarDrivers(FMixtormatComposeContext& Ctx,
+		TParameters* P, const FScalarDriverRenderData* Drivers)
+	{
+		FRDGTextureRef Signals[2] = { Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal };
+		for (int32 Slot = 0; Slot < 2; ++Slot)
+		{
+			const FScalarDriverRenderData& Driver = Drivers[Slot];
+			FRDGTextureRef Signal = nullptr;
+			if (Driver.bEnabled)
+			{
+				if (FRDGTextureRef* Found = Ctx.DriverSnapshots.Find(Driver.SourceLayerId))
+				{
+					Signal = *Found;
+				}
+			}
+			const bool bResolved = Signal != nullptr;
+			Signals[Slot] = bResolved ? Signal : Ctx.EmptyDriverSignal;
+			P->BehaviorDriverParamsA[Slot] = FVector4f(
+				bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+				Driver.InputMin, Driver.InputMax);
+			P->BehaviorDriverParamsB[Slot] = FVector4f(
+				Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+				static_cast<float>(Driver.Combine));
+		}
+		P->BehaviorDriverSignal0 = Signals[0];
+		P->BehaviorDriverSignal1 = Signals[1];
+	}
+
 	// A lifted UVMap carries displacement in destination texel space; interpolate
 	// that displacement (not wrapped absolute coordinates) to preserve tile winding.
 	FRDGTextureRef ScaleBehaviorUV(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef Source, const float Strength, FRDGTextureRef Mask,
 		const bool bUseMask, FRDGTextureRef Influence, const bool bUseInfluence,
-		const int32 LayerIndex, const int32 ChildIndex)
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FScalarDriverRenderData* Drivers)
 	{
-		if (Strength == 1.0f && !bUseMask && !bUseInfluence) { return Source; }
+		if (Strength == 1.0f && !bUseMask && !bUseInfluence
+			&& !Drivers[0].bEnabled) { return Source; }
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -1324,6 +1363,7 @@ namespace
 		P->UseInfluence = bUseInfluence ? 1u : 0u;
 		P->InfluenceField = Influence;
 		P->SourceCoordinates = Source;
+		SetBehaviorScalarDrivers(Ctx, P, Drivers);
 		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorUvBlendCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		ClearUnusedGraphResources(Shader, P);
@@ -1338,7 +1378,8 @@ namespace
 		FRDGTextureRef SourceHeight, const float Strength, const float Reach,
 		FRDGTextureRef Mask, const bool bUseMask,
 		FRDGTextureRef Influence, const bool bUseInfluence,
-		const int32 LayerIndex, const int32 ChildIndex)
+		const int32 LayerIndex, const int32 ChildIndex,
+		const FScalarDriverRenderData* Drivers)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -1353,6 +1394,7 @@ namespace
 		P->UseInfluence = bUseInfluence ? 1u : 0u;
 		P->InfluenceField = Influence;
 		P->SourceHeight = SourceHeight;
+		SetBehaviorScalarDrivers(Ctx, P, Drivers);
 		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
 		TShaderMapRef<FMixtormatBehaviorHeightGradientCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		ClearUnusedGraphResources(Shader, P);
@@ -1403,7 +1445,8 @@ namespace
 					: LayerCtx.CombinedMask;
 				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
 					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
-					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
+					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers);
 			}
 			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
@@ -1437,7 +1480,8 @@ namespace
 						: LayerCtx.CombinedMask;
 					const float BlendStrength = Child.Behavior.Strength;
 					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
-						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
+						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
+					Child.Behavior.ScalarDrivers);
 				}
 			}
 			if (Coordinates)
