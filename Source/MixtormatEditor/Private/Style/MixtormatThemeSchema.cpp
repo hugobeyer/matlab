@@ -737,6 +737,7 @@ void AddIconRole(
 				NUM("Shell.LibrarySearchBottomGap", GalleryShell, "Library Page", "Search Bottom Gap", Shell.LibrarySearchBottomGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.LibrarySearchInnerPadding", GalleryShell, "Library Page", "Search Inner Padding", Shell.LibrarySearchInnerPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.LibraryItemGap", GalleryShell, "Library Page", "Item Gap", Shell.LibraryItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Shell.LibraryRowHeight", GalleryShell, "Library Page", "Row Height", Shell.LibraryRowHeight, 24, 96, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.LibraryThumbnailSize", GalleryShell, "Library Page", "Thumbnail Size", Shell.LibraryThumbnailSize, 24, 128, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.LibraryLabelOpacity", GalleryShell, "Library Typography", "Label Opacity", Shell.LibraryLabelOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("Shell.LibraryHeadingOpacity", GalleryShell, "Library Typography", "Heading Opacity", Shell.LibraryHeadingOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
