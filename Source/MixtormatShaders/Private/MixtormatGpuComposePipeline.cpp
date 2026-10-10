@@ -731,6 +731,12 @@ namespace MixtormatGpuCompositor
 								// otherwise skip the FlowDirection/UV publication entirely.
 								Ctx.PublishedFieldDemand.Add(Child.Behavior.Direction.Source);
 							}
+							if (Child.Type == EMixtormatLayerChildType::Behavior
+								&& Child.Behavior.bHasInfluence
+								&& Child.Behavior.Influence.Source.ChildIndex != INDEX_NONE)
+							{
+								Ctx.PublishedFieldDemand.Add(Child.Behavior.Influence.Source);
+							}
 							if (Child.Type == EMixtormatLayerChildType::Generator)
 							{
 								const auto DemandInput = [&](const FGeneratorInputRenderData& Input)
