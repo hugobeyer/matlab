@@ -298,6 +298,8 @@ namespace MixtormatGpuCompositor
 		FGuid PublishedSourceLayerId;
 		int32 PublishedSourceChildIndex = INDEX_NONE;
 		FName PublishedSourceOutput;
+		EMixtormatOutputReferenceOwnerKind PublishedSourceOwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
+		FGuid PublishedSourceShelfId;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
