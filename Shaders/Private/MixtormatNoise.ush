@@ -176,7 +176,8 @@ struct FMixtormatNoiseWorley
 	float F1;         // distance to the nearest feature point, in cell widths
 	float F2;         // distance to the second nearest
 	uint CellId;      // hash of the owning cell, stable under the period
-	float2 Direction; // unit vector from the feature point toward this pixel -- the gradient of F1
+	float2 Direction; // unit vector from the nearest feature toward this pixel (F1 derivative)
+	float2 SecondDirection; // unit vector from second-nearest feature (F2 derivative)
 };
 
 FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
@@ -188,6 +189,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 	float BestSq = 1.0e30f;
 	float SecondSq = 1.0e30f;
 	float2 BestDelta = float2(0.0f, 0.0f);
+	float2 SecondDelta = float2(0.0f, 0.0f);
 	int2 NearestCell = Base;
 
 	[unroll]
@@ -202,6 +204,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 			if (DistSq < BestSq)
 			{
 				SecondSq = BestSq;
+				SecondDelta = BestDelta;
 				BestSq = DistSq;
 				BestDelta = Delta;
 				NearestCell = Cell;
@@ -209,6 +212,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 			else if (DistSq < SecondSq)
 			{
 				SecondSq = DistSq;
+				SecondDelta = Delta;
 			}
 		}
 	}
@@ -220,6 +224,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 	// Pixel minus feature, normalised: the direction the distance grows in. A pixel exactly on
 	// a feature point has no direction; the measure-zero case gets zero rather than a NaN.
 	Result.Direction = BestSq > 1.0e-9f ? -BestDelta * rsqrt(BestSq) : float2(0.0f, 0.0f);
+	Result.SecondDirection = SecondSq > 1.0e-9f ? -SecondDelta * rsqrt(SecondSq) : float2(0.0f, 0.0f);
 	return Result;
 }
 
