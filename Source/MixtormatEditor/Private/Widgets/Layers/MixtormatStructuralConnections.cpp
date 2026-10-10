@@ -14,6 +14,7 @@
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -318,13 +319,26 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionContent(const FMixtorma
 	const auto SourceStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::LayerSource),
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
-	const FText Prefix = FText::Format(bIncoming ? LOCTEXT("StructuralRowIncoming", "{0} ←")
-		: LOCTEXT("StructuralRowRepair", "{0} →"), Presentation.Operation);
+	// The row's first icon conveys the operation type; the inline glyph alone
+	// conveys direction. Never encode a second arrow into the operation label.
+	const FText Prefix = Presentation.Operation;
+	const float ArrowSize = FMath::Min(Resolved.ControlLayout.LayerChildIconSize,
+		Resolved.LayerLayout.ChildRowHeight * 0.65f);
 	const FText Suffix = bIncoming && !Row.ResolvedSource.OutputName.IsNone() ? Presentation.Output : FText::GetEmpty();
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, Resolved.LayerConnections.TextGap, 0.0f)
 		[
 			SNew(STextBlock).Font(NameStyle.Font).ColorAndOpacity(NameStyle.ColorAndOpacity).Text(Prefix)
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, Resolved.LayerConnections.TextGap, 0.0f)
+		[
+			SNew(SBox).WidthOverride(ArrowSize).HeightOverride(ArrowSize)
+			[
+				SNew(SImage)
+				.Image(bIncoming ? MixtormatIcons::ChevronLeft() : MixtormatIcons::ChevronRight())
+				.ColorAndOpacity(SourceStyle.ColorAndOpacity)
+			]
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 		[
@@ -731,6 +745,12 @@ EStructuralLinkHighlightRole SMixtormat::GetStructuralHighlightRole(const FMixto
 	const bool bPush = Module->Type == EMixtormatLayerChildType::HeightPush;
 	const FMixtormatOutputReference& Source = bPush ? Module->HeightPush.Source : Module->StructuralWarp.Source;
 	const FGuid TargetId = bPush ? Module->HeightPush.TargetChildId : Module->StructuralWarp.TargetChildId;
+	// Include the operation itself in the target-side highlight, so the
+	// target's vertical link stripe continues through its projected relation row.
+	if (Address == SelectedAddress && TargetId.IsValid())
+	{
+		return EStructuralLinkHighlightRole::Target;
+	}
 	const bool bSource = Source.SourceLayerId.IsValid() && Source.SourceChildId.IsValid()
 		&& Address.OwnerId == Source.SourceLayerId && Address.ChildId == Source.SourceChildId;
 	const bool bTarget = TargetId.IsValid() && Address.OwnerType == SelectedAddress.OwnerType
