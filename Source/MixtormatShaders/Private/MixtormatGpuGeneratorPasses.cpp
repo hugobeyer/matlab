@@ -97,6 +97,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(FIntPoint, BedWave)
 		SHADER_PARAMETER(FIntPoint, BedPerp)
 		SHADER_PARAMETER(int32, BedPeriod)
@@ -166,6 +168,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(float, Style)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(uint32, Seed)
@@ -260,6 +264,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Density)
@@ -314,6 +320,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, CountX) SHADER_PARAMETER(int32, CountY) SHADER_PARAMETER(float, Density)
 		SHADER_PARAMETER(float, SizeMin) SHADER_PARAMETER(float, SizeMax) SHADER_PARAMETER(float, SizeAspect)
 		SHADER_PARAMETER(float, Jitter) SHADER_PARAMETER(float, FlowVariation) SHADER_PARAMETER(float, HeightMin) SHADER_PARAMETER(float, HeightMax)
@@ -377,6 +385,8 @@ public:
 		SHADER_PARAMETER(int32, GeneratorUVRotation)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Cells)
 		SHADER_PARAMETER(float, Jitter)
@@ -970,6 +980,7 @@ namespace
 	{
 		const FGeneratorRenderData& Generator;
 		int32 SourceChildIndex;
+		FRDGTextureRef PreUV = nullptr;
 	};
 
 	// Shared Flow -> destination-UV binding for layer references and explicit generator inputs.
@@ -1029,7 +1040,7 @@ namespace
 
 	// Every module sits in the Generator layer's UV placement, so the layer moves all of them.
 	template<typename TParameters>
-	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer)
+	void FillGeneratorPlacement(TParameters* P, const FLayerRenderData& Layer, FRDGTextureRef PreUV, FRDGTextureRef Fallback)
 	{
 		P->GeneratorLayer = 1u;
 		P->GeneratorUVScale = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
@@ -1037,6 +1048,8 @@ namespace
 		P->GeneratorUVRotation = Layer.Rotation;
 		P->GeneratorUVFlipU = Layer.bFlipU ? 1u : 0u;
 		P->GeneratorUVFlipV = Layer.bFlipV ? 1u : 0u;
+		P->UsePreGenerationUV = PreUV ? 1u : 0u;
+		P->PreGenerationUV = PreUV ? PreUV : Fallback;
 	}
 
 
@@ -1803,7 +1816,7 @@ namespace
 		{
 			FMixtormatStrataCarverResolveCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->BedWave = Lattice.Wave;
 			P->BedPerp = Lattice.Perp;
 			P->BedPeriod = Lattice.Period;
@@ -2360,7 +2373,7 @@ namespace
 		const FRockLayout Layout = ResolveRockLayout(Rock);
 		const auto FillParameters = [&Rock, &Layout, &Layer, Size](FMixtormatRockFormationCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->MaxLeaves = Layout.MaxLeaves;
 			P->CellsV = Layout.CellsV;
@@ -2420,7 +2433,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Rock.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Rock.FieldKey != 0
 				? MixtormatComposeHash::Combine(Rock.FieldKey, 0x526F636B09ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
@@ -2659,7 +2672,7 @@ namespace
 		const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
 		const auto Fill = [&Cracks, &Layer, &Child, Size, SolveSize](FMixtormatCracksCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->SolveSize = SolveSize;
 			P->Seed = Cracks.Seed;
@@ -2702,7 +2715,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Cracks.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Cracks.FieldKey != 0
 				? MixtormatComposeHash::Combine(Cracks.FieldKey, 0x437261636B74ull) : 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = NodeKey != 0
 				? NodeCache->Find(NodeKey, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
@@ -2883,7 +2896,7 @@ namespace
 
 		const auto FillParameters = [&Pebbles, &Layer, Size](FMixtormatPebblesCS::FParameters* P)
 		{
-			FillGeneratorPlacement(P, Layer);
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->Seed = Pebbles.Seed;
 			P->Cells = Pebbles.Cells;
@@ -2918,7 +2931,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			const uint64 NodeKey = NodeCache && Pebbles.FieldKey != 0
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Pebbles.FieldKey != 0
 				? MixtormatComposeHash::Combine(Pebbles.FieldKey, 0x506562626C66ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
@@ -3030,13 +3043,13 @@ namespace
 		if(const TArray<FRDGTextureRef,TInlineAllocator<7>>* Memo=LayerCtx.GeneratorFields.Find(Child.SourceChildIndex)){for(int i=0;i<SlotCount;++i)O[i]=(*Memo)[i];}
 		else{
 			static const TCHAR* Names[SlotCount]={TEXT("Mixtormat.CliffStrata.RawHeight"),TEXT("Mixtormat.CliffStrata.Flow"),TEXT("Mixtormat.CliffStrata.BlockIds"),TEXT("Mixtormat.CliffStrata.RowIds"),TEXT("Mixtormat.CliffStrata.VoronoiRaw"),TEXT("Mixtormat.CliffStrata.FinalHeight"),TEXT("Mixtormat.CliffStrata.BlockSeam"),TEXT("Mixtormat.CliffStrata.RowSeam"),TEXT("Mixtormat.CliffStrata.Cavity"),TEXT("Mixtormat.CliffStrata.Coverage")};
-			FMixtormatNodeCache* NodeCache=Ctx.Request.NodeCache.Get();const uint64 NodeKey=NodeCache&&C.FieldKey?MixtormatComposeHash::Combine(C.FieldKey,0x436C696666537472ull):0;
+			FMixtormatNodeCache* NodeCache=Ctx.Request.NodeCache.Get();const uint64 NodeKey=NodeCache&&!Child.PreUV&&C.FieldKey?MixtormatComposeHash::Combine(C.FieldKey,0x436C696666537472ull):0;
 			auto Hit=NodeKey?NodeCache->Find(NodeKey,Size):TSharedPtr<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();bool complete=Hit.IsValid();for(int i=0;complete&&i<SlotCount;++i)complete=Hit->Outputs[i].IsValid();
 			if(complete){for(int i=0;i<SlotCount;++i)O[i]=GraphBuilder.RegisterExternalTexture(Hit->Outputs[i],Names[i]);}
 			else{
 				O[0]=Make(PF_R32_FLOAT,Names[0]);O[1]=Make(PF_G32R32F,Names[1]);O[2]=Make(PF_R32_UINT,Names[2]);O[3]=Make(PF_R32_UINT,Names[3]);O[4]=Make(PF_R32_FLOAT,Names[4]);O[5]=Make(PF_R32_FLOAT,Names[5]);O[6]=Make(PF_R16F,Names[6]);O[7]=Make(PF_R16F,Names[7]);O[8]=Make(PF_R16F,Names[8]);O[9]=Make(PF_R16F,Names[9]);
 				FRDGTextureRef Smooth=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.VoronoiSmooth")),SweepA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepA")),SweepB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.SweepB")),IdA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdA")),IdB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.IdB")),RowA=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowA")),RowB=Make(PF_R32_FLOAT,TEXT("Mixtormat.CliffStrata.RowB"));
-				auto Fill=[&](FMixtormatCliffStrataCS::FParameters* P){FillGeneratorPlacement(P,Layer);P->OutputSize=Size;P->CountX=C.CountX;P->CountY=C.CountY;P->Density=C.Density;P->SizeMin=C.SizeMin;P->SizeMax=C.SizeMax;P->SizeAspect=C.SizeAspect;P->Jitter=C.Jitter;P->FlowVariation=C.FlowVariation;P->HeightMin=C.HeightMin;P->HeightMax=C.HeightMax;P->Steps=C.Steps;P->Rotation=C.Rotation;P->LeanX=C.LeanX;P->LeanY=C.LeanY;P->FormationCells=C.FormationCells;P->FormationAmount=C.FormationAmount;P->QuarterCopies=C.bQuarterCopies?1u:0u;P->QuarterYCount=C.QuarterYCount;P->QuarterFill=C.QuarterFill;P->QuarterSize=C.QuarterSize;P->QuarterHeight=C.QuarterHeight;P->QuarterJitterX=C.QuarterJitterX;P->QuarterJitterY=C.QuarterJitterY;P->Sides=C.Sides;P->ShapeRandom=C.bShapeRandom?1u:0u;P->CameraYaw=C.CameraYaw;P->CameraPitch=C.CameraPitch;P->ViewScale=C.ViewScale;P->DepthMin=C.DepthMin;P->DepthMax=C.DepthMax;P->UnitDistance=C.UnitDistance;P->UnitDistanceIdLerp=C.UnitDistanceIdLerp;P->CarveDepth=C.CarveDepth;P->CarveVoronoi=C.CarveVoronoi;P->YBias=C.YBias;P->YBiasVoronoi=C.YBiasVoronoi;P->YBiasVoronoiInvert=C.bYBiasVoronoiInvert?1u:0u;P->NegativeYUnitDistanceTaper=C.NegativeYUnitDistanceTaper;P->Reverse=C.bReverse?1u:0u;P->Seed=C.Seed;P->VoronoiCells=C.VoronoiCells;P->FlowVoronoi=C.FlowVoronoi;P->ChamferWidth=C.ChamferWidth;P->ChamferIntensity=C.ChamferIntensity;P->ChamferVoronoi=C.ChamferVoronoi;P->BlockCavityWidth=C.BlockCavityWidth;P->RowCavityWidth=C.RowCavityWidth;P->CavityIntensity=C.CavityIntensity;P->CavityVoronoiThreshold=C.CavityVoronoiThreshold;P->CavityVoronoiMaskGain=C.CavityVoronoiMaskGain;P->RawHeight=O[0];P->Flow=O[1];P->BlockIds=O[2];P->RowIds=O[3];P->VoronoiRaw=O[4];P->VoronoiSmooth=Smooth;P->SweepIn=SweepA;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;};
+				auto Fill=[&](FMixtormatCliffStrataCS::FParameters* P){FillGeneratorPlacement(P,Layer,Child.PreUV,Ctx.EmptyPatternUV);P->OutputSize=Size;P->CountX=C.CountX;P->CountY=C.CountY;P->Density=C.Density;P->SizeMin=C.SizeMin;P->SizeMax=C.SizeMax;P->SizeAspect=C.SizeAspect;P->Jitter=C.Jitter;P->FlowVariation=C.FlowVariation;P->HeightMin=C.HeightMin;P->HeightMax=C.HeightMax;P->Steps=C.Steps;P->Rotation=C.Rotation;P->LeanX=C.LeanX;P->LeanY=C.LeanY;P->FormationCells=C.FormationCells;P->FormationAmount=C.FormationAmount;P->QuarterCopies=C.bQuarterCopies?1u:0u;P->QuarterYCount=C.QuarterYCount;P->QuarterFill=C.QuarterFill;P->QuarterSize=C.QuarterSize;P->QuarterHeight=C.QuarterHeight;P->QuarterJitterX=C.QuarterJitterX;P->QuarterJitterY=C.QuarterJitterY;P->Sides=C.Sides;P->ShapeRandom=C.bShapeRandom?1u:0u;P->CameraYaw=C.CameraYaw;P->CameraPitch=C.CameraPitch;P->ViewScale=C.ViewScale;P->DepthMin=C.DepthMin;P->DepthMax=C.DepthMax;P->UnitDistance=C.UnitDistance;P->UnitDistanceIdLerp=C.UnitDistanceIdLerp;P->CarveDepth=C.CarveDepth;P->CarveVoronoi=C.CarveVoronoi;P->YBias=C.YBias;P->YBiasVoronoi=C.YBiasVoronoi;P->YBiasVoronoiInvert=C.bYBiasVoronoiInvert?1u:0u;P->NegativeYUnitDistanceTaper=C.NegativeYUnitDistanceTaper;P->Reverse=C.bReverse?1u:0u;P->Seed=C.Seed;P->VoronoiCells=C.VoronoiCells;P->FlowVoronoi=C.FlowVoronoi;P->ChamferWidth=C.ChamferWidth;P->ChamferIntensity=C.ChamferIntensity;P->ChamferVoronoi=C.ChamferVoronoi;P->BlockCavityWidth=C.BlockCavityWidth;P->RowCavityWidth=C.RowCavityWidth;P->CavityIntensity=C.CavityIntensity;P->CavityVoronoiThreshold=C.CavityVoronoiThreshold;P->CavityVoronoiMaskGain=C.CavityVoronoiMaskGain;P->RawHeight=O[0];P->Flow=O[1];P->BlockIds=O[2];P->RowIds=O[3];P->VoronoiRaw=O[4];P->VoronoiSmooth=Smooth;P->SweepIn=SweepA;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;};
 				for(int Stage=0;Stage<9;++Stage){FMixtormatCliffStrataCS::FPermutationDomain Perm;Perm.Set<FMixtormatCliffStrataCS::FStage>(Stage);TShaderMapRef<FMixtormatCliffStrataCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel),Perm);auto* P=GraphBuilder.AllocParameters<FMixtormatCliffStrataCS::FParameters>();Fill(P);P->OutRawHeight=GraphBuilder.CreateUAV(O[0]);P->OutFlow=GraphBuilder.CreateUAV(O[1]);P->OutBlockIds=GraphBuilder.CreateUAV(O[2]);P->OutRowIds=GraphBuilder.CreateUAV(O[3]);P->OutVoronoiRaw=GraphBuilder.CreateUAV(O[4]);P->OutVoronoiSmooth=GraphBuilder.CreateUAV(Smooth);P->OutSweep=GraphBuilder.CreateUAV(Stage==3?SweepA:SweepB);P->OutIdDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?IdA:IdB);P->OutRowDistance=GraphBuilder.CreateUAV((Stage==5||Stage==7)?RowA:RowB);P->OutHeight=GraphBuilder.CreateUAV(O[5]);P->OutBlockSeam=GraphBuilder.CreateUAV(O[6]);P->OutRowSeam=GraphBuilder.CreateUAV(O[7]);P->OutCavity=GraphBuilder.CreateUAV(O[8]);P->OutCoverage=GraphBuilder.CreateUAV(O[9]);if(Stage==4)P->SweepIn=SweepA;if(Stage==6){P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}if(Stage==7){P->IdDistanceIn=IdB;P->RowDistanceIn=RowB;}if(Stage==8){P->SweepIn=SweepB;P->IdDistanceIn=IdA;P->RowDistanceIn=RowA;}ClearUnusedGraphResources(Shader,P);const FIntVector Groups=(Stage==3||Stage==6)?FIntVector(1,Size.Y,1):((Stage==4||Stage==7)?FIntVector(Size.X,1,1):PixelGroups);FComputeShaderUtils::AddPass(GraphBuilder,RDG_EVENT_NAME("Mixtormat.CliffStrata.S%d.L%d.C%d",Stage,LayerCtx.LayerIndex,Child.SourceChildIndex),Shader,P,Groups);}
 				if(NodeKey){auto Entry=MakeShared<FMixtormatNodeCacheEntry,ESPMode::ThreadSafe>();Entry->Key=NodeKey;Entry->Resolution=Size;for(int i=0;i<SlotCount;++i)GraphBuilder.QueueTextureExtraction(O[i],&Entry->Outputs[i]);Ctx.PendingNodeEntries.Add(Entry);}
 			}
