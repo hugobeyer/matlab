@@ -30,6 +30,7 @@ namespace MixtormatGpuCompositor
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::Generator;
 		ChildData.SourceChildIndex = SourceChildIndex;
+		ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 		ChildData.Generator.Type = Generator.Type;
 		const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
 			FGeneratorInputRenderData& Out, const bool bHeight)
