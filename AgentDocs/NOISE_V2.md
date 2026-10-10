@@ -93,60 +93,66 @@ Read from `Shaders/Private/MixtormatRockFormation.usf`:
 by clipping (`RockClip`), and the field is a max of their edge planes. There is no reusable
 "jagged noise" helper — it is edge-local — so the *mathematical method* is what gets adapted.
 
-### Why an intermediate noise-fold attempt was wrong
+### Why two earlier designs were wrong
 
-The first V2.2 attempt folded a smooth periodic gradient-noise field, `F(n) = 1 − |n|^Exponent`, and
-displaced the domain by `grad(F)`. It was mathematically clean — no nonlinearity on the gradient,
-displacement bounded by the noise's own Lipschitz constant — but it **rendered curvy**, and the
-reason was structural rather than a tuning problem:
+Both failures came from the same mistake in different forms — using a *discontinuous* field to drive
+the displacement.
+
+**Attempt 1 — folded smooth noise.** Folded a smooth periodic gradient-noise field,
+`F(n) = 1 − |n|^Exponent`, and displaced by `grad(F)`. It was mathematically clean but rendered
+**curvy**, and the reason was structural rather than a tuning problem:
 
 > A quintic-interpolated scalar field has smooth, curved iso-contours and a smoothly rotating
-> gradient. Every crease it can produce therefore follows a curve. No choice of exponent, amplitude
-> or octave count changes that, because the smoothness is in the interpolant, not in the shaping.
+> gradient. Every crease it can produce therefore follows a curve. No exponent, amplitude or octave
+> setting changes that, because the curvature lives in the interpolant, not in the shaping.
 
-Replacing a polygon SDF with a smooth field cannot produce angular geometry. That attempt was
-discarded, not tuned.
+**Attempt 2 — the SDF's own gradient.** Replaced the fold with Rock's max-of-half-planes construction
+(polygon SDF, each Voronoi cell as the intersection of its bisector half-planes, each plane displaced
+sideways by a zigzag as `RockJag` displaces an edge). That is the right *shape* of algorithm but it
+produced **shattered plates** with hard seams and stair-stepped edges:
 
-### The Noise adaptation: the polygon SDF on the periodic lattice
+> A Voronoi cell SDF built from a max of planes is only a **piecewise** distance field. The gradient
+> has unit length inside each cell but **snaps** to a different wall normal at every bisector, so the
+> displacement direction is discontinuous across the entire diagram. Each cell then translates
+> coherently, which is a tessellation, not a warp. A true eikonal distance field is *continuous* —
+> that continuity is the entire point, and a hard max throws it away.
 
-`MixtormatNoiseV2Jagged` ports Rock's construction directly:
+### The Noise adaptation: eikonal distance, smooth direction
 
-- A Voronoi cell is the **intersection** of its bisector half-planes, and the SDF of an intersection
-  is the **max** of the individual plane distances — so clipping against the neighbours and taking a
-  max are the same operation, not an approximation of one.
-- Each plane is displaced sideways by a zigzag, exactly as Rock displaces each edge by `RockJag`, so
-  boundaries are straight **and** broken.
-- Zigzag amplitude is divided by the break count, preserving Rock's steepness-over-scale rule.
+`MixtormatNoiseV2Jagged` combines the two properties the failed attempts each lacked:
 
-**Continuity across cell borders** is what makes this usable as a domain warp, and it comes from
-evaluating the cell that **owns** the pixel rather than the pixel's own lattice cell: the real
-Voronoi diagram is a partition, so both sides of a shared bisector agree it is the active plane.
-Building the pixel's lattice cell instead would leave a seam on every cell boundary. Hence two
-passes — find the owner over 3×3, then build that cell from its own 3×3.
+- **Faceting from a genuine eikonal distance.** `MixtormatCellular`'s `EdgeDistance` is the exact
+  distance to the nearest cell wall — real Voronoi, continuous, unit gradient except on the
+  measure-zero medial axis where two walls tie. Because it is a real distance, the crease spacing has
+  a physical meaning: one band per `1/Creases` of a cell.
+- **Direction from a smooth field.** Transport comes from the existing `MixtormatNoiseV2Curl`, which
+  is smooth and divergence-free. This adds no new solver and reuses the shared helper rather than
+  inventing a second faceted field.
 
-The displacement is the gradient of that max, so it is the normal of the nearest, zigzagged wall:
-piecewise constant with hard switches at the walls. That is the angular, fractured signature.
+The distance is folded with a **triangle** profile, not a sine. That is what keeps creases
+straight-sided; a sine through the same distance curves every band and the result is wavy again. A
+triangle is piecewise linear with a hard slope reversal at each crease — the angular signature — and
+unlike a max-of-planes it never jumps in value, so there is no seam to stair-step. It is spelled
+`1 - abs(2*(Phase - floor(Phase)) - 1)` rather than with `frac()` so the wrap point cannot introduce
+a value discontinuity.
 
-| Requirement | How the SDF satisfies it |
+| Requirement | How it is satisfied |
 | --- | --- |
-| Angular, broken, fractured | Boundaries are straight planes; the gradient is a wall normal, so direction changes are hard |
-| No artificial derivative spikes | No nonlinearity on a gradient; the field is a max of affine planes, so magnitude is bounded and smooth within each cell |
+| Angular, broken, fractured | Triangle fold ⇒ piecewise-linear displacement with hard slope reversals |
+| Continuous (no shattered plates) | Direction is smooth curl; the SDF contributes magnitude only, never direction |
+| No artificial derivative spikes | No nonlinearity on any gradient; the fold acts on a distance field |
 | No repetitive square artifacts | Cell shapes come from jittered Voronoi bisectors, not an axis-aligned grid |
-| Tileable on both axes | Cell coordinates wrap before hashing; the diagram is periodic, so the warp is periodic. Fracture discontinuities are interior to the diagram, not seams |
-| Seeded, resolution independent | Shared `MixtormatCellPoint` / `MixtormatCellHash`; pure lattice maths, no texel term |
+| Tileable on both axes | The cell diagram is periodic and the fold is a function of distance, not lattice position |
+| Seeded, resolution independent | Shared `MixtormatCellular`; pure lattice maths, no texel term |
 | Adjustable frequency and intensity | Frequency = existing `NoiseDistortionFrequency`; intensity = `NoiseDistortionJaggedness` |
-| Meaningful variation across scales | `NoiseJaggedDetail` adds up to 3 fracture scales, standing in for `RockZigFbm` |
+| Meaningful variation across scales | `NoiseJaggedDetail` stacks up to 3 fracture scales, standing in for `RockZigFbm` |
 | Neutral at 0 | Early return on `Strength <= 0`; `WarpDomain` early-returns when both strengths are 0 |
-| Usable alone or mixed | Independent additive term, exactly as before |
+| Usable alone or mixed | Independent additive term; the two warps use different seed streams so mixing them is not redundant |
 
-`NoiseJaggedSharpness` sets the break count (1–4 breaks per cell edge) with amplitude divided by that
-count, so it is a steepness control in Rock's sense rather than a raw scale multiplier.
+`NoiseJaggedSharpness` now sets the **band count per cell** (1–4) rather than an exponent.
 
-**Cost.** About eighteen feature-point hashes per octave, against one noise evaluation for the
-retired version. That is the honest price of straight edges, and it is why `NoiseJaggedDetail` is
-capped at three scales here where the noise fold could afford four. Optimizing duplicated work was
-the first step; the overlap between the two 3×3 scans is the obvious next target if profiling
-demands it.
+**Cost.** One `MixtormatCellular` (a 3×3 plus a 5×5 scan) and a two-octave curl per octave. The
+previous eighteen-hash two-pass design is gone.
 
 ### Documented visual change
 
