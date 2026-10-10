@@ -988,11 +988,37 @@ namespace MixtormatGpuCompositor
 		FCliffStrataRenderData CliffStrata;
 	};
 
+	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
+	// layer whose combined mask is the signal and says nothing about what produced that mask, so a
+	// published-output or region-ID source later fills the same slot without changing this.
+	struct FScalarDriverRenderData
+	{
+		bool bEnabled = false;
+		// A region source names the producer child as well as the layer; a mask source names the
+		// layer alone. bRegionSource picks which of the slot's two bindings the shader reads.
+		bool bRegionSource = false;
+		FGuid SourceLayerId;
+		int32 SourceChildIndex = INDEX_NONE;
+		uint32 Seed = 0;
+		float IdRandomMin = 0.0f;
+		float IdRandomMax = 1.0f;
+		bool bInvert = false;
+		float InputMin = 0.0f;
+		float InputMax = 1.0f;
+		float OutputMin = 0.0f;
+		float OutputMax = 1.0f;
+		float Amount = 1.0f;
+		uint32 Combine = 0;
+	};
+
 	// Ordered structural modules target a later same-layer Strata child explicitly.
 	struct FGeneratorStructuralWarpRenderData
 	{
 		FOutputReferenceRenderData Source;
 		int32 TargetChildIndex = INDEX_NONE;
+		// Flow Amount and Trace Length, respectively. Unresolved signals leave the
+		// authored scalars unchanged and never create a new Driver model.
+		FScalarDriverRenderData Drivers[2];
 	};
 
 	struct FGeneratorHeightPushRenderData
@@ -1091,29 +1117,6 @@ namespace MixtormatGpuCompositor
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
 		FOutputReferenceRenderData OutputReference;
-	};
-
-	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a
-	// layer whose combined mask is the signal and says nothing about what produced that mask, so a
-	// published-output or region-ID source later fills the same slot without changing this.
-	struct FScalarDriverRenderData
-	{
-		bool bEnabled = false;
-		// A region source names the producer child as well as the layer; a mask source names the
-		// layer alone. bRegionSource picks which of the slot's two bindings the shader reads.
-		bool bRegionSource = false;
-		FGuid SourceLayerId;
-		int32 SourceChildIndex = INDEX_NONE;
-		uint32 Seed = 0;
-		float IdRandomMin = 0.0f;
-		float IdRandomMax = 1.0f;
-		bool bInvert = false;
-		float InputMin = 0.0f;
-		float InputMax = 1.0f;
-		float OutputMin = 0.0f;
-		float OutputMax = 1.0f;
-		float Amount = 1.0f;
-		uint32 Combine = 0;
 	};
 
 	struct FGeneratorBundle
