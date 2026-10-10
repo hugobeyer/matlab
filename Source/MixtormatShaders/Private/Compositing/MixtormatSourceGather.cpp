@@ -166,7 +166,9 @@ namespace MixtormatGpuCompositor
 						|| (Child.Behavior.Type != EMixtormatBehaviorType::Warp
 							&& Child.Behavior.Type != EMixtormatBehaviorType::Push
 							&& Child.Behavior.Type != EMixtormatBehaviorType::Deform)
-						|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+						|| (Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
+							&& !(Child.Behavior.Stage == EMixtormatBehaviorStage::PreGeneration
+								&& Child.Behavior.Type == EMixtormatBehaviorType::Warp))
 						|| MixtormatChildScope::ResolveBehaviorGeneratorIndex(Layer.Children, ChildIndex) == INDEX_NONE)
 					{
 						continue;
