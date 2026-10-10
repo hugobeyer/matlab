@@ -569,21 +569,27 @@ void AddIconRole(
 		NUM("LayerLayout.ThumbnailSize", Layers, "Layout", "Thumbnail Size", LayerLayout.ThumbnailSize, 8, 64, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ItemGap", Layers, "Layout", "Item Gap", LayerLayout.ItemGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerLayout.ChildIndent", Layers, "Layout", "Child Indent", LayerLayout.ChildIndent, 0, 80, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
-		NUM("LayerLayout.SourcesTopGap", Layers, "Sources", "Top Gap", LayerLayout.SourcesTopGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesBottomGap", Layers, "Sources", "Bottom Gap", LayerLayout.SourcesBottomGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesEmptyHeight", Layers, "Sources", "Empty Card Height", LayerLayout.SourcesEmptyHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesRowHeight", Layers, "Sources", "Row Height", LayerLayout.SourcesRowHeight, 14, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesRowGap", Layers, "Sources", "Row Gap", LayerLayout.SourcesRowGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesAddTabWidth", Layers, "Sources", "Add Tab Width", LayerLayout.SourcesAddTabWidth, 16, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesAddTabHeight", Layers, "Sources", "Add Tab Height", LayerLayout.SourcesAddTabHeight, 14, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
-		NUM("LayerLayout.SourcesAddTabHighlight", Layers, "Sources", "Add Tab Highlight", LayerLayout.SourcesAddTabHighlight, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
-		NUM("LayerLayout.SourcesAddTabHighlightBias", Layers, "Sources", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
-		NUM("LayerConnections.Indent", Layers, "Connections", "Indent", LayerConnections.Indent, 0, 40, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
+																				NUM("LayerConnections.Indent", Layers, "Connections", "Indent", LayerConnections.Indent, 0, 40, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.Inset", Layers, "Connections", "Inset", LayerConnections.Inset, 0, 12, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.TextGap", Layers, "Connections", "Text Gap", LayerConnections.TextGap, 0, 12, .5, 1, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.PickerWidth", Layers, "Connections", "Picker Width", LayerConnections.PickerWidth, 220, 480, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		NUM("LayerConnections.PickerListMaxHeight", Layers, "Connections", "Picker List Max Height", LayerConnections.PickerListMaxHeight, 100, 600, 1, 0, EMixtormatThemeRefreshMode::StyleRefresh);
 		SetLocateTarget(P, LocateBegin, ETarget::Layer);
+
+// SOURCES
+		LocateBegin = P.Num();
+NUM("LayerLayout.SourcesTopGap", Sources, "Layout", "Top Gap", LayerLayout.SourcesTopGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesBottomGap", Sources, "Layout", "Bottom Gap", LayerLayout.SourcesBottomGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesEmptyHeight", Sources, "Layout", "Empty Card Height", LayerLayout.SourcesEmptyHeight, 0, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesRowHeight", Sources, "Layout", "Row Height", LayerLayout.SourcesRowHeight, 14, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesRowGap", Sources, "Layout", "Row Gap", LayerLayout.SourcesRowGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesAddTabWidth", Sources, "Layout", "Add Tab Width", LayerLayout.SourcesAddTabWidth, 16, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesAddTabHeight", Sources, "Layout", "Add Tab Height", LayerLayout.SourcesAddTabHeight, 14, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+NUM("LayerLayout.SourcesAddTabHighlight", Sources, "Layout", "Add Tab Highlight", LayerLayout.SourcesAddTabHighlight, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Layout", "Add Tab Highlight Bias", LayerLayout.SourcesAddTabHighlightBias, .1, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
+		NUM("LayerLayout.SourcesAddIconSize", Sources, "Add Button", "Icon Size (Square)", LayerLayout.SourcesAddIconSize, 4, 40, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("LayerLayout.SourcesAddTabBottomRadius", Sources, "Add Button", "Bottom Radius", LayerLayout.SourcesAddTabBottomRadius, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Paint);
+		SetLocateTarget(P, LocateBegin, ETarget::Card);
 
 // BUTTONS
 		LocateBegin = P.Num();
@@ -802,6 +808,7 @@ void AddIconRole(
 		case ETab::Preview: return TEXT("PREVIEW");
 		case ETab::GalleryShell: return TEXT("GALLERY / SHELL");
 		case ETab::Typography: return TEXT("TYPOGRAPHY");
+		case ETab::Sources: return TEXT("SOURCES");
 		default: return TEXT("UNKNOWN");
 		}
 	}
@@ -820,6 +827,7 @@ void AddIconRole(
 		case ETab::Preview: return TEXT("preview");
 		case ETab::GalleryShell: return TEXT("galleryShell");
 		case ETab::Typography: return TEXT("typography");
+		case ETab::Sources: return TEXT("sources");
 		default: return TEXT("unknown");
 		}
 	}
