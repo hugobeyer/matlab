@@ -120,7 +120,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 			SNew(SBox)
 			.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.RowHeight)
 			.Padding(FMargin(FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset
-				+ (bBehaviorStyle ? FMixtormatThemeStore::GetTheme().Menus.BehaviorItemIndent : 0.0f),
+				+ (bBehaviorStyle ? FMixtormatThemeStore::GetTheme().Menu.BehaviorItemIndent : 0.0f),
 				0.0f, FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset, 0.0f))
 			[
 				Row
@@ -171,7 +171,7 @@ FSlateColor SMixtormatMenuItem::GetLabelColor() const
 	}
 	Color.A *= Mixtormat::FMixtormatTypography::GetSpec(
 		Resolved.Typography, Mixtormat::EMixtormatTextRole::Menu).Opacity;
-	if (bBehaviorStyle) { Color.A *= FMixtormatThemeStore::GetTheme().Menus.BehaviorItemOpacity; }
+	if (bBehaviorStyle) { Color.A *= FMixtormatThemeStore::GetTheme().Menu.BehaviorItemOpacity; }
 	return FSlateColor(Color);
 }
 
@@ -183,7 +183,7 @@ FSlateColor SMixtormatMenuItem::GetIconColor() const
 			? FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Accent)
 			: FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text);
 	Color.A *= FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::Menu)].RestOpacity;
-	if (bBehaviorStyle) { Color.A *= FMixtormatThemeStore::GetTheme().Menus.BehaviorItemOpacity; }
+	if (bBehaviorStyle) { Color.A *= FMixtormatThemeStore::GetTheme().Menu.BehaviorItemOpacity; }
 	if (!IsRowEnabled())
 	{
 		Color.A *= FMixtormatThemeStore::GetResolved().Menus.ItemDisabled.A;
