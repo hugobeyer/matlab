@@ -130,7 +130,7 @@ float2 MixtormatNoiseV2WarpDomain(
 	const int P = clamp(Period, 1, 4096);
 	const float Mix = saturate(CurlMix);
 	float2 Displacement = float2(0.0f, 0.0f);
-	if (Mix < 1.0f)
+	if (Strength > 0.0f && Mix < 1.0f)
 	{
 		float Value;
 		float2 Derivative;
@@ -141,7 +141,7 @@ float2 MixtormatNoiseV2WarpDomain(
 			? Direction * rsqrt(DirectionLengthSq) : float2(0.0f, 1.0f);
 		Displacement += (1.0f - Mix) * Value * Axis;
 	}
-	if (Mix > 0.0f)
+	if (Strength > 0.0f && Mix > 0.0f)
 	{
 		Displacement += Mix * MixtormatNoiseV2Curl(UV, P, Octaves,
 			Roughness, Lacunarity, Seed, float2(0.0f, 0.0f), 0.0f, 1.0f);
