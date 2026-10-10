@@ -675,6 +675,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 		FMixtormatOutputReference Source;
 		FGuid Target;
 		EIssue Issue = EIssue::None;
+		bool bAvailable = false;
 	};
 	TArray<FEntry> Entries;
 	if (Role == ERole::Source)
@@ -695,6 +696,8 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 			Entry.LayerLabel = Layer.DisplayName;
 			Entry.LayerId = Layer.LayerId;
 			Entry.Issue = Candidate.Issue;
+			Entry.bAvailable = Candidate.Issue == EIssue::None
+				&& Candidate.Status.bCanExecuteStructurally;
 			Entries.Add(MoveTemp(Entry));
 		}
 	}
@@ -714,6 +717,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 				Entry.LayerLabel = Layer.DisplayName;
 				Entry.LayerId = Layer.LayerId;
 				Entry.Issue = ConnectionIssue(Projection.Evaluate(nullptr, &Entry.Target), Role);
+				Entry.bAvailable = Entry.Issue == EIssue::None;
 				Entries.Add(MoveTemp(Entry));
 			}
 		}
@@ -723,7 +727,7 @@ TSharedRef<SWidget> SMixtormat::BuildStructuralConnectionMenu(const FMixtormatCh
 	FGuid LastLayerId;
 	for (const FEntry& Entry : Entries)
 	{
-		if (Entry.Issue != EIssue::None || !bEditable) { continue; }
+		if (!Entry.bAvailable || !bEditable) { continue; }
 		if (Role == ERole::Source && Entry.LayerId != LastLayerId)
 		{
 			Menu.Caption(Entry.LayerId == Address.OwnerId
