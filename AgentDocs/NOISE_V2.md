@@ -1,6 +1,6 @@
 # Mixtormat — Noise System V2
 
-**Agent B branch:** `feature/noise-v2` (started from `main` `f94c9e3`).  
+**Original Agent B branch:** `feature/noise-v2`, merged to `main` in PR #1 (`fb3ebbd`).  
 **Scope:** Noise producer and Noise-specific reflected settings/Inspector; no Behavior V2 architecture or execution changes.  
 **Validation:** static source inspection only. No builds, automated tests, Unreal startup, shader compilation, visual comparison or GPU profiling were authorized or performed.
 
@@ -72,6 +72,60 @@ Existing parameters, serialized family numeric values, `bNoiseNormalizeHeight`, 
 - `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` — generator/mask conditional controls
 - `AgentDocs/NOISE_V2.md` — this report
 
+## Noise V2.1 — layered families, jaggedness and authoring metadata
+
+Feature branch `feature/noise-v2-layering`. New reflected parameters are appended with
+identity/zero defaults; older materials and enum values remain unchanged.
+
+| Parameter | Default | Purpose |
+| --- | --- | --- |
+| `NoiseLayerMix` | `0` | For Gradient, Value, Worley F1/F2/F2−F1, Bars and Phasor: blend additional octaves into the original field. At 0 the original output path is unchanged |
+| `NoisePhasorScale` | `1` | Scale the signed Phasor Value; resulting field is clamped to −1..1, with zero derivative on flat plateaus |
+| `NoisePhasorBias` | `0` | Offset signed Phasor Value before the final clamp |
+| `NoiseWorleyCellDepth` | `0` | Periodic quintic-interpolated lattice modulation of Worley distance; feature points/Region IDs do not move. Analytic gradient includes the distance × modulation derivative |
+| `NoiseDistortionJaggedness` | `0` | Independent higher-frequency sharp periodic vector warp. Works with or without nonzero smooth/curl distortion Strength |
+
+For single-frequency families the Inspector shows `Layer Mix`; Detail/Roughness/Lacunarity
+are shown only when Layer Mix is active. For native FBM/Ridged/Billow the existing
+octave controls always appear and preserve their prior behavior. Phasor's extra Scale/Bias
+rows and Worley's Cell Depth are family-specific. Placement Direction is hidden for
+non-directional families; Distortion Direction is hidden at full Curl Mix. Inactive
+controls are **collapsed**, not left greyed out.
+
+Octave periods are rounded to integers and capped through the existing
+`MixtormatNoiseOctavePeriod` function. Worley IDs always come from the base octave,
+not the finer octaves, preserving downstream ID references. The jagged warp is
+periodic and independent of smooth/curl distortion strength; both zero means strict
+identity. The existing shader-side finite-difference Jacobian handles both warp
+sources when either is active.
+
+### Parameter authoring, references and drivers
+
+- `Config/MixtormatParameterAuthoring.json` now ships a `Noise` section for
+  **Generator** and **MaskNoise** parameter definition keys, including both enums and
+  every numeric Noise parameter relevant to each owner. It records reset/default,
+  UI bounds and snap metadata. Noise generator Height Scale is excluded from MaskNoise
+  because masks read raw Value, not signed module Height.
+- These are ordinary reflected `UPROPERTY` fields accessed through existing
+  `MakeMemberSlider`, `MakeMemberSliderInt`, and `MakeMemberEnum`, so they get
+  standard right-click **Copy/Paste Reference**, **Parameter Info** and
+  **Edit Authoring Setup → Save to Plugin Defaults**. The nested `MaskNoise` address
+  resolver and binding type are already supported by the shared parameter system.
+- **Important limitation:** the shared `Add Driver` popover may be offered for numeric
+  Noise parameters, but the compositor currently evaluates per-pixel mask/ID drivers
+  only for explicitly wired parameters (layer RoughnessInfluence/HeightBlendAmount,
+  structural warp FlowAmount/FlowTraceLength). This Noise batch does **not** add
+  GPU pixel-driver bindings for each Noise scalar. Parameter *references* are supported;
+  do not describe Noise scalar *pixel drivers* as operational until dedicated shader
+  signal plumbing and dependency/snapshot rules are implemented.
+
+### Performance and validation
+
+Optional octave layering and Phasor can be expensive at high detail. Distortion
+with nonzero strength or jaggedness incurs additional warp work and Jacobian probes
+for generator gradients. Source review only; no Unreal build, shader compile,
+GPU validation, visual tiling comparison, or performance profile.
+
 ## Static risks and merge gates
 
 1. Unreal C++/HLSL/UHT compile compatibility remains unverified. The reflection fields and Shader parameters have been inspected by source only.
@@ -81,6 +135,6 @@ Existing parameters, serialized family numeric values, `bNoiseNormalizeHeight`, 
 5. Fixed Worley F2/F2-F1 Gradient output differs in existing saved materials referencing that output; their Value/Height/RegionIds remain unchanged. Review downstream use before merge.
 6. Noise output tileability is for periodic source UV. Arbitrary fractional/rotated **layer placement** can move the visible output seam; authored placement does not imply that destination edges always agree.
 7. A separate public typed Curl Vector2 field requires agreement with Agent A on publication, reference resolution, source menu and interpolation. **No Behavior V2 change was made here.**
-8. Coordinate runtime header edits with Agent A before integrating into the main development branch. This Noise branch is not merged.
+8. Coordinate shared runtime header edits with Behavior V2 when it lands; Noise V2 itself merged into `main` in PR #1.
 
-**Merge readiness:** code is source-review ready; not build-verified or runtime-verified. Keep as feature branch until the above gates are closed.
+**Validation status:** source-review ready; merged Noise V2 remains unverified by local C++/shader builds or Unreal GPU runtime.
