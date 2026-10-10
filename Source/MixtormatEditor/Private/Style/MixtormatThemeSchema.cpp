@@ -317,7 +317,7 @@ void AddIconRole(
 				NUM("TextField.SelectionOpacity", Controls, "Text Fields", "Selection Opacity", TextField.SelectionOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				BLEND("TextField.ShadeBlend", Controls, "Text Fields", "Shade Blend", TextField.ShadeBlend, EMixtormatThemeRefreshMode::Reconstruct);
 				BLEND("TextField.HighlightBlend", Controls, "Text Fields", "Highlight Blend", TextField.HighlightBlend, EMixtormatThemeRefreshMode::Reconstruct);
-				SetLocateTarget(P, LocateBegin, ETarget::ControlLayout);
+				SetLocateTarget(P, LocateBegin, ETarget::TextField);
 
 // CONTROLS
 		LocateBegin = P.Num();
