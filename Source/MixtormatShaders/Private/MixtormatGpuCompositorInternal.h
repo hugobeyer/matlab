@@ -1035,6 +1035,9 @@ namespace MixtormatGpuCompositor
 		float Strength = 1.0f;
 		float GradientReach = 0.02f;
 		float CarveWidth = 0.02f;
+		// Reuse the existing GPU parameter layout; the authoring owner is Behavior.
+		FEffectRenderData Flow;
+		bool bUseTracedFlow = false;
 		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
 		FBehaviorFieldComposition DirectionComposition;
