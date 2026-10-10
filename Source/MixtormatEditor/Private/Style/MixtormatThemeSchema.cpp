@@ -639,6 +639,16 @@ void AddIconRole(
 				NUM("PreviewLayout.TogglePadding", Preview, "Layout", "Toggle Padding", PreviewLayout.TogglePadding, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.FinalPopupWidth", Preview, "Layout", "Final Popup Width", PreviewLayout.FinalPopupWidth, 160, 420, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftRailButtonGap", Preview, "Layout", "Rail Button Gap", PreviewLayout.LeftRailButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailButtonWidth", Preview, "Layout", "Rail Button Width", PreviewLayout.LeftRailButtonWidth, 28, 120, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailButtonHeight", Preview, "Layout", "Rail Button Height", PreviewLayout.LeftRailButtonHeight, 28, 120, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailInnerPadding", Preview, "Layout", "Rail Inner Padding", PreviewLayout.LeftRailInnerPadding, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailLabelGap", Preview, "Layout", "Rail Icon Label Gap", PreviewLayout.LeftRailLabelGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("PreviewLayout.LeftRailBorderOpacity", Preview, "Layout", "Rail Border Opacity", PreviewLayout.LeftRailBorderOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailBorderThickness", Preview, "Layout", "Rail Border Thickness", PreviewLayout.LeftRailBorderThickness, 0, 5, .25, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowOpacity", Preview, "Layout", "Rail Shadow Opacity", PreviewLayout.LeftRailShadowOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowOffset", Preview, "Layout", "Rail Shadow Offset", PreviewLayout.LeftRailShadowOffset, 0, 20, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailShadowRadius", Preview, "Layout", "Rail Shadow Radius", PreviewLayout.LeftRailShadowRadius, 0, 30, .5, 1, EMixtormatThemeRefreshMode::Paint);
+				NUM("PreviewLayout.LeftRailCornerRadius", Preview, "Layout", "Rail Corner Radius", PreviewLayout.LeftRailCornerRadius, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.LeftOverlayWidth", Preview, "Layout", "Layers Pop-out Initial Width", PreviewLayout.LeftOverlayWidth, 260, 720, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("PreviewLayout.LeftOverlaySurfaceOpacity", Preview, "Layout", "Layers Pop-out Surface Opacity", PreviewLayout.LeftOverlaySurfaceOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 				NUM("PreviewLayout.QuickControlsCentreGap", Preview, "Layout", "Quick Controls Centre Gap", PreviewLayout.QuickControlsCentreGap, 80, 400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
