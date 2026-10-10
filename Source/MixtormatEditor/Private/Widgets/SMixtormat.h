@@ -1837,6 +1837,7 @@ private:
 	TSharedPtr<SWidget> QuickControlsPanel;
 	// One active timer advances the reveal and proximity fade only while the popup is open.
 	float QuickControlsReveal = 1.0f;
+	float QuickControlsBackdropOpacity = 0.0f;
 	bool bBypassSelectedChild = false;
 	bool bPreviewDisplacementEnabled = true;
 	bool bGlobalUVRotation90 = false;

@@ -37,9 +37,16 @@ namespace
 	{
 	public:
 		SLATE_BEGIN_ARGS(SMixtormatQuickControlsGuide) {}
+			SLATE_ATTRIBUTE(FVector2D, ViewportCenter)
+			SLATE_ATTRIBUTE(float, GuideOpacity)
 		SLATE_END_ARGS()
 
-		void Construct(const FArguments&) {}
+		void Construct(const FArguments& Args)
+		{
+			ViewportCenter = Args._ViewportCenter;
+			GuideOpacity = Args._GuideOpacity;
+		}
+
 
 		FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
 
@@ -48,7 +55,8 @@ namespace
 			const bool) const override
 		{
 			const FVector2f Size(Geometry.GetLocalSize());
-			const FVector2f Center = Size * 0.5f;
+			const FVector2f Center(ViewportCenter.Get(FVector2D(Geometry.GetLocalSize()) * 0.5));
+			const float Fade = FMath::Clamp(GuideOpacity.Get(1.0f), 0.0f, 1.0f);
 			const FLinearColor Base = FMixtormatThemeStore::GetResolved().Palette.Get(
 				Mixtormat::EMixtormatColorRole::TextMuted) * WidgetStyle.GetColorAndOpacityTint();
 
@@ -57,7 +65,7 @@ namespace
 			const Mixtormat::FMixtormatPreviewMetrics& Preview = FMixtormatThemeStore::GetResolved().PreviewLayout;
 			const int32 RingCount = MixtormatTokens::QuickControlsGuideGlowRings;
 			const float CenterOpacity = FMath::Clamp(Preview.QuickControlsGuideGlowOpacity
-				* WidgetStyle.GetColorAndOpacityTint().A, 0.0f, 1.0f);
+				* WidgetStyle.GetColorAndOpacityTint().A * Fade, 0.0f, 1.0f);
 			float PreviousOpacity = 0.0f;
 			for (int32 Ring = 0; Ring < RingCount && Preview.QuickControlsGuideGlowDiameter > 0.0f; ++Ring)
 			{
@@ -86,7 +94,7 @@ namespace
 					const float End = AxisLength * (Segment + 1) / SegmentCount;
 					TArray<FVector2f> Line = { Center + Direction * Start, Center + Direction * End };
 					FLinearColor Tint = Base;
-					Tint.A *= Preview.QuickControlsGuideAxisOpacity
+					Tint.A *= Preview.QuickControlsGuideAxisOpacity * Fade
 						* (1.0f - static_cast<float>(Segment) / SegmentCount);
 					FSlateDrawElement::MakeLines(Elements, LayerId, Geometry.ToPaintGeometry(),
 						Line, ESlateDrawEffect::None, Tint, true,
@@ -95,6 +103,10 @@ namespace
 			}
 			return LayerId;
 		}
+
+	private:
+		TAttribute<FVector2D> ViewportCenter;
+		TAttribute<float> GuideOpacity;
 	};
 
 	class SMixtormatPreviewPlate final : public SCompoundWidget
@@ -967,17 +979,8 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 		[
 			MakeCard(LOCTEXT("QuickControlsActions", "ACTIONS"), ActionRows, FVector2D(0.0, 1.0))
 		];
-	QuickControlsPanel = SNew(SOverlay)
-		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot()
-		[
-			SNew(SMixtormatQuickControlsGuide)
-			.Visibility(EVisibility::HitTestInvisible)
-		]
-		+ SOverlay::Slot()
-		[
-			Cards
-		];
+	// Keep card sizing independent of the viewport-wide backdrop.
+	QuickControlsPanel = Cards;
 
 	// Placed by padding, like the floating panels, so the pointer owns the position and the viewport
 	// owns the clamp. Self-hit-test-invisible: empty viewport must still reach the viewport.
@@ -1014,8 +1017,28 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			})
 			[QuickControlsPanel.ToSharedRef()]
 		];
-	// The open-state timer combines reveal opacity with distance fading.
-	return Frame;
+	// The guide uses the complete preview geometry. Only the cards are clipped
+	// to their popup bounds; the vignette no longer ends at the card rectangle.
+	// HitTestInvisible preserves mouse and keyboard input for the cards/viewport.
+	return SNew(SOverlay)
+		.Visibility(EVisibility::SelfHitTestInvisible)
+		+ SOverlay::Slot()
+		[
+			SNew(SMixtormatQuickControlsGuide)
+			.ViewportCenter_Lambda([this]()
+			{
+				return QuickControlsPosition + QuickControlsSize * 0.5;
+			})
+			.GuideOpacity_Lambda([this]() { return QuickControlsBackdropOpacity; })
+			.Visibility_Lambda([this]()
+			{
+				return bQuickControlsOpen ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			})
+		]
+		+ SOverlay::Slot()
+		[
+			Frame
+		];
 }
 
 void SMixtormat::ToggleQuickControls()
@@ -1046,6 +1069,7 @@ void SMixtormat::ToggleQuickControls()
 	bQuickControlsOpen = true;
 	// A single timer handles reveal and proximity until the menu closes.
 	QuickControlsReveal = 0.0f;
+	QuickControlsBackdropOpacity = 0.0f;
 	if (QuickControlsPanel.IsValid())
 	{
 		QuickControlsPanel->SetRenderOpacity(0.0f);
@@ -1081,9 +1105,10 @@ void SMixtormat::ToggleQuickControls()
 					return EActiveTimerReturnType::Stop;
 				}
 			}
+			QuickControlsBackdropOpacity = EaseOutQuad(QuickControlsReveal) * ProximityOpacity;
 			if (QuickControlsPanel.IsValid())
 			{
-				QuickControlsPanel->SetRenderOpacity(EaseOutQuad(QuickControlsReveal) * ProximityOpacity);
+				QuickControlsPanel->SetRenderOpacity(QuickControlsBackdropOpacity);
 			}
 			Invalidate(EInvalidateWidgetReason::Paint);
 			return EActiveTimerReturnType::Continue;
