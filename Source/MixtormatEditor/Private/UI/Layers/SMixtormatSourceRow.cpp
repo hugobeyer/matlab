@@ -100,10 +100,10 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 						SAssignNew(NameSwitcher, SWidgetSwitcher)
 						+ SWidgetSwitcher::Slot()
 						[
-SNew(STextBlock)
-									.Text(InArgs._Name)
-									.TextStyle(&NameStyle)
-									.ColorAndOpacity_Lambda([this]()
+							SNew(STextBlock)
+							.Text(InArgs._Name)
+							.TextStyle(&NameStyle)
+							.ColorAndOpacity_Lambda([this]()
 									{
 										return FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
 											Enabled.Get(true)
@@ -195,9 +195,4 @@ void SMixtormatSourceRow::HandleNameCommitted(const FText& Text, ETextCommit::Ty
 	const bool bCancelled = NameEntry.IsValid() && NameEntry->Finish();
 	if (NameSwitcher.IsValid()) { NameSwitcher->SetActiveWidgetIndex(0); }
 	if (!bCancelled) { OnNameCommitted.ExecuteIfBound(Text, CommitType); }
-}
-
-void SMixtormatSourceRow::ToggleEnabled()
-{
-	OnToggleEnabled.ExecuteIfBound();
 }
