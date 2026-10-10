@@ -658,6 +658,8 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				}
 				Remap(Child->HeightPush.Source.SourceLayerId, Child->HeightPush.Source.SourceChildId);
 				Remap(Child->StructuralWarp.Source.SourceLayerId, Child->StructuralWarp.Source.SourceChildId);
+				if (const FGuid* Target = Ids.Find(Child->HeightPush.TargetChildId)) Child->HeightPush.TargetChildId = *Target;
+				if (const FGuid* Target = Ids.Find(Child->StructuralWarp.TargetChildId)) Child->StructuralWarp.TargetChildId = *Target;
 				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
 				{
 					Remap(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
