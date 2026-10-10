@@ -255,9 +255,9 @@ TSharedRef<SWidget> SMixtormatThemePanel::MakePropertyRow(
 	const Mixtormat::FMixtormatThemeProperty* Property = &P;
 	const Mixtormat::EMixtormatStyleTarget Target = Mixtormat::FMixtormatStyleLocator::TargetFor(P);
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
-		.ToolTipText(P.Help.IsEmpty()
+		.ToolTip(SMixtormatHelp::MakeStyledToolTip(P.Help.IsEmpty()
 			? FText::FromString(P.Id.ToString())
-			: FText::FromString(P.Help));
+			: FText::FromString(P.Help)));
 
 	Row->AddSlot().FillWidth(1.0f).VAlign(VAlign_Center)
 	[
