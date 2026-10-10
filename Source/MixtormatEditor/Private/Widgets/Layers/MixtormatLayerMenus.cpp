@@ -1380,7 +1380,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
-if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
+if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
+		&& WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
 		const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
@@ -1404,6 +1405,9 @@ if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
 				{EMixtormatChildCreation::BehaviorFlowField, LOCTEXT("AddBehaviorFlowToGenerator", "Add Flow Field"), false}};
 			for (const FBehaviorEntry& Entry : Entries)
 			{
+				FMixtormatLayerChild Prototype;
+				ApplyChildCreationDefaults(Prototype, Entry.Creation);
+				if (!CanKeepScopedPlacement(Target, Prototype)) { continue; }
 				Menu.Item(Entry.Label,
 					Entry.bPushIcon ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
 					FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId, Entry]()
@@ -1412,6 +1416,13 @@ if (bGenerator && WorkingLayers.IsValidIndex(LayerIndex)
 						Destination.ScopeOwnerChildId = TargetChildId;
 						CreateChild(Destination, Entry.Creation);
 					}));
+			}
+			if (CanOwnScopedMasks(Target))
+			{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				Menu.SubMenu(LOCTEXT("AddBehaviorMasks", "Add Masks"), MixtormatIcons::Mask(),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
 			}
 		}
 	}
