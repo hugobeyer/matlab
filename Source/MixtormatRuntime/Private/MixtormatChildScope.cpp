@@ -164,12 +164,20 @@ namespace MixtormatChildScope
 			}
 			// Generic Scalar01 is not a generator Height/Warp socket. Validate it
 			// through the normal published-field dependency rules instead.
-			const int32 Index = (bInfluence || (!bDirection
+			int32 Index = (bInfluence || (!bDirection
 				&& Behavior.Type == EMixtormatBehaviorType::Carve))
 				? MixtormatOutputReferences::ResolveSource(
-					EffectiveLayers, LayerIndex, BehaviorChildIndex, Ref)
+					EffectiveLayers, LayerIndex, GeneratorIndex, Ref)
 				: MixtormatOutputReferences::ResolveGeneratorInputSource(
 					EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
+		// Behavior Push may consume published generic ScalarSigned outputs (Noise
+		// Value, or a copy), not only the legacy generator's canonical Height.
+		if (Index == INDEX_NONE && !bDirection && !bInfluence
+			&& Behavior.Type == EMixtormatBehaviorType::Push)
+		{
+			Index = MixtormatOutputReferences::ResolveSource(
+				EffectiveLayers, LayerIndex, GeneratorIndex, Ref);
+		}
 			if (Index == INDEX_NONE) { return EBehaviorInputIssue::InvalidPublishedSource; }
 			Result.SourceChildIndex = Index;
 			return EBehaviorInputIssue::None;

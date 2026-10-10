@@ -1171,6 +1171,8 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushSourceMenu()
 				Ref.OutputName = Output.Name;
 				Ref.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
 				const bool bValid = MixtormatOutputReferences::ResolveGeneratorInputSource(
+					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE
+					|| MixtormatOutputReferences::ResolveSource(
 					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 				Menu.Item(FText::Format(LOCTEXT("BehaviorPushChoice", "{0} / {1} / {2}"),
 					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
@@ -1220,8 +1222,10 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushControls()
 					&& (Ref.IsShelfSource()
 						? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
 							== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
-						: MixtormatOutputReferences::ResolveGeneratorInputSource(
-							WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
+						: (MixtormatOutputReferences::ResolveGeneratorInputSource(
+							WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE
+							|| MixtormatOutputReferences::ResolveSource(
+								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE));
 				return bAvailable ? FText::FromName(Ref.OutputName)
 					: LOCTEXT("BehaviorPushMissingSource", "Source unavailable");
 			}
@@ -1323,7 +1327,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 				Ref.OutputName = Output.Name;
 				Ref.Kind = EMixtormatPublishedFieldKind::SDF;
 				const bool bValid = MixtormatOutputReferences::ResolveSource(
-					WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+					WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 				Menu.Item(FText::Format(LOCTEXT("BehaviorCarveChoice", "{0} / {1} / {2}"),
 					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label),
 					MixtormatIcons::Generator(),
@@ -1370,7 +1374,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
 					&& ChildIndex != INDEX_NONE
 					&& OwnerIndex != INDEX_NONE
 					&& MixtormatOutputReferences::ResolveSource(
-						WorkingLayers, LayerIndex, ChildIndex, Ref) != INDEX_NONE;
+						WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 				return bAvailable ? FText::FromName(Ref.OutputName)
 					: LOCTEXT("BehaviorCarveMissingSource", "Source unavailable");
 			}
