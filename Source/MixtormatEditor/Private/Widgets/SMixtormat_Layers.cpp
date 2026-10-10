@@ -683,6 +683,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				RemapOutput(Child->BoundaryId.RegionIdsSource);
 				RemapOutput(Child->HeightPush.Source);
 				RemapOutput(Child->StructuralWarp.Source);
+				RemapOutput(Child->Behavior.Direction.Published);
+				RemapOutput(Child->Behavior.Height.Published);
+				RemapOutput(Child->Behavior.Influence.Published);
 				Remap(Child->HeightBlend.SourceLayerId, Child->HeightBlend.SourceChildId);
 				if (const FGuid* Input = Ids.Find(Child->HeightColorRamp.SourceChildId)) Child->HeightColorRamp.SourceChildId = *Input;
 				if (const FGuid* Target = Ids.Find(Child->HeightPush.TargetChildId)) Child->HeightPush.TargetChildId = *Target;
