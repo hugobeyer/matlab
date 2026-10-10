@@ -1377,6 +1377,22 @@ namespace
 				|| Child.Behavior.Type != EMixtormatBehaviorType::Warp
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
 			const FOutputReferenceRenderData& Ref = Child.Behavior.Direction;
+			// A connected Influence that is unavailable must NOT turn into full strength.
+			FRDGTextureRef Influence = LayerCtx.CombinedMask;
+			const bool bUseInfluence = Child.Behavior.bHasInfluence;
+			if (bUseInfluence)
+			{
+				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Influence.Source);
+				if (!Field || !Field->IsComplete()
+					|| Field->Kind != EMixtormatPublishedFieldKind::Scalar01
+					|| Field->Texture->Desc.Extent != Size
+					|| (Field->Texture->Desc.Format != PF_R16F
+						&& Field->Texture->Desc.Format != PF_R32_FLOAT))
+				{
+					continue;
+				}
+				Influence = Field->Texture;
+			}
 			FRDGTextureRef Coordinates = nullptr;
 			if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 			{
@@ -1387,7 +1403,7 @@ namespace
 					: LayerCtx.CombinedMask;
 				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
 					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
+					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
 			}
 			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
@@ -1415,7 +1431,7 @@ namespace
 					const float BlendStrength = Ref.Kind == EMixtormatPublishedFieldKind::UVMap
 						? Child.Behavior.Strength : 1.0f;
 					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
-						bHasMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
+						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
 				}
 			}
 			if (Coordinates)
