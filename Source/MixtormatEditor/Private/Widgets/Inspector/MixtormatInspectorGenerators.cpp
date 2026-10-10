@@ -1464,7 +1464,9 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			.Visibility_Lambda([Warp]()
 			{
 				const FMixtormatBehavior* B = Warp();
-				return B && !B->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+				return B && !B->Flow.bUseTracedFlow
+					&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+					? EVisibility::Visible : EVisibility::Collapsed;
 			})
 			[
 				MixtormatRow::MakeDropdown(
@@ -1542,6 +1544,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Warp]()
+	{
+		const FMixtormatBehavior* B = Warp();
+		return B && !B->Flow.bUseTracedFlow
+			&& B->Direction.Origin == EMixtormatBehaviorFieldOrigin::None
+			? EVisibility::Visible : EVisibility::Collapsed;
+	})[
+		MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorWarpAutoTraceLength", "Trace Length"),
+				Flow, &FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001),
+			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorWarpAutoTraceSteps", "Steps"),
+				Flow, &FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16))]);
 	AddBehaviorFieldCompositionRows(Panel,
 		[Warp]() -> FMixtormatBehaviorFieldInput* { return Warp() ? &Warp()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,
@@ -1825,7 +1841,9 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			.Visibility_Lambda([Deform]()
 			{
 				const FMixtormatBehavior* B = Deform();
-				return B && !B->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+				return B && !B->Flow.bUseTracedFlow
+					&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+					? EVisibility::Visible : EVisibility::Collapsed;
 			})
 			[
 				MixtormatRow::MakeDropdown(
@@ -1874,6 +1892,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorDeformStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Deform]()
+	{
+		const FMixtormatBehavior* B = Deform();
+		return B && !B->Flow.bUseTracedFlow
+			&& B->Direction.Origin == EMixtormatBehaviorFieldOrigin::None
+			? EVisibility::Visible : EVisibility::Collapsed;
+	})[
+		MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorDeformAutoTraceLength", "Trace Length"),
+				Flow, &FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001),
+			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorDeformAutoTraceSteps", "Steps"),
+				Flow, &FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16))]);
 	AddBehaviorFieldCompositionRows(Panel,
 		[Deform]() -> FMixtormatBehaviorFieldInput* { return Deform() ? &Deform()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,
