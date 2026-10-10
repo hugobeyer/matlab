@@ -2472,28 +2472,6 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedWornEdges() const
 	return Effect;
 }
 
-bool SMixtormat::CanAddGeneratorFlow(const FMixtormatChildAddress& Owner) const
-{
-	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
-	const int32 OwnerIndex = ResolveChildIndexAt(Owner);
-	return Children && Children->IsValidIndex(OwnerIndex)
-		&& CanOwnGeneratorFlow((*Children)[OwnerIndex])
-		&& CanAddScopedChild(*Children, OwnerIndex);
-}
-
-FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow()
-{
-	return const_cast<FMixtormatLayerEffect*>(
-		static_cast<const SMixtormat*>(this)->GetSelectedGeneratorFlow());
-}
-
-const FMixtormatLayerEffect* SMixtormat::GetSelectedGeneratorFlow() const
-{
-	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-	return Effect && Effect->Effect.IsNull()
-		&& MixtormatIsGeneratorFlowEffect(Effect->ProceduralType) ? Effect : nullptr;
-}
-
 FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp()
 {
 	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
