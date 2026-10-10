@@ -557,6 +557,14 @@ void SMixtormat::RebuildSourcesList()
 			})
 			.bSelected_Lambda([this, SourceId]() { return SelectedSourceId == SourceId; })
 			.OnSelected(FSimpleDelegate::CreateSP(this, &SMixtormat::SelectSource, SourceId))
+			.OnToggleEnabled(FSimpleDelegate::CreateLambda([this, SourceId]()
+			{
+				FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+					[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
+				if (!Source) { return; }
+				Source->Child.Generator.bEnabled = !Source->Child.Generator.bEnabled;
+				RefreshLayeredPreview();
+			}))
 			.OnNameCommitted(FOnTextCommitted::CreateLambda([this, SourceId](const FText& Name, ETextCommit::Type)
 			{
 				RenameSource(SourceId, Name);
