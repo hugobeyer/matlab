@@ -1034,6 +1034,9 @@ namespace MixtormatGpuCompositor
 		float GradientReach = 0.02f;
 		EMixtormatBehaviorFieldOrigin DirectionOrigin = EMixtormatBehaviorFieldOrigin::None;
 		FOutputReferenceRenderData Direction;
+		// Optional independent 0..1 field, distinct from nested mask children.
+		bool bHasInfluence = false;
+		FOutputReferenceRenderData Influence;
 	};
 
 	struct FGeneratorHeightPushRenderData
