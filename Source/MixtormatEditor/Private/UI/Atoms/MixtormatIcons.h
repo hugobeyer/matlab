@@ -64,6 +64,7 @@ namespace MixtormatIcons
 	// A layer child, by what kind of thing it is.
 	const FSlateBrush* Mask();
 	const FSlateBrush* Effect();
+	const FSlateBrush* Filter();
 	const FSlateBrush* Generator();
 	const FSlateBrush* Generated();
 	const FSlateBrush* FlowDirection();
