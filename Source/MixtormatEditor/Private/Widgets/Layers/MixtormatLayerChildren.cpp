@@ -695,8 +695,7 @@ namespace MixtormatLayersPrivate
 			return Child.Behavior.Type == EMixtormatBehaviorType::FlowField
 				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Push
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Warp
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::FlowField);
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform);
 		}
 		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
