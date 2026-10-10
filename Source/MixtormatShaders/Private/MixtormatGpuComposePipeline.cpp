@@ -517,8 +517,19 @@ namespace MixtormatGpuCompositor
 					}
 					for (const FChildRenderData& Child : DemandLayer.Children)
 					{
-						if (Child.Type != EMixtormatLayerChildType::StructuralWarp) { continue; }
-						for (const FScalarDriverRenderData& Driver : Child.StructuralWarp.Drivers)
+						const FScalarDriverRenderData* Drivers = nullptr;
+						if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
+						{
+							Drivers = Child.StructuralWarp.Drivers;
+						}
+						else if (Child.Type == EMixtormatLayerChildType::Behavior)
+						{
+							Drivers = Child.Behavior.FlowDrivers;
+						}
+						if (!Drivers) { continue; }
+						for (int32 Slot = 0; Slot < 2; ++Slot)
+						{
+							const FScalarDriverRenderData& Driver = Drivers[Slot];
 						{
 							if (Driver.bEnabled && !Driver.bRegionSource
 								&& Driver.SourceLayerId != DemandLayer.LayerId)
