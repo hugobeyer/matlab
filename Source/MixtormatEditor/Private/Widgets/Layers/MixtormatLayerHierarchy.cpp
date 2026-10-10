@@ -33,10 +33,28 @@ namespace MixtormatLayersPrivate
 		// Cluster and Surface IDs -- is the ID family, not the Generated family. Craquelure stays
 		// beside Generated because it is a coverage producer, and an Output Reference stays there
 		// because it can name a Flow or UV field as readily as an ID map.
+		const FSlateBrush* Specific = nullptr;
+		if (Child.Type == EMixtormatLayerChildType::HeightPush)
+		{
+			Specific = MixtormatIcons::WarpPush();
+		}
+		else if (Child.Type == EMixtormatLayerChildType::StructuralWarp)
+		{
+			Specific = MixtormatIcons::WarpStructural();
+		}
+		else if (Child.Type == EMixtormatLayerChildType::Effect)
+		{
+			switch (Child.Effect.Type)
+			{
+			case EMixtormatEffectType::ShapeDeform: Specific = MixtormatIcons::WarpDeform(); break;
+			case EMixtormatEffectType::GravityFlow: Specific = MixtormatIcons::FlowGravity(); break;
+			case EMixtormatEffectType::FlowCarve: Specific = MixtormatIcons::FlowDirection(); break;
+			default: break;
+			}
+		}
 		return SNew(SImage)
-			.Image(Child.Type == EMixtormatLayerChildType::Generator
-				|| Child.Type == EMixtormatLayerChildType::HeightPush
-				|| Child.Type == EMixtormatLayerChildType::StructuralWarp
+			.Image(Specific ? Specific
+				: Child.Type == EMixtormatLayerChildType::Generator
 				? MixtormatIcons::Generator()
 				: Child.Type == EMixtormatLayerChildType::Effect
 				? MixtormatIcons::Effect()
