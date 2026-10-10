@@ -383,6 +383,69 @@ FGuid SMixtormat::ResolveGroupMembershipAt(const int32 LayerIndex) const
 	return ResolveGroupMembershipForLayers(WorkingLayers, LayerIndex);
 }
 
+FReply SMixtormat::ReparentLayerChild(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return FReply::Unhandled(); }
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	TArray<FMixtormatLayerChild>& Children = Layer.Children;
+	if (!Children.IsValidIndex(SourceChildIndex)
+		|| !Children.IsValidIndex(NewParentChildIndex)
+		|| SourceChildIndex == NewParentChildIndex
+		|| IsDescendantOf(Children, NewParentChildIndex, Children[SourceChildIndex].ChildId)
+		|| !CanKeepScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
+		|| !CanAddScopedChild(Children, NewParentChildIndex))
+	{
+		return FReply::Unhandled();
+	}
+	const FGuid SourceId = Children[SourceChildIndex].ChildId;
+	const FGuid ParentId = Children[NewParentChildIndex].ChildId;
+	if (Children[SourceChildIndex].ScopeOwnerChildId == ParentId)
+	{
+		return FReply::Unhandled();
+	}
+	const int32 End = FindSubtreeEnd(Children, SourceChildIndex);
+	const int32 Count = End - SourceChildIndex;
+	const int32 NewDepth = GetScopeDepth(Children, NewParentChildIndex) + 1;
+	const int32 OldDepth = GetScopeDepth(Children, SourceChildIndex);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		if (NewDepth + GetScopeDepth(Children, Index) - OldDepth > MaximumScopeDepth)
+		{
+			return FReply::Unhandled();
+		}
+	}
+	const int32 Insert = FindSubtreeEnd(Children, NewParentChildIndex);
+	const FMixtormatChildAddress Source = MakeChildAddress(LayerIndex, SourceChildIndex);
+	const FMixtormatChildAddress Dest = MakeChildAddress(LayerIndex, NewParentChildIndex);
+	FText Reason;
+	if (!CanMovePublishedOutputs(Source, Dest, Insert, &Reason))
+	{
+		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); return FReply::Handled(); }
+		return FReply::Unhandled();
+	}
+	TArray<FMixtormatLayerChild> Moved;
+	Moved.Reserve(Count);
+	for (int32 Index = SourceChildIndex; Index < End; ++Index)
+	{
+		Moved.Add(MoveTemp(Children[Index]));
+	}
+	Children.RemoveAt(SourceChildIndex, Count);
+	Moved[0].ScopeOwnerChildId = ParentId;
+	const int32 NewInsert = FindSubtreeEnd(Children, FindChildById(Children, ParentId));
+	for (int32 Index = 0; Index < Moved.Num(); ++Index)
+	{
+		Children.Insert(MoveTemp(Moved[Index]), NewInsert + Index);
+	}
+	SelectWorkingChild(LayerIndex, FindChildById(Children, SourceId));
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
 FReply SMixtormat::ReorderLayerChild(
 	const int32 LayerIndex,
 	const int32 SourceChildIndex,
@@ -781,7 +844,7 @@ bool SMixtormat::CanMovePublishedOutputs(
 		// or landing it under a new owner, would leave it naming a child that is no longer
 		// there -- which gather treats as unowned rather than as a silently broken rewrite.
 		if ((*SourceChildren)[Index].Type == EMixtormatLayerChildType::Behavior
-			&& (Source.OwnerType != Dest.OwnerType || Source.OwnerId != Dest.OwnerId || Dest.ChildId.IsValid()))
+			&& (Source.OwnerType != Dest.OwnerType || Source.OwnerId != Dest.OwnerId))
 		{
 			if (OutReason)
 			{
