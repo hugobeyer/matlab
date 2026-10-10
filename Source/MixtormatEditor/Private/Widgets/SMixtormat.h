@@ -1716,6 +1716,7 @@ private:
 	mutable TMap<FGuid, TArray<FText>> StructuralIncomingCountLabels;
 	mutable TMap<FString, FText> StructuralConnectionLabelCache;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
+	TMap<FGuid, TWeakPtr<class SMixtormatSourceRow>> SourceRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
 	// The selected Sources shelf entry, by identity like every other selection. Selecting a
 	// source clears the layer and group selection, so the inspector has one subject.
