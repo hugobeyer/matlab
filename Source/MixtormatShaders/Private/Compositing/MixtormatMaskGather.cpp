@@ -30,10 +30,19 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		int32 PublishedSourceChildIndex = INDEX_NONE;
 		if (bPublishedSource)
 		{
-			const int32 LayerIndex = EffectiveLayers.IndexOfByPredicate(
-				[&Layer](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Layer.LayerId; });
-			PublishedSourceChildIndex = MixtormatOutputReferences::ResolvePublishedMaskSource(
-				EffectiveLayers, LayerIndex, SourceChildIndex, MaskLayer);
+			if (MaskLayer.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf)
+			{
+				// A shelf entry publishes its single root generator under child index zero.
+				// Demand scheduling checks that the root actually publishes Noise Value.
+				PublishedSourceChildIndex = 0;
+			}
+			else
+			{
+				const int32 LayerIndex = EffectiveLayers.IndexOfByPredicate(
+					[&Layer](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Layer.LayerId; });
+				PublishedSourceChildIndex = MixtormatOutputReferences::ResolvePublishedMaskSource(
+					EffectiveLayers, LayerIndex, SourceChildIndex, MaskLayer);
+			}
 		}
 
 		// A Layer Values mask reads the layer it sits on, so it needs no asset at all --
@@ -85,6 +94,8 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			MaskData.PublishedSourceLayerId = MaskLayer.PublishedSourceLayerId;
 			MaskData.PublishedSourceChildIndex = PublishedSourceChildIndex;
 			MaskData.PublishedSourceOutput = MaskLayer.PublishedSourceOutput;
+			MaskData.PublishedSourceOwnerKind = MaskLayer.PublishedSourceOwnerKind;
+			MaskData.PublishedSourceShelfId = MaskLayer.PublishedSourceShelfId;
 		}
 		else if (bNoise)
 		{
