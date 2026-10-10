@@ -443,6 +443,7 @@ private:
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
+	bool CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(
 		const TSharedRef<SVerticalBox>& Panel,
 		TFunction<FMixtormatHeightBlend*()> Resolve,
