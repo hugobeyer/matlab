@@ -846,6 +846,26 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightColorRampCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightColorRamp.usf", "MainCS", SF_Compute);
 
+
+class FMixtormatBehaviorUvBlendCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorUvBlendCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceCoordinates)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "MainCS", SF_Compute);
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
