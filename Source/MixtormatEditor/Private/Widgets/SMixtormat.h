@@ -414,8 +414,6 @@ private:
 	// target signature decays a reference away -- a by-ref parameter here fails to match the bound
 	// pointer-to-member type.
 	TSharedRef<SWidget> BuildReplaceInstanceSourceMenu(FMixtormatChildAddress Address);
-	TSharedRef<SWidget> BuildMoveChildToLayerMenu(int32 LayerIndex, int32 ChildIndex);
-	TSharedRef<SWidget> BuildMoveGroupChildToLayerMenu(FGuid GroupId, int32 ChildIndex);
 
 	// The rows every child row shares, appended to whichever child menu is open (layer or group) so
 	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
