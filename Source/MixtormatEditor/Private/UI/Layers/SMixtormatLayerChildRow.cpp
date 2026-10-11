@@ -134,7 +134,6 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.Font(NameTextStyle.Font)
 						.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
 						{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
-						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 						.Text(InArgs._Name)
 					]
 					+ SHorizontalBox::Slot()
