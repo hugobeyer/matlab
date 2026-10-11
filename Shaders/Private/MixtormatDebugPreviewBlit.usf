@@ -194,28 +194,20 @@ void MainRegionIdPickCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 
-// Display-only mask tint. The underlying BaseColor, normal, RAM and height
-// outputs remain untouched; the viewport binds this debug target as albedo.
-Texture2D<float4> OverlaySourceBaseColor;
+// Raw selected mask/influence for the viewport's post-process blend.
+// Never encode a colour or modify the composite's material outputs here.
 Texture2D<float> OverlaySourceMask;
-float OverlayOpacity;
 RWTexture2D<float4> OverlayOutputColor;
 
 [numthreads(8, 8, 1)]
 void MainOverlayMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-    const uint2 Pixel = DispatchThreadId.xy;
-    if (any(Pixel >= uint2(OutputSize)))
-    {
-        return;
-    }
-    const float4 BaseColor = OverlaySourceBaseColor.Load(int3(Pixel, 0));
-    const float Coverage = OverlaySourceMask.Load(int3(Pixel, 0));
-    float4 Ink = MixtormatEvaluateOverlay(
-        MIXTORMAT_OVERLAY_MASK, float2(0.0f, 0.0f), float2(0.0f, 0.0f),
-        0u, 0.0f, Coverage, 0.0f, 0.0f);
-    Ink.rgb = MixtormatSrgbToLinear(Ink.rgb);
-    OverlayOutputColor[Pixel] = float4(
-        MixtormatCompositeOverlay(BaseColor.rgb, Ink, OverlayOpacity),
-        BaseColor.a);
+	const uint2 Pixel = DispatchThreadId.xy;
+	if (any(Pixel >= uint2(OutputSize)))
+	{
+		return;
+	}
+	const float Coverage = OverlaySourceMask.Load(int3(Pixel, 0));
+	OverlayOutputColor[Pixel] = float4(
+		isfinite(Coverage) ? saturate(Coverage) : 0.0f, 0.0f, 0.0f, 1.0f);
 }
