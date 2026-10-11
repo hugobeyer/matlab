@@ -7,6 +7,7 @@
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Controls/SMixtormatColorRamp.h"
 #include "UI/Controls/SMixtormatScalarRamp.h"
+#include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
@@ -1290,9 +1291,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 	AddBehaviorFieldCompositionRows(Standard,
 		[Carve]() -> FMixtormatBehaviorFieldInput* { return Carve() ? &Carve()->Height : nullptr; }, false);
 	TSharedRef<SVerticalBox> TracedCarvePanel = SNew(SVerticalBox);
-	AddSliderRow(TracedCarvePanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedCarveMode", "Trace Operation"), Flow,
-		&FMixtormatBehaviorFlowSettings::CarveMode));
+	AddSliderRow(TracedCarvePanel, MixtormatRow::MakeTrailing(LOCTEXT("BehaviorTracedCarveLabel", "Trace Operation"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{LOCTEXT("BehaviorTracedCarveOption0", "Groove"), LOCTEXT("BehaviorTracedCarveOption1", "Deposit")})
+		.ActiveIndex_Lambda([Flow]() { const auto* F = Flow(); return F && F->CarveMode == EMixtormatBehaviorFlowCarveMode::Groove ? 0 : F && F->CarveMode == EMixtormatBehaviorFlowCarveMode::Deposit ? 1 : 0; })
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Flow](int32 Index)
+		{
+			if (auto* F = Flow())
+			{
+				if (Index == 0) { F->CarveMode = EMixtormatBehaviorFlowCarveMode::Groove; }
+			if (Index == 1) { F->CarveMode = EMixtormatBehaviorFlowCarveMode::Deposit; }
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		}))));
 	AddSliderRow(TracedCarvePanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedCarveSource", "Steering Source"), Flow,
 		&FMixtormatBehaviorFlowSettings::FlowSource));
@@ -1570,9 +1582,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
-	AddSliderRow(TracedWarpPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedWarpMode", "Flow Mode"), Flow,
-		&FMixtormatBehaviorFlowSettings::Mode));
+	AddSliderRow(TracedWarpPanel, MixtormatRow::MakeTrailing(LOCTEXT("BehaviorTracedWarpModeLabel", "Flow Mode"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{LOCTEXT("BehaviorTracedWarpModeOption0", "Flow"), LOCTEXT("BehaviorTracedWarpModeOption1", "Gravity")})
+		.ActiveIndex_Lambda([Flow]() { const auto* F = Flow(); return F && F->Mode == EMixtormatBehaviorFlowMode::Transport ? 0 : F && F->Mode == EMixtormatBehaviorFlowMode::Gravity ? 1 : 0; })
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Flow](int32 Index)
+		{
+			if (auto* F = Flow())
+			{
+				if (Index == 0) { F->Mode = EMixtormatBehaviorFlowMode::Transport; }
+			if (Index == 1) { F->Mode = EMixtormatBehaviorFlowMode::Gravity; }
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		}))));
 	AddSliderRow(TracedWarpPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedWarpSource", "Steering Source"), Flow,
 		&FMixtormatBehaviorFlowSettings::FlowSource));
@@ -2035,9 +2058,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 	};
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorFeatherOperationCard", "OPERATION"));
-	AddSliderRow(Operation, MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
-		LOCTEXT("BehaviorFeatherMode", "Mode"), Settings,
-		&FMixtormatBehaviorFeatherSettings::Mode));
+	AddSliderRow(Operation, MixtormatRow::MakeTrailing(LOCTEXT("BehaviorFeatherLabel", "Mode"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{LOCTEXT("BehaviorFeatherOption0", "Blur"), LOCTEXT("BehaviorFeatherOption1", "Eikonal")})
+		.ActiveIndex_Lambda([Settings]() { const auto* F = Settings(); return F && F->Mode == EMixtormatBehaviorFeatherMode::Blur ? 0 : F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal ? 1 : 0; })
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
+		{
+			if (auto* F = Settings())
+			{
+				if (Index == 0) { F->Mode = EMixtormatBehaviorFeatherMode::Blur; }
+			if (Index == 1) { F->Mode = EMixtormatBehaviorFeatherMode::Eikonal; }
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		}))));
 	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorFeatherStrength", "Strength"), Get,
 		&FMixtormatBehavior::Strength, 0.0, 1.0, 1.0, 0.01,
@@ -2092,9 +2126,21 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 			return IsFlowOwner() ? EVisibility::Collapsed : EVisibility::Visible;
 		})
 		[
-			MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
-				LOCTEXT("BehaviorFeatherSide", "Feather Side"), Settings,
-				&FMixtormatBehaviorFeatherSettings::Side)
+			MixtormatRow::MakeTrailing(LOCTEXT("BehaviorFeatherSideLabel", "Feather Side"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{LOCTEXT("BehaviorFeatherSideOption0", "Both"), LOCTEXT("BehaviorFeatherSideOption1", "Inside"), LOCTEXT("BehaviorFeatherSideOption2", "Outside")})
+		.ActiveIndex_Lambda([Settings]() { const auto* F = Settings(); return F && F->Side == EMixtormatBehaviorFeatherSide::Both ? 0 : F && F->Side == EMixtormatBehaviorFeatherSide::Inside ? 1 : F && F->Side == EMixtormatBehaviorFeatherSide::Outside ? 2 : 0; })
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
+		{
+			if (auto* F = Settings())
+			{
+				if (Index == 0) { F->Side = EMixtormatBehaviorFeatherSide::Both; }
+			if (Index == 1) { F->Side = EMixtormatBehaviorFeatherSide::Inside; }
+			if (Index == 2) { F->Side = EMixtormatBehaviorFeatherSide::Outside; }
+				RefreshLayeredPreview();
+				RebuildLayerList();
+			}
+		})))
 		]);
 	AddSliderRow(Eikonal, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
 		LOCTEXT("BehaviorFeatherBias", "Direction Bias"), Settings,
