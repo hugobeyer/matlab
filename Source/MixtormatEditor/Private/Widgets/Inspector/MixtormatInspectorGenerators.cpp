@@ -1822,6 +1822,26 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			FMixtormatBehavior* Selected = Deform();
 			return Selected ? &Selected->Flow : nullptr;
 		};
+		const auto ParentFlow = [this]() -> const FMixtormatBehavior*
+		{
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+			if (!Child || !Child->ScopeOwnerChildId.IsValid()) { return nullptr; }
+			const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+				[&Address](const FMixtormatLayer& Candidate)
+				{
+					return Candidate.LayerId == Address.OwnerId;
+				});
+			if (!Layer) { return nullptr; }
+			const FMixtormatLayerChild* Parent = Layer->Children.FindByPredicate(
+				[Child](const FMixtormatLayerChild& Candidate)
+				{
+					return Candidate.ChildId == Child->ScopeOwnerChildId;
+				});
+			return Parent && Parent->Type == EMixtormatLayerChildType::Behavior
+				&& Parent->Behavior.Type == EMixtormatBehaviorType::FlowField
+				? &Parent->Behavior : nullptr;
+		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 		TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorDeformOperationCard", "OPERATION"));
 		TSharedRef<SVerticalBox> Standard = SNew(SVerticalBox);
@@ -1985,13 +2005,33 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
-	AddSliderRow(TracedDeformPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedDeformSource", "Steering Source"), Flow,
-		&FMixtormatBehaviorFlowSettings::FlowSource));
-	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedDeformShapeOffset", "Shape Offset"), Flow, &FMixtormatBehaviorFlowSettings::ShapeOffset,
-		-0.25, 0.25, 0.0, 0.001,
-		LOCTEXT("BehaviorTracedDeformShapeOffsetHint", "Boundary expansion (+) or erosion (-), UV units.")));
+	AddSliderRow(TracedDeformPanel, SNew(SBox)
+		.Visibility_Lambda([ParentFlow]()
+		{
+			return ParentFlow() ? EVisibility::Collapsed : EVisibility::Visible;
+		})
+		[
+			MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorTracedDeformSource", "Steering Source"), Flow,
+				&FMixtormatBehaviorFlowSettings::FlowSource)
+		]);
+	AddSliderRow(TracedDeformPanel, SNew(SBox)
+		.Visibility_Lambda([ParentFlow, Flow]()
+		{
+			const FMixtormatBehavior* Parent = ParentFlow();
+			const FMixtormatBehaviorFlowSettings* Own = Flow();
+			const EMixtormatBehaviorFlowSource Source = Parent
+				? Parent->Flow.FlowSource
+				: Own ? Own->FlowSource : EMixtormatBehaviorFlowSource::Height;
+			return Source == EMixtormatBehaviorFlowSource::SignedDistance
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+				LOCTEXT("BehaviorTracedDeformShapeOffset", "Shape Offset"), Flow,
+				&FMixtormatBehaviorFlowSettings::ShapeOffset, -0.25, 0.25, 0.0, 0.001,
+				LOCTEXT("BehaviorTracedDeformShapeOffsetHint", "Signed-distance boundary expansion/erosion. No effect for height-only steering."))
+		]);
 	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedDeformBulge", "Bulge"), Flow, &FMixtormatBehaviorFlowSettings::Bulge,
 		-0.25, 0.25, 0.0, 0.001,
