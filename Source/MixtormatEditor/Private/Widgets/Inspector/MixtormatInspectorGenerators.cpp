@@ -1293,7 +1293,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			.Visibility_Lambda([Carve]()
 			{
 				const FMixtormatBehavior* B = Carve();
-				return B && !B->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+				return B && B->Flow.ModeMix < 1.0f ? EVisibility::Visible : EVisibility::Collapsed;
 			})
 			[
 				MixtormatRow::MakeDropdown(
@@ -1432,39 +1432,17 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			return Selected ? &Selected->Flow : nullptr;
 		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-		AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-			LOCTEXT("BehaviorWarpModeLabel", "Warp Mode"),
-			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Warp]()
-			{
-				const FMixtormatBehavior* B = Warp();
-				return B && B->Flow.bUseTracedFlow
-					? LOCTEXT("BehaviorWarpModeTraced", "Traced Flow")
-					: LOCTEXT("BehaviorWarpModeStandard", "Standard");
-			}), FOnGetContent::CreateLambda([this, Warp]() -> TSharedRef<SWidget>
-			{
-				MixtormatMenu::FBuilder Menu;
-				const auto SetTraced = [this, Warp](bool bTraced)
-				{
-					if (FMixtormatBehavior* B = Warp())
-					{
-						B->Flow.bUseTracedFlow = bTraced;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				};
-				Menu.Item(LOCTEXT("BehaviorWarpModeStandardChoice", "Standard"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(false); }));
-				Menu.Item(LOCTEXT("BehaviorWarpModeTracedChoice", "Traced Flow"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(true); }));
-				return Menu.Build();
-			})),
-			LOCTEXT("BehaviorWarpModeHint", "Standard samples direction fields; Traced integrates flow paths locally.")));
+		AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+			LOCTEXT("BehaviorWarpModeMix", "Mode Mix"), Flow,
+			&FMixtormatBehaviorFlowSettings::ModeMix, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("BehaviorWarpModeMixHint", "0 = Standard Warp, 1 = Traced Flow; intermediate values interpolate the periodic UV displacement.")));
+
 		AddSliderRow(Panel,
 			SNew(SBox)
 			.Visibility_Lambda([Warp]()
 			{
 				const FMixtormatBehavior* B = Warp();
-				return B && !B->Flow.bUseTracedFlow
+				return B && B->Flow.ModeMix < 1.0f
 					&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 					? EVisibility::Visible : EVisibility::Collapsed;
 			})
@@ -1547,7 +1525,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Warp]()
 	{
 		const FMixtormatBehavior* B = Warp();
-		return B && !B->Flow.bUseTracedFlow
+		return B && B->Flow.ModeMix < 1.0f
 			&& B->Direction.Origin == EMixtormatBehaviorFieldOrigin::None
 			? EVisibility::Visible : EVisibility::Collapsed;
 	})[
@@ -1592,7 +1570,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		{
 			const FMixtormatBehavior* Selected = Warp();
 			const FMixtormatOutputReference* Ref = Reference();
-			return Selected && !Selected->Flow.bUseTracedFlow
+			return Selected && Selected->Flow.ModeMix < 1.0f
 				&& Selected->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
 				&& Ref && Ref->Kind == EMixtormatPublishedFieldKind::Flow
 				? EVisibility::Visible : EVisibility::Collapsed;
@@ -1644,7 +1622,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		SNew(SBox).Visibility_Lambda([Warp]()
 		{
 			const FMixtormatBehavior* Selected = Warp();
-			return Selected && Selected->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+			return Selected && (Selected->Flow.ModeMix > 0.0f || Selected->Flow.bUseTracedFlow) ? EVisibility::Visible : EVisibility::Collapsed;
 		})[TracedWarpPanel]
 	];
 	return SNew(SVerticalBox)

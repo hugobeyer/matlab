@@ -320,7 +320,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
 	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
 	const bool bFlowField = Behavior.Type == EMixtormatBehaviorType::FlowField;
-	const bool bTraced = Behavior.Flow.bUseTracedFlow;
+	const bool bTraced = !bWarp && Behavior.Flow.bUseTracedFlow;
 	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField)
 		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
@@ -360,6 +360,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const FMixtormatBehaviorFlowSettings& Flow = Behavior.Flow;
 	FBehaviorFlowRenderData& FlowOut = Out.Flow;
 	FlowOut.Mode = Flow.Mode;
+	FlowOut.ModeMix = FMath::IsFinite(Flow.ModeMix) ? FMath::Clamp(Flow.ModeMix, 0.0f, 1.0f) : 0.0f;
 	Out.Stage = Behavior.Stage;
 	FlowOut.FlowSource = static_cast<uint32>(Flow.FlowSource);
 	FlowOut.FlowAmount = FMath::IsFinite(Flow.FlowAmount) ? Flow.FlowAmount : FMixtormatBehaviorFlowSettings().FlowAmount;
@@ -385,7 +386,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FlowOut.Width = FMath::IsFinite(Flow.Width) ? Flow.Width : FMixtormatBehaviorFlowSettings().Width;
 	FlowOut.Falloff = FMath::IsFinite(Flow.Falloff) ? Flow.Falloff : FMixtormatBehaviorFlowSettings().Falloff;
 	// Resolve drivers for FMixtormatBehaviorFlowSettings properties:
-	const FName FlowSettingsProperties[8] = {
+	const FName FlowSettingsProperties[9] = {
 		TEXT("FlowAmount"),
 		TEXT("TraceLength"),
 		TEXT("WarpStrength"),
@@ -393,9 +394,10 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		TEXT("ShapeOffset"),
 		TEXT("Bulge"),
 		TEXT("Reach"),
-		TEXT("Feather")
+		TEXT("Feather"),
+		TEXT("ModeMix")
 	};
-	for (int32 Slot = 0; Slot < 8; ++Slot)
+	for (int32 Slot = 0; Slot < 9; ++Slot)
 	{
 		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
 			[&FlowSettingsProperties, Slot](const FMixtormatParameterBinding& Candidate)

@@ -254,6 +254,10 @@ struct MIXTORMATRUNTIME_API FMixtormatBehaviorFlowSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow")
 	bool bUseTracedFlow = false;
 
+	// Warp only: 0 uses the standard coordinate path, 1 uses traced flow.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow", meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", ClampMax = "1.0", Delta = "0.01"))
+	float ModeMix = 0.0f;
+
 	// ---- Behavior-owned Flow Field solver parameters ---------------
 	// One shared direction field, derived from the owning generator and extended by a
 	// tile-aware jump-flood solve; see Docs/flow_generation_core.md. Distances are UV units.

@@ -990,6 +990,7 @@ namespace MixtormatGpuCompositor
 		// Native Behavior flow solve data. UV distances and degree angles.
 		uint32 FlowSource = 0;
 		float FlowAmount = 1.0f;
+		float ModeMix = 0.0f;
 		float FlowTangent = 0.0f;
 		float FlowAngle = 0.0f;
 		float GravitySurfaceFollow = 1.0f;
@@ -1014,8 +1015,8 @@ namespace MixtormatGpuCompositor
 		// Dedicated per-pixel drivers for BehaviorFlowSettings:
 		// 0: FlowAmount, 1: TraceLength, 2: WarpStrength,
 		// 3: Depth, 4: ShapeOffset, 5: Bulge,
-		// 6: Reach, 7: Feather
-		FScalarDriverRenderData SettingsDrivers[8];
+		// 6: Reach, 7: Feather, 8: Warp ModeMix
+		FScalarDriverRenderData SettingsDrivers[9];
 	};
 
 	struct FBehaviorRenderData
