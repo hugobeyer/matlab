@@ -263,7 +263,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			{
 				Result.Outputs.Add({FName(TEXT("GeneratedFlow")),
 					NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGeneratedFlow", "Generated Flow"),
-					EMixtormatPreviewOutputKind::FlowDirection, true, true, false, NAME_None,
+					EMixtormatPreviewOutputKind::FlowDirection, false, true, false, NAME_None,
 					true, EMixtormatPublishedFieldKind::Flow});
 			}
 			if (NoiseType == EMixtormatNoiseType::WorleyF1
