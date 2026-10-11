@@ -1466,9 +1466,9 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		{
 		case EMixtormatBehaviorType::Warp: return LOCTEXT("BehaviorWarpChildName", "Warp");
 		case EMixtormatBehaviorType::Push: return LOCTEXT("BehaviorPushChildName", "Push");
-		case EMixtormatBehaviorType::Carve: return LOCTEXT("BehaviorCarveChildName", "Carve / Deposit");
+		case EMixtormatBehaviorType::Carve: return LOCTEXT("BehaviorCarveChildName", "Sculpt");
 		case EMixtormatBehaviorType::Deform: return LOCTEXT("BehaviorDeformChildName", "Deform");
-		case EMixtormatBehaviorType::FlowField: return LOCTEXT("BehaviorFlowFieldChildName", "Flow Field");
+		case EMixtormatBehaviorType::FlowField: return LOCTEXT("BehaviorFlowFieldChildName", "Obsolete Flow");
 		case EMixtormatBehaviorType::Feather: return LOCTEXT("BehaviorFeatherChildName", "Feather");
 		default: return LOCTEXT("BehaviorChildName", "Behavior");
 		}
