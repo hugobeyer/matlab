@@ -9,6 +9,7 @@
 #include "Widgets/MixtormatChildAddress.h"
 
 class SMenuAnchor;
+class SInlineEditableTextBlock;
 
 // A mask, effect or generated mask inside a layer.
 //
@@ -34,6 +35,7 @@ public:
 		SLATE_NAMED_SLOT(FArguments, Icon)
 		SLATE_NAMED_SLOT(FArguments, Disclosure)
 		SLATE_ATTRIBUTE(FText, Name)
+		SLATE_EVENT(FOnTextCommitted, OnNameCommitted)
 		SLATE_ATTRIBUTE(FText, Kind)
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(bool, bActive)
@@ -61,6 +63,7 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	void BeginRename();
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnDragDetected(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
@@ -81,4 +84,5 @@ private:
 	// Set for the duration of one open, in OnMouseButtonDown, before the anchor is opened.
 	bool bOutputMenuOnly = false;
 	TSharedPtr<SMenuAnchor> ContextAnchor;
+	TSharedPtr<SInlineEditableTextBlock> EditableName;
 };
