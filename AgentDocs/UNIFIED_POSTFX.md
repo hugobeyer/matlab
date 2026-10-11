@@ -9,7 +9,34 @@ Implementation target: `main`. Original design audit performed against `feature/
 - `SMixtormat_Preview.cpp` already resolves child output semantics through `GetChildCapabilities()` and manages `ChildPreviewTarget`. Reuse it for automatic selection; don't create a second child-output registry.
 - `FMixtormatGpuCompositor::BindOutputs` already binds composed surface textures and height into MIDs. Reuse retained published child GPU textures for data sources; do not trigger another gather/composite or a GPU readback.
 
-## Rendering decision
+## Mask-first implementation on main (2026-10-11)
+
+The initial W-key experiment is **material-integrated**, not a scene-space PostFX pass.
+It uses the original lit/Substrate preview master and its existing material UVs,
+normals, roughness/metallic, AO and displacement. The compositor holds the selected
+mask snapshot until the end of the layer loop, then writes a tinted **display-only**
+albedo to the existing Debug render target. The master binds that debug target to
+`DA_BaseColor` only while W is active. Original composited BaseColor and bake
+targets remain untouched; no extra persistent target, GPU readback or generator pass
+is created. Overlay off runs no additional tint dispatch.
+
+This first pass tints material albedo before PBR shading; it does not independently
+blend over the *finished* lit scene. Lighting and specular response may therefore
+differ slightly inside tinted areas, especially for metallic materials. A true
+post-shading overlay still requires authored UV/depth capture as described below.
+
+Mask-first selection: enabled Mask, Generated, Craquelure, Color ID or Random ID
+children of a concrete selected layer. No group-child selection or generic
+published scalar Behavior coverage yet. One fixed initial opacity (0.55), no UI.
+The existing V/M replacement diagnostics remain until their outputs are migrated.
+
+Changed integration points: `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`,
+`SMixtormat.cpp`, `SMixtormat.h`, `MixtormatGpuCompositor.h`,
+`MixtormatGpuCompositorInternal.h`, `MixtormatGpuCompositor.cpp`,
+`MixtormatGpuComposePipeline.cpp`, `MixtormatGpuDebugPreviewPasses.cpp`,
+`MixtormatDebugPreviewBlit.usf`, and `MixtormatDiagnosticOverlay.ush`.
+
+## Future true PostFX rendering decision
 
 Use **one viewport-scoped, surface-aware overlay pass** after opaque material shading and before temporal upscaling, invoked only while a diagnostic is active. Input: scene colour/depth plus the selected published field and a per-pixel mapping back to the preview mesh's **true authored material UV**. Output: scene colour blended with diagnostic ink. Opaque surface, normals, lighting, Substrate inputs and displacement are untouched.
 
