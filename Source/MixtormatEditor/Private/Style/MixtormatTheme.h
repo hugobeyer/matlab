@@ -387,7 +387,9 @@ namespace Mixtormat
 	// is where the header's contribution has decayed to the body's. `--card-*`.
 	struct FMixtormatCardTheme
 	{
-		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Additive;
+		// Independent card color; blended over Ground before the continuous gradient.
+		FLinearColor SurfaceColor = FLinearColor(0.014f, 0.018f, 0.020f, 1.0f);
+		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 
 		float HeaderOpacity = 1.0f;
 		float BodyOpacity = 0.09f;

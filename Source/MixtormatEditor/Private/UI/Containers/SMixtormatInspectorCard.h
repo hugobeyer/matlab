@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
+#include "UI/Containers/MixtormatGroupCardPainter.h"
 
 
 class SBox;
@@ -41,5 +42,6 @@ private:
 	TSharedPtr<SBox> HeaderBox;
 	TSharedPtr<SBox> BodyBox;
 	TSharedPtr<SVerticalBox> CardStack;
+	mutable MixtormatGroupCard::FSurfacePainter SurfacePainter;
 
 };

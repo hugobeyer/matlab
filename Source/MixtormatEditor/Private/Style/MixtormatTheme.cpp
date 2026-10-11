@@ -250,7 +250,8 @@ namespace Mixtormat
 		T.FoldoutLayout.HeaderPaddingBottom = 2.0f;   // --foldout-header-padding-bottom
 
 		// ---- Card ---------------------------------------------------------------------
-		T.Card.Blend = MixtormatCompositing::EMixtormatBlendMode::Additive;  // --card-blend-mode
+		T.Card.SurfaceColor = FLinearColor(0.014f, 0.018f, 0.020f, 1.0f);
+		T.Card.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;   // --card-blend-mode
 		T.Card.HeaderOpacity = 1.0f;                  // --card-header-opacity
 		T.Card.BodyOpacity = 0.09f;                   // --card-body-opacity
 		T.Card.HeaderSaturation = 2.0f;               // --card-header-saturation
@@ -685,7 +686,8 @@ namespace Mixtormat
 		T.FoldoutLayout.HeaderPaddingTop = 2.0f;
 		T.FoldoutLayout.HeaderPaddingBottom = 1.0f;
 		T.FoldoutLayout.Radius = 0.0f;
-		T.Card.Blend = MixtormatCompositing::EMixtormatBlendMode::Additive;
+		T.Card.SurfaceColor = FLinearColor(0.014f, 0.018f, 0.020f, 1.0f);
+		T.Card.Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 		T.Card.HeaderOpacity = 1.0f;
 		T.Card.BodyOpacity = 0.810000002f;
 		T.Card.HeaderSaturation = 3.79999995f;

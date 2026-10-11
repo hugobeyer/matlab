@@ -368,7 +368,13 @@
 	},
 	"cards":
 	{
-		"Card.Blend": 1,
+		"Card.SurfaceColor": [
+			0.014000000432133675,
+			0.017999999225139618,
+			0.019999999552965164,
+			1
+		],
+		"Card.Blend": 0,
 		"Card.HeaderOpacity": 1,
 		"Card.BodyOpacity": 0.56999999284744263,
 		"Card.HeaderSaturation": 2.5,

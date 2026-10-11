@@ -31,7 +31,8 @@ namespace MixtormatGroupCard
 			&& AuthoredHeaderHeight == Other.AuthoredHeaderHeight && Radius == Other.Radius
 			&& Reach == Other.Reach && Power == Other.Power && HeaderOpacity == Other.HeaderOpacity
 			&& BodyOpacity == Other.BodyOpacity && HeaderSaturation == Other.HeaderSaturation
-			&& BodySaturation == Other.BodySaturation && Ground == Other.Ground;
+			&& BodySaturation == Other.BodySaturation && Ground == Other.Ground
+			&& Color == Other.Color && Blend == Other.Blend;
 	}
 
 	void FSurfacePainter::Rebuild(const FSurface& Surface)
@@ -43,107 +44,95 @@ namespace MixtormatGroupCard
 		const float Width = Surface.Size.X;
 		const float Height = Surface.Size.Y;
 		FLinearColor Ground = Surface.Ground;
-		// These CSS backgrounds are opaque RGB, even when a palette override has an alpha.
 		Ground.A = 1.0f;
-		const float HeaderTop = FMath::Clamp(Surface.HeaderTop, 0.0f, Height);
-		const float HeaderEnd = FMath::Clamp(HeaderTop + Surface.HeaderHeight, HeaderTop, Height);
+
+		const float HeaderEnd = FMath::Clamp(Surface.HeaderTop + Surface.HeaderHeight, 0.0f, Height);
 		const float BodyTop = FMath::Clamp(Surface.BodyTop, HeaderEnd, Height);
 		const float BodyEnd = FMath::Clamp(BodyTop + Surface.BodyHeight, BodyTop, Height);
 		const float Reach = FMath::Max(Surface.Reach, 0.0f);
-		// falloff.js uses the authored minimum height for the curve domain, not the physical
-		// height enlarged by actions/padding. The actual arranged header still defines its seam.
-		const float NominalHeight = FMath::Max(Surface.AuthoredHeaderHeight, 1.0f);
-		const float Seam = NominalHeight / (NominalHeight + Reach);
+		const float NominalHeader = FMath::Max(Surface.AuthoredHeaderHeight, 1.0f);
+		const float Seam = NominalHeader / (NominalHeader + Reach);
 		const auto OpacityAt = [&](const float T)
 		{
-			return MixtormatGradient::FalloffValue(T, Surface.HeaderOpacity, Surface.BodyOpacity, Surface.Power);
+			return MixtormatGradient::FalloffValue(
+				T, Surface.HeaderOpacity, Surface.BodyOpacity, Surface.Power);
 		};
 
-		TArray<FOpacityStop, TInlineAllocator<16>> HeaderStops;
-		for (int32 Index = 0; Index < CurveSamples; ++Index)
+		// A single continuous set of vertex-color stops spans the entire card.
+		// In particular, no Ground band is painted between the title and the rows.
+		struct FStop { float Y; float Opacity; float Saturation; };
+		TArray<FStop, TInlineAllocator<32>> Stops;
+		const auto AddStop = [&](float Y, const float Opacity, const float Saturation)
 		{
-			const float T = static_cast<float>(Index) / (CurveSamples - 1);
-			HeaderStops.Add({ FMath::Lerp(HeaderTop, HeaderEnd, T), OpacityAt(T * Seam) });
-		}
-		TArray<FOpacityStop, TInlineAllocator<16>> BodyStops;
-		if (Reach > 0.0f)
-		{
-			// min(t * reach, t * 50%) caps each tail independently of the curve domain.
-			const float TailHeight = FMath::Min(Reach, (BodyEnd - BodyTop) * 0.5f);
-			for (int32 Index = 0; Index < CurveSamples; ++Index)
+			Y = FMath::Clamp(Y, 0.0f, Height);
+			if (!Stops.IsEmpty() && Y <= Stops.Last().Y + UE_SMALL_NUMBER)
 			{
-				const float T = static_cast<float>(Index) / (CurveSamples - 1);
-				BodyStops.Add({ BodyTop + T * TailHeight, OpacityAt(Seam + T * (1.0f - Seam)) });
+				// Zero-height spans cannot form an extra hairline or a degenerate quad.
+				Stops.Last().Opacity = Opacity;
+				Stops.Last().Saturation = Saturation;
+				return;
 			}
-			for (int32 Index = CurveSamples - 1; Index >= 0; --Index)
+			Stops.Add({Y, Opacity, Saturation});
+		};
+
+		AddStop(0.0f, Surface.HeaderOpacity, Surface.HeaderSaturation);
+		for (int32 I = 1; I < CurveSamples; ++I)
+		{
+			const float T = static_cast<float>(I) / (CurveSamples - 1);
+			AddStop(HeaderEnd * T, OpacityAt(T * Seam),
+				FMath::Lerp(Surface.HeaderSaturation, Surface.BodySaturation, T));
+		}
+		// Extend the endpoint across any authored header margin with no color jump.
+		AddStop(BodyTop, OpacityAt(Seam), Surface.BodySaturation);
+
+		const float TailHeight = FMath::Min(Reach, FMath::Max(BodyEnd - BodyTop, 0.0f) * 0.5f);
+		if (TailHeight > UE_SMALL_NUMBER)
+		{
+			for (int32 I = 1; I < CurveSamples; ++I)
 			{
-				const float T = static_cast<float>(Index) / (CurveSamples - 1);
-				const float Y = BodyEnd - T * TailHeight;
-				if (Y > BodyStops[BodyStops.Num() - 1].Y)
-				{
-					BodyStops.Add({ Y, OpacityAt(Seam + T * (1.0f - Seam)) });
-				}
+				const float T = static_cast<float>(I) / (CurveSamples - 1);
+				AddStop(BodyTop + T * TailHeight,
+					OpacityAt(Seam + T * (1.0f - Seam)), Surface.BodySaturation);
+			}
+			AddStop(BodyEnd - TailHeight, Surface.BodyOpacity, Surface.BodySaturation);
+			for (int32 I = 1; I < CurveSamples; ++I)
+			{
+				const float T = static_cast<float>(I) / (CurveSamples - 1);
+				AddStop(BodyEnd - TailHeight + T * TailHeight,
+					OpacityAt(1.0f - T * (1.0f - Seam)), Surface.BodySaturation);
 			}
 		}
 		else
 		{
-			// Zero reach is a flat body, NOT a zero-length mirrored tail/hard stop.
-			BodyStops.Add({ BodyTop, Surface.BodyOpacity });
-			BodyStops.Add({ BodyEnd, Surface.BodyOpacity });
+			AddStop(BodyEnd, Surface.BodyOpacity, Surface.BodySaturation);
 		}
+		AddStop(Height, Stops.Last().Opacity, Surface.BodySaturation);
 
-		const auto AddBand = [&](const float Top, const float Bottom,
-			const TArrayView<const FOpacityStop> Stops, const float Saturation)
+		const int32 RowCount = Stops.Num();
+		check(static_cast<uint64>(RowCount * 2 - 1)
+			<= static_cast<uint64>(TNumericLimits<SlateIndex>::Max()));
+		for (const FStop& Stop : Stops)
 		{
-			if (Bottom <= Top)
-			{
-				return;
-			}
-			check(Stops.Num() == 0 || Stops.Num() >= 2);
-			// Vertical vertex colours interpolate linearly between the six authored samples.
-			// Two vertices per stop suffice; plain ground margins need only one quad.
-			const int32 RowCount = Stops.Num() > 0 ? Stops.Num() : 2;
-			const int32 FirstVertex = Positions.Num();
-			// All five bands total at most 48 vertices, independent of the card's dimensions.
-			check(static_cast<uint64>(FirstVertex + RowCount * 2 - 1)
-				<= static_cast<uint64>(TNumericLimits<SlateIndex>::Max()));
-			const FLinearColor Source = MixtormatCompositing::Saturate(Ground, FMath::Max(Saturation, 0.0f));
-			for (int32 Row = 0; Row < RowCount; ++Row)
-			{
-				const float Y = Stops.Num() > 0 ? Stops[Row].Y : (Row == 0 ? Top : Bottom);
-				FLinearColor Color = Ground;
-				if (Stops.Num() > 0)
-				{
-					FLinearColor Lift = Source;
-					Lift.A = FMath::Clamp(Stops[Row].Opacity, 0.0f, 1.0f);
-					Color = MixtormatCompositing::ApplyBlend(
-										MixtormatCompositing::BlendModeOf(MixtormatTokens::CardBlendMode), Ground, Lift);
-				}
-				Positions.Add(FVector2f(0.0f, Y));
-				Positions.Add(FVector2f(Width, Y));
-				Colors.Add(Color);
-				Colors.Add(Color);
-			}
-			for (int32 Row = 0; Row < RowCount - 1; ++Row)
-			{
-				const int32 A = FirstVertex + Row * 2;
-				const int32 B = A + 1;
-				const int32 C = A + 2;
-				const int32 D = A + 3;
-				Indices.Add(static_cast<SlateIndex>(A));
-				Indices.Add(static_cast<SlateIndex>(B));
-				Indices.Add(static_cast<SlateIndex>(C));
-				Indices.Add(static_cast<SlateIndex>(B));
-				Indices.Add(static_cast<SlateIndex>(D));
-				Indices.Add(static_cast<SlateIndex>(C));
-			}
-		};
-
-		AddBand(0.0f, HeaderTop, {}, 1.0f);
-		AddBand(HeaderTop, HeaderEnd, MakeArrayView(HeaderStops), Surface.HeaderSaturation);
-		AddBand(HeaderEnd, BodyTop, {}, 1.0f);
-		AddBand(BodyTop, BodyEnd, MakeArrayView(BodyStops), Surface.BodySaturation);
-		AddBand(BodyEnd, Height, {}, 1.0f);
+			FLinearColor Source = MixtormatCompositing::Saturate(
+				Surface.Color, FMath::Max(Stop.Saturation, 0.0f));
+			Source.A = FMath::Clamp(Surface.Color.A * Stop.Opacity, 0.0f, 1.0f);
+			const FLinearColor Result = MixtormatCompositing::ApplyBlend(
+				Surface.Blend, Ground, Source);
+			Positions.Add(FVector2f(0.0f, Stop.Y));
+			Positions.Add(FVector2f(Width, Stop.Y));
+			Colors.Add(Result);
+			Colors.Add(Result);
+		}
+		for (int32 Row = 0; Row + 1 < RowCount; ++Row)
+		{
+			const int32 A = Row * 2;
+			Indices.Add(static_cast<SlateIndex>(A));
+			Indices.Add(static_cast<SlateIndex>(A + 1));
+			Indices.Add(static_cast<SlateIndex>(A + 2));
+			Indices.Add(static_cast<SlateIndex>(A + 1));
+			Indices.Add(static_cast<SlateIndex>(A + 3));
+			Indices.Add(static_cast<SlateIndex>(A + 2));
+		}
 		Vertices.SetNumUninitialized(Positions.Num());
 		CachedSurface = Surface;
 		bHasSurface = true;

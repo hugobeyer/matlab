@@ -348,7 +348,7 @@ namespace Mixtormat
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
 		FMixtormatPaintLayer Header;
-		Header.Source = MakeColorRef(EMixtormatColorRole::Ground);
+		Header.Source.LocalColor = Theme.Card.SurfaceColor;
 		Header.Source.Saturation = Theme.Card.HeaderSaturation;
 		Header.Blend = Theme.Card.Blend;
 		Header.OpacityRamp.Axis = EMixtormatAxis::Vertical;
@@ -372,7 +372,7 @@ namespace Mixtormat
 	{
 		FMixtormatSurfaceRecipe Recipe = MakeGroundRecipe();
 		FMixtormatPaintLayer Body;
-		Body.Source = MakeColorRef(EMixtormatColorRole::Ground);
+		Body.Source.LocalColor = Theme.Card.SurfaceColor;
 		Body.Source.Saturation = Theme.Card.BodySaturation;
 		Body.Blend = Theme.Card.Blend;
 		if (TailFraction <= 0.0f)

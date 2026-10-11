@@ -282,41 +282,32 @@ int32 SMixtormatInspectorCard::OnPaint(const FPaintArgs& Args, const FGeometry& 
 	BodyTop = FMath::Clamp(BodyTop, HeaderEnd, Size.Y);
 	const float BodyEnd = FMath::Clamp(BodyTop + BodyHeight, BodyTop, Size.Y);
 
-	// Geometry-only adapter: the authored minimum defines the curve domain, while this frame's
-	// arranged header defines the physical seam. Short bodies cap each mirrored tail at half-height.
-	const float Reach = FMath::Max(Theme.Card.Reach, 0.0f);
-	const float NominalHeight = FMath::Max(Theme.CardLayout.HeaderHeight, 1.0f);
-	const float Seam = NominalHeight / (NominalHeight + Reach);
-	const float TailFraction = BodyEnd > BodyTop ? FMath::Min(Reach / (BodyEnd - BodyTop), 0.5f) : 0.0f;
-	const FMixtormatSurfaceRecipe Ground = MakeGroundRecipe();
-	const FMixtormatSurfaceRecipe Header = MakeCardHeaderRecipe(Theme, Seam);
-	const FMixtormatSurfaceRecipe Body = MakeCardBodyRecipe(Theme, Seam, TailFraction);
-	FMixtormatSurfaceDrawStyle DrawStyle;
-	DrawStyle.Tint = InWidgetStyle.GetColorAndOpacityTint();
-	DrawStyle.Effects = ShouldBeEnabled(bParentEnabled)
-		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+	MixtormatGroupCard::FSurface Surface;
+	Surface.Size = Size;
+	Surface.HeaderTop = HeaderTop;
+	Surface.HeaderHeight = HeaderEnd - HeaderTop;
+	Surface.BodyTop = BodyTop;
+	Surface.BodyHeight = BodyEnd - BodyTop;
+	Surface.AuthoredHeaderHeight = Theme.CardLayout.HeaderHeight;
+	Surface.Radius = Theme.Card.Radius;
+	Surface.Reach = Theme.Card.Reach;
+	Surface.Power = Theme.Card.FalloffPower;
+	Surface.HeaderOpacity = Theme.Card.HeaderOpacity;
+	Surface.BodyOpacity = Theme.Card.BodyOpacity;
+	Surface.HeaderSaturation = Theme.Card.HeaderSaturation;
+	Surface.BodySaturation = Theme.Card.BodySaturation;
+	Surface.Ground = Palette.Get(EMixtormatColorRole::Ground);
+	Surface.Color = Theme.Card.SurfaceColor;
+	Surface.Blend = Theme.Card.Blend;
 
-	// Retain the existing rounded overflow clip around both the surface AND nested children.
-	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(OutDrawElements, CardGeometry, Theme.Card.Radius);
-	int32 SurfaceLayer = LayerId;
-	const auto PaintBand = [&](const float Top, const float Bottom, const FMixtormatSurfaceRecipe& Recipe)
-	{
-		if (Bottom > Top)
-		{
-			const FGeometry Band = CardGeometry.MakeChild(FVector2f(Size.X, Bottom - Top),
-				FSlateLayoutTransform(FVector2f(0.0f, Top)));
-			SurfaceLayer = FMixtormatSurfacePainter::PaintSurface(
-				OutDrawElements, SurfaceLayer, Band, Recipe, Palette, InWidgetStyle, DrawStyle);
-		}
-	};
-	// Non-overlapping bands avoid applying inherited alpha twice over the header/body.
-	PaintBand(0.0f, HeaderTop, Ground);
-	PaintBand(HeaderTop, HeaderEnd, Header);
-	PaintBand(HeaderEnd, BodyTop, Ground);
-	PaintBand(BodyTop, BodyEnd, Body);
-	PaintBand(BodyEnd, Size.Y, Ground);
+	const ESlateDrawEffect Effect = ShouldBeEnabled(bParentEnabled)
+		? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+	const int32 ClipCount = MixtormatGroupCard::PushRoundedClip(
+		OutDrawElements, CardGeometry, Theme.Card.Radius);
+	SurfacePainter.Paint(OutDrawElements, LayerId, CardGeometry, Surface,
+		InWidgetStyle.GetColorAndOpacityTint(), Effect);
 	const int32 LastLayer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect,
-		OutDrawElements, SurfaceLayer + 1, InWidgetStyle, bParentEnabled);
+		OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);
 	for (int32 Index = 0; Index < ClipCount; ++Index)
 	{
 		OutDrawElements.PopClip();

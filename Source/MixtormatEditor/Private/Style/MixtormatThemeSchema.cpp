@@ -490,6 +490,7 @@ void AddIconRole(
 
 // CARDS
 		LocateBegin = P.Num();
+		COL_DEF("Card.SurfaceColor", Cards, "Surface", "Card Color", Card.SurfaceColor);
 		BLEND_DEF("Card.Blend", Cards, "Surface", "Blend", Card.Blend);
 		NUM_DEF("Card.HeaderOpacity", Cards, "Surface", "Header Opacity", Card.HeaderOpacity, 0, 1, .01, 2);
 		NUM_DEF("Card.BodyOpacity", Cards, "Surface", "Body Opacity", Card.BodyOpacity, 0, 1, .01, 2);

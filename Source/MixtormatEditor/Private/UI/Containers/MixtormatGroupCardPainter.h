@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Layout/Geometry.h"
 #include "Rendering/DrawElements.h"
+#include "Style/MixtormatCompositing.h"
 
 // Card-only geometry/composition. Colour math and falloff stay in the shared primitives.
 namespace MixtormatGroupCard
@@ -26,6 +27,8 @@ namespace MixtormatGroupCard
 		float BodySaturation = 1.0f;
 
 		FLinearColor Ground = FLinearColor::Black;
+		FLinearColor Color = FLinearColor::Black;
+		MixtormatCompositing::EMixtormatBlendMode Blend = MixtormatCompositing::EMixtormatBlendMode::Normal;
 
 		bool operator==(const FSurface& Other) const;
 	};
