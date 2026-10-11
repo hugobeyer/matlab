@@ -1314,6 +1314,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	{
 		return Candidate.ScopeOwnerChildId.IsValid() && Candidate.ScopeOwnerChildId == Child.ChildId;
 	});
+	TSharedPtr<SMixtormatLayerChildRow> GroupEditableRow;
 	const TSharedRef<SWidget> Widget = SNew(SMixtormatGroupChildDropTarget)
 		.GroupId(GroupId)
 		.ChildIndex(ChildIndex)
@@ -1324,7 +1325,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
 			.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 			[
-			SNew(SMixtormatLayerChildRow)
+			SAssignNew(GroupEditableRow, SMixtormatLayerChildRow)
 			.Name(ChildName)
 			.OnNameCommitted_Lambda([this, GroupId, ChildIndex](const FText& Name, ETextCommit::Type)
 			{
@@ -1398,6 +1399,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			]
 		];
 	RegisterChildRowWidget(Address, Widget);
+	EditableChildRowWidgets.Add(Address, GroupEditableRow);
 	return Widget;
 }
 
@@ -1800,6 +1802,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			]
 		]);
 		RegisterChildRowWidget(RowAddress, ChildRow.ToSharedRef());
+		EditableChildRowWidgets.Add(RowAddress, ChildRow);
 	}
 
 	return SNew(SMixtormatLayerRowDropTarget)
