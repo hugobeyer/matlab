@@ -3436,9 +3436,22 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
 				|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
 				|| Child.Generator.Type == EMixtormatGeneratorType::CliffStrata;
-			if (bNativeFlowGenerator)
+			// Native Flow is an available typed output, not an unconditional GPU job.
+			// Geometry fields can be cached even when they are large; the derived Flow
+			// textures are transient and currently have no node-cache slot. Demand only
+			// when a consumer, explicit output reference, or selected preview needs them.
+			// Shelf roots evaluate conservatively: generator input sockets use their
+			// own source graph and must retain the full published Flow contract.
+			const bool bNativeFlowDemanded = bNeedsWorkingFlow
+				|| LayerCtx.LayerIndex == INDEX_NONE
+				|| Ctx.PublishedFieldDemand.Contains(PublishedKey(
+					Layer, Child.SourceChildIndex, FName(TEXT("FlowDirection"))))
+				|| IsChildOutputPreviewTarget(Ctx.Request,
+					EMixtormatPreviewOutputKind::FlowDirection,
+					FName(TEXT("FlowDirection")), LayerCtx.LayerIndex, Child.SourceChildIndex);
+			if (bNativeFlowGenerator && bNativeFlowDemanded)
 			{
-				// Automatic, geometry-derived native Flow before the Behavior chain.
+				// Geometry-derived native Flow before Behaviors; one seed, never twice.
 				// Rock/Pebbles/Cracks use signed boundaries; Cliff uses native height.
 				const bool bHasBoundary = Module.BoundaryField
 					&& Module.BoundaryField->Desc.Format == PF_G32R32F;
