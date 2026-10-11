@@ -1344,14 +1344,13 @@ namespace MixtormatGpuCompositor
 				}
 				} // End the MixtormatCompose GPU event scope before executing the graph.
 
-				// A display-only copy of the finished albedo. Mask colour is applied once,
-				// after every layer, and never changes the original PBR composition.
+				// Only publish the selected raw field. The viewport's post-process
+				// reads it without writing to any composed material output.
 				if (Request.DebugSettings.bMaskOverlay && Ctx.SelectedOverlayMask)
 				{
 					const int32 Final = Request.PublishedTargetIndex;
-					AddMaskOverlayPass(GraphBuilder, Ctx.OutputBC[Final],
-						Ctx.SelectedOverlayMask, Ctx.OutputDebug[Final],
-						Request.Resolution, Request.DebugSettings.MaskOverlayOpacity);
+					AddMaskOverlayPass(GraphBuilder, Ctx.SelectedOverlayMask,
+						Ctx.OutputDebug[Final], Request.Resolution);
 				}
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;
