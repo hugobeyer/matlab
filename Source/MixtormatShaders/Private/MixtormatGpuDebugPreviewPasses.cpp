@@ -184,8 +184,61 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainRegionIdPickCS",
 	SF_Compute);
 
+
+class FMixtormatMaskOverlayCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMaskOverlayCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMaskOverlayCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, OverlayOpacity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, OverlaySourceBaseColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OverlaySourceMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OverlayOutputColor)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatMaskOverlayCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf",
+	"MainOverlayMaskCS",
+	SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
+	void AddMaskOverlayPass(
+		FRDGBuilder& GraphBuilder,
+		const FRDGTextureRef BaseColor,
+		const FRDGTextureRef Mask,
+		const FRDGTextureRef OutputDebug,
+		const FIntPoint Resolution,
+		const float Opacity)
+	{
+		if (!BaseColor || !Mask || !OutputDebug)
+		{
+			return;
+		}
+		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatMaskOverlayCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->OverlayOpacity = FMath::Clamp(Opacity, 0.0f, 1.0f);
+		Parameters->OverlaySourceBaseColor = BaseColor;
+		Parameters->OverlaySourceMask = Mask;
+		Parameters->OverlayOutputColor = GraphBuilder.CreateUAV(OutputDebug);
+		TShaderMapRef<FMixtormatMaskOverlayCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(
+			GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.MaskOverlay"), Shader, Parameters,
+			FIntVector(FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8), 1));
+	}
+
+
 	// One dispatch per composite, and only while a Region IDs preview is actually up: the editor
 	// reads a single texel out of the result when the artist clicks, so the cost is one full-
 	// resolution copy on a frame that was already rendering the preview.
