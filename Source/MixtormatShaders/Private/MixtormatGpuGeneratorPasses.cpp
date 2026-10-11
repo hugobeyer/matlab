@@ -2365,18 +2365,21 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
 			const FPublishedField* InheritedFlow = nullptr;
 			FRDGTextureRef InheritedInfluence = nullptr;
+			uint32 InheritedFlowSource = Flow.FlowSource;
 			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform)
 			{
-				const bool bNested = Algo::AnyOf(Layer.Children, [&](const FChildRenderData& Parent)
+				const FChildRenderData* ParentFlow = Layer.Children.FindByPredicate(
+					[&](const FChildRenderData& Parent)
+					{
+						return Parent.Type == EMixtormatLayerChildType::Behavior
+							&& Parent.SourceChildIndex == FlowChild.ScopeOwnerSourceChildIndex
+							&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
+							&& Parent.Behavior.GeneratorChildIndex == OwnerSourceChildIndex
+							&& Parent.SourceChildIndex < FlowChild.SourceChildIndex;
+					});
+				if (ParentFlow)
 				{
-					return Parent.Type == EMixtormatLayerChildType::Behavior
-						&& Parent.SourceChildIndex == FlowChild.ScopeOwnerSourceChildIndex
-						&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
-						&& Parent.Behavior.GeneratorChildIndex == OwnerSourceChildIndex
-						&& Parent.SourceChildIndex < FlowChild.SourceChildIndex;
-				});
-				if (bNested)
-				{
+					InheritedFlowSource = ParentFlow->Behavior.Flow.FlowSource;
 					InheritedFlow = Ctx.PublishedFieldOutputs.Find(PublishedKey(
 						Layer, FlowChild.ScopeOwnerSourceChildIndex, FName(TEXT("FlowDirection"))));
 					const FPublishedField* PublishedInfluence = Ctx.PublishedFieldOutputs.Find(
@@ -2436,7 +2439,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->OutputSize = Size;
 				P->SolveSize = SolveSize;
 				P->JumpStep = 1;
-				P->Source = Flow.FlowSource;
+				P->Source = bInheritedFlow ? InheritedFlowSource : Flow.FlowSource;
 				P->Tangent = Flow.FlowTangent;
 				P->Angle = Flow.FlowAngle;
 				P->GravitySurfaceFollow = Flow.GravitySurfaceFollow;
