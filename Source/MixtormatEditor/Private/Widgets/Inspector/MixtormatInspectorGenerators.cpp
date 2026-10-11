@@ -1242,57 +1242,12 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
-	AddSliderRow(TracedWarpPanel, MixtormatRow::MakeTrailing(LOCTEXT("BehaviorTracedWarpModeLabel", "Flow Mode"),
-		SNew(SMixtormatSegmentedControl)
-		.Options(TArray<FText>{LOCTEXT("BehaviorTracedWarpModeOption0", "Flow"), LOCTEXT("BehaviorTracedWarpModeOption1", "Gravity")})
-		.ActiveIndex_Lambda([Flow]() { const auto* F = Flow(); return F && F->Mode == EMixtormatBehaviorFlowMode::Transport ? 0 : F && F->Mode == EMixtormatBehaviorFlowMode::Gravity ? 1 : 0; })
-		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Flow](int32 Index)
-		{
-			if (auto* F = Flow())
-			{
-				if (Index == 0) { F->Mode = EMixtormatBehaviorFlowMode::Transport; }
-			if (Index == 1) { F->Mode = EMixtormatBehaviorFlowMode::Gravity; }
-				RefreshLayeredPreview();
-				RebuildLayerList();
-			}
-		}))));
-	AddSliderRow(TracedWarpPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedWarpSource", "Steering Source"), Flow,
-		&FMixtormatBehaviorFlowSettings::FlowSource));
-	AddSliderRow(TracedWarpPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedWarpAmount", "Flow Amount"), Flow, &FMixtormatBehaviorFlowSettings::FlowAmount,
-		0, 1, 1, 0.01));
 	AddSliderRow(TracedWarpPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedWarpTraceLength", "Trace Length"), Flow, &FMixtormatBehaviorFlowSettings::TraceLength,
 		0, 1, 0.1, 0.001));
 	AddSliderRow(TracedWarpPanel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedWarpSteps", "Trace Steps"), Flow, &FMixtormatBehaviorFlowSettings::TraceSteps,
 		1, 64, 16));
-	AddSliderRow(TracedWarpPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedWarpStrength", "Trace Strength"), Flow, &FMixtormatBehaviorFlowSettings::WarpStrength,
-		-4, 4, 1, 0.01));
-	AddSliderRow(TracedWarpPanel, SNew(SBox)
-		.Visibility_Lambda([Flow]()
-		{
-			const FMixtormatBehaviorFlowSettings* F = Flow();
-			return F && F->Mode == EMixtormatBehaviorFlowMode::Gravity ? EVisibility::Visible : EVisibility::Collapsed;
-		})
-		[
-			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-				LOCTEXT("BehaviorTracedWarpGravityFollow", "Surface Follow"), Flow, &FMixtormatBehaviorFlowSettings::GravitySurfaceFollow,
-				0, 2, 1, 0.01)
-		]);
-	AddSliderRow(TracedWarpPanel, SNew(SBox)
-		.Visibility_Lambda([Flow]()
-		{
-			const FMixtormatBehaviorFlowSettings* F = Flow();
-			return F && F->Mode == EMixtormatBehaviorFlowMode::Gravity ? EVisibility::Visible : EVisibility::Collapsed;
-		})
-		[
-			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-				LOCTEXT("BehaviorTracedWarpGravityDeflect", "Boundary Deflection"), Flow, &FMixtormatBehaviorFlowSettings::GravityDeflection,
-				0, 1, 1, 0.01)
-		]);
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Warp]() { return Warp() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
@@ -1452,26 +1407,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			FMixtormatBehavior* Selected = Deform();
 			return Selected ? &Selected->Flow : nullptr;
 		};
-		const auto ParentFlow = [this]() -> const FMixtormatBehavior*
-		{
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
-			if (!Child || !Child->ScopeOwnerChildId.IsValid()) { return nullptr; }
-			const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
-				[&Address](const FMixtormatLayer& Candidate)
-				{
-					return Candidate.LayerId == Address.OwnerId;
-				});
-			if (!Layer) { return nullptr; }
-			const FMixtormatLayerChild* Parent = Layer->Children.FindByPredicate(
-				[Child](const FMixtormatLayerChild& Candidate)
-				{
-					return Candidate.ChildId == Child->ScopeOwnerChildId;
-				});
-			return Parent && Parent->Type == EMixtormatLayerChildType::Behavior
-				&& Parent->Behavior.Type == EMixtormatBehaviorType::FlowField
-				? &Parent->Behavior : nullptr;
-		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 		TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorDeformOperationCard", "OPERATION"));
 		TSharedRef<SVerticalBox> Standard = SNew(SVerticalBox);
@@ -1623,7 +1558,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		})[FlowPanel]
 	];
 	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorDeformTraceLength", "Trace Length"), Flow,
+		LOCTEXT("BehaviorDeformOwnTraceLength", "Trace Length"), Flow,
 		&FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001));
 	AddSliderRow(TracedDeformPanel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorDeformTraceSteps", "Steps"), Flow,
