@@ -1327,6 +1327,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			[
 			SAssignNew(GroupEditableRow, SMixtormatLayerChildRow)
 			.Name(ChildName)
+			.bNameEditable(Child.Type == EMixtormatLayerChildType::Mask)
 			.OnNameCommitted_Lambda([this, GroupId, ChildIndex](const FText& Name, ETextCommit::Type)
 			{
 				FMixtormatLayerGroup* Current = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
@@ -1663,6 +1664,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
 				.ToolTip(RowToolTip)
 				.Name(ChildName)
+				.bNameEditable(Child.Type == EMixtormatLayerChildType::Mask)
 				.OnNameCommitted_Lambda([this, ResolveRow](const FText& Name, ETextCommit::Type)
 				{
 					int32 LayerIndex, ChildIndex;
