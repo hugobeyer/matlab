@@ -13,6 +13,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 class FEditorViewportClient;
 class FMixtormatPreviewViewportClient;
+class FMixtormatViewportMaskPostFx;
 class UMaterial;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -145,6 +146,7 @@ public:
 
 	SMixtormatPreviewViewport();
 	virtual ~SMixtormatPreviewViewport() override;
+	virtual void Tick(const FGeometry& Geometry, double CurrentTime, float DeltaTime) override;
 
 	void Construct(const FArguments& InArgs);
 	void SetPreviewMaterial(UMaterialInterface* Material);
@@ -232,6 +234,7 @@ private:
 	void CycleChannelPreview();
 	void CycleModulePreview();
 	void ApplyChannelPreview();
+	void UpdateMaskPostFx();
 	void UpdateCamera();
 	void UpdateStudioFloor();
 	void UpdateStudioEnvironmentLighting();
@@ -310,6 +313,9 @@ private:
 	// this is the strong ref that keeps it alive until Material mode reclaims it.
 	TStrongObjectPtr<UMaterialInstanceDynamic> RetainedPreviewMaterialInstance;
 	TUniquePtr<FMixtormatGpuCompositor> LayerCompositor;
+	TUniquePtr<FMixtormatViewportMaskPostFx> MaskPostFx;
+	bool bMaskPostFxActive = false;
+	float MaskPostFxOpacity = 0.55f;
 	TUniquePtr<FPreviewSceneProfile> StudioPreviewProfile;
 	TStrongObjectPtr<UTextureCube> StudioEnvironmentCubemap;
 	// The one specular source that does not depend on a trace succeeding. Re-pointed at the
