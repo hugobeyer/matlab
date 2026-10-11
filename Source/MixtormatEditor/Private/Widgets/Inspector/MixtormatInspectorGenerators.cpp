@@ -1675,11 +1675,9 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 			{
 				return Candidate.ChildId == Child->ScopeOwnerChildId;
 			});
-		return Owner && ((Owner->Type == EMixtormatLayerChildType::Behavior
-				&& Owner->Behavior.Type == EMixtormatBehaviorType::FlowField)
-			|| (Owner->Type == EMixtormatLayerChildType::Generator
-				&& Owner->Generator.Type == EMixtormatGeneratorType::Noise
-				&& Owner->Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow));
+		return Owner && Owner->Type == EMixtormatLayerChildType::Generator
+			&& Owner->Generator.Type == EMixtormatGeneratorType::Noise
+			&& Owner->Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
 	};
 	AddSliderRow(Eikonal, SNew(SBox)
 		.Visibility_Lambda([IsFlowOwner]()
