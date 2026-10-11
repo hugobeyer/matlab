@@ -743,7 +743,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 			if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
 				[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
 			{
-				Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), ClipboardName);
+				Copy->DisplayName = ClipboardName;
 			}
 			CommitSourcesEdit(NewSourceId);
 		})).Enabled(SourceClipboard.IsSet());
@@ -778,7 +778,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 				if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
 					[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
 				{
-					Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), SourceName);
+					Copy->DisplayName = SourceName;
 				}
 				CommitSourcesEdit(NewSourceId);
 			}
@@ -886,20 +886,7 @@ FReply SMixtormat::AddSource(const EMixtormatGeneratorType Kind)
 	ApplyChildCreationDefaults(Entry.Child, CreationKindForGenerator(Kind));
 	Entry.Child.ScopeOwnerChildId.Invalidate();
 
-	int32 SameKindCount = 0;
-	for (const FMixtormatSourceEntry& Existing : WorkingSources)
-	{
-		if (Existing.Child.Generator.Type == Kind)
-		{
-			++SameKindCount;
-		}
-	}
-	// The row already shows the type in its own column; the default name does not repeat it word
-	// for word the way "Noise Source 1" read beside "Noise".
-	Entry.DisplayName = FText::Format(
-		LOCTEXT("SourceDefaultName", "{0} {1}"),
-		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Kind)),
-		FText::AsNumber(SameKindCount));
+	Entry.DisplayName = MixtormatLayersPrivate::MakeGenericDefaultName(TEXT("Source"), 0, WorkingSources);
 
 	const FGuid NewSourceId = Entry.SourceId;
 	CommitSourcesEdit(NewSourceId);
@@ -934,16 +921,7 @@ FReply SMixtormat::AddMaskSource()
 	Entry.Child.ScopeOwnerChildId.Invalidate();
 	Entry.Child.Generator.Noise.NoiseType = EMixtormatNoiseType::WorleyF1;
 
-	int32 MaskSourceCount = 0;
-	for (const FMixtormatSourceEntry& Existing : WorkingSources)
-	{
-		if (IsMaskSource(Existing))
-		{
-			++MaskSourceCount;
-		}
-	}
-	Entry.DisplayName = FText::Format(
-		LOCTEXT("MaskSourceDefaultName", "Mask {0}"), FText::AsNumber(MaskSourceCount));
+	Entry.DisplayName = MixtormatLayersPrivate::MakeGenericDefaultName(TEXT("Source"), 0, WorkingSources);
 
 	const FGuid NewSourceId = Entry.SourceId;
 	CommitSourcesEdit(NewSourceId);
@@ -994,7 +972,7 @@ FGuid SMixtormat::AppendSourceInstance(const FGuid& ProducerSourceId)
 	Entry.Child.ChildId = FGuid::NewGuid();
 	Entry.Child.ScopeOwnerChildId.Invalidate();
 	Entry.InstanceOfSourceId = NewProducerId;
-	Entry.DisplayName = FText::Format(LOCTEXT("SourceInstanceName", "{0} Instance"), ProducerName);
+	Entry.DisplayName = ProducerName;
 	return Entry.SourceId;
 }
 
@@ -1034,7 +1012,7 @@ bool SMixtormat::LocalizeShelfLink(const FGuid& SourceShelfId, FGuid& OutSourceI
 		WorkingSources, SourceShelfId);
 	if (!Producer) { return false; }
 	FMixtormatSourceEntry Copy = MakeIndependentSourceCopy(*Producer);
-	Copy.DisplayName = FText::Format(LOCTEXT("SourceBreakCopyName", "{0} Copy"), Producer->DisplayName);
+	Copy.DisplayName = Producer->DisplayName;
 	OutSourceId = Copy.SourceId;
 	OutChildId = Copy.Child.ChildId;
 	WorkingSources.Add(MoveTemp(Copy));
