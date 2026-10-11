@@ -21,6 +21,7 @@ translation units — search the member function, not the header.
 ## Workspace splitters and creation actions
 
 - The left/preview and preview/Inspector splitters use transparent, top-layer resize grips centered on the visual divider. The authored Shell splitter hit-width controls the actual grip width; layer-row input must not shadow it.
+- The rail fade and its enclosing box are `HitTestInvisible`; it is decoration only. Each top-layer shell resize-grip positioning wrapper must be `SelfHitTestInvisible` so its wide positioning padding does not intercept the viewport, gallery, or buttons. Only the actual grip leaf is interactive.
 - The Layers creation toolbar keeps Layer, Group and Fill Layer labels only while each third of the column fits the complete label. Labels clip within their slots; narrower columns keep centered icons and tooltips.
 - The navigation rail's shadow is an X-axis black-opacity ramp rendered over the page, including rows; the rail itself paints above the shadow. Its strength follows the existing navigation-rail fade and shadow opacity settings.
 
