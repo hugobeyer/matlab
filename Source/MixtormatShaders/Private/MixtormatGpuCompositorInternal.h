@@ -2128,11 +2128,9 @@ namespace MixtormatGpuCompositor
 	// Uses the existing Debug RT as a display-only albedo target for mask visualization.
 	void AddMaskOverlayPass(
 		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef BaseColor,
 		FRDGTextureRef Mask,
 		FRDGTextureRef OutputDebug,
-		FIntPoint Resolution,
-		float Opacity);
+		FIntPoint Resolution);
 
 	void AddDebugPreviewMaskBlitPass(
 		FRDGBuilder& GraphBuilder,
