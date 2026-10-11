@@ -1,10 +1,15 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
 
 int2 OutputSize;
 float Radius;
 float Strength;
+float4 BehaviorDriverParamsA[2];
+float4 BehaviorDriverParamsB[2];
+Texture2D<float> BehaviorDriverSignal0;
+Texture2D<float> BehaviorDriverSignal1;
 float DirectionBias;
 uint Side;
 uint HasBoundary;
@@ -60,7 +65,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     const float H = SourceHeight.Load(int3(P, 0));
     if (!isfinite(H)) { OutHeight[P] = 0.0f; return; }
     const float M = HasMask != 0u ? MaskField.Load(int3(P, 0)) : 1.0f;
-    float Weight = isfinite(M) ? saturate(Strength) * saturate(M) : 0.0f;
+    const float Driven = MixtormatApplyDriver(Strength,
+        BehaviorDriverSignal0.Load(int3(P, 0)),
+        BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+    float Weight = isfinite(M) && isfinite(Driven)
+        ? saturate(Driven) * saturate(M) : 0.0f;
 #if FEATHER_STAGE == 3
     const float Distance = Arrival.Load(int3(P, 0));
     const float2 Boundary = HasBoundary != 0u

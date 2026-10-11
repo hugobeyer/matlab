@@ -709,6 +709,10 @@ public:
         SHADER_PARAMETER(FIntPoint, OutputSize)
         SHADER_PARAMETER(float, Radius)
         SHADER_PARAMETER(float, Strength)
+        SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+        SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
         SHADER_PARAMETER(float, DirectionBias)
         SHADER_PARAMETER(uint32, Side)
         SHADER_PARAMETER(uint32, HasBoundary)
@@ -1678,7 +1682,8 @@ namespace
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
 		if (!Height || Height->Desc.Format != PF_R32_FLOAT
-			|| Behavior.Strength <= 0.0f || Behavior.FeatherRadius <= 0.0f)
+			|| (Behavior.Strength <= 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
+			|| Behavior.FeatherRadius <= 0.0f)
 		{
 			return Height;
 		}
@@ -1706,6 +1711,7 @@ namespace
 			P->OutputSize = Size;
 			P->Radius = Behavior.FeatherRadius;
 			P->Strength = FMath::Clamp(Behavior.Strength, 0.0f, 1.0f);
+			SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
 			P->DirectionBias = Behavior.FeatherDirectionBias;
 			P->Side = static_cast<uint32>(Behavior.FeatherSide);
 			P->HasBoundary = bBoundary ? 1u : 0u;
