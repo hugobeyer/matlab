@@ -1438,6 +1438,13 @@ FReply SMixtormat::ToggleLayerSolo(const int32 LayerIndex)
 
 FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtormatChildCreation Kind)
 {
+	// The legacy Flow Field Behavior no longer has a GPU implementation.
+	// Flow is authored through the Noise V2 Flow preset instead.
+	if (Kind == EMixtormatChildCreation::BehaviorFlowField)
+	{
+		return FReply::Handled();
+	}
+
 	// Cluster IDs remains unavailable.
 	if (Kind == EMixtormatChildCreation::ClusterIds)
 	{
