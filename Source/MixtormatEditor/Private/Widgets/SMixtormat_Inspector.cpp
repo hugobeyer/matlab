@@ -465,7 +465,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					{
 						return HasSelectedChildInspector() ? EVisibility::Visible : EVisibility::Collapsed;
 					})
-					+ SScrollBox::Slot()[BuildGeneratorInputControls()]
 					+ SScrollBox::Slot()[BuildProceduralPeelControls()]
 					+ SScrollBox::Slot()[BuildStainControls()]
 					+ SScrollBox::Slot()[BuildRunoffControls()]

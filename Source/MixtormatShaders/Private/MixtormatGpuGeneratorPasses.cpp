@@ -3456,27 +3456,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
-		FGeneratorInputFields& Inputs = LayerCtx.GeneratorInputs.Add(Child.SourceChildIndex);
-		const auto ResolveInput = [&](const FGeneratorInputRenderData& Input, FPublishedField& Out)
-		{
-			if (!Input.bRequested || Input.Reference.Source.ChildIndex == INDEX_NONE) { return; }
-			const FPublishedField* Source = Ctx.PublishedFieldOutputs.Find(Input.Reference.Source);
-			if (Source && Source->Kind == Input.Reference.Kind && Source->IsComplete()) { Out = *Source; }
-		};
-		ResolveInput(Child.Generator.HeightSource, Inputs.Height);
-		ResolveInput(Child.Generator.WarpSource, Inputs.Warp);
-		if (Inputs.Warp.IsComplete() && Inputs.Warp.Texture->Desc.Extent == Size)
-		{
-			if (Inputs.Warp.Kind == EMixtormatPublishedFieldKind::Flow)
-			{
-				Inputs.WarpUV = AddReferencedFlowUVPass(Ctx, Child.Generator.WarpSource.Reference,
-					Inputs.Warp, LayerCtx.LayerIndex, Child.SourceChildIndex);
-			}
-			else if (Inputs.Warp.Kind == EMixtormatPublishedFieldKind::UVMap)
-			{
-				Inputs.WarpUV = Inputs.Warp.Texture;
-			}
-		}
 		FGeneratorBundle Module;
 		const FRDGTextureRef PreUV = BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Child);
 		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, PreUV};

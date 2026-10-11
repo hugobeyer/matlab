@@ -32,51 +32,6 @@ namespace MixtormatGpuCompositor
 		ChildData.SourceChildIndex = SourceChildIndex;
 		ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 		ChildData.Generator.Type = Generator.Type;
-		const auto GatherInput = [&](const FMixtormatOutputReference& Reference,
-			FGeneratorInputRenderData& Out, const bool bHeight)
-		{
-			Out.bRequested = Reference.bEnabled;
-			Out.Reference.Kind = Reference.Kind;
-			const bool bCompatible = bHeight
-				? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
-				: Reference.Kind == EMixtormatPublishedFieldKind::Flow || Reference.Kind == EMixtormatPublishedFieldKind::UVMap;
-			FGuid OwnerId = Reference.SourceLayerId;
-			int32 SourceIndex = INDEX_NONE;
-			if (Reference.IsShelfSource())
-			{
-				// A shelf input names a producer by stable entry identity; its root child is index 0 of
-				// that producer. Classification keeps malformed, disabled, wrong-kind and missing
-				// endpoints unavailable -- never a layer fallback, never a guessed producer.
-				OwnerId = Reference.SourceShelfId;
-				const MixtormatOutputReferences::FShelfSourceReferenceStatus Status = bCompatible
-					? MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference)
-					: MixtormatOutputReferences::FShelfSourceReferenceStatus();
-				if (Reference.bEnabled
-					&& Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
-				{
-					SourceIndex = 0;
-				}
-			}
-			else if (bCompatible)
-			{
-				SourceIndex = MixtormatOutputReferences::ResolveGeneratorInputSource(
-					EffectiveLayers, LayerIndex, SourceChildIndex, Reference);
-			}
-			Out.Reference.Source.LayerId = OwnerId;
-			Out.Reference.Source.ChildIndex = SourceIndex;
-			Out.Reference.Source.Output = Reference.OutputName;
-			// The registry owner is explicit: a resolved shelf input is a Shelf field, everything else a
-			// layer field, so the key matches exactly what the producer published.
-			Out.Reference.Source.OwnerKind = Reference.IsShelfSource()
-				? EMixtormatOutputReferenceOwnerKind::Shelf
-				: EMixtormatOutputReferenceOwnerKind::Layer;
-			Out.Reference.FlowAmount = FMath::IsFinite(Reference.FlowAmount) ? Reference.FlowAmount : 0.0f;
-			Out.Reference.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
-				? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
-			Out.Reference.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
-		};
-		GatherInput(Generator.HeightSource, ChildData.Generator.HeightSource, true);
-		GatherInput(Generator.WarpSource, ChildData.Generator.WarpSource, false);
 
 	switch (Generator.Type)
 	{

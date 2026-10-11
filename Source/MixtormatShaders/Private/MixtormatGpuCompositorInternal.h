@@ -935,27 +935,8 @@ namespace MixtormatGpuCompositor
 		uint64 FieldKey = 0;
 	};
 
-	struct FGeneratorInputRenderData
-	{
-		bool bRequested = false;
-		FOutputReferenceRenderData Reference;
-	};
-
-	// Resolved once at the target's authored position. Missing fields remain unavailable;
-	// they never fall back to another generator or the layer-wide ReferencedUV.
-	struct FGeneratorInputFields
-	{
-		FPublishedField Height;
-		FPublishedField Warp;
-		// Destination-space coordinates: traced from Flow, or the source UVMap directly.
-		// Separate from the producer's field and the layer-wide source-sampling placement.
-		FRDGTextureRef WarpUV = nullptr;
-	};
-
 	struct FGeneratorRenderData
 	{
-		FGeneratorInputRenderData HeightSource;
-		FGeneratorInputRenderData WarpSource;
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		bool bNormalizeHeight = true;
 		float HeightScale = 1.0f;
@@ -1693,7 +1674,6 @@ namespace MixtormatGpuCompositor
 		// Each Generator module's signed height, keyed by source child index, so a later Height
 		// Blend sublayer can read another module's result.
 		TMap<int32, FRDGTextureRef> GeneratorModuleHeights;
-		TMap<int32, FGeneratorInputFields> GeneratorInputs;
 
 		FRDGTextureRef PeelNoiseDummy = nullptr;
 		FRDGTextureRef PeelFieldDummy = nullptr;
@@ -1761,7 +1741,6 @@ namespace MixtormatGpuCompositor
 			bGeneratorColor = false;
 			GeneratorFields.Reset();
 			GeneratorModuleHeights.Reset();
-			GeneratorInputs.Reset();
 			PendingLayerBlurs.Reset();
 		}
 	};

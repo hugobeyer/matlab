@@ -1590,8 +1590,6 @@ private:
 	TSharedRef<SWidget> BuildPreviewCameraControls();
 	TSharedRef<SWidget> BuildPreviewOutputControls();
 	TSharedRef<SWidget> BuildInspectorPanel();
-	TSharedRef<SWidget> BuildGeneratorInputControls();
-	TSharedRef<SWidget> BuildGeneratorInputMenu(bool bHeightInput);
 	// The one list of child types that own the child-inspector scrollbox. Both master visibility
 	// predicates in BuildInspectorPanel read this, so a new child type cannot claim its own panel
 	// and still leave the layer inspector showing underneath.
