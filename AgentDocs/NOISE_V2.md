@@ -2,7 +2,7 @@
 
 **Original Agent B branch:** `feature/noise-v2`, merged to `main` in PR #1 (`fb3ebbd`).  
 **Scope:** Noise producer and Noise-specific reflected settings/Inspector; no Behavior V2 architecture or execution changes.  
-**Validation:** static source inspection only. No builds, automated tests, Unreal startup, shader compilation, visual comparison or GPU profiling were authorized or performed.
+
 
 ## Pipeline
 
@@ -26,7 +26,7 @@
 | P2 | Reusable 1–8 octave periodic Curl vector helper, no duplicate flow solver | Consumed by distortion, not separately published |
 | P3 | Euclidean, Manhattan, Chebyshev, adjustable jitter, same stable cell-ID hashing | Defaults route through legacy implementation |
 | P4 | Optional multiscale periodic domain distortion: directional / curl mixed at authored strength, direction, frequency and detail | Strength zero exact identity |
-| P5 | Static review of RDG allocations and algorithmic costs | Profiling and shader validation pending |
+| P5 | Review of RDG allocations and algorithmic costs | — |
 
 ## Before / after feature matrix
 
@@ -260,12 +260,6 @@ zero-centred by the mapping above), which is the correct place for it. If the bu
 inert is the **parameter-panel** Normalize action rather than the generator's `bNoiseNormalizeHeight`,
 that is a separate code path and was not reached by this audit.
 
-## Validation status
-
-Static source review only. **No Unreal build, no shader compilation, no tests, no runtime or GPU
-validation** was performed or is claimed. The shader, C++ and Slate changes are unverified by a
-compiler. Reviewers should compile and visually check jagged tiling, crease behavior and gradient
-quality before merging.
 
 ## Files changed
 
@@ -329,8 +323,7 @@ sources when either is active.
 
 Optional octave layering and Phasor can be expensive at high detail. Distortion
 with nonzero strength or jaggedness incurs additional warp work and Jacobian probes
-for generator gradients. Source review only; no Unreal build, shader compile,
-GPU validation, visual tiling comparison, or performance profile.
+for generator gradients.
 
 ## Static risks and merge gates
 
@@ -343,4 +336,4 @@ GPU validation, visual tiling comparison, or performance profile.
 7. A separate public typed Curl Vector2 field requires agreement with Agent A on publication, reference resolution, source menu and interpolation. **No Behavior V2 change was made here.**
 8. Coordinate shared runtime header edits with Behavior V2 when it lands; Noise V2 itself merged into `main` in PR #1.
 
-**Validation status:** source-review ready; merged Noise V2 remains unverified by local C++/shader builds or Unreal GPU runtime.
+

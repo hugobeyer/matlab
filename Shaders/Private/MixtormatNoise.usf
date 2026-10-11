@@ -395,10 +395,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		|| NoiseType == NOISE_TYPE_WORLEY_F2
 		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
 	{
-		const FMixtormatNoiseWorley w = bRectangular
-			? MixtormatNoiseV2WorleyRect(SampleDomain, RectPeriod, Seed, WorleyJitter, WorleyMetric)
-			: MixtormatNoiseV2Worley(SampleDomain,
+		FMixtormatNoiseWorley w;
+		if (bRectangular)
+		{
+			w = MixtormatNoiseV2WorleyRect(SampleDomain, RectPeriod, Seed, WorleyJitter, WorleyMetric);
+		}
+		else
+		{
+			w = MixtormatNoiseV2Worley(SampleDomain,
 				max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyJitter, WorleyMetric);
+		}
 		float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.F2 : (w.F2 - w.F1);
 		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
@@ -431,14 +437,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	else if (NoiseType == NOISE_TYPE_PHASOR)
 	{
-		const FMixtormatNoiseV2Sample Phasor = bRectangular
-			? MixtormatNoiseV2PhasorRect(SampleDomain, RectPeriod, Seed, Wave / SafeSize,
+		FMixtormatNoiseV2Sample Phasor;
+		if (bRectangular)
+		{
+			Phasor = MixtormatNoiseV2PhasorRect(SampleDomain, RectPeriod, Seed, Wave / SafeSize,
 				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
-				PhasorOrientationVariation, PhasorComponents)
-			: MixtormatNoiseV2Phasor(SampleDomain,
+				PhasorOrientationVariation, PhasorComponents);
+		}
+		else
+		{
+			Phasor = MixtormatNoiseV2Phasor(SampleDomain,
 				max((int)round(max(Scale, 1.0f)), 1), Seed, Wave,
 				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
 				PhasorOrientationVariation, PhasorComponents);
+		}
 		Value = Phasor.Value;
 		Gradient = Phasor.Gradient;
 	}

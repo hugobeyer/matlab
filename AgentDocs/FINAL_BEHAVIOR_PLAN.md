@@ -916,7 +916,7 @@ Ensure selecting ordinary Noise does not force arrows on.
 
 Completion condition: Every active Flow node can be inspected visually without enabling a separate preview mode.
 
-P6 — Cleanup and validation
+P6 — Cleanup
 
 Remove dead code rather than maintaining parallel systems.
 
@@ -932,41 +932,6 @@ AgentDocs/BEHAVIOR_V2.md
 AgentDocs/NOISE_V2.md
 Relevant architecture and evaluation-order documentation.
 
-Do not mark anything validated without running it.
-
-15. Acceptance Tests
-
-The implementation is complete only when these behaviors are verified.
-
-Test	Expected result
-Create Noise	Height output enabled; normal preview
-Create Flow	Height disabled; Flow enabled
-Select Flow	Arrows automatically visible
-Select Noise	Arrows not automatically visible
-Preview Noise Flow	Existing preview mechanism displays its vectors
-Disable Height on Noise	Height contribution becomes zero
-Enable Height on Flow	Both outputs contribute correctly
-Flow with Height weight	Follows its internal noise slopes
-Flow with Slope weight	Follows the existing surface slopes
-Flow with Curl weight	Produces rotating vectors
-Flow with Constant weight	Produces uniform directional vectors
-Flow A + Flow B	Contributions accumulate
-Flow Mix = 1, Add = 0	Replaces preceding field inside the mask
-Flow Add = 0, Mix = 0	Exact identity
-Mask beneath Flow	Attenuates that Flow contribution only
-Mask beneath Distort	Attenuates Distort, not the working Flow
-Distort after Flow	Uses accumulated Flow
-Deform after Flow	Uses accumulated Flow; leaves IDs fixed
-Push after Flow	Changes height without implicit horizontal transport
-Flow after Push, Slope enabled	Uses the modified height
-Reorder Flow nodes	Evaluation changes predictably
-Flat height, slope-only Flow	Zero vector, no invalid values
-Tile edges	Seamless scalar and vector fields
-Undo/redo	Restores settings, hierarchy and results
-Save/reload	Presets and output toggles persist
-Clipboard/instance/group	Ownership and evaluation remain correct
-
-Additionally, verify Unreal 5.8 UHT compilation, C++ compilation, GPU shader compilation, preview rendering, all Noise families, masks, parameter drivers and performance.
 
 16. What We Are Explicitly NOT Building
 

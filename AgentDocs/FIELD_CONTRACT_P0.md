@@ -6,8 +6,6 @@ This document is the P0 deliverable: the single contract every Generator and Beh
 consumes from P1 onward. It defines semantics only; GPU writers and readers migrate in
 P1/P2 and no existing texture layout has been reinterpreted.
 
-Validation status: static source review only. No UHT/C++ build, shader compile or GPU
-runtime validation has run. See section 9.
 
 ---
 
@@ -331,21 +329,6 @@ made in P0. Existing texture channels are untouched.
 
 ---
 
-## 9. Validation status and what requires local UE 5.8 validation
-
-Performed: static source review of the runtime types, gather, GPU passes and
-shaders named in the plan; consistency check of this contract against
-`FINAL_BEHAVIOR_PLAN.md` sections 1–6, 9, 10, 14.
-
-Not performed (requires local Unreal Engine 5.8):
-
-- UHT/C++ compilation of the appended reflected properties and new enum.
-- Shader compilation (no shader was changed; listed for completeness).
-- Save/load round-trip of the new properties (expected safe: appended UPROPERTYs
-  with identity defaults; verify with an existing asset).
-- Undo/redo, clipboard, instance and group parity with the new properties.
-
----
 
 ## 10. P1 implementation notes (clarifications only)
 

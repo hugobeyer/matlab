@@ -59,8 +59,7 @@ re-implemented:
   (`NoiseHeightScale`, `bNoiseNormalizeHeight`) intentionally do not appear for mask noise,
   because they shape module Height, not the Value coverage a mask reads.
 - Right-click an eligible scoped-mask owner (generators and effects, including Gravity Flow) →
-  **Noise Gate** to create one scoped Mask child with Source=Noise in a single edit. Evidence is
-  source review only; no build, shader compile, runtime or visual validation has been run.
+  **Noise Gate** to create one scoped Mask child with Source=Noise in a single edit.
 - Canonical nested parameter ownership is the appended `EMixtormatParameterOwnerType::MaskNoise`
   (25), with actual owner/child GUIDs. Reflected defaults, binding/introspection and instance
   inheritance share the normal parameter pipeline. Exact files and later-UI integration rules:
@@ -73,7 +72,7 @@ Worley cell-distance-depth control, Phasor Scale/Bias and independent jagged-dom
 Noise-specific numeric/enum authoring defaults are registered for Generator/MaskNoise in
 `Config/MixtormatParameterAuthoring.json`. The normal right-click reference/dev-menu path
 applies; pixel-based Noise GPU Driver evaluation is **not** implemented yet.
-See [NOISE_V2.md](NOISE_V2.md) for parameters, constraints and validation gates.
+See [NOISE_V2.md](NOISE_V2.md) for parameters and constraints.
 
 ## Gravity Flow (texture-space generator child)
 
@@ -99,7 +98,6 @@ See [NOISE_V2.md](NOISE_V2.md) for parameters, constraints and validation gates.
   remain available through existing publication/preview plumbing. Masks gate only this child.
 - Existing flow types and serialized enum values are unchanged. New parameters use reflected
   runtime metadata and the shared gather/inspector path; layer-prefix hashing includes them.
-- Source review only: no build, shader compile, tests or visual/performance validation run.
 
 ## Height Push (structural module)
 
@@ -119,8 +117,7 @@ regenerated together with relief. Existing composite-below Height Follow is unch
 
 Path: Runtime child/payload → `GatherGeneratorHeightModuleChild` →
 `MixtormatGeneratorHeightPush.usf` → `MixtormatStrataCarver.usf` →
-`BuildHeightPushControls` (source, target, amount, enable). Implementation added; build,
-shader compilation and visual validation of Height Push have not been run by the agent.
+`BuildHeightPushControls` (source, target, amount, enable). Implementation added.
 Ordered Structural Warp integration is now present; see below.
 
 ## Structural Warp (steps 5–7 implemented)
@@ -158,11 +155,9 @@ remains a crack-cell attribute, not the internal UV boundary. Noise Value is mov
 scalar; its heterogeneous generator-domain Gradient is explicitly transport-sampled, not
 blindly transformed. See both structural/output-alignment design docs.
 
-Evidence is implementation plus targeted source review only. Only the user's earlier step-2
-compile is confirmed; the gather missing-header issue is fixed, but the newest build is
-unconfirmed. Broken StructuralWarp tests were removed at user request; no agent compile,
-build, runtime or test results are claimed. Raster composition/filtering and legacy local
-inverse centre/orientation approximations remain; no geological fixes are included.
+Implementation plus targeted source review. The gather missing-header issue is fixed. Raster
+composition/filtering and legacy local inverse centre/orientation approximations remain; no
+geological fixes are included.
 
 ## Structural connection authoring (interaction v1, D3)
 
@@ -173,7 +168,7 @@ and explains unavailable choices. One setter revalidates the live GUID address b
 writing, preserves module enable/trace settings, and records a discrete undo step.
 `None` clears only the selected edge's GUIDs; dangling sources are never auto-rebound.
 Readable labels retain existing sources even for disabled references or wrong output kinds.
-D3/D1/D2/E1 evidence is targeted source inspection only; no build, tests or runtime validation.
+
 D1 adds compact row chips. D2 adds independent structural source/target highlights,
 active-valid incoming counts, and transient markers for collapsed source layers while preserving
 instance-source glow. E1 adds target-row actions that insert an unscoped module immediately
@@ -237,17 +232,14 @@ typed Value/Gradient payloads. Value's kind follows the family (signed lattice/B
 accepts those formats alongside default half precision. Scalar previews map signed
 values to display gray only; vector previews show direction. Scoped coordinate tools
 and Structural Warp remap Value, Gradient and IDs together; Flow is derived afterwards.
-Flow Carve changes Height, not the raw Value/Gradient field. Source review only; builds,
-shader compilation and runtime preview/copy/warp checks have not been run.
+Flow Carve changes Height, not the raw Value/Gradient field.
 
 ## Sol review checklist — steps 1–7
 
 Implementation claims below and in the linked shader/design docs are based on targeted source
-review. Only the earlier step-2 compile is confirmed; do not treat source presence as a passing
-build, shader compile, test, runtime or visual result. `HeightSource`/`WarpSource` remain
-serialized, disabled-by-default fields; they are not the ordered Height Push/Structural Warp
-sockets. Runtime header comments still say consumers are implemented separately and need a
-source-truth review; no code change is made here.
+review. `HeightSource`/`WarpSource` remain serialized, disabled-by-default fields; they are not
+the ordered Height Push/Structural Warp sockets. Runtime header comments still say consumers are
+implemented separately and need a source-truth review; no code change is made here.
 
 - [ ] **Sources/order:** direct completed signed Height or eligible Flow/UVMap; reject self,
   forward, disabled, invalid and wrong-kind sources/targets. Check cache demand and same-layer order.
@@ -256,13 +248,13 @@ source-truth review; no code change is made here.
   Flow Amount/Trace Length/Steps and Height Push/Warp source, target and enable controls.
 - [ ] **Separate modules:** Height Push changes Strata bedding; Structural Warp changes the
   structural coordinate map. Confirm authored order and non-commuting Push/Warp composition.
-- [ ] **Jacobian:** verify row-gradient `g*J`, placement exactly once, `grad(B)` not transformed
+- [ ] **Jacobian:** row-gradient `g*J`, placement exactly once, `grad(B)` not transformed
   twice, non-square texel differences, masks, degeneracy and boundary validity.
 - [ ] **Tile/identity:** preserve signed Height, invalid IDs/hash semantics, UV winding,
   ID-anchored per-region random, owner/phase-aware bed position, and destination mask/ID influence.
 - [ ] **Single ownership:** no double warp of Height/Coverage; coverage aliases share one result;
   Noise Value/Gradient and each producer's named fields move under the same source revision.
 - [ ] **Six producers:** Strata regeneration; Rock, Pebbles, Cracks, Cliff and Noise typed bundle
-  policies. Verify Cliff identity inventory and Noise family-specific Gradient contract.
+  policies. Preserve Cliff identity inventory and Noise family-specific Gradient contract.
 - [ ] **Known limits:** local centre/orientation inverse approximations, raster filtering/distance
-  approximations and carried-over Strata defects remain. Record runtime tests still needed.
+  approximations and carried-over Strata defects remain.

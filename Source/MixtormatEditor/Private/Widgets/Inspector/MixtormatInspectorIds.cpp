@@ -1913,10 +1913,7 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 		LOCTEXT("IdGroupBoundaryWidth", "Boundary Width"),
 		[this]() { return GetSelectedIdGroup(); }, &FMixtormatIdGroup::BoundaryWidth, 1.0, 16.0, 1,
 		LOCTEXT("IdGroupBoundaryWidthHint", "Width of the Boundary output in pixels, from 1 to 16. Does not change the Region IDs output.")));
-	Panel->AddSlot().AutoHeight()
-	[
-		BuildChildOutputsControls(GetChildCapabilitiesForChildType(EMixtormatLayerChildType::IdGroup))
-	];
+
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedIdGroup() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })

@@ -3,6 +3,16 @@
 Read this file before any repository-wide search. It routes you to the right
 subsystem doc and the right files; it is not the full manual.
 
+## 0. Agent working style
+
+- The user has ADHD: keep responses short, direct, and scoped to the request.
+- Do not wander into unrelated analysis, changes, or recommendations.
+- Do not introduce hardcoded values; use canonical settings, constants, tokens, or metadata.
+- If you have a question or a material uncertainty, ask the user before proceeding.
+- There is no authored artist content in this repository; plugin-created assets need no special protection.
+- Do not add or run tests unless the user explicitly asks.
+- Update only documentation directly related to a completed change; keep it current.
+
 ## 1. What this is
 
 Mixtormat is an Unreal Engine 5.8 procedural material authoring / mixing plugin.

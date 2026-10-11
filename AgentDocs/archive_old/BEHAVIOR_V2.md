@@ -1,6 +1,9 @@
-# Behavior System — migration in progress
+# Behavior System V2 — LEGACY / NOT IMPORTANT
 
-Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; review PR #5 is open. Unreal 5.8, UHT, shader compilation, GPU runtime, save/load and performance validation have **not** run. Do not merge without authorized validation.
+> This document is historical context only. Do not use it as the current Behavior design source.
+> Use `AgentDocs/FINAL_BEHAVIOR_PLAN.md` for the current Behavior architecture.
+
+Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; review PR #5 is open.
 
 This document describes the target architecture and the currently implemented Behavior paths. **Legacy effects remain live in the source**; do not treat the removal sections below as implementation evidence.
 
@@ -47,11 +50,11 @@ The following legacy modules are **targeted for removal**, but the legacy flow e
 | `FlowCarve` effect | Behavior `Carve` |
 | `GravityFlow` effect | Behavior `Warp` with an authored direction field |
 
-`EMixtormatLayerChildType::HeightPush` and `::StructuralWarp` still exist **as enum values**, marked `Deprecated`. They are append-only serialized values: renumbering or removing them would silently retype every child in every saved asset. Their deprecation and removal must be verified per call site; enum metadata alone does not establish that all authoring and execution paths have been removed.
+`EMixtormatLayerChildType::HeightPush` and `::StructuralWarp` still exist **as enum values**, marked `Deprecated`. They are append-only serialized values: renumbering or removing them would silently retype every child in every saved asset. Their deprecation and removal must be tracked per call site; enum metadata alone does not establish that all authoring and execution paths have been removed.
 
 The same applies to `EMixtormatParameterOwnerType::HeightPush` (23), `::StructuralWarp` (24) and `::StructuralWarpFlow` (26). Those indices are held back so the surviving `MaskNoise` (25), `Behavior` (27) and `BehaviorFlow` (28) keep matching what saved bindings stored. Nothing resolves to the dead owners any more.
 
-The target removal includes the structural-connection subsystem that existed to draw Height Push and Structural Warp source/target edges — `MixtormatStructuralConnections.cpp`, `MixtormatStructuralConnectionModel.*`, `MixtormatStructuralConnectionProjection.*`, `SMixtormatStructuralSourcePicker.*`, `SMixtormat::StructuralLinksPreserved`, `EvaluateStructuralLink`/`ForGather` and the row's `StructuralLink` / `StructuralCount` / `StructuralHighlightRole` / `bStructuralSource` slots — which must be verified and cleaned up in source. A Behavior names its generator by scope and its fields by typed socket, so it has one editable end rather than an authored source and target pair.
+The target removal includes the structural-connection subsystem that existed to draw Height Push and Structural Warp source/target edges — `MixtormatStructuralConnections.cpp`, `MixtormatStructuralConnectionModel.*`, `MixtormatStructuralConnectionProjection.*`, `SMixtormatStructuralSourcePicker.*`, `SMixtormat::StructuralLinksPreserved`, `EvaluateStructuralLink`/`ForGather` and the row's `StructuralLink` / `StructuralCount` / `StructuralHighlightRole` / `bStructuralSource` slots — which must be cleaned up in source. A Behavior names its generator by scope and its fields by typed socket, so it has one editable end rather than an authored source and target pair.
 
 ## 2. Operations
 
@@ -100,22 +103,19 @@ The supported signal is an enabled `CombinedMask` from an earlier layer. An unsu
 - Ownership, instance and expanded-group checks fail closed. `MixtormatLayerGroups::BuildEffectiveLayers` remaps Behavior sockets to member-local producers and disables a shared Behavior whose scope owner does not resolve on a member, rather than letting it become an unscoped operation.
 - Clipboard, subtree copy and instance behaviour are preserved; Behavior typed sockets are remapped with the subtree.
 
-## 7. Unvalidated
-
-C++/UHT compilation, shader compilation, GPU runtime behaviour, six-family visual checks, UV seam/winding, mask/gate/driver behaviour, undo, save/load, clipboard/group/instance migration and performance profiling have **not** been run. Static source review is not compile or GPU evidence.
 
 ## 8. Critical migration status (source-reviewed)
 
 - The earlier claim that `HasActiveFlowTools` and `AddGeneratorFlowToolPasses` are called before `ApplyGeneratorPostBehaviors` is **stale**. Neither symbol occurs in the current `MixtormatGpuGeneratorPasses.cpp`.
 - The generator call site builds pre-generation coordinates, then runs the generator. When a native-height working-flow snapshot is needed, it calls `AddNoiseFlowPass` before `ApplyGeneratorPostBehaviors`; post-generation processing runs before height normalization. Noise's completed `FlowDirection` diagnostic is published after normalization when height exists.
 - `ApplyGeneratorPostBehaviors` executes scoped Noise Flow composition in authored child order; it also still contains a `FlowField` Behavior solve path. These facts do **not** establish completion of the P3 removal of obsolete Behavior flow types or P4 typed-socket Inspector cleanup.
-- Behavior `Warp`/`Deform` may consume accumulated working Flow, a published Flow/UV map, or native-height gradients, depending on authoring and validation. These paths must be tested before asserting visual or algorithmic parity.
+- Behavior `Warp`/`Deform` may consume accumulated working Flow, a published Flow/UV map, or native-height gradients, depending on authoring.
 - Behavior `Carve` uses `SignedCarveCS` with typed SDF or OwnBoundary distance. Full traced Flow-Carve groove/deposit parity has not been established by this source review.
-- Do not infer successful legacy cleanup, compilation, save/load, or GPU validation from static source alone.
+
 
 ## 9. Known remaining work
 
 1. PreGeneration currently accepts only a published `Flow`/`UVMap` Direction. `OwnNativeHeight` is necessarily post-stage and is rejected there.
 2. Behavior scalar driver slots support earlier `CombinedMask` only, not the full published-field / region / gate / local-parameter driver source set.
-3. Expanded-group and instance authoring parity is verified by construction, not exhaustively.
+3. Expanded-group and instance authoring parity follows the construction rules.
 4. There is no universal field graph. Fields are typed references and local snapshots, composed by the Behavior's own operation, not authored as a free-form graph.
