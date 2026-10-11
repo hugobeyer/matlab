@@ -311,6 +311,12 @@ namespace MixtormatLayerGroups
 				{
 					Child.HeightColorRamp.SourceChildId = *Effective;
 				}
+				// Child parameter bindings and drivers may also name a shared child.
+				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
+				{
+					RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+					RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+				}
 			};
 
 			// Layer-level parameter links and drivers may also name a shared child.
