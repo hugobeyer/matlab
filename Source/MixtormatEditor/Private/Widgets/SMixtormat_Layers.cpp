@@ -126,6 +126,7 @@ void SMixtormat::RebuildLayerList()
 		if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { It.RemoveCurrent(); }
 	}
 	ChildRowWidgets.Reset();
+	EditableChildRowWidgets.Reset();
 	AmbiguousChildRowAddresses.Reset();
 	if (!LayerListBox.IsValid())
 	{
