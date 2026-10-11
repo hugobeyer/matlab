@@ -96,7 +96,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
     const bool bCut = DrivenDepth > 0.0f;
-    const int Count = clamp(TraceSteps, 1, 64);
+    const int Count = clamp(TraceSteps, 1, 256);
     const float Ds = (bCut ? 1.0f : -1.0f) * DrivenTraceLength / (float)Count;
     float2 P = UV;
     float Best = 0.0f;

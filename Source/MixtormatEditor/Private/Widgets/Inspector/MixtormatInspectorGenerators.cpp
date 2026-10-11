@@ -1046,7 +1046,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
 		&FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001));
 	AddSliderRow(Trace, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorSculptTraceSteps", "Steps"), Flow,
-		&FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16));
+		&FMixtormatBehaviorFlowSettings::TraceSteps, 1, 256, 16));
 	AddSliderRow(Trace, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorSculptFalloff", "Falloff"), Flow,
 		&FMixtormatBehaviorFlowSettings::Falloff, 0.1, 8.0, 1.0, 0.01));

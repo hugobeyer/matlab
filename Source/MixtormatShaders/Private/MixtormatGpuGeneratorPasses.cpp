@@ -1612,7 +1612,7 @@ namespace
 		P->Depth = Behavior.Flow.Depth;
 		P->Width = FMath::Max(0.0f, Behavior.Flow.Width);
 		P->TraceLength = FMath::Max(0.0f, Behavior.Flow.TraceLength);
-		P->TraceSteps = FMath::Clamp(Behavior.Flow.TraceSteps, 1, 64);
+		P->TraceSteps = FMath::Clamp(Behavior.Flow.TraceSteps, 1, 256);
 		P->Falloff = FMath::Max(0.0f, Behavior.Flow.Falloff);
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->UseInfluence = bUseInfluence ? 1u : 0u;
