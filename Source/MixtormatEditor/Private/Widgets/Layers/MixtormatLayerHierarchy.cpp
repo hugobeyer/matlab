@@ -1326,6 +1326,17 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			[
 			SNew(SMixtormatLayerChildRow)
 			.Name(ChildName)
+			.OnNameCommitted_Lambda([this, GroupId, ChildIndex](const FText& Name, ETextCommit::Type)
+			{
+				FMixtormatLayerGroup* Current = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+				if (!Current || !Current->Children.IsValidIndex(ChildIndex)
+					|| Current->Children[ChildIndex].Type != EMixtormatLayerChildType::Mask
+					|| Name.IsEmptyOrWhitespace() || Current->Children[ChildIndex].DisplayName.EqualTo(Name)) return;
+				Current->Children[ChildIndex].DisplayName = Name;
+				RecordEditHistory();
+				bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+				RebuildLayerList();
+			})
 			.Disclosure()[BuildGeneratorDisclosure(Address, bHasOwnedChildren)]
 			.ToolTip(NoiseTooltip)
 			.Icon()[MakeChildTypeIcon(Child)]
@@ -1650,6 +1661,17 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
 				.ToolTip(RowToolTip)
 				.Name(ChildName)
+				.OnNameCommitted_Lambda([this, ResolveRow](const FText& Name, ETextCommit::Type)
+				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex) || Name.IsEmptyOrWhitespace()) return;
+					FMixtormatLayerChild& Target = WorkingLayers[LayerIndex].Children[ChildIndex];
+					if (Target.Type != EMixtormatLayerChildType::Mask || Target.DisplayName.EqualTo(Name)) return;
+					Target.DisplayName = Name;
+					RecordEditHistory();
+					bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+					RebuildLayerList();
+				})
 				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
