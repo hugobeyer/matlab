@@ -1,13 +1,11 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-// The viewport's contextual hint strip: one compact line of key/action pairs at the
-// viewport's bottom-left. Blender-style "what can I do right here", scoped to what the
-// preview viewport actually handles.
+// The viewport's contextual hint strip: one compact line of key/action pairs.
+// Its screen corner is configured by ContextLayout (typically top-right).
 //
-// Context-only: the plain material view shows nothing. Pairs appear only for the active
-// context (quick controls open, a channel or debug view, the Plane's orientation flip, a
-// missing material), each shown or hidden by a visibility lambda reading live workspace
-// state, so the strip tracks context changes without a reconstruction.
+// Pairs reflect live actions, including W when a supported mask is selected,
+// V when a diagnostic is active, Esc in quick controls, and the Plane flip.
+// Visibility lambdas track selection and overlay changes without rebuilding.
 //
 // Hit-test-invisible like the light gizmo, so camera navigation passes through. The
 // strip follows the H/Space master flag and collapses when nothing applies.
@@ -73,40 +71,36 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			FMixtormatThemeStore::GetResolved().Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
 		FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 
-	// The special contexts, evaluated live. The strip shows ONLY the active context's pairs:
-	// nothing is on screen in the plain material view. Precedence: quick controls > channel
-	// view > debug view > plane-orientation > no-material nudge.
+	// Read live selection/preview state; do not advertise unavailable hotkeys.
 	const auto bQuickControls = [this]() { return bQuickControlsOpen; };
 	const auto bChannelView = [this]()
 	{
 		return !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
 			&& PreviewViewports[0]->GetChannelPreview() != EMixtormatChannelPreview::Material;
 	};
-	const auto bDebugView = [this]()
+	const auto bMaskAvailable = [this]()
 	{
-		return DebugPreviewMode != EMixtormatDebugPreviewMode::None
-			|| (bMaskOverlayEnabled && IsMaskOverlayTargetReady());
+		return bHasWorkingMaterial && IsMaskOverlayTargetReady();
 	};
-	// Plane is the one mesh with a second state: pressing 2 again flips its orientation.
+	const auto bDiagnosticActive = [this, bChannelView, bMaskAvailable]()
+	{
+		return bChannelView()
+			|| DebugPreviewMode != EMixtormatDebugPreviewMode::None
+			|| (bMaskOverlayEnabled && bMaskAvailable());
+	};
 	const auto bPlaneFlip = [this]()
 	{
 		return PreviewMesh == EMixtormatPreviewMesh::Plane;
 	};
 	const auto bNoMaterial = [this]() { return !bHasWorkingMaterial; };
-	const auto bAnyContext = [this]()
+	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bPlaneFlip, bNoMaterial]()
 	{
-		return bQuickControlsOpen
-			|| (DebugPreviewMode != EMixtormatDebugPreviewMode::None)
-			|| (bMaskOverlayEnabled && IsMaskOverlayTargetReady())
-			|| (!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
-				&& PreviewViewports[0]->GetChannelPreview() != EMixtormatChannelPreview::Material)
-			|| PreviewMesh == EMixtormatPreviewMesh::Plane
-			|| !bHasWorkingMaterial;
+		return bQuickControls() || bDiagnosticActive() || bMaskAvailable()
+			|| bPlaneFlip() || bNoMaterial();
 	};
 
-	// One pair: optional keycap, action text, and when it is on screen. Visibility lives on
-	// the children -- box-panel slots have no Visibility of their own. Action is an attribute
-	// so a pair can name live state (the next channel's label).
+	// One pair: optional keycap and action text, both with live visibility.
+	// Action is an attribute so a mask toggle can say Show or Hide.
 	const auto AddPair = [&ActionStyle](
 		SHorizontalBox& Box,
 		const FText& Key,
@@ -161,38 +155,46 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	});
 	AddPair(*Row, LOCTEXT("HintEsc", "Esc"), LOCTEXT("HintCloseQuickControls", "Close quick controls"), QuickControlsVis);
 
-	// -- A channel view activated by a preview control: V always resets to material.
-	const TAttribute<EVisibility> ChannelVis = TAttribute<EVisibility>::CreateLambda([bChannelView, bQuickControls]()
+	// -- A supported selected mask can be toggled whether already visible or not.
+	const TAttribute<EVisibility> MaskVis = TAttribute<EVisibility>::CreateLambda(
+		[bMaskAvailable, bQuickControls]()
 	{
-		return bChannelView() && !bQuickControls() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
-	AddGap(*Row, ChannelVis);
-	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintMaterial", "Material"), ChannelVis);
-
-	// -- A mask or other diagnostic preview: V resets all previews.
-	const TAttribute<EVisibility> DebugVis = TAttribute<EVisibility>::CreateLambda([bDebugView, bChannelView, bQuickControls]()
-	{
-		return bDebugView() && !bChannelView() && !bQuickControls()
+		return bMaskAvailable() && !bQuickControls()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
-	AddGap(*Row, DebugVis);
-	AddPair(*Row, LOCTEXT("HintResetDebugKey", "V"), LOCTEXT("HintClearDebug", "Original material"), DebugVis);
-
-	// -- Plane selected: 2 again flips its orientation.
-	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(
-		[bPlaneFlip, bChannelView, bDebugView, bQuickControls]()
+	AddGap(*Row, MaskVis);
+	AddPair(*Row, LOCTEXT("HintW", "W"), TAttribute<FText>::CreateLambda([this]()
 	{
-		return bPlaneFlip() && !bChannelView() && !bDebugView() && !bQuickControls()
+		return bMaskOverlayEnabled
+			? LOCTEXT("HintHideMask", "Hide mask")
+			: LOCTEXT("HintShowMask", "Show mask");
+	}), MaskVis);
+
+	// -- V resets both the new mask tint and any remaining inspector diagnostics.
+	const TAttribute<EVisibility> ResetVis = TAttribute<EVisibility>::CreateLambda(
+		[bDiagnosticActive, bQuickControls]()
+	{
+		return bDiagnosticActive() && !bQuickControls()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	});
+	AddGap(*Row, ResetVis);
+	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintResetPreview", "Original material"), ResetVis);
+
+	// -- Re-selecting Plane (2) flips the orientation, but not while a diagnostic is active.
+	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(
+		[bPlaneFlip, bDiagnosticActive, bQuickControls]()
+	{
+		return bPlaneFlip() && !bDiagnosticActive() && !bQuickControls()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, PlaneVis);
 	AddPair(*Row, LOCTEXT("HintPlane", "2"), LOCTEXT("HintPlaneFlip", "Flip plane orientation"), PlaneVis);
 
-	// -- No working material: a mouse-only nudge, the one thing a new user is stuck on.
+	// -- When no recipe exists, keep the Library-to-Layers nudge.
 	const TAttribute<EVisibility> NoMaterialVis = TAttribute<EVisibility>::CreateLambda(
-		[bNoMaterial, bPlaneFlip, bChannelView, bDebugView, bQuickControls]()
+		[bNoMaterial, bPlaneFlip, bDiagnosticActive, bQuickControls]()
 	{
-		return bNoMaterial() && !bPlaneFlip() && !bChannelView() && !bDebugView() && !bQuickControls()
+		return bNoMaterial() && !bPlaneFlip() && !bDiagnosticActive() && !bQuickControls()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, NoMaterialVis);
@@ -203,7 +205,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	const TSharedRef<Mixtormat::SMixtormatHintStrip> StripWidget = SNew(Mixtormat::SMixtormatHintStrip)
 		.Visibility(TAttribute<EVisibility>::CreateLambda([this, bAnyContext]()
 		{
-			// Nothing applies -> nothing on screen. The plain material view is hint-free.
+			// Show only actions valid in the current context; plain material with no mask stays hint-free.
 			return bPreviewOverlayUiVisible && bAnyContext()
 				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 		}))
