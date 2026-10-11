@@ -1,0 +1,120 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+
+int2 OutputSize;
+float Radius;
+float Strength;
+float DirectionBias;
+uint HasMask;
+float4 BehaviorDriverParamsA[2];
+float4 BehaviorDriverParamsB[2];
+Texture2D<float> BehaviorDriverSignal0;
+Texture2D<float> BehaviorDriverSignal1;
+Texture2D<float4> SourceFlow;
+Texture2D<float> Validity;
+Texture2D<float> MaskField;
+Texture2D<float> Arrival;
+SamplerState LinearWrapSampler;
+RWTexture2D<float4> OutFlow;
+RWTexture2D<float> OutArrival;
+
+int2 WrapFlowFeather(int2 P)
+{
+    return ((P % OutputSize) + OutputSize) % OutputSize;
+}
+
+float2 BlurredFlow(float2 UV, float2 Center)
+{
+    const float2 Step = max(0.0f, Radius) / float2(OutputSize);
+    float2 Sum = 4.0f * Center;
+    float Weight = 4.0f;
+    [unroll]
+    for (int J = -1; J <= 1; J++)
+    {
+        [unroll]
+        for (int I = -1; I <= 1; I++)
+        {
+            if (I == 0 && J == 0) { continue; }
+            const float2 P = UV + float2(I, J) * Step;
+            const float V = Validity.SampleLevel(LinearWrapSampler, P, 0.0f);
+            const float2 F = SourceFlow.SampleLevel(LinearWrapSampler, P, 0.0f).xy;
+            if (!isfinite(V) || !all(isfinite(F)) || V < 0.5f) { continue; }
+            const float W = I == 0 || J == 0 ? 2.0f : 1.0f;
+            Sum += W * F;
+            Weight += W;
+        }
+    }
+    return Sum / Weight;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 P = int2(DispatchThreadId.xy);
+    if (any(P >= OutputSize)) { return; }
+
+#if FLOW_FEATHER_STAGE == 0 || FLOW_FEATHER_STAGE == 3
+    const float4 Center = SourceFlow.Load(int3(P, 0));
+    const float V = Validity.Load(int3(P, 0));
+    const float M = HasMask != 0u ? MaskField.Load(int3(P, 0)) : 1.0f;
+    const float Driven = MixtormatApplyDriver(Strength,
+        BehaviorDriverSignal0.Load(int3(P, 0)),
+        BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+    float Weight = isfinite(V) && isfinite(M) && isfinite(Driven)
+        && V > 0.5f && all(isfinite(Center))
+        ? saturate(Driven) * saturate(M) : 0.0f;
+#if FLOW_FEATHER_STAGE == 3
+    const float Distance = Arrival.Load(int3(P, 0));
+    if (!isfinite(Distance)) { Weight = 0.0f; }
+    const float T = saturate(Distance / max(Radius, 1.0e-4f));
+    Weight *= 1.0f - T * T * (3.0f - 2.0f * T);
+    // Vector fields have validity but no signed inside/outside surface.
+    // Eikonal flow feathering uses both sides of a direction discontinuity.
+#endif
+    const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+    OutFlow[P] = float4(Weight > 0.0f
+        ? lerp(Center.xy, BlurredFlow(UV, Center.xy), Weight) : Center.xy,
+        Center.zw);
+#elif FLOW_FEATHER_STAGE == 1
+    const float V = Validity.Load(int3(P, 0));
+    const float2 A = SourceFlow.Load(int3(P, 0)).xy;
+    bool Seed = false;
+    if (isfinite(V) && V > 0.5f && all(isfinite(A)))
+    {
+        const int2 Dx = int2(1, 0), Dy = int2(0, 1);
+        const float L = Validity.Load(int3(WrapFlowFeather(P - Dx), 0));
+        const float R = Validity.Load(int3(WrapFlowFeather(P + Dx), 0));
+        const float D = Validity.Load(int3(WrapFlowFeather(P - Dy), 0));
+        const float U = Validity.Load(int3(WrapFlowFeather(P + Dy), 0));
+        Seed = min(min(L, R), min(D, U)) <= 0.5f;
+        [unroll]
+        for (int K = 0; K < 4; ++K)
+        {
+            const int2 Offset = K == 0 ? -Dx : K == 1 ? Dx : K == 2 ? -Dy : Dy;
+            const float2 B = SourceFlow.Load(int3(WrapFlowFeather(P + Offset), 0)).xy;
+            const float Denom = length(A) * length(B);
+            if (all(isfinite(B)) && Denom > 1.0e-5f && dot(A, B) / Denom < 0.75f)
+            {
+                Seed = true;
+            }
+        }
+    }
+    OutArrival[P] = Seed ? 0.0f : 65536.0f;
+#elif FLOW_FEATHER_STAGE == 2
+    const float C = Arrival.Load(int3(P, 0));
+    const float L = Arrival.Load(int3(WrapFlowFeather(P + int2(-1, 0)), 0));
+    const float R = Arrival.Load(int3(WrapFlowFeather(P + int2(1, 0)), 0));
+    const float D = Arrival.Load(int3(WrapFlowFeather(P + int2(0, -1)), 0));
+    const float U = Arrival.Load(int3(WrapFlowFeather(P + int2(0, 1)), 0));
+    const float NW = Arrival.Load(int3(WrapFlowFeather(P + int2(-1, 1)), 0));
+    const float NE = Arrival.Load(int3(WrapFlowFeather(P + int2(1, 1)), 0));
+    const float SW = Arrival.Load(int3(WrapFlowFeather(P + int2(-1, -1)), 0));
+    const float SE = Arrival.Load(int3(WrapFlowFeather(P + int2(1, -1)), 0));
+    const float Bias = clamp(DirectionBias, -1.0f, 1.0f) * 0.75f;
+    OutArrival[P] = MixtormatEikonalStepDirectional(C, L, R, D, U, NW, NE, SW, SE,
+        float2(1.0f, 1.0f), 1.0f + Bias, 1.0f - Bias, 1.0f, 1.0f,
+        1.0f + Bias, 1.0f - Bias, 1.0f + Bias, 1.0f - Bias);
+#endif
+}

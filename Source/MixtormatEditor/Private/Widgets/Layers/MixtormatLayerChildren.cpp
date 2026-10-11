@@ -692,8 +692,9 @@ namespace MixtormatLayersPrivate
 		{
 			if (Owner.Type == EMixtormatLayerChildType::Generator)
 			{
-				return !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
-					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow);
+				const bool bFlowPreset = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
+				return !bFlowPreset || Child.Behavior.Type == EMixtormatBehaviorType::Feather;
 			}
 			if (Owner.Type != EMixtormatLayerChildType::Behavior)
 			{
@@ -705,7 +706,8 @@ namespace MixtormatLayersPrivate
 				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Warp
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Push
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::Carve))
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Carve
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::FlowField))
 				|| (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
 				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Push
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Warp

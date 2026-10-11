@@ -698,6 +698,39 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
 
+class FMixtormatBehaviorFlowFeatherCS final : public FGlobalShader
+{
+public:
+    DECLARE_GLOBAL_SHADER(FMixtormatBehaviorFlowFeatherCS);
+    SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorFlowFeatherCS, FGlobalShader);
+    class FStage : SHADER_PERMUTATION_INT("FLOW_FEATHER_STAGE", 4);
+    using FPermutationDomain = TShaderPermutationDomain<FStage>;
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER(FIntPoint, OutputSize)
+        SHADER_PARAMETER(float, Radius)
+        SHADER_PARAMETER(float, Strength)
+        SHADER_PARAMETER(float, DirectionBias)
+        SHADER_PARAMETER(uint32, HasMask)
+        SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+        SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceFlow)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Validity)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MaskField)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
+        SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutArrival)
+    END_SHADER_PARAMETER_STRUCT()
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorFlowFeatherCS,
+    "/Plugin/Mixtormat/Private/MixtormatBehaviorFlowFeather.usf", "MainCS", SF_Compute);
+
 class FMixtormatBehaviorFeatherCS final : public FGlobalShader
 {
 public:
@@ -1676,6 +1709,72 @@ namespace
 		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex,
 		FRDGTextureRef* OutWarpCoordinates = nullptr);
 
+	FPublishedField AddFlowFeatherPasses(FMixtormatComposeContext& Ctx,
+		const FPublishedField& Source, const FBehaviorRenderData& Behavior,
+		FRDGTextureRef Mask, const bool bHasMask, const int32 LayerIndex, const int32 ChildIndex)
+	{
+		if (!Source.IsComplete() || Source.Kind != EMixtormatPublishedFieldKind::Flow
+			|| (Behavior.Strength <= 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
+			|| Behavior.FeatherRadius <= 0.0f)
+		{
+			return Source;
+		}
+		FRDGBuilder& Graph = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		if (Source.Texture->Desc.Extent != Size) { return Source; }
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8),
+			FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		const auto NewScalar = [&Graph, Size](const TCHAR* Name)
+		{
+			return Graph.CreateTexture(FRDGTextureDesc::Create2D(Size, PF_R32_FLOAT,
+				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
+		FRDGTextureRef Arrival[2] = {nullptr, nullptr};
+		int32 Read = 0;
+		const auto Dispatch = [&](int32 Stage, FRDGTextureRef Out, FRDGTextureRef InArrival)
+		{
+			FMixtormatBehaviorFlowFeatherCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatBehaviorFlowFeatherCS::FStage>(Stage);
+			TShaderMapRef<FMixtormatBehaviorFlowFeatherCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = Graph.AllocParameters<FMixtormatBehaviorFlowFeatherCS::FParameters>();
+			P->OutputSize = Size;
+			P->Radius = Behavior.FeatherRadius;
+			P->Strength = FMath::Clamp(Behavior.Strength, 0.0f, 1.0f);
+			P->DirectionBias = Behavior.FeatherDirectionBias;
+			P->HasMask = bHasMask && Mask ? 1u : 0u;
+			P->SourceFlow = Source.Texture;
+			P->Validity = Source.Validity;
+			P->MaskField = bHasMask && Mask ? Mask : Ctx.EmptyDriverSignal;
+			P->Arrival = InArrival ? InArrival : Ctx.EmptyDriverSignal;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
+			if (Stage == 0 || Stage == 3) { P->OutFlow = Graph.CreateUAV(Out); }
+			else { P->OutArrival = Graph.CreateUAV(Out); }
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(Graph,
+				RDG_EVENT_NAME("Mixtormat.FlowFeather.L%d.C%d.Stage%d", LayerIndex, ChildIndex, Stage),
+				Shader, P, Groups);
+		};
+		if (bEikonal)
+		{
+			Arrival[0] = NewScalar(TEXT("Mixtormat.FlowFeather.ArrivalA"));
+			Arrival[1] = NewScalar(TEXT("Mixtormat.FlowFeather.ArrivalB"));
+			Dispatch(1, Arrival[0], nullptr);
+			for (int32 Pass = 0; Pass < Behavior.FeatherIterations; ++Pass)
+			{
+				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
+				Read = 1 - Read;
+			}
+		}
+		FRDGTextureRef OutFlow = Graph.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_FloatRGBA, FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.FlowFeather.Filtered"));
+		Dispatch(bEikonal ? 3 : 0, OutFlow, bEikonal ? Arrival[Read] : nullptr);
+		return FPublishedField{EMixtormatPublishedFieldKind::Flow,
+			OutFlow, OutFlow, Source.Validity, false};
+	}
+
 	FRDGTextureRef AddGeneratorFeatherPasses(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef Height, FRDGTextureRef Boundary,
 		const FBehaviorRenderData& Behavior, FRDGTextureRef Mask, const bool bHasMask,
@@ -1814,6 +1913,33 @@ namespace
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
 			if (Child.Behavior.Type == EMixtormatBehaviorType::Feather)
 			{
+				const FChildRenderData* FlowParent = Layer.Children.FindByPredicate(
+					[&](const FChildRenderData& Candidate)
+					{
+						return Candidate.Type == EMixtormatLayerChildType::Behavior
+							&& Candidate.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
+							&& Candidate.SourceChildIndex < Child.SourceChildIndex
+							&& Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
+							&& Candidate.Behavior.GeneratorChildIndex == Owner.SourceChildIndex;
+					});
+				if (FlowParent)
+				{
+					const FPublishedFieldKey Key = PublishedKey(Layer,
+						FlowParent->SourceChildIndex, FName(TEXT("FlowDirection")));
+					const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+					if (Field && Field->IsComplete()
+						&& Field->Kind == EMixtormatPublishedFieldKind::Flow)
+					{
+						const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+						FRDGTextureRef Gate = bMask
+							? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+							: nullptr;
+						const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
+							Child.Behavior, Gate, bMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
+						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+					}
+					continue;
+				}
 				// A filter under a generator runs after preceding native-height operations.
 				// A filter under Warp/Push/Carve/Deform acts immediately after its
 				// parent and leaves IDs, boundary distance and named fields unchanged.
@@ -3916,6 +4042,33 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 			{
 				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+			}
+		}
+		if (bNoiseHeightless
+			&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
+		{
+			// A Flow preset with Write Height off still publishes typed Flow fields.
+			// Apply its direct Feather children to those fields, not to nonexistent height.
+			for (const FChildRenderData& Filter : Layer.Children)
+			{
+				if (Filter.Type != EMixtormatLayerChildType::Behavior
+					|| Filter.Behavior.Type != EMixtormatBehaviorType::Feather
+					|| Filter.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+					|| Filter.Behavior.GeneratorChildIndex != Child.SourceChildIndex) { continue; }
+				const bool bMask = HasScopedGeneratorMasks(Layer, Filter.SourceChildIndex);
+				FRDGTextureRef Gate = bMask
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Filter.SourceChildIndex, true)
+					: nullptr;
+				for (const FName Name : {FName(TEXT("GeneratedFlow")), FName(TEXT("FlowDirection"))})
+				{
+					const FPublishedFieldKey Key = PublishedKey(Layer, Child.SourceChildIndex, Name);
+					const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+					if (!Field || !Field->IsComplete()
+						|| Field->Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
+					const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
+						Filter.Behavior, Gate, bMask, LayerCtx.LayerIndex, Filter.SourceChildIndex);
+					Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+				}
 			}
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)

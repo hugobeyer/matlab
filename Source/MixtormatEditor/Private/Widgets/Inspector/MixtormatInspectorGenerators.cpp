@@ -2140,9 +2140,35 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 		LOCTEXT("BehaviorFeatherIterations", "Iterations"), Settings,
 		&FMixtormatBehaviorFeatherSettings::Iterations, 1, 64, 32,
 		LOCTEXT("BehaviorFeatherIterationsHelp", "Number of eight-neighbor distance relaxation passes.")));
-	AddSliderRow(Eikonal, MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
-		LOCTEXT("BehaviorFeatherSide", "Feather Side"), Settings,
-		&FMixtormatBehaviorFeatherSettings::Side));
+	const auto IsFlowOwner = [this]()
+	{
+		const FMixtormatChildAddress Address = GetSelectedChildAddress();
+		const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+		if (!Child || !Child->ScopeOwnerChildId.IsValid()) { return false; }
+		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+			[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+		if (!Layer) { return false; }
+		const FMixtormatLayerChild* Owner = Layer->Children.FindByPredicate(
+			[Child](const FMixtormatLayerChild& Candidate)
+			{
+				return Candidate.ChildId == Child->ScopeOwnerChildId;
+			});
+		return Owner && ((Owner->Type == EMixtormatLayerChildType::Behavior
+				&& Owner->Behavior.Type == EMixtormatBehaviorType::FlowField)
+			|| (Owner->Type == EMixtormatLayerChildType::Generator
+				&& Owner->Generator.Type == EMixtormatGeneratorType::Noise
+				&& Owner->Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow));
+	};
+	AddSliderRow(Eikonal, SNew(SBox)
+		.Visibility_Lambda([IsFlowOwner]()
+		{
+			return IsFlowOwner() ? EVisibility::Collapsed : EVisibility::Visible;
+		})
+		[
+			MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
+				LOCTEXT("BehaviorFeatherSide", "Feather Side"), Settings,
+				&FMixtormatBehaviorFeatherSettings::Side)
+		]);
 	AddSliderRow(Eikonal, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
 		LOCTEXT("BehaviorFeatherBias", "Direction Bias"), Settings,
 		&FMixtormatBehaviorFeatherSettings::DirectionBias, -1.0, 1.0, 0.0, 0.01,

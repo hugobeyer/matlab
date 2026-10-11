@@ -1356,7 +1356,8 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 			{
 				if (Target.Type == EMixtormatLayerChildType::Generator
 					&& Target.Generator.Type == EMixtormatGeneratorType::Noise
-					&& Target.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow) { continue; }
+					&& Target.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow
+					&& Entry.Creation != EMixtormatChildCreation::BehaviorFeather) { continue; }
 				FMixtormatLayerChild Prototype;
 				ApplyChildCreationDefaults(Prototype, Entry.Creation);
 				if (!CanKeepScopedPlacement(Target, Prototype)) { continue; }
