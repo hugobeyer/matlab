@@ -276,8 +276,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	case EMixtormatLayerChildType::Behavior:
-		if (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
-			|| Child.Behavior.Flow.bUseTracedFlow)
+		if (Child.Behavior.Type != EMixtormatBehaviorType::FlowField
+			&& Child.Behavior.Flow.bUseTracedFlow)
 		{
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),
 				NSLOCTEXT("SMixtormat", "BehaviorFlowDirection", "Flow Direction"),

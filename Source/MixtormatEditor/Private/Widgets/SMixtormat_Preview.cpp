@@ -395,13 +395,7 @@ bool SMixtormat::UpdateAutomaticFlowPreview()
 	FName FlowOutput = NAME_None;
 	if (Child && IsChildOutputPreviewReady(*Child))
 	{
-		if (Child->Type == EMixtormatLayerChildType::Behavior
-			&& Child->Behavior.Type == EMixtormatBehaviorType::FlowField
-			&& Child->Behavior.bEnabled)
-		{
-			FlowOutput = FName(TEXT("FlowDirection"));
-		}
-		else if (Child->Type == EMixtormatLayerChildType::Generator
+		if (Child->Type == EMixtormatLayerChildType::Generator
 			&& Child->Generator.Type == EMixtormatGeneratorType::Noise
 			&& Child->Generator.bEnabled)
 		{
