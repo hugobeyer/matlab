@@ -38,7 +38,7 @@ namespace MixtormatLayersPrivate
 	{
 		for (int32 Suffix = FirstSuffix;; ++Suffix)
 		{
-			const FString Candidate = Suffix == 0
+			const FString Candidate = Suffix < 0
 				? FString(Prefix)
 				: FString::Printf(TEXT("%s%d"), Prefix, Suffix);
 			if (!Entries.ContainsByPredicate([&Candidate](const T& Entry)
