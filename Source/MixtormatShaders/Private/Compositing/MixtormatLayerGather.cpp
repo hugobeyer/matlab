@@ -90,7 +90,6 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 				continue;
 			}
 			FScalarDriverRenderData& Driver = Data.ScalarDrivers[SlotIndex];
-			Driver.bEnabled = true;
 			Driver.bRegionSource =
 				Binding->Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds;
 			Driver.SourceLayerId = Binding->Driver.SourceLayerId;
@@ -101,6 +100,10 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 						return Candidate.ChildId == Binding->Driver.SourceChildId;
 					})
 				: INDEX_NONE;
+			// A missing named producer is not a request for the nearest Region IDs.
+			Driver.bEnabled = !Driver.bRegionSource
+				|| !Binding->Driver.SourceChildId.IsValid()
+				|| Driver.SourceChildIndex != INDEX_NONE;
 			Driver.Seed = static_cast<uint32>(Binding->Driver.Seed);
 			Driver.IdRandomMin = Binding->Driver.IdRandomMin;
 			Driver.IdRandomMax = Binding->Driver.IdRandomMax;
