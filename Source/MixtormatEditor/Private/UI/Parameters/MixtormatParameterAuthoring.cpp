@@ -202,6 +202,14 @@ namespace
 		return bLoaded;
 	}
 
+	// A corrupt or missing shipped file must not be parsed again for every
+	// visible Inspector attribute on every Slate paint.
+	bool& DatabaseLoadAttempted()
+	{
+		static bool bAttempted = false;
+		return bAttempted;
+	}
+
 	const FMixtormatParameterAuthoringEntry* FindEffective(
 		const FMixtormatParameterDefinitionKey& Key)
 	{
@@ -315,6 +323,12 @@ namespace MixtormatParameterAuthoring
 		{
 			return true;
 		}
+		// Allow an explicit save to retry if the user repaired the JSON on disk.
+		// Normal Inspector attribute reads keep failed loads latched for this session.
+		if (!DatabaseLoaded())
+		{
+			DatabaseLoadAttempted() = false;
+		}
 		// Never rebuild the shipped file from an uninitialized in-memory map.
 		// A missing or malformed database must not be silently replaced by pending edits.
 		if (!LoadFromDisk())
@@ -349,6 +363,10 @@ namespace MixtormatParameterAuthoring
 
 	bool RestoreShippedAuthoring(const FMixtormatParameterDefinitionKey& Key)
 	{
+		if (!DatabaseLoaded())
+		{
+			DatabaseLoadAttempted() = false;
+		}
 		if (!LoadFromDisk())
 		{
 			UE_LOG(LogTemp, Error,
@@ -707,6 +725,11 @@ namespace MixtormatParameterAuthoring
 		{
 			return true;
 		}
+		if (DatabaseLoadAttempted())
+		{
+			return false;
+		}
+		DatabaseLoadAttempted() = true;
 		const FString Path = GetDatabaseFilePath();
 		FString Json;
 		if (!FFileHelper::LoadFileToString(Json, *Path))

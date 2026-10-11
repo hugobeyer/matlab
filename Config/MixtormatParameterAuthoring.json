@@ -463,14 +463,11 @@
 			"snap": 0
 		},
 		"ReliefId.EdgeRoughnessAmount":
-		"Generator.QuarterHeight":
 		{
 			"default": 0,
 			"uiMin": 0,
 			"uiMax": 1,
-			"snap": 0,
-			"clampMin": 0,
-			"clampMax": 1
+			"snap": 0
 		}
 	},
 	"Mask":
