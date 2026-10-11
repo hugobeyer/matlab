@@ -2727,9 +2727,8 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 						}),
 						LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field.")))]);
 	}
-	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
-
 	Cards->AddSlot().AutoHeight()[Outputs];
+	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
