@@ -15,10 +15,16 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SNullWidget.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
+
+void SMixtormatLayerChildRow::BeginRename()
+{
+	if (EditableName.IsValid()) { EditableName->EnterEditingMode(); }
+}
 
 void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 {
@@ -122,7 +128,9 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.FillWidth(1.0f)
 					.VAlign(VAlign_Center)
 					[
-						SNew(STextBlock)
+						SAssignNew(EditableName, SInlineEditableTextBlock)
+						.OnTextCommitted(InArgs._OnNameCommitted)
+						.IsReadOnly(!InArgs._OnNameCommitted.IsBound())
 						.Font(NameTextStyle.Font)
 						.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
 						{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
