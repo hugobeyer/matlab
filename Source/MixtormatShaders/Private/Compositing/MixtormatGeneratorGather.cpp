@@ -321,7 +321,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
 	const bool bFlowField = Behavior.Type == EMixtormatBehaviorType::FlowField;
 	const bool bFeather = Behavior.Type == EMixtormatBehaviorType::Feather;
-	const bool bTraced = !bWarp && Behavior.Flow.bUseTracedFlow;
+	const bool bTraced = bCarve || (!bWarp && Behavior.Flow.bUseTracedFlow);
 	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField && !bFeather)
 		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
@@ -363,7 +363,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FlowOut.Mode = Flow.Mode;
 	FlowOut.ModeMix = FMath::IsFinite(Flow.ModeMix) ? FMath::Clamp(Flow.ModeMix, 0.0f, 1.0f) : 0.0f;
 	Out.Stage = Behavior.Stage;
-	FlowOut.FlowSource = static_cast<uint32>(Flow.FlowSource);
+	// Scoped Sculpt and Traced Deform no longer read SDF steering.
+	FlowOut.FlowSource = static_cast<uint32>((bCarve || (bDeform && bTraced))
+		? EMixtormatBehaviorFlowSource::Height : Flow.FlowSource);
 	FlowOut.FlowAmount = FMath::IsFinite(Flow.FlowAmount) ? Flow.FlowAmount : FMixtormatBehaviorFlowSettings().FlowAmount;
 	FlowOut.FlowTangent = FMath::IsFinite(Flow.FlowTangent) ? Flow.FlowTangent : FMixtormatBehaviorFlowSettings().FlowTangent;
 	FlowOut.FlowAngle = FMath::IsFinite(Flow.FlowAngle) ? Flow.FlowAngle : FMixtormatBehaviorFlowSettings().FlowAngle;
@@ -527,8 +529,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Direction.FlowTraceLength = FMath::IsFinite(Reference.FlowTraceLength)
 		? FMath::Max(Reference.FlowTraceLength, 0.0f) : 0.0f;
 	Out.Direction.FlowSteps = FMath::Max(Reference.FlowSteps, 1);
-	// Push consumes signed height; Carve consumes a typed SDF or native boundary,
-	// never a signed height silently reinterpreted as distance.
+	// Push consumes signed height. Sculpt consumes current Height and accumulated Flow
+	// directly; its Height socket is unused and cannot reinterpret SDF.
 	Out.HeightOrigin = Behavior.Height.Origin;
 	Out.HeightComposition.Amplitude = FMath::IsFinite(Behavior.Height.Amplitude)
 		? Behavior.Height.Amplitude : 0.0f;
