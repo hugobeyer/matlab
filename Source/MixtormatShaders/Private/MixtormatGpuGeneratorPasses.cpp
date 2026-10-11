@@ -4044,11 +4044,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
 		}
-		if (bNoiseHeightless
-			&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
+		if (bNoiseHeightless)
 		{
-			// A Flow preset with Write Height off still publishes typed Flow fields.
-			// Apply its direct Feather children to those fields, not to nonexistent height.
+			// Any heightless Noise may still publish Flow fields. Filter only
+			// complete typed Flow outputs; never filter nonexistent native height.
 			for (const FChildRenderData& Filter : Layer.Children)
 			{
 				if (Filter.Type != EMixtormatLayerChildType::Behavior
