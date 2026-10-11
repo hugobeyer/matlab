@@ -7,7 +7,6 @@
 class FAdvancedPreviewScene;
 class UMaterial;
 class UMaterialInstanceDynamic;
-class UPostProcessComponent;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UTextureRenderTarget2D;
@@ -35,13 +34,13 @@ public:
 		float DisplacementAmount,
 		float OverlayOpacity);
 	void Disable();
+	UMaterialInstanceDynamic* GetBlendInstance() const { return BlendInstance.Get(); }
 
 private:
 	bool EnsureResources(UTextureRenderTarget2D* InitialField);
 	FAdvancedPreviewScene& Scene;
 	UStaticMeshComponent* UvProxy = nullptr;
 	USceneCaptureComponent2D* UvCapture = nullptr;
-	UPostProcessComponent* PostProcess = nullptr;
 	TStrongObjectPtr<UTextureRenderTarget2D> UvTarget;
 	TStrongObjectPtr<UMaterial> UvMaterial;
 	TStrongObjectPtr<UMaterial> BlendMaterial;
