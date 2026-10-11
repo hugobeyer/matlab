@@ -412,6 +412,13 @@ public:
 			Owner.ToggleDisplacement();
 			return true;
 		}
+		// Display-only mask diagnostic; only the focused viewport consumes W.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::W
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			Owner.ToggleMaskOverlay();
+			return true;
+		}
 		// Temporary: cycles the raw-channel diagnostic view. No toolbar yet -- WorkingStatusText
 		// is the only indication, same as every other viewport hotkey here.
 		if (EventArgs.Event == IE_Pressed
@@ -550,6 +557,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 {
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
+	OnToggleMaskOverlay = InArgs._OnToggleMaskOverlay;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnSetPreviewMesh = InArgs._OnSetPreviewMesh;
@@ -757,7 +765,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
-	const bool bDebugPreview = DebugSettings.Mode != EMixtormatDebugPreviewMode::None;
+	const bool bDebugPreview = DebugSettings.Mode != EMixtormatDebugPreviewMode::None
+		&& !DebugSettings.bMaskOverlay;
 	if (!bUsingLayerPreview
 		|| !PreviewMaterialInstance.IsValid()
 		|| bUsingDebugPreview != bDebugPreview)
@@ -827,6 +836,15 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		// Rebind the complete layer preview so removed overrides inherit the master again.
 		PreviewMaterialInstance->ClearParameterValues();
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
+		if (DebugSettings.bMaskOverlay)
+		{
+			// The compositor writes a display-only tinted albedo into its existing
+			// debug target; the PBR master still reads its original normals, RAM and
+			// height, and baked BaseColor remains unmodified.
+			PreviewMaterialInstance->SetTextureParameterValue(
+				MixtormatPreview::ChannelPreviewBaseColorParameter,
+				LayerCompositor->GetDebugOutput());
+		}
 		const TOptional<FLinearColor> FuzzColor =
 			MixtormatCompositionReferences::ComputeFuzzColor(Layers, Groups);
 		if (FuzzColor.IsSet())
@@ -1349,6 +1367,11 @@ void SMixtormatPreviewViewport::ZoomCamera(const float ZoomDelta)
 void SMixtormatPreviewViewport::ToggleOverlayUi()
 {
 	OnToggleOverlayUi.ExecuteIfBound();
+}
+
+void SMixtormatPreviewViewport::ToggleMaskOverlay()
+{
+	OnToggleMaskOverlay.ExecuteIfBound();
 }
 
 void SMixtormatPreviewViewport::ToggleDisplacement()
