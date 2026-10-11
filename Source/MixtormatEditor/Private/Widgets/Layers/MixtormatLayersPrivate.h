@@ -11,6 +11,28 @@ namespace MixtormatLayersPrivate
 {
 	inline constexpr int32 MaximumScopeDepth = 4;
 
+	inline FText MakeGenericMaskName(
+		const TArray<FMixtormatLayer>& Layers, const TArray<FMixtormatLayerGroup>& Groups)
+	{
+		TSet<FString> Names;
+		for (const FMixtormatLayer& Layer : Layers)
+			for (const FMixtormatLayerChild& Child : Layer.Children)
+				if (Child.Type == EMixtormatLayerChildType::Mask && !Child.DisplayName.IsEmpty())
+					Names.Add(Child.DisplayName.ToString());
+		for (const FMixtormatLayerGroup& Group : Groups)
+			for (const FMixtormatLayerChild& Child : Group.Children)
+				if (Child.Type == EMixtormatLayerChildType::Mask && !Child.DisplayName.IsEmpty())
+					Names.Add(Child.DisplayName.ToString());
+		for (int32 Suffix = 0;; ++Suffix)
+		{
+			const FString Candidate = Suffix == 0 ? TEXT("Mask")
+				: FString::Printf(TEXT("Mask%d"), Suffix);
+			if (!Names.Contains(Candidate))
+				return FText::FromString(Candidate);
+		}
+	}
+
+
 	template<typename T>
 	FText MakeGenericDefaultName(const TCHAR* Prefix, const int32 FirstSuffix, const TArray<T>& Entries)
 	{
