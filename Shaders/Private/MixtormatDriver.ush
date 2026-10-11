@@ -53,7 +53,8 @@ float MixtormatDriverRegionSignal(uint RegionId, uint Seed, float RandomMin, flo
 
 float MixtormatApplyDriver(float BaseValue, float Signal, float4 ParamsA, float4 ParamsB)
 {
-	if (ParamsA.x < 0.5f)
+	// Disabled or invalid signals do not override the authored scalar.
+	if (ParamsA.x < 0.5f || !isfinite(Signal))
 	{
 		return BaseValue;
 	}
