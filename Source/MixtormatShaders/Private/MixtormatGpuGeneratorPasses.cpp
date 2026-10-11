@@ -2525,6 +2525,34 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				FlowSmooth = Blurred[1];
 			}
 
+			// Traced Warp only exports its coordinate map here; the mixed final warp
+			// remaps the generator once in ApplyGeneratorPostBehaviors.
+			if (OutWarpCoordinates && FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp)
+			{
+				FRDGTextureRef WarpedUV = MakeTexture(Size, PF_G32R32F,
+					TEXT("Mixtormat.GeneratorFlow.TracedWarpUV"));
+				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(11);
+				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+				Fill(P);
+				P->FlowField = FlowField;
+				P->FlowSmooth = FlowSmooth;
+				P->OutWarpedUV = GraphBuilder.CreateUAV(WarpedUV);
+				ClearUnusedGraphResources(Shader, P);
+				FComputeShaderUtils::AddPass(GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.TraceUV.L%d.C%d", LayerIndex, FlowIndex),
+					Shader, P, Groups);
+				*OutWarpCoordinates = WarpedUV;
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, FlowIndex, FName(TEXT("Influence"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Influence, nullptr, nullptr, false});
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
+					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
+				continue;
+			}
 			// Apply.
 			FRDGTextureRef Transformed = MakeTexture(Size, Current->Desc.Format, TEXT("Mixtormat.GeneratorFlow.Height"));
 			FRDGTextureRef CarveMask = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.CarveMask"));
