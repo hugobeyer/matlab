@@ -315,6 +315,15 @@ namespace MixtormatParameterAuthoring
 		{
 			return true;
 		}
+		// Never rebuild the shipped file from an uninitialized in-memory map.
+		// A missing or malformed database must not be silently replaced by pending edits.
+		if (!LoadFromDisk())
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("Mixtormat authoring database: save aborted because existing JSON could not be loaded."));
+			return false;
+		}
+		const auto PreviousEntries = ShippedEntries();
 		for (const TPair<FMixtormatParameterDefinitionKey, FMixtormatParameterAuthoringEntry>& Pair
 			: PendingEntries())
 		{
@@ -331,6 +340,7 @@ namespace MixtormatParameterAuthoring
 		// leave the unsaved edits in memory, not silently drop them.
 		if (!SaveToDisk())
 		{
+			ShippedEntries() = PreviousEntries;
 			return false;
 		}
 		PendingEntries().Reset();
@@ -339,6 +349,12 @@ namespace MixtormatParameterAuthoring
 
 	bool RestoreShippedAuthoring(const FMixtormatParameterDefinitionKey& Key)
 	{
+		if (!LoadFromDisk())
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("Mixtormat authoring database: restore aborted because existing JSON could not be loaded."));
+			return false;
+		}
 		PendingEntries().Remove(Key);
 		FMixtormatParameterAuthoringEntry Removed;
 		if (ShippedEntries().RemoveAndCopyValue(Key, Removed) == 0)
@@ -487,18 +503,17 @@ namespace MixtormatParameterAuthoring
 
 	bool LoadFromString(const FString& Json)
 	{
-		ShippedEntries().Reset();
-		DatabaseLoaded() = true;
-
 		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
 		TSharedPtr<FJsonObject> Root;
 		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
 		{
 			UE_LOG(LogTemp, Warning,
-				TEXT("Mixtormat authoring database: unreadable JSON, falling back to compiled defaults."));
+				TEXT("Mixtormat authoring database: unreadable JSON; shipped entries are preserved."));
 			return false;
 		}
 
+		ShippedEntries().Reset();
+		DatabaseLoaded() = true;
 		for (const TPair<FString, TSharedPtr<FJsonValue>>& FamilyPair : Root->Values)
 		{
 			const TSharedPtr<FJsonObject>* FamilyObject;
@@ -692,19 +707,23 @@ namespace MixtormatParameterAuthoring
 		{
 			return true;
 		}
-		DatabaseLoaded() = true;
-
 		const FString Path = GetDatabaseFilePath();
 		FString Json;
 		if (!FFileHelper::LoadFileToString(Json, *Path))
 		{
-			return false; // No database yet: compiled defaults only.
+			return false; // Cannot safely overwrite a missing/unreadable shipped database.
 		}
 		return LoadFromString(Json);
 	}
 
 	bool SaveToDisk()
 	{
+		if (!LoadFromDisk())
+		{
+			UE_LOG(LogTemp, Error,
+				TEXT("Mixtormat authoring database: refusing to write before a valid JSON load."));
+			return false;
+		}
 		// Written as raw UTF-8 bytes (no BOM): SaveStringToFile's write-flag enums have been
 		// renamed across engine versions, and encoding the bytes ourselves is stable.
 		const FString Path = GetDatabaseFilePath();
