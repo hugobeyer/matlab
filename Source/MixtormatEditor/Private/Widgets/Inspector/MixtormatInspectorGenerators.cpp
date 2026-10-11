@@ -1426,7 +1426,34 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			return Selected ? &Selected->Flow : nullptr;
 		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-		AddSliderRow(Panel, SNew(SBox)
+		TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorWarpOperationCard", "OPERATION"));
+		TSharedRef<SVerticalBox> Standard = SNew(SVerticalBox);
+		Panel->AddSlot().AutoHeight()
+		[
+			SNew(SBox).Visibility_Lambda([Warp]()
+			{
+				const FMixtormatBehavior* B = Warp();
+				return B && B->Flow.ModeMix < 1.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorWarpStandardCard", "STANDARD WARP"))[Standard]
+			]
+		];
+		TSharedRef<SVerticalBox> TracedWarpPanel = SNew(SVerticalBox);
+		Panel->AddSlot().AutoHeight()
+		[
+			SNew(SBox).Visibility_Lambda([Warp]()
+			{
+				const FMixtormatBehavior* B = Warp();
+				return B && B->Stage == EMixtormatBehaviorStage::PostGeneration
+					&& B->Flow.ModeMix > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorWarpTracedCard", "TRACED FLOW"))[TracedWarpPanel]
+			]
+		];
+		TSharedRef<SVerticalBox> Filter = AddCard(Panel, LOCTEXT("BehaviorWarpFilteringCard", "FILTERING"));
+		AddSliderRow(Operation, SNew(SBox)
 			.Visibility_Lambda([Warp]()
 			{
 				const FMixtormatBehavior* B = Warp();
@@ -1440,7 +1467,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 					LOCTEXT("BehaviorWarpModeMixHint", "0 = Standard Warp, 1 = Traced Flow. Before Generation uses Standard coordinates."))
 			]);
 
-		AddSliderRow(Panel,
+		AddSliderRow(Standard,
 			SNew(SBox)
 			.Visibility_Lambda([Warp]()
 			{
@@ -1492,8 +1519,16 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpSourceMenu)),
 					LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source."))
 			]);
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorWarpStageLabel", "Execution Stage"),
+	AddSliderRow(Standard, SNew(SBox)
+		.Visibility_Lambda([Warp]()
+		{
+			const FMixtormatBehavior* B = Warp();
+			return B && B->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::MakeDropdown(
+		LOCTEXT("BehaviorWarpStageLabel", "Sampling Stage"),
 		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Warp]()
 		{
 			const FMixtormatBehavior* B = Warp();
@@ -1520,12 +1555,12 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 					&& GetSelectedBehaviorWarp()->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput);
 			return Menu.Build();
 		})),
-		LOCTEXT("BehaviorWarpStageHint", "Before Generation warps native sampling and generated IDs; Own Height Gradient requires After Generation.")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorWarpStageHint", "Before changes generator sampling coordinates; After remaps completed generator outputs. Available only with a published direction source."))]);
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+	AddSliderRow(Filter, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatBehavior>(
 			LOCTEXT("BehaviorWarpSlopeFeather", "Slope Feather"),
 			Warp, &FMixtormatBehavior::SlopeFeather, 0.0, 1.0, 0.5, 0.01,
@@ -1534,7 +1569,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			LOCTEXT("BehaviorWarpAA", "Warp AA"),
 			Warp, &FMixtormatBehavior::WarpAA, 0.0, 1.0, 0.0, 0.01,
 			LOCTEXT("BehaviorWarpAAHint", "One-texel directional AA of warped height only. Leaves IDs and boundaries sharp."))));
-	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Warp]()
+	AddSliderRow(Standard, SNew(SBox).Visibility_Lambda([Warp]()
 	{
 		const FMixtormatBehavior* B = Warp();
 		return B && B->Flow.ModeMix < 1.0f
@@ -1548,9 +1583,9 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorWarpAutoTraceSteps", "Steps"),
 				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceSteps, 1, 64, 16))]);
-	AddBehaviorFieldCompositionRows(Panel,
+	AddBehaviorFieldCompositionRows(Standard,
 		[Warp]() -> FMixtormatBehaviorFieldInput* { return Warp() ? &Warp()->Direction : nullptr; }, false);
-	AddSliderRow(Panel,
+	AddSliderRow(Standard,
 		SNew(SBox)
 		.Visibility_Lambda([Warp]()
 		{
@@ -1576,7 +1611,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		LOCTEXT("BehaviorWarpSteps", "Flow Steps"), Reference, &FMixtormatOutputReference::FlowSteps,
 		1.0, 64.0, 16,
 		LOCTEXT("BehaviorWarpStepsHint", "Integration steps; UV Maps use their coordinates directly.")));
-	Panel->AddSlot().AutoHeight()
+	Standard->AddSlot().AutoHeight()
 	[
 		SNew(SBox).Visibility_Lambda([Warp, Reference]()
 		{
@@ -1588,7 +1623,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
-	TSharedRef<SVerticalBox> TracedWarpPanel = SNew(SVerticalBox);
 	AddSliderRow(TracedWarpPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedWarpMode", "Flow Mode"), Flow,
 		&FMixtormatBehaviorFlowSettings::Mode));
@@ -1629,14 +1663,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 				LOCTEXT("BehaviorTracedWarpGravityDeflect", "Boundary Deflection"), Flow, &FMixtormatBehaviorFlowSettings::GravityDeflection,
 				0, 1, 1, 0.01)
 		]);
-	Panel->AddSlot().AutoHeight()
-	[
-		SNew(SBox).Visibility_Lambda([Warp]()
-		{
-			const FMixtormatBehavior* Selected = Warp();
-			return Selected ? EVisibility::Visible : EVisibility::Collapsed;
-		})[TracedWarpPanel]
-	];
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Warp]() { return Warp() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
