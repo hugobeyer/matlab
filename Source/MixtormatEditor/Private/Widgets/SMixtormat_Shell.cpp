@@ -20,6 +20,8 @@
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SLeafWidget.h"
 #include "Rendering/DrawElements.h"
+#include "Widgets/SOverlay.h"
+#include "InputCoreTypes.h"
 
 
 namespace
@@ -41,7 +43,7 @@ namespace
 			const auto& L = FMixtormatThemeStore::GetResolved().PreviewLayout;
 			const float Width = G.GetLocalSize().X;
 			const float Edge = FMath::Min(FMath::Max(L.LeftRailButtonWidth, 0.0f), Width);
-			const float Opacity = FMath::Clamp(L.LeftRailFadeOpacity, 0.0f, 1.0f);
+			const float Opacity = FMath::Clamp(L.LeftRailFadeOpacity * L.LeftRailShadowOpacity, 0.0f, 1.0f);
 			if (Width <= Edge || Opacity <= 0.0f) return Layer;
 			FLinearColor Shade = FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Shade);
 			Shade.A *= Opacity * Style.GetColorAndOpacityTint().A;
@@ -52,9 +54,82 @@ namespace
 			Stops.Add(FSlateGradientStop(FVector2D(Edge, 0.0f), Shade));
 			Shade.A = 0.0f;
 			Stops.Add(FSlateGradientStop(FVector2D(Width, 0.0f), Shade));
-			FSlateDrawElement::MakeGradient(Elements, Layer, G.ToPaintGeometry(), Stops, Orient_Horizontal);
+			FSlateDrawElement::MakeGradient(Elements, Layer, G.ToPaintGeometry(), Stops, Orient_Vertical);
 			return Layer + 1;
 		}
+	};
+
+
+	DECLARE_DELEGATE_OneParam(FOnShellGripMoved, float);
+
+	// Hit-testable only on the actual divider. It sits above the layer hierarchy so
+	// row mouse capture cannot steal a resize, while the visible splitter stays 1px.
+	class SMixtormatShellGrip final : public SLeafWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatShellGrip) {}
+			SLATE_ATTRIBUTE(float, HostWidth)
+			SLATE_EVENT(FSimpleDelegate, OnGrabbed)
+			SLATE_EVENT(FOnShellGripMoved, OnMoved)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& Args)
+		{
+			HostWidth = Args._HostWidth;
+			OnGrabbed = Args._OnGrabbed;
+			OnMoved = Args._OnMoved;
+			SetCursor(EMouseCursor::ResizeLeftRight);
+		}
+
+		FVector2D ComputeDesiredSize(float) const override
+		{
+			return FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth, 1.0f);
+		}
+
+		int32 OnPaint(const FPaintArgs&, const FGeometry&, const FSlateRect&,
+			FSlateWindowElementList&, int32 LayerId, const FWidgetStyle&, bool) const override
+		{
+			return LayerId;
+		}
+
+		FReply OnMouseButtonDown(const FGeometry&, const FPointerEvent& Event) override
+		{
+			if (Event.GetEffectingButton() != EKeys::LeftMouseButton)
+			{
+				return FReply::Unhandled();
+			}
+			PressX = Event.GetScreenSpacePosition().X;
+			OnGrabbed.ExecuteIfBound();
+			return FReply::Handled().CaptureMouse(SharedThis(this));
+		}
+
+		FReply OnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event) override
+		{
+			if (!HasMouseCapture())
+			{
+				return FReply::Unhandled();
+			}
+			const float WidthInScreenPixels = HostWidth.Get(1.0f)
+				* Geometry.GetAccumulatedLayoutTransform().GetScale();
+			if (WidthInScreenPixels > UE_SMALL_NUMBER)
+			{
+				OnMoved.ExecuteIfBound(
+					(Event.GetScreenSpacePosition().X - PressX) / WidthInScreenPixels);
+			}
+			return FReply::Handled();
+		}
+
+		FReply OnMouseButtonUp(const FGeometry&, const FPointerEvent& Event) override
+		{
+			return HasMouseCapture() && Event.GetEffectingButton() == EKeys::LeftMouseButton
+				? FReply::Handled().ReleaseMouseCapture() : FReply::Unhandled();
+		}
+
+	private:
+		TAttribute<float> HostWidth;
+		FSimpleDelegate OnGrabbed;
+		FOnShellGripMoved OnMoved;
+		float PressX = 0.0f;
 	};
 
 	using SMixtormatShellAction = SMixtormatGroupAction;
@@ -384,6 +459,9 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 	// Every rebuild runs a full layout pass, and that pass reports slot values back through
 	// OnSlotResized. Mute write-back until the layout has settled, then release it on the next tick
 	// -- one-shot, not a running timer -- so a LiveTheme refresh cannot overwrite the user's split.
+	const TSharedRef<float> LeftStart = MakeShared<float>(ShellLeftFraction);
+	const TSharedRef<float> CenterStart = MakeShared<float>(ShellCenterFraction);
+	const TSharedRef<float> RightStart = MakeShared<float>(ShellRightFraction);
 	bSuppressSplitWriteBack = true;
 	RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, float)
 	{
@@ -402,7 +480,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				SNew(SSplitter)
 				.Style(&MixtormatShell::GetSplitterStyle())
 			.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
-			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
+			.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterVisualWidth)
 
 			+ SSplitter::Slot()
 				.Value_Lambda([this]() { return ShellLeftFraction; })
@@ -462,6 +540,81 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				[InspectorPlacement == EInspectorPlacement::Overlay ? SNullWidget::NullWidget : InspectorPanel.ToSharedRef()]
 			]
 		]
+
+		// Invisible resize grips are on top of the hierarchy and viewport.
+		// Their hit width is centered on the physical splitter line, on BOTH sides.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
+		[
+			SNew(SBox)
+			.Padding_Lambda([this]()
+			{
+				const float HitWidth = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
+				if (!LeftSwitcher.IsValid()) return FMargin(0.0f);
+				const FGeometry& Left = LeftSwitcher->GetCachedGeometry();
+				const FVector2D Edge = Left.LocalToAbsolute(FVector2D(Left.GetLocalSize().X, 0.0f));
+				const float X = GetCachedGeometry().AbsoluteToLocal(Edge).X;
+				return FMargin(FMath::Max(0.0f, X - HitWidth * 0.5f), 0.0f, 0.0f, 0.0f);
+			})
+			[
+				SNew(SBox)
+				.WidthOverride_Lambda([]()
+				{
+					return FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
+				})
+				[
+					SNew(SMixtormatShellGrip)
+					.HostWidth_Lambda([this]() { return GetCachedGeometry().GetLocalSize().X; })
+					.OnGrabbed_Lambda([this, LeftStart, CenterStart]() { *LeftStart = ShellLeftFraction; *CenterStart = ShellCenterFraction; })
+					.OnMoved_Lambda([this, LeftStart, CenterStart](float Delta)
+					{
+						const float Width = FMath::Max(GetCachedGeometry().GetLocalSize().X, 1.0f);
+						const float MinLeft = (FMixtormatThemeStore::GetResolved().PreviewLayout.LeftRailContentInset
+							+ FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth) / Width;
+						const float MinCenter = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth / Width;
+						const float Pair = *LeftStart + *CenterStart;
+						ShellLeftFraction = FMath::Clamp(*LeftStart + Delta, MinLeft, FMath::Max(MinLeft, Pair - MinCenter));
+						ShellCenterFraction = Pair - ShellLeftFraction;
+						Invalidate(EInvalidateWidgetReason::Layout);
+					})
+				]
+			]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
+		[
+			SNew(SBox)
+			.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
+			.Padding_Lambda([this]()
+			{
+				const float HitWidth = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
+				if (!InspectorDockHost.IsValid()) return FMargin(0.0f);
+				const FVector2D Edge = InspectorDockHost->GetCachedGeometry().LocalToAbsolute(FVector2D::ZeroVector);
+				const float X = GetCachedGeometry().AbsoluteToLocal(Edge).X;
+				return FMargin(FMath::Max(0.0f, X - HitWidth * 0.5f), 0.0f, 0.0f, 0.0f);
+			})
+			[
+				SNew(SBox)
+				.WidthOverride_Lambda([]()
+				{
+					return FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
+				})
+				[
+					SNew(SMixtormatShellGrip)
+					.HostWidth_Lambda([this]() { return GetCachedGeometry().GetLocalSize().X; })
+					.OnGrabbed_Lambda([this, CenterStart, RightStart]() { *CenterStart = ShellCenterFraction; *RightStart = ShellRightFraction; })
+					.OnMoved_Lambda([this, CenterStart, RightStart](float Delta)
+					{
+						const float Width = FMath::Max(GetCachedGeometry().GetLocalSize().X, 1.0f);
+						const float MinFraction = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth / Width;
+						const float Pair = *CenterStart + *RightStart;
+						ShellCenterFraction = FMath::Clamp(*CenterStart + Delta, MinFraction,
+							FMath::Max(MinFraction, Pair - MinFraction));
+						ShellRightFraction = Pair - ShellCenterFraction;
+						Invalidate(EInvalidateWidgetReason::Layout);
+					})
+				]
+			]
+		]
+
 		+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Bottom)
 		[
 			// An FOverlaySlot takes a literal padding only, so the collapse-dependent bottom inset

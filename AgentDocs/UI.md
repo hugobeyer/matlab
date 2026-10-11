@@ -18,6 +18,12 @@ translation units — search the member function, not the header.
 | Theme panel | `Widgets/SMixtormat_Theme.cpp`, `Widgets/SMixtormatThemePanel.*` |
 | Dialogs | `Widgets/Dialogs/SMixtormat{Action,BakeSettings,BakeResult}Dialog.*` |
 
+## Workspace splitters and creation actions
+
+- The left/preview and preview/Inspector splitters use transparent, top-layer resize grips centered on the visual divider. The authored Shell splitter hit-width controls the actual grip width; layer-row input must not shadow it.
+- The Layers creation toolbar keeps Layer, Group and Fill Layer labels only while each third of the column fits the complete label. Labels clip within their slots; narrower columns keep centered icons and tooltips.
+- The navigation rail's shadow is an X-axis black-opacity ramp rendered over the page, including rows; the rail itself paints above the shadow. Its strength follows the existing navigation-rail fade and shadow opacity settings.
+
 ## Layer hierarchy
 
 - `UI/Layers/SMixtormatLayerHierarchy.*` — the tree.

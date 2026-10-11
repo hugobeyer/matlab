@@ -14,6 +14,10 @@
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
+#include "Fonts/FontMeasure.h"
+#include "Rendering/SlateRenderer.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/SNullWidget.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -336,12 +340,35 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const Mixtormat::FMixtormatLayerMetrics& LayerLayout = FMixtormatThemeStore::GetResolved().LayerLayout;
 	const Mixtormat::FMixtormatCreateMetrics& CreateLayout = FMixtormatThemeStore::GetResolved().CreateLayout;
+	const auto CreationLabelVisibility = [this](const FText& Label) -> EVisibility
+	{
+		if (!LeftSwitcher.IsValid()) return EVisibility::Visible;
+		const float ColumnWidth = LeftSwitcher->GetCachedGeometry().GetLocalSize().X;
+		const float Gutter = FMixtormatThemeStore::GetResolved().LayerLayout.ColumnGutter;
+		const float Width = FMath::Max(0.0f, ColumnWidth - 2.0f * Gutter) / 3.0f;
+		if (Width <= 0.0f) return EVisibility::Visible;
+		const auto& Resolved = FMixtormatThemeStore::GetResolved();
+		const FSlateFontInfo& Font = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("NormalText")).Font;
+		const float LabelWidth = FSlateApplication::Get().GetRenderer()
+			->GetFontMeasureService()->Measure(Label, Font).X;
+		const float Required = Resolved.CreateLayout.CreationButtonIconSize
+			+ Resolved.CreateLayout.CreationButtonIconGap
+			+ 2.0f * Resolved.Buttons.HorizontalPadding + LabelWidth;
+		return Width >= Required ? EVisibility::Visible : EVisibility::Collapsed;
+	};
 	return SNew(SMixtormatLayerDropTarget)
 		.OnSurfaceDropped(this, &SMixtormat::HandleSurfaceDropped)
 		.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerColumnContextMenu))
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::LayerStackWidth)
+			.WidthOverride_Lambda([this]()
+			{
+				const float Available = LeftSwitcher.IsValid()
+					? LeftSwitcher->GetCachedGeometry().GetLocalSize().X : 0.0f;
+				return FOptionalSize(Available > 0.0f
+					? FMath::Min(MixtormatTokens::LayerStackWidth, Available)
+					: MixtormatTokens::LayerStackWidth);
+			})
 			[
 				SNew(SBorder)
 				.Padding(LayerLayout.ColumnGutter)
@@ -402,6 +429,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Material); })
 								[
 									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
@@ -415,7 +443,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerBottom", "Layer"))
+										.Clipping(EWidgetClipping::ClipToBounds)
+										.OverflowPolicy(ETextOverflowPolicy::Clip)
+										.Visibility_Lambda([CreationLabelVisibility]()
+										{
+											return CreationLabelVisibility(LOCTEXT("AddMaterialLayerBottom", "Layer"));
+										})
 									]
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 								]
 							]
 						]
@@ -449,6 +484,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { return CreateGroupFromSelection(); })
 								[
 									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
@@ -462,7 +498,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("CreateGroupBottom", "Group"))
+										.Clipping(EWidgetClipping::ClipToBounds)
+										.OverflowPolicy(ETextOverflowPolicy::Clip)
+										.Visibility_Lambda([CreationLabelVisibility]()
+										{
+											return CreationLabelVisibility(LOCTEXT("CreateGroupBottom", "Group"));
+										})
 									]
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 								]
 							]
 						]
@@ -477,6 +520,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 								.OnClicked_Lambda([this]() { return AddWorkingLayer(EMixtormatLayerType::Fill); })
 								[
 									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
@@ -490,7 +534,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddFillLayerBottom", "Fill Layer"))
+										.Clipping(EWidgetClipping::ClipToBounds)
+										.OverflowPolicy(ETextOverflowPolicy::Clip)
+										.Visibility_Lambda([CreationLabelVisibility]()
+										{
+											return CreationLabelVisibility(LOCTEXT("AddFillLayerBottom", "Fill Layer"));
+										})
 									]
+									+ SHorizontalBox::Slot().FillWidth(1.0f)[SNullWidget::NullWidget]
 								]
 							]
 						]
