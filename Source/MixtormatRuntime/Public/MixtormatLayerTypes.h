@@ -180,6 +180,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	UPROPERTY()
 	FGuid ChildId = FGuid::NewGuid();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child")
+	FText DisplayName;
+
 	// Invalid means this child participates in the layer's normal ordered child chain. A valid
 	// GUID scopes this child beneath another child in the same layer. Scoped masks keep their own
 	// identity, bindings and instance source, but gate only their owner instead of CombinedMask.
