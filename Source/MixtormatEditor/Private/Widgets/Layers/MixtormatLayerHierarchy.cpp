@@ -503,6 +503,7 @@ FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 	return FReply::Handled();
 }
 
@@ -642,7 +643,8 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 	// No RebuildLayerList here. Selection highlight is an attribute lambda on each row, so it
 	// repaints on its own -- and a rebuild would destroy the row that is, right now, part way
 	// through opening its context menu on its own SMenuAnchor.
-	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
+	const bool bFlowPreviewChanged = UpdateAutomaticFlowPreview();
+	if (bFlowPreviewChanged || bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
 	{
 		RefreshLayeredPreview(false);
 	}
@@ -671,7 +673,8 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 	// No unconditional RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
 	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
 	// its context menu on, closing it before it could show.
-	if (bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
+	const bool bFlowPreviewChanged = UpdateAutomaticFlowPreview();
+	if (bFlowPreviewChanged || bWasBypassingChild || DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
 	{
 		RefreshLayeredPreview(false);
 	}
@@ -1130,6 +1133,7 @@ void SMixtormat::ClearLayerSelection()
 	SelectedLayerIds.Reset();
 	SyncSelectedLayerControls();
 	RebuildMaskList();
+	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 }
 
 bool SMixtormat::HasAnySelection() const
@@ -1160,6 +1164,7 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	SelectionAnchorLayerId.Invalidate();
 	UpdateGroupChildMultiSelection(GroupId, ChildIndex);
 	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }
+	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 	return FReply::Handled();
 }
 

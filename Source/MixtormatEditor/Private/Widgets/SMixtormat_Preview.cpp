@@ -86,6 +86,7 @@ FReply SMixtormat::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent
 				Viewport->ResetChannelPreview();
 			}
 		}
+		bAutomaticFlowPreview = false;
 		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 		ChildPreviewTarget = FMixtormatChildPreviewTarget();
 		RefreshLayeredPreview(false);
@@ -279,6 +280,7 @@ FReply SMixtormat::ToggleFeaturePreview(const EMixtormatDebugPreviewMode Mode)
 		}
 	}
 
+	bAutomaticFlowPreview = false;
 	DebugPreviewMode = DebugPreviewMode == Mode
 		? EMixtormatDebugPreviewMode::None
 		: Mode;
@@ -372,6 +374,7 @@ FReply SMixtormat::CycleSelectedModulePreview()
 		}
 	}
 	const int32 NextIndex = CurrentIndex + 1;
+	bAutomaticFlowPreview = false;
 	if (NextIndex >= Candidates.Num())
 	{
 		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
@@ -386,12 +389,67 @@ FReply SMixtormat::CycleSelectedModulePreview()
 	return FReply::Handled();
 }
 
+bool SMixtormat::UpdateAutomaticFlowPreview()
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	FName FlowOutput = NAME_None;
+	if (Child && IsChildOutputPreviewReady(*Child))
+	{
+		if (Child->Type == EMixtormatLayerChildType::Behavior
+			&& Child->Behavior.Type == EMixtormatBehaviorType::FlowField
+			&& Child->Behavior.bEnabled)
+		{
+			FlowOutput = FName(TEXT("FlowDirection"));
+		}
+		else if (Child->Type == EMixtormatLayerChildType::Generator
+			&& Child->Generator.Type == EMixtormatGeneratorType::Noise
+			&& Child->Generator.bEnabled)
+		{
+			const FMixtormatNoise& Noise = Child->Generator.Noise;
+			if (Noise.bNoiseWriteFlow)
+			{
+				FlowOutput = FName(TEXT("GeneratedFlow"));
+			}
+			else if (Noise.NoisePreset == EMixtormatNoisePreset::Flow)
+			{
+				FlowOutput = FName(TEXT("FlowDirection"));
+			}
+		}
+	}
+	if (!FlowOutput.IsNone())
+	{
+		const FMixtormatChildPreviewTarget Target =
+			ResolveChildPreviewTarget(FlowOutput, EMixtormatPreviewOutputKind::FlowDirection);
+		if (Target.IsValid())
+		{
+			const bool bChanged = DebugPreviewMode != EMixtormatDebugPreviewMode::ChildOutput
+				|| !(ChildPreviewTarget == Target);
+			DebugPreviewMode = EMixtormatDebugPreviewMode::ChildOutput;
+			ChildPreviewTarget = Target;
+			bAutomaticFlowPreview = true;
+			return bChanged;
+		}
+	}
+	if (bAutomaticFlowPreview)
+	{
+		bAutomaticFlowPreview = false;
+		if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput)
+		{
+			DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+			ChildPreviewTarget = FMixtormatChildPreviewTarget();
+			return true;
+		}
+	}
+	return false;
+}
+
 FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target)
 {
 	if (!Target.IsValid())
 	{
 		return FReply::Handled();
 	}
+	bAutomaticFlowPreview = false;
 	const bool bAlreadyActive =
 		DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput && ChildPreviewTarget == Target;
 	if (bAlreadyActive)
@@ -682,6 +740,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 		{
 			if (IsAnyActive())
 			{
+				bAutomaticFlowPreview = false;
 				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 				ChildPreviewTarget = FMixtormatChildPreviewTarget();
 				RefreshLayeredPreview(false);

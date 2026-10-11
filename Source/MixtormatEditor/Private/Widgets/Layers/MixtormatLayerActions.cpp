@@ -1835,7 +1835,10 @@ void SMixtormat::SetGeneratedEnabled(
 	// The shared procedural-child row routes mask producers and data filters here.
 	const bool bEnabled = CheckState == ECheckBoxState::Checked;
 	MixtormatLayersPrivate::SetChildEnabled(*ResolveChild(LayerIndex, ChildIndex), bEnabled);
-
+	if (SelectedLayerIndex == LayerIndex && GetSelectedChildIndex() == ChildIndex)
+	{
+		UpdateAutomaticFlowPreview();
+	}
 	RefreshLayeredPreview();
 	RebuildLayerList();
 }

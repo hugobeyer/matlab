@@ -242,9 +242,11 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				|| NoiseType == EMixtormatNoiseType::WorleyF1
 				|| NoiseType == EMixtormatNoiseType::WorleyF2
 				|| NoiseType == EMixtormatNoiseType::WorleyF1MinusF2;
+			const bool bFlowPrimary = Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow
+				|| Child.Generator.Noise.bNoiseWriteFlow;
 			Result.Outputs.Add({FName(TEXT("Value")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseValue", "Value"),
-				EMixtormatPreviewOutputKind::Mask, true, true, false, NAME_None,
+				EMixtormatPreviewOutputKind::Mask, true, true, bFlowPrimary, NAME_None,
 				true, bUnsignedValue ? EMixtormatPublishedFieldKind::Scalar01 : EMixtormatPublishedFieldKind::ScalarSigned});
 			Result.Outputs.Add({FName(TEXT("Gradient")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGradient", "Gradient"),
@@ -252,7 +254,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				true, EMixtormatPublishedFieldKind::Vector2});
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseFlow", "Flow"),
-				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				EMixtormatPreviewOutputKind::FlowDirection, false, true,
+				!bFlowPrimary || Child.Generator.Noise.bNoiseWriteFlow, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 			// P1 generated MODE contribution, published only when Write Flow is on. Canonical
 			// layout; previewable through the existing output-key mechanism.
@@ -260,7 +263,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			{
 				Result.Outputs.Add({FName(TEXT("GeneratedFlow")),
 					NSLOCTEXT("SMixtormat", "PreviewOutputNoiseGeneratedFlow", "Generated Flow"),
-					EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+					EMixtormatPreviewOutputKind::FlowDirection, true, true, false, NAME_None,
 					true, EMixtormatPublishedFieldKind::Flow});
 			}
 			if (NoiseType == EMixtormatNoiseType::WorleyF1
@@ -278,7 +281,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		{
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),
 				NSLOCTEXT("SMixtormat", "BehaviorFlowDirection", "Flow Direction"),
-				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				EMixtormatPreviewOutputKind::FlowDirection, false, true,
+				Child.Behavior.Type != EMixtormatBehaviorType::FlowField, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 			if (Child.Behavior.Type != EMixtormatBehaviorType::Carve)
 			{

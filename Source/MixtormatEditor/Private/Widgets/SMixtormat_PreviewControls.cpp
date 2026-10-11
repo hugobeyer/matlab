@@ -874,6 +874,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 				.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
 				.OnClicked_Lambda([this]()
 			{
+				bAutomaticFlowPreview = false;
 				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 				ChildPreviewTarget = FMixtormatChildPreviewTarget();
 				RefreshLayeredPreview(false);

@@ -1096,6 +1096,7 @@ void SMixtormat::AddBehaviorFieldCompositionRows(
 						if (FMixtormatBehavior* B = Get())
 						{
 							B->bEnabled = State == ECheckBoxState::Checked;
+							UpdateAutomaticFlowPreview();
 							RefreshLayeredPreview();
 							RebuildLayerList();
 						}
@@ -2864,19 +2865,32 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 	const auto NoiseWidgetIndex = [Noise, NoiseTypes]()
 	{
 		const FMixtormatNoise* N = Noise();
-		return N ? NoiseTypes.IndexOfByKey(N->NoiseType) : INDEX_NONE;
+		if (!N) { return INDEX_NONE; }
+		const int32 TypeIndex = NoiseTypes.IndexOfByKey(N->NoiseType);
+		if (TypeIndex == INDEX_NONE) { return INDEX_NONE; }
+		// Distinct primary previews: Noise Value, Flow preset direction, or written Flow.
+		const int32 OutputMode = N->bNoiseWriteFlow ? 2
+			: N->NoisePreset == EMixtormatNoisePreset::Flow ? 1 : 0;
+		return TypeIndex * 3 + OutputMode;
 	};
 	TSharedRef<SWidgetSwitcher> Outputs = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
 	TSharedRef<SWidgetSwitcher> HeaderPreview = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
-	// The inspector persists across selections; choose outputs from the current Noise family.
+	// Use live preset/output gates, not only NoiseType, so the preview eye always
+	// describes the field being shown and GeneratedFlow appears when enabled.
 	for (const EMixtormatNoiseType NoiseType : NoiseTypes)
 	{
-		FMixtormatLayerChild Probe;
-		Probe.Type = EMixtormatLayerChildType::Generator;
-		Probe.Generator.Type = EMixtormatGeneratorType::Noise;
-		Probe.Generator.Noise.NoiseType = NoiseType;
-		Outputs->AddSlot()[BuildChildOutputsControls(GetChildCapabilities(Probe))];
-		HeaderPreview->AddSlot()[MakeChildOutputPreviewButton(GetChildPreviewOutputSet(Probe))];
+		for (int32 OutputMode = 0; OutputMode < 3; ++OutputMode)
+		{
+			FMixtormatLayerChild Probe;
+			Probe.Type = EMixtormatLayerChildType::Generator;
+			Probe.Generator.Type = EMixtormatGeneratorType::Noise;
+			Probe.Generator.Noise.NoiseType = NoiseType;
+			Probe.Generator.Noise.NoisePreset = OutputMode == 1
+				? EMixtormatNoisePreset::Flow : EMixtormatNoisePreset::Noise;
+			Probe.Generator.Noise.bNoiseWriteFlow = OutputMode == 2;
+			Outputs->AddSlot()[BuildChildOutputsControls(GetChildCapabilities(Probe))];
+			HeaderPreview->AddSlot()[MakeChildOutputPreviewButton(GetChildPreviewOutputSet(Probe))];
+		}
 	}
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 	{
@@ -2912,6 +2926,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 						if (FMixtormatNoise* N = Noise())
 						{
 							N->bNoiseWriteFlow = State == ECheckBoxState::Checked;
+							UpdateAutomaticFlowPreview();
 							RefreshLayeredPreview();
 						}
 					}),

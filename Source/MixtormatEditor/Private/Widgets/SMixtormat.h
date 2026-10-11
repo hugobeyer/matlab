@@ -267,6 +267,9 @@ private:
 	TSharedRef<SWidget> MakeChildOutputPreviewButton(
 		const FMixtormatChildPreviewOutputSet& OutputSet);
 	FReply ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target);
+	// Chooses the live Flow output when an enabled Flow producer is selected.
+	// Only automatic previews are cleared when the selection changes.
+	bool UpdateAutomaticFlowPreview();
 	FReply CycleSelectedModulePreview();
 	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
 	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
@@ -1842,6 +1845,7 @@ private:
 	EMixtormatDebugPreviewMode DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	// Only meaningful while DebugPreviewMode == ChildOutput.
 	FMixtormatChildPreviewTarget ChildPreviewTarget;
+	bool bAutomaticFlowPreview = false;
 	int32 SelectedLayerIndex = INDEX_NONE;
 	int32 SoloLayerIndex = INDEX_NONE;
 	int32 SelectedEffectIndex = INDEX_NONE;
