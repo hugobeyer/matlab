@@ -446,6 +446,7 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Mask;
 	Child.Mask = MoveTemp(NewMask);
+	Child.DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	ApplyLinkDefaults(Child, Layer.LayerId);
 	SelectedLayerIndex = LayerIndex;
