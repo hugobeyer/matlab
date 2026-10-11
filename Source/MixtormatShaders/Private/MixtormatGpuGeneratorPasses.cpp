@@ -2552,6 +2552,28 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				Ctx.PublishedFieldOutputs.Add(
 					PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
 					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
+				if (bPreviewing)
+				{
+					FRDGTextureRef Debug = Ctx.OutputDebug[Request.PublishedTargetIndex];
+					const auto BlitStage = [&](const int32 Stage, const EMixtormatPreviewOutputKind Kind, const TCHAR* Name)
+					{
+						if (!IsChildOutputPreviewTarget(Request, Kind, FName(Name),
+							LayerIndex, FlowIndex)) { return; }
+						TShaderMapRef<FMixtormatGeneratorFlowCS> PreviewShader = StageShader(Stage);
+						auto* Preview = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+						Fill(Preview);
+						Preview->FlowField = Stage == 4 ? FlowSmooth : FlowField;
+						Preview->FlowValidity = Validity;
+						Preview->WarpedUV = WarpedUV;
+						Preview->OutputDebug = GraphBuilder.CreateUAV(Debug);
+						ClearUnusedGraphResources(PreviewShader, Preview);
+						FComputeShaderUtils::AddPass(GraphBuilder,
+							RDG_EVENT_NAME("Mixtormat.GeneratorFlow.TracePreview%d.L%d.C%d",
+								Stage, LayerIndex, FlowIndex), PreviewShader, Preview, Groups);
+					};
+					BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
+					BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUV"));
+				}
 				continue;
 			}
 			// Apply.

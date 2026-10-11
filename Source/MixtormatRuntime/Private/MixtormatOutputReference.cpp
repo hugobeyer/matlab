@@ -571,7 +571,11 @@ namespace MixtormatOutputReferences
 		if (bBehaviorFlow)
 		{
 			const bool bFieldProducer = Source.Behavior.Type == EMixtormatBehaviorType::FlowField;
-			const bool bTracedFlow = Source.Behavior.Flow.bUseTracedFlow;
+			const bool bTracedFlow = Source.Behavior.Flow.bUseTracedFlow
+				|| (Source.Behavior.Type == EMixtormatBehaviorType::Warp
+					&& (Source.Behavior.Flow.ModeMix > 0.0f
+						|| (bUV && Source.Behavior.Direction.Origin
+							!= EMixtormatBehaviorFieldOrigin::None)));
 			if (!bFieldProducer && !bTracedFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 			if (bUV && Source.Behavior.Type == EMixtormatBehaviorType::Carve)
 			{

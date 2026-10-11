@@ -1432,10 +1432,19 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 			return Selected ? &Selected->Flow : nullptr;
 		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-		AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-			LOCTEXT("BehaviorWarpModeMix", "Mode Mix"), Flow,
-			&FMixtormatBehaviorFlowSettings::ModeMix, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("BehaviorWarpModeMixHint", "0 = Standard Warp, 1 = Traced Flow; intermediate values interpolate the periodic UV displacement.")));
+		AddSliderRow(Panel, SNew(SBox)
+			.Visibility_Lambda([Warp]()
+			{
+				const FMixtormatBehavior* B = Warp();
+				return B && B->Stage == EMixtormatBehaviorStage::PostGeneration
+					? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
+					LOCTEXT("BehaviorWarpModeMix", "Mode Mix"), Flow,
+					&FMixtormatBehaviorFlowSettings::ModeMix, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("BehaviorWarpModeMixHint", "0 = Standard Warp, 1 = Traced Flow. Before Generation uses Standard coordinates."))
+			]);
 
 		AddSliderRow(Panel,
 			SNew(SBox)
