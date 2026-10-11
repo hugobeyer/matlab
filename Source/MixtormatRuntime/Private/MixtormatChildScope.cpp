@@ -245,17 +245,17 @@ namespace MixtormatChildScope
 			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
 			return Result;
 		}
-		const bool bTraced = Behavior.Type != EMixtormatBehaviorType::Warp
-			&& Behavior.Type != EMixtormatBehaviorType::Feather
-			&& Behavior.Flow.bUseTracedFlow;
+		const bool bTraced = Behavior.Type == EMixtormatBehaviorType::Carve
+			|| (Behavior.Type != EMixtormatBehaviorType::Warp
+				&& Behavior.Type != EMixtormatBehaviorType::Feather
+				&& Behavior.Flow.bUseTracedFlow);
 		// An unconnected Warp/Deform automatically consumes the generator's
 		// ordered working Flow. A manually authored socket still validates strictly.
 		const bool bNeedsDirection = !bTraced
 			&& Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
 			&& (Behavior.Type == EMixtormatBehaviorType::Warp
 				|| Behavior.Type == EMixtormatBehaviorType::Deform);
-		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push
-			|| (Behavior.Type == EMixtormatBehaviorType::Carve && !bTraced);
+		const bool bNeedsHeight = Behavior.Type == EMixtormatBehaviorType::Push;
 		// Reject inactive operation sockets too: gather does not evaluate a Warp
 		// with Height connected, or a Push/Carve with Direction connected.
 		if (((Behavior.Type == EMixtormatBehaviorType::Warp || bNeedsDirection)
@@ -301,7 +301,7 @@ namespace MixtormatChildScope
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
 		Result.Issue = CheckComposition(Behavior.Influence, false);
 		if (Result.Issue != EBehaviorInputIssue::None) { return Result; }
-		if ((bTraced || Behavior.Type == EMixtormatBehaviorType::FlowField)
+		if (Behavior.Type == EMixtormatBehaviorType::FlowField
 			&& Behavior.Flow.FlowSource == EMixtormatBehaviorFlowSource::SignedDistance
 			&& !MixtormatGeneratorHasFlowBoundary(Owner.Generator.Type))
 		{
