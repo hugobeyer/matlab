@@ -312,6 +312,16 @@ private:
 	FReply UndoMaterialEdit();
 	FReply RedoMaterialEdit();
 	FReply AddWorkingLayer(EMixtormatLayerType LayerType);
+	enum class ELayerSelectionCommand : uint8
+	{
+		Duplicate,
+		CopyAsInstance,
+		Group,
+		Rename,
+		Remove
+	};
+	FReply ExecuteLayerSelectionCommand(ELayerSelectionCommand Command);
+	bool CanExecuteLayerSelectionCommand(ELayerSelectionCommand Command) const;
 	FReply DuplicateSelectedLayer();
 	FReply DeleteSelectedLayer();
 	FReply HandleLayerDropped(int32 SourceLayerIndex, int32 TargetLayerIndex, bool bRecordHistory = true,

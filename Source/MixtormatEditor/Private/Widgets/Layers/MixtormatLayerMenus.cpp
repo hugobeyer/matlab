@@ -738,7 +738,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	Menu.Item(
 		LOCTEXT("DuplicateLayerContext", "Duplicate"),
 		MixtormatIcons::Duplicate(),
-		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }));
+		FSimpleDelegate::CreateLambda([this]() { ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate); }))
+				.Enabled(TAttribute<bool>::CreateLambda([this]()
+				{
+					return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+				}));
 
 	// Acts on the multi-selection, not on the row the menu opened over, so shift-picking a run of
 	// layers and right-clicking any of them does the same thing as the toolbar button.
@@ -752,8 +756,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 				FText::AsNumber(SelectionCount))
 			: LOCTEXT("CreateGroupContext", "Group"),
 		MixtormatIcons::Folder(),
-		FSimpleDelegate::CreateLambda([this]() { CreateGroupFromSelection(); }))
-		.Enabled(TAttribute<bool>::CreateLambda([this]() { return CanCreateGroup(); }));
+		FSimpleDelegate::CreateLambda([this]() { ExecuteLayerSelectionCommand(ELayerSelectionCommand::Group); }))
+		.Enabled(TAttribute<bool>::CreateLambda([this]()
+		{
+			return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Group);
+		}));
 	if (WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].GroupId.IsValid())
 	{
 		const FGuid GroupId = WorkingLayers[LayerIndex].GroupId;
@@ -810,7 +817,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	Menu.Item(
 		LOCTEXT("RemoveLayerContext", "Remove"),
 		MixtormatIcons::Trash(),
-		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
+		FSimpleDelegate::CreateLambda([this]() { ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove); }))
+		.Enabled(TAttribute<bool>::CreateLambda([this]()
+		{
+			return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
+		}))
 		.Destructive();
 
 	return Menu.Build();

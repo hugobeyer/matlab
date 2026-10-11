@@ -111,41 +111,81 @@ FReply SMixtormat::AddWorkingLayer(const EMixtormatLayerType LayerType)
 	return FReply::Handled();
 }
 
+bool SMixtormat::CanExecuteLayerSelectionCommand(const ELayerSelectionCommand Command) const
+{
+	const TArray<int32> Selected = GetSelectedLayerIndices();
+	switch (Command)
+	{
+	case ELayerSelectionCommand::Duplicate:
+	case ELayerSelectionCommand::Remove:
+		return !Selected.IsEmpty();
+	case ELayerSelectionCommand::Group:
+		return CanCreateGroup() && !Selected.IsEmpty();
+	case ELayerSelectionCommand::Rename:
+		return Selected.Num() == 1 || SelectedGroupId.IsValid();
+	case ELayerSelectionCommand::CopyAsInstance:
+	{
+		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return Child && GetChildCapabilities(*Child).bSupportsInstancing;
+	}
+	default:
+		return false;
+	}
+}
+
+FReply SMixtormat::ExecuteLayerSelectionCommand(const ELayerSelectionCommand Command)
+{
+	if (!CanExecuteLayerSelectionCommand(Command))
+	{
+		return FReply::Unhandled();
+	}
+
+	switch (Command)
+	{
+	case ELayerSelectionCommand::Duplicate:
+		return DuplicateSelectedLayer();
+	case ELayerSelectionCommand::CopyAsInstance:
+		CopyChild(GetSelectedChildAddress(), true);
+		return FReply::Handled();
+	case ELayerSelectionCommand::Group:
+		return CreateGroupFromSelection();
+	case ELayerSelectionCommand::Rename:
+		return BeginRenameSelection() ? FReply::Handled() : FReply::Unhandled();
+	case ELayerSelectionCommand::Remove:
+		return DeleteSelectedLayer();
+	default:
+		return FReply::Unhandled();
+	}
+}
+
 FReply SMixtormat::DuplicateSelectedLayer()
 {
-	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	const TArray<int32> Selected = GetSelectedLayerIndices();
+	if (Selected.IsEmpty())
 	{
 		return FReply::Handled();
 	}
 
 	SoloLayerIndex = INDEX_NONE;
-	FMixtormatLayer Copy = WorkingLayers[SelectedLayerIndex];
-	MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
-	bool bDefaultGeneratorName = false;
-	if (Copy.Type == EMixtormatLayerType::Generator)
+	TArray<FMixtormatLayer> Copies;
+	Copies.Reserve(Selected.Num());
+	for (const int32 LayerIndex : Selected)
 	{
-		for (int32 Number = 1; Number <= WorkingLayers.Num(); ++Number)
-		{
-			if (Copy.DisplayName.EqualTo(FText::Format(
-				LOCTEXT("GeneratorLayerNumber", "Generator Layer {0}"), FText::AsNumber(Number))))
-			{
-				bDefaultGeneratorName = true;
-				break;
-			}
-		}
+		if (!WorkingLayers.IsValidIndex(LayerIndex)) { continue; }
+		FMixtormatLayer Copy = WorkingLayers[LayerIndex];
+		MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
+		Copy.DisplayName = FText::Format(LOCTEXT("CopiedLayerName", "{0} Copy"), Copy.DisplayName);
+		Copies.Add(MoveTemp(Copy));
 	}
-	if (bDefaultGeneratorName)
+	if (Copies.IsEmpty()) { return FReply::Handled(); }
+
+	const int32 InsertAt = Selected.Last() + 1;
+	for (int32 CopyIndex = 0; CopyIndex < Copies.Num(); ++CopyIndex)
 	{
-		InitializeNewLayer(Copy, EMixtormatLayerType::Generator, WorkingLayers.Num() + 1);
+		WorkingLayers.Insert(MoveTemp(Copies[CopyIndex]), InsertAt + CopyIndex);
+		MixtormatUI::RemapHeightReferencesAfterInsert(WorkingLayers, InsertAt + CopyIndex);
 	}
-	else
-	{
-		Copy.DisplayName = FText::Format(
-			LOCTEXT("CopiedLayerName", "{0} Copy"), Copy.DisplayName);
-	}
-	WorkingLayers.Insert(Copy, SelectedLayerIndex + 1);
-	MixtormatUI::RemapHeightReferencesAfterInsert(WorkingLayers, SelectedLayerIndex + 1);
-	++SelectedLayerIndex;
+	SelectedLayerIndex = InsertAt + Copies.Num() - 1;
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
@@ -161,10 +201,18 @@ FReply SMixtormat::DeleteSelectedLayer()
 		return FReply::Handled();
 	}
 
+	const TArray<int32> Selected = GetSelectedLayerIndices();
 	SoloLayerIndex = INDEX_NONE;
-	const int32 DeletedLayerIndex = SelectedLayerIndex;
-	WorkingLayers.RemoveAt(DeletedLayerIndex);
-	MixtormatUI::RemapHeightReferencesAfterDelete(WorkingLayers, DeletedLayerIndex);
+	const int32 DeletedLayerIndex = Selected.IsEmpty() ? SelectedLayerIndex : Selected.Last();
+	for (int32 SelectionIndex = Selected.Num() - 1; SelectionIndex >= 0; --SelectionIndex)
+	{
+		const int32 LayerIndex = Selected[SelectionIndex];
+		if (!WorkingLayers.IsValidIndex(LayerIndex)) { continue; }
+		WorkingLayers.RemoveAt(LayerIndex);
+		MixtormatUI::RemapHeightReferencesAfterDelete(WorkingLayers, LayerIndex);
+	}
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
 	// The bottom layer is deletable now, so the stack can empty. Clamping into an empty array
 	// would land on -1 by arithmetic accident; say INDEX_NONE outright instead. The compositor
 	// already renders an empty stack as the bare substrate.

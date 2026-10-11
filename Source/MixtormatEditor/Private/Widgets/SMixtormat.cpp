@@ -738,10 +738,24 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		}
 	}
 	if (!bModifierDown
-		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12)
-		&& BeginRenameSelection())
+		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12))
 	{
-		return FReply::Handled();
+		return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Rename);
+	}
+	if (bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsRepeat())
+	{
+		if (InKeyEvent.GetKey() == EKeys::D && !InKeyEvent.IsShiftDown())
+		{
+			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+		}
+		if (InKeyEvent.GetKey() == EKeys::C && InKeyEvent.IsShiftDown())
+		{
+			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::CopyAsInstance);
+		}
+		if (InKeyEvent.GetKey() == EKeys::G && !InKeyEvent.IsShiftDown())
+		{
+			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Group);
+		}
 	}
 	if (bModifierDown && InKeyEvent.GetKey() == EKeys::Z)
 	{
@@ -806,28 +820,7 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 			}
 			if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
 			{
-				// Multi-select: every selected layer, one gesture. Remove highest index first so
-				// earlier indices stay valid; each removal records history, so undo walks back
-				// through them one at a time.
-				const TArray<int32> Selected = GetSelectedLayerIndices();
-				if (Selected.Num() > 1)
-				{
-					for (int32 Index = Selected.Last(); Index >= 0; --Index)
-					{
-						if (Selected.Contains(Index))
-						{
-							DeleteSelectedLayer();
-							// DeleteSelectedLayer acts on SelectedLayerIndex; point it at the next
-							// selected layer before the next call.
-							if (Index > 0)
-							{
-								SelectedLayerIndex = Selected[Index - 1];
-							}
-						}
-					}
-					return FReply::Handled();
-				}
-				return DeleteSelectedLayer();
+				return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
 			}
 			if (GetSelectedChildIndex() != INDEX_NONE)
 			{
