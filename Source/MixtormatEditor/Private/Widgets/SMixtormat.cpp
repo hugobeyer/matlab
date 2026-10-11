@@ -1077,14 +1077,17 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	// deferral above, which does no drawing at all, and the viewport spacing composites by their
 	// measured cost while the mouse is held. The release frame submits with bInteractive false,
 	// so the final value is always composed.
+	const bool bMaskOverlayReady = bMaskOverlayEnabled && IsMaskOverlayTargetReady();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
 		{
 			FMixtormatDebugPreviewSettings DebugSettings;
-			DebugSettings.Mode = DebugPreviewMode;
+			DebugSettings.bMaskOverlay = bMaskOverlayReady;
+			DebugSettings.Mode = bMaskOverlayReady
+				? EMixtormatDebugPreviewMode::LayerMask : DebugPreviewMode;
 			DebugSettings.LayerIndex = SelectedLayerIndex;
-			DebugSettings.ChildIndex = DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask
+			DebugSettings.ChildIndex = DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 				? GetSelectedChildIndex()
 				: INDEX_NONE;
 			// LayerIndex/ChildIndex above are meaningless for ChildOutput: ChildTarget already
