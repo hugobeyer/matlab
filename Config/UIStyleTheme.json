@@ -696,7 +696,11 @@
 		"GalleryLayout.OwnershipBadgeSize": 12,
 		"GalleryLayout.OwnershipBadgePadding": 2,
 		"GalleryLayout.DrawerHeaderGripSize": 18,
-		"GalleryLayout.MaskHeaderNameWidth": 112
+		"GalleryLayout.MaskHeaderNameWidth": 112,
+		"GalleryLayout.DrawerPeekDistance": 96,
+		"GalleryLayout.DrawerPeekMinHeight": 300,
+		"GalleryLayout.DrawerPeekMaxHeight": 1400,
+		"GalleryLayout.DrawerPeekLerp": 0.89999997615814209
 	},
 	"typography":
 	{
