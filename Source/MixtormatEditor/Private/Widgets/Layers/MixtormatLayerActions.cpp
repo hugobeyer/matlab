@@ -18,16 +18,13 @@ void SMixtormat::InitializeNewLayer(
 	FMixtormatLayer& Layer, const EMixtormatLayerType LayerType, const int32 LayerNumber) const
 {
 	Layer.Type = LayerType;
+	Layer.DisplayName = MakeGenericDefaultName(TEXT("Layer"), 0, WorkingLayers);
 	switch (LayerType)
 	{
 	case EMixtormatLayerType::Material:
-		Layer.DisplayName = SelectedLibrarySurfaceName.IsEmpty()
-			? FText::Format(LOCTEXT("MaterialLayerNumber", "Material Layer {0}"), FText::AsNumber(LayerNumber))
-			: SelectedLibrarySurfaceName;
 		Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SelectedSurfacePath);
 		break;
 	case EMixtormatLayerType::Fill:
-		Layer.DisplayName = FText::Format(LOCTEXT("FillLayerNumber", "Fill Layer {0}"), FText::AsNumber(LayerNumber));
 		Layer.bOverrideBaseColor = true;
 		// Mid-dark neutral rather than white, so a new fill reads as a surface under the lights.
 		Layer.BaseColor = FLinearColor(0.2f, 0.2f, 0.2f, 1.0f);
@@ -41,18 +38,6 @@ void SMixtormat::InitializeNewLayer(
 		break;
 	case EMixtormatLayerType::Generator:
 	{
-		int32 GeneratorNumber = 1;
-		FText DefaultName;
-		do
-		{
-			DefaultName = FText::Format(LOCTEXT("GeneratorLayerNumber", "Generator Layer {0}"),
-				FText::AsNumber(GeneratorNumber++));
-		}
-		while (WorkingLayers.ContainsByPredicate([&Layer, &DefaultName](const FMixtormatLayer& Existing)
-		{
-			return &Existing != &Layer && Existing.DisplayName.EqualTo(DefaultName);
-		}));
-		Layer.DisplayName = DefaultName;
 		// A generator replaces the height below it rather than only rising above it.
 		Layer.HeightBlend.Op = EMixtormatHeightOp::Replace;
 		break;
@@ -174,7 +159,7 @@ FReply SMixtormat::DuplicateSelectedLayer()
 		if (!WorkingLayers.IsValidIndex(LayerIndex)) { continue; }
 		FMixtormatLayer Copy = WorkingLayers[LayerIndex];
 		MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
-		Copy.DisplayName = FText::Format(LOCTEXT("CopiedLayerName", "{0} Copy"), Copy.DisplayName);
+		
 		Copies.Add(MoveTemp(Copy));
 	}
 	if (Copies.IsEmpty()) { return FReply::Handled(); }
@@ -238,20 +223,7 @@ bool SMixtormat::CanCreateGroup() const
 
 FText SMixtormat::MakeUniqueGroupName() const
 {
-	for (int32 Suffix = 1;; ++Suffix)
-	{
-		const FText Candidate = FText::Format(
-			LOCTEXT("GroupNameFormat", "Group {0}"), FText::AsNumber(Suffix));
-		const bool bTaken = WorkingLayerGroups.ContainsByPredicate(
-			[&Candidate](const FMixtormatLayerGroup& Group)
-			{
-				return Group.DisplayName.EqualTo(Candidate);
-			});
-		if (!bTaken)
-		{
-			return Candidate;
-		}
-	}
+	return MakeGenericDefaultName(TEXT("Group"), 0, WorkingLayerGroups);
 }
 
 FReply SMixtormat::CreateGroupFromSelection()
