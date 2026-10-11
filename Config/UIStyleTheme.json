@@ -218,7 +218,7 @@
 		"ControlLayout.StatusDotSize": 8,
 		"ControlLayout.ToolbarLabelPadding": 5,
 		"ControlLayout.CornerRadiusInner": 1.5,
-		"ControlLayout.DraggerTextInset": 8,
+		"ControlLayout.DraggerTextInset": 2,
 		"ControlLayout.ButtonPaddingCompact": 7,
 		"ControlLayout.ButtonPaddingTab": 8,
 		"ControlLayout.InspectorFeatureButtonGap": 3,
@@ -256,10 +256,10 @@
 		"ControlLayout.InspectorHairlineThickness": 1,
 		"ControlLayout.ScalarRampBorderThickness": 1,
 		"ControlLayout.ScalarRampBorderOpacity": 0.10999999940395355,
-		"ControlLayout.DragGhostOpacity": 0.93000000715255737,
-		"ControlLayout.DragGhostThumbnailSize": 56,
-		"ControlLayout.DragGhostPadding": 7,
-		"ControlLayout.DragGhostShadowInset": 4,
+		"ControlLayout.DragGhostOpacity": 0.64999997615814209,
+		"ControlLayout.DragGhostThumbnailSize": 32,
+		"ControlLayout.DragGhostPadding": 1,
+		"ControlLayout.DragGhostShadowInset": 2,
 		"ControlLayout.DragGhostShadowOffsetY": 2,
 		"TextField.Surface": [
 			0,
@@ -305,7 +305,20 @@
 		"TextField.MinHeight": 14,
 		"TextField.MinWidth": 24,
 		"TextField.FontSize": 9,
-		"TextField.SelectionOpacity": 0.29999998211860657
+		"TextField.SelectionOpacity": 0.29999998211860657,
+		"ControlLayout.ParameterInfoPanelWidth": 260,
+		"ControlLayout.ParameterRangePanelWidth": 300,
+		"ControlLayout.ParameterAuthoringPanelWidth": 320,
+		"ControlLayout.BakeDialogPathPickerWidth": 360,
+		"ControlLayout.BakeDialogPathPickerHeight": 420,
+		"ControlLayout.BakeResultDialogWidth": 760,
+		"ControlLayout.BakeResultDialogHeight": 320,
+		"ControlLayout.BakeSettingsDialogWidth": 480,
+		"ControlLayout.BakeSettingsDialogHeight": 450,
+		"ControlLayout.FeedbackDialogWidth": 520,
+		"ControlLayout.FeedbackDialogHeight": 210,
+		"ControlLayout.ConfirmDialogWidth": 560,
+		"ControlLayout.ConfirmDialogHeight": 320
 	},
 	"foldouts":
 	{
@@ -679,7 +692,11 @@
 		"Shell.LibraryRowHeight": 34,
 		"Shell.LibraryThumbnailSize": 28,
 		"Shell.LibraryLabelOpacity": 0.81999999284744263,
-		"Shell.LibraryHeadingOpacity": 0.65999996662139893
+		"Shell.LibraryHeadingOpacity": 0.65999996662139893,
+		"GalleryLayout.OwnershipBadgeSize": 12,
+		"GalleryLayout.OwnershipBadgePadding": 2,
+		"GalleryLayout.DrawerHeaderGripSize": 18,
+		"GalleryLayout.MaskHeaderNameWidth": 112
 	},
 	"typography":
 	{
@@ -767,5 +784,20 @@
 		"LayerLayout.SourcesAddTabHighlightBias": 0.10000000149011612,
 		"LayerLayout.SourcesAddIconSize": 12,
 		"LayerLayout.SourcesAddTabBottomRadius": 2
+	},
+	"context":
+	{
+		"Context.HintKeycapSize": 14,
+		"Context.HintKeycapPadding": 2,
+		"Context.HintKeyActionGap": 4,
+		"Context.HintItemGap": 8,
+		"Context.HintStripOpacity": 0.75,
+		"Context.HintStripInset": 8,
+		"Context.HintStripCorner": "Top Right"
+	},
+	"create":
+	{
+		"Create.CreationButtonIconSize": 16,
+		"Create.CreationButtonIconGap": 4
 	}
 }
