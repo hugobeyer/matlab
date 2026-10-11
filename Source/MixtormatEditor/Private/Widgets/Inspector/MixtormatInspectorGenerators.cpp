@@ -2727,53 +2727,6 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 						}),
 						LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field.")))]);
 	}
-	{
-		// MODE uses the node's own Height, plus the current ordered surface Height
-		// for Slope. Scoped Flow contributions accumulate automatically through Add/Mix.
-		const auto bFlowOutput = [Noise]()
-		{
-			const FMixtormatNoise* N = Noise();
-			return N && N->bNoiseWriteFlow;
-		};
-		const TSharedRef<SVerticalBox> Mode = AddCard(Cards, LOCTEXT("NoiseMode", "MODE"));
-		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
-			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeHeight", "Height"),
-					Noise, &FMixtormatNoise::NoiseDirectionHeightWeight, 0.0, 4.0, 1.0, 0.01,
-					LOCTEXT("NoiseModeHeightHint", "Downhill vectors from this node's own noise height.")),
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeCurl", "Curl"),
-					Noise, &FMixtormatNoise::NoiseDirectionCurlWeight, 0.0, 4.0, 0.0, 0.01,
-					LOCTEXT("NoiseModeCurlHint", "Rotational variation from the shared periodic curl.")))]);
-		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
-			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeConstant", "Constant"),
-					Noise, &FMixtormatNoise::NoiseDirectionConstantWeight, 0.0, 4.0, 0.0, 0.01,
-					LOCTEXT("NoiseModeConstantHint", "Uniform direction from Angle, scaled by this weight.")),
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeAngle", "Angle"),
-					Noise, &FMixtormatNoise::NoiseDirectionAngle, 0.0, 360.0, 0.0, 1.0,
-					LOCTEXT("NoiseModeAngleHint", "Constant-direction orientation in degrees.")))]);
-		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
-			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeSlope", "Slope"),
-					Noise, &FMixtormatNoise::NoiseDirectionSlopeWeight, 0.0, 4.0, 0.0, 0.01,
-					LOCTEXT("NoiseModeSlopeHint", "Downhill direction of the preceding working surface height.")),
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeStrength", "Strength"),
-					Noise, &FMixtormatNoise::NoiseDirectionStrength, 0.0, 4.0, 1.0, 0.01,
-					LOCTEXT("NoiseModeStrengthHint", "Final scalar on the combined generated Flow.")))]);
-		const TSharedRef<SVerticalBox> Composition = AddCard(Cards, LOCTEXT("NoiseFlowComposition", "COMPOSITION"));
-		AddSliderRow(Composition, SNew(SBox).Visibility_Lambda([bFlowOutput]()
-			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowAdd", "Add"),
-					Noise, &FMixtormatNoise::NoiseFlowAdd, 0.0, 4.0, 1.0, 0.01,
-					LOCTEXT("NoiseFlowAddHint", "Add this generated Flow to the preceding working Flow.")),
-				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowMix", "Mix"),
-					Noise, &FMixtormatNoise::NoiseFlowMix, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("NoiseFlowMixHint", "Replace or interpolate the accumulated Flow inside this node's mask.")))]);
-	}
 	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 
 	Cards->AddSlot().AutoHeight()[Outputs];
@@ -2855,6 +2808,54 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 	};
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 	{
+		const TSharedRef<SVerticalBox> Distort = AddCard(Cards, LOCTEXT("NoiseDistortion", "DISTORTION"));
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionStrength", "Strength"),
+				Noise, &FMixtormatNoise::NoiseDistortionStrength, 0.0, 2.0, 0.0, 0.01,
+				LOCTEXT("NoiseDistortionStrengthHint", "Zero bypasses smooth/curl distortion; Jaggedness is independent.")),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionFrequency", "Frequency"),
+				Noise, &FMixtormatNoise::NoiseDistortionFrequency, 1.0, 64.0, 4.0, 1.0)));
+		AddSliderRow(Distort, MakeMemberSlider<FMixtormatNoise>(
+			LOCTEXT("NoiseDistortionJaggedness", "Jaggedness"), Noise,
+			&FMixtormatNoise::NoiseDistortionJaggedness, 0.0, 2.0, 0.0, 0.01,
+			LOCTEXT("NoiseDistortionJaggednessHint", "Angular crease warp, blended with the smooth distortion.")));
+		// Crease shaping only matters once a jagged warp is actually authored, so the rows are
+		// collapsed at zero rather than left greyed out.
+		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
+			{
+				const FMixtormatNoise* N = Noise();
+				return N && N->NoiseDistortionJaggedness > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseJaggedSharpness", "Jagged Sharpness"), Noise,
+					&FMixtormatNoise::NoiseJaggedSharpness, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseJaggedSharpnessHint", "Breaks per cell edge. Higher packs tighter; amplitude follows.")),
+				MakeMemberSlider<FMixtormatNoise>(
+					LOCTEXT("NoiseJaggedDetail", "Jagged Variation"), Noise,
+					&FMixtormatNoise::NoiseJaggedDetail, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseJaggedDetailHint", "Fracture scales stacked. 0 is a single scale.")))]);
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoiseDistortionOctaves", "Octaves"),
+				Noise, &FMixtormatNoise::NoiseDistortionOctaves, 1.0, 8.0, 2),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionRoughness", "Roughness"),
+				Noise, &FMixtormatNoise::NoiseDistortionRoughness, 0.0, 1.0, 0.5, 0.01)));
+		AddSliderRow(Distort, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionLacunarity", "Lacunarity"),
+					Noise, &FMixtormatNoise::NoiseDistortionLacunarity, 1.0, 4.0, 2.0, 0.05),
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionCurlMix", "Curl Mix"),
+					Noise, &FMixtormatNoise::NoiseDistortionCurlMix, 0.0, 1.0, 1.0, 0.01,
+					LOCTEXT("NoiseDistortionCurlMixHint", "0 = directional, 1 = curl-driven domain distortion."))));
+		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
+			{
+				const FMixtormatNoise* N = Noise();
+				return N && N->NoiseDistortionCurlMix < 1.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})[
+			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionDirection", "Direction"),
+				Noise, &FMixtormatNoise::NoiseDistortionDirection, 0.0, 360.0, 0.0, 1.0)]);
+	}
+
+	{
 		const TSharedRef<SVerticalBox> Pattern = AddCard(Cards, LOCTEXT("NoisePattern", "PATTERN"));
 		AddSliderRow(Pattern, MakeMemberEnum<FMixtormatNoise, EMixtormatNoiseType>(
 			LOCTEXT("NoiseType", "Type"), Noise, &FMixtormatNoise::NoiseType,
@@ -2930,6 +2931,73 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 			]);
 	}
 	{
+		// MODE uses the node's own Height, plus the current ordered surface Height
+		// for Slope. Scoped Flow contributions accumulate automatically through Add/Mix.
+		const auto bFlowOutput = [Noise]()
+		{
+			const FMixtormatNoise* N = Noise();
+			return N && N->bNoiseWriteFlow;
+		};
+		const auto AddFlowOnlyCard = [Cards, bFlowOutput](const FText& Title)
+		{
+			TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+			Cards->AddSlot().AutoHeight()
+			[
+				SNew(SBox)
+				.Visibility_Lambda([bFlowOutput]()
+				{
+					return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				[
+					SNew(SMixtormatInspectorCard)
+					.Title(Title)
+					[
+						Rows
+					]
+				]
+			];
+			return Rows;
+		};
+		const TSharedRef<SVerticalBox> Mode = AddFlowOnlyCard(LOCTEXT("NoiseMode", "MODE"));
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeHeight", "Height"),
+					Noise, &FMixtormatNoise::NoiseDirectionHeightWeight, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseModeHeightHint", "Downhill vectors from this node's own noise height.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeCurl", "Curl"),
+					Noise, &FMixtormatNoise::NoiseDirectionCurlWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeCurlHint", "Rotational variation from the shared periodic curl.")))]);
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeConstant", "Constant"),
+					Noise, &FMixtormatNoise::NoiseDirectionConstantWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeConstantHint", "Uniform direction from Angle, scaled by this weight.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeAngle", "Angle"),
+					Noise, &FMixtormatNoise::NoiseDirectionAngle, 0.0, 360.0, 0.0, 1.0,
+					LOCTEXT("NoiseModeAngleHint", "Constant-direction orientation in degrees.")))]);
+		AddSliderRow(Mode, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeSlope", "Slope"),
+					Noise, &FMixtormatNoise::NoiseDirectionSlopeWeight, 0.0, 4.0, 0.0, 0.01,
+					LOCTEXT("NoiseModeSlopeHint", "Downhill direction of the preceding working surface height.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseModeStrength", "Strength"),
+					Noise, &FMixtormatNoise::NoiseDirectionStrength, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseModeStrengthHint", "Final scalar on the combined generated Flow.")))]);
+		const TSharedRef<SVerticalBox> Composition = AddFlowOnlyCard(LOCTEXT("NoiseFlowComposition", "COMPOSITION"));
+		AddSliderRow(Composition, SNew(SBox).Visibility_Lambda([bFlowOutput]()
+			{ return bFlowOutput() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowAdd", "Add"),
+					Noise, &FMixtormatNoise::NoiseFlowAdd, 0.0, 4.0, 1.0, 0.01,
+					LOCTEXT("NoiseFlowAddHint", "Add this generated Flow to the preceding working Flow.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseFlowMix", "Mix"),
+					Noise, &FMixtormatNoise::NoiseFlowMix, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoiseFlowMixHint", "Replace or interpolate the accumulated Flow inside this node's mask.")))]);
+	}
+	{
 		const TSharedRef<SVerticalBox> Place = AddCard(Cards, LOCTEXT("NoisePlacement", "PLACEMENT"));
 		AddSliderRow(Place, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatNoise>(
@@ -2944,54 +3012,6 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 					LOCTEXT("NoiseDirection", "Direction"), Noise, &FMixtormatNoise::NoiseDirection, 0.0, 360.0, 0.0, 1.0,
 					LOCTEXT("NoiseDirectionHint", "Stripe or phasor orientation, snapped to a tileable direction."))
 			]);
-	}
-
-	{
-		const TSharedRef<SVerticalBox> Distort = AddCard(Cards, LOCTEXT("NoiseDistortion", "DISTORTION"));
-		AddSliderRow(Distort, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionStrength", "Strength"),
-				Noise, &FMixtormatNoise::NoiseDistortionStrength, 0.0, 2.0, 0.0, 0.01,
-				LOCTEXT("NoiseDistortionStrengthHint", "Zero bypasses smooth/curl distortion; Jaggedness is independent.")),
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionFrequency", "Frequency"),
-				Noise, &FMixtormatNoise::NoiseDistortionFrequency, 1.0, 64.0, 4.0, 1.0)));
-		AddSliderRow(Distort, MakeMemberSlider<FMixtormatNoise>(
-			LOCTEXT("NoiseDistortionJaggedness", "Jaggedness"), Noise,
-			&FMixtormatNoise::NoiseDistortionJaggedness, 0.0, 2.0, 0.0, 0.01,
-			LOCTEXT("NoiseDistortionJaggednessHint", "Angular crease warp, blended with the smooth distortion.")));
-		// Crease shaping only matters once a jagged warp is actually authored, so the rows are
-		// collapsed at zero rather than left greyed out.
-		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
-			{
-				const FMixtormatNoise* N = Noise();
-				return N && N->NoiseDistortionJaggedness > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
-			})[
-			MixtormatRow::MakePair(
-				MakeMemberSlider<FMixtormatNoise>(
-					LOCTEXT("NoiseJaggedSharpness", "Jagged Sharpness"), Noise,
-					&FMixtormatNoise::NoiseJaggedSharpness, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("NoiseJaggedSharpnessHint", "Breaks per cell edge. Higher packs tighter; amplitude follows.")),
-				MakeMemberSlider<FMixtormatNoise>(
-					LOCTEXT("NoiseJaggedDetail", "Jagged Variation"), Noise,
-					&FMixtormatNoise::NoiseJaggedDetail, 0.0, 1.0, 0.0, 0.01,
-					LOCTEXT("NoiseJaggedDetailHint", "Fracture scales stacked. 0 is a single scale.")))]);
-		AddSliderRow(Distort, MixtormatRow::MakePair(
-			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoiseDistortionOctaves", "Octaves"),
-				Noise, &FMixtormatNoise::NoiseDistortionOctaves, 1.0, 8.0, 2),
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionRoughness", "Roughness"),
-				Noise, &FMixtormatNoise::NoiseDistortionRoughness, 0.0, 1.0, 0.5, 0.01)));
-		AddSliderRow(Distort, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionLacunarity", "Lacunarity"),
-					Noise, &FMixtormatNoise::NoiseDistortionLacunarity, 1.0, 4.0, 2.0, 0.05),
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionCurlMix", "Curl Mix"),
-					Noise, &FMixtormatNoise::NoiseDistortionCurlMix, 0.0, 1.0, 1.0, 0.01,
-					LOCTEXT("NoiseDistortionCurlMixHint", "0 = directional, 1 = curl-driven domain distortion."))));
-		AddSliderRow(Distort, SNew(SBox).Visibility_Lambda([Noise]()
-			{
-				const FMixtormatNoise* N = Noise();
-				return N && N->NoiseDistortionCurlMix < 1.0f ? EVisibility::Visible : EVisibility::Collapsed;
-			})[
-			MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoiseDistortionDirection", "Direction"),
-				Noise, &FMixtormatNoise::NoiseDistortionDirection, 0.0, 360.0, 0.0, 1.0)]);
 	}
 
 	return Cards;
