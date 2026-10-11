@@ -65,6 +65,7 @@ uint GeneratorLayer;
 
 // Apply controls.
 uint Mode;            // 0 Deform, 1 Warp, 2 Carve, 3 Gravity
+uint UseInheritedFlow; // nested Deform reads its parent's already-composed field
 float ShapeOffset;    // UV, signed
 float Bulge;          // UV, signed
 float TraceLength;    // UV
@@ -651,8 +652,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float DrivenShapeOffset = MixtormatApplyDriver(ShapeOffset,
 			FlowSettingsDriverSignal4.Load(int3(Pixel, 0)),
 			FlowSettingsDriverParamsA[4], FlowSettingsDriverParamsB[4]);
-		float2 Displacement = -Here.xy * DrivenBulge * Here.w;
-		if (DrivenShapeOffset != 0.0f && Here.w != 0.0f)
+		float ChildInfluence = 1.0f;
+		if (UseInheritedFlow != 0u)
+		{
+			const float ChildAmount = MixtormatApplyDriver(Amount,
+				FlowSettingsDriverSignal0.Load(int3(Pixel, 0)),
+				FlowSettingsDriverParamsA[0], FlowSettingsDriverParamsB[0]);
+			const float Mask = HasMask != 0u ? FlowMask.Load(int3(Pixel, 0)) : 1.0f;
+			const float Gate = UseInfluence != 0u ? InfluenceField.Load(int3(Pixel, 0)) : 1.0f;
+			ChildInfluence = isfinite(ChildAmount) && isfinite(Mask) && isfinite(Gate)
+				? ChildAmount * saturate(Mask) * saturate(Gate) : 0.0f;
+		}
+		float2 Displacement = -Here.xy * DrivenBulge * Here.w * ChildInfluence;
+		if (DrivenShapeOffset != 0.0f && Here.w != 0.0f && Source == 0u)
 		{
 			float2 Gradient;
 			float Distance;
@@ -663,7 +675,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				{
 					const float Band = abs(DrivenShapeOffset);
 					const float K = FlowFade(Band, 2.0f * Band + 1.0f / (float)OutputSize.x, abs(Distance));
-					Displacement -= (Gradient / Length) * DrivenShapeOffset * K * Here.w;
+					Displacement -= (Gradient / Length) * DrivenShapeOffset * K * Here.w * ChildInfluence;
 				}
 			}
 		}

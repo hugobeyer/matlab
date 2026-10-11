@@ -593,6 +593,7 @@ public:
 		SHADER_PARAMETER(uint32, HasCoverage)
 		SHADER_PARAMETER(uint32, GeneratorLayer)
 		SHADER_PARAMETER(uint32, Mode)
+		SHADER_PARAMETER(uint32, UseInheritedFlow)
 		SHADER_PARAMETER(float, ShapeOffset)
 		SHADER_PARAMETER(float, Bulge)
 		SHADER_PARAMETER(float, TraceLength)
@@ -1708,9 +1709,21 @@ namespace
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
-			// Nested fields execute in their immediate parent's input evaluation,
-			// not as independent operations on the generator's running height.
-			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex) { continue; }
+			// A Deform directly beneath a Flow Field consumes that parent's completed
+			// field, while all unrelated nested behaviors stay operation-local.
+			const bool bNestedFlowDeform = Child.Behavior.Type == EMixtormatBehaviorType::Deform
+				&& Algo::AnyOf(Layer.Children, [&](const FChildRenderData& Parent)
+				{
+					return Parent.Type == EMixtormatLayerChildType::Behavior
+						&& Parent.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
+						&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
+						&& Parent.Behavior.GeneratorChildIndex == Owner.SourceChildIndex
+						&& Parent.SourceChildIndex < Child.SourceChildIndex;
+				});
+			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex && !bNestedFlowDeform)
+			{
+				continue;
+			}
 			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
 				&& IsFlowToolChild(Child, Owner.SourceChildIndex))
 			{
@@ -2321,10 +2334,42 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			const FBehaviorFlowRenderData& Flow = FlowChild.Behavior.Flow;
 			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
 			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
+			const FPublishedField* InheritedFlow = nullptr;
+			FRDGTextureRef InheritedInfluence = nullptr;
+			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform)
+			{
+				const bool bNested = Algo::AnyOf(Layer.Children, [&](const FChildRenderData& Parent)
+				{
+					return Parent.Type == EMixtormatLayerChildType::Behavior
+						&& Parent.SourceChildIndex == FlowChild.ScopeOwnerSourceChildIndex
+						&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
+						&& Parent.Behavior.GeneratorChildIndex == OwnerSourceChildIndex
+						&& Parent.SourceChildIndex < FlowChild.SourceChildIndex;
+				});
+				if (bNested)
+				{
+					InheritedFlow = Ctx.PublishedFieldOutputs.Find(PublishedKey(
+						Layer, FlowChild.ScopeOwnerSourceChildIndex, FName(TEXT("FlowDirection"))));
+					const FPublishedField* PublishedInfluence = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, FlowChild.ScopeOwnerSourceChildIndex, FName(TEXT("Influence"))));
+					if (!InheritedFlow || !InheritedFlow->IsComplete()
+						|| InheritedFlow->Kind != EMixtormatPublishedFieldKind::Flow
+						|| InheritedFlow->Texture->Desc.Extent != Size
+						|| !PublishedInfluence || !PublishedInfluence->IsComplete()
+						|| PublishedInfluence->Kind != EMixtormatPublishedFieldKind::Scalar01
+						|| PublishedInfluence->Texture->Desc.Extent != Size)
+					{
+						continue; // Never silently replace a missing parent with a new solve.
+					}
+					InheritedInfluence = PublishedInfluence->Texture;
+				}
+			}
+			const bool bInheritedFlow = InheritedFlow != nullptr;
 			// Invalid or mismatched sources remain neutral, never bound into a typed shader slot.
 			if (!Current || Current->Desc.Extent != Size
 				|| Current->Desc.Format != PF_R32_FLOAT) { continue; }
-			if (Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)
+			if (!bInheritedFlow
+				&& Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)
 				&& (!BoundaryField || BoundaryField->Desc.Extent != Size
 					|| BoundaryField->Desc.Format != PF_G32R32F)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
@@ -2380,6 +2425,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->OffsetAlong = Flow.FlowOffsetAlong;
 				P->OffsetAcross = Flow.FlowOffsetAcross;
 				P->HasMask = bHasMask ? 1u : 0u;
+				P->UseInheritedFlow = bInheritedFlow ? 1u : 0u;
 				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
 					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
 					: bGravity ? 3u : 1u;
@@ -2451,7 +2497,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			// Gravity + Height is evaluated directly at full resolution, including flat texels.
 			FRDGTextureRef SeedData = Ctx.EmptyPatternUV;
 			FRDGTextureRef JumpResult = Ctx.EmptyPatternUV;
-			if (!bGravity || Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance))
+			if (!bInheritedFlow && (!bGravity
+				|| Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)))
 			{
 				SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
 				FRDGTextureRef Jump[2] = {
@@ -2503,9 +2550,13 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 
 			// Resolve at full resolution. Half precision holds a unit direction, a UV distance
 			// under 1 and a 0..1 influence; WarpedUV below must stay 32F to resolve 4K texels.
-			FRDGTextureRef FlowField = MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.Field"));
-			FRDGTextureRef Influence = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Influence"));
-			FRDGTextureRef Validity = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Validity"));
+			FRDGTextureRef FlowField = bInheritedFlow ? InheritedFlow->Texture
+				: MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.Field"));
+			FRDGTextureRef Influence = bInheritedFlow ? InheritedInfluence
+				: MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Influence"));
+			FRDGTextureRef Validity = bInheritedFlow ? InheritedFlow->Validity
+				: MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Validity"));
+			if (!bInheritedFlow)
 			{
 				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(bGravity ? 9 : 2);
 				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
@@ -2522,8 +2573,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			}
 
 			// Smooth: X then Y. Skipped at zero, where the raw field doubles as the smoothed one.
-			FRDGTextureRef FlowSmooth = FlowField;
-			if (Flow.FlowSmooth != 0.0f)
+			FRDGTextureRef FlowSmooth = bInheritedFlow ? InheritedFlow->FlowSmooth : FlowField;
+			if (!bInheritedFlow && Flow.FlowSmooth != 0.0f)
 			{
 				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(7);
 				FRDGTextureRef Blurred[2] = {
