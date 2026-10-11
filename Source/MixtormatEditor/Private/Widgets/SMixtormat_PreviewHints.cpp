@@ -84,7 +84,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	};
 	const auto bDebugView = [this]()
 	{
-		return DebugPreviewMode != EMixtormatDebugPreviewMode::None;
+		return DebugPreviewMode != EMixtormatDebugPreviewMode::None
+			|| (bMaskOverlayEnabled && IsMaskOverlayTargetReady());
 	};
 	// Plane is the one mesh with a second state: pressing 2 again flips its orientation.
 	const auto bPlaneFlip = [this]()
@@ -96,6 +97,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bQuickControlsOpen
 			|| (DebugPreviewMode != EMixtormatDebugPreviewMode::None)
+			|| (bMaskOverlayEnabled && IsMaskOverlayTargetReady())
 			|| (!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
 				&& PreviewViewports[0]->GetChannelPreview() != EMixtormatChannelPreview::Material)
 			|| PreviewMesh == EMixtormatPreviewMesh::Plane
@@ -159,34 +161,22 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	});
 	AddPair(*Row, LOCTEXT("HintEsc", "Esc"), LOCTEXT("HintCloseQuickControls", "Close quick controls"), QuickControlsVis);
 
-	// -- Channel view active: name the NEXT channel, not "next channel".
+	// -- A channel view activated by a preview control: V always resets to material.
 	const TAttribute<EVisibility> ChannelVis = TAttribute<EVisibility>::CreateLambda([bChannelView, bQuickControls]()
 	{
 		return bChannelView() && !bQuickControls() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, ChannelVis);
-	AddPair(*Row, LOCTEXT("HintV", "V"), TAttribute<FText>::CreateLambda([this]()
-	{
-		if (PreviewViewports.IsEmpty() || !PreviewViewports[0].IsValid())
-		{
-			return LOCTEXT("HintNextChannel", "Next channel");
-		}
-		const uint8 NextMode = (static_cast<uint8>(PreviewViewports[0]->GetChannelPreview()) + 1)
-			% (static_cast<uint8>(EMixtormatChannelPreview::Fuzz) + 1);
-		return FText::FromString(SMixtormatPreviewViewport::GetChannelPreviewLabel(
-			static_cast<EMixtormatChannelPreview>(NextMode)));
-	}), ChannelVis);
-	AddGap(*Row, ChannelVis);
-	AddPair(*Row, LOCTEXT("HintShiftV", "Shift+V"), LOCTEXT("HintMaterial", "Material"), ChannelVis);
+	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintMaterial", "Material"), ChannelVis);
 
-	// -- Debug or child preview active: mouse-only, so no keycap. Sits under the channel view.
+	// -- A mask or other diagnostic preview: V resets all previews.
 	const TAttribute<EVisibility> DebugVis = TAttribute<EVisibility>::CreateLambda([bDebugView, bChannelView, bQuickControls]()
 	{
 		return bDebugView() && !bChannelView() && !bQuickControls()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, DebugVis);
-	AddPair(*Row, FText::GetEmpty(), LOCTEXT("HintClearDebug", "Clear button returns to the composite"), DebugVis);
+	AddPair(*Row, LOCTEXT("HintResetDebugKey", "V"), LOCTEXT("HintClearDebug", "Original material"), DebugVis);
 
 	// -- Plane selected: 2 again flips its orientation.
 	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(
