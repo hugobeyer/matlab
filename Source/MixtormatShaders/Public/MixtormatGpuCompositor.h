@@ -109,6 +109,8 @@ struct FMixtormatDebugPreviewSettings
 	// this once, at the top of RequestComposeInternal, and every pass below reads those exactly
 	// like it does for LayerMask -- only the resolution step is new.
 	FMixtormatChildPreviewTarget ChildTarget;
+	bool bMaskOverlay = false;
+	float MaskOverlayOpacity = 0.55f;
 };
 
 class MIXTORMATSHADERS_API FMixtormatGpuCompositor final
