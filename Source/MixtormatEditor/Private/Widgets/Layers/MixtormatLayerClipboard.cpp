@@ -22,7 +22,8 @@ namespace MixtormatLayersPrivate
 			const FGuid OldId = Copy.ChildId;
 			Copy.SourceLayerId.Invalidate();
 			Copy.SourceChildId.Invalidate();
-			MixtormatParameterBinding::RegenerateChildIdentity(Copy);
+			// Remap complete owner/child addresses together in the second pass.
+			Copy.ChildId = FGuid::NewGuid();
 			ChildIdRemap.Add(OldId, Copy.ChildId);
 		}
 		const auto RemapPair = [&ChildIdRemap, OldOwnerId, NewOwnerId](FGuid& OwnerId, FGuid& ChildId)
@@ -312,9 +313,9 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		{
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(Clipboard.Payload);
-			Copies[0].ScopeOwnerChildId = Payload.ScopeOwnerChildId;
 			Copies.Append(ChildClipboardScopedRows);
 			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+			Copies[0].ScopeOwnerChildId = Payload.ScopeOwnerChildId;
 			TArray<FMixtormatLayer> Layers = WorkingLayers;
 			TArray<FMixtormatLayerGroup> Groups = WorkingLayerGroups;
 			TArray<FMixtormatLayerChild>* Projected = nullptr;
@@ -557,8 +558,11 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 	Pasted.SourceChildId = FGuid();
 	Pasted.ScopeOwnerChildId = (*Container)[Anchor].ChildId;
 	const int32 Insert = FindSubtreeEnd(*Container, Anchor);
-	Container->Insert(MoveTemp(Pasted), Insert);
-	MixtormatParameterBinding::RegenerateChildIdentity((*Container)[Insert]);
+	TArray<FMixtormatLayerChild> Copies;
+	Copies.Add(MoveTemp(Pasted));
+	Copies = CopyChildSubtree(MoveTemp(Copies), ChildClipboard.GetValue().Source.OwnerId, Address.OwnerId);
+	Copies[0].ScopeOwnerChildId = (*Container)[Anchor].ChildId;
+	Container->Insert(MoveTemp(Copies[0]), Insert);
 
 	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
 	{
@@ -630,23 +634,14 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
 		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
-		if (Pasted.Type == EMixtormatLayerChildType::IdGroup
-			|| Pasted.Type == EMixtormatLayerChildType::Behavior
-			|| !ChildClipboardScopedRows.IsEmpty())
+		TArray<FMixtormatLayerChild> Copies;
+		Copies.Add(MoveTemp(Pasted));
+		Copies.Append(ChildClipboardScopedRows);
+		Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+		Copies[0].ScopeOwnerChildId = ScopeOwnerChildId;
+		for (int32 Index = 0; Index < Copies.Num(); ++Index)
 		{
-			TArray<FMixtormatLayerChild> Copies;
-			Copies.Add(MoveTemp(Pasted));
-			Copies.Append(ChildClipboardScopedRows);
-			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
-			for (int32 Index = 0; Index < Copies.Num(); ++Index)
-			{
-				DestContainer->Insert(MoveTemp(Copies[Index]), FinalInsert + Index);
-			}
-		}
-		else
-		{
-			DestContainer->Insert(MoveTemp(Pasted), FinalInsert);
-			MixtormatParameterBinding::RegenerateChildIdentity((*DestContainer)[FinalInsert]);
+			DestContainer->Insert(MoveTemp(Copies[Index]), FinalInsert + Index);
 		}
 	}
 

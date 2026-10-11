@@ -822,7 +822,8 @@ namespace MixtormatParameterBinding
 			RemapOutput(Child.Behavior.Direction.Published, true);
 			RemapOutput(Child.Behavior.Height.Published, true);
 			RemapOutput(Child.Behavior.Influence.Published, true);
-			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer)
+			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
+				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{
 				Child.Mask.PublishedSourceLayerId = NewLayerId;
 				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.Mask.PublishedSourceChildId))

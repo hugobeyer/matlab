@@ -159,11 +159,10 @@ FReply SMixtormat::DuplicateSelectedLayer()
 	{
 		if (!WorkingLayers.IsValidIndex(LayerIndex)) { continue; }
 		FMixtormatLayer Copy = WorkingLayers[LayerIndex];
-		MixtormatParameterBinding::RegenerateLayerIdentity(Copy);
-		
 		Copies.Add(MoveTemp(Copy));
 	}
 	if (Copies.IsEmpty()) { return FReply::Handled(); }
+	MixtormatParameterBinding::RegenerateLayerIdentities(Copies);
 
 	const int32 InsertAt = Selected.Last() + 1;
 	for (int32 CopyIndex = 0; CopyIndex < Copies.Num(); ++CopyIndex)
