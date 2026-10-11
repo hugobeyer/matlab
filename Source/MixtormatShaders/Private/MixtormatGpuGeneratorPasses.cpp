@@ -3431,13 +3431,21 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 						|| (Behavior.Type == EMixtormatBehaviorType::Warp
 							&& (Behavior.Flow.ModeMix > 0.0f || Behavior.Flow.SettingsDrivers[8].bEnabled));
 				});
-			if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
+			const bool bNativeFlowGenerator =
+				Child.Generator.Type == EMixtormatGeneratorType::Cracks
+				|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
+				|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
+				|| Child.Generator.Type == EMixtormatGeneratorType::CliffStrata;
+			if (bNativeFlowGenerator)
 			{
-				// Cracks always publishes its geometry-derived seed, independent of Behavior demand.
-				// Never overwrite it with height-derived Flow or add it to itself in the working chain.
+				// Automatic, geometry-derived native Flow before the Behavior chain.
+				// Rock/Pebbles/Cracks use signed boundaries; Cliff uses native height.
+				const bool bHasBoundary = Module.BoundaryField
+					&& Module.BoundaryField->Desc.Format == PF_G32R32F;
 				const FPublishedField NativeFlow = AddNativeFlowPass(Ctx, Layer,
-					Child.SourceChildIndex, Module.BoundaryField, ENativeFlowSource::SignedBoundary,
-					Module.RegionIds);
+					Child.SourceChildIndex, bHasBoundary ? Module.BoundaryField : Module.Height,
+					bHasBoundary ? ENativeFlowSource::SignedBoundary : ENativeFlowSource::SignedHeight,
+					bHasBoundary ? Module.RegionIds : nullptr, &Child.Generator.NativeFlow, Module.Height);
 				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
 					FName(TEXT("FlowDirection")), NativeFlow);
 			}

@@ -201,6 +201,10 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("RockGap")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRockGap", "Gap"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRockFormationNativeFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver)
 		{
@@ -228,6 +232,10 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("PebbleRandom")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputPebbleRandom", "Random"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputPebblesNativeFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::CliffStrata)
 		{
@@ -237,6 +245,10 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("CliffCavity")),NSLOCTEXT("SMixtormat","PreviewOutputCliffCavity","Cavity"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
 			Result.Outputs.Add({FName(TEXT("CliffVoronoi")),NSLOCTEXT("SMixtormat","PreviewOutputCliffVoronoi","Raw Voronoi"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
 			Result.Outputs.Add({FName(TEXT("CliffCoverage")),NSLOCTEXT("SMixtormat","PreviewOutputCliffCoverage","Coverage"),EMixtormatPreviewOutputKind::Mask,true,true,true,NAME_None});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCliffStrataNativeFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{

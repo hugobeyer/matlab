@@ -267,6 +267,21 @@ namespace MixtormatGpuCompositor
 		break;
 	}
 	}
+	// Native Flow settings do not belong to the geometry cache keys.
+	if (Generator.Type != EMixtormatGeneratorType::Noise
+		&& Generator.Type != EMixtormatGeneratorType::StrataCarver)
+	{
+		const FMixtormatNativeFlowSettings Defaults;
+		const FMixtormatNativeFlowSettings& F = Generator.NativeFlow;
+		FNativeFlowRenderData& Out = ChildData.Generator.NativeFlow;
+		const auto Finite = [](float V, float Default) { return FMath::IsFinite(V) ? V : Default; };
+		Out.Amount = FMath::Clamp(Finite(F.Amount, Defaults.Amount), 0.0f, 2.0f);
+		Out.Angle = FMath::Clamp(Finite(F.Angle, Defaults.Angle), -180.0f, 180.0f);
+		Out.SlopeInfluence = FMath::Clamp(Finite(F.SlopeInfluence, Defaults.SlopeInfluence), 0.0f, 1.0f);
+		Out.BoundaryInfluence = FMath::Clamp(Finite(F.BoundaryInfluence, Defaults.BoundaryInfluence), 0.0f, 1.0f);
+		Out.GravityInfluence = FMath::Clamp(Finite(F.GravityInfluence, Defaults.GravityInfluence), 0.0f, 1.0f);
+		Out.GravityAngle = FMath::Clamp(Finite(F.GravityAngle, Defaults.GravityAngle), -180.0f, 180.0f);
+	}
 	if (PlacementKey != 0)
 	{
 		switch (Generator.Type)

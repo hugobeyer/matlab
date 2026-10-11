@@ -21,5 +21,7 @@ enum class ENativeFlowSource : uint8
 FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
 	int32 SourceChildIndex, FRDGTextureRef Source,
 	ENativeFlowSource SourceKind = ENativeFlowSource::SignedHeight,
-	FRDGTextureRef BoundaryRegionIds = nullptr);
+	FRDGTextureRef BoundaryRegionIds = nullptr,
+	const FNativeFlowRenderData* Steering = nullptr,
+	FRDGTextureRef NativeHeight = nullptr);
 }

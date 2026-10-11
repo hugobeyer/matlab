@@ -3,13 +3,19 @@
 #include "/Engine/Public/Platform.ush"
 
 int2 OutputSize;
-#if MIXTORMAT_NATIVE_FLOW_PACKED_BOUNDARY
 Texture2D<float2> BoundaryField;
+Texture2D<float> SignedField;
 uint HasBoundaryRegions;
 Texture2D<uint> BoundaryRegionIds;
-#else
-Texture2D<float> SignedField;
-#endif
+uint UseSteering;
+uint HasHeight;
+uint HasBoundary;
+float NativeFlowAmount;
+float NativeFlowAngle;
+float NativeSlopeWeight;
+float NativeBoundaryWeight;
+float NativeGravityWeight;
+float NativeGravityAngle;
 RWTexture2D<float4> OutFlow;
 RWTexture2D<float> OutFlowValidity;
 
@@ -63,6 +69,80 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Valid = Valid && all(Forward * Backward >= 0.0f);
 	}
 #endif
+	if (UseSteering != 0u)
+	{
+		float2 Result = float2(0.0f, 0.0f);
+		bool HasGeometry = false;
+		float2 HeightDirection = float2(0.0f, 0.0f);
+		bool HeightValid = false;
+		if (HasHeight != 0u)
+		{
+			const float HX = SignedField.Load(int3(XP, 0)) - SignedField.Load(int3(XM, 0));
+			const float HY = SignedField.Load(int3(YP, 0)) - SignedField.Load(int3(YM, 0));
+			const float HC = SignedField.Load(int3(Pixel, 0));
+			const float2 HG = 0.5f * float2(OutputSize) * float2(HX, HY);
+			const float HM = length(HG);
+			HeightValid = isfinite(HC) && all(isfinite(HG)) && isfinite(HM) && HM > 1.0e-5f;
+			HeightDirection = HeightValid ? -HG / HM : float2(0.0f, 0.0f);
+			HasGeometry = isfinite(HC);
+		}
+		bool BoundaryValid = false;
+		float2 BoundaryDirection = float2(0.0f, 0.0f);
+		if (HasBoundary != 0u)
+		{
+			const float2 Centre = BoundaryField.Load(int3(Pixel, 0));
+			const float2 BP = BoundaryField.Load(int3(XP, 0));
+			const float2 BM = BoundaryField.Load(int3(XM, 0));
+			const float2 BQ = BoundaryField.Load(int3(YP, 0));
+			const float2 BN = BoundaryField.Load(int3(YM, 0));
+			const float2 BG = 0.5f * float2(OutputSize) * float2(BP.x - BM.x, BQ.x - BN.x);
+			const float BMagnitude = length(BG);
+			BoundaryValid = all(isfinite(Centre)) && Centre.y > 0.5f
+				&& all(isfinite(BP)) && all(isfinite(BM)) && all(isfinite(BQ)) && all(isfinite(BN))
+				&& BP.y > 0.5f && BM.y > 0.5f && BQ.y > 0.5f && BN.y > 0.5f
+				&& all(isfinite(BG)) && isfinite(BMagnitude) && BMagnitude > 1.0e-5f;
+			if (HasBoundaryRegions != 0u)
+			{
+				const uint Owner = BoundaryRegionIds.Load(int3(Pixel, 0));
+				BoundaryValid = BoundaryValid
+					&& BoundaryRegionIds.Load(int3(XP, 0)) == Owner
+					&& BoundaryRegionIds.Load(int3(XM, 0)) == Owner
+					&& BoundaryRegionIds.Load(int3(YP, 0)) == Owner
+					&& BoundaryRegionIds.Load(int3(YM, 0)) == Owner;
+				const float2 Forward = float2(BP.x, BQ.x) - Centre.x;
+				const float2 Backward = Centre.x - float2(BM.x, BN.x);
+				BoundaryValid = BoundaryValid && all(Forward * Backward >= 0.0f);
+			}
+			BoundaryDirection = BoundaryValid ? -BG / BMagnitude : float2(0.0f, 0.0f);
+			HasGeometry = HasGeometry || (isfinite(Centre.x) && Centre.y > 0.5f);
+		}
+		const float BW = max(0.0f, NativeBoundaryWeight);
+		const float SW = max(0.0f, NativeSlopeWeight);
+		// No boundary (Cliff Strata): use the height gradient for the geometry direction.
+		if (HasBoundary == 0u && HeightValid) Result += HeightDirection * max(BW, SW);
+		else
+		{
+			if (BoundaryValid) Result += BoundaryDirection * BW;
+			if (HeightValid) Result += HeightDirection * SW;
+		}
+		if (HasGeometry && NativeGravityWeight > 0.0f)
+		{
+			const float G = radians(NativeGravityAngle);
+			Result += float2(cos(G), sin(G)) * NativeGravityWeight;
+		}
+		const float RM = length(Result);
+		const bool SteerValid = all(isfinite(Result)) && isfinite(RM)
+			&& RM > 1.0e-5f && isfinite(NativeFlowAmount) && NativeFlowAmount > 0.0f;
+		const float A = radians(NativeFlowAngle);
+		const float2 Unit = SteerValid ? Result / RM : float2(0.0f, 0.0f);
+		const float2 Direction = float2(
+			Unit.x * cos(A) - Unit.y * sin(A),
+			Unit.x * sin(A) + Unit.y * cos(A));
+		OutFlow[Pixel] = float4(SteerValid ? Direction * NativeFlowAmount : float2(0.0f, 0.0f),
+			0.0f, SteerValid ? saturate(NativeFlowAmount) : 0.0f);
+		OutFlowValidity[Pixel] = SteerValid ? 1.0f : 0.0f;
+		return;
+	}
 	const float2 Direction = Valid ? -Slope / Magnitude : float2(0.0f, 0.0f);
 	OutFlow[Pixel] = float4(Direction, 0.0f, Valid ? 1.0f : 0.0f);
 	OutFlowValidity[Pixel] = Valid ? 1.0f : 0.0f;

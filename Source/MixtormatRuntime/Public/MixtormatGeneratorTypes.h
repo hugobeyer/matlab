@@ -1092,6 +1092,31 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 // switches on Type and a nested branch would be invisible to the compiler. Generators run in one
 // place -- a single call before the composite -- so there is exactly one switch to keep honest,
 // and the flat alternative would add a child-type value per generator forever.
+// Shared native-vector controls. Noise retains its independent authored Flow modes.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatNativeFlowSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "2.0"))
+	float Amount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (UIMin = "-180.0", UIMax = "180.0"))
+	float Angle = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float SlopeInfluence = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float BoundaryInfluence = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0"))
+	float GravityInfluence = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Native Flow", meta = (UIMin = "-180.0", UIMax = "180.0"))
+	float GravityAngle = -90.0f;
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatGenerator
 {
@@ -1102,6 +1127,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
 	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+
+	// Used by Cracks, Rock Formation, Pebbles and Cliff Strata only.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator|Native Flow")
+	FMixtormatNativeFlowSettings NativeFlow;
 
 	// Explicit inputs belong to this generator, not the layer-wide source-sampling placement.
 	// Height is the source module's completed signed output (after its tools and Height Scale).

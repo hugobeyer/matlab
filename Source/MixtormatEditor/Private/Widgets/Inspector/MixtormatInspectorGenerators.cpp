@@ -186,6 +186,52 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 		];
 }
 
+void SMixtormat::AddNativeFlowControls(const TSharedRef<SVerticalBox>& Cards)
+{
+	const auto Settings = [this]() -> FMixtormatNativeFlowSettings*
+	{
+		FMixtormatGenerator* G = GetSelectedGenerator();
+		return G && (G->Type == EMixtormatGeneratorType::Cracks
+			|| G->Type == EMixtormatGeneratorType::RockFormation
+			|| G->Type == EMixtormatGeneratorType::Pebbles
+			|| G->Type == EMixtormatGeneratorType::CliffStrata)
+			? &G->NativeFlow : nullptr;
+	};
+	const FMixtormatNativeFlowSettings Defaults;
+	const TSharedRef<SVerticalBox> Card = AddCard(Cards, LOCTEXT("NativeFlowCard", "NATIVE FLOW"));
+	AddSliderRow(Card, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatNativeFlowSettings>(
+			LOCTEXT("NativeFlowAmount", "Amount"), Settings, &FMixtormatNativeFlowSettings::Amount,
+			0.0, 2.0, Defaults.Amount, 0.01, LOCTEXT("NativeFlowAmountHint", "Native vector magnitude; zero disables its influence without affecting height or IDs.")),
+		MakeMemberSlider<FMixtormatNativeFlowSettings>(
+			LOCTEXT("NativeFlowAngle", "Tilt"), Settings, &FMixtormatNativeFlowSettings::Angle,
+			-180.0, 180.0, Defaults.Angle, 0.5, LOCTEXT("NativeFlowAngleHint", "Rotate the final directional field in degrees."))));
+	const FMixtormatGenerator* Selected = GetSelectedGenerator();
+	if (Selected && Selected->Type == EMixtormatGeneratorType::CliffStrata)
+	{
+		AddSliderRow(Card, MakeMemberSlider<FMixtormatNativeFlowSettings>(
+			LOCTEXT("NativeFlowSurface", "Surface"), Settings, &FMixtormatNativeFlowSettings::BoundaryInfluence,
+			0.0, 1.0, Defaults.BoundaryInfluence, 0.01, LOCTEXT("NativeFlowSurfaceHint", "Height-gradient contribution on generators without signed boundaries.")));
+	}
+	else
+	{
+		AddSliderRow(Card, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNativeFlowSettings>(
+				LOCTEXT("NativeFlowSlope", "Slope"), Settings, &FMixtormatNativeFlowSettings::SlopeInfluence,
+				0.0, 1.0, Defaults.SlopeInfluence, 0.01, LOCTEXT("NativeFlowSlopeHint", "Blend native signed-height downhill direction into the boundary flow.")),
+			MakeMemberSlider<FMixtormatNativeFlowSettings>(
+				LOCTEXT("NativeFlowBoundary", "Boundary"), Settings, &FMixtormatNativeFlowSettings::BoundaryInfluence,
+				0.0, 1.0, Defaults.BoundaryInfluence, 0.01, LOCTEXT("NativeFlowBoundaryHint", "Weight the generator's signed-boundary direction; invalid boundary stencils remain inert."))));
+	}
+	AddSliderRow(Card, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatNativeFlowSettings>(
+			LOCTEXT("NativeFlowGravity", "Gravity"), Settings, &FMixtormatNativeFlowSettings::GravityInfluence,
+			0.0, 1.0, Defaults.GravityInfluence, 0.01, LOCTEXT("NativeFlowGravityHint", "Mix an independent directional bias into the geometry-derived flow.")),
+		MakeMemberSlider<FMixtormatNativeFlowSettings>(
+			LOCTEXT("NativeFlowGravityAngle", "Gravity Angle"), Settings, &FMixtormatNativeFlowSettings::GravityAngle,
+			-180.0, 180.0, Defaults.GravityAngle, 0.5, LOCTEXT("NativeFlowGravityAngleHint", "Direction of the gravity bias, in degrees."))));
+}
+
 TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 {
 	const auto Crack = [this]() { return GetSelectedCracks(); };
@@ -298,6 +344,8 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 		MakeMemberSlider<FMixtormatCracks>(
 			LOCTEXT("CrackChamferEdge", "Edge Reach"), Crack, &FMixtormatCracks::CrackChamferEdge, 0.0, 0.5, 0.12, 0.001,
 			LOCTEXT("CrackChamferEdgeHint", "Wall-profile transition distance in cell widths; independent of crack width, with no built-in propagation noise."))));
+
+	AddNativeFlowControls(Cards);
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedCracks() ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -478,6 +526,8 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 			})),
 		LOCTEXT("PebbleFacetIdsHint", "One region ID per facet instead of per stone.")));
 
+	AddNativeFlowControls(Cards);
+
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedPebbles() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
@@ -570,6 +620,8 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffCavityAmount","Amount"),C,&FMixtormatCliffStrata::CavityIntensity,-4,4,.25,.01,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffBlockCavityWidth","Block"),C,&FMixtormatCliffStrata::BlockCavityWidth,.001,1,.02,.005,FText::GetEmpty()));
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffRowCavityWidth","Row"),C,&FMixtormatCliffStrata::RowCavityWidth,.001,1,.25,.005,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffCavityThreshold","Threshold"),C,&FMixtormatCliffStrata::CavityVoronoiThreshold,0,1,.5,.01,FText::GetEmpty()));
 	AddSliderRow(Panel,MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffCavityGain","Gain"),C,&FMixtormatCliffStrata::CavityVoronoiMaskGain,.001,1,.125,.005,FText::GetEmpty()));
+	AddNativeFlowControls(Cards);
+
 	return SNew(SBox).Visibility_Lambda([this](){return GetSelectedCliffStrata()?EVisibility::Visible:EVisibility::Collapsed;})[
 		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("CliffStrataHeading","CLIFF STRATA")).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
@@ -2326,6 +2378,8 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 			LOCTEXT("RockFacetAlign", "Align"), Rock, &FMixtormatRockFormation::RockFacetAlign, -1.0, 1.0, 0.75, 0.01,
 			LOCTEXT("RockFacetAlignHint", "Positive swings facet planes toward the lean's low side; negative toward its high side.")),
 		SNullWidget::NullWidget));
+
+	AddNativeFlowControls(Cards);
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })

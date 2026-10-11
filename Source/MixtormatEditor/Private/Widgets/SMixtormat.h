@@ -552,6 +552,7 @@ private:
 	FMixtormatCracks* GetSelectedCracks();
 	const FMixtormatCracks* GetSelectedCracks() const;
 	TSharedRef<SWidget> BuildCracksControls();
+	void AddNativeFlowControls(const TSharedRef<SVerticalBox>& Cards);
 	FMixtormatRockFormation* GetSelectedRockFormation();
 	const FMixtormatRockFormation* GetSelectedRockFormation() const;
 	TSharedRef<SWidget> BuildRockFormationControls();

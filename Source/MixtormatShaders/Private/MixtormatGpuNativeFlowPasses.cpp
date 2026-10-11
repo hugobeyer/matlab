@@ -25,6 +25,15 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SignedField)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
 			SHADER_PARAMETER(uint32, HasBoundaryRegions)
+			SHADER_PARAMETER(uint32, UseSteering)
+			SHADER_PARAMETER(uint32, HasHeight)
+			SHADER_PARAMETER(uint32, HasBoundary)
+			SHADER_PARAMETER(float, NativeFlowAmount)
+			SHADER_PARAMETER(float, NativeFlowAngle)
+			SHADER_PARAMETER(float, NativeSlopeWeight)
+			SHADER_PARAMETER(float, NativeBoundaryWeight)
+			SHADER_PARAMETER(float, NativeGravityWeight)
+			SHADER_PARAMETER(float, NativeGravityAngle)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BoundaryRegionIds)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
@@ -42,7 +51,8 @@ namespace
 
 FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
 	const int32 SourceChildIndex, FRDGTextureRef Source, const ENativeFlowSource SourceKind,
-	FRDGTextureRef BoundaryRegionIds)
+	FRDGTextureRef BoundaryRegionIds, const FNativeFlowRenderData* Steering,
+	FRDGTextureRef NativeHeight)
 {
 	const FIntPoint Size = Ctx.Request.Resolution;
 	const bool bSignedHeight = SourceKind == ENativeFlowSource::SignedHeight;
@@ -51,7 +61,9 @@ FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRen
 	if (!Source || Source->Desc.Extent != Size || (!bSignedHeight && !bSignedBoundary)
 		|| (Source->Desc.Format != PF_R32_FLOAT && !bPackedBoundary)
 		|| (BoundaryRegionIds && (!bPackedBoundary || BoundaryRegionIds->Desc.Extent != Size
-			|| BoundaryRegionIds->Desc.Format != PF_R32_UINT)))
+			|| BoundaryRegionIds->Desc.Format != PF_R32_UINT))
+		|| (Steering && (!NativeHeight || NativeHeight->Desc.Format != PF_R32_FLOAT
+			|| NativeHeight->Desc.Extent != Size)))
 	{
 		return FPublishedField{EMixtormatPublishedFieldKind::Flow};
 	}
@@ -68,11 +80,22 @@ FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRen
 	TShaderMapRef<FMixtormatNativeFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatNativeFlowCS::FParameters>();
 	P->OutputSize = Size;
-	P->SignedField = bPackedBoundary ? nullptr : Source;
-	P->BoundaryField = bPackedBoundary ? Source : nullptr;
+	P->SignedField = NativeHeight ? NativeHeight
+		: (bPackedBoundary ? Ctx.EmptyDriverSignal : Source);
+	P->BoundaryField = bPackedBoundary ? Source : Ctx.EmptyPatternUV;
 	P->HasBoundaryRegions = BoundaryRegionIds ? 1u : 0u;
-	P->BoundaryRegionIds = bPackedBoundary
-		? (BoundaryRegionIds ? BoundaryRegionIds : Ctx.EmptyRegionIds) : nullptr;
+	P->BoundaryRegionIds = BoundaryRegionIds ? BoundaryRegionIds : Ctx.EmptyRegionIds;
+	P->UseSteering = Steering ? 1u : 0u;
+	P->HasHeight = (NativeHeight || !bPackedBoundary) ? 1u : 0u;
+	P->HasBoundary = bPackedBoundary ? 1u : 0u;
+	const FNativeFlowRenderData Defaults;
+	const FNativeFlowRenderData& Params = Steering ? *Steering : Defaults;
+	P->NativeFlowAmount = Params.Amount;
+	P->NativeFlowAngle = Params.Angle;
+	P->NativeSlopeWeight = Params.SlopeInfluence;
+	P->NativeBoundaryWeight = Params.BoundaryInfluence;
+	P->NativeGravityWeight = Params.GravityInfluence;
+	P->NativeGravityAngle = Params.GravityAngle;
 	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
 	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
 	ClearUnusedGraphResources(Shader, P);

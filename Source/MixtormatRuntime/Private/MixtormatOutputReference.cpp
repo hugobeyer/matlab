@@ -69,7 +69,10 @@ namespace MixtormatOutputReferences
 				&& OutputName == FName(TEXT("Value"))
 				&& NoiseValueKind(Generator.Noise.NoiseType) == EMixtormatPublishedFieldKind::ScalarSigned;
 		case EMixtormatPublishedFieldKind::Flow:
-			if (Generator.Type == EMixtormatGeneratorType::Cracks)
+			if (Generator.Type == EMixtormatGeneratorType::Cracks
+				|| Generator.Type == EMixtormatGeneratorType::RockFormation
+				|| Generator.Type == EMixtormatGeneratorType::Pebbles
+				|| Generator.Type == EMixtormatGeneratorType::CliffStrata)
 			{
 				return OutputName == FName(TEXT("FlowDirection"));
 			}

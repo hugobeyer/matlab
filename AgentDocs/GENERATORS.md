@@ -46,6 +46,24 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
   source selection/public output integrations and new inspector controls remain later stages;
   boundary support here is an explicit derivation primitive, not SDF steering for Sculpt.
 
+## Universal native Flow integration
+
+Cracks, Rock Formation and Pebbles automatically derive a native `FlowDirection`
+from their existing packed signed boundary, with local validity/Region ID guards.
+Cliff Strata derives from its signed native height because its internal vector output
+does not satisfy the canonical Flow contract. All four publish the typed Flow
+before post-generation Behaviors and expose the standard output-preview control.
+
+`FMixtormatGenerator::NativeFlow` holds shared Amount, Angle, Slope Influence,
+Boundary Influence, Gravity Influence and Gravity Angle. Gather validates these
+settings independently of the cached generator solve; the shared Flow pass steers
+boundary/height directions without mutating Height, IDs or masks. Where no signed
+boundary exists, the geometry weight applies to signed-height gradient instead.
+Additional Flow-producing children still accumulate in authored order.
+
+Noise retains its own Flow modes, `GeneratedFlow`, diagnostic and controls, and
+Strata Carver is excluded from this integration.
+
 ## Cracks native Flow (Stage 2)
 
 - Cracks automatically publishes `FlowDirection` from `FGeneratorBundle::BoundaryField` via

@@ -935,12 +935,23 @@ namespace MixtormatGpuCompositor
 		uint64 FieldKey = 0;
 	};
 
+	struct FNativeFlowRenderData
+	{
+		float Amount = 1.0f;
+		float Angle = 0.0f;
+		float SlopeInfluence = 0.0f;
+		float BoundaryInfluence = 1.0f;
+		float GravityInfluence = 0.0f;
+		float GravityAngle = -90.0f;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
 		bool bNormalizeHeight = true;
 		float HeightScale = 1.0f;
 		float HeightBias = 0.0f;
+		FNativeFlowRenderData NativeFlow;
 		FStrataCarverRenderData StrataCarver;
 		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;
