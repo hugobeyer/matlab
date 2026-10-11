@@ -2788,7 +2788,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 			NoiseTypes.Add(static_cast<EMixtormatNoiseType>(Value));
 		}
 	}
-	const auto NoiseWidgetIndex = [Noise, NoiseTypes]()
+	const auto NoiseWidgetIndex = [Noise, NoiseTypes]() -> int32
 	{
 		const FMixtormatNoise* N = Noise();
 		if (!N) { return INDEX_NONE; }
