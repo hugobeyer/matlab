@@ -1995,18 +1995,7 @@ namespace
 				}
 				continue;
 			}
-			// A Deform directly beneath a Flow Field consumes that parent's completed
-			// field, while all unrelated nested behaviors stay operation-local.
-			const bool bNestedFlowDeform = Child.Behavior.Type == EMixtormatBehaviorType::Deform
-				&& Algo::AnyOf(Layer.Children, [&](const FChildRenderData& Parent)
-				{
-					return Parent.Type == EMixtormatLayerChildType::Behavior
-						&& Parent.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
-						&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
-						&& Parent.Behavior.GeneratorChildIndex == Owner.SourceChildIndex
-						&& Parent.SourceChildIndex < Child.SourceChildIndex;
-				});
-			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex && !bNestedFlowDeform)
+			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex)
 			{
 				continue;
 			}
@@ -2085,38 +2074,9 @@ namespace
 			const bool bMixDriver = Child.Behavior.Flow.SettingsDrivers[8].bEnabled;
 			const bool bWarp = Child.Behavior.Type == EMixtormatBehaviorType::Warp;
 			const bool bStandardNeeded = !bWarp || Child.Behavior.Flow.ModeMix < 1.0f || bMixDriver;
-			// A Standard Deform directly beneath Flow follows that exact parent field,
-			// not Noise's intrinsic/accumulated flow or an implicit standalone solve.
-			if (false && bNestedFlowDeform && !Child.Behavior.bUseTracedFlow)
-			{
-				const FPublishedField* ParentFlow = Ctx.PublishedFieldOutputs.Find(PublishedKey(
-					Layer, Child.ScopeOwnerSourceChildIndex, FName(TEXT("FlowDirection"))));
-				if (ParentFlow && ParentFlow->IsComplete()
-					&& ParentFlow->Kind == EMixtormatPublishedFieldKind::Flow
-					&& ParentFlow->Texture->Desc.Extent == Size)
-				{
-					FOutputReferenceRenderData AutoFlow;
-					AutoFlow.FlowAmount = 1.0f;
-					AutoFlow.FlowTraceLength = Child.Behavior.Flow.StandardTraceLength;
-					AutoFlow.FlowSteps = Child.Behavior.Flow.StandardTraceSteps;
-					Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, *ParentFlow,
-						LayerCtx.LayerIndex, Child.SourceChildIndex, nullptr, true);
-					const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-					FRDGTextureRef Gate = bHasMask
-						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-						: LayerCtx.CombinedMask;
-					if (Coordinates)
-					{
-						Coordinates = ScaleBehaviorUV(Ctx, Coordinates, Child.Behavior.Strength,
-							Gate, bHasMask, Influence, bUseInfluence,
-							LayerCtx.LayerIndex, Child.SourceChildIndex,
-							Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
-					}
-				}
-			}
 			// Scoped Flow inherits automatically from preceding Flow siblings.
 			// No direction-field picker is consulted for this execution path.
-			else if (bStandardNeeded && WorkingFlowValidity
+			if (bStandardNeeded && WorkingFlowValidity
 				&& (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
 					|| (Child.Behavior.Type == EMixtormatBehaviorType::Deform
 						&& Child.Behavior.bUseTracedFlow))
