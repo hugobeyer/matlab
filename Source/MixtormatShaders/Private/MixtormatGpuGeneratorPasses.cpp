@@ -561,113 +561,6 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 }
 
 // Generator flow tools scoped under a Rock Formation. One parameter struct for every stage;
-// ClearUnusedGraphResources drops what a stage does not read. See MixtormatGeneratorFlow.usf.
-class FMixtormatGeneratorFlowCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorFlowCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorFlowCS, FGlobalShader);
-
-	// 0 seed, 1 jump flood, 2 resolve, 3 apply, 4 direction preview, 5 UV grid preview,
-	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
-	// 7 one axis of the direction blur, 8 trace a published field into destination UVs,
-	// 9 texture-space gravity with local height or boundary steering.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 12);
-	using FPermutationDomain = TShaderPermutationDomain<FStage>;
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(FIntPoint, SolveSize)
-		SHADER_PARAMETER(int32, JumpStep)
-		SHADER_PARAMETER(uint32, Source)
-		SHADER_PARAMETER(float, Tangent)
-		SHADER_PARAMETER(float, Angle)
-		SHADER_PARAMETER(float, GravitySurfaceFollow)
-		SHADER_PARAMETER(float, GravityDeflection)
-		SHADER_PARAMETER(float, Bend)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(int32, Radius)
-		SHADER_PARAMETER(float, SlopeFeather)
-		SHADER_PARAMETER(float, Smooth)
-		SHADER_PARAMETER(FIntPoint, BlurAxis)
-		SHADER_PARAMETER(float, Reach)
-		SHADER_PARAMETER(float, Feather)
-		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(float, OffsetAlong)
-		SHADER_PARAMETER(float, OffsetAcross)
-		SHADER_PARAMETER(uint32, HasMask)
-		SHADER_PARAMETER(uint32, HasCoverage)
-		SHADER_PARAMETER(uint32, GeneratorLayer)
-		SHADER_PARAMETER(uint32, Mode)
-		SHADER_PARAMETER(uint32, UseInheritedFlow)
-		SHADER_PARAMETER(float, ShapeOffset)
-		SHADER_PARAMETER(float, Bulge)
-		SHADER_PARAMETER(float, TraceLength)
-		SHADER_PARAMETER(int32, Steps)
-		SHADER_PARAMETER(float, WarpStrength)
-		SHADER_PARAMETER(float, BehaviorStrength)
-		SHADER_PARAMETER(uint32, UseInfluence)
-		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
-		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsA, [8])
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowSettingsDriverParamsB, [8])
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal0)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal1)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal2)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal3)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal4)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal5)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal6)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowSettingsDriverSignal7)
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal1)
-		SHADER_PARAMETER(uint32, CarveMode)
-		SHADER_PARAMETER(float, Depth)
-		SHADER_PARAMETER(float, Width)
-		SHADER_PARAMETER(float, Falloff)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RockHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedData)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, JumpIn)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowSmooth)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, WarpedUV)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarBoundary)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Coverage)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSeedData)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutJump)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlowField)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutInfluence)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValidity)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCarveMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutWarpedUV)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutBoundary)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCoverage)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatGeneratorFlowCS,
-	"/Plugin/Mixtormat/Private/MixtormatGeneratorFlow.usf",
-	"MainCS",
-	SF_Compute);
-
-
 class FMixtormatGeneratorBundleCS final : public FGlobalShader
 {
 public:
@@ -1056,6 +949,25 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatCanonicalFlowTraceCS,
 	"/Plugin/Mixtormat/Private/MixtormatFlowTrace.usf", "MainCS", SF_Compute);
 
+class FMixtormatFlowPreviewCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFlowPreviewCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowPreviewCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatFlowPreviewCS,
+	"/Plugin/Mixtormat/Private/MixtormatFlowPreview.usf", "MainCS", SF_Compute);
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -1079,84 +991,39 @@ namespace
 		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.OutputReference.FlowUV"));
-
-		if (bCanonical)
-		{
-			auto* P = GraphBuilder.AllocParameters<FMixtormatCanonicalFlowTraceCS::FParameters>();
-			P->OutputSize = Size;
-			P->TraceLength = Reference.FlowTraceLength;
-			P->WarpStrength = Reference.FlowAmount;
-			P->Steps = FMath::Clamp(Reference.FlowSteps, 1, 64);
-			FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
-			for (int32 Slot = 0; Slot < 2; ++Slot)
-			{
-				const FScalarDriverRenderData* Driver = Drivers ? &Drivers[Slot] : nullptr;
-				FRDGTextureRef* Snapshot = Driver && Driver->bEnabled
-					? Ctx.DriverSnapshots.Find(Driver->SourceLayerId) : nullptr;
-				const bool bResolved = Snapshot != nullptr;
-				Signals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
-				P->FlowDriverParamsA[Slot] = FVector4f(
-					bResolved ? 1.0f : 0.0f, Driver && Driver->bInvert ? 1.0f : 0.0f,
-					Driver ? Driver->InputMin : 0.0f, Driver ? Driver->InputMax : 1.0f);
-				P->FlowDriverParamsB[Slot] = FVector4f(
-					Driver ? Driver->OutputMin : 0.0f, Driver ? Driver->OutputMax : 1.0f,
-					Driver ? Driver->Amount : 0.0f,
-					Driver ? static_cast<float>(Driver->Combine) : 0.0f);
-			}
-			P->FlowDriverSignal0 = Signals[0];
-			P->FlowDriverSignal1 = Signals[1];
-			P->FlowField = Field.Texture;
-			P->FlowValidity = Field.Validity ? Field.Validity : Ctx.EmptyDriverSignal;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
-			TShaderMapRef<FMixtormatCanonicalFlowTraceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.CanonicalFlow.Trace.L%d.C%d", LayerIndex, ChildIndex),
-				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
-					FMath::DivideAndRoundUp(Size.Y, 8), 1));
-			return Coordinates;
-		}
-		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
-		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		auto* P = GraphBuilder.AllocParameters<FMixtormatCanonicalFlowTraceCS::FParameters>();
 		P->OutputSize = Size;
 		P->TraceLength = Reference.FlowTraceLength;
 		P->WarpStrength = Reference.FlowAmount;
-		P->Steps = Reference.FlowSteps;
+		P->Steps = FMath::Clamp(Reference.FlowSteps, 1, 64);
 		FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
 		for (int32 Slot = 0; Slot < 2; ++Slot)
 		{
 			const FScalarDriverRenderData* Driver = Drivers ? &Drivers[Slot] : nullptr;
-			FRDGTextureRef Signal = nullptr;
-			if (Driver && Driver->bEnabled)
-			{
-				if (FRDGTextureRef* Found = Ctx.DriverSnapshots.Find(Driver->SourceLayerId))
-				{
-					Signal = *Found;
-				}
-			}
-			const bool bResolved = Signal != nullptr;
-			Signals[Slot] = bResolved ? Signal : Ctx.EmptyDriverSignal;
-			P->FlowDriverParamsA[Slot] = FVector4f(
-				bResolved ? 1.0f : 0.0f, Driver && Driver->bInvert ? 1.0f : 0.0f,
+			FRDGTextureRef* Snapshot = Driver && Driver->bEnabled
+				? Ctx.DriverSnapshots.Find(Driver->SourceLayerId) : nullptr;
+			const bool bResolved = Snapshot != nullptr;
+			Signals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+			P->FlowDriverParamsA[Slot] = FVector4f(bResolved ? 1.0f : 0.0f,
+				Driver && Driver->bInvert ? 1.0f : 0.0f,
 				Driver ? Driver->InputMin : 0.0f, Driver ? Driver->InputMax : 1.0f);
 			P->FlowDriverParamsB[Slot] = FVector4f(
 				Driver ? Driver->OutputMin : 0.0f, Driver ? Driver->OutputMax : 1.0f,
-				Driver ? Driver->Amount : 0.0f, Driver ? static_cast<float>(Driver->Combine) : 0.0f);
+				Driver ? Driver->Amount : 0.0f,
+				Driver ? static_cast<float>(Driver->Combine) : 0.0f);
 		}
 		P->FlowDriverSignal0 = Signals[0];
 		P->FlowDriverSignal1 = Signals[1];
 		P->FlowField = Field.Texture;
-		P->FlowSmooth = Field.FlowSmooth;
-		P->FlowValidity = Field.Validity;
+		P->FlowValidity = Field.Validity ? Field.Validity : Ctx.EmptyDriverSignal;
 		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 		P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
+		TShaderMapRef<FMixtormatCanonicalFlowTraceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.OutputReference.Flow.L%d.C%d", LayerIndex, ChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+			RDG_EVENT_NAME("Mixtormat.CanonicalFlow.Trace.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		return Coordinates;
 	}
 
@@ -1808,13 +1675,6 @@ namespace
 		return Current;
 	}
 
-	bool IsFlowToolChild(const FChildRenderData& Candidate, int32 OwnerSourceChildIndex);
-	FRDGTextureRef AddBehaviorFlowFieldPasses(FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
-		int32 OwnerSourceChildIndex, FRDGTextureRef BoundaryField, FRDGTextureRef RockField,
-		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex,
-		FRDGTextureRef* OutWarpCoordinates = nullptr);
-
 	FPublishedField AddFlowFeatherPasses(FMixtormatComposeContext& Ctx,
 		const FPublishedField& Source, const FBehaviorRenderData& Behavior,
 		FRDGTextureRef Mask, const bool bHasMask, const int32 LayerIndex, const int32 ChildIndex)
@@ -2133,14 +1993,6 @@ namespace
 				continue;
 			}
 			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
-				&& IsFlowToolChild(Child, Owner.SourceChildIndex))
-			{
-				Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
-					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
-					Module.Coverage, &Module, Child.SourceChildIndex);
-				continue;
-			}
-			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
 				&& Child.Behavior.Type != EMixtormatBehaviorType::Push
 				&& Child.Behavior.Type != EMixtormatBehaviorType::Carve
 				&& Child.Behavior.Type != EMixtormatBehaviorType::Deform) { continue; }
@@ -2217,7 +2069,7 @@ namespace
 			const bool bStandardNeeded = !bWarp || Child.Behavior.Flow.ModeMix < 1.0f || bMixDriver;
 			// A Standard Deform directly beneath Flow follows that exact parent field,
 			// not Noise's intrinsic/accumulated flow or an implicit standalone solve.
-			if (bNestedFlowDeform && !Child.Behavior.bUseTracedFlow)
+			if (false && bNestedFlowDeform && !Child.Behavior.bUseTracedFlow)
 			{
 				const FPublishedField* ParentFlow = Ctx.PublishedFieldOutputs.Find(PublishedKey(
 					Layer, Child.ScopeOwnerSourceChildIndex, FName(TEXT("FlowDirection"))));
@@ -2345,34 +2197,6 @@ namespace
 						Child.Behavior.Strength, Gate, bHasMask, Influence, bUseInfluence,
 						LayerCtx.LayerIndex, Child.SourceChildIndex,
 						Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
-				}
-			}
-			// Directly nested Flow Fields transport this operation's input coordinates.
-			// A field without a mask uses its own generator-derived flow and full scope.
-			if (Child.Behavior.Type == EMixtormatBehaviorType::Warp
-				|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
-			{
-				for (const FChildRenderData& Nested : Layer.Children)
-				{
-					if (Nested.Type != EMixtormatLayerChildType::Behavior
-						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
-						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
-						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
-					FRDGTextureRef UnusedCoverage = nullptr;
-					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
-						Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
-						UnusedCoverage, nullptr, Nested.SourceChildIndex);
-					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
-						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
-					if (Warped && Warped->IsComplete()
-						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
-						&& Warped->Texture->Desc.Extent == Size
-						&& Warped->Texture->Desc.Format == PF_G32R32F)
-					{
-						Coordinates = Coordinates
-							? RemapBundleField(Ctx, Coordinates, Warped->Texture, 3)
-							: Warped->Texture;
-					}
 				}
 			}
 			if (bWarp)
@@ -2625,565 +2449,6 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	};
 	static_assert(sizeof(FRockLeafStride) == 68, "Rock leaf stride must match FRockLeaf in HLSL");
 	static constexpr int32 RockMaxVertices = 24;
-
-	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
-	{
-		return Candidate.Type == EMixtormatLayerChildType::Behavior
-			&& Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
-			&& Candidate.Behavior.GeneratorChildIndex == OwnerSourceChildIndex;
-	}
-
-	bool IsPreviewingChild(const FRenderRequest& Request, const int32 LayerIndex, const int32 ChildIndex)
-	{
-		return Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput
-			&& Request.DebugSettings.LayerIndex == LayerIndex
-			&& Request.DebugSettings.ChildIndex == ChildIndex;
-	}
-
-	// An item that would leave the height unchanged. Still solved while its preview is up.
-	bool IsNeutralFlowTool(const FBehaviorRenderData& Behavior)
-	{
-		const FBehaviorFlowRenderData& Flow = Behavior.Flow;
-		if (Flow.FlowAmount == 0.0f && !Flow.SettingsDrivers[0].bEnabled) { return true; }
-		switch (Behavior.Type)
-		{
-		case EMixtormatBehaviorType::FlowField:
-			return false;
-		case EMixtormatBehaviorType::Deform:
-			return Flow.ShapeOffset == 0.0f && Flow.Bulge == 0.0f;
-		case EMixtormatBehaviorType::Warp:
-			return (Flow.TraceLength == 0.0f && !Flow.SettingsDrivers[1].bEnabled)
-				|| (Flow.WarpStrength == 0.0f && !Flow.SettingsDrivers[2].bEnabled);
-		case EMixtormatBehaviorType::Carve:
-			return Flow.TraceLength == 0.0f || Flow.Depth == 0.0f;
-		default:
-			return true;
-		}
-	}
-
-	bool IsFlowFieldDemanded(const FMixtormatComposeContext& Ctx,
-		const FLayerRenderData& Layer, const int32 ChildIndex)
-	{
-		return Ctx.PublishedFieldDemand.Contains(
-			PublishedKey(Layer, ChildIndex, FName(TEXT("FlowDirection"))))
-			|| Ctx.PublishedFieldDemand.Contains(
-				PublishedKey(Layer, ChildIndex, FName(TEXT("WarpedUV"))));
-	}
-
-	// Pebbles publishes a scalar signed distance with a 1e9 no-hit sentinel; the seed stage
-	// reads a (distance, outline-sampled) pair. One cheap pass, never written into the cache.
-	FRDGTextureRef PackScalarBoundary(FMixtormatComposeContext& Ctx, FRDGTextureRef Scalar)
-	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Packed = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.GeneratorFlow.Boundary"));
-		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(6);
-		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-		P->OutputSize = Size;
-		P->ScalarBoundary = Scalar;
-		P->OutBoundary = GraphBuilder.CreateUAV(Packed);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorFlow.PackBoundary"),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-		return Packed;
-	}
-
-	// Flow Fields and traced Behaviors under their owning generator; no Effect execution.
-	//
-	// Each item solves its own direction field (its Source, Radius and bend differ) against the
-	// height the previous item left, then transforms that height. RockField is the owner's cached
-	// height and is never written: every result is a new texture, so the node cache and the
-	// per-layer memo keep the undeformed field. The boundary field is the owner's original one --
-	// a Shape Deform above does not re-derive it. Published masks/IDs stay undeformed: they are
-	// published in the ID phase, before this runs.
-	//
-	// InOutCoverage, when the owner has one (Pebbles), is transformed with the height.
-	// Generator modules retain it for the named PebbleCoverage output, not height blending.
-	FRDGTextureRef AddBehaviorFlowFieldPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer,
-		const int32 OwnerSourceChildIndex,
-		FRDGTextureRef BoundaryField,
-		FRDGTextureRef RockField,
-		FRDGTextureRef& InOutCoverage,
-		FGeneratorBundle* Bundle,
-		const int32 OnlyBehaviorChildIndex,
-		FRDGTextureRef* OutWarpCoordinates)
-	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FRenderRequest& Request = Ctx.Request;
-		const int32 LayerIndex = LayerCtx.LayerIndex;
-		const FIntPoint Size = Request.Resolution;
-		// The capped solve grid; the resolve refines distance at full res.
-		const FIntPoint SolveSize = DistanceSolveResolution(Size);
-		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-		const FIntVector SolveGroups(
-			FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
-		FRHISamplerState* const Sampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-
-		const auto MakeTexture = [&GraphBuilder](const FIntPoint Extent, const EPixelFormat Format, const TCHAR* Name)
-		{
-			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-				Extent, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-		};
-		const auto StageShader = [](const int32 Stage)
-		{
-			FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-			Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(Stage);
-			return TShaderMapRef<FMixtormatGeneratorFlowCS>(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		};
-
-		FRDGTextureRef Current = RockField;
-		for (const FChildRenderData& FlowChild : Layer.Children)
-		{
-			if (!IsFlowToolChild(FlowChild, OwnerSourceChildIndex)
-				|| (OnlyBehaviorChildIndex != INDEX_NONE
-					&& FlowChild.SourceChildIndex != OnlyBehaviorChildIndex))
-			{
-				continue;
-			}
-			const FBehaviorFlowRenderData& Flow = FlowChild.Behavior.Flow;
-			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
-			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
-			const FPublishedField* InheritedFlow = nullptr;
-			FRDGTextureRef InheritedInfluence = nullptr;
-			uint32 InheritedFlowSource = Flow.FlowSource;
-			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform)
-			{
-				const FChildRenderData* ParentFlow = Layer.Children.FindByPredicate(
-					[&](const FChildRenderData& Parent)
-					{
-						return Parent.Type == EMixtormatLayerChildType::Behavior
-							&& Parent.SourceChildIndex == FlowChild.ScopeOwnerSourceChildIndex
-							&& Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
-							&& Parent.Behavior.GeneratorChildIndex == OwnerSourceChildIndex
-							&& Parent.SourceChildIndex < FlowChild.SourceChildIndex;
-					});
-				if (ParentFlow)
-				{
-					InheritedFlowSource = ParentFlow->Behavior.Flow.FlowSource;
-					InheritedFlow = Ctx.PublishedFieldOutputs.Find(PublishedKey(
-						Layer, FlowChild.ScopeOwnerSourceChildIndex, FName(TEXT("FlowDirection"))));
-					const FPublishedField* PublishedInfluence = Ctx.PublishedFieldOutputs.Find(
-						PublishedKey(Layer, FlowChild.ScopeOwnerSourceChildIndex, FName(TEXT("Influence"))));
-					if (!InheritedFlow || !InheritedFlow->IsComplete()
-						|| InheritedFlow->Kind != EMixtormatPublishedFieldKind::Flow
-						|| InheritedFlow->Texture->Desc.Extent != Size
-						|| !PublishedInfluence || !PublishedInfluence->IsComplete()
-						|| PublishedInfluence->Kind != EMixtormatPublishedFieldKind::Scalar01
-						|| PublishedInfluence->Texture->Desc.Extent != Size)
-					{
-						continue; // Never silently replace a missing parent with a new solve.
-					}
-					InheritedInfluence = PublishedInfluence->Texture;
-				}
-			}
-			const bool bInheritedFlow = InheritedFlow != nullptr;
-			// Invalid or mismatched sources remain neutral, never bound into a typed shader slot.
-			if (!Current || Current->Desc.Extent != Size
-				|| Current->Desc.Format != PF_R32_FLOAT) { continue; }
-			if (!bInheritedFlow
-				&& Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)
-				&& (!BoundaryField || BoundaryField->Desc.Extent != Size
-					|| BoundaryField->Desc.Format != PF_G32R32F)) { continue; }
-			const int32 FlowIndex = FlowChild.SourceChildIndex;
-			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
-			const bool bNeutral = IsNeutralFlowTool(FlowChild.Behavior);
-			if (bNeutral && !bPreviewing && !IsFlowFieldDemanded(Ctx, Layer, FlowIndex))
-			{
-				continue;
-			}
-
-			// Independent scope, as under Strata Carver: the item's mask says where this item
-			// acts, not where the layer is.
-			const bool bHasMask = HasScopedGeneratorMasks(Layer, FlowIndex);
-			FRDGTextureRef Mask = bHasMask
-				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, FlowIndex, true)
-				: Current;
-			FRDGTextureRef BehaviorInfluence = Ctx.EmptyDriverSignal;
-			const bool bUseBehaviorInfluence = !bFieldProducer && FlowChild.Behavior.bHasInfluence;
-			if (bUseBehaviorInfluence)
-			{
-				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(FlowChild.Behavior.Influence.Source);
-				if (!Field || !Field->IsComplete()
-					|| Field->Kind != EMixtormatPublishedFieldKind::Scalar01
-					|| Field->Texture->Desc.Extent != Size
-					|| (Field->Texture->Desc.Format != PF_R16F
-						&& Field->Texture->Desc.Format != PF_R32_FLOAT))
-				{
-					continue;
-				}
-				BehaviorInfluence = Field->Texture;
-			}
-
-			const auto Fill = [&](FMixtormatGeneratorFlowCS::FParameters* P)
-			{
-				P->OutputSize = Size;
-				P->SolveSize = SolveSize;
-				P->JumpStep = 1;
-				P->Source = bInheritedFlow ? InheritedFlowSource : Flow.FlowSource;
-				P->Tangent = Flow.FlowTangent;
-				P->Angle = Flow.FlowAngle;
-				P->GravitySurfaceFollow = Flow.GravitySurfaceFollow;
-				P->GravityDeflection = Flow.GravityDeflection;
-				P->Bend = Flow.FlowBend;
-				P->Seed = Flow.FlowSeed;
-				P->Radius = Flow.FlowRadius;
-				P->SlopeFeather = FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp
-					? FlowChild.Behavior.SlopeFeather : 0.0f;
-				P->Smooth = Flow.FlowSmooth;
-				P->BlurAxis = FIntPoint(1, 0);
-				P->Reach = Flow.Reach;
-				P->Feather = Flow.Feather;
-				P->Amount = Flow.FlowAmount;
-				P->OffsetAlong = Flow.FlowOffsetAlong;
-				P->OffsetAcross = Flow.FlowOffsetAcross;
-				P->HasMask = bHasMask ? 1u : 0u;
-				P->UseInheritedFlow = bInheritedFlow ? 1u : 0u;
-				P->Mode = FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve ? 2u
-					: FlowChild.Behavior.Type == EMixtormatBehaviorType::Deform ? 0u
-					: bGravity ? 3u : 1u;
-				const float BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
-				P->ShapeOffset = Flow.ShapeOffset;
-				P->Bulge = Flow.Bulge;
-				P->TraceLength = Flow.TraceLength;
-				P->Steps = Flow.TraceSteps;
-				P->WarpStrength = Flow.WarpStrength;
-				P->BehaviorStrength = bFieldProducer ? 1.0f : FlowChild.Behavior.Strength;
-				P->UseInfluence = bUseBehaviorInfluence ? 1u : 0u;
-				P->InfluenceField = BehaviorInfluence;
-				FRDGTextureRef DriverSignals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
-				for (int32 Slot = 0; Slot < 2; ++Slot)
-				{
-					const FScalarDriverRenderData& Driver = FlowChild.Behavior.ScalarDrivers[Slot];
-					FRDGTextureRef* Snapshot = Driver.bEnabled
-						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
-					const bool bResolved = Snapshot != nullptr;
-					DriverSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
-					P->BehaviorDriverParamsA[Slot] = FVector4f(
-						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
-						Driver.InputMin, Driver.InputMax);
-					P->BehaviorDriverParamsB[Slot] = FVector4f(
-						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
-						static_cast<float>(Driver.Combine));
-				}
-				P->BehaviorDriverSignal0 = DriverSignals[0];
-				P->BehaviorDriverSignal1 = DriverSignals[1];
-				FRDGTextureRef SettingsSignals[8] = {
-					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal,
-					Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal
-				};
-				for (int32 Slot = 0; Slot < 8; ++Slot)
-				{
-					const FScalarDriverRenderData& Driver = Flow.SettingsDrivers[Slot];
-					FRDGTextureRef* Snapshot = Driver.bEnabled
-						? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
-					const bool bResolved = Snapshot != nullptr;
-					SettingsSignals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
-					P->FlowSettingsDriverParamsA[Slot] = FVector4f(
-						bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
-						Driver.InputMin, Driver.InputMax);
-					P->FlowSettingsDriverParamsB[Slot] = FVector4f(
-						Driver.OutputMin, Driver.OutputMax, Driver.Amount,
-						static_cast<float>(Driver.Combine));
-				}
-				P->FlowSettingsDriverSignal0 = SettingsSignals[0];
-				P->FlowSettingsDriverSignal1 = SettingsSignals[1];
-				P->FlowSettingsDriverSignal2 = SettingsSignals[2];
-				P->FlowSettingsDriverSignal3 = SettingsSignals[3];
-				P->FlowSettingsDriverSignal4 = SettingsSignals[4];
-				P->FlowSettingsDriverSignal5 = SettingsSignals[5];
-				P->FlowSettingsDriverSignal6 = SettingsSignals[6];
-				P->FlowSettingsDriverSignal7 = SettingsSignals[7];
-				P->CarveMode = Flow.CarveMode;
-				P->Depth = Flow.Depth;
-				P->Width = Flow.Width;
-				P->Falloff = Flow.Falloff;
-				P->LinearWrapSampler = Sampler;
-				P->RockHeight = Current;
-				P->BoundaryField = BoundaryField ? BoundaryField : Ctx.EmptyPatternUV;
-				P->FlowMask = Mask;
-				P->HasCoverage = InOutCoverage ? 1u : 0u;
-				P->GeneratorLayer = Bundle ? 1u : 0u;
-				P->Coverage = InOutCoverage ? InOutCoverage : Current;
-			};
-
-			// Gravity + Height is evaluated directly at full resolution, including flat texels.
-			FRDGTextureRef SeedData = Ctx.EmptyPatternUV;
-			FRDGTextureRef JumpResult = Ctx.EmptyPatternUV;
-			if (!bInheritedFlow && (!bGravity
-				|| Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)))
-			{
-				SeedData = MakeTexture(SolveSize, PF_A32B32G32R32F, TEXT("Mixtormat.GeneratorFlow.Seeds"));
-				FRDGTextureRef Jump[2] = {
-					MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpA")),
-					MakeTexture(SolveSize, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.JumpB"))};
-				{
-					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(0);
-					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-					Fill(P);
-					P->OutSeedData = GraphBuilder.CreateUAV(SeedData);
-					P->OutJump = GraphBuilder.CreateUAV(Jump[0]);
-					ClearUnusedGraphResources(Shader, P);
-					FComputeShaderUtils::AddPass(GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Seed.L%d.C%d", LayerIndex, FlowIndex),
-						Shader, P, SolveGroups);
-				}
-
-				// Halving strides plus one extra stride-1 pass to repair the usual JFA misses.
-				int32 Read = 0;
-				{
-					int32 Stride = 1;
-					while (Stride * 2 <= FMath::Max(SolveSize.X, SolveSize.Y) / 2)
-					{
-						Stride *= 2;
-					}
-					TArray<int32, TInlineAllocator<16>> Strides;
-					for (; Stride >= 1; Stride /= 2)
-					{
-						Strides.Add(Stride);
-					}
-					Strides.Add(1);
-					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(1);
-					for (const int32 Step : Strides)
-					{
-						auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-						Fill(P);
-						P->JumpStep = Step;
-						P->JumpIn = Jump[Read];
-						P->OutJump = GraphBuilder.CreateUAV(Jump[1 - Read]);
-						ClearUnusedGraphResources(Shader, P);
-						FComputeShaderUtils::AddPass(GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Jump%d.L%d.C%d", Step, LayerIndex, FlowIndex),
-							Shader, P, SolveGroups);
-						Read = 1 - Read;
-					}
-				}
-				JumpResult = Jump[Read];
-			}
-
-			// Resolve at full resolution. Half precision holds a unit direction, a UV distance
-			// under 1 and a 0..1 influence; WarpedUV below must stay 32F to resolve 4K texels.
-			FRDGTextureRef FlowField = bInheritedFlow ? InheritedFlow->Texture
-				: MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.Field"));
-			FRDGTextureRef Influence = bInheritedFlow ? InheritedInfluence
-				: MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Influence"));
-			FRDGTextureRef Validity = bInheritedFlow ? InheritedFlow->Validity
-				: MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Validity"));
-			if (!bInheritedFlow)
-			{
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(bGravity ? 9 : 2);
-				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-				Fill(P);
-				P->SeedData = SeedData;
-				P->JumpIn = JumpResult;
-				P->OutFlowField = GraphBuilder.CreateUAV(FlowField);
-				P->OutInfluence = GraphBuilder.CreateUAV(Influence);
-				P->OutValidity = GraphBuilder.CreateUAV(Validity);
-				ClearUnusedGraphResources(Shader, P);
-				FComputeShaderUtils::AddPass(GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Resolve.L%d.C%d", LayerIndex, FlowIndex),
-					Shader, P, Groups);
-			}
-
-			// Smooth: X then Y. Skipped at zero, where the raw field doubles as the smoothed one.
-			FRDGTextureRef FlowSmooth = bInheritedFlow ? InheritedFlow->FlowSmooth : FlowField;
-			if (!bInheritedFlow && Flow.FlowSmooth != 0.0f)
-			{
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(7);
-				FRDGTextureRef Blurred[2] = {
-					MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.SmoothX")),
-					MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.GeneratorFlow.SmoothY"))};
-				FRDGTextureRef Input = FlowField;
-				for (int32 Axis = 0; Axis < 2; ++Axis)
-				{
-					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-					Fill(P);
-					P->BlurAxis = Axis == 0 ? FIntPoint(1, 0) : FIntPoint(0, 1);
-					P->FlowField = Input;
-					P->OutFlowField = GraphBuilder.CreateUAV(Blurred[Axis]);
-					ClearUnusedGraphResources(Shader, P);
-					FComputeShaderUtils::AddPass(GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Smooth%d.L%d.C%d", Axis, LayerIndex, FlowIndex),
-						Shader, P, Groups);
-					Input = Blurred[Axis];
-				}
-				FlowSmooth = Blurred[1];
-			}
-
-			// Traced Warp only exports its coordinate map here; the mixed final warp
-			// remaps the generator once in ApplyGeneratorPostBehaviors.
-			if (OutWarpCoordinates && FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp)
-			{
-				FRDGTextureRef WarpedUV = MakeTexture(Size, PF_G32R32F,
-					TEXT("Mixtormat.GeneratorFlow.TracedWarpUV"));
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(11);
-				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-				Fill(P);
-				P->FlowField = FlowField;
-				P->FlowSmooth = FlowSmooth;
-				P->OutWarpedUV = GraphBuilder.CreateUAV(WarpedUV);
-				ClearUnusedGraphResources(Shader, P);
-				FComputeShaderUtils::AddPass(GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.TraceUV.L%d.C%d", LayerIndex, FlowIndex),
-					Shader, P, Groups);
-				*OutWarpCoordinates = WarpedUV;
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
-					FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, FlowIndex, FName(TEXT("Influence"))),
-					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Influence, nullptr, nullptr, false});
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
-					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
-				if (bPreviewing)
-				{
-					FRDGTextureRef Debug = Ctx.OutputDebug[Request.PublishedTargetIndex];
-					const auto BlitStage = [&](const int32 Stage, const EMixtormatPreviewOutputKind Kind, const TCHAR* Name)
-					{
-						if (!IsChildOutputPreviewTarget(Request, Kind, FName(Name),
-							LayerIndex, FlowIndex)) { return; }
-						TShaderMapRef<FMixtormatGeneratorFlowCS> PreviewShader = StageShader(Stage);
-						auto* Preview = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-						Fill(Preview);
-						Preview->FlowField = Stage == 4 ? FlowSmooth : FlowField;
-						Preview->FlowValidity = Validity;
-						Preview->WarpedUV = WarpedUV;
-						Preview->OutputDebug = GraphBuilder.CreateUAV(Debug);
-						ClearUnusedGraphResources(PreviewShader, Preview);
-						FComputeShaderUtils::AddPass(GraphBuilder,
-							RDG_EVENT_NAME("Mixtormat.GeneratorFlow.TracePreview%d.L%d.C%d",
-								Stage, LayerIndex, FlowIndex), PreviewShader, Preview, Groups);
-					};
-					BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
-					BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUV"));
-				}
-				continue;
-			}
-			// Apply.
-			FRDGTextureRef Transformed = MakeTexture(Size, Current->Desc.Format, TEXT("Mixtormat.GeneratorFlow.Height"));
-			FRDGTextureRef CarveMask = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.CarveMask"));
-			FRDGTextureRef WarpedUV = MakeTexture(Size, PF_G32R32F, TEXT("Mixtormat.GeneratorFlow.WarpedUV"));
-			FRDGTextureRef MovedCoverage = MakeTexture(Size, PF_R16F, TEXT("Mixtormat.GeneratorFlow.Coverage"));
-			{
-				TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(3);
-				auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-				Fill(P);
-				P->FlowField = FlowField;
-				P->FlowSmooth = FlowSmooth;
-				P->OutHeight = GraphBuilder.CreateUAV(Transformed);
-				P->OutCarveMask = GraphBuilder.CreateUAV(CarveMask);
-				P->OutWarpedUV = GraphBuilder.CreateUAV(WarpedUV);
-				P->OutCoverage = GraphBuilder.CreateUAV(MovedCoverage);
-				ClearUnusedGraphResources(Shader, P);
-				FComputeShaderUtils::AddPass(GraphBuilder,
-					RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Apply.L%d.C%d", LayerIndex, FlowIndex),
-					Shader, P, Groups);
-			}
-
-			Ctx.PublishedFieldOutputs.Add(
-				PublishedKey(Layer, FlowIndex, FName(TEXT("FlowDirection"))),
-				FPublishedField{EMixtormatPublishedFieldKind::Flow, FlowField, FlowSmooth, Validity, false});
-			Ctx.PublishedFieldOutputs.Add(
-				PublishedKey(Layer, FlowIndex, FName(TEXT("Influence"))),
-				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Influence, nullptr, nullptr, false});
-			Ctx.PublishedFieldOutputs.Add(
-				PublishedKey(Layer, FlowIndex, FName(TEXT("Validity"))),
-				FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Validity, nullptr, nullptr, false});
-			if (FlowChild.Behavior.Type == EMixtormatBehaviorType::Carve)
-			{
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, FlowIndex, FName(TEXT("CarveMask"))),
-					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, CarveMask, nullptr, nullptr, false});
-			}
-			if (FlowChild.Behavior.Type != EMixtormatBehaviorType::Carve)
-			{
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, FlowIndex, FName(TEXT("WarpedUV"))),
-					FPublishedField{EMixtormatPublishedFieldKind::UVMap, WarpedUV, nullptr, nullptr, false});
-			}
-
-			// Selected-item previews.
-			if (bPreviewing)
-			{
-				FRDGTextureRef Debug = Ctx.OutputDebug[Request.PublishedTargetIndex];
-				const auto BlitMask = [&](const TCHAR* Name, FRDGTextureRef MaskSource)
-				{
-					if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask, FName(Name),
-						LayerIndex, FlowIndex))
-					{
-						AddDebugPreviewMaskBlitPass(GraphBuilder, MaskSource, Debug, Size);
-					}
-				};
-				BlitMask(TEXT("Influence"), Influence);
-				BlitMask(TEXT("Validity"), Validity);
-				BlitMask(TEXT("CarveMask"), CarveMask);
-				const auto BlitStage = [&](const int32 Stage, const EMixtormatPreviewOutputKind Kind, const TCHAR* Name)
-				{
-					if (!IsChildOutputPreviewTarget(Request, Kind, FName(Name), LayerIndex, FlowIndex))
-					{
-						return;
-					}
-					TShaderMapRef<FMixtormatGeneratorFlowCS> Shader = StageShader(Stage);
-					auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
-					Fill(P);
-					// The direction preview shows the smoothed field the tools actually trace.
-					P->FlowField = Stage == 4 ? FlowSmooth : FlowField;
-					P->FlowValidity = Validity;
-					P->WarpedUV = WarpedUV;
-					P->OutputDebug = GraphBuilder.CreateUAV(Debug);
-					ClearUnusedGraphResources(Shader, P);
-					FComputeShaderUtils::AddPass(GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.GeneratorFlow.Preview%d.L%d.C%d", Stage, LayerIndex, FlowIndex),
-						Shader, P, Groups);
-				};
-				BlitStage(4, EMixtormatPreviewOutputKind::FlowDirection, TEXT("FlowDirection"));
-				BlitStage(5, EMixtormatPreviewOutputKind::WarpedUVGrid, TEXT("WarpedUV"));
-			}
-
-			if (!bNeutral && !bFieldProducer)
-			{
-				Current = Transformed;
-				const bool bWarp = FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp;
-				if (InOutCoverage && bWarp)
-				{
-					InOutCoverage = MovedCoverage;
-				}
-				if (Bundle)
-				{
-					Bundle->Height = Current;
-					Bundle->Coverage = InOutCoverage;
-					if (bWarp)
-					{
-						RemapGeneratorBundle(Ctx, *Bundle, WarpedUV);
-						BoundaryField = Bundle->BoundaryField;
-						// Noise's raw outputs are published separately from the shared generator bundle.
-						for (const FName Name : {FName(TEXT("Value")), FName(TEXT("Gradient"))})
-						{
-							const FPublishedFieldKey Key = PublishedKey(Layer, OwnerSourceChildIndex, Name);
-							const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Key);
-							if (!Published || !Published->IsComplete()) { continue; }
-							FPublishedField Moved = *Published;
-							Moved.Texture = RemapBundleField(Ctx, Moved.Texture, WarpedUV,
-								Moved.Kind == EMixtormatPublishedFieldKind::Vector2 ? 4 : 0);
-							Ctx.PublishedFieldOutputs.Add(Key, Moved);
-						}
-					}
-					if (Bundle->NamedMasks.Contains(FName(TEXT("PebbleCoverage"))))
-					{
-						Bundle->NamedMasks[FName(TEXT("PebbleCoverage"))] = InOutCoverage;
-					}
-				}
-			}
-		}
-		return Current;
-	}
 
 	FRDGTextureRef AddRockFormationPasses(
 		FMixtormatComposeContext& Ctx,
@@ -3927,12 +3192,10 @@ static void AddPublishedFieldPreview(FMixtormatComposeContext& Ctx,
 	}
 	else
 	{
-		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(4);
-		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
+		TShaderMapRef<FMixtormatFlowPreviewCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatFlowPreviewCS::FParameters>();
 		P->OutputSize = Size;
-		P->FlowField = Field.FlowSmooth;
+		P->FlowField = Field.Texture;
 		P->FlowValidity = Field.Validity;
 		P->OutputDebug = Ctx.GraphBuilder.CreateUAV(Debug);
 		ClearUnusedGraphResources(Shader, P);
