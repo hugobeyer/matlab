@@ -3,6 +3,10 @@
 Read this file before any repository-wide search. It routes you to the right
 subsystem doc and the right files; it is not the full manual.
 
+# IMPORTANT
+
+Minimize token consumption. Read only files necessary for the requested change if it was specified. Avoid repeated repository-wide searches, unnecessary explanations, and redundant tool calls. Preserve existing features or suggest necessities. When the request was literal, implement the task completely and report only modified files and essential findings.
+
 ## 0. Agent working style
 
 - The user has ADHD: keep responses short, direct, and scoped to the request.
