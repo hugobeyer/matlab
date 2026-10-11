@@ -136,7 +136,7 @@ void FlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 //   GeneratedFlow = HeightWeight * Downhill(OwnHeight)
 //                 + SlopeWeight  * Downhill(SlopeHeight)      // P2 binds the snapshot
 //                 + CurlWeight   * Curl(UV)
-//                 + ConstantWeight * float2(cos A, -sin A);
+//                 + ForceWeight * Force(Angle, Gravity, CurrentHeight);
 //   GeneratedFlow *= Strength;
 //
 // Bases carry magnitude; the combination is never normalized, so zero stays exactly zero and
@@ -152,8 +152,9 @@ RWTexture2D<float> OutGeneratedFlowValidity;
 float ModeHeightWeight;
 float ModeSlopeWeight;
 float ModeCurlWeight;
-float ModeConstantWeight;
+float ModeForceWeight;
 float ModeAngleDegrees;
+float ModeGravity;
 float ModeStrength;
 int ModeCurlPeriod;
 int ModeCurlOctaves;
@@ -222,11 +223,25 @@ void GeneratedFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			bValid = true;
 		}
 	}
-	if (ModeConstantWeight != 0.0f)
+	if (ModeForceWeight != 0.0f)
 	{
-		// Degrees CCW from +U with V up; the texture frame is V-down, hence the negated sine.
+		// Force starts as a constant angular vector. Gravity steers it downhill using
+		// the preceding working Height, not an SDF. This retains the old height-gravity
+		// anti-reversal guard without copying the boundary/jump-flood solver.
 		const float Radians = radians(ModeAngleDegrees);
-		Result += ModeConstantWeight * float2(cos(Radians), -sin(Radians));
+		const float2 Direction = float2(cos(Radians), -sin(Radians));
+		float2 Force = Direction;
+		if (ModeGravity != 0.0f && ModeUseSlopeHeight != 0u)
+		{
+			float2 Downhill;
+			if (ModeDownhill(ModeSlopeHeight, Pixel, Downhill))
+			{
+				Force += ModeGravity * Downhill / max(1.0f, length(Downhill));
+				// Prevent terrain steering from reversing the selected Force direction.
+				Force += Direction * max(0.0f, 0.05f - dot(Force, Direction));
+			}
+		}
+		Result += ModeForceWeight * Force;
 		bValid = true;
 	}
 
