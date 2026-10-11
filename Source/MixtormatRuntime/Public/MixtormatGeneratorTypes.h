@@ -876,6 +876,14 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "1", UIMax = "64", Delta = "1"))
 	float NoiseScale = 8.0f;
 
+	// Per-axis element size relative to Scale. At 1/1 all noise families retain their
+	// existing square lattice. Integer wrapped cell periods keep non-uniform fields tileable.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "0.125", UIMax = "4.0", ClampMin = "0.125", ClampMax = "4.0", Delta = "0.025"))
+	float NoiseElementSizeX = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Pattern", meta = (UIMin = "0.125", UIMax = "4.0", ClampMin = "0.125", ClampMax = "4.0", Delta = "0.025"))
+	float NoiseElementSizeY = 1.0f;
+
 	// Octaves for FBM / Ridged / Billow and optional layering of other families.
 	// Each octave uses its own integer period so the stack remains periodic.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Detail", meta = (UIMin = "1", UIMax = "8", ClampMin = "1", ClampMax = "8"))

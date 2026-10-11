@@ -84,6 +84,32 @@ float3 MixtormatNoiseValueD(float2 p, int Period, uint Seed)
 	return float3(value, dx, dy);
 }
 
+float3 MixtormatNoiseValueD(float2 p, int2 Period, uint Seed)
+{
+	const int2 P = max(Period, int2(1, 1));
+	const int2 i = (int2)floor(p);
+	const float2 f = p - (float2)i;
+
+	const float2 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	const float2 du = 30.0f * f * f * (f * (f - 2.0f) + 1.0f);
+
+	const int2 SafePeriod = P;
+	const float va = MixtormatNoiseCellValue(i + int2(0, 0), SafePeriod, Seed);
+	const float vb = MixtormatNoiseCellValue(i + int2(1, 0), SafePeriod, Seed);
+	const float vc = MixtormatNoiseCellValue(i + int2(0, 1), SafePeriod, Seed);
+	const float vd = MixtormatNoiseCellValue(i + int2(1, 1), SafePeriod, Seed);
+
+	const float k1 = vb - va;
+	const float k2 = vc - va;
+	const float k3 = va - vb - vc + vd;
+	const float value = va + u.x * k1 + u.y * k2 + u.x * u.y * k3;
+
+	// The corner values are constants, so only the fade carries the derivative.
+	const float dx = du.x * (k1 + u.y * k3);
+	const float dy = du.y * (k2 + u.x * k3);
+	return float3(value, dx, dy);
+}
+
 // The next octave's integer period, or 0 when it would run finer than the cap.
 int MixtormatNoiseOctavePeriod(float Period)
 {
@@ -112,6 +138,33 @@ void MixtormatNoiseFbm(float2 UV, float BasePeriod, int Octaves, float Roughness
 		const float3 n = MixtormatPeriodicNoiseD(UV * (float)P, P, Seed + (uint)k * 0x2545F491u);
 		Value += Amp * (n.x * MIXTORMAT_NOISE_SQRT2);
 		Gradient += Amp * ((float)P * MIXTORMAT_NOISE_SQRT2) * n.yz;
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
+void MixtormatNoiseFbmRect(float2 UV, float2 BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float2 Period = max(BasePeriod, float2(1.0f, 1.0f));
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int2 P = int2(MixtormatNoiseOctavePeriod(Period.x), MixtormatNoiseOctavePeriod(Period.y));
+		if (any(P == 0)) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float2)P, P, Seed + (uint)k * 0x2545F491u);
+		Value += Amp * (n.x * MIXTORMAT_NOISE_SQRT2);
+		Gradient += Amp * ((float2)P * MIXTORMAT_NOISE_SQRT2) * n.yz;
 		Sum += Amp;
 		Amp *= saturate(Roughness);
 		Period *= max(Lacunarity, 1.0f);
@@ -153,6 +206,34 @@ void MixtormatNoiseRidged(float2 UV, float BasePeriod, int Octaves, float Roughn
 	Gradient /= Norm;
 }
 
+void MixtormatNoiseRidgedRect(float2 UV, float2 BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float2 Period = max(BasePeriod, float2(1.0f, 1.0f));
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int2 P = int2(MixtormatNoiseOctavePeriod(Period.x), MixtormatNoiseOctavePeriod(Period.y));
+		if (any(P == 0)) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float2)P, P, Seed + (uint)k * 0x2545F491u);
+		const float Signed = n.x * MIXTORMAT_NOISE_SQRT2;
+		Value += Amp * (1.0f - abs(Signed));
+		Gradient -= Amp * ((float2)P * MIXTORMAT_NOISE_SQRT2) * (sign(Signed) * n.yz);
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
 // Billow: sum of |noise| octaves, normalised. 0..1, bumps where the base noise is large.
 void MixtormatNoiseBillow(float2 UV, float BasePeriod, int Octaves, float Roughness,
 	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
@@ -172,6 +253,34 @@ void MixtormatNoiseBillow(float2 UV, float BasePeriod, int Octaves, float Roughn
 		const float Signed = n.x * MIXTORMAT_NOISE_SQRT2;
 		Value += Amp * abs(Signed);
 		Gradient += Amp * ((float)P * MIXTORMAT_NOISE_SQRT2) * (sign(Signed) * n.yz);
+		Sum += Amp;
+		Amp *= saturate(Roughness);
+		Period *= max(Lacunarity, 1.0f);
+	}
+
+	const float Norm = max(Sum, 1.0e-5f);
+	Value /= Norm;
+	Gradient /= Norm;
+}
+
+void MixtormatNoiseBillowRect(float2 UV, float2 BasePeriod, int Octaves, float Roughness,
+	float Lacunarity, uint Seed, out float Value, out float2 Gradient)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float2 Period = max(BasePeriod, float2(1.0f, 1.0f));
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int k = 0; k < Octaves; ++k)
+	{
+		const int2 P = int2(MixtormatNoiseOctavePeriod(Period.x), MixtormatNoiseOctavePeriod(Period.y));
+		if (any(P == 0)) { break; }
+		const float3 n = MixtormatPeriodicNoiseD(UV * (float2)P, P, Seed + (uint)k * 0x2545F491u);
+		const float Signed = n.x * MIXTORMAT_NOISE_SQRT2;
+		Value += Amp * abs(Signed);
+		Gradient += Amp * ((float2)P * MIXTORMAT_NOISE_SQRT2) * (sign(Signed) * n.yz);
 		Sum += Amp;
 		Amp *= saturate(Roughness);
 		Period *= max(Lacunarity, 1.0f);

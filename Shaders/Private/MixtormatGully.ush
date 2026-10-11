@@ -37,8 +37,47 @@ float2 MixtormatCellGradient(int2 c, int Period, uint Seed)
 	return float2(cos(a), sin(a));
 }
 
+float2 MixtormatCellGradient(int2 c, int2 Period, uint Seed)
+{
+	uint hx = (uint)MixtormatWrapI(c.x, Period.x);
+	uint hy = (uint)MixtormatWrapI(c.y, Period.y);
+	uint h = MixtormatHashU(hx * 0x27d4eb2du ^ hy * 0x165667b1u ^ Seed * 0x9e3779b9u);
+	float a = (float)(h & 0x00FFFFFFu) * (6.28318530718f / 16777216.0f);
+	return float2(cos(a), sin(a));
+}
+
 // Periodic gradient noise with analytic derivatives, returned as (value, ddx, ddy).
 float3 MixtormatPeriodicNoiseD(float2 p, int Period, uint Seed)
+{
+	int2 i = (int2)floor(p);
+	float2 f = p - (float2)i;
+
+	float2 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
+	float2 du = 30.0f * f * f * (f * (f - 2.0f) + 1.0f);
+
+	float2 ga = MixtormatCellGradient(i + int2(0, 0), Period, Seed);
+	float2 gb = MixtormatCellGradient(i + int2(1, 0), Period, Seed);
+	float2 gc = MixtormatCellGradient(i + int2(0, 1), Period, Seed);
+	float2 gd = MixtormatCellGradient(i + int2(1, 1), Period, Seed);
+
+	float va = dot(ga, f - float2(0.0f, 0.0f));
+	float vb = dot(gb, f - float2(1.0f, 0.0f));
+	float vc = dot(gc, f - float2(0.0f, 1.0f));
+	float vd = dot(gd, f - float2(1.0f, 1.0f));
+
+	float k = va - vb - vc + vd;
+	float value = va + u.x * (vb - va) + u.y * (vc - va) + u.x * u.y * k;
+
+	float2 d = ga
+		+ u.x * (gb - ga)
+		+ u.y * (gc - ga)
+		+ u.x * u.y * (ga - gb - gc + gd)
+		+ du * (float2(u.y, u.x) * k + float2(vb, vc) - va);
+
+	return float3(value, d.x, d.y);
+}
+
+float3 MixtormatPeriodicNoiseD(float2 p, int2 Period, uint Seed)
 {
 	int2 i = (int2)floor(p);
 	float2 f = p - (float2)i;
@@ -91,6 +130,15 @@ float2 MixtormatCellOffset(int2 Cell, int Period, uint Seed)
 {
 	const uint X = (uint)MixtormatWrapI(Cell.x, Period);
 	const uint Y = (uint)MixtormatWrapI(Cell.y, Period);
+	const uint H0 = MixtormatHashU(X * 0x27d4eb2du ^ Y * 0x165667b1u ^ Seed * 0x9e3779b9u);
+	const uint H1 = MixtormatHashU(H0 ^ 0x68bc21ebu);
+	return float2(H0 & 0x00ffffffu, H1 & 0x00ffffffu) * (1.0f / 16777216.0f) - 0.5f;
+}
+
+float2 MixtormatCellOffset(int2 Cell, int2 Period, uint Seed)
+{
+	const uint X = (uint)MixtormatWrapI(Cell.x, Period.x);
+	const uint Y = (uint)MixtormatWrapI(Cell.y, Period.y);
 	const uint H0 = MixtormatHashU(X * 0x27d4eb2du ^ Y * 0x165667b1u ^ Seed * 0x9e3779b9u);
 	const uint H1 = MixtormatHashU(H0 ^ 0x68bc21ebu);
 	return float2(H0 & 0x00ffffffu, H1 & 0x00ffffffu) * (1.0f / 16777216.0f) - 0.5f;

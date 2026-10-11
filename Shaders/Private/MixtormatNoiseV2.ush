@@ -115,6 +115,73 @@ FMixtormatNoiseV2Sample MixtormatNoiseV2Phasor(
 	return Result;
 }
 
+FMixtormatNoiseV2Sample MixtormatNoiseV2PhasorRect(
+	float2 UV, int2 Period, uint Seed, float2 Wave, float Frequency,
+	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components)
+{
+	const int2 P = clamp(Period, int2(1, 1), int2(4096, 4096));
+	const float2 p = frac(UV) * (float2)P;
+	const int2 Base = (int2)floor(p);
+	const float WaveLengthSq = dot(Wave, Wave);
+	const float2 BaseDirection = WaveLengthSq > 1.0e-8f
+		? Wave * rsqrt(WaveLengthSq) : float2(0.0f, 1.0f);
+	const float Freq = clamp(abs(Frequency), 0.0f, 128.0f);
+	const float CrossScale = 1.0f + clamp(Anisotropy, 0.0f, 16.0f);
+	const float PhaseSpread = clamp(PhaseVariation, 0.0f, 1.0f);
+	const float OrientationSpread = clamp(OrientationVariation, 0.0f, 3.14159265f);
+	const int Count = clamp(Components, 1, 4);
+	float Sum = 0.0f;
+	float2 DSum = float2(0.0f, 0.0f);
+
+	[loop]
+	for (int c = 0; c < Count; ++c)
+	{
+		const uint ComponentSeed = Seed + (uint)c * 0x2545F491u;
+		[unroll]
+		for (int y = -1; y <= 1; ++y)
+		{
+			[unroll]
+			for (int x = -1; x <= 1; ++x)
+			{
+				const int2 Cell = Base + int2(x, y);
+				const float2 Jitter = MixtormatCellOffset(Cell, P, ComponentSeed);
+				const float2 Pivot = (float2)Cell + 0.5f + Jitter * 0.75f;
+				const float2 Delta = p - Pivot;
+				const float2 Variation = MixtormatCellOffset(Cell, P, ComponentSeed ^ 0x9e3779b9u);
+				const float Angle = 2.0f * Variation.x * OrientationSpread;
+				const float Sn = sin(Angle);
+				const float Cs = cos(Angle);
+				const float2 Direction = float2(
+					BaseDirection.x * Cs - BaseDirection.y * Sn,
+					BaseDirection.x * Sn + BaseDirection.y * Cs);
+				const float2 Side = float2(-Direction.y, Direction.x);
+				const float Along = dot(Delta, Direction);
+				const float Across = dot(Delta, Side) * CrossScale;
+				const float Radius2 = Along * Along + Across * Across;
+				const float EnvelopeBase = max(1.0f - Radius2, 0.0f);
+				if (EnvelopeBase <= 0.0f) { continue; }
+				const float Envelope = EnvelopeBase * EnvelopeBase * EnvelopeBase;
+				const float Phase = MIXTORMAT_NOISE_TAU
+					* (Freq * Along + Variation.y * PhaseSpread);
+				const float SnPhase = sin(Phase);
+				const float CsPhase = cos(Phase);
+				const float2 EnvelopeGradient = -6.0f * EnvelopeBase * EnvelopeBase
+					* (Along * Direction + Across * CrossScale * Side);
+				Sum += Envelope * CsPhase;
+				DSum += EnvelopeGradient * CsPhase
+					- Envelope * (MIXTORMAT_NOISE_TAU * Freq * SnPhase) * Direction;
+			}
+		}
+	}
+	// Fixed amplitude normalization (not divide by sum of weights): preserves C2 continuity
+	// where no impulse is in support, instead of introducing holes or normalization spikes.
+	const float Normalizer = 0.5f / (float)Count;
+	FMixtormatNoiseV2Sample Result;
+	Result.Value = Sum * Normalizer;
+	Result.Gradient = DSum * (Normalizer * (float2)P);
+	return Result;
+}
+
 // A divergence-free (before consumer-dependent masking/normalization) 2D curl field.
 // Each octave uses the shared periodic gradient-noise derivative. Its potential can be
 // weighted by 1/period, so derivative amplitude remains resolution-independent.
@@ -328,6 +395,52 @@ FMixtormatNoiseWorley MixtormatNoiseV2Worley(
 	return Result;
 }
 
+FMixtormatNoiseWorley MixtormatNoiseV2WorleyRect(
+	float2 UV, int2 Period, uint Seed, float Jitter, int Metric)
+{
+	const int2 P = max(Period, int2(1, 1)); // Preserve legacy Worley periods when new controls are neutral.
+	const float SafeJitter = saturate(Jitter);
+	const int Mode = clamp(Metric, 0, 2);
+	const float2 p = frac(UV) * (float2)P;
+	const int2 Base = (int2)floor(p);
+	float Best = 1.0e30f;
+	float Second = 1.0e30f;
+	float2 FirstDelta = float2(0.0f, 0.0f);
+	float2 SecondDelta = float2(0.0f, 0.0f);
+	int2 Nearest = Base;
+	[unroll]
+	for (int y = -1; y <= 1; ++y)
+	{
+		[unroll]
+		for (int x = -1; x <= 1; ++x)
+		{
+			const int2 Cell = Base + int2(x, y);
+			const float2 Delta = p - MixtormatCellPoint(Cell, P, Seed, SafeJitter);
+			const float Distance = MixtormatNoiseV2Metric(Delta, Mode);
+			if (Distance < Best)
+			{
+				Second = Best;
+				SecondDelta = FirstDelta;
+				Best = Distance;
+				FirstDelta = Delta;
+				Nearest = Cell;
+			}
+			else if (Distance < Second)
+			{
+				Second = Distance;
+				SecondDelta = Delta;
+			}
+		}
+	}
+	FMixtormatNoiseWorley Result;
+	Result.F1 = Best;
+	Result.F2 = Second;
+	Result.CellId = MixtormatCellHash(Nearest, P, Seed);
+	Result.Direction = MixtormatNoiseV2MetricGradient(FirstDelta, Mode);
+	Result.SecondDirection = MixtormatNoiseV2MetricGradient(SecondDelta, Mode);
+	return Result;
+}
+
 
 // Smooth periodic cell-distance modulation. Seeded lattice values vary the apparent
 // depth of nearby cells without moving Voronoi feature points or altering IDs. The quintic
@@ -345,6 +458,21 @@ void MixtormatNoiseV2CellDistanceVariation(
 	Distance = OriginalDistance * Factor;
 	Gradient = Gradient * Factor + OriginalDistance
 		* (0.75f * saturate(Depth) * (float)P) * Modulation.yz;
+}
+
+void MixtormatNoiseV2CellDistanceVariationRect(
+	float2 UV, int2 Period, uint Seed, float Depth,
+	inout float Distance, inout float2 Gradient)
+{
+	if (Depth <= 0.0f) { return; }
+	const int2 P = max(Period, int2(1, 1));
+	const float3 Modulation = MixtormatNoiseValueD(
+		frac(UV) * (float2)P, P, Seed ^ 0x73f348b1u);
+	const float Factor = 1.0f + 0.75f * saturate(Depth) * Modulation.x;
+	const float OriginalDistance = Distance;
+	Distance = OriginalDistance * Factor;
+	Gradient = Gradient * Factor + OriginalDistance
+		* (0.75f * saturate(Depth)) * Modulation.yz;
 }
 
 // Additional frequency layers for noise families originally authored as one octave.
@@ -400,6 +528,64 @@ void MixtormatNoiseV2LayerOctave(
 	else if (Type == NOISE_TYPE_PHASOR)
 	{
 		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2Phasor(TiledUV,
+			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,
+			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents);
+		Value = N.Value;
+		Gradient = N.Gradient;
+	}
+}
+
+void MixtormatNoiseV2LayerOctaveRect(
+	float2 UV, int Type, int2 Period, uint Seed, float2 Wave, float PhaseOffset,
+	float2 BasePeriod, int WorleyMetric, float WorleyJitter, float WorleyCellDepth,
+	float PhasorFrequency, float PhasorAnisotropy, float PhasorPhaseVariation,
+	float PhasorOrientationVariation, int PhasorComponents,
+	out float Value, out float2 Gradient)
+{
+	Value = 0.0f;
+	Gradient = float2(0.0f, 0.0f);
+	const float2 TiledUV = frac(UV);
+	const int2 P = max(Period, int2(1, 1));
+	if (Type == NOISE_TYPE_GRADIENT)
+	{
+		const float3 N = MixtormatPeriodicNoiseD(TiledUV * (float2)P, P, Seed);
+		Value = N.x * MIXTORMAT_NOISE_SQRT2;
+		Gradient = (float2)P * MIXTORMAT_NOISE_SQRT2 * N.yz;
+	}
+	else if (Type == NOISE_TYPE_VALUE)
+	{
+		const float3 N = MixtormatNoiseValueD(TiledUV * (float2)P, P, Seed);
+		Value = N.x;
+		Gradient = (float2)P * N.yz;
+	}
+	else if (Type == NOISE_TYPE_WORLEY_F1 || Type == NOISE_TYPE_WORLEY_F2
+		|| Type == NOISE_TYPE_WORLEY_F1F2)
+	{
+		const FMixtormatNoiseWorley W = MixtormatNoiseV2WorleyRect(
+			TiledUV, P, Seed, WorleyJitter, WorleyMetric);
+		float Distance = Type == NOISE_TYPE_WORLEY_F1 ? W.F1
+			: Type == NOISE_TYPE_WORLEY_F2 ? W.F2 : (W.F2 - W.F1);
+		Gradient = Type == NOISE_TYPE_WORLEY_F1 ? W.Direction
+			: Type == NOISE_TYPE_WORLEY_F2 ? W.SecondDirection
+			: (W.SecondDirection - W.Direction);
+		MixtormatNoiseV2CellDistanceVariationRect(TiledUV, P, Seed,
+			WorleyCellDepth, Distance, Gradient);
+		Gradient *= (float2)P;
+		Value = saturate(Distance);
+		if (Distance <= 0.0f || Distance >= 1.0f)
+		{
+			Gradient = float2(0.0f, 0.0f);
+		}
+	}
+	else if (Type == NOISE_TYPE_BARS)
+	{
+		// A rounded integer wave vector closes at the tile seam for each octave.
+		const float2 OctaveWave = round(Wave * ((float2)P / max(BasePeriod, float2(1.0f, 1.0f))));
+		MixtormatNoiseBars(TiledUV, OctaveWave, PhaseOffset, Value, Gradient);
+	}
+	else if (Type == NOISE_TYPE_PHASOR)
+	{
+		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2PhasorRect(TiledUV,
 			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,
 			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents);
 		Value = N.Value;

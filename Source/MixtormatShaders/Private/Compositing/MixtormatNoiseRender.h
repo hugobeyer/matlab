@@ -22,6 +22,8 @@ struct FMixtormatNoiseRenderData
 	int32 Seed = 1;
 	// Lattice cells across the tile; floored at 1, the lowest period that closes on the tile.
 	float Scale = 8.0f;
+	float ElementSizeX = 1.0f;
+	float ElementSizeY = 1.0f;
 	// Octaves, clamped to the shader's 1..8.
 	int32 Detail = 4;
 	float Roughness = 0.5f;

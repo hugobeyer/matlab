@@ -49,6 +49,7 @@ namespace
 			SHADER_PARAMETER(int32, NoiseType)
 			SHADER_PARAMETER(uint32, Seed)
 			SHADER_PARAMETER(float, Scale)
+			SHADER_PARAMETER(FVector2f, ElementSize)
 			SHADER_PARAMETER(int32, Detail)
 			SHADER_PARAMETER(float, Roughness)
 			SHADER_PARAMETER(float, Lacunarity)
@@ -294,6 +295,8 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.Type = static_cast<int32>(Noise.NoiseType);
 	Out.Seed = Noise.NoiseSeed;
 	Out.Scale = FMath::Max(Finite(Noise.NoiseScale, Defaults.NoiseScale), 1.0f);
+	Out.ElementSizeX = FMath::Clamp(Finite(Noise.NoiseElementSizeX, Defaults.NoiseElementSizeX), 0.125f, 4.0f);
+	Out.ElementSizeY = FMath::Clamp(Finite(Noise.NoiseElementSizeY, Defaults.NoiseElementSizeY), 0.125f, 4.0f);
 	Out.Detail = FMath::Clamp(Noise.NoiseDetail, 1, 8);
 	Out.LayerMix = FMath::Clamp(Finite(Noise.NoiseLayerMix, Defaults.NoiseLayerMix), 0.0f, 1.0f);
 	Out.Roughness = Finite(Noise.NoiseRoughness, Defaults.NoiseRoughness);
@@ -557,6 +560,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		P->NoiseType = Noise.Type;
 		P->Seed = static_cast<uint32>(Noise.Seed);
 		P->Scale = Noise.Scale;
+		P->ElementSize = FVector2f(Noise.ElementSizeX, Noise.ElementSizeY);
 		P->Detail = Noise.Detail;
 		P->Roughness = Noise.Roughness;
 		P->Lacunarity = Noise.Lacunarity;

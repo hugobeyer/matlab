@@ -3027,7 +3027,16 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 				LOCTEXT("NoiseSeed", "Seed"), Noise, &FMixtormatNoise::NoiseSeed, 0.0, 9999.0, 1),
 			MakeMemberSlider<FMixtormatNoise>(
 				LOCTEXT("NoiseScale", "Scale"), Noise, &FMixtormatNoise::NoiseScale, 1.0, 64.0, 8.0, 0.1,
-				LOCTEXT("NoiseScaleHint", "Lattice cells across the tile."))));
+				LOCTEXT("NoiseScaleHint", "Overall lattice density. Non-uniform Size X/Y changes element aspect without breaking tiling."))));
+		AddSliderRow(Pattern, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseElementSizeX", "Size X"), Noise, &FMixtormatNoise::NoiseElementSizeX,
+				0.125, 4.0, 1.0, 0.025,
+				LOCTEXT("NoiseElementSizeXHint", "Element width relative to Scale. Larger gives wider cells; the periodic X count is rounded to an integer.")),
+			MakeMemberSlider<FMixtormatNoise>(
+				LOCTEXT("NoiseElementSizeY", "Size Y"), Noise, &FMixtormatNoise::NoiseElementSizeY,
+				0.125, 4.0, 1.0, 0.025,
+				LOCTEXT("NoiseElementSizeYHint", "Element height relative to Scale. Larger gives taller cells; the Y period wraps independently."))));
 		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
 			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
 			MixtormatRow::MakePair(

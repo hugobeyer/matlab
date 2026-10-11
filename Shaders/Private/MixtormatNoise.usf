@@ -46,6 +46,7 @@ int2 OutputSize;
 int NoiseType;
 uint Seed;
 float Scale;
+float2 ElementSize;
 int Detail;
 float Roughness;
 float Lacunarity;
@@ -339,38 +340,65 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 Gradient = float2(0.0f, 0.0f);
 	uint CellId = MIXTORMAT_INVALID_REGION;
 
+	// The default path is unchanged. Non-uniform sizing changes lattice cell
+	// counts per axis (not tiled UV frequency), so each cell remains independently
+	// seeded and every family still closes exactly at the tile seams.
+	const bool bRectangular = any(abs(ElementSize - float2(1.0f, 1.0f)) > 1.0e-6f);
+	const float2 SafeSize = clamp(ElementSize, float2(0.125f, 0.125f), float2(4.0f, 4.0f));
+	const float2 BasePeriods = float2(Scale, Scale) / SafeSize;
+	const int2 RectPeriod = clamp((int2)round(BasePeriods), int2(1, 1), int2(4096, 4096));
+
 	if (NoiseType == NOISE_TYPE_GRADIENT)
 	{
 		const int P = max((int)round(max(Scale, 1.0f)), 1);
-		const float3 n = MixtormatPeriodicNoiseD(SampleDomain * (float)P, P, Seed);
+		const float3 n = bRectangular
+			? MixtormatPeriodicNoiseD(SampleDomain * (float2)RectPeriod, RectPeriod, Seed)
+			: MixtormatPeriodicNoiseD(SampleDomain * (float)P, P, Seed);
 		Value = n.x * MIXTORMAT_NOISE_SQRT2;
-		Gradient = (float)P * MIXTORMAT_NOISE_SQRT2 * n.yz;
+		Gradient = (bRectangular ? (float2)RectPeriod : float2(P, P))
+			* (MIXTORMAT_NOISE_SQRT2 * n.yz);
 	}
 	else if (NoiseType == NOISE_TYPE_VALUE)
 	{
 		const int P = max((int)round(max(Scale, 1.0f)), 1);
-		const float3 n = MixtormatNoiseValueD(SampleDomain * (float)P, P, Seed);
+		const float3 n = bRectangular
+			? MixtormatNoiseValueD(SampleDomain * (float2)RectPeriod, RectPeriod, Seed)
+			: MixtormatNoiseValueD(SampleDomain * (float)P, P, Seed);
 		Value = n.x;
-		Gradient = (float)P * n.yz;
+		Gradient = (bRectangular ? (float2)RectPeriod : float2(P, P)) * n.yz;
 	}
 	else if (NoiseType == NOISE_TYPE_FBM)
 	{
-		MixtormatNoiseFbm(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		if (bRectangular)
+		{
+			MixtormatNoiseFbmRect(SampleDomain, BasePeriods, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		}
+		else { MixtormatNoiseFbm(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient); }
 	}
 	else if (NoiseType == NOISE_TYPE_RIDGED)
 	{
-		MixtormatNoiseRidged(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		if (bRectangular)
+		{
+			MixtormatNoiseRidgedRect(SampleDomain, BasePeriods, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		}
+		else { MixtormatNoiseRidged(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient); }
 	}
 	else if (NoiseType == NOISE_TYPE_BILLOW)
 	{
-		MixtormatNoiseBillow(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		if (bRectangular)
+		{
+			MixtormatNoiseBillowRect(SampleDomain, BasePeriods, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient);
+		}
+		else { MixtormatNoiseBillow(SampleDomain, Scale, max(Detail, 1), Roughness, Lacunarity, Seed, Value, Gradient); }
 	}
 	else if (NoiseType == NOISE_TYPE_WORLEY_F1
 		|| NoiseType == NOISE_TYPE_WORLEY_F2
 		|| NoiseType == NOISE_TYPE_WORLEY_F1F2)
 	{
-		const FMixtormatNoiseWorley w = MixtormatNoiseV2Worley(SampleDomain,
-			max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyJitter, WorleyMetric);
+		const FMixtormatNoiseWorley w = bRectangular
+			? MixtormatNoiseV2WorleyRect(SampleDomain, RectPeriod, Seed, WorleyJitter, WorleyMetric)
+			: MixtormatNoiseV2Worley(SampleDomain,
+				max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyJitter, WorleyMetric);
 		float Distance = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.F1
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.F2 : (w.F2 - w.F1);
 		// Distance in cell widths, clamped to the 0..1 contract. Full jitter can push the
@@ -380,9 +408,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Gradient = NoiseType == NOISE_TYPE_WORLEY_F1 ? w.Direction
 			: NoiseType == NOISE_TYPE_WORLEY_F2 ? w.SecondDirection
 			: (w.SecondDirection - w.Direction);
-		MixtormatNoiseV2CellDistanceVariation(SampleDomain,
-			max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyCellDepth,
-			Distance, Gradient);
+		if (bRectangular)
+		{
+			MixtormatNoiseV2CellDistanceVariationRect(SampleDomain,
+				RectPeriod, Seed, WorleyCellDepth, Distance, Gradient);
+			Gradient *= (float2)RectPeriod;
+		}
+		else
+		{
+			MixtormatNoiseV2CellDistanceVariation(SampleDomain,
+				max((int)round(max(Scale, 1.0f)), 1), Seed, WorleyCellDepth,
+				Distance, Gradient);
+		}
 		Value = saturate(Distance);
 		// Value is saturated above. Its derivative is zero on the flat plateaus;
 		// exactly on a clamp boundary the derivative is not unique, so choose zero.
@@ -394,16 +431,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	else if (NoiseType == NOISE_TYPE_PHASOR)
 	{
-		const FMixtormatNoiseV2Sample Phasor = MixtormatNoiseV2Phasor(SampleDomain,
-			max((int)round(max(Scale, 1.0f)), 1), Seed, Wave,
-			PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
-			PhasorOrientationVariation, PhasorComponents);
+		const FMixtormatNoiseV2Sample Phasor = bRectangular
+			? MixtormatNoiseV2PhasorRect(SampleDomain, RectPeriod, Seed, Wave / SafeSize,
+				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+				PhasorOrientationVariation, PhasorComponents)
+			: MixtormatNoiseV2Phasor(SampleDomain,
+				max((int)round(max(Scale, 1.0f)), 1), Seed, Wave,
+				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+				PhasorOrientationVariation, PhasorComponents);
 		Value = Phasor.Value;
 		Gradient = Phasor.Gradient;
 	}
 	else // NOISE_TYPE_BARS, also preserves the previous fallback for unknown values
 	{
-		MixtormatNoiseBars(SampleDomain, Wave, PhaseOffset, Value, Gradient);
+		const float2 ShapeWave = bRectangular ? round(Wave / SafeSize) : Wave;
+		MixtormatNoiseBars(SampleDomain, ShapeWave, PhaseOffset, Value, Gradient);
 	}
 
 
@@ -425,15 +467,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			if (Weight <= 1.0e-6f) { break; }
 			Period *= max(Lacunarity, 1.0f);
 			const int P = MixtormatNoiseOctavePeriod(Period);
-			if (P == 0) { break; }
+			const int2 RectOctave = int2(MixtormatNoiseOctavePeriod(Period / SafeSize.x),
+				MixtormatNoiseOctavePeriod(Period / SafeSize.y));
+			if (bRectangular ? any(RectOctave == 0) : P == 0) { break; }
 			float OctaveValue;
 			float2 OctaveGradient;
-			MixtormatNoiseV2LayerOctave(SampleDomain, NoiseType, P,
-				Seed + (uint)k * 0x2545F491u, Wave, PhaseOffset, Scale,
-				WorleyMetric, WorleyJitter, WorleyCellDepth,
-				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
-				PhasorOrientationVariation, PhasorComponents,
-				OctaveValue, OctaveGradient);
+			if (bRectangular)
+			{
+				MixtormatNoiseV2LayerOctaveRect(SampleDomain, NoiseType, RectOctave,
+					Seed + (uint)k * 0x2545F491u, Wave / SafeSize, PhaseOffset, BasePeriods,
+					WorleyMetric, WorleyJitter, WorleyCellDepth,
+					PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+					PhasorOrientationVariation, PhasorComponents,
+					OctaveValue, OctaveGradient);
+			}
+			else
+			{
+				MixtormatNoiseV2LayerOctave(SampleDomain, NoiseType, P,
+					Seed + (uint)k * 0x2545F491u, Wave, PhaseOffset, Scale,
+					WorleyMetric, WorleyJitter, WorleyCellDepth,
+					PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
+					PhasorOrientationVariation, PhasorComponents,
+					OctaveValue, OctaveGradient);
+			}
 			WeightedValue += Weight * OctaveValue;
 			WeightedGradient += Weight * OctaveGradient;
 			WeightSum += Weight;
