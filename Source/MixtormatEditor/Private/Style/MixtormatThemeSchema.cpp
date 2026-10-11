@@ -723,6 +723,13 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 					TEXT(""), EMixtormatThemeRefreshMode::Reconstruct));
 				SetLocateTarget(P, LocateBegin, ETarget::HintStrip);
 
+				// CREATE. The Layers panel's creation toolbar: the icon box and icon-to-label gap
+				// inside the Layer / Group / Fill Layer buttons.
+				LocateBegin = P.Num();
+				NUM("Create.CreationButtonIconSize", Create, "Creation Buttons", "Icon Size", CreateLayout.CreationButtonIconSize, 8, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("Create.CreationButtonIconGap", Create, "Creation Buttons", "Icon-Label Gap", CreateLayout.CreationButtonIconGap, 0, 16, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				SetLocateTarget(P, LocateBegin, ETarget::Layer);
+
 				// GALLERY / SHELL. TileSize intentionally omitted: runtime zoom owns it after construction.
 				LocateBegin = P.Num();
 				NUM_DEF("Gallery.BorderWidth", GalleryShell, "Gallery Surface", "Border Width", Gallery.BorderWidth, 0, 4, .25, 2);
@@ -736,6 +743,8 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("GalleryLayout.CaptionHeight", GalleryShell, "Gallery Layout", "Caption Height", GalleryLayout.CaptionHeight, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.CaptionInset", GalleryShell, "Gallery Layout", "Caption Inset", GalleryLayout.CaptionInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.OwnershipBadgeSize", GalleryShell, "Gallery Layout", "Ownership Badge Size", GalleryLayout.OwnershipBadgeSize, 6, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.OwnershipBadgePadding", GalleryShell, "Gallery Layout", "Ownership Badge Padding", GalleryLayout.OwnershipBadgePadding, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.MaskHeaderInset", GalleryShell, "Gallery Layout", "Masks Header Inset", GalleryLayout.MaskHeaderInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerAutoCollapseDistance", GalleryShell, "Gallery Layout", "Drawer Auto-Collapse Distance", GalleryLayout.DrawerAutoCollapseDistance, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
@@ -842,6 +851,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		case ETab::Typography: return TEXT("TYPOGRAPHY");
 		case ETab::Sources: return TEXT("SOURCES");
 		case ETab::Context: return TEXT("CONTEXT");
+		case ETab::Create: return TEXT("CREATE");
 		default: return TEXT("UNKNOWN");
 		}
 	}
@@ -862,6 +872,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		case ETab::Typography: return TEXT("typography");
 		case ETab::Sources: return TEXT("sources");
 		case ETab::Context: return TEXT("context");
+		case ETab::Create: return TEXT("create");
 		default: return TEXT("unknown");
 		}
 	}

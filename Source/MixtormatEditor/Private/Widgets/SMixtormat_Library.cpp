@@ -789,7 +789,8 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceCard(
 				.bShowNameOnHover(false)
 				.bSelected_Lambda([this, AssetPath]() { return SelectedSurfacePath == AssetPath; })
 			]
-			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+			.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 			[
 				MixtormatUI::BuildLibraryOwnershipBadge(AssetPath)
 			]

@@ -44,6 +44,7 @@
 #include "Services/MixtormatRegistry.h"
 #include "Services/MixtormatSurfaceImporter.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "Styling/AppStyle.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Subsystems/EditorAssetSubsystem.h"
@@ -124,16 +125,18 @@ namespace MixtormatUI
 		}
 
 		const ISlateStyle& Style = FMixtormatStyle::Get();
+		const Mixtormat::FMixtormatGalleryMetrics& GalleryLayout =
+			FMixtormatThemeStore::GetResolved().GalleryLayout;
 		return SNew(SBorder)
-			.Padding(2.0f)
+			.Padding(GalleryLayout.OwnershipBadgePadding)
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")))
 			.ToolTipText(bIsUserAsset
 				? LOCTEXT("UserLibraryAssetBadge", "User material")
 				: LOCTEXT("BuiltInLibraryAssetBadge", "Built-in Mixtormat material"))
 			[
 				SNew(SBox)
-				.WidthOverride(12.0f)
-				.HeightOverride(12.0f)
+				.WidthOverride(GalleryLayout.OwnershipBadgeSize)
+				.HeightOverride(GalleryLayout.OwnershipBadgeSize)
 				[
 					SNew(SImage)
 					.Image(bIsUserAsset

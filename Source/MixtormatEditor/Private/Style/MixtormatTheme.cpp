@@ -414,6 +414,9 @@ namespace Mixtormat
 		T.ContextLayout.HintStripInset = 8.0f;
 		T.ContextLayout.HintStripCorner = 2; // Top Right
 
+		T.CreateLayout.CreationButtonIconSize = 16.0f;
+		T.CreateLayout.CreationButtonIconGap = 4.0f;
+
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
 		T.GalleryLayout.DrawerInitialHeight = 256.0f;
@@ -812,6 +815,8 @@ namespace Mixtormat
 		T.ContextLayout.HintStripOpacity = 0.75f;
 		T.ContextLayout.HintStripInset = 8.0f;
 		T.ContextLayout.HintStripCorner = 2; // Top Right
+		T.CreateLayout.CreationButtonIconSize = 16.0f;
+		T.CreateLayout.CreationButtonIconGap = 4.0f;
 		T.Gallery.BorderWidth = 0.0f;
 		T.Gallery.BorderOpacity = 1.0f;
 		T.Gallery.HoverLiftOpacity = 0.0f;

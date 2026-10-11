@@ -333,6 +333,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const Mixtormat::FMixtormatLayerMetrics& LayerLayout = FMixtormatThemeStore::GetResolved().LayerLayout;
+	const Mixtormat::FMixtormatCreateMetrics& CreateLayout = FMixtormatThemeStore::GetResolved().CreateLayout;
 	return SNew(SMixtormatLayerDropTarget)
 		.OnSurfaceDropped(this, &SMixtormat::HandleSurfaceDropped)
 		.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildLayerColumnContextMenu))
@@ -402,13 +403,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(16.0f)
-										.HeightOverride(16.0f)
+										.WidthOverride(CreateLayout.CreationButtonIconSize)
+										.HeightOverride(CreateLayout.CreationButtonIconSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerMaterial())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddMaterialLayerBottom", "Layer"))
 									]
@@ -448,13 +450,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(16.0f)
-										.HeightOverride(16.0f)
+										.WidthOverride(CreateLayout.CreationButtonIconSize)
+										.HeightOverride(CreateLayout.CreationButtonIconSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::Folder())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("CreateGroupBottom", "Group"))
 									]
@@ -475,13 +478,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 									[
 										SNew(SBox)
-										.WidthOverride(16.0f)
-										.HeightOverride(16.0f)
+										.WidthOverride(CreateLayout.CreationButtonIconSize)
+										.HeightOverride(CreateLayout.CreationButtonIconSize)
 										[
 											SNew(SImage).Image(MixtormatIcons::LayerFill())
 										]
 									]
-									+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f).VAlign(VAlign_Center)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									.Padding(CreateLayout.CreationButtonIconGap, 0.0f, 0.0f, 0.0f)
 									[
 										SNew(STextBlock).Text(LOCTEXT("AddFillLayerBottom", "Fill Layer"))
 									]

@@ -213,6 +213,10 @@ All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requir
   (`HintKeycapSize`, `HintKeycapPadding`, `HintKeyActionGap`, `HintItemGap`,
   `HintStripOpacity`, `HintStripInset`), schema-registered with the `HintStrip`
   locator target.
+- The CREATE tab owns the Layers creation toolbar's `CreateLayout` tokens
+  (`CreationButtonIconSize`, `CreationButtonIconGap`). The ownership badge's
+  `GalleryLayout.OwnershipBadgeSize` / `OwnershipBadgePadding` live under
+  GALLERY / SHELL > Gallery Layout.
 - Authored theme data: `Config/UIStyleTheme.json`.
 
 Use the token/theme system; do not introduce local styling. `MixtormatStyle`

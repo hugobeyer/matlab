@@ -288,6 +288,7 @@ namespace Mixtormat
 		FMixtormatShellMetrics ShellLayout;
 		// Numeric geometry copied straight through, like the other metric structs.
 		FMixtormatContextMetrics ContextLayout;
+		FMixtormatCreateMetrics CreateLayout;
 	};
 
 	// Project an editable theme into resolved style. Validate first: resolution assumes legal

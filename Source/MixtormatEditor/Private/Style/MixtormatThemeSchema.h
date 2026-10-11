@@ -21,6 +21,7 @@ namespace Mixtormat
 		Typography,
 		Sources,
 		Context,
+		Create,
 		Count,
 	};
 

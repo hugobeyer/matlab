@@ -41,6 +41,7 @@ namespace
 		Mixtormat::EMixtormatThemeTab::Menus,
 		Mixtormat::EMixtormatThemeTab::Preview,
 		Mixtormat::EMixtormatThemeTab::Context,
+		Mixtormat::EMixtormatThemeTab::Create,
 		Mixtormat::EMixtormatThemeTab::GalleryShell,
 		Mixtormat::EMixtormatThemeTab::Typography
 	};

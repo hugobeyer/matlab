@@ -840,6 +840,16 @@ namespace Mixtormat
 		int32 HintStripCorner = 2;
 	};
 
+	// The layer-creation toolbar in the Layers panel (Layer / Group / Fill Layer buttons).
+	// Its own struct so the CREATE tab owns these knobs as a group.
+	struct FMixtormatCreateMetrics
+	{
+		// The icon box inside each creation button.
+		float CreationButtonIconSize = 16.0f;
+		// Gap between that icon and the button's label.
+		float CreationButtonIconGap = 4.0f;
+	};
+
 	struct FMixtormatGalleryMetrics
 	{
 		// The gallery's INITIAL tile size, read once in SMixtormat::Construct. It is a seed, not a
@@ -866,6 +876,10 @@ namespace Mixtormat
 		float DrawerCollapsedHeight = 18.0f;
 		float DrawerInitialHeight = 256.0f;
 		float DrawerSurfaceOpacity = 0.68f;
+		// The ownership badge overlaid on library and mask tiles: its icon box and the padding
+		// between the icon and the badge plate.
+		float OwnershipBadgeSize = 12.0f;
+		float OwnershipBadgePadding = 2.0f;
 	};
 
 	struct FMixtormatShellTheme
@@ -1097,6 +1111,9 @@ namespace Mixtormat
 		// workspace chrome that must not move when a toolbar inset is retuned, and its tokens
 		// group under the CONTEXT tab in UI STYLE.
 		FMixtormatContextMetrics ContextLayout;
+
+		// The Layers panel's creation toolbar, under the CREATE tab.
+		FMixtormatCreateMetrics CreateLayout;
 
 		FMixtormatGalleryTheme Gallery;
 		FMixtormatGalleryMetrics GalleryLayout;

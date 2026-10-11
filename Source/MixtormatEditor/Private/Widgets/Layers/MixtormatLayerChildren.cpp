@@ -1884,7 +1884,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskGallery(TFunction<void(const FSoftObjec
 					OnChosen(Path);
 				}))
 			]
-			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+			+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+			.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 			[
 				MixtormatUI::BuildLibraryOwnershipBadge(Path, false)
 			]
@@ -1944,7 +1945,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 					.bSelected_Lambda([this, AssetPath]() { return SelectedMaskPath == AssetPath; })
 					.ToolTip(Name)
 				]
-				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(3.0f)
+				+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+				.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 				[
 					MixtormatUI::BuildLibraryOwnershipBadge(AssetPath, false)
 				]
@@ -1952,7 +1954,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 	}
 
 	return SNew(SButton)
-		.ContentPadding(5.0f)
+		.ContentPadding(FMixtormatThemeStore::GetResolved().GalleryLayout.TilePadding)
 		.OnClicked_Lambda([this, Name, AssetPath]() { return SelectMask(Name, AssetPath); })
 		[
 			SNew(SHorizontalBox)
@@ -1962,7 +1964,8 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCard(
 				[
 					SNew(SOverlay)
 					+ SOverlay::Slot()[ThumbnailWidget]
-					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(2.0f)
+					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom)
+					.Padding(FMixtormatThemeStore::GetResolved().GalleryLayout.OverlayInset)
 					[
 						MixtormatUI::BuildLibraryOwnershipBadge(AssetPath, false)
 					]
