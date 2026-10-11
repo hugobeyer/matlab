@@ -18,7 +18,7 @@ void SMixtormat::InitializeNewLayer(
 	FMixtormatLayer& Layer, const EMixtormatLayerType LayerType, const int32 LayerNumber) const
 {
 	Layer.Type = LayerType;
-	Layer.DisplayName = MakeGenericDefaultName(TEXT("Layer"), 0, WorkingLayers);
+	Layer.DisplayName = MakeGenericDefaultName(TEXT("Layer"), -1, WorkingLayers);
 	switch (LayerType)
 	{
 	case EMixtormatLayerType::Material:
@@ -223,7 +223,7 @@ bool SMixtormat::CanCreateGroup() const
 
 FText SMixtormat::MakeUniqueGroupName() const
 {
-	return MakeGenericDefaultName(TEXT("Group"), 0, WorkingLayerGroups);
+	return MakeGenericDefaultName(TEXT("Group"), -1, WorkingLayerGroups);
 }
 
 FReply SMixtormat::CreateGroupFromSelection()
