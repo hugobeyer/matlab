@@ -1745,7 +1745,7 @@ private:
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
 	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;
-	TMap<FMixtormatChildAddress, TWeakPtr<SMixtormatLayerChildRow>> EditableChildRowWidgets;
+	TMap<FMixtormatChildAddress, TWeakPtr<class SMixtormatLayerChildRow>> EditableChildRowWidgets;
 	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
 	TSet<FGuid> CollapsedGroupIds;
