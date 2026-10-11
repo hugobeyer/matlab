@@ -1371,6 +1371,11 @@ bool SMixtormat::IsParameterLocked(const FMixtormatParameterAddress& Target) con
 
 FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 {
+	if (!Child.DisplayName.IsEmptyOrWhitespace())
+	{
+		return Child.DisplayName;
+	}
+
 	// An instance is named for what it shows, marked for what it is. The arrow is the whole
 	// difference in the stack -- an instance row is otherwise the same row as its source, which is
 	// the point of it.
@@ -1647,6 +1652,10 @@ FMixtormatLayerChild* SMixtormat::AppendGroupChild(
 	}
 	FMixtormatLayerChild& Child = Group->Children.AddDefaulted_GetRef();
 	Child.Type = ChildType;
+	if (ChildType == EMixtormatLayerChildType::Mask)
+	{
+		Child.DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
+	}
 	return &Child;
 }
 
