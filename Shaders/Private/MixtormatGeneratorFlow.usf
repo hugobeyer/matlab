@@ -176,16 +176,20 @@ float FlowFade(float A, float B, float X)
 // tap saw an outline; the local field is not a global SDF (see the doc's field contract).
 bool BoundaryGradient(float2 UV, out float2 Gradient, out float Distance)
 {
-	const float2 R = float2((float)max(Radius, 1), (float)max(Radius, 1)) / float2(OutputSize);
-	const float2 C = BoundaryField.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	const float2 XP = BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(R.x, 0.0f), 0.0f);
-	const float2 XM = BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(R.x, 0.0f), 0.0f);
-	const float2 YP = BoundaryField.SampleLevel(LinearWrapSampler, UV + float2(0.0f, R.y), 0.0f);
-	const float2 YM = BoundaryField.SampleLevel(LinearWrapSampler, UV - float2(0.0f, R.y), 0.0f);
+	const int Step = max(Radius, 1);
+	const int2 Pixel = FlowWrap(int2(floor(UV * float2(OutputSize))), OutputSize);
+	const float2 C = BoundaryField.Load(int3(Pixel, 0));
+	const float2 XP = BoundaryField.Load(int3(FlowWrap(Pixel + int2(Step, 0), OutputSize), 0));
+	const float2 XM = BoundaryField.Load(int3(FlowWrap(Pixel - int2(Step, 0), OutputSize), 0));
+	const float2 YP = BoundaryField.Load(int3(FlowWrap(Pixel + int2(0, Step), OutputSize), 0));
+	const float2 YM = BoundaryField.Load(int3(FlowWrap(Pixel - int2(0, Step), OutputSize), 0));
 	Distance = C.x;
-	Gradient = float2(XP.x - XM.x, YP.x - YM.x) / (2.0f * R);
-	// Bilinear flags below 1 mean a tap straddled a no-outline texel.
-	return min(min(C.y, XP.y), min(min(XM.y, YP.y), YM.y)) > 0.99f;
+	Gradient = float2(XP.x - XM.x, YP.x - YM.x) * float2(OutputSize) / (2.0f * (float)Step);
+	return all(isfinite(float4(C, XP)))
+		&& all(isfinite(float4(XM, YP)))
+		&& all(isfinite(YM))
+		&& min(min(C.y, XP.y), min(min(XM.y, YP.y), YM.y)) > 0.5f
+		&& all(isfinite(Gradient));
 }
 
 float2 HeightGradient(float2 UV)
@@ -217,10 +221,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float Distance;
 		const bool bOutline = BoundaryGradient(UV, Gradient, Distance);
 		// Seeds only on or near the boundary: at least one solve texel and the kernel radius.
-		const float Band = max((float)max(Radius, 1) / (float)OutputSize.x, 0.75f / (float)SolveSize.x);
+		const float Band = max((float)max(Radius, 1) / (float)min(OutputSize.x, OutputSize.y),
+			0.75f / (float)min(SolveSize.x, SolveSize.y));
 		const float Length = length(Gradient);
 		// A true distance has a unit gradient; creases and overlapping outlines do not.
-		bSeed = bOutline && abs(Distance) <= Band && Length > 0.5f && Length < 2.0f;
+		bSeed = bOutline && abs(Distance) <= Band && isfinite(Length) && Length > 1.0e-4f;
 		Direction = bSeed ? Gradient / Length : 0.0f;
 		SeedDistance = Distance;
 	}
@@ -460,7 +465,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 #endif
 
-#if FLOW_STAGE == 3
+#if FLOW_STAGE == 3 || FLOW_STAGE == 11
 // The Behavior's own Strength, driven by its slot-0 signal. An evaluated zero is
 // exact identity; an unavailable signal keeps the authored value.
 float DrivenBehaviorStrength(int2 Pixel)
@@ -471,7 +476,7 @@ float DrivenBehaviorStrength(int2 Pixel)
 }
 #endif
 
-#if FLOW_STAGE == 3 || FLOW_STAGE == 8 || FLOW_STAGE == 10
+#if FLOW_STAGE == 3 || FLOW_STAGE == 8 || FLOW_STAGE == 10 || FLOW_STAGE == 11
 // Smoothed direction, bilinear and renormalized. Where the blur cancelled opposing vectors
 // (a medial-axis collision) there is no direction to renormalize, so the raw nearest texel
 // is used instead of inventing one. Influence and distance always come from the raw field.
@@ -503,7 +508,7 @@ float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 	Length = max(0.0f, MixtormatApplyDriver(TraceLength,
 		FlowDriverSignal1.SampleLevel(LinearWrapSampler, UV, 0.0f),
 		FlowDriverParamsA[1], FlowDriverParamsB[1]));
-#elif FLOW_STAGE == 3
+#elif FLOW_STAGE == 3 || FLOW_STAGE == 11
 	Length = max(0.0f, MixtormatApplyDriver(TraceLength,
 		FlowSettingsDriverSignal1.Load(int3(Pixel, 0)),
 		FlowSettingsDriverParamsA[1], FlowSettingsDriverParamsB[1]));
@@ -531,7 +536,7 @@ float2 TraceFlowCoordinate(float2 UV, float DrivenStrength, int2 Pixel)
 #else
 		const float2 Next = P - H * B.xy * B.w;
 #endif
-#if FLOW_STAGE == 3
+#if FLOW_STAGE == 3 || FLOW_STAGE == 11
 		if (Mode == 3u && Source == 0u && GravityDeflection > 0.0f
 			&& A.z <= length(Next - P)
 				+ (float)max(Radius, 1) / (float)min(OutputSize.x, OutputSize.y)
@@ -570,6 +575,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	OutWarpedUV[Pixel] = FlowValidity.Load(int3(Pixel, 0)) > 0.0f
 		? TraceFlowCoordinate(UV, 1.0f, Pixel) : UV;
+}
+#endif
+
+#if FLOW_STAGE == 11
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 Traced = TraceFlowCoordinate(UV, DrivenBehaviorStrength(Pixel), Pixel);
+	OutWarpedUV[Pixel] = all(isfinite(Traced)) ? Traced : UV;
 }
 #endif
 

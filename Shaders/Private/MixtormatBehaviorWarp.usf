@@ -253,3 +253,44 @@ void SignedCarveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutSignedHeight[Pixel] = isfinite(Weight) && Weight != 0.0f
 		? Base - Weight * Profile : Base;
 }
+
+
+// Both input maps have already received their masks, influences and driven Strength.
+float ModeMix;
+uint HasStandard;
+uint HasTraced;
+float4 ModeMixDriverParamsA;
+float4 ModeMixDriverParamsB;
+Texture2D<float> ModeMixDriverSignal;
+Texture2D<float2> StandardCoordinates;
+Texture2D<float2> TracedCoordinates;
+
+[numthreads(8, 8, 1)]
+void ModeMixCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	float2 Standard = HasStandard != 0u ? StandardCoordinates.Load(int3(Pixel, 0)) : UV;
+	float2 Traced = HasTraced != 0u ? TracedCoordinates.Load(int3(Pixel, 0)) : UV;
+	if (!all(isfinite(Standard))) { Standard = UV; }
+	if (!all(isfinite(Traced))) { Traced = UV; }
+	const float T = saturate(MixtormatApplyDriver(ModeMix,
+		ModeMixDriverSignal.Load(int3(Pixel, 0)),
+		ModeMixDriverParamsA, ModeMixDriverParamsB));
+	if (T <= 0.0f)
+	{
+		OutCoordinates[Pixel] = Standard;
+	}
+	else if (T >= 1.0f)
+	{
+		OutCoordinates[Pixel] = Traced;
+	}
+	else
+	{
+		const float2 A = Standard - UV;
+		const float2 B = Traced - UV;
+		const float2 ShortestDifference = (B - A) - round(B - A);
+		OutCoordinates[Pixel] = UV + A + T * ShortestDifference;
+	}
+}
