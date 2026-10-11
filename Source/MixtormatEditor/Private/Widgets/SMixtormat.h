@@ -272,6 +272,7 @@ private:
 	bool UpdateAutomaticFlowPreview();
 	FReply CycleSelectedModulePreview();
 	FReply ToggleMaskOverlayPreview();
+	FReply ResetDiagnosticOverlays();
 	bool IsMaskOverlayTargetReady() const;
 	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
 	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
