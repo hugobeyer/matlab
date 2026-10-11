@@ -988,43 +988,6 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedPushCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedPushCS", SF_Compute);
 
-class FMixtormatBehaviorSignedCarveCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorSignedCarveCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorSignedCarveCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(float, Strength)
-		SHADER_PARAMETER(float, CarveWidth)
-		SHADER_PARAMETER(uint32, UseOwnBoundary)
-		SHADER_PARAMETER(uint32, UseMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-		SHADER_PARAMETER(uint32, UseInfluence)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
-		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
-		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDistance)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BehaviorBoundary)
-		// Per-field composition for the Height socket. Reverse flips which side of
-		// the distance field is carved, so it exchanges Carve and Deposit.
-		SHADER_PARAMETER(float, FieldAmplitude)
-		SHADER_PARAMETER(uint32, FieldReversed)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSignedHeight)
-	END_SHADER_PARAMETER_STRUCT()
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedCarveCS,
-	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedCarveCS", SF_Compute);
-
-
-
 class FMixtormatBehaviorSculptCS final : public FGlobalShader
 {
 public:
@@ -1727,43 +1690,6 @@ namespace
 				FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, ChildIndex, FName(TEXT("CarveMask"))),
 			FPublishedField{EMixtormatPublishedFieldKind::Scalar01, SculptMask, nullptr, nullptr, false});
-		return Result;
-	}
-
-	FRDGTextureRef AddBehaviorSignedCarvePass(FMixtormatComposeContext& Ctx,
-		FRDGTextureRef BaseHeight, FRDGTextureRef Distance, const bool bOwnBoundary,
-		const FBehaviorRenderData& Behavior,
-		FRDGTextureRef Mask, const bool bUseMask,
-		FRDGTextureRef Influence, const bool bUseInfluence,
-		const int32 LayerIndex, const int32 ChildIndex)
-	{
-		const FIntPoint Size = Ctx.Request.Resolution;
-		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Behavior.SignedCarve"));
-		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorSignedCarveCS::FParameters>();
-		P->OutputSize = Size;
-		P->Strength = Behavior.Strength;
-		P->CarveWidth = Behavior.CarveWidth;
-		P->UseOwnBoundary = bOwnBoundary ? 1u : 0u;
-		P->UseMask = bUseMask ? 1u : 0u;
-		P->ScopedMask = Mask;
-		P->UseInfluence = bUseInfluence ? 1u : 0u;
-		P->InfluenceField = Influence;
-		P->SourceHeight = BaseHeight;
-		// Only the selected distance binding is accessed by the shader.
-		P->BehaviorDistance = bOwnBoundary ? Ctx.EmptyDriverSignal : Distance;
-		P->BehaviorBoundary = bOwnBoundary ? Distance : Ctx.EmptyPatternUV;
-		P->FieldAmplitude = Behavior.HeightComposition.Amplitude;
-		P->FieldReversed = Behavior.HeightComposition.bReversed;
-		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
-		P->OutSignedHeight = Ctx.GraphBuilder.CreateUAV(Result);
-		TShaderMapRef<FMixtormatBehaviorSignedCarveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
-			RDG_EVENT_NAME("Mixtormat.Behavior.Carve.L%d.C%d", LayerIndex, ChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
-				FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		return Result;
 	}
 
