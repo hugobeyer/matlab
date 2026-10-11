@@ -1094,7 +1094,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			// names the child by GUID, flattened to one concrete layer at click time (see
 			// ResolveChildPreviewTarget), and the compositor resolves it to indices itself, once,
 			// at the top of RequestComposeInternal.
-			DebugSettings.ChildTarget = ChildPreviewTarget;
+			DebugSettings.ChildTarget = bMaskOverlayReady
+				? ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask)
+				: ChildPreviewTarget;
 			Viewport->SetFinalSettings(WorkingFinalSettings);
 			// Sources ride every working-document preview: they are document data beside the
 			// layers, unaffected by solo/isolation overrides of the layer array itself.
