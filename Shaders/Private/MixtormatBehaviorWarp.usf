@@ -275,9 +275,10 @@ void ModeMixCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 Traced = HasTraced != 0u ? TracedCoordinates.Load(int3(Pixel, 0)) : UV;
 	if (!all(isfinite(Standard))) { Standard = UV; }
 	if (!all(isfinite(Traced))) { Traced = UV; }
-	const float T = saturate(MixtormatApplyDriver(ModeMix,
+	const float DrivenMix = MixtormatApplyDriver(ModeMix,
 		ModeMixDriverSignal.Load(int3(Pixel, 0)),
-		ModeMixDriverParamsA, ModeMixDriverParamsB));
+		ModeMixDriverParamsA, ModeMixDriverParamsB);
+	const float T = isfinite(DrivenMix) ? saturate(DrivenMix) : saturate(ModeMix);
 	if (T <= 0.0f)
 	{
 		OutCoordinates[Pixel] = Standard;
