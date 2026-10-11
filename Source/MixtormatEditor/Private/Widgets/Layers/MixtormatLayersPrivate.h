@@ -11,6 +11,23 @@ namespace MixtormatLayersPrivate
 {
 	inline constexpr int32 MaximumScopeDepth = 4;
 
+	template<typename T>
+	FText MakeGenericDefaultName(const TCHAR* Prefix, const int32 FirstSuffix, const TArray<T>& Entries)
+	{
+		for (int32 Suffix = FirstSuffix;; ++Suffix)
+		{
+			const FString Candidate = Suffix == 0
+				? FString(Prefix)
+				: FString::Printf(TEXT("%s%d"), Prefix, Suffix);
+			if (!Entries.ContainsByPredicate([&Candidate](const T& Entry)
+				{ return Entry.DisplayName.ToString().Equals(Candidate, ESearchCase::CaseSensitive); }))
+			{
+				return FText::FromString(Candidate);
+			}
+		}
+	}
+
+
 	DECLARE_DELEGATE_RetVal_TwoParams(bool, FCanDropIdGroupChild,
 		const FMixtormatChildDragDropOp&, FMixtormatChildAddress);
 	DECLARE_DELEGATE_RetVal_TwoParams(FReply, FDropIdGroupChild,
