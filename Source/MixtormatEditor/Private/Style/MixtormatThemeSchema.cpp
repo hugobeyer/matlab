@@ -407,6 +407,19 @@ void AddIconRole(
 		NUM("ControlLayout.DialogButtonGap", Controls, "Layout", "Dialog Button Gap", ControlLayout.DialogButtonGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.GroupOuterGap", Controls, "Layout", "Group Outer Gap", ControlLayout.GroupOuterGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.LayerChildIconSize", Controls, "Layout", "Layer Child Icon Size", ControlLayout.LayerChildIconSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ParameterInfoPanelWidth", Controls, "Layout", "Parameter Info Panel Width", ControlLayout.ParameterInfoPanelWidth, 120, 480, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ParameterRangePanelWidth", Controls, "Layout", "Parameter Range Panel Width", ControlLayout.ParameterRangePanelWidth, 120, 480, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ParameterAuthoringPanelWidth", Controls, "Layout", "Parameter Authoring Panel Width", ControlLayout.ParameterAuthoringPanelWidth, 120, 480, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeDialogPathPickerWidth", Controls, "Dialogs", "Bake Path Picker Width", ControlLayout.BakeDialogPathPickerWidth, 160, 800, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeDialogPathPickerHeight", Controls, "Dialogs", "Bake Path Picker Height", ControlLayout.BakeDialogPathPickerHeight, 160, 800, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeResultDialogWidth", Controls, "Dialogs", "Bake Result Width", ControlLayout.BakeResultDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeResultDialogHeight", Controls, "Dialogs", "Bake Result Height", ControlLayout.BakeResultDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeSettingsDialogWidth", Controls, "Dialogs", "Bake Settings Width", ControlLayout.BakeSettingsDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeSettingsDialogHeight", Controls, "Dialogs", "Bake Settings Height", ControlLayout.BakeSettingsDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.FeedbackDialogWidth", Controls, "Dialogs", "Feedback Width", ControlLayout.FeedbackDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.FeedbackDialogHeight", Controls, "Dialogs", "Feedback Height", ControlLayout.FeedbackDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ConfirmDialogWidth", Controls, "Dialogs", "Confirm Width", ControlLayout.ConfirmDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ConfirmDialogHeight", Controls, "Dialogs", "Confirm Height", ControlLayout.ConfirmDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.MaskPickerWidth", Controls, "Layout", "Mask Picker Width", ControlLayout.MaskPickerWidth, 200, 1200, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ThumbnailCardPadding", Controls, "Layout", "Thumbnail Card Padding", ControlLayout.ThumbnailCardPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.MaskGalleryTileGap", Controls, "Layout", "Mask Gallery Tile Gap", ControlLayout.MaskGalleryTileGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
@@ -745,6 +758,8 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("GalleryLayout.OverlayInset", GalleryShell, "Gallery Layout", "Overlay Inset", GalleryLayout.OverlayInset, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OwnershipBadgeSize", GalleryShell, "Gallery Layout", "Ownership Badge Size", GalleryLayout.OwnershipBadgeSize, 6, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.OwnershipBadgePadding", GalleryShell, "Gallery Layout", "Ownership Badge Padding", GalleryLayout.OwnershipBadgePadding, 0, 12, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerHeaderGripSize", GalleryShell, "Gallery Layout", "Drawer Header Grip Size", GalleryLayout.DrawerHeaderGripSize, 8, 48, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.MaskHeaderNameWidth", GalleryShell, "Gallery Layout", "Mask Header Name Width", GalleryLayout.MaskHeaderNameWidth, 40, 320, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.MaskHeaderInset", GalleryShell, "Gallery Layout", "Masks Header Inset", GalleryLayout.MaskHeaderInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerAutoCollapseDistance", GalleryShell, "Gallery Layout", "Drawer Auto-Collapse Distance", GalleryLayout.DrawerAutoCollapseDistance, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);

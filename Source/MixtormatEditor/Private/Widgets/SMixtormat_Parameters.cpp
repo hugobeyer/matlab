@@ -1175,7 +1175,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(260.0f)
+				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterInfoPanelWidth)
 				[
 					Rows
 				]
@@ -1261,7 +1261,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(300.0f)
+				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterRangePanelWidth)
 				[
 					Rows
 				]
@@ -1615,7 +1615,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(320.0f)
+				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterAuthoringPanelWidth)
 				[
 					Rows
 				]

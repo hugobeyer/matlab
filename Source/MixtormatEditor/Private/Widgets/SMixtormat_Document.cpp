@@ -448,7 +448,9 @@ FReply SMixtormat::BakeWorkingMaterial()
 	TSharedPtr<SMixtormatBakeSettingsDialog> SettingsDialog;
 	const TSharedRef<SWindow> SettingsWindow = SNew(SWindow)
 		.Title(LOCTEXT("BakeSettingsTitle", "Bake Material"))
-		.ClientSize(FVector2D(480.0f, 450.0f))
+		.ClientSize(FVector2D(
+			FMixtormatThemeStore::GetResolved().ControlLayout.BakeSettingsDialogWidth,
+			FMixtormatThemeStore::GetResolved().ControlLayout.BakeSettingsDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[

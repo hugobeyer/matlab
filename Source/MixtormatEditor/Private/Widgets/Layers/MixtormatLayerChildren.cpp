@@ -1797,7 +1797,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 					.Padding(Resolved.GalleryLayout.HeaderGap, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SBox)
-						.WidthOverride(112.0f)
+						.WidthOverride(Resolved.GalleryLayout.MaskHeaderNameWidth)
 						[
 							SNew(STextBlock)
 							.Visibility_Lambda([this]()

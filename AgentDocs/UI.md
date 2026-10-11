@@ -216,7 +216,13 @@ All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requir
 - The CREATE tab owns the Layers creation toolbar's `CreateLayout` tokens
   (`CreationButtonIconSize`, `CreationButtonIconGap`). The ownership badge's
   `GalleryLayout.OwnershipBadgeSize` / `OwnershipBadgePadding` live under
-  GALLERY / SHELL > Gallery Layout.
+  GALLERY / SHELL > Gallery Layout, alongside `DrawerHeaderGripSize` and
+  `MaskHeaderNameWidth`.
+- CONTROLS > Layout owns the parameter authoring panel widths
+  (`ParameterInfoPanelWidth`, `ParameterRangePanelWidth`,
+  `ParameterAuthoringPanelWidth`); CONTROLS > Dialogs owns the bake path picker
+  and the four dialog window sizes. The UI STYLE window itself is deliberately
+  untokenized.
 - Authored theme data: `Config/UIStyleTheme.json`.
 
 Use the token/theme system; do not introduce local styling. `MixtormatStyle`

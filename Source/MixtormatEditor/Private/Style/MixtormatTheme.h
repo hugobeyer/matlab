@@ -627,6 +627,23 @@ namespace Mixtormat
 		float DialogButtonGap = 6.0f;
 		float GroupOuterGap = 3.0f;
 		float LayerChildIconSize = 16.0f;
+		// Parameter authoring popovers: the info panel, the UI range override, and the
+		// authoring setup panel. Each is its own width because each holds a different table.
+		float ParameterInfoPanelWidth = 260.0f;
+		float ParameterRangePanelWidth = 300.0f;
+		float ParameterAuthoringPanelWidth = 320.0f;
+		// Dialogs. The bake settings path picker and the four window sizes; the UI STYLE
+		// window is deliberately not here -- it is a dev tool and sizes itself.
+		float BakeDialogPathPickerWidth = 360.0f;
+		float BakeDialogPathPickerHeight = 420.0f;
+		float BakeResultDialogWidth = 760.0f;
+		float BakeResultDialogHeight = 320.0f;
+		float BakeSettingsDialogWidth = 480.0f;
+		float BakeSettingsDialogHeight = 450.0f;
+		float FeedbackDialogWidth = 520.0f;
+		float FeedbackDialogHeight = 210.0f;
+		float ConfirmDialogWidth = 560.0f;
+		float ConfirmDialogHeight = 320.0f;
 		float MaskPickerWidth = 600.0f;
 		float ThumbnailCardPadding = 2.0f;
 		float MaskGalleryTileGap = 5.0f;
@@ -880,6 +897,10 @@ namespace Mixtormat
 		// between the icon and the badge plate.
 		float OwnershipBadgeSize = 12.0f;
 		float OwnershipBadgePadding = 2.0f;
+		// The gallery drawer header's drag grip, and the width the MASKS header gives the
+		// selected mask's name before it ellipsizes.
+		float DrawerHeaderGripSize = 18.0f;
+		float MaskHeaderNameWidth = 112.0f;
 	};
 
 	struct FMixtormatShellTheme

@@ -417,6 +417,20 @@ namespace Mixtormat
 		T.CreateLayout.CreationButtonIconSize = 16.0f;
 		T.CreateLayout.CreationButtonIconGap = 4.0f;
 
+		T.ControlLayout.ParameterInfoPanelWidth = 260.0f;
+		T.ControlLayout.ParameterRangePanelWidth = 300.0f;
+		T.ControlLayout.ParameterAuthoringPanelWidth = 320.0f;
+		T.ControlLayout.BakeDialogPathPickerWidth = 360.0f;
+		T.ControlLayout.BakeDialogPathPickerHeight = 420.0f;
+		T.ControlLayout.BakeResultDialogWidth = 760.0f;
+		T.ControlLayout.BakeResultDialogHeight = 320.0f;
+		T.ControlLayout.BakeSettingsDialogWidth = 480.0f;
+		T.ControlLayout.BakeSettingsDialogHeight = 450.0f;
+		T.ControlLayout.FeedbackDialogWidth = 520.0f;
+		T.ControlLayout.FeedbackDialogHeight = 210.0f;
+		T.ControlLayout.ConfirmDialogWidth = 560.0f;
+		T.ControlLayout.ConfirmDialogHeight = 320.0f;
+
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
 		T.GalleryLayout.DrawerInitialHeight = 256.0f;
@@ -817,6 +831,19 @@ namespace Mixtormat
 		T.ContextLayout.HintStripCorner = 2; // Top Right
 		T.CreateLayout.CreationButtonIconSize = 16.0f;
 		T.CreateLayout.CreationButtonIconGap = 4.0f;
+		T.ControlLayout.ParameterInfoPanelWidth = 260.0f;
+		T.ControlLayout.ParameterRangePanelWidth = 300.0f;
+		T.ControlLayout.ParameterAuthoringPanelWidth = 320.0f;
+		T.ControlLayout.BakeDialogPathPickerWidth = 360.0f;
+		T.ControlLayout.BakeDialogPathPickerHeight = 420.0f;
+		T.ControlLayout.BakeResultDialogWidth = 760.0f;
+		T.ControlLayout.BakeResultDialogHeight = 320.0f;
+		T.ControlLayout.BakeSettingsDialogWidth = 480.0f;
+		T.ControlLayout.BakeSettingsDialogHeight = 450.0f;
+		T.ControlLayout.FeedbackDialogWidth = 520.0f;
+		T.ControlLayout.FeedbackDialogHeight = 210.0f;
+		T.ControlLayout.ConfirmDialogWidth = 560.0f;
+		T.ControlLayout.ConfirmDialogHeight = 320.0f;
 		T.Gallery.BorderWidth = 0.0f;
 		T.Gallery.BorderOpacity = 1.0f;
 		T.Gallery.HoverLiftOpacity = 0.0f;

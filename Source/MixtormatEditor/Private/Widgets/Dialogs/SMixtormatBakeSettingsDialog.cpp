@@ -182,8 +182,8 @@ TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildPathPicker()
 	FContentBrowserModule& ContentBrowserModule =
 		FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 	return SNew(SBox)
-		.WidthOverride(360.0f)
-		.HeightOverride(420.0f)
+		.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.BakeDialogPathPickerWidth)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.BakeDialogPathPickerHeight)
 		[ContentBrowserModule.Get().CreatePathPicker(Config)];
 }
 

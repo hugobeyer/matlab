@@ -551,8 +551,8 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					.Padding(Gallery.CaptionInset, 0.0f)
 				[
 					SNew(SBox)
-					.WidthOverride(18.0f)
-					.HeightOverride(18.0f)
+					.WidthOverride(Gallery.DrawerHeaderGripSize)
+					.HeightOverride(Gallery.DrawerHeaderGripSize)
 					.ToolTipText(LOCTEXT("GalleryResizeHint", "Drag the gallery header to resize"))
 					[
 						SNew(SImage)
@@ -861,7 +861,9 @@ void SMixtormat::RefreshBuiltInSurface(const FSoftObjectPath AssetPath)
 	TSharedPtr<SWindow> FeedbackWindow;
 	SAssignNew(FeedbackWindow, SWindow)
 		.Title(LOCTEXT("DeveloperRefreshResultTitle", "Material Refresh"))
-		.ClientSize(FVector2D(520.0f, 210.0f))
+		.ClientSize(FVector2D(
+			FMixtormatThemeStore::GetResolved().ControlLayout.FeedbackDialogWidth,
+			FMixtormatThemeStore::GetResolved().ControlLayout.FeedbackDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[
@@ -1147,7 +1149,9 @@ void SMixtormat::DeleteBuiltInSurface(const FSoftObjectPath AssetPath)
 	TSharedPtr<SButton> CancelButton;
 	SAssignNew(ConfirmationWindow, SWindow)
 		.Title(LOCTEXT("DeleteBuiltInMaterialTitle", "Delete Built-In Material"))
-		.ClientSize(FVector2D(560.0f, 320.0f))
+		.ClientSize(FVector2D(
+			FMixtormatThemeStore::GetResolved().ControlLayout.ConfirmDialogWidth,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ConfirmDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[

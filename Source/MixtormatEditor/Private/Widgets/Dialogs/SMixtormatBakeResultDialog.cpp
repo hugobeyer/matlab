@@ -91,7 +91,9 @@ EMixtormatBakeResultAction ShowMixtormatBakeResultDialog(
 	TSharedPtr<SMixtormatBakeResultDialog> Dialog;
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("BakeResultTitle", "Bake Complete"))
-		.ClientSize(FVector2D(760.0f, 320.0f))
+		.ClientSize(FVector2D(
+			FMixtormatThemeStore::GetResolved().ControlLayout.BakeResultDialogWidth,
+			FMixtormatThemeStore::GetResolved().ControlLayout.BakeResultDialogHeight))
 		.SupportsMaximize(false)
 		.SupportsMinimize(false)
 		[
