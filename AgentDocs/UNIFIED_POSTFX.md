@@ -9,40 +9,50 @@ Implementation target: `main`. Original design audit performed against `feature/
 - `SMixtormat_Preview.cpp` already resolves child output semantics through `GetChildCapabilities()` and manages `ChildPreviewTarget`. Reuse it for automatic selection; don't create a second child-output registry.
 - `FMixtormatGpuCompositor::BindOutputs` already binds composed surface textures and height into MIDs. Reuse retained published child GPU textures for data sources; do not trigger another gather/composite or a GPU readback.
 
-## Mask-first implementation on main (2026-10-11)
+## Mask-first PostFX implementation on main (2026-10-11)
 
-The initial W-key experiment is **material-integrated**, not a scene-space PostFX pass.
-It uses the original lit/Substrate preview master and its existing material UVs,
-normals, roughness/metallic, AO and displacement. The compositor holds the selected
-mask snapshot until the end of the layer loop, then writes a tinted **display-only**
-albedo to the existing Debug render target. The master binds that debug target to
-`DA_BaseColor` only while W is active. Original composited BaseColor and bake
-targets remain untouched; no extra persistent target, GPU readback or generator pass
-is created. Overlay off runs no additional tint dispatch.
+The W experiment now uses a **viewport-only post-process blend** instead of
+tinting Base Color or creating a replacement lit material.
 
-This first pass tints material albedo before PBR shading; it does not independently
-blend over the *finished* lit scene. Lighting and specular response may therefore
-differ slightly inside tinted areas, especially for metallic materials. A true
-post-shading overlay still requires authored UV/depth capture as described below.
+- The GPU compositor retains the selected **raw effective mask/gate coverage**
+  and writes it to the existing debug target as float coverage, not green/cyan.
+  Regular BaseColor/Normal/RAM/Height and baked outputs are unchanged.
+- `FMixtormatViewportMaskPostFx` owns a second, capture-only static mesh that
+  uses the same authored mesh UVs, transform, height texture, displacement
+  scaling and enable flags as the main preview, via the existing
+  `MixtormatPreview::AddHeightDisplacement` helper. It writes mesh UV into
+  HDR R/G and a subject-validity bit in B.
+- The capture component renders only the proxy into a view-sized HDR target.
+  A post-process material samples those UVs to look up the selected mask field
+  and alpha-blends stable, **unlit** cyan over `PostProcessInput0`, **after
+  tonemapping**, without changing lighting, geometry or the PBR master.
+- `W` toggles the overlay; `V` returns to the original material. RMB+WASD
+  events are consumed by the viewport rather than passed to the inherited fly
+  camera, while RMB mouse drag still rotates the studio light.
+- Mask/gate selection is resolved by stable owner/child GUID after group
+  expansion, reusing the existing `ResolveChildPreviewTarget` and compositor
+  output routing. This covers Mask children including Texture/Noise/Noise Gate
+  and scoped gate masks, Generated, Craquelure, Color ID and Random ID masks.
+  It does **not** yet cover arbitrary Behavior-published scalar influence.
+- The capture, proxy and post process are created lazily the first time W
+  is activated; when W is off the capture and post-process pass are disabled.
+  Original old green inspector-eye preview paths remain available and unchanged.
 
-Mask-first selection: enabled Mask, Generated, Craquelure, Color ID or Random ID
-children of a concrete selected layer. No group-child selection or generic
-published scalar Behavior coverage yet. One fixed initial opacity (0.55), no UI.
-V now resets to the original PBR material; V and M/U cycling hotkeys are retired. The old replacement-preview implementation remains internally for inspector preview controls until their visualizations migrate.
+The overlay has a temporary opacity of 0.55. One additional mesh capture per
+frame is required while active to preserve displaced-surface UVs. This is
+a source implementation only: no Unreal build, shader compile or runtime
+inspection has been performed.
 
-Changed integration points: `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`,
-`SMixtormat.cpp`, `SMixtormat.h`, `MixtormatGpuCompositor.h`,
-`MixtormatGpuCompositorInternal.h`, `MixtormatGpuCompositor.cpp`,
-`MixtormatGpuComposePipeline.cpp`, `MixtormatGpuDebugPreviewPasses.cpp`,
-`MixtormatDebugPreviewBlit.usf`, and `MixtormatDiagnosticOverlay.ush`.
+## Remaining work
 
-## Future true PostFX rendering decision
-
-Use **one viewport-scoped, surface-aware overlay pass** after opaque material shading and before temporal upscaling, invoked only while a diagnostic is active. Input: scene colour/depth plus the selected published field and a per-pixel mapping back to the preview mesh's **true authored material UV**. Output: scene colour blended with diagnostic ink. Opaque surface, normals, lighting, Substrate inputs and displacement are untouched.
-
-A generic Unreal post-process material has screen position, depth and GBuffer attributes, **not the preview mesh's interpolated material UV**. Consequently sampling the field at screen UV or reconstructing planar UV from world position is incorrect on sphere/cylinder/cube, across seams, or with nonuniform UV transforms. This mapping is a prerequisite: render the preview object's UV to an auxiliary GPU scene target at the **same displaced geometry positions**, depth-tested against the preview surface, or add a viewport-only mesh UV buffer via a suitable mesh pass. Do not fake this with screen UV. Material-derived UV data must use the same UV transform and displacement as the existing preview mesh; avoid a parallel approximation.
-
-Mask the overlay to the preview subject (depth/object identity). Keep the auxiliary UV pass dormant and unallocated when the overlay is off. The UV pass is view-dependent, not a generator evaluation; published fields remain cached. Use integer/point sampling for IDs and calculate boundaries from neighbouring *integer* IDs only; softness is opacity at the final scene blend, never a blur of ID data.
+- Confirm exact matching between capture pixels and the preview viewport's
+  actual projection under non-default aspect ratios and temporal upscaling.
+- Expand typed output routing from Mask children to arbitrary Behavior influence
+  fields and Sources shelf where meaningful.
+- Add Flow / Height / IDs / UV visualizations using the same post pipeline;
+  permit Flow and UV lines over a mutually exclusive scalar/ID base.
+- Remove retired replacement preview paths only after their full functionality
+  has migrated; the current W path does not modify them.
 
 ## One semantic shader
 
@@ -64,13 +74,11 @@ Future unified controls: shared opacity and optional exact-ID boundaries; select
 
 ## Integration points
 
-1. `Source/MixtormatEditor/Private/Widgets/SMixtormatPreviewViewport.{h,cpp}`: viewport-scoped scene extension/UV attachment lifecycle; disabled means no render work.
-2. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Preview.cpp`: automatic capability-driven selection.
-3. `Source/MixtormatShaders/Private/MixtormatGpuDebugPreviewPasses.cpp` and `Shaders/Private/MixtormatDebugPreviewBlit.usf`: reuse existing diagnostic colour math where suitable; do not replace these full-preview paths.
-4. `Source/MixtormatEditor/Private/Widgets/SMixtormat_PreviewControls.cpp`: the shared toggle and opacity control, using theme tokens.
-
-## Explicit blocker
-
-There is no verified existing displaced-surface UV scene buffer in the inspected preview integration. A conventional post-process material alone **cannot** meet the per-surface UV accuracy requirement. Do not wire in a screen-UV blend as a provisional implementation: it would display incorrect data and silently violate the stated contract.
+1. `Source/MixtormatEditor/Private/Preview/MixtormatViewportMaskPostFx.{h,cpp}`: private capture/proxy/after-tonemapping material owner.
+2. `Source/MixtormatEditor/Private/Widgets/SMixtormatPreviewViewport.{h,cpp}`: viewport lifetime, active state and camera/mesh synchronization.
+3. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Preview.cpp`: semantic selection / GUID routing.
+4. `Source/MixtormatShaders/Private/MixtormatGpuDebugPreviewPasses.cpp`: existing GPU selected-field export, shared diagnostic data target.
+5. `Shaders/Private/MixtormatDebugPreviewBlit.usf`: raw mask field output, no colorization.
+6. `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`: stable snapshot and final export.
 
 No builds or tests; user owns Unreal validation.
