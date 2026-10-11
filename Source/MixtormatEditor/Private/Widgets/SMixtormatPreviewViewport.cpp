@@ -1495,6 +1495,10 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 	}
 	if (!bUsingDebugPreview)
 	{
+		if (bDebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask)
+		{
+			return NSLOCTEXT("SMixtormatPreviewViewport", "MaskOverlayPreviewModeLabel", "Mask overlay");
+		}
 		return NSLOCTEXT("SMixtormatPreviewViewport", "MaterialPreviewModeLabel", "Material");
 	}
 	switch (bDebugPreviewMode)
