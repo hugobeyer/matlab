@@ -208,20 +208,20 @@ void SignedPushCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	if (FieldReversed != 0u) { Delta = -Delta; }
 	const float Scaled = Weight * Delta;
-	// Operation and Add are the same additive result. The signed-scalar combines
-	// are Push-only: Warp has no value base and Carve folds a distance, not a
-	// contribution, so neither can be admitted a Blend at all.
+	// Operation and Add are the same additive result. Min/Max compare the
+	// candidate height against Base so zero weight is always exact identity.
+	// These signed-scalar combines are Push-only, not Warp or Carve.
 	if (FieldBlend == MIXTORMAT_FIELD_BLEND_MULTIPLY)
 	{
 		OutSignedHeight[Pixel] = Base * (1.0f + Scaled);
 	}
 	else if (FieldBlend == MIXTORMAT_FIELD_BLEND_MIN)
 	{
-		OutSignedHeight[Pixel] = min(Base, Scaled);
+		OutSignedHeight[Pixel] = min(Base, Base + Scaled);
 	}
 	else if (FieldBlend == MIXTORMAT_FIELD_BLEND_MAX)
 	{
-		OutSignedHeight[Pixel] = max(Base, Scaled);
+		OutSignedHeight[Pixel] = max(Base, Base + Scaled);
 	}
 	else
 	{
@@ -299,14 +299,24 @@ void ModeMixCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Pixel = int2(DispatchThreadId.xy);
 	if (any(Pixel >= OutputSize)) { return; }
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
-	float2 Standard = HasStandard != 0u ? StandardCoordinates.Load(int3(Pixel, 0)) : UV;
-	float2 Traced = HasTraced != 0u ? TracedCoordinates.Load(int3(Pixel, 0)) : UV;
-	if (!all(isfinite(Standard))) { Standard = UV; }
-	if (!all(isfinite(Traced))) { Traced = UV; }
+	const float2 Standard = HasStandard != 0u ? StandardCoordinates.Load(int3(Pixel, 0)) : UV;
+	const float2 Traced = HasTraced != 0u ? TracedCoordinates.Load(int3(Pixel, 0)) : UV;
 	const float DrivenMix = MixtormatApplyDriver(ModeMix,
 		ModeMixDriverSignal.Load(int3(Pixel, 0)),
 		ModeMixDriverParamsA, ModeMixDriverParamsB);
-	const float T = isfinite(DrivenMix) ? saturate(DrivenMix) : saturate(ModeMix);
+	const float T = isfinite(DrivenMix) ? saturate(DrivenMix)
+		: (isfinite(ModeMix) ? saturate(ModeMix) : 0.0f);
+	// Only the selected input matters at the endpoints.
+	const bool bInvalid = (T <= 0.0f && !all(isfinite(Standard)))
+		|| (T >= 1.0f && !all(isfinite(Traced)))
+		|| (T > 0.0f && T < 1.0f
+			&& (!all(isfinite(Standard)) || !all(isfinite(Traced))));
+	if (bInvalid)
+	{
+		const float Invalid = asfloat(0x7fc00000u);
+		OutCoordinates[Pixel] = float2(Invalid, Invalid);
+		return;
+	}
 	if (T <= 0.0f)
 	{
 		OutCoordinates[Pixel] = Standard;
@@ -319,7 +329,7 @@ void ModeMixCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		const float2 A = Standard - UV;
 		const float2 B = Traced - UV;
-		const float2 ShortestDifference = (B - A) - round(B - A);
-		OutCoordinates[Pixel] = UV + A + T * ShortestDifference;
+		// Mix lifted periodic deltas; shortest-path wrapping loses tile winding.
+		OutCoordinates[Pixel] = UV + lerp(A, B, T);
 	}
 }
