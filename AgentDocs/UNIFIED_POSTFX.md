@@ -28,7 +28,7 @@ post-shading overlay still requires authored UV/depth capture as described below
 Mask-first selection: enabled Mask, Generated, Craquelure, Color ID or Random ID
 children of a concrete selected layer. No group-child selection or generic
 published scalar Behavior coverage yet. One fixed initial opacity (0.55), no UI.
-The existing V/M replacement diagnostics remain until their outputs are migrated.
+V now resets to the original PBR material; V and M/U cycling hotkeys are retired. The old replacement-preview implementation remains internally for inspector preview controls until their visualizations migrate.
 
 Changed integration points: `SMixtormatPreviewViewport.*`, `SMixtormat_Preview.cpp`,
 `SMixtormat.cpp`, `SMixtormat.h`, `MixtormatGpuCompositor.h`,
