@@ -2307,8 +2307,12 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 			const FBehaviorFlowRenderData& Flow = FlowChild.Behavior.Flow;
 			const bool bFieldProducer = FlowChild.Behavior.Type == EMixtormatBehaviorType::FlowField;
 			const bool bGravity = Flow.Mode == EMixtormatBehaviorFlowMode::Gravity;
-			// Height-only producers must never bind a null boundary or invent an SDF.
-			if (!BoundaryField && Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)) { continue; }
+			// Invalid or mismatched sources remain neutral, never bound into a typed shader slot.
+			if (!Current || Current->Desc.Extent != Size
+				|| Current->Desc.Format != PF_R32_FLOAT) { continue; }
+			if (Flow.FlowSource == static_cast<uint32>(EMixtormatBehaviorFlowSource::SignedDistance)
+				&& (!BoundaryField || BoundaryField->Desc.Extent != Size
+					|| BoundaryField->Desc.Format != PF_G32R32F)) { continue; }
 			const int32 FlowIndex = FlowChild.SourceChildIndex;
 			const bool bPreviewing = IsPreviewingChild(Request, LayerIndex, FlowIndex);
 			const bool bNeutral = IsNeutralFlowTool(FlowChild.Behavior);
