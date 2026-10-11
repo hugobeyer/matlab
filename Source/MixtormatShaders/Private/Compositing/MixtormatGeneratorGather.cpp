@@ -503,7 +503,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.DirectionComposition.bReversed = Behavior.Direction.bReversed ? 1u : 0u;
 	Out.DirectionComposition.Blend = static_cast<uint32>(Behavior.Direction.Blend);
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
-		? Reference.SourceShelfId : Reference.SourceLayerId;
+		? MixtormatOutputReferences::ResolveShelfProducerId(Sources, Reference.SourceShelfId)
+		: Reference.SourceLayerId;
 	Out.Direction.Source.ChildIndex = SourceIndex;
 	Out.Direction.Source.Output = Reference.OutputName;
 	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
@@ -542,7 +543,8 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			return;
 		}
 		Out.Height.Source.LayerId = HeightRef.IsShelfSource()
-			? HeightRef.SourceShelfId : HeightRef.SourceLayerId;
+			? MixtormatOutputReferences::ResolveShelfProducerId(Sources, HeightRef.SourceShelfId)
+			: HeightRef.SourceLayerId;
 		Out.Height.Source.ChildIndex = HeightIndex;
 		Out.Height.Source.Output = HeightRef.OutputName;
 		Out.Height.Source.OwnerKind = HeightRef.OwnerKind;
