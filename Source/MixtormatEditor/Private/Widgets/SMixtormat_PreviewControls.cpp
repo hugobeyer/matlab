@@ -857,7 +857,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
 			SNew(SMixtormatHelp)
-			.Text(LOCTEXT("ClearDebugPreviewHint", "Return to the composite preview"))
+			.Text(LOCTEXT("ClearDebugPreviewHint", "Return to the original PBR material (V)"))
 			.Visibility_Lambda([this]()
 			{
 				return DebugPreviewMode == EMixtormatDebugPreviewMode::None
@@ -870,11 +870,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 				.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.ButtonPaddingCompact, 0.0f))
 				.OnClicked_Lambda([this]()
 			{
-				bAutomaticFlowPreview = false;
-				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
-				ChildPreviewTarget = FMixtormatChildPreviewTarget();
-				RefreshLayeredPreview(false);
-				return FReply::Handled();
+				return ResetDiagnosticOverlays();
 			})
 			[
 				SNew(STextBlock)
