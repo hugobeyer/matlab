@@ -17,7 +17,9 @@ enum class ENativeFlowSource : uint8
 // flat/non-finite slopes and untrusted boundary stencils have zero influence and validity.
 // Publishes FlowDirection with canonical Flow/FlowSmooth/Validity storage. No extra smoothing
 // is authored here, so FlowSmooth aliases Flow. Does not trace, compose or modify the source.
+// Optional packed-boundary RegionIds reject cross-owner stencils and local derivative reversals.
 FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
 	int32 SourceChildIndex, FRDGTextureRef Source,
-	ENativeFlowSource SourceKind = ENativeFlowSource::SignedHeight);
+	ENativeFlowSource SourceKind = ENativeFlowSource::SignedHeight,
+	FRDGTextureRef BoundaryRegionIds = nullptr);
 }

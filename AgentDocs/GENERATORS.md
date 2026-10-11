@@ -46,6 +46,24 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
   source selection/public output integrations and new inspector controls remain later stages;
   boundary support here is an explicit derivation primitive, not SDF steering for Sculpt.
 
+## Cracks native Flow (Stage 2)
+
+- Cracks automatically publishes `FlowDirection` from `FGeneratorBundle::BoundaryField` via
+  the shared `AddNativeFlowPass(..., ENativeFlowSource::SignedBoundary)` before Behaviors,
+  even without a Flow child or consumer. Its signed Height is not a substitute boundary source.
+- Existing piece Region IDs optionally constrain the shared packed-boundary derivative stencil.
+  Invalid/non-finite taps, flat slopes, cross-piece taps and sampled derivative reversals produce
+  zero vector, influence and validity. All taps wrap across the tile; IDs are not modified.
+- The ordered working Flow adopts this native seed once. Sculpt, automatic Warp and traced
+  Deform consume it; explicit Flow children still contribute in order through existing Add/Mix.
+  Warp transports working Flow, while Deform changes Height only. `FlowDirection` remains the
+  original native geometry snapshot, not a second solve from the modified Height.
+- Runtime field capability/reference validation and the existing child-output preview metadata
+  expose Cracks Flow without new inspector controls or a separate preview/shader implementation.
+  Height, IDs, masks, chamfer, Noise and Strata Carver keep their existing behavior.
+- Validity is a conservative local-stencil guard, not subpixel boundary reconstruction or a
+  physics/collision guarantee. Other generator native integrations remain later stages.
+
 ## Noise as a mask source (inline or live)
 
 Every Mask child can now read noise directly; the same producer family is reused rather than

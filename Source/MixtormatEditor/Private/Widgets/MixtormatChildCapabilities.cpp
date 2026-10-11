@@ -160,6 +160,10 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("ChamferCut")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputCrackChamfer", "Chamfer Cut"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputCrackFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::RockFormation)
 		{

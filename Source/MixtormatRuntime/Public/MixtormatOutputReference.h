@@ -196,8 +196,8 @@ namespace MixtormatOutputReferences
 	// The typed outputs a Generator module publishes, and therefore what a Sources shelf root can be
 	// read for. A shelf root is a bare module: every type publishes its completed signed "Height";
 	// Noise additionally publishes "Value" (signed only for the lattice/Bars families) and
-	// "FlowDirection". Nothing else is a valid shelf endpoint, so a reference to any other output
-	// cannot resolve.
+	// "FlowDirection" (and "GeneratedFlow" while Write Flow is enabled). Cracks additionally
+	// publishes its native boundary-derived "FlowDirection". Other outputs cannot resolve here.
 	MIXTORMATRUNTIME_API bool GeneratorPublishesField(
 		const FMixtormatGenerator& Generator,
 		EMixtormatPublishedFieldKind Kind,

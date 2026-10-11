@@ -3431,7 +3431,17 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 						|| (Behavior.Type == EMixtormatBehaviorType::Warp
 							&& (Behavior.Flow.ModeMix > 0.0f || Behavior.Flow.SettingsDrivers[8].bEnabled));
 				});
-			if (bNeedsWorkingFlow)
+			if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
+			{
+				// Cracks always publishes its geometry-derived seed, independent of Behavior demand.
+				// Never overwrite it with height-derived Flow or add it to itself in the working chain.
+				const FPublishedField NativeFlow = AddNativeFlowPass(Ctx, Layer,
+					Child.SourceChildIndex, Module.BoundaryField, ENativeFlowSource::SignedBoundary,
+					Module.RegionIds);
+				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
+					FName(TEXT("FlowDirection")), NativeFlow);
+			}
+			else if (bNeedsWorkingFlow)
 			{
 				const FPublishedField NativeFlow = AddNativeFlowPass(
 					Ctx, Layer, Child.SourceChildIndex, Module.Height);

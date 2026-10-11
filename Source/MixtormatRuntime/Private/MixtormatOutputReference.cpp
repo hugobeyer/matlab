@@ -69,8 +69,11 @@ namespace MixtormatOutputReferences
 				&& OutputName == FName(TEXT("Value"))
 				&& NoiseValueKind(Generator.Noise.NoiseType) == EMixtormatPublishedFieldKind::ScalarSigned;
 		case EMixtormatPublishedFieldKind::Flow:
-			// Only Noise emits flow fields: the intrinsic FlowDirection diagnostic and, since P1,
-			// the canonical GeneratedFlow MODE contribution (AgentDocs/FIELD_CONTRACT_P0.md).
+			if (Generator.Type == EMixtormatGeneratorType::Cracks)
+			{
+				return OutputName == FName(TEXT("FlowDirection"));
+			}
+			// Noise retains its intrinsic diagnostic and canonical GeneratedFlow MODE contribution.
 			return Generator.Type == EMixtormatGeneratorType::Noise
 				&& (OutputName == FName(TEXT("FlowDirection"))
 					|| (Generator.Noise.bNoiseWriteFlow
@@ -575,17 +578,17 @@ namespace MixtormatOutputReferences
 			Status.Issue = EStructuralLinkIssue::None;
 			return SourceIndex;
 		}
-		// Noise's explicit Flow is derived from its completed height, not its raw Vector2 Gradient.
-		const bool bNoiseFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
-			&& Source.Generator.Type == EMixtormatGeneratorType::Noise;
+		// Only declared native Flow outputs are directional sources, never raw Vector2 Gradient.
+		const bool bGeneratorFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
+			&& GeneratorPublishesField(Source.Generator, Reference.Kind, Reference.OutputName);
 		const bool bBehaviorFlow = (bFlow || bUV) && Source.Type == EMixtormatLayerChildType::Behavior;
-		if (!bNoiseFlow && !bBehaviorFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
-		if (bNoiseFlow ? !Source.Generator.bEnabled : !Source.Behavior.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
-		if (bNoiseFlow ? Source.ScopeOwnerChildId.IsValid() : !Source.ScopeOwnerChildId.IsValid())
+		if (!bGeneratorFlow && !bBehaviorFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
+		if (bGeneratorFlow ? !Source.Generator.bEnabled : !Source.Behavior.bEnabled) { return Reject(EStructuralLinkIssue::DisabledSource); }
+		if (bGeneratorFlow ? Source.ScopeOwnerChildId.IsValid() : !Source.ScopeOwnerChildId.IsValid())
 		{
 			return Reject(EStructuralLinkIssue::WrongSourceScope);
 		}
-		const int32 OwnerIndex = bNoiseFlow ? SourceIndex : SourceLayer.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
+		const int32 OwnerIndex = bGeneratorFlow ? SourceIndex : SourceLayer.Children.IndexOfByPredicate([&](const FMixtormatLayerChild& Child)
 		{
 			return Child.ChildId == Source.ScopeOwnerChildId;
 		});
@@ -624,7 +627,7 @@ namespace MixtormatOutputReferences
 		{
 			return Reject(EStructuralLinkIssue::ForwardSource);
 		}
-		// bNoiseFlow is the only remaining producer kind.
+		// Native generator Flow is the only remaining producer kind.
 		Status.Issue = EStructuralLinkIssue::None;
 		return SourceIndex;
 	}

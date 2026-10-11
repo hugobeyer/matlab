@@ -5,6 +5,8 @@
 int2 OutputSize;
 #if MIXTORMAT_NATIVE_FLOW_PACKED_BOUNDARY
 Texture2D<float2> BoundaryField;
+uint HasBoundaryRegions;
+Texture2D<uint> BoundaryRegionIds;
 #else
 Texture2D<float> SignedField;
 #endif
@@ -47,6 +49,19 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		&& all(isfinite(XMinus)) && XMinus.y > 0.5f
 		&& all(isfinite(YPlus)) && YPlus.y > 0.5f
 		&& all(isfinite(YMinus)) && YMinus.y > 0.5f;
+	if (HasBoundaryRegions != 0u)
+	{
+		// A piece-local metric cannot differentiate through another piece's boundary branch.
+		const uint Owner = BoundaryRegionIds.Load(int3(Pixel, 0));
+		Valid = Valid && BoundaryRegionIds.Load(int3(XP, 0)) == Owner
+			&& BoundaryRegionIds.Load(int3(XM, 0)) == Owner
+			&& BoundaryRegionIds.Load(int3(YP, 0)) == Owner
+			&& BoundaryRegionIds.Load(int3(YM, 0)) == Owner;
+		// Reject sampled cusps/extrema rather than normalizing a mixed branch into movement.
+		const float2 Forward = float2(XPlus.x, YPlus.x) - Center.x;
+		const float2 Backward = Center.x - float2(XMinus.x, YMinus.x);
+		Valid = Valid && all(Forward * Backward >= 0.0f);
+	}
 #endif
 	const float2 Direction = Valid ? -Slope / Magnitude : float2(0.0f, 0.0f);
 	OutFlow[Pixel] = float4(Direction, 0.0f, Valid ? 1.0f : 0.0f);

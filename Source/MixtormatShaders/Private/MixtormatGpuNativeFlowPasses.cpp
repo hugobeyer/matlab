@@ -24,6 +24,8 @@ namespace
 			SHADER_PARAMETER(FIntPoint, OutputSize)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SignedField)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
+			SHADER_PARAMETER(uint32, HasBoundaryRegions)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, BoundaryRegionIds)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFlowValidity)
 		END_SHADER_PARAMETER_STRUCT()
@@ -39,14 +41,17 @@ namespace
 }
 
 FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
-	const int32 SourceChildIndex, FRDGTextureRef Source, const ENativeFlowSource SourceKind)
+	const int32 SourceChildIndex, FRDGTextureRef Source, const ENativeFlowSource SourceKind,
+	FRDGTextureRef BoundaryRegionIds)
 {
 	const FIntPoint Size = Ctx.Request.Resolution;
 	const bool bSignedHeight = SourceKind == ENativeFlowSource::SignedHeight;
 	const bool bSignedBoundary = SourceKind == ENativeFlowSource::SignedBoundary;
 	const bool bPackedBoundary = bSignedBoundary && Source && Source->Desc.Format == PF_G32R32F;
 	if (!Source || Source->Desc.Extent != Size || (!bSignedHeight && !bSignedBoundary)
-		|| (Source->Desc.Format != PF_R32_FLOAT && !bPackedBoundary))
+		|| (Source->Desc.Format != PF_R32_FLOAT && !bPackedBoundary)
+		|| (BoundaryRegionIds && (!bPackedBoundary || BoundaryRegionIds->Desc.Extent != Size
+			|| BoundaryRegionIds->Desc.Format != PF_R32_UINT)))
 	{
 		return FPublishedField{EMixtormatPublishedFieldKind::Flow};
 	}
@@ -65,6 +70,9 @@ FPublishedField AddNativeFlowPass(FMixtormatComposeContext& Ctx, const FLayerRen
 	P->OutputSize = Size;
 	P->SignedField = bPackedBoundary ? nullptr : Source;
 	P->BoundaryField = bPackedBoundary ? Source : nullptr;
+	P->HasBoundaryRegions = BoundaryRegionIds ? 1u : 0u;
+	P->BoundaryRegionIds = bPackedBoundary
+		? (BoundaryRegionIds ? BoundaryRegionIds : Ctx.EmptyRegionIds) : nullptr;
 	P->OutFlow = Ctx.GraphBuilder.CreateUAV(Flow);
 	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
 	ClearUnusedGraphResources(Shader, P);
