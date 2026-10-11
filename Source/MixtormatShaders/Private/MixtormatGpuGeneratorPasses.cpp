@@ -566,7 +566,7 @@ public:
 	// 6 pack a scalar signed distance (Pebbles) into the seed stage's boundary pair,
 	// 7 one axis of the direction blur, 8 trace a published field into destination UVs,
 	// 9 texture-space gravity with local height or boundary steering.
-	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 11);
+	class FStage : SHADER_PERMUTATION_INT("FLOW_STAGE", 12);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -820,6 +820,31 @@ public:
 };
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorUvBlendCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "MainCS", SF_Compute);
+
+class FMixtormatBehaviorModeMixCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorModeMixCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorModeMixCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, ModeMix)
+		SHADER_PARAMETER(uint32, HasStandard)
+		SHADER_PARAMETER(uint32, HasTraced)
+		SHADER_PARAMETER(FVector4f, ModeMixDriverParamsA)
+		SHADER_PARAMETER(FVector4f, ModeMixDriverParamsB)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModeMixDriverSignal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, StandardCoordinates)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, TracedCoordinates)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCoordinates)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorModeMixCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "ModeMixCS", SF_Compute);
 
 class FMixtormatBehaviorHeightGradientCS final : public FGlobalShader
 {
@@ -1398,6 +1423,46 @@ namespace
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
 			RDG_EVENT_NAME("Mixtormat.Behavior.WarpUV.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Result;
+	}
+
+	FRDGTextureRef MixBehaviorWarpCoordinates(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef Standard, FRDGTextureRef Traced,
+		const FBehaviorRenderData& Behavior, const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const float Mix = FMath::Clamp(Behavior.Flow.ModeMix, 0.0f, 1.0f);
+		const FScalarDriverRenderData& Driver = Behavior.Flow.SettingsDrivers[8];
+		if (!Driver.bEnabled)
+		{
+			if (Mix <= 0.0f) { return Standard; }
+			if (Mix >= 1.0f) { return Traced; }
+		}
+		if (!Standard && !Traced) { return nullptr; }
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Behavior.ModeMixUV"));
+		TShaderMapRef<FMixtormatBehaviorModeMixCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorModeMixCS::FParameters>();
+		P->OutputSize = Size;
+		P->ModeMix = Mix;
+		P->HasStandard = Standard ? 1u : 0u;
+		P->HasTraced = Traced ? 1u : 0u;
+		P->StandardCoordinates = Standard ? Standard : (Traced ? Traced : Ctx.EmptyPatternUV);
+		P->TracedCoordinates = Traced ? Traced : (Standard ? Standard : Ctx.EmptyPatternUV);
+		FRDGTextureRef* Signal = Driver.bEnabled ? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+		const bool bResolved = Signal != nullptr;
+		P->ModeMixDriverSignal = bResolved ? *Signal : Ctx.EmptyDriverSignal;
+		P->ModeMixDriverParamsA = FVector4f(bResolved ? 1.0f : 0.0f,
+			Driver.bInvert ? 1.0f : 0.0f, Driver.InputMin, Driver.InputMax);
+		P->ModeMixDriverParamsB = FVector4f(Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+			static_cast<float>(Driver.Combine));
+		P->OutCoordinates = Ctx.GraphBuilder.CreateUAV(Result);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.ModeMix.L%d.C%d", LayerIndex, ChildIndex),
 			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
 				FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		return Result;
