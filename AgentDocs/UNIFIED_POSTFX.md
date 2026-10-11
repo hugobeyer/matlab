@@ -58,7 +58,9 @@ Single shader dispatch mode, shared opacity `[0,1]`; compositing should be `lerp
 
 ## UX contract
 
-One compact `Overlay` toggle, shared `Opacity` slider, optional `Boundaries` for IDs. Selection follows the selected child and its primary previewable published output, with manually selected secondary output preserved until selection changes. Child capabilities remain the source of semantic truth. Preserve Shift+V channel previews and existing diagnostic preview paths without changing their shortcuts or semantics.
+The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must always match implemented shortcuts, never planned ones. With a supported mask child selected, show `W · Show mask`; while enabled, `W · Hide mask` and `V · Original material`. V also resets any remaining inspector-activated channel or replacement diagnostic. Keep `Esc` for quick controls, `2` for plane flip, and the missing-material nudge in their existing contexts. Do not show E/R/T/U labels before their overlay modes are implemented.
+
+Future unified controls: shared opacity and optional exact-ID boundaries; selection follows the selected child and published output capabilities. Old V/M/U cycling is retired; temporary inspector diagnostics remain available until migrated to the unified system.
 
 ## Integration points
 
