@@ -309,6 +309,44 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 		.OnClicked_Lambda([this, Mode]() { ToggleFeaturePreview(Mode); });
 }
 
+bool SMixtormat::IsMaskOverlayTargetReady() const
+{
+	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+	if (!Child || !IsChildOutputPreviewReady(*Child))
+	{
+		return false;
+	}
+	return Child->Type == EMixtormatLayerChildType::Mask
+		|| Child->Type == EMixtormatLayerChildType::Generated
+		|| Child->Type == EMixtormatLayerChildType::Craquelure
+		|| Child->Type == EMixtormatLayerChildType::ColorId
+		|| Child->Type == EMixtormatLayerChildType::RandomId;
+}
+
+FReply SMixtormat::ToggleMaskOverlayPreview()
+{
+	if (!bHasWorkingMaterial)
+	{
+		return FReply::Handled();
+	}
+	bMaskOverlayEnabled = !bMaskOverlayEnabled;
+	if (bMaskOverlayEnabled)
+	{
+		bAutomaticFlowPreview = false;
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		ChildPreviewTarget = FMixtormatChildPreviewTarget();
+		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+		{
+			if (Viewport.IsValid())
+			{
+				Viewport->ResetChannelPreview();
+			}
+		}
+	}
+	RefreshLayeredPreview(false);
+	return FReply::Handled();
+}
+
 FReply SMixtormat::CycleSelectedModulePreview()
 {
 	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
@@ -391,6 +429,10 @@ FReply SMixtormat::CycleSelectedModulePreview()
 
 bool SMixtormat::UpdateAutomaticFlowPreview()
 {
+	if (bMaskOverlayEnabled)
+	{
+		return false;
+	}
 	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	FName FlowOutput = NAME_None;
 	if (Child && IsChildOutputPreviewReady(*Child))
@@ -898,6 +940,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnToggleOverlayUi(FSimpleDelegate::CreateLambda([this]()
 			{
 				bPreviewOverlayUiVisible = !bPreviewOverlayUiVisible;
+			}))
+			.OnToggleMaskOverlay(FSimpleDelegate::CreateLambda([this]()
+			{
+				ToggleMaskOverlayPreview();
 			}))
 			.OnToggleDisplacement(FSimpleDelegate::CreateLambda([this]()
 			{
