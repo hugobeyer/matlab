@@ -128,6 +128,7 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnToggleMaskOverlay)
+		SLATE_EVENT(FSimpleDelegate, OnResetDiagnosticOverlays)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
 		// Bare 1-4 in the viewport: the workspace swaps the preview mesh through its own
@@ -227,6 +228,7 @@ private:
 	void ToggleOverlayUi();
 	void ToggleDisplacement();
 	void ToggleMaskOverlay();
+	void ResetDiagnosticOverlays();
 	void CycleChannelPreview();
 	void CycleModulePreview();
 	void ApplyChannelPreview();
@@ -289,6 +291,7 @@ private:
 	FSimpleDelegate OnToggleOverlayUi;
 	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnToggleMaskOverlay;
+	FSimpleDelegate OnResetDiagnosticOverlays;
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
 	FMixtormatSetPreviewMesh OnSetPreviewMesh;
