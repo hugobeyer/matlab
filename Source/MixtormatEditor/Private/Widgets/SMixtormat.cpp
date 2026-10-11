@@ -34,7 +34,7 @@ namespace
 		virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& KeyEvent) override
 		{
 			if (KeyEvent.IsRepeat() || KeyEvent.IsControlDown() || KeyEvent.IsCommandDown()
-				|| KeyEvent.IsAltDown() || KeyEvent.IsShiftDown())
+				|| KeyEvent.IsAltDown())
 			{
 				return false;
 			}
@@ -93,9 +93,27 @@ void SMixtormat::Construct(const FArguments& InArgs)
 			Self->CloseQuickControls();
 			return true;
 		}
+		if (KeyEvent.IsShiftDown())
+		{
+			const FKey Key = KeyEvent.GetKey();
+			const EMixtormatStudioLighting Preset =
+				Key == EKeys::One ? EMixtormatStudioLighting::Neutral :
+				Key == EKeys::Two ? EMixtormatStudioLighting::Soft :
+				Key == EKeys::Three ? EMixtormatStudioLighting::Dramatic :
+				Key == EKeys::Four ? EMixtormatStudioLighting::Rim :
+				EMixtormatStudioLighting::Workshop;
+			if (Key == EKeys::One || Key == EKeys::Two || Key == EKeys::Three
+				|| Key == EKeys::Four || Key == EKeys::Five)
+			{
+				Self->SetStudioLighting(Preset);
+				return true;
+			}
+			return false;
+		}
 		if (KeyEvent.GetKey() == EKeys::L)
 		{
-			Self->ToggleLeftPanelCollapsed();
+			Self->SetPreviewQuality(Self->PreviewQuality == EMixtormatPreviewQuality::Lumen
+				? EMixtormatPreviewQuality::Default : EMixtormatPreviewQuality::Lumen);
 			return true;
 		}
 		if (KeyEvent.GetKey() == EKeys::P)
@@ -720,12 +738,27 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	{
 		return RedoMaterialEdit();
 	}
+	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsRepeat()
+		&& InKeyEvent.IsShiftDown())
+	{
+		const FKey Key = InKeyEvent.GetKey();
+		if (Key == EKeys::One || Key == EKeys::Two || Key == EKeys::Three
+			|| Key == EKeys::Four || Key == EKeys::Five)
+		{
+			return SetStudioLighting(Key == EKeys::One ? EMixtormatStudioLighting::Neutral
+				: Key == EKeys::Two ? EMixtormatStudioLighting::Soft
+				: Key == EKeys::Three ? EMixtormatStudioLighting::Dramatic
+				: Key == EKeys::Four ? EMixtormatStudioLighting::Rim
+				: EMixtormatStudioLighting::Workshop);
+		}
+	}
 	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
 		&& !InKeyEvent.IsRepeat())
 	{
 		if (InKeyEvent.GetKey() == EKeys::L)
 		{
-			return ToggleLeftPanelCollapsed();
+			return SetPreviewQuality(PreviewQuality == EMixtormatPreviewQuality::Lumen
+				? EMixtormatPreviewQuality::Default : EMixtormatPreviewQuality::Lumen);
 		}
 		if (InKeyEvent.GetKey() == EKeys::P)
 		{
