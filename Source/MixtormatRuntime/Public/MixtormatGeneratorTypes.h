@@ -1026,38 +1026,44 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Output")
 	bool bNoiseWriteFlow = false;
 
-	// MODE: weighted directional generation. All four contributions combine simultaneously;
+	// MODE: Height, Slope, Curl and Force combine simultaneously; Force uses Angle and Gravity.
 	// there is no source dropdown. With the bases defined in FIELD_CONTRACT_P0.md:
 	//   GeneratedFlow = HeightWeight * OwnHeightDirection + SlopeWeight * SurfaceSlopeDirection
 	//                 + CurlWeight * CurlDirection + ConstantWeight * ConstantDirection;
 	//   GeneratedFlow *= Strength.
 	// A zero-weight term is an exact identity; the combined vector is never normalized, so a
 	// zero result stays exactly zero and opposing weights can cancel.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseDirectionHeightWeight = 1.0f;
 
 	// Downhill gradient of the height accumulated from preceding operations, not this node's
 	// own noise. Zero on a flat or unavailable surface: no invented movement.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseDirectionSlopeWeight = 0.0f;
 
 	// The existing Noise V2 curl helper, reused; not a second solver.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseDirectionCurlWeight = 0.0f;
 
-	// Uniform direction from Angle, scaled by this weight.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	// Force: uniform direction from Angle, optionally steered along the current Height.
+	// Historical serialized property name retained until Terra updates authored parameter bindings.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseDirectionConstantWeight = 0.0f;
 
-	// Constant-direction orientation in degrees, counterclockwise from +U in tile UV with V up;
+	// Force orientation in degrees, counterclockwise from +U in tile UV with V up;
 	// the GPU writes (cos Angle, -sin Angle) into the texture's V-down frame. 0 points +U.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
 	float NoiseDirectionAngle = 0.0f;
 
+	// Gravity / Surface Follow bends Force using the accumulated Height downhill gradient.
+	// Zero preserves a uniform Force; it never reads the SDF or deflects around boundaries.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float NoiseDirectionGravity = 0.0f;
+
 	// Final scalar on the combined GeneratedFlow. Zero is a neutral generated contribution;
 	// with Mix > 0 it intentionally interpolates the existing Flow toward zero (see the
 	// composition contract -- exact identity requires Add = 0 and Mix = 0).
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Mode", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float NoiseDirectionStrength = 1.0f;
 
 	// COMPOSITION. With the child mask M:
