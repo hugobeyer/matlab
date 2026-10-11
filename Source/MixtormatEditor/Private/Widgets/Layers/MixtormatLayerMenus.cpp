@@ -1352,7 +1352,7 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 			const FBehaviorEntry Entries[] = {
 				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Warp"), false},
 				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Push"), true},
-				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Carve / Deposit"), true},
+				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Sculpt"), true},
 				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Deform"), false},
 				{EMixtormatChildCreation::BehaviorFeather, LOCTEXT("AddBehaviorFeatherToGenerator", "Feather"), false}};
 			if (Target.Type == EMixtormatLayerChildType::Generator)
