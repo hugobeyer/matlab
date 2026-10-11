@@ -1026,6 +1026,8 @@ namespace MixtormatGpuCompositor
 		int32 GeneratorChildIndex = INDEX_NONE;
 		float Strength = 1.0f;
 		float GradientReach = 0.02f;
+		float SlopeFeather = 0.5f;
+		float WarpAA = 0.0f;
 		float CarveWidth = 0.02f;
 		FBehaviorFlowRenderData Flow;
 		bool bUseTracedFlow = false;

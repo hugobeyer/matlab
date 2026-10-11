@@ -51,6 +51,7 @@ float GravityDeflection;
 float Bend;           // degrees, peak of the periodic bend noise
 uint Seed;
 int Radius;           // gradient kernel, output texels
+float SlopeFeather; // Warp-only one-kernel Sobel blend on native height
 float Smooth;         // direction blur, output texels
 int2 BlurAxis;
 float Reach;          // UV
@@ -199,7 +200,17 @@ float2 HeightGradient(float2 UV)
 	const float XM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(R.x, 0.0f), 0.0f);
 	const float YP = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, R.y), 0.0f);
 	const float YM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(0.0f, R.y), 0.0f);
-	return float2(XP - XM, YP - YM) / (2.0f * R);
+	const float2 Raw = float2(XP - XM, YP - YM) / (2.0f * R);
+	if (SlopeFeather <= 0.0f || !all(isfinite(Raw))) { return Raw; }
+	const float HUR = RockHeight.SampleLevel(LinearWrapSampler, UV + R, 0.0f);
+	const float HUL = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(-R.x, R.y), 0.0f);
+	const float HDR = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(R.x, -R.y), 0.0f);
+	const float HDL = RockHeight.SampleLevel(LinearWrapSampler, UV - R, 0.0f);
+	if (!all(isfinite(float4(HUR, HUL, HDR, HDL)))) { return Raw; }
+	const float2 Sobel = float2(
+		2.0f * (XP - XM) + HUR - HUL + HDR - HDL,
+		2.0f * (YP - YM) + HUR + HUL - HDR - HDL) / (8.0f * R);
+	return lerp(Raw, Sobel, saturate(SlopeFeather));
 }
 
 #if FLOW_STAGE == 0

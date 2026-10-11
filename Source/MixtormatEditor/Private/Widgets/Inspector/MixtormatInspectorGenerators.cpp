@@ -1525,6 +1525,15 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatBehavior>(
+			LOCTEXT("BehaviorWarpSlopeFeather", "Slope Feather"),
+			Warp, &FMixtormatBehavior::SlopeFeather, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("BehaviorWarpSlopeFeatherHint", "Feather noisy height-gradient directions before tracing. 0 preserves the original slope.")),
+		MakeMemberSlider<FMixtormatBehavior>(
+			LOCTEXT("BehaviorWarpAA", "Warp AA"),
+			Warp, &FMixtormatBehavior::WarpAA, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("BehaviorWarpAAHint", "One-texel directional AA of warped height only. Leaves IDs and boundaries sharp."))));
 	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Warp]()
 	{
 		const FMixtormatBehavior* B = Warp();

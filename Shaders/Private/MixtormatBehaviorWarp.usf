@@ -17,6 +17,7 @@ Texture2D<float> SourceHeight;
 Texture2D<float> BehaviorHeight;
 RWTexture2D<float> OutSignedHeight;
 float GradientReach;
+float SlopeFeather;
 float4 BehaviorDriverParamsA[2];
 float4 BehaviorDriverParamsB[2];
 Texture2D<float> BehaviorDriverSignal0;
@@ -125,7 +126,26 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 	// UV-space derivatives hold their physical slope across resolutions.
-	const float2 Gradient = 0.5f * (float2(HR - HL, HU - HD) * float2(OutputSize));
+	float2 Gradient = 0.5f * float2(HR - HL, HU - HD) * float2(OutputSize);
+	if (SlopeFeather > 0.0f)
+	{
+		const int2 UL = (Pixel + int2(OutputSize.x - 1, 1)) % OutputSize;
+		const int2 UR = (Pixel + int2(1, 1)) % OutputSize;
+		const int2 DL = (Pixel + OutputSize - int2(1, 1)) % OutputSize;
+		const int2 DR = (Pixel + int2(1, OutputSize.y - 1)) % OutputSize;
+		const float HUL = SourceHeight.Load(int3(UL, 0));
+		const float HUR = SourceHeight.Load(int3(UR, 0));
+		const float HDL = SourceHeight.Load(int3(DL, 0));
+		const float HDR = SourceHeight.Load(int3(DR, 0));
+		if (all(isfinite(float4(HUL, HUR, HDL, HDR))))
+		{
+			const float2 Sobel = float2(
+				2.0f * (HR - HL) + HUR - HUL + HDR - HDL,
+				2.0f * (HU - HD) + HUR + HUL - HDR - HDL)
+				* (0.125f * float2(OutputSize));
+			Gradient = lerp(Gradient, Sobel, saturate(SlopeFeather));
+		}
+	}
 	const float Magnitude = length(Gradient);
 	float Weight = DrivenBehaviorWeight(Pixel) * DrivenBehaviorReach(Pixel);
 	if (UseMask != 0u)

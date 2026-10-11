@@ -8,9 +8,11 @@
 // 0 continuous attribute, 1 IDs, 2 valid UV boundary, 3 lifted coordinate map,
 // 4 declared source-frame vector data, 5/6 legacy local centre/orientation,
 // 7 valid UV scalar distance, 8 legacy bed boundary, 9 height combine,
-// 10 region attribute, 11 owner/phase-aware bed coordinate.
+// 10 region attribute, 11 owner/phase-aware bed coordinate,
+// 12 optional direction-filtered signed height for post-generation Warp.
 int2 OutputSize;
 float InvalidDistance;
+float WarpAA;
 
 Texture2D<float2> WarpedUV;
 Texture2D<float> ScalarField;
@@ -199,8 +201,31 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #endif
 		return;
 	}
-#if BUNDLE_STAGE == 0
-	OutScalar[Pixel] = ScalarField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#if BUNDLE_STAGE == 0 || BUNDLE_STAGE == 12
+	const float Height = ScalarField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+#if BUNDLE_STAGE == 12
+	// Limit filtering to one source texel along Warp; no modulo of UV displacement.
+	const float2 Identity = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	const float2 PixelMotion = (UV - Identity) * float2(OutputSize);
+	const float MotionLength = length(PixelMotion);
+	float AntiAliased = Height;
+	if (isfinite(MotionLength) && MotionLength > 1e-4f && WarpAA > 0.0f)
+	{
+		const float2 StepUV = (PixelMotion / MotionLength) / float2(OutputSize);
+		const float H1 = ScalarField.SampleLevel(LinearWrapSampler, UV + 0.5f * StepUV, 0.0f);
+		const float H2 = ScalarField.SampleLevel(LinearWrapSampler, UV - 0.5f * StepUV, 0.0f);
+		const float H3 = ScalarField.SampleLevel(LinearWrapSampler, UV + StepUV, 0.0f);
+		const float H4 = ScalarField.SampleLevel(LinearWrapSampler, UV - StepUV, 0.0f);
+		if (all(isfinite(float4(H1, H2, H3, H4))))
+		{
+			AntiAliased = lerp(Height, (4.0f * Height + 2.0f * (H1 + H2) + H3 + H4) * 0.1f,
+				saturate(WarpAA));
+		}
+	}
+	OutScalar[Pixel] = AntiAliased;
+#else
+	OutScalar[Pixel] = Height;
+#endif
 #elif BUNDLE_STAGE == 1
 	OutIds[Pixel] = IdField.Load(int3(Anchor, 0));
 #elif BUNDLE_STAGE == 3

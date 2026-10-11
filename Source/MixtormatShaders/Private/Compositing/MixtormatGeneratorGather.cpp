@@ -437,6 +437,10 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
 		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
+	Out.SlopeFeather = FMath::IsFinite(Behavior.SlopeFeather)
+		? FMath::Clamp(Behavior.SlopeFeather, 0.0f, 1.0f) : 0.0f;
+	Out.WarpAA = FMath::IsFinite(Behavior.WarpAA)
+		? FMath::Clamp(Behavior.WarpAA, 0.0f, 1.0f) : 0.0f;
 	Out.CarveWidth = FMath::IsFinite(Behavior.CarveWidth)
 		? FMath::Max(Behavior.CarveWidth, 1e-6f) : 0.02f;
 	// Resolve the canonical Behavior scalar addresses; only earlier completed
@@ -499,8 +503,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.DirectionComposition.bReversed = Behavior.Direction.bReversed ? 1u : 0u;
 	Out.DirectionComposition.Blend = static_cast<uint32>(Behavior.Direction.Blend);
 	Out.Direction.Source.LayerId = Reference.IsShelfSource()
-		? MixtormatOutputReferences::ResolveShelfProducerId(Sources, Reference.SourceShelfId)
-		: Reference.SourceLayerId;
+		? Reference.SourceShelfId : Reference.SourceLayerId;
 	Out.Direction.Source.ChildIndex = SourceIndex;
 	Out.Direction.Source.Output = Reference.OutputName;
 	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
@@ -539,8 +542,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			return;
 		}
 		Out.Height.Source.LayerId = HeightRef.IsShelfSource()
-			? MixtormatOutputReferences::ResolveShelfProducerId(Sources, HeightRef.SourceShelfId)
-			: HeightRef.SourceLayerId;
+			? HeightRef.SourceShelfId : HeightRef.SourceLayerId;
 		Out.Height.Source.ChildIndex = HeightIndex;
 		Out.Height.Source.Output = HeightRef.OutputName;
 		Out.Height.Source.OwnerKind = HeightRef.OwnerKind;

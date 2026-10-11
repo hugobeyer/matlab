@@ -379,6 +379,14 @@ struct MIXTORMATRUNTIME_API FMixtormatBehavior
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior", meta = (UIMin = "0.0", UIMax = "0.25"))
 	float GradientReach = 0.02f;
 
+	// Warp height-gradient Sobel feather: zero restores original central differences.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Warp", meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", ClampMax = "1.0", Delta = "0.01"))
+	float SlopeFeather = 0.5f;
+
+	// Warp-only height sampling AA. No filtering for IDs or signed-distance fields.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Warp", meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", ClampMax = "1.0", Delta = "0.01"))
+	float WarpAA = 0.0f;
+
 	// Signed footprint width of a Carve, in UV-distance units. The profile is a
 	// saturated ramp across the width, so this is the distance at which relief stops
 	// changing at all rather than a softness parameter.

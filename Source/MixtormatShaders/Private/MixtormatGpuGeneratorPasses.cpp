@@ -581,6 +581,7 @@ public:
 		SHADER_PARAMETER(float, Bend)
 		SHADER_PARAMETER(uint32, Seed)
 		SHADER_PARAMETER(int32, Radius)
+		SHADER_PARAMETER(float, SlopeFeather)
 		SHADER_PARAMETER(float, Smooth)
 		SHADER_PARAMETER(FIntPoint, BlurAxis)
 		SHADER_PARAMETER(float, Reach)
@@ -665,7 +666,7 @@ class FMixtormatGeneratorBundleCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorBundleCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorBundleCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 12);
+	class FStage : SHADER_PERMUTATION_INT("BUNDLE_STAGE", 13);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
@@ -679,6 +680,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ModuleHeight)
 		SHADER_PARAMETER(float, InvalidDistance)
+		SHADER_PARAMETER(float, WarpAA)
 
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScalar)
@@ -855,6 +857,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Strength)
 		SHADER_PARAMETER(float, GradientReach)
+		SHADER_PARAMETER(float, SlopeFeather)
 		SHADER_PARAMETER(uint32, UseMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
 		SHADER_PARAMETER(uint32, UseInfluence)
@@ -1151,7 +1154,8 @@ namespace
 
 	FRDGTextureRef RemapBundleField(FMixtormatComposeContext& Ctx, FRDGTextureRef Field,
 		FRDGTextureRef WarpedUV, const int32 Stage, FRDGTextureRef Boundary = nullptr,
-		FRDGTextureRef SourceIds = nullptr, const float InvalidDistance = 0.0f)
+		FRDGTextureRef SourceIds = nullptr, const float InvalidDistance = 0.0f,
+		const float WarpAA = 0.0f)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -1167,6 +1171,7 @@ namespace
 		P->WarpedUV = WarpedUV;
 		P->IdField = SourceIds;
 		P->InvalidDistance = InvalidDistance;
+		P->WarpAA = WarpAA;
 		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 		if (Stage == 1)
 		{
@@ -1309,13 +1314,17 @@ namespace
 	// supplied here may be native (V2 post-generation) or already normalized
 	// (legacy structural pullback). Flow apply authors Height/Coverage separately.
 	void RemapCompletedGeneratorBundle(FMixtormatComposeContext& Ctx, FGeneratorBundle& Bundle,
-		FRDGTextureRef CompletedSignedHeight, FRDGTextureRef WarpedUV)
+		FRDGTextureRef CompletedSignedHeight, FRDGTextureRef WarpedUV,
+		const float WarpAA = 0.0f)
 	{
 		const FGeneratorBundle Source = Bundle;
 		if (!CompletedSignedHeight) { return; }
 		// Remap the caller's exact signed height snapshot, without introducing
 		// any normalization here or silently converting its units.
-		Bundle.Height = RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 0);
+		Bundle.Height = WarpAA > 0.0f
+			? RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 12,
+				nullptr, nullptr, 0.0f, WarpAA)
+			: RemapBundleField(Ctx, CompletedSignedHeight, WarpedUV, 0);
 		if (Source.Coverage)
 		{
 			Bundle.Coverage = RemapBundleField(Ctx, Source.Coverage, WarpedUV, 0);
@@ -1327,7 +1336,8 @@ namespace
 	// Generator-specific named outputs carry their own declared transport semantics.
 	void RemapGeneratorModuleOutputs(FMixtormatComposeContext& Ctx,
 		const FLayerRenderData& Layer, const FChildRenderData& Owner,
-		FGeneratorBundle& Module, FRDGTextureRef Coordinates)
+		FGeneratorBundle& Module, FRDGTextureRef Coordinates,
+		const float WarpAA = 0.0f)
 	{
 		const FPublishedFieldKey ValueKey =
 			PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Value")));
@@ -1339,7 +1349,7 @@ namespace
 			? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
 		const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
 		const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
-		RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates);
+		RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates, WarpAA);
 		if (ValueSnapshot.IsComplete())
 		{
 			Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
@@ -1470,6 +1480,7 @@ namespace
 
 	FRDGTextureRef MakeBehaviorHeightGradientUV(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef SourceHeight, const float Strength, const float Reach,
+		const float SlopeFeather,
 		FRDGTextureRef Mask, const bool bUseMask,
 		FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex,
@@ -1486,6 +1497,7 @@ namespace
 		P->FieldAmplitude = Composition.Amplitude;
 		P->FieldReversed = Composition.bReversed;
 		P->GradientReach = Reach;
+		P->SlopeFeather = SlopeFeather;
 		P->UseMask = bUseMask ? 1u : 0u;
 		P->ScopedMask = Mask;
 		P->UseInfluence = bUseInfluence ? 1u : 0u;
@@ -1850,7 +1862,8 @@ namespace
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
 				Coordinates = MakeBehaviorHeightGradientUV(Ctx, Module.Height,
-					Child.Behavior.Strength, Child.Behavior.GradientReach, Gate, bHasMask,
+					Child.Behavior.Strength, Child.Behavior.GradientReach,
+					bWarp ? Child.Behavior.SlopeFeather : 0.0f, Gate, bHasMask,
 					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			}
@@ -1948,7 +1961,8 @@ namespace
 				}
 				else
 				{
-					RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates);
+					RemapGeneratorModuleOutputs(Ctx, Layer, Owner, Module, Coordinates,
+						bWarp ? Child.Behavior.WarpAA : 0.0f);
 					if (WorkingFlowValidity)
 					{
 						WorkingFlow = AddNoiseFlowTransportPass(Ctx, WorkingFlow,
@@ -2356,6 +2370,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 				P->Bend = Flow.FlowBend;
 				P->Seed = Flow.FlowSeed;
 				P->Radius = Flow.FlowRadius;
+				P->SlopeFeather = FlowChild.Behavior.Type == EMixtormatBehaviorType::Warp
+					? FlowChild.Behavior.SlopeFeather : 0.0f;
 				P->Smooth = Flow.FlowSmooth;
 				P->BlurAxis = FIntPoint(1, 0);
 				P->Reach = Flow.Reach;
