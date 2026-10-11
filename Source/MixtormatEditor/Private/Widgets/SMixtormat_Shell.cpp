@@ -546,6 +546,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 		[
 			SNew(SBox)
+			.Visibility(EVisibility::SelfHitTestInvisible)
 			.Padding_Lambda([this]()
 			{
 				const float HitWidth = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
@@ -582,7 +583,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 		[
 			SNew(SBox)
-			.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::Visible; })
+			.Visibility_Lambda([this]() { return bInspectorCollapsed ? EVisibility::Collapsed : EVisibility::SelfHitTestInvisible; })
 			.Padding_Lambda([this]()
 			{
 				const float HitWidth = FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth;
@@ -714,6 +715,7 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 			+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 			[
 				SNew(SBox)
+				.Visibility(EVisibility::HitTestInvisible)
 				.WidthOverride(Layout.LeftRailButtonWidth + Layout.LeftRailFadeExtension)
 				[SNew(SMixtormatRailFade)]
 			]
