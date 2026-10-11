@@ -23,9 +23,11 @@ tinting Base Color or creating a replacement lit material.
   `MixtormatPreview::AddHeightDisplacement` helper. It writes mesh UV into
   HDR R/G and a subject-validity bit in B.
 - The capture component renders only the proxy into a view-sized HDR target.
-  A post-process material samples those UVs to look up the selected mask field
-  and alpha-blends stable, **unlit** cyan over `PostProcessInput0`, **after
-  tonemapping**, without changing lighting, geometry or the PBR master.
+  The viewport client adds a material blendable to its own view's post-process
+  settings (no scene-wide unbound volume). The material samples those UVs
+  to look up the selected mask field and alpha-blends stable, **unlit** cyan
+  over `PostProcessInput0`, **after tonemapping**, without changing lighting,
+  geometry or the PBR master.
 - `W` toggles the overlay; `V` returns to the original material. RMB+WASD
   events are consumed by the viewport rather than passed to the inherited fly
   camera, while RMB mouse drag still rotates the studio light.
