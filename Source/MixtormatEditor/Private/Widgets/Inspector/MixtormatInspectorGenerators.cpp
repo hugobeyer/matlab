@@ -689,8 +689,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpSourceMenu()
 		RefreshLayeredPreview();
 		RebuildLayerList();
 	};
-	Menu.Item(LOCTEXT("BehaviorWarpChooseSourceLater", "Choose source later"), nullptr,
-		FSimpleDelegate::CreateLambda([Assign]() { Assign(nullptr); }));
 	Menu.Item(LOCTEXT("BehaviorWarpOwnHeight", "Own Height Gradient"),
 		MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, Address]()
@@ -793,8 +791,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorPushSourceMenu()
 		RefreshLayeredPreview();
 		RebuildLayerList();
 	};
-	Menu.Item(LOCTEXT("BehaviorPushChooseLater", "Choose source later"), nullptr,
-		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::None, nullptr); }));
 	Menu.Item(LOCTEXT("BehaviorPushOwnNative", "Own Native Height"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::OwnNativeHeight, nullptr); }));
 	Menu.Item(LOCTEXT("BehaviorPushPrevious", "Previous Running Height"), MixtormatIcons::Generator(),
@@ -1217,8 +1213,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		RefreshLayeredPreview();
 		RebuildLayerList();
 	};
-	Menu.Item(LOCTEXT("BehaviorCarveChooseLater", "Choose source later"), nullptr,
-		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::None, nullptr); }));
 	Menu.Item(LOCTEXT("BehaviorCarveOwnBoundary", "Own Boundary"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([Assign]() { Assign(EMixtormatBehaviorFieldOrigin::OwnBoundary, nullptr); }))
 		.Enabled(MixtormatGeneratorHasFlowBoundary(Destination.Children[OwnerIndex].Generator.Type));
@@ -1496,7 +1490,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 								: LOCTEXT("BehaviorWarpLayerChip", "Layer"),
 							FText::FromName(Ref.OutputName));
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpSourceMenu)),
-					LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Choose source later leaves Warp neutral."))
+					LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source."))
 			]);
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("BehaviorWarpStageLabel", "Execution Stage"),
@@ -1704,8 +1698,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		RefreshLayeredPreview();
 		RebuildLayerList();
 	};
-	Menu.Item(LOCTEXT("BehaviorDeformChooseSourceLater", "Choose source later"), nullptr,
-		FSimpleDelegate::CreateLambda([Assign]() { Assign(nullptr); }));
 	Menu.Item(LOCTEXT("BehaviorDeformOwnHeight", "Own Height Gradient"),
 		MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, Address]()
