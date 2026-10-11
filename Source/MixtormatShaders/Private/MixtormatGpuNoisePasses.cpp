@@ -178,7 +178,7 @@ namespace
 		"/Plugin/Mixtormat/Private/MixtormatNoise.usf", "FlowCS", SF_Compute);
 
 	// P1 generated Flow (canonical contract: AgentDocs/FIELD_CONTRACT_P0.md section 1).
-	// Weighted Height/Slope/Curl/Constant MODE combination, written in the canonical layout:
+	// Weighted Height/Slope/Curl/Force MODE combination, written in the canonical layout:
 	// RG = VectorXY with magnitude, B = 0, A = influence; validity in a separate R16F texture.
 	class FMixtormatNoiseGeneratedFlowCS final : public FGlobalShader
 	{
@@ -195,8 +195,9 @@ namespace
 			SHADER_PARAMETER(float, ModeHeightWeight)
 			SHADER_PARAMETER(float, ModeSlopeWeight)
 			SHADER_PARAMETER(float, ModeCurlWeight)
-			SHADER_PARAMETER(float, ModeConstantWeight)
+			SHADER_PARAMETER(float, ModeForceWeight)
 			SHADER_PARAMETER(float, ModeAngleDegrees)
+			SHADER_PARAMETER(float, ModeGravity)
 			SHADER_PARAMETER(float, ModeStrength)
 			SHADER_PARAMETER(int, ModeCurlPeriod)
 			SHADER_PARAMETER(int, ModeCurlOctaves)
@@ -324,17 +325,18 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.DistortionLacunarity = FMath::Clamp(Finite(Noise.NoiseDistortionLacunarity, Defaults.NoiseDistortionLacunarity), 1.0f, 4.0f);
 	Out.DistortionCurlMix = FMath::Clamp(Finite(Noise.NoiseDistortionCurlMix, Defaults.NoiseDistortionCurlMix), 0.0f, 1.0f);
 	Out.DistortionDirection = Finite(Noise.NoiseDistortionDirection, Defaults.NoiseDistortionDirection);
-	// P0 field contract settings. Weights clamp to the serialized UI range; a non-finite weight
+	// Signed MODE weights and composition values are never range-clamped; a non-finite weight
 	// falls back to its default so a corrupt asset cannot inject NaN into the vector field.
 	Out.bWriteHeight = Noise.bNoiseWriteHeight;
 	Out.bWriteFlow = Noise.bNoiseWriteFlow;
-	Out.ModeHeightWeight = FMath::Clamp(Finite(Noise.NoiseDirectionHeightWeight, Defaults.NoiseDirectionHeightWeight), 0.0f, 4.0f);
-	Out.ModeSlopeWeight = FMath::Clamp(Finite(Noise.NoiseDirectionSlopeWeight, Defaults.NoiseDirectionSlopeWeight), 0.0f, 4.0f);
-	Out.ModeCurlWeight = FMath::Clamp(Finite(Noise.NoiseDirectionCurlWeight, Defaults.NoiseDirectionCurlWeight), 0.0f, 4.0f);
-	Out.ModeConstantWeight = FMath::Clamp(Finite(Noise.NoiseDirectionConstantWeight, Defaults.NoiseDirectionConstantWeight), 0.0f, 4.0f);
-	Out.ModeAngle = FMath::Clamp(Finite(Noise.NoiseDirectionAngle, Defaults.NoiseDirectionAngle), 0.0f, 360.0f);
-	Out.ModeStrength = FMath::Clamp(Finite(Noise.NoiseDirectionStrength, Defaults.NoiseDirectionStrength), 0.0f, 4.0f);
-	Out.FlowAdd = FMath::Clamp(Finite(Noise.NoiseFlowAdd, Defaults.NoiseFlowAdd), 0.0f, 4.0f);
+	Out.ModeHeightWeight = Finite(Noise.NoiseDirectionHeightWeight, Defaults.NoiseDirectionHeightWeight);
+	Out.ModeSlopeWeight = Finite(Noise.NoiseDirectionSlopeWeight, Defaults.NoiseDirectionSlopeWeight);
+	Out.ModeCurlWeight = Finite(Noise.NoiseDirectionCurlWeight, Defaults.NoiseDirectionCurlWeight);
+	Out.ModeForceWeight = Finite(Noise.NoiseDirectionConstantWeight, Defaults.NoiseDirectionConstantWeight);
+	Out.ModeAngle = Finite(Noise.NoiseDirectionAngle, Defaults.NoiseDirectionAngle);
+	Out.ModeGravity = FMath::Max(Finite(Noise.NoiseDirectionGravity, Defaults.NoiseDirectionGravity), 0.0f);
+	Out.ModeStrength = Finite(Noise.NoiseDirectionStrength, Defaults.NoiseDirectionStrength);
+	Out.FlowAdd = Finite(Noise.NoiseFlowAdd, Defaults.NoiseFlowAdd);
 	Out.FlowMix = FMath::Clamp(Finite(Noise.NoiseFlowMix, Defaults.NoiseFlowMix), 0.0f, 1.0f);
 	return Out;
 }
@@ -409,8 +411,9 @@ FRDGTextureRef AddNoiseGeneratedFlowPass(FMixtormatComposeContext& Ctx, const FL
 	P->ModeHeightWeight = Noise.ModeHeightWeight;
 	P->ModeSlopeWeight = Noise.ModeSlopeWeight;
 	P->ModeCurlWeight = Noise.ModeCurlWeight;
-	P->ModeConstantWeight = Noise.ModeConstantWeight;
+	P->ModeForceWeight = Noise.ModeForceWeight;
 	P->ModeAngleDegrees = Noise.ModeAngle;
+	P->ModeGravity = Noise.ModeGravity;
 	P->ModeStrength = Noise.ModeStrength;
 	// Curl reuses the module's own periodic settings: base period = the noise lattice period,
 	// octave stack = the distortion settings, so the field tiles and no new serialized
