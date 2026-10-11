@@ -1625,7 +1625,8 @@ namespace
 	FRDGTextureRef AddBehaviorFlowFieldPasses(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		int32 OwnerSourceChildIndex, FRDGTextureRef BoundaryField, FRDGTextureRef RockField,
-		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex);
+		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex,
+		FRDGTextureRef* OutWarpCoordinates = nullptr);
 
 	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
@@ -1698,7 +1699,8 @@ namespace
 			// Nested fields execute in their immediate parent's input evaluation,
 			// not as independent operations on the generator's running height.
 			if (Child.ScopeOwnerSourceChildIndex != Owner.SourceChildIndex) { continue; }
-			if (IsFlowToolChild(Child, Owner.SourceChildIndex))
+			if (Child.Behavior.Type != EMixtormatBehaviorType::Warp
+				&& IsFlowToolChild(Child, Owner.SourceChildIndex))
 			{
 				Module.Height = AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
 					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
@@ -1812,9 +1814,13 @@ namespace
 				continue;
 			}
 			FRDGTextureRef Coordinates = nullptr;
+			const bool bMixDriver = Child.Behavior.Flow.SettingsDrivers[8].bEnabled;
+			const bool bWarp = Child.Behavior.Type == EMixtormatBehaviorType::Warp;
+			const bool bStandardNeeded = !bWarp || Child.Behavior.Flow.ModeMix < 1.0f || bMixDriver;
 			// Scoped Flow inherits automatically from preceding Flow siblings.
 			// No direction-field picker is consulted for this execution path.
-			if (WorkingFlowValidity
+			if (bStandardNeeded && WorkingFlowValidity
+				&& Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
 				&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
 					|| Child.Behavior.Type == EMixtormatBehaviorType::Deform))
 			{
@@ -1835,7 +1841,7 @@ namespace
 					LayerCtx.LayerIndex, Child.SourceChildIndex,
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			}
-			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			else if (bStandardNeeded && Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
 			{
 				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
 					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
@@ -1848,7 +1854,7 @@ namespace
 					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			}
-			else if (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
+			else if (bStandardNeeded && Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
 				const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
 				if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
@@ -1884,6 +1890,14 @@ namespace
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 				}
 			}
+			FRDGTextureRef TracedCoordinates = nullptr;
+			if (bWarp && (Child.Behavior.Flow.ModeMix > 0.0f || bMixDriver))
+			{
+				FRDGTextureRef UnusedCoverage = nullptr;
+				AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
+					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
+					UnusedCoverage, nullptr, Child.SourceChildIndex, &TracedCoordinates);
+			}
 			// Directly nested Flow Fields transport this operation's input coordinates.
 			// A field without a mask uses its own generator-derived flow and full scope.
 			if (Child.Behavior.Type == EMixtormatBehaviorType::Warp
@@ -1910,6 +1924,17 @@ namespace
 							? RemapBundleField(Ctx, Coordinates, Warped->Texture, 3)
 							: Warped->Texture;
 					}
+				}
+			}
+			if (bWarp)
+			{
+				Coordinates = MixBehaviorWarpCoordinates(Ctx, Coordinates, TracedCoordinates,
+					Child.Behavior, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				if (Coordinates)
+				{
+					Ctx.PublishedFieldOutputs.Add(
+						PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("WarpedUV"))),
+						FPublishedField{EMixtormatPublishedFieldKind::UVMap, Coordinates, nullptr, nullptr, false});
 				}
 			}
 			if (Coordinates)
@@ -2156,9 +2181,11 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		return Candidate.Type == EMixtormatLayerChildType::Behavior
 			&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
 				|| (Candidate.Behavior.bUseTracedFlow
-					&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
-						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
-						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve)))
+					&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
+						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve))
+				|| (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+					&& (Candidate.Behavior.Flow.ModeMix > 0.0f
+						|| Candidate.Behavior.Flow.SettingsDrivers[8].bEnabled)))
 			&& Candidate.Behavior.GeneratorChildIndex == OwnerSourceChildIndex;
 	}
 
@@ -2173,7 +2200,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	bool IsNeutralFlowTool(const FBehaviorRenderData& Behavior)
 	{
 		const FBehaviorFlowRenderData& Flow = Behavior.Flow;
-		if (Flow.FlowAmount == 0.0f) { return true; }
+		if (Flow.FlowAmount == 0.0f && !Flow.SettingsDrivers[0].bEnabled) { return true; }
 		switch (Behavior.Type)
 		{
 		case EMixtormatBehaviorType::FlowField:
@@ -2181,7 +2208,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		case EMixtormatBehaviorType::Deform:
 			return Flow.ShapeOffset == 0.0f && Flow.Bulge == 0.0f;
 		case EMixtormatBehaviorType::Warp:
-			return Flow.TraceLength == 0.0f || Flow.WarpStrength == 0.0f;
+			return (Flow.TraceLength == 0.0f && !Flow.SettingsDrivers[1].bEnabled)
+				|| (Flow.WarpStrength == 0.0f && !Flow.SettingsDrivers[2].bEnabled);
 		case EMixtormatBehaviorType::Carve:
 			return Flow.TraceLength == 0.0f || Flow.Depth == 0.0f;
 		default:
@@ -2240,7 +2268,8 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 		FRDGTextureRef RockField,
 		FRDGTextureRef& InOutCoverage,
 		FGeneratorBundle* Bundle,
-		const int32 OnlyBehaviorChildIndex)
+		const int32 OnlyBehaviorChildIndex,
+		FRDGTextureRef* OutWarpCoordinates)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
