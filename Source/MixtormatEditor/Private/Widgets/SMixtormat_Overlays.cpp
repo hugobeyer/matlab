@@ -191,6 +191,40 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 	return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
 }
 
+void SMixtormat::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	// Hover transitions can be swallowed by gallery thumbnails or the viewport.
+	// Poll the cursor once per Slate frame so leaving the drawer always retracts it,
+	// even when the parent receives no OnMouseMove event.
+	if (bBottomLibraryCollapsed || bGalleryPinned || bGalleryDrawerResizing
+		|| bGalleryDrawerAnimating || !GalleryDrawerHost.IsValid())
+	{
+		if (bBottomLibraryCollapsed) { bGalleryPointerInside = false; }
+		return;
+	}
+	const FVector2D ScreenPosition = FSlateApplication::Get().GetCursorPos();
+	const FGeometry& GalleryGeometry = GalleryDrawerHost->GetCachedGeometry();
+	if (GalleryGeometry.IsUnderLocation(ScreenPosition))
+	{
+		bGalleryPointerInside = true;
+		return;
+	}
+	if (!bGalleryPointerInside || FSlateApplication::Get().GetPressedMouseButtons().Contains(EKeys::LeftMouseButton))
+	{
+		return;
+	}
+	const FSlateRect Bounds = GalleryGeometry.GetLayoutBoundingRect();
+	const float DistanceX = FMath::Max(FMath::Max(Bounds.Left - ScreenPosition.X, 0.0f), ScreenPosition.X - Bounds.Right);
+	const float DistanceY = FMath::Max(FMath::Max(Bounds.Top - ScreenPosition.Y, 0.0f), ScreenPosition.Y - Bounds.Bottom);
+	if (FMath::Sqrt(FMath::Square(DistanceX) + FMath::Square(DistanceY))
+		> FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerAutoCollapseDistance)
+	{
+		bGalleryPointerInside = false;
+		ToggleBottomLibraryCollapsed();
+	}
+}
+
 FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
 	if (bGalleryDrawerResizing)
