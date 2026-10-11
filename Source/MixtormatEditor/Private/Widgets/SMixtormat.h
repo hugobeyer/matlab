@@ -271,6 +271,8 @@ private:
 	// Only automatic previews are cleared when the selection changes.
 	bool UpdateAutomaticFlowPreview();
 	FReply CycleSelectedModulePreview();
+	FReply ToggleMaskOverlayPreview();
+	bool IsMaskOverlayTargetReady() const;
 	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
 	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
 	// concrete enabled member layer and that member's effective child id here, so nothing
@@ -1855,6 +1857,7 @@ private:
 	// Only meaningful while DebugPreviewMode == ChildOutput.
 	FMixtormatChildPreviewTarget ChildPreviewTarget;
 	bool bAutomaticFlowPreview = false;
+	bool bMaskOverlayEnabled = false;
 	int32 SelectedLayerIndex = INDEX_NONE;
 	int32 SoloLayerIndex = INDEX_NONE;
 	int32 SelectedEffectIndex = INDEX_NONE;
