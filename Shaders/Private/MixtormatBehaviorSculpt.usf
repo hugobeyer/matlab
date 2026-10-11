@@ -1,0 +1,124 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+
+// Sculpt is a signed, traced Height operation. It consumes the shared working
+// Flow; it neither generates Flow nor samples an SDF. Positive Depth cuts;
+// negative Depth deposits. The original Height and all companion fields stay put.
+
+int2 OutputSize;
+float Strength;
+float Depth;
+float Width;
+float TraceLength;
+int TraceSteps;
+float Falloff;
+uint UseMask;
+uint UseInfluence;
+Texture2D<float> SourceHeight;
+Texture2D<float4> WorkingFlow;
+Texture2D<float> WorkingFlowValidity;
+Texture2D<float> ScopedMask;
+Texture2D<float> InfluenceField;
+SamplerState LinearWrapSampler;
+float4 BehaviorDriverParamsA[2];
+float4 BehaviorDriverParamsB[2];
+Texture2D<float> BehaviorDriverSignal0;
+Texture2D<float> BehaviorDriverSignal1;
+float4 SculptDriverParamsA[2];
+float4 SculptDriverParamsB[2];
+Texture2D<float> SculptDriverSignal0;
+Texture2D<float> SculptDriverSignal1;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutSculptMask;
+
+float SculptHeight(float2 UV)
+{
+    return SourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
+}
+
+float2 SculptVelocity(float2 UV)
+{
+    const float4 F = WorkingFlow.SampleLevel(LinearWrapSampler, UV, 0.0f);
+    const float Valid = WorkingFlowValidity.SampleLevel(LinearWrapSampler, UV, 0.0f);
+    return all(isfinite(F)) && isfinite(Valid) && Valid > 0.5f
+        ? F.xy : float2(0.0f, 0.0f);
+}
+
+float SculptCrossHeight(float2 UV, float2 Velocity, bool bCut)
+{
+    const float Centre = SculptHeight(UV);
+    if (Width <= 0.0f) { return Centre; }
+    const float L2 = dot(Velocity, Velocity);
+    if (L2 <= 1.0e-12f) { return Centre; }
+    const float2 Perpendicular = float2(-Velocity.y, Velocity.x) * rsqrt(L2) * Width;
+    const float A = SculptHeight(UV + Perpendicular);
+    const float B = SculptHeight(UV - Perpendicular);
+    return bCut ? min(Centre, min(A, B)) : max(Centre, max(A, B));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 Pixel = int2(DispatchThreadId.xy);
+    if (any(Pixel >= OutputSize)) { return; }
+    const float Original = SourceHeight.Load(int3(Pixel, 0));
+    OutHeight[Pixel] = Original;
+    OutSculptMask[Pixel] = 0.0f;
+    if (!isfinite(Original)) { return; }
+
+    const float DrivenStrength = MixtormatApplyDriver(Strength,
+        BehaviorDriverSignal0.Load(int3(Pixel, 0)),
+        BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+    const float DrivenTraceLength = max(0.0f, MixtormatApplyDriver(TraceLength,
+        SculptDriverSignal0.Load(int3(Pixel, 0)),
+        SculptDriverParamsA[0], SculptDriverParamsB[0]));
+    const float DrivenDepth = MixtormatApplyDriver(Depth,
+        SculptDriverSignal1.Load(int3(Pixel, 0)),
+        SculptDriverParamsA[1], SculptDriverParamsB[1]);
+    if (!isfinite(DrivenStrength) || !isfinite(DrivenDepth)
+        || !isfinite(DrivenTraceLength) || DrivenStrength == 0.0f
+        || DrivenDepth == 0.0f || DrivenTraceLength == 0.0f) { return; }
+
+    float Gate = 1.0f;
+    if (UseMask != 0u)
+    {
+        const float M = ScopedMask.Load(int3(Pixel, 0));
+        Gate *= isfinite(M) ? saturate(M) : 0.0f;
+    }
+    if (UseInfluence != 0u)
+    {
+        const float M = InfluenceField.Load(int3(Pixel, 0));
+        Gate *= isfinite(M) ? saturate(M) : 0.0f;
+    }
+    if (Gate == 0.0f) { return; }
+
+    const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+    const bool bCut = DrivenDepth > 0.0f;
+    const int Count = clamp(TraceSteps, 1, 64);
+    const float Ds = (bCut ? 1.0f : -1.0f) * DrivenTraceLength / (float)Count;
+    float2 P = UV;
+    float Best = 0.0f;
+    const float Exponent = max(0.0f, Falloff);
+    [loop]
+    for (int I = 1; I <= Count; ++I)
+    {
+        const float2 K1 = SculptVelocity(P);
+        if (dot(K1, K1) <= 1.0e-12f) { break; }
+        const float2 K2 = SculptVelocity(P + 0.5f * Ds * K1);
+        if (dot(K2, K2) <= 1.0e-12f) { break; }
+        P += Ds * K2;
+        const float Sample = SculptCrossHeight(P, K2, bCut);
+        if (!isfinite(Sample)) { break; }
+        const float Candidate = bCut ? Original - Sample : Sample - Original;
+        const float Weight = pow(1.0f - (float)I / (float)(Count + 1), Exponent);
+        Best = max(Best, Candidate * Weight);
+    }
+
+    const float SignedDelta = -sign(DrivenDepth) * Best * abs(DrivenDepth) * DrivenStrength * Gate;
+    const float Result = Original + SignedDelta;
+    if (!isfinite(Result)) { return; }
+    OutHeight[Pixel] = Result;
+    OutSculptMask[Pixel] = saturate(Best * Gate);
+}
