@@ -271,6 +271,8 @@ void FMixtormatViewportMaskPostFx::Update(
 	BlendInstance->SetTextureParameterValue(UvBufferName, UvTarget.Get());
 	BlendInstance->SetTextureParameterValue(FieldName, MaskField);
 	BlendInstance->SetScalarParameterValue(OpacityName, OverlayOpacity);
-	UvCapture->bCaptureEveryFrame = true;
+	// PreviewScene worlds are not guaranteed to tick capture components on their
+	// own. Submit one view-matched UV capture per *active viewport* Slate tick.
+	UvCapture->CaptureScene();
 	PostProcess->bEnabled = true;
 }
