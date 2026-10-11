@@ -1563,13 +1563,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 	AddSliderRow(TracedDeformPanel, MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorDeformTraceSteps", "Steps"), Flow,
 		&FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16));
-	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedDeformBulge", "Bulge"), Flow, &FMixtormatBehaviorFlowSettings::Bulge,
-		-0.25, 0.25, 0.0, 0.001,
-		LOCTEXT("BehaviorTracedDeformBulgeHint", "Displacement along (+) or against (-) the extended flow direction.")));
-	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
-		LOCTEXT("BehaviorTracedDeformAmount", "Flow Amount"), Flow, &FMixtormatBehaviorFlowSettings::FlowAmount,
-		0, 1, 1, 0.01));
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Deform]() { return Deform() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
