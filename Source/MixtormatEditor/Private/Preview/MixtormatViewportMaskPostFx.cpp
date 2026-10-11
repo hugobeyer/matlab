@@ -5,10 +5,8 @@
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
-#include "Components/PostProcessComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
-#include "Engine/Scene.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAppendVector.h"
@@ -147,10 +145,6 @@ FMixtormatViewportMaskPostFx::FMixtormatViewportMaskPostFx(
 
 FMixtormatViewportMaskPostFx::~FMixtormatViewportMaskPostFx()
 {
-	if (PostProcess)
-	{
-		Scene.RemoveComponent(PostProcess);
-	}
 	if (UvCapture)
 	{
 		Scene.RemoveComponent(UvCapture);
@@ -208,23 +202,11 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 
 	BlendInstance.Reset(UMaterialInstanceDynamic::Create(
 		BlendMaterial.Get(), UvCapture));
-	PostProcess = NewObject<UPostProcessComponent>();
-	PostProcess->bUnbound = true;
-	PostProcess->Priority = 100.0f;
-	PostProcess->BlendWeight = 1.0f;
-	PostProcess->bEnabled = false;
-	PostProcess->Settings.WeightedBlendables.Array.Add(
-		FWeightedBlendable(1.0f, BlendInstance.Get()));
-	Scene.AddComponent(PostProcess, FTransform::Identity);
 	return true;
 }
 
 void FMixtormatViewportMaskPostFx::Disable()
 {
-	if (PostProcess)
-	{
-		PostProcess->bEnabled = false;
-	}
 	if (UvCapture)
 	{
 		UvCapture->bCaptureEveryFrame = false;
@@ -274,5 +256,4 @@ void FMixtormatViewportMaskPostFx::Update(
 	// PreviewScene worlds are not guaranteed to tick capture components on their
 	// own. Submit one view-matched UV capture per *active viewport* Slate tick.
 	UvCapture->CaptureScene();
-	PostProcess->bEnabled = true;
 }
