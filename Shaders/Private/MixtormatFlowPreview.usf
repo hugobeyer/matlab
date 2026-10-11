@@ -16,3 +16,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float3 RGB = saturate(abs(frac(Hue + float3(0.0f,0.6666667f,0.3333333f))*6.0f-3.0f)-1.0f);
     OutputDebug[Pixel] = float4(RGB * (0.2f+0.8f*saturate(length(F.xy))),1.0f);
 }
+
+Texture2D<float> ScalarBoundary;
+RWTexture2D<float2> OutBoundary;
+[numthreads(8,8,1)]
+void PackScalarBoundaryCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    int2 Pixel = int2(DispatchThreadId.xy);
+    if (any(Pixel >= OutputSize)) return;
+    float D = ScalarBoundary.Load(int3(Pixel,0));
+    bool Valid = isfinite(D) && D < 1.0e8f;
+    OutBoundary[Pixel] = float2(Valid ? D : 0.0f, Valid ? 1.0f : 0.0f);
+}
