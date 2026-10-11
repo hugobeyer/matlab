@@ -23,6 +23,8 @@ namespace
 	bool GInitialised = false;
 	bool GRebuildRequested = false;
 	FMixtormatThemeStore::EStartupLoadResult GStartupLoadResult = FMixtormatThemeStore::EStartupLoadResult::UsingCompiledDefaults;
+	Mixtormat::FMixtormatTheme GAuthoredDefaults;
+	bool GAuthoredDefaultsLoaded = false;
 }
 
 void FMixtormatThemeStore::EnsureInitialised()
@@ -109,25 +111,24 @@ void FMixtormatThemeStore::ResetToDefaults()
 
 const Mixtormat::FMixtormatTheme& FMixtormatThemeStore::GetAuthoredDefaults()
 {
-	static Mixtormat::FMixtormatTheme Defaults = []()
+	if (!GAuthoredDefaultsLoaded)
 	{
-		Mixtormat::FMixtormatTheme Result = Mixtormat::MakeDefaultTheme();
+		GAuthoredDefaultsLoaded = true;
+		GAuthoredDefaults = Mixtormat::MakeDefaultTheme();
 		FString Error;
-		Mixtormat::FMixtormatThemeSchema::ReadInto(Result, Error);
-		return Result;
-	}();
-	return Defaults;
+		Mixtormat::FMixtormatThemeSchema::ReadInto(GAuthoredDefaults, Error);
+	}
+	return GAuthoredDefaults;
 }
 
 void FMixtormatThemeStore::RefreshAuthoredDefaults()
 {
-	// Defaults are read directly from the same file as Load; the property UI calls this
-	// after Save and Load to keep the reset baseline synchronized within the session.
 	Mixtormat::FMixtormatTheme Updated = Mixtormat::MakeDefaultTheme();
 	FString Error;
 	if (Mixtormat::FMixtormatThemeSchema::ReadInto(Updated, Error))
 	{
-		const_cast<Mixtormat::FMixtormatTheme&>(GetAuthoredDefaults()) = MoveTemp(Updated);
+		GAuthoredDefaults = MoveTemp(Updated);
+		GAuthoredDefaultsLoaded = true;
 	}
 }
 

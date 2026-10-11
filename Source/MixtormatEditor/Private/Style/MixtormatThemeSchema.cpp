@@ -964,7 +964,8 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 			case EKind::Choice:
 			{
 				const int32 Index = P.GetChoice(Theme);
-				Obj->SetStringField(Key, P.Options.IsValidIndex(Index) ? P.Options[Index] : FString());
+				// Persist the stable choice ordinal; the loader still accepts legacy display strings.
+				Obj->SetNumberField(Key, Index);
 				break;
 			}
 			case EKind::Color:
@@ -1082,16 +1083,25 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 			}
 			case EKind::Choice:
 			{
-				FString ChoiceValue;
-				if (!(*Section)->TryGetStringField(PropertyId, ChoiceValue))
+				int32 Index = INDEX_NONE;
+				double NumericChoice = -1.0;
+				FString LegacyChoice;
+				if ((*Section)->TryGetNumberField(PropertyId, NumericChoice))
 				{
-					OutError = FString::Printf(TEXT("Invalid choice value for %s"), *PropertyId);
-					return false;
+					if (FMath::IsFinite(NumericChoice) && NumericChoice >= 0.0
+						&& NumericChoice < P.Options.Num()
+						&& FMath::FloorToDouble(NumericChoice) == NumericChoice)
+					{
+						Index = static_cast<int32>(NumericChoice);
+					}
 				}
-				const int32 Index = P.Options.IndexOfByKey(ChoiceValue);
-				if (Index == INDEX_NONE)
+				else if ((*Section)->TryGetStringField(PropertyId, LegacyChoice))
 				{
-					OutError = FString::Printf(TEXT("Unknown choice '%s' for %s"), *ChoiceValue, *PropertyId);
+					Index = P.Options.IndexOfByKey(LegacyChoice);
+				}
+				if (!P.Options.IsValidIndex(Index))
+				{
+					OutError = FString::Printf(TEXT("Invalid choice for %s"), *PropertyId);
 					return false;
 				}
 				P.SetChoice(Pending, Index);
