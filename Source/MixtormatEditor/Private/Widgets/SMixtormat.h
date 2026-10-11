@@ -578,7 +578,6 @@ private:
 	TSharedRef<SWidget> BuildHeightColorRampControls();
 	FMixtormatBehavior* GetSelectedBehaviorWarp();
 	const FMixtormatBehavior* GetSelectedBehaviorWarp() const;
-	TSharedRef<SWidget> BuildBehaviorFlowFieldControls();
 	TSharedRef<SWidget> BuildBehaviorWarpControls();
 	TSharedRef<SWidget> BuildBehaviorWarpSourceMenu();
 	FMixtormatBehavior* GetSelectedBehaviorPush();
@@ -588,7 +587,6 @@ private:
 	FMixtormatBehavior* GetSelectedBehaviorCarve();
 	const FMixtormatBehavior* GetSelectedBehaviorCarve() const;
 	TSharedRef<SWidget> BuildBehaviorCarveControls();
-	TSharedRef<SWidget> BuildBehaviorCarveSourceMenu();
 	FMixtormatBehavior* GetSelectedBehaviorDeform();
 	const FMixtormatBehavior* GetSelectedBehaviorDeform() const;
 	TSharedRef<SWidget> BuildBehaviorDeformControls();
