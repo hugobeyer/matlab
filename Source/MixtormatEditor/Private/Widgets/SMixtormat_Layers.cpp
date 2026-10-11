@@ -775,8 +775,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 		FSimpleDelegate::CreateLambda([this]() { AddMaskSource(); }));
 	Menu.Separator();
 	Menu.Caption(LOCTEXT("AddSourceGeneratorCaption", "Generators"));
-	Menu.Item(LOCTEXT("AddStrataCarverSource", "Strata Carver"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::StrataCarver); }));
+
 	Menu.Item(LOCTEXT("AddCracksSource", "Cracks"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Cracks); }));
 	Menu.Item(LOCTEXT("AddRockFormationSource", "Rock Formation"), MixtormatIcons::Generator(),

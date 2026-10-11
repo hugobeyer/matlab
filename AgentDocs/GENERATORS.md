@@ -17,6 +17,10 @@ effect (post-composite filter) nor a mask (0..1 coverage).
 Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
 `CliffStrata`, `Noise`. Enum is serialized by value — **append, never reorder**.
 
+Strata Carver is frozen and excluded from Mixtormat 1.0 authoring and shipping requirements.
+Its creation entries are removed from layer, child and Sources menus. Types, shaders,
+serialization and existing-asset editing/rendering remain intact. Cliff Strata is unaffected.
+
 Generator-owned flow tools (`ShapeDeform`, `GeneratorFlow`, `FlowCarve`, `GravityFlow`) live in
 `EMixtormatEffectType` (`MixtormatEffect.h`), not here. They are valid only
 scoped under a generator that can own them (`MixtormatCanOwnGeneratorFlow`:

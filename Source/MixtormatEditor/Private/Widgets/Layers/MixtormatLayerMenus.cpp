@@ -43,7 +43,7 @@ namespace
 	// Noise and Flow are two creation presets of one generator (FINAL_BEHAVIOR_PLAN section 12);
 	// the entries name creation kinds, so Flow carries its own defaults without a second type.
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
-		{LOCTEXT("AddGeneratorLayerStrata", "Strata"), EMixtormatChildCreation::StrataCarver},
+
 		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatChildCreation::Cracks},
 		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatChildCreation::RockFormation},
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
@@ -1145,14 +1145,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		: !CanAddGeneratorModule(Target) ? LOCTEXT("GeneratorModuleLayerUnavailable", "Requires a Generator layer")
 		: LOCTEXT("GeneratorModuleCreationUnavailable", "Cannot create a child at this location");
 	if (!bCanAdd) { Menu.Caption(Reason); }
-	Menu.Item(
-		LOCTEXT("AddStrataCarverChild", "Strata Carver"),
-		MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target]()
-		{
-			CreateChild(Target, EMixtormatChildCreation::StrataCarver);
-		}))
-		.Enabled(bCanAdd).ToolTip(Reason);
+
 	Menu.Item(
 		LOCTEXT("AddCracksChild", "Cracks"),
 		MixtormatIcons::Generator(),

@@ -4,7 +4,12 @@
 **Report IDs:** `GEN-01`, `GEN-02`, `GEN-03`, `GEN-04`, `GEN-06`, `UI-03`  
 **Status:** Not started. Read `AGENTS.md` and `AgentDocs/GENERATORS.md` first; use `AgentDocs/COMPOSITION.md` for field/ID semantics.
 
-## GEN-01 — Strata Carver controls that may be no-ops (P1, confirmed source)
+## GEN-01 — Strata Carver controls that may be no-ops (excluded from 1.0)
+
+**Status:** Retired, not fixed (2026-10-11). Strata Carver is frozen and excluded from
+1.0 shipping requirements. Layer, child and Sources creation entries are removed;
+types, shaders, serialization and existing-asset compatibility remain. Do not implement
+the historical work below. Cliff Strata is unaffected.
 
 **Reported evidence:** `MixtormatGpuGeneratorPasses.cpp` ~L2298–2303 binds `bHasScopedMask=false` and `bHasRegionIds=false` while Strata Carver “Mask & ID Influence” controls exist in `MixtormatInspectorGenerators.cpp`.
 
@@ -18,7 +23,7 @@
 **Reported evidence:** `MixtormatChildScope::CanOwnScopedMasks` permits all generators, but the audit found GPU mask consumers only for Noise and HeightColorRamp.
 
 - Enumerate current generator types and trace scoped mask gathering to their per-generator output application.
-- Prefer making existing accepted masks functional for Strata Carver, Rock Formation, Pebbles, Cracks and Cliff Strata; keep signed height and independent outputs consistent with module contracts.
+- Prefer making existing accepted masks functional for Rock Formation, Pebbles, Cracks and Cliff Strata; keep signed height and independent outputs consistent with module contracts. Strata Carver is excluded; do not fix or refactor it.
 - Reuse `AddScopedFeatureMask` and canonical mask composition where appropriate; avoid separate mask math per generator.
 - If an owner cannot consume a mask, present the capability mismatch for a product decision before removing a placement or feature.
 - Mask controls must operate on the **owned** generator contribution, not globally mask unrelated earlier fields.

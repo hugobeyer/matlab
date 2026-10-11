@@ -5,6 +5,11 @@
 **Source:** 2026-10-11 release-readiness static audit (Composition, Generators/Masks/IDs, UI/UX, Performance/Release).  
 **Scope:** Fix existing functionality before planning/implementing Color System V2.
 
+**1.0 exclusion (2026-10-11, main):** Strata Carver is frozen and retired from new authoring.
+Its layer, child and Sources creation entries are removed. GEN-01 and Strata-specific GEN-02
+work are excluded from shipping requirements, not fixed. Preserve its types, shaders,
+serialization and existing-asset compatibility; Cliff Strata remains in scope.
+
 ## Status and interpretation
 
 - **Behavior System V2 was not audited.** No finding below is a substitute for a dedicated Behavior audit.
@@ -25,7 +30,7 @@
 
 | Order | Finding(s) | Why first | Status |
 |---|---|---|---|
-| 1 | GEN-01, GEN-02 | Visible mask and influence controls must actually affect the result | Not started |
+| 1 | GEN-02 (shipping generators only) | Scoped masks must affect shipping generators | Not started; GEN-01 / Strata Carver excluded |
 | 2 | REL-01, COMP-02 | Stable identities, copy/instance and grouped child references | Not started |
 | 3 | COMP-01, COMP-04, COMP-03 | Predictable authored stack order, publication and compositing | Not started |
 | 4 | UI-03, UI-01, UI-02 | Reachable ID functionality and consistent existing help UI | Not started |
