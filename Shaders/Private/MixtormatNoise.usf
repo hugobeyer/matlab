@@ -252,8 +252,9 @@ void GeneratedFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		bValid = false;
 	}
 	// All weights zero (or no valid basis): exact zero, no influence, no invented movement.
-	OutGeneratedFlow[Pixel] = float4(Result, 0.0f, bValid ? 1.0f : 0.0f);
-	OutGeneratedFlowValidity[Pixel] = bValid ? 1.0f : 0.0f;
+	const bool bHasVector = bValid && dot(Result, Result) > 1.0e-12f;
+	OutGeneratedFlow[Pixel] = float4(Result, 0.0f, bHasVector ? 1.0f : 0.0f);
+	OutGeneratedFlowValidity[Pixel] = bHasVector ? 1.0f : 0.0f;
 }
 
 // Transport an accumulated displacement vector through a Distort coordinate remap.
@@ -324,8 +325,12 @@ void FlowComposeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		Out = float4(0.0f, 0.0f, 0.0f, 0.0f);
 	}
+	// Signed Add can produce a negative vector without negative validity. Alpha is
+	// presence, not signed influence; strength, Add and opposed terms remain signed.
+	const bool bHasVector = dot(Out.xy, Out.xy) > 1.0e-12f;
+	Out.a = bHasVector ? 1.0f : 0.0f;
 	OutComposedFlow[Pixel] = Out;
-	OutComposedFlowValidity[Pixel] = (Out.a > 0.0f && dot(Out.xy, Out.xy) > 1.0e-12f) ? 1.0f : 0.0f;
+	OutComposedFlowValidity[Pixel] = bHasVector ? 1.0f : 0.0f;
 }
 
 [numthreads(8, 8, 1)]
