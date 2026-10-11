@@ -370,6 +370,15 @@ public:
 			Settings.bOverride_AutoExposureBias = true;
 			Settings.AutoExposureBias = 0.0f;
 		}
+		// This blendable belongs to this editor view only. No unbound world
+		// volume, no effects in the UV capture, and no changes to the lit master.
+		if (Owner.bMaskPostFxActive && Owner.MaskPostFx)
+		{
+			if (UMaterialInstanceDynamic* Blend = Owner.MaskPostFx->GetBlendInstance())
+			{
+				Settings.WeightedBlendables.Array.Add(FWeightedBlendable(1.0f, Blend));
+			}
+		}
 		View.OverridePostProcessSettings(Settings, 1.0f);
 	}
 
@@ -574,6 +583,7 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 	{
 		MaskPostFx = MakeUnique<FMixtormatViewportMaskPostFx>(PreviewScene);
 	}
+	PreviewViewportClient->EngineShowFlags.SetPostProcessing(true);
 	MaskPostFx->Update(
 		*PreviewMeshComponent,
 		LayerCompositor->GetDebugOutput(),
