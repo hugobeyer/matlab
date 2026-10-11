@@ -589,7 +589,6 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					]
 				]
 				]
-				]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
 				SNew(SSplitter)
