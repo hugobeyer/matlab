@@ -51,6 +51,16 @@ namespace
 	// The cap is on the grid rather than on a divisor, so a material solves at the same physical
 	// scale at every export resolution and a 1K preview predicts the 4K bake. The divisor is a
 	// power of two so a non-square tile keeps its aspect and the wrap stays exact on both axes.
+	constexpr int32 FeatherIterationsHardMax = 512;
+
+	int32 ResolveFeatherIterations(const int32 Requested)
+	{
+		ensureMsgf(Requested <= FeatherIterationsHardMax,
+			TEXT("Feather iterations (%d) exceeded hard maximum (%d); clamped. Value likely bypassed the UI."),
+			Requested, FeatherIterationsHardMax);
+		return FMath::Clamp(Requested, 0, FeatherIterationsHardMax);
+	}
+
 	constexpr int32 DistanceSolveMaxSize = 1024;
 
 	FIntPoint DistanceSolveResolution(const FIntPoint Resolution)
@@ -1745,7 +1755,8 @@ namespace
 			Arrival[0] = NewScalar(TEXT("Mixtormat.FlowFeather.ArrivalA"));
 			Arrival[1] = NewScalar(TEXT("Mixtormat.FlowFeather.ArrivalB"));
 			Dispatch(1, Arrival[0], nullptr);
-			for (int32 Pass = 0; Pass < Behavior.FeatherIterations; ++Pass)
+			const int32 Iterations = ResolveFeatherIterations(Behavior.FeatherIterations);
+			for (int32 Pass = 0; Pass < Iterations; ++Pass)
 			{
 				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
 				Read = 1 - Read;
@@ -1816,7 +1827,8 @@ namespace
 			Arrival[0] = Make(TEXT("Mixtormat.Feather.ArrivalA"));
 			Arrival[1] = Make(TEXT("Mixtormat.Feather.ArrivalB"));
 			Dispatch(1, Arrival[0], nullptr);
-			for (int32 Pass = 0; Pass < Behavior.FeatherIterations; ++Pass)
+			const int32 Iterations = ResolveFeatherIterations(Behavior.FeatherIterations);
+			for (int32 Pass = 0; Pass < Iterations; ++Pass)
 			{
 				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
 				Read = 1 - Read;
