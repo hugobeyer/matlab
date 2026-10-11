@@ -1,0 +1,82 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Shared diagnostic ink evaluation. Called on the mesh's *authored* material UV,
+// never the screen UV. Scene blending and surface/visibility checks live in the
+// viewport-scoped PostFX pass, not here.
+#ifndef MIXTORMAT_DIAGNOSTIC_OVERLAY_USH
+#define MIXTORMAT_DIAGNOSTIC_OVERLAY_USH
+
+#define MIXTORMAT_OVERLAY_FLOW 1u
+#define MIXTORMAT_OVERLAY_IDS 2u
+#define MIXTORMAT_OVERLAY_MASK 3u
+#define MIXTORMAT_OVERLAY_HEIGHT 4u
+
+float3 MixtormatOverlayIdColor(uint Id)
+{
+    uint H = Id * 747796405u + 2891336453u;
+    H = ((H >> ((H >> 28u) + 4u)) ^ H) * 277803737u;
+    H = (H >> 22u) ^ H;
+    float3 C = float3(
+        float(H & 255u),
+        float((H >> 8u) & 255u),
+        float((H >> 16u) & 255u)) / 255.0f;
+    return lerp(float3(0.40f, 0.48f, 0.55f), C, 0.55f);
+}
+
+// Returns linear display ink in RGB and independent coverage in A.
+// The caller must fetch IDs with Load/point sampling; RegionEdge is 1 only
+// when two *integer* neighbour IDs differ, never from interpolated IDs.
+float4 MixtormatEvaluateOverlay(
+    uint Semantic,
+    float2 MaterialUV,
+    float2 Flow,
+    uint RegionId,
+    float RegionEdge,
+    float Scalar,
+    float FlowDensity,
+    float ShowIdBoundaries)
+{
+    if (Semantic == MIXTORMAT_OVERLAY_IDS)
+    {
+        float3 C = MixtormatOverlayIdColor(RegionId);
+        C = lerp(C, float3(0.89f, 0.91f, 0.95f),
+            saturate(RegionEdge) * saturate(ShowIdBoundaries));
+        return float4(C, 1.0f);
+    }
+    if (Semantic == MIXTORMAT_OVERLAY_MASK)
+    {
+        return float4(0.35f, 0.78f, 0.87f, saturate(Scalar));
+    }
+    if (Semantic == MIXTORMAT_OVERLAY_HEIGHT)
+    {
+        const float Magnitude = saturate(abs(Scalar));
+        return float4(Scalar >= 0.0f
+            ? float3(0.98f, 0.48f, 0.30f)
+            : float3(0.30f, 0.62f, 0.98f), Magnitude);
+    }
+    if (Semantic == MIXTORMAT_OVERLAY_FLOW)
+    {
+        const float LengthSq = dot(Flow, Flow);
+        if (!all(isfinite(Flow)) || LengthSq < 1.0e-10f)
+            return float4(0.0f, 0.0f, 0.0f, 0.0f);
+
+        const float2 Dir = Flow * rsqrt(LengthSq);
+        const float2 Cell = frac(MaterialUV * max(FlowDensity, 1.0f)) - 0.5f;
+        const float Along = dot(Cell, Dir);
+        const float Across = abs(Cell.x * Dir.y - Cell.y * Dir.x);
+        const float Shaft = (1.0f - smoothstep(0.025f, 0.065f, Across))
+            * smoothstep(-0.32f, -0.24f, Along)
+            * (1.0f - smoothstep(0.20f, 0.27f, Along));
+        const float Head = (1.0f - smoothstep(0.0f, 0.055f,
+            abs(Across) - max(0.0f, 0.30f - Along) * 0.65f))
+            * smoothstep(0.17f, 0.22f, Along)
+            * (1.0f - smoothstep(0.30f, 0.35f, Along));
+        return float4(0.72f, 0.93f, 1.0f, saturate(max(Shaft, Head)));
+    }
+    return float4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+float3 MixtormatCompositeOverlay(float3 SceneColor, float4 Ink, float Opacity)
+{
+    return lerp(SceneColor, Ink.rgb, saturate(Opacity) * saturate(Ink.a));
+}
+#endif
