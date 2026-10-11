@@ -270,6 +270,7 @@ FReply SMixtormat::ToggleFeaturePreview(const EMixtormatDebugPreviewMode Mode)
 	}
 
 	bAutomaticFlowPreview = false;
+	bMaskOverlayEnabled = false;
 	DebugPreviewMode = DebugPreviewMode == Mode
 		? EMixtormatDebugPreviewMode::None
 		: Mode;
@@ -492,6 +493,7 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 		return FReply::Handled();
 	}
 	bAutomaticFlowPreview = false;
+	bMaskOverlayEnabled = false;
 	const bool bAlreadyActive =
 		DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput && ChildPreviewTarget == Target;
 	if (bAlreadyActive)
