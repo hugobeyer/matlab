@@ -409,6 +409,23 @@ void SMixtormat::AddSharedChildMenuItems(
 				PasteChild(Address, ResolveChildIndexAt(Address));
 			}));
 	}
+	if (Child && Child->Type == EMixtormatLayerChildType::Mask)
+	{
+		Menu.Item(LOCTEXT("RenameMaskChildContext", "Rename"), nullptr,
+			FSimpleDelegate::CreateLambda([this, Address]()
+			{
+				if (const TWeakPtr<SMixtormatLayerChildRow>* Row = EditableChildRowWidgets.Find(Address))
+				{
+					RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda(
+						[WeakRow = *Row](double, float)
+						{
+							if (const TSharedPtr<SMixtormatLayerChildRow> Pinned = WeakRow.Pin())
+								Pinned->BeginRename();
+							return EActiveTimerReturnType::Stop;
+						}));
+				}
+			})).Shortcut(LOCTEXT("RenameMaskChildShortcut", "F2"));
+	}
 	if (!bInstance)
 	{
 		return;
