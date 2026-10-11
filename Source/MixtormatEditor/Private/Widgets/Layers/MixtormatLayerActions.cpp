@@ -581,16 +581,6 @@ FReply SMixtormat::ReplaceSurfaceInLayer(const int32 LayerIndex, const FSoftObje
 
 	Layer.SourceComposition.Reset();
 	Layer.SourceSurface = TSoftObjectPtr<UMixtormatSurface>(SurfacePath);
-	Layer.DisplayName = ReplacementSurface->DisplayName.IsEmpty()
-		? FText::FromString(ReplacementSurface->GetName()) : ReplacementSurface->DisplayName;
-	for (const FMixtormatSurfaceEntry& Surface : FMixtormatRegistry::GetSurfaces())
-	{
-		if (Surface.AssetPath == SurfacePath)
-		{
-			Layer.DisplayName = Surface.DisplayName;
-			break;
-		}
-	}
 
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
