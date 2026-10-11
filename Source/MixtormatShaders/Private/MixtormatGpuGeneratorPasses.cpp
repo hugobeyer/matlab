@@ -1024,6 +1024,47 @@ IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSignedCarveCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorWarp.usf", "SignedCarveCS", SF_Compute);
 
 
+
+class FMixtormatBehaviorSculptCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorSculptCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorSculptCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Strength)
+		SHADER_PARAMETER(float, Depth)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, TraceLength)
+		SHADER_PARAMETER(int32, TraceSteps)
+		SHADER_PARAMETER(float, Falloff)
+		SHADER_PARAMETER(uint32, UseMask)
+		SHADER_PARAMETER(uint32, UseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, WorkingFlow)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, WorkingFlowValidity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, InfluenceField)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, BehaviorDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
+		SHADER_PARAMETER_ARRAY(FVector4f, SculptDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, SculptDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SculptDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SculptDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutSculptMask)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSculptCS,
+	"/Plugin/Mixtormat/Private/MixtormatBehaviorSculpt.usf", "MainCS", SF_Compute);
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -1622,6 +1663,73 @@ namespace
 		return Result;
 	}
 
+
+	// One traced, signed-Height Sculpt operation. The former Carve enum remains a
+	// serialized identifier until the editor handoff; no SDF or private Flow solve.
+	FRDGTextureRef AddBehaviorSculptPass(FMixtormatComposeContext& Ctx,
+		const FLayerRenderData& Layer, FRDGTextureRef Height,
+		FRDGTextureRef Flow, FRDGTextureRef FlowValidity,
+		const FBehaviorRenderData& Behavior,
+		FRDGTextureRef Mask, const bool bUseMask,
+		FRDGTextureRef Influence, const bool bUseInfluence,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Behavior.Sculpt.Height"));
+		FRDGTextureRef SculptMask = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R16F, FClearValueBinding::Black,
+			TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.Behavior.Sculpt.Mask"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorSculptCS::FParameters>();
+		P->OutputSize = Size;
+		P->Strength = Behavior.Strength;
+		P->Depth = Behavior.Flow.Depth;
+		P->Width = FMath::Max(0.0f, Behavior.Flow.Width);
+		P->TraceLength = FMath::Max(0.0f, Behavior.Flow.TraceLength);
+		P->TraceSteps = FMath::Clamp(Behavior.Flow.TraceSteps, 1, 64);
+		P->Falloff = FMath::Max(0.0f, Behavior.Flow.Falloff);
+		P->UseMask = bUseMask ? 1u : 0u;
+		P->UseInfluence = bUseInfluence ? 1u : 0u;
+		P->SourceHeight = Height;
+		P->WorkingFlow = Flow;
+		P->WorkingFlowValidity = FlowValidity;
+		P->ScopedMask = Mask ? Mask : Ctx.EmptyDriverSignal;
+		P->InfluenceField = Influence ? Influence : Ctx.EmptyDriverSignal;
+		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
+		// Traced length and signed Depth retain their independent parameter drivers.
+		const int32 Slots[2] = {1, 3};
+		FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+		for (int32 I = 0; I < 2; ++I)
+		{
+			const FScalarDriverRenderData& Driver = Behavior.Flow.SettingsDrivers[Slots[I]];
+			FRDGTextureRef* Snapshot = Driver.bEnabled
+				? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
+			const bool bResolved = Snapshot != nullptr;
+			Signals[I] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+			P->SculptDriverParamsA[I] = FVector4f(
+				bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+				Driver.InputMin, Driver.InputMax);
+			P->SculptDriverParamsB[I] = FVector4f(
+				Driver.OutputMin, Driver.OutputMax, Driver.Amount,
+				static_cast<float>(Driver.Combine));
+		}
+		P->SculptDriverSignal0 = Signals[0];
+		P->SculptDriverSignal1 = Signals[1];
+		P->OutHeight = Ctx.GraphBuilder.CreateUAV(Result);
+		P->OutSculptMask = Ctx.GraphBuilder.CreateUAV(SculptMask);
+		TShaderMapRef<FMixtormatBehaviorSculptCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Behavior.Sculpt.L%d.C%d", LayerIndex, ChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, ChildIndex, FName(TEXT("CarveMask"))),
+			FPublishedField{EMixtormatPublishedFieldKind::Scalar01, SculptMask, nullptr, nullptr, false});
+		return Result;
+	}
+
 	FRDGTextureRef AddBehaviorSignedCarvePass(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef BaseHeight, FRDGTextureRef Distance, const bool bOwnBoundary,
 		const FBehaviorRenderData& Behavior,
@@ -2063,29 +2171,16 @@ namespace
 			}
 			if (Child.Behavior.Type == EMixtormatBehaviorType::Carve)
 			{
-				const bool bOwnBoundary = Child.Behavior.HeightOrigin
-					== EMixtormatBehaviorFieldOrigin::OwnBoundary;
-				FRDGTextureRef Distance = bOwnBoundary ? Module.BoundaryField : nullptr;
-				if (!bOwnBoundary && Child.Behavior.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
-				{
-					const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Child.Behavior.Height.Source);
-					if (Field && Field->IsComplete()
-						&& Field->Kind == EMixtormatPublishedFieldKind::SDF)
-					{
-						Distance = Field->Texture;
-					}
-				}
-				if (!Distance || !Module.Height || Distance->Desc.Extent != Size
-					|| (bOwnBoundary ? Distance->Desc.Format != PF_G32R32F
-						: (Distance->Desc.Format != PF_R16F
-							&& Distance->Desc.Format != PF_R32_FLOAT))) { continue; }
+				// Sculpt consumes the ordered working Flow, and gathers current Height.
+				// The SDF remains available to separate masks/color/geometry consumers.
+				if (!Module.Height || !WorkingFlowValidity) { continue; }
 				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: LayerCtx.CombinedMask;
-				Module.Height = AddBehaviorSignedCarvePass(Ctx, Module.Height, Distance,
-					bOwnBoundary, Child.Behavior, Gate, bHasMask, Influence, bUseInfluence,
-					LayerCtx.LayerIndex, Child.SourceChildIndex);
+				Module.Height = AddBehaviorSculptPass(Ctx, Layer, Module.Height,
+					WorkingFlow, WorkingFlowValidity, Child.Behavior, Gate, bHasMask,
+					Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex);
 				continue;
 			}
 			if (Child.Behavior.Type == EMixtormatBehaviorType::Push)
@@ -2114,29 +2209,7 @@ namespace
 					break;
 				}
 				if (!Delta || !Module.Height || Delta->Desc.Format != PF_R32_FLOAT) { continue; }
-				// Child Flow Fields are modifiers of this Push input, never separate
-				// generator operations. Resolve each field against the current signed
-				// input and transport the input before applying Push's signed delta.
-				for (const FChildRenderData& Nested : Layer.Children)
-				{
-					if (Nested.Type != EMixtormatLayerChildType::Behavior
-						|| Nested.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
-						|| Nested.Behavior.Type != EMixtormatBehaviorType::FlowField
-						|| Nested.Behavior.GeneratorChildIndex != Owner.SourceChildIndex) { continue; }
-					FRDGTextureRef UnusedCoverage = nullptr;
-					AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
-						Owner.SourceChildIndex, Module.BoundaryField, Delta,
-						UnusedCoverage, nullptr, Nested.SourceChildIndex);
-					const FPublishedField* Warped = Ctx.PublishedFieldOutputs.Find(
-						PublishedKey(Layer, Nested.SourceChildIndex, FName(TEXT("WarpedUV"))));
-					if (Warped && Warped->IsComplete()
-						&& Warped->Kind == EMixtormatPublishedFieldKind::UVMap
-						&& Warped->Texture->Desc.Extent == Size
-						&& Warped->Texture->Desc.Format == PF_G32R32F)
-					{
-						Delta = RemapBundleField(Ctx, Delta, Warped->Texture, 0);
-					}
-				}
+				// Push is strictly signed Height; never transport its input through Flow.
 				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
@@ -2182,14 +2255,18 @@ namespace
 			// Scoped Flow inherits automatically from preceding Flow siblings.
 			// No direction-field picker is consulted for this execution path.
 			else if (bStandardNeeded && WorkingFlowValidity
-				&& Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
+				&& (Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
+					|| (Child.Behavior.Type == EMixtormatBehaviorType::Deform
+						&& Child.Behavior.bUseTracedFlow))
 				&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
 					|| Child.Behavior.Type == EMixtormatBehaviorType::Deform))
 			{
 				FOutputReferenceRenderData AutoFlow;
 				AutoFlow.FlowAmount = 1.0f;
-				AutoFlow.FlowTraceLength = Child.Behavior.Flow.StandardTraceLength;
-				AutoFlow.FlowSteps = Child.Behavior.Flow.StandardTraceSteps;
+				AutoFlow.FlowTraceLength = Child.Behavior.bUseTracedFlow
+					? Child.Behavior.Flow.TraceLength : Child.Behavior.Flow.StandardTraceLength;
+				AutoFlow.FlowSteps = Child.Behavior.bUseTracedFlow
+					? Child.Behavior.Flow.TraceSteps : Child.Behavior.Flow.StandardTraceSteps;
 				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
 					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
 				Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, FlowField,
@@ -2255,12 +2332,28 @@ namespace
 				}
 			}
 			FRDGTextureRef TracedCoordinates = nullptr;
-			if (bWarp && (Child.Behavior.Flow.ModeMix > 0.0f || bMixDriver))
+			if (bWarp && (Child.Behavior.Flow.ModeMix > 0.0f || bMixDriver)
+				&& WorkingFlowValidity)
 			{
-				FRDGTextureRef UnusedCoverage = nullptr;
-				AddBehaviorFlowFieldPasses(Ctx, LayerCtx, Layer,
-					Owner.SourceChildIndex, Module.BoundaryField, Module.Height,
-					UnusedCoverage, nullptr, Child.SourceChildIndex, &TracedCoordinates);
+				FOutputReferenceRenderData Trace;
+				Trace.FlowAmount = 1.0f;
+				Trace.FlowTraceLength = Child.Behavior.Flow.TraceLength;
+				Trace.FlowSteps = Child.Behavior.Flow.TraceSteps;
+				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
+					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
+				TracedCoordinates = AddReferencedFlowUVPass(Ctx, Trace, FlowField,
+					LayerCtx.LayerIndex, Child.SourceChildIndex, nullptr, true);
+				if (TracedCoordinates)
+				{
+					const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef Gate = bHasMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: LayerCtx.CombinedMask;
+					TracedCoordinates = ScaleBehaviorUV(Ctx, TracedCoordinates,
+						Child.Behavior.Strength, Gate, bHasMask, Influence, bUseInfluence,
+						LayerCtx.LayerIndex, Child.SourceChildIndex,
+						Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+				}
 			}
 			// Directly nested Flow Fields transport this operation's input coordinates.
 			// A field without a mask uses its own generator-derived flow and full scope.
@@ -2544,13 +2637,7 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	bool IsFlowToolChild(const FChildRenderData& Candidate, const int32 OwnerSourceChildIndex)
 	{
 		return Candidate.Type == EMixtormatLayerChildType::Behavior
-			&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
-				|| (Candidate.Behavior.bUseTracedFlow
-					&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
-						|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve))
-				|| (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
-					&& (Candidate.Behavior.Flow.ModeMix > 0.0f
-						|| Candidate.Behavior.Flow.SettingsDrivers[8].bEnabled)))
+			&& Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
 			&& Candidate.Behavior.GeneratorChildIndex == OwnerSourceChildIndex;
 	}
 
