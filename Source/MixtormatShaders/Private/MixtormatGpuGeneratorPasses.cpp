@@ -968,6 +968,24 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatFlowPreviewCS,
 	"/Plugin/Mixtormat/Private/MixtormatFlowPreview.usf", "MainCS", SF_Compute);
 
+class FMixtormatScalarBoundaryPackCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatScalarBoundaryPackCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatScalarBoundaryPackCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutBoundary)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatScalarBoundaryPackCS,
+	"/Plugin/Mixtormat/Private/MixtormatFlowPreview.usf", "PackScalarBoundaryCS", SF_Compute);
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -2449,6 +2467,24 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 	};
 	static_assert(sizeof(FRockLeafStride) == 68, "Rock leaf stride must match FRockLeaf in HLSL");
 	static constexpr int32 RockMaxVertices = 24;
+
+	FRDGTextureRef PackScalarBoundary(FMixtormatComposeContext& Ctx, FRDGTextureRef Scalar)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Packed = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Generator.PackedBoundary"));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatScalarBoundaryPackCS::FParameters>();
+		P->OutputSize = Size;
+		P->ScalarBoundary = Scalar;
+		P->OutBoundary = Ctx.GraphBuilder.CreateUAV(Packed);
+		TShaderMapRef<FMixtormatScalarBoundaryPackCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.PackBoundary"),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+				FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Packed;
+	}
 
 	FRDGTextureRef AddRockFormationPasses(
 		FMixtormatComposeContext& Ctx,
