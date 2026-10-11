@@ -79,18 +79,7 @@ FReply SMixtormat::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent
 	if (!bModifierDown && !InKeyEvent.IsAltDown()
 		&& InKeyEvent.IsShiftDown() && InKeyEvent.GetKey() == EKeys::V)
 	{
-		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-		{
-			if (Viewport.IsValid())
-			{
-				Viewport->ResetChannelPreview();
-			}
-		}
-		bAutomaticFlowPreview = false;
-		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
-		ChildPreviewTarget = FMixtormatChildPreviewTarget();
-		RefreshLayeredPreview(false);
-		return FReply::Handled();
+		return ResetDiagnosticOverlays();
 	}
 	return SCompoundWidget::OnPreviewKeyDown(MyGeometry, InKeyEvent);
 }
@@ -321,6 +310,23 @@ bool SMixtormat::IsMaskOverlayTargetReady() const
 		|| Child->Type == EMixtormatLayerChildType::Craquelure
 		|| Child->Type == EMixtormatLayerChildType::ColorId
 		|| Child->Type == EMixtormatLayerChildType::RandomId;
+}
+
+FReply SMixtormat::ResetDiagnosticOverlays()
+{
+	bMaskOverlayEnabled = false;
+	bAutomaticFlowPreview = false;
+	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+	ChildPreviewTarget = FMixtormatChildPreviewTarget();
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid())
+		{
+			Viewport->ResetChannelPreview();
+		}
+	}
+	RefreshLayeredPreview(false);
+	return FReply::Handled();
 }
 
 FReply SMixtormat::ToggleMaskOverlayPreview()
@@ -944,6 +950,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnToggleMaskOverlay(FSimpleDelegate::CreateLambda([this]()
 			{
 				ToggleMaskOverlayPreview();
+			}))
+			.OnResetDiagnosticOverlays(FSimpleDelegate::CreateLambda([this]()
+			{
+				ResetDiagnosticOverlays();
 			}))
 			.OnToggleDisplacement(FSimpleDelegate::CreateLambda([this]()
 			{
