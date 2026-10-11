@@ -1823,7 +1823,32 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			return Selected ? &Selected->Flow : nullptr;
 		};
 		TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-		AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorDeformOperationCard", "OPERATION"));
+		TSharedRef<SVerticalBox> Standard = SNew(SVerticalBox);
+		Panel->AddSlot().AutoHeight()
+		[
+			SNew(SBox).Visibility_Lambda([Deform]()
+			{
+				const FMixtormatBehavior* B = Deform();
+				return B && !B->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorDeformStandardCard", "STANDARD DEFORM"))[Standard]
+			]
+		];
+		TSharedRef<SVerticalBox> TracedDeformPanel = SNew(SVerticalBox);
+		Panel->AddSlot().AutoHeight()
+		[
+			SNew(SBox).Visibility_Lambda([Deform]()
+			{
+				const FMixtormatBehavior* B = Deform();
+				return B && B->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorDeformTracedCard", "TRACED DEFORM"))[TracedDeformPanel]
+			]
+		];
+		AddSliderRow(Operation, MixtormatRow::MakeDropdown(
 			LOCTEXT("BehaviorDeformModeLabel", "Deform Mode"),
 			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Deform]()
 			{
@@ -1850,7 +1875,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 				return Menu.Build();
 			})),
 			LOCTEXT("BehaviorDeformModeHint", "Standard samples direction fields; Traced integrates boundary shape and flow paths locally.")));
-		AddSliderRow(Panel,
+		AddSliderRow(Standard,
 			SNew(SBox)
 			.Visibility_Lambda([Deform]()
 			{
@@ -1902,11 +1927,11 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformSourceMenu)),
 					LOCTEXT("BehaviorDeformDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Deform resamples native height only, leaving IDs and coverage fixed."))
 			]);
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatBehavior>(
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorDeformStrength", "Strength"), Deform, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorDeformStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
-	AddSliderRow(Panel, SNew(SBox).Visibility_Lambda([Deform]()
+	AddSliderRow(Standard, SNew(SBox).Visibility_Lambda([Deform]()
 	{
 		const FMixtormatBehavior* B = Deform();
 		return B && !B->Flow.bUseTracedFlow
@@ -1920,9 +1945,9 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorDeformAutoTraceSteps", "Steps"),
 				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceSteps, 1, 64, 16))]);
-	AddBehaviorFieldCompositionRows(Panel,
+	AddBehaviorFieldCompositionRows(Standard,
 		[Deform]() -> FMixtormatBehaviorFieldInput* { return Deform() ? &Deform()->Direction : nullptr; }, false);
-	AddSliderRow(Panel,
+	AddSliderRow(Standard,
 		SNew(SBox)
 		.Visibility_Lambda([Deform]()
 		{
@@ -1948,7 +1973,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		LOCTEXT("BehaviorDeformSteps", "Flow Steps"), Reference, &FMixtormatOutputReference::FlowSteps,
 		1.0, 64.0, 16,
 		LOCTEXT("BehaviorDeformStepsHint", "Integration steps; UV Maps use their coordinates directly.")));
-	Panel->AddSlot().AutoHeight()
+	Standard->AddSlot().AutoHeight()
 	[
 		SNew(SBox).Visibility_Lambda([Deform, Reference]()
 		{
@@ -1960,7 +1985,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})[FlowPanel]
 	];
-	TSharedRef<SVerticalBox> TracedDeformPanel = SNew(SVerticalBox);
 	AddSliderRow(TracedDeformPanel, MakeMemberEnum<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedDeformSource", "Steering Source"), Flow,
 		&FMixtormatBehaviorFlowSettings::FlowSource));
@@ -1975,14 +1999,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 	AddSliderRow(TracedDeformPanel, MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 		LOCTEXT("BehaviorTracedDeformAmount", "Flow Amount"), Flow, &FMixtormatBehaviorFlowSettings::FlowAmount,
 		0, 1, 1, 0.01));
-	Panel->AddSlot().AutoHeight()
-	[
-		SNew(SBox).Visibility_Lambda([Deform]()
-		{
-			const FMixtormatBehavior* Selected = Deform();
-			return Selected && Selected->Flow.bUseTracedFlow ? EVisibility::Visible : EVisibility::Collapsed;
-		})[TracedDeformPanel]
-	];
 	return SNew(SVerticalBox)
 		.Visibility_Lambda([Deform]() { return Deform() ? EVisibility::Visible : EVisibility::Collapsed; })
 		+ SVerticalBox::Slot().AutoHeight()
