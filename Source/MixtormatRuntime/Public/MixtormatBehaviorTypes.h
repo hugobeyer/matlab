@@ -383,9 +383,9 @@ struct MIXTORMATRUNTIME_API FMixtormatBehaviorFlowSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Carve")
 	EMixtormatBehaviorFlowCarveMode CarveMode = EMixtormatBehaviorFlowCarveMode::Groove;
 
-	// Carve: gain on the gathered height difference. 1 cuts (Groove) or raises (Deposit)
-	// all the way to the strongest distance-weighted sample; nothing caps it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Carve", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	// Sculpt: signed gain on traced Height extrema. Positive cuts, negative raises;
+	// zero is neutral. The obsolete CarveMode selector is ignored by Sculpt.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Carve", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
 	float Depth = 1.0f;
 
 	// Carve: half-width (UV) of the groove across the flow.
