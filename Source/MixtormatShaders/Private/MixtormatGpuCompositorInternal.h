@@ -1005,6 +1005,8 @@ namespace MixtormatGpuCompositor
 		float FlowOffsetAcross = 0.0f;
 		float ShapeOffset = 0.0f;
 		float Bulge = 0.0f;
+		float StandardTraceLength = 0.1f;
+		int32 StandardTraceSteps = 16;
 		float TraceLength = 0.1f;
 		int32 TraceSteps = 16;
 		float WarpStrength = 1.0f;

@@ -1544,10 +1544,10 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorWarpAutoTraceLength", "Trace Length"),
-				Flow, &FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001),
+				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceLength, 0.0, 1.0, 0.1, 0.001),
 			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorWarpAutoTraceSteps", "Steps"),
-				Flow, &FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16))]);
+				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceSteps, 1, 64, 16))]);
 	AddBehaviorFieldCompositionRows(Panel,
 		[Warp]() -> FMixtormatBehaviorFieldInput* { return Warp() ? &Warp()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,
@@ -1890,10 +1890,10 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorDeformAutoTraceLength", "Trace Length"),
-				Flow, &FMixtormatBehaviorFlowSettings::TraceLength, 0.0, 1.0, 0.1, 0.001),
+				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceLength, 0.0, 1.0, 0.1, 0.001),
 			MakeMemberSliderInt<FMixtormatBehaviorFlowSettings>(
 				LOCTEXT("BehaviorDeformAutoTraceSteps", "Steps"),
-				Flow, &FMixtormatBehaviorFlowSettings::TraceSteps, 1, 64, 16))]);
+				Flow, &FMixtormatBehaviorFlowSettings::StandardTraceSteps, 1, 64, 16))]);
 	AddBehaviorFieldCompositionRows(Panel,
 		[Deform]() -> FMixtormatBehaviorFieldInput* { return Deform() ? &Deform()->Direction : nullptr; }, false);
 	AddSliderRow(Panel,

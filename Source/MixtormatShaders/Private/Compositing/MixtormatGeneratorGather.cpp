@@ -378,6 +378,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	FlowOut.FlowOffsetAcross = FMath::IsFinite(Flow.FlowOffsetAcross) ? Flow.FlowOffsetAcross : FMixtormatBehaviorFlowSettings().FlowOffsetAcross;
 	FlowOut.ShapeOffset = FMath::IsFinite(Flow.ShapeOffset) ? Flow.ShapeOffset : FMixtormatBehaviorFlowSettings().ShapeOffset;
 	FlowOut.Bulge = FMath::IsFinite(Flow.Bulge) ? Flow.Bulge : FMixtormatBehaviorFlowSettings().Bulge;
+	FlowOut.StandardTraceLength = FMath::IsFinite(Flow.StandardTraceLength)
+		? FMath::Max(Flow.StandardTraceLength, 0.0f) : 0.1f;
+	FlowOut.StandardTraceSteps = FMath::Clamp(Flow.StandardTraceSteps, 1, 64);
 	FlowOut.TraceLength = FMath::IsFinite(Flow.TraceLength) ? Flow.TraceLength : FMixtormatBehaviorFlowSettings().TraceLength;
 	FlowOut.TraceSteps = FMath::Max(Flow.TraceSteps, 1);
 	FlowOut.WarpStrength = FMath::IsFinite(Flow.WarpStrength) ? Flow.WarpStrength : FMixtormatBehaviorFlowSettings().WarpStrength;

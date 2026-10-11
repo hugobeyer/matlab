@@ -1838,8 +1838,8 @@ namespace
 			{
 				FOutputReferenceRenderData AutoFlow;
 				AutoFlow.FlowAmount = 1.0f;
-				AutoFlow.FlowTraceLength = Child.Behavior.Flow.TraceLength;
-				AutoFlow.FlowSteps = Child.Behavior.Flow.TraceSteps;
+				AutoFlow.FlowTraceLength = Child.Behavior.Flow.StandardTraceLength;
+				AutoFlow.FlowSteps = Child.Behavior.Flow.StandardTraceSteps;
 				const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
 					WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
 				Coordinates = AddReferencedFlowUVPass(Ctx, AutoFlow, FlowField,

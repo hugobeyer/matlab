@@ -323,6 +323,14 @@ struct MIXTORMATRUNTIME_API FMixtormatBehaviorFlowSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Deform", meta = (UIMin = "-0.25", UIMax = "0.25", Delta = "0.001"))
 	float Bulge = 0.0f;
 
+	// Automatic Standard Warp/Deform uses this independent trace budget when following
+	// previously composed Flow. Traced Flow keeps TraceLength/TraceSteps below.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Standard", meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", Delta = "0.001"))
+	float StandardTraceLength = 0.1f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Standard", meta = (UIMin = "1", UIMax = "64", ClampMin = "1", ClampMax = "64"))
+	int32 StandardTraceSteps = 16;
+
 	// Traced Warp / Carve: total traced distance (UV) and its RK2 step count.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Flow|Trace", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
 	float TraceLength = 0.1f;
