@@ -52,8 +52,7 @@ namespace
 
 	const Mixtormat::FMixtormatTheme& Defaults()
 	{
-		static const Mixtormat::FMixtormatTheme Theme = Mixtormat::MakeDefaultTheme();
-		return Theme;
+		return FMixtormatThemeStore::GetAuthoredDefaults();
 	}
 
 	FString ValidationText(const TArray<FText>& Issues)
@@ -627,9 +626,9 @@ FReply SMixtormatThemePanel::OpenColor(const FName Id)
 FReply SMixtormatThemePanel::Save()
 {
 	FString Error;
-	Status = Mixtormat::FMixtormatThemeSchema::Save(Error)
-		? TEXT("UI style theme saved.")
-		: Error;
+	const bool bSaved = Mixtormat::FMixtormatThemeSchema::Save(Error);
+	if (bSaved) { FMixtormatThemeStore::RefreshAuthoredDefaults(); }
+	Status = bSaved ? TEXT("UI style theme saved.") : Error;
 	return FReply::Handled();
 }
 
@@ -643,6 +642,7 @@ FReply SMixtormatThemePanel::Load()
 		return FReply::Handled();
 	}
 	PendingNumbers.Reset();
+	FMixtormatThemeStore::RefreshAuthoredDefaults();
 	UpdateStatus(TEXT("UI style theme loaded."));
 	OnThemeChanged.ExecuteIfBound(Mixtormat::EMixtormatThemeRefreshMode::Reconstruct);
 	return FReply::Handled();

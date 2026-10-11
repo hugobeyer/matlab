@@ -116,5 +116,7 @@ namespace Mixtormat
 		static FString SavePath();
 		static bool Save(FString& OutError);
 		static bool Load(FString& OutError, TArray<FText>& OutValidationIssues);
+		// Parse a saved theme into an explicit baseline without touching active editor state.
+		static bool ReadInto(FMixtormatTheme& Theme, FString& OutError);
 	};
 }

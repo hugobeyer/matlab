@@ -46,6 +46,10 @@ public:
 	// Restores the authored defaults.
 	static void ResetToDefaults();
 
+	// Same authored baseline for Reset All and individual property resets.
+	static const Mixtormat::FMixtormatTheme& GetAuthoredDefaults();
+	static void RefreshAuthoredDefaults();
+
 	// Issues raised by the last ValidateTheme, for the authoring UI to show. Empty when the last
 	// change was clean.
 	static const TArray<FText>& GetValidationIssues();

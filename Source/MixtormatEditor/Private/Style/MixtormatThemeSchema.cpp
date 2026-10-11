@@ -999,10 +999,9 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 		return true;
 	}
 
-	bool FMixtormatThemeSchema::Load(FString& OutError, TArray<FText>& OutValidationIssues)
+	bool FMixtormatThemeSchema::ReadInto(FMixtormatTheme& Pending, FString& OutError)
 	{
 		OutError.Reset();
-		OutValidationIssues.Reset();
 
 		const FString Path = SavePath();
 		if (Path.IsEmpty())
@@ -1032,9 +1031,7 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 			return false;
 		}
 
-		// Merge saved schema values over the current theme so properties intentionally outside the
-		// editable/save schema are not silently reset when loading an older theme file.
-		FMixtormatTheme Pending = FMixtormatThemeStore::GetTheme();
+		// Missing saved keys keep their caller-provided baseline, never unrelated live edits.
 		for (const FMixtormatThemeProperty& P : Properties())
 		{
 			const TSharedPtr<FJsonObject>* Section = nullptr;
@@ -1131,6 +1128,14 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 			}
 		}
 
+		return true;
+	}
+
+	bool FMixtormatThemeSchema::Load(FString& OutError, TArray<FText>& OutValidationIssues)
+	{
+		OutValidationIssues.Reset();
+		FMixtormatTheme Pending = Mixtormat::MakeDefaultTheme();
+		if (!ReadInto(Pending, OutError)) return false;
 		FMixtormatThemeStore::SetTheme(MoveTemp(Pending));
 		OutValidationIssues = FMixtormatThemeStore::GetValidationIssues();
 		return true;
