@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "UI/Layers/SMixtormatSourceRow.h"
+#include "UI/Layers/MixtormatLayerShortcuts.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatLocatorOutline.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
@@ -686,6 +687,58 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		return FReply::Handled();
 	}
 	const bool bModifierDown = InKeyEvent.IsControlDown() || InKeyEvent.IsCommandDown();
+	using EShortcut = MixtormatLayerShortcuts::EAction;
+	const auto HasShortcut = [&InKeyEvent](EShortcut Action)
+	{
+		return MixtormatLayerShortcuts::Matches(InKeyEvent, Action);
+	};
+	if (HasShortcut(EShortcut::Solo) && WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		&& !SelectedGroupId.IsValid() && !SelectedSourceId.IsValid())
+		return ToggleLayerSolo(SelectedLayerIndex);
+	if (HasShortcut(EShortcut::ToggleEnabled) && WorkingLayers.IsValidIndex(SelectedLayerIndex)
+		&& !SelectedGroupId.IsValid() && !SelectedSourceId.IsValid())
+		return SetWorkingLayerEnabled(WorkingLayers[SelectedLayerIndex].bEnabled
+			? ECheckBoxState::Unchecked : ECheckBoxState::Checked, SelectedLayerIndex);
+	if (HasShortcut(EShortcut::Copy))
+	{
+		if (SelectedSourceId.IsValid())
+		{
+			if (const FMixtormatSourceEntry* Source = GetSelectedSource())
+			{
+				SourceClipboard = *Source;
+				return FReply::Handled();
+			}
+		}
+		else
+		{
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			if (ResolveChildAt(Address))
+			{
+				CopyChild(Address, false);
+				return FReply::Handled();
+			}
+		}
+	}
+	if (HasShortcut(EShortcut::Paste))
+	{
+		if (SelectedSourceId.IsValid() && SourceClipboard.IsSet())
+		{
+			const FGuid NewId = AppendSourceCopy(SourceClipboard.GetValue());
+			if (NewId.IsValid()) { CommitSourcesEdit(NewId); return FReply::Handled(); }
+		}
+		else if (!SelectedSourceId.IsValid() && SelectedGroupId.IsValid())
+		{
+			const FMixtormatChildAddress Address{EMixtormatChildOwnerType::Group, SelectedGroupId, FGuid()};
+			if (CanPasteChild(Address, INDEX_NONE)) return PasteChild(Address);
+		}
+		else if (!SelectedSourceId.IsValid() && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			const FMixtormatChildAddress Address{EMixtormatChildOwnerType::Layer,
+				WorkingLayers[SelectedLayerIndex].LayerId, FGuid()};
+			if (CanPasteChild(Address, INDEX_NONE)) return PasteChild(Address);
+		}
+	}
+
 	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::BackSpace && ResetHoveredNumericControl())
 	{
 		return FReply::Handled();
@@ -726,7 +779,7 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	// default, F2 is the one most likely to be stolen by the OS before Slate ever sees it.
 	// F2 stays the shortcut the menus advertise.
 	if (!bModifierDown && SelectedSourceId.IsValid()
-		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12))
+		&& HasShortcut(EShortcut::Rename))
 	{
 		if (const TWeakPtr<SMixtormatSourceRow>* WeakRow = SourceRowWidgets.Find(SelectedSourceId))
 		{
@@ -744,15 +797,15 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	}
 	if (bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsRepeat())
 	{
-		if (InKeyEvent.GetKey() == EKeys::D && !InKeyEvent.IsShiftDown())
+		if (HasShortcut(EShortcut::Duplicate))
 		{
 			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
 		}
-		if (InKeyEvent.GetKey() == EKeys::C && InKeyEvent.IsShiftDown())
+		if (HasShortcut(EShortcut::CopyAsInstance))
 		{
 			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::CopyAsInstance);
 		}
-		if (InKeyEvent.GetKey() == EKeys::G && !InKeyEvent.IsShiftDown())
+		if (HasShortcut(EShortcut::Group))
 		{
 			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Group);
 		}
@@ -795,7 +848,7 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	// Del on the selection: the same removals the context menus offer, no confirmation.
 	// Undoable like every edit -- the removal functions record history themselves.
 	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
-		&& !InKeyEvent.IsRepeat() && InKeyEvent.GetKey() == EKeys::Delete)
+		&& HasShortcut(EShortcut::Remove))
 	{
 		// A selected source keeps its own context menu; Del is scoped to layers and children.
 		if (!SelectedSourceId.IsValid())

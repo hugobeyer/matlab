@@ -6,6 +6,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "UI/Layers/MixtormatLayerShortcuts.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -389,7 +390,7 @@ void SMixtormat::AddSharedChildMenuItems(
 		FSimpleDelegate::CreateLambda([this, Address]()
 		{
 			CopyChild(Address, false);
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Copy));
 	// Only where a second row could share this child's identity. A scoped mask filter cannot, so
 	// offering the entry here would be an invitation the paste path refuses a click later.
 	if (bSupportsInstancing)
@@ -400,7 +401,7 @@ void SMixtormat::AddSharedChildMenuItems(
 			FSimpleDelegate::CreateLambda([this, Address]()
 			{
 				CopyChild(Address, true);
-			}));
+			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::CopyAsInstance));
 	}
 	if (CanPasteChild(Address, ResolveChildIndexAt(Address)))
 	{
@@ -408,7 +409,7 @@ void SMixtormat::AddSharedChildMenuItems(
 			FSimpleDelegate::CreateLambda([this, Address]()
 			{
 				PasteChild(Address, ResolveChildIndexAt(Address));
-			}));
+			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Paste));
 	}
 	if (Child && Child->Type == EMixtormatLayerChildType::Mask)
 	{
@@ -425,7 +426,7 @@ void SMixtormat::AddSharedChildMenuItems(
 							return EActiveTimerReturnType::Stop;
 						}));
 				}
-			})).Shortcut(LOCTEXT("RenameMaskChildShortcut", "F2"));
+			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Rename));
 	}
 	if (!bInstance)
 	{
@@ -683,7 +684,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 			SelectLayerGroup(GroupId);
 			BeginRenameSelection();
 		}))
-		.Shortcut(LOCTEXT("RenameGroupShortcut", "F2"));
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Rename));
 
 	return Menu.Build();
 }
@@ -713,7 +714,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
 		{
 			return SoloLayerIndex == LayerIndex;
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Solo));
 	Menu.Item(
 		LOCTEXT("DisableLayerContext", "Disable"),
 		nullptr,
@@ -730,7 +731,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex]()
 		{
 			return WorkingLayers.IsValidIndex(LayerIndex) && !WorkingLayers[LayerIndex].bEnabled;
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::ToggleEnabled));
 
 	Menu.Separator();
 
@@ -760,7 +761,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 				.Enabled(TAttribute<bool>::CreateLambda([this]()
 				{
 					return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
-				}));
+				})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
 
 	// Acts on the multi-selection, not on the row the menu opened over, so shift-picking a run of
 	// layers and right-clicking any of them does the same thing as the toolbar button.
@@ -778,7 +779,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		.Enabled(TAttribute<bool>::CreateLambda([this]()
 		{
 			return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Group);
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Group));
 	if (WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].GroupId.IsValid())
 	{
 		const FGuid GroupId = WorkingLayers[LayerIndex].GroupId;
@@ -796,7 +797,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 			SelectWorkingLayer(LayerIndex);
 			BeginRenameSelection();
 		}))
-		.Shortcut(LOCTEXT("RenameShortcut", "F2"));
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Rename));
 
 	// A plain copy lands at the end of the layer; an instance lands at the top, except that a
 	// source in this same layer pushes it to the first slot below that source. One Paste row for
@@ -816,7 +817,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		{
 			return WorkingLayers.IsValidIndex(LayerIndex)
 				&& CanPasteChild({EMixtormatChildOwnerType::Layer, WorkingLayers[LayerIndex].LayerId, FGuid()}, INDEX_NONE);
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Paste));
 
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
@@ -839,7 +840,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 		.Enabled(TAttribute<bool>::CreateLambda([this]()
 		{
 			return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
-		}))
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 
 	return Menu.Build();

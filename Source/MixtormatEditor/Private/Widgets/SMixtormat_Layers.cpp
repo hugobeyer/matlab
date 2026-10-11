@@ -6,6 +6,7 @@
 #include "Style/MixtormatRecipes.h"
 #include "MixtormatLayerGroups.h"
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
+#include "UI/Layers/MixtormatLayerShortcuts.h"
 #include "UI/Layers/SMixtormatLayerGroupContainer.h"
 #include "UI/Layers/SMixtormatSourceRow.h"
 #include "UI/Layers/SMixtormatSourcesShelf.h"
@@ -747,7 +748,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 				Copy->DisplayName = ClipboardName;
 			}
 			CommitSourcesEdit(NewSourceId);
-		})).Enabled(SourceClipboard.IsSet());
+		})).Enabled(SourceClipboard.IsSet()).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Paste));
 	Menu.Item(LOCTEXT("PasteSourceInstance", "Paste as Instance"), MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this]()
 		{
@@ -792,7 +793,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 			{
 				SourceClipboard = *Source;
 			}
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Copy));
 	Menu.Item(LOCTEXT("CopyShelfSourceAsInstance", "Copy as Instance"), MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, SourceId]()
 		{
@@ -803,7 +804,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 			{
 				SourceInstanceClipboard = Producer->SourceId;
 			}
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::CopyAsInstance));
 	// Instance-only operations, so a producer's menu stays exactly as it was.
 	if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
 		[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
@@ -833,7 +834,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 			{
 				if (const TSharedPtr<SMixtormatSourceRow> Row = WeakRow->Pin()) { Row->BeginRename(); }
 			}
-		}));
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Rename));
 	Menu.Item(
 		// The verb every other menu uses for this row. Deletion semantics are unchanged: this
 		// still removes the source and repairs every binding that named it.
@@ -841,6 +842,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 		MixtormatIcons::Trash(),
 		// The action returns FReply; the menu delegate takes void.
 		FSimpleDelegate::CreateLambda([this, SourceId]() { DeleteSource(SourceId); }))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 	return Menu.Build();
 }
