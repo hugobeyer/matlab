@@ -204,23 +204,44 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #if BUNDLE_STAGE == 0 || BUNDLE_STAGE == 12
 	const float Height = ScalarField.SampleLevel(LinearWrapSampler, UV, 0.0f);
 #if BUNDLE_STAGE == 12
-	// Limit filtering to one source texel along Warp; no modulo of UV displacement.
+	// The previous AA sampled only one source texel along displacement.
+	// That cannot filter a many-texel stretched warp and often looked identical
+	// to the unfiltered image. Use the local UV Jacobian: an output pixel covers
+	// a parallelogram in source UV space. Nine Gaussian-weighted taps integrate
+	// that footprint, capped to eight source texels per axis.
+	float2 Dx, Dy;
+	MixtormatGeneratorWarpJacobian(WarpedUV, Pixel, OutputSize, Dx, Dy);
+	float2 AxisX = Dx / (float)OutputSize.x;
+	float2 AxisY = Dy / (float)OutputSize.y;
+	const float LenX = length(AxisX * float2(OutputSize));
+	const float LenY = length(AxisY * float2(OutputSize));
 	const float2 Identity = (float2(Pixel) + 0.5f) / float2(OutputSize);
-	const float2 PixelMotion = (UV - Identity) * float2(OutputSize);
-	const float MotionLength = length(PixelMotion);
+	const float Motion = length((UV - Identity) * float2(OutputSize));
 	float AntiAliased = Height;
-	if (isfinite(MotionLength) && MotionLength > 1e-4f && WarpAA > 0.0f)
+	// AA is opt-in and stays identity for an unmoved Warp. For an active Warp,
+	// ensure at least a one-texel reconstruction footprint so the slider works
+	// even when local UV derivatives are near identity.
+	if (all(isfinite(float4(AxisX, AxisY))) && isfinite(LenX) && isfinite(LenY)
+		&& isfinite(Motion) && Motion > 0.01f && WarpAA > 0.0f)
 	{
-		const float2 StepUV = (PixelMotion / MotionLength) / float2(OutputSize);
-		const float H1 = ScalarField.SampleLevel(LinearWrapSampler, UV + 0.5f * StepUV, 0.0f);
-		const float H2 = ScalarField.SampleLevel(LinearWrapSampler, UV - 0.5f * StepUV, 0.0f);
-		const float H3 = ScalarField.SampleLevel(LinearWrapSampler, UV + StepUV, 0.0f);
-		const float H4 = ScalarField.SampleLevel(LinearWrapSampler, UV - StepUV, 0.0f);
-		if (all(isfinite(float4(H1, H2, H3, H4))))
+		AxisX *= clamp(LenX, 1.0f, 8.0f) / max(LenX, 1.0e-5f);
+		AxisY *= clamp(LenY, 1.0f, 8.0f) / max(LenY, 1.0e-5f);
+		float Weighted = 4.0f * Height;
+		bool Valid = isfinite(Height);
+		[unroll]
+		for (int J = -1; J <= 1; ++J)
 		{
-			AntiAliased = lerp(Height, (4.0f * Height + 2.0f * (H1 + H2) + H3 + H4) * 0.1f,
-				saturate(WarpAA));
+			[unroll]
+			for (int I = -1; I <= 1; ++I)
+			{
+				if (I == 0 && J == 0) { continue; }
+				const float2 TapUV = UV + 0.5f * (float(I) * AxisX + float(J) * AxisY);
+				const float Tap = ScalarField.SampleLevel(LinearWrapSampler, TapUV, 0.0f);
+				Valid = Valid && isfinite(Tap);
+				Weighted += (I == 0 || J == 0 ? 2.0f : 1.0f) * Tap;
+			}
 		}
+		if (Valid) { AntiAliased = lerp(Height, Weighted / 16.0f, saturate(WarpAA)); }
 	}
 	OutScalar[Pixel] = AntiAliased;
 #else

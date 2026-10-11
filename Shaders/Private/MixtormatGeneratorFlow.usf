@@ -186,12 +186,42 @@ bool BoundaryGradient(float2 UV, out float2 Gradient, out float Distance)
 	const float2 YP = BoundaryField.Load(int3(FlowWrap(Pixel + int2(0, Step), OutputSize), 0));
 	const float2 YM = BoundaryField.Load(int3(FlowWrap(Pixel - int2(0, Step), OutputSize), 0));
 	Distance = C.x;
-	Gradient = float2(XP.x - XM.x, YP.x - YM.x) * float2(OutputSize) / (2.0f * (float)Step);
-	return all(isfinite(float4(C, XP)))
+	Gradient = float2(XP.x - XM.x, YP.x - YM.x)
+		* float2(OutputSize) / (2.0f * (float)Step);
+	const bool bValid = all(isfinite(float4(C, XP)))
 		&& all(isfinite(float4(XM, YP)))
 		&& all(isfinite(YM))
 		&& min(min(C.y, XP.y), min(min(XM.y, YP.y), YM.y)) > 0.5f
 		&& all(isfinite(Gradient));
+	if (!bValid || SlopeFeather <= 0.0f) { return bValid; }
+
+	// Signed Distance was previously unaffected by Slope Feather. Smooth the
+	// direction estimate over a wider periodic footprint, not the distance or
+	// validity field used by seed selection and collision checks.
+	const int R = Step + (int)round(3.0f * saturate(SlopeFeather));
+	const float2 A = BoundaryField.Load(int3(FlowWrap(Pixel + int2(-R, R), OutputSize), 0));
+	const float2 B = BoundaryField.Load(int3(FlowWrap(Pixel + int2(0, R), OutputSize), 0));
+	const float2 D = BoundaryField.Load(int3(FlowWrap(Pixel + int2(R, R), OutputSize), 0));
+	const float2 E = BoundaryField.Load(int3(FlowWrap(Pixel + int2(-R, 0), OutputSize), 0));
+	const float2 F = BoundaryField.Load(int3(FlowWrap(Pixel + int2(R, 0), OutputSize), 0));
+	const float2 G = BoundaryField.Load(int3(FlowWrap(Pixel + int2(-R, -R), OutputSize), 0));
+	const float2 H = BoundaryField.Load(int3(FlowWrap(Pixel + int2(0, -R), OutputSize), 0));
+	const float2 I = BoundaryField.Load(int3(FlowWrap(Pixel + int2(R, -R), OutputSize), 0));
+	if (all(isfinite(float4(A, B))) && all(isfinite(float4(D, E)))
+		&& all(isfinite(float4(F, G))) && all(isfinite(float4(H, I)))
+		&& min(min(min(A.y, B.y), min(D.y, E.y)),
+			min(min(F.y, G.y), min(H.y, I.y))) > 0.5f)
+	{
+		const float2 Sobel = float2(
+			D.x + 2.0f * F.x + I.x - A.x - 2.0f * E.x - G.x,
+			A.x + 2.0f * B.x + D.x - G.x - 2.0f * H.x - I.x)
+			* float2(OutputSize) / (8.0f * (float)R);
+		if (all(isfinite(Sobel)))
+		{
+			Gradient = lerp(Gradient, Sobel, saturate(SlopeFeather));
+		}
+	}
+	return true;
 }
 
 float2 HeightGradient(float2 UV)
@@ -203,14 +233,22 @@ float2 HeightGradient(float2 UV)
 	const float YM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(0.0f, R.y), 0.0f);
 	const float2 Raw = float2(XP - XM, YP - YM) / (2.0f * R);
 	if (SlopeFeather <= 0.0f || !all(isfinite(Raw))) { return Raw; }
-	const float HUR = RockHeight.SampleLevel(LinearWrapSampler, UV + R, 0.0f);
-	const float HUL = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(-R.x, R.y), 0.0f);
-	const float HDR = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(R.x, -R.y), 0.0f);
-	const float HDL = RockHeight.SampleLevel(LinearWrapSampler, UV - R, 0.0f);
-	if (!all(isfinite(float4(HUR, HUL, HDR, HDL)))) { return Raw; }
+	// Use a larger footprint for feathering, rather than just reweighting
+	// the same noisy four central-difference samples.
+	const float2 SoftR = R * (1.0f + 3.0f * saturate(SlopeFeather));
+	const float SoftXP = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(SoftR.x, 0.0f), 0.0f);
+	const float SoftXM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(SoftR.x, 0.0f), 0.0f);
+	const float SoftYP = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(0.0f, SoftR.y), 0.0f);
+	const float SoftYM = RockHeight.SampleLevel(LinearWrapSampler, UV - float2(0.0f, SoftR.y), 0.0f);
+	const float HUR = RockHeight.SampleLevel(LinearWrapSampler, UV + SoftR, 0.0f);
+	const float HUL = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(-SoftR.x, SoftR.y), 0.0f);
+	const float HDR = RockHeight.SampleLevel(LinearWrapSampler, UV + float2(SoftR.x, -SoftR.y), 0.0f);
+	const float HDL = RockHeight.SampleLevel(LinearWrapSampler, UV - SoftR, 0.0f);
+	if (!all(isfinite(float4(SoftXP, SoftXM, SoftYP, SoftYM)))
+		|| !all(isfinite(float4(HUR, HUL, HDR, HDL)))) { return Raw; }
 	const float2 Sobel = float2(
-		2.0f * (XP - XM) + HUR - HUL + HDR - HDL,
-		2.0f * (YP - YM) + HUR + HUL - HDR - HDL) / (8.0f * R);
+		2.0f * (SoftXP - SoftXM) + HUR - HUL + HDR - HDL,
+		2.0f * (SoftYP - SoftYM) + HUR + HUL - HDR - HDL) / (8.0f * SoftR);
 	return lerp(Raw, Sobel, saturate(SlopeFeather));
 }
 

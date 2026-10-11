@@ -129,20 +129,28 @@ void HeightGradientCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 Gradient = 0.5f * float2(HR - HL, HU - HD) * float2(OutputSize);
 	if (SlopeFeather > 0.0f)
 	{
-		const int2 UL = (Pixel + int2(OutputSize.x - 1, 1)) % OutputSize;
-		const int2 UR = (Pixel + int2(1, 1)) % OutputSize;
-		const int2 DL = (Pixel + OutputSize - int2(1, 1)) % OutputSize;
-		const int2 DR = (Pixel + int2(1, OutputSize.y - 1)) % OutputSize;
+		const int R = 1 + (int)round(3.0f * saturate(SlopeFeather));
+		const int2 UL = (Pixel + int2(OutputSize.x - R, R)) % OutputSize;
+		const int2 UR = (Pixel + int2(R, R)) % OutputSize;
+		const int2 DL = (Pixel + OutputSize - int2(R, R)) % OutputSize;
+		const int2 DR = (Pixel + int2(R, OutputSize.y - R)) % OutputSize;
+		const int2 SX = int2(R, 0);
+		const int2 SY = int2(0, R);
+		const float HRF = SourceHeight.Load(int3((Pixel + SX) % OutputSize, 0));
+		const float HLF = SourceHeight.Load(int3((Pixel + OutputSize - SX) % OutputSize, 0));
+		const float HUF = SourceHeight.Load(int3((Pixel + SY) % OutputSize, 0));
+		const float HDF = SourceHeight.Load(int3((Pixel + OutputSize - SY) % OutputSize, 0));
 		const float HUL = SourceHeight.Load(int3(UL, 0));
 		const float HUR = SourceHeight.Load(int3(UR, 0));
 		const float HDL = SourceHeight.Load(int3(DL, 0));
 		const float HDR = SourceHeight.Load(int3(DR, 0));
-		if (all(isfinite(float4(HUL, HUR, HDL, HDR))))
+		if (all(isfinite(float4(HLF, HRF, HDF, HUF)))
+			&& all(isfinite(float4(HUL, HUR, HDL, HDR))))
 		{
 			const float2 Sobel = float2(
-				2.0f * (HR - HL) + HUR - HUL + HDR - HDL,
-				2.0f * (HU - HD) + HUR + HUL - HDR - HDL)
-				* (0.125f * float2(OutputSize));
+				2.0f * (HRF - HLF) + HUR - HUL + HDR - HDL,
+				2.0f * (HUF - HDF) + HUR + HUL - HDR - HDL)
+				* (float2(OutputSize) / (8.0f * (float)R));
 			Gradient = lerp(Gradient, Sobel, saturate(SlopeFeather));
 		}
 	}
