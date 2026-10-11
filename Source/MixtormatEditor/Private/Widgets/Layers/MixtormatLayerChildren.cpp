@@ -700,18 +700,13 @@ namespace MixtormatLayersPrivate
 			{
 				return false;
 			}
-			// A child Flow Field modifies the immediate parent's input; nested
-			// operations must remain in the existing scoped child tree.
-			return (Child.Behavior.Type == EMixtormatBehaviorType::Feather
+			// Nested Feather may modify its owning operation; legacy Flow Field
+			// children cannot be newly authored.
+			return Child.Behavior.Type == EMixtormatBehaviorType::Feather
 				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Warp
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform
 					|| Owner.Behavior.Type == EMixtormatBehaviorType::Push
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::Carve
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::FlowField))
-				|| (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
-				&& (Owner.Behavior.Type == EMixtormatBehaviorType::Push
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::Warp
-					|| Owner.Behavior.Type == EMixtormatBehaviorType::Deform));
+					|| Owner.Behavior.Type == EMixtormatBehaviorType::Carve);
 		}
 		if (Owner.Type == EMixtormatLayerChildType::IdGroup)
 		{
