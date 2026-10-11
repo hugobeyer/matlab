@@ -9,6 +9,7 @@
 #include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
+#include "UI/Primitives/SMixtormatWellBox.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Images/SImage.h"
@@ -386,25 +387,58 @@ TSharedRef<SWidget> SMixtormat::MakePreviewScaleRow()
 
 TSharedRef<SWidget> SMixtormat::MakePreviewFinalButton()
 {
-	const Mixtormat::FMixtormatPreviewMetrics& Layout = FMixtormatThemeStore::GetResolved().PreviewLayout;
-	const FTextBlockStyle LabelStyle = MakePreviewLabelStyle();
-	return SNew(SMixtormatPreviewPlate)
-		.ToolTip(LOCTEXT("FinalCompositeHint", "Final AO for the whole composite. Relief normals always come from the final height."))
+	// The chip look, overlay-hosted: the shared well (hover lift included), the chip's text inset
+	// and disclosure arrow. The old build was a bare label on a preview plate with TogglePadding
+	// -- no well, no arrow, and padding too tight to read as a dropdown.
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle ValueStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlValue),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	return SNew(SBox)
+		.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
 		[
 			SNew(SComboButton)
-				.ButtonStyle(&GetPreviewOverlayButtonStyle())
-				.Method(EPopupMethod::UseCurrentWindow)
-				.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsFinalMenuOpen = bOpen; })
-				.ContentPadding(FMargin(Layout.TogglePadding))
-				.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
-				.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
-				.ButtonContent()
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+			.Method(EPopupMethod::UseCurrentWindow)
+			.HasDownArrow(false)
+			.ContentPadding(FMargin(0.0f))
+			.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsFinalMenuOpen = bOpen; })
+			.OnGetMenuContent(this, &SMixtormat::BuildFinalSettingsControls)
+			.ButtonContent()
+			[
+				SNew(SMixtormatWellBox)
+				.IsHovered_Lambda([this]() { return IsHovered() || bQuickControlsFinalMenuOpen; })
 				[
-					SNew(STextBlock)
-					.Font(LabelStyle.Font)
-					.ColorAndOpacity_Lambda([this]() { return GetPreviewOverlayLabelColor(false, false); })
-					.Text(LOCTEXT("FinalCompositeButton", "Final"))
+					SNew(SMixtormatGradientBox)
+					.Padding(FMargin(MixtormatTokens::ChipTextInset, 0.0f, MixtormatTokens::ChipGap, 0.0f))
+					[
+						SNew(SBox)
+						.HeightOverride(MixtormatTokens::ChipHeight)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.Font(ValueStyle.Font)
+								.ColorAndOpacity(ValueStyle.ColorAndOpacity)
+								.Text(LOCTEXT("FinalCompositeButton", "Final"))
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							.Padding(MixtormatTokens::ChipGap, 0.0f, 0.0f, 0.0f)
+							[
+								SNew(SBox)
+								.WidthOverride(Resolved.MenuLayout.ChevronSize)
+								.HeightOverride(Resolved.MenuLayout.ChevronSize)
+								[
+									SNew(SImage)
+									.Image(MixtormatIcons::ChevronDown())
+									.ColorAndOpacity(FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+								]
+							]
+						]
+					]
 				]
+			]
 		];
 }
 
@@ -938,11 +972,31 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 	const TSharedRef<SMixtormatInspectorCard> ActionsCard = SNew(SMixtormatInspectorCard)
 		.Title(LOCTEXT("QuickControlsActions", "ACTIONS"))
 		.HeaderOnly(true)
-		.HeaderAction(BuildQuickControlsActions())
+		.HeaderAction(SNew(SBox)
+			.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
+			.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[
+				SNew(SImage).Image(MixtormatIcons::ChevronDown())
+			])
 		[
 			SNew(SBox)
 		];
-	ActionsCard->SetRenderTransform(Reveal(FVector2D(0.0, 1.0)));
+	// The whole card is the disclosure: the combo wraps it with an invisible button style, so the
+	// menu opens from the row box rather than from a small icon area inside it.
+	const TSharedRef<SComboButton> ActionsCombo = SNew(SComboButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+		.Method(EPopupMethod::UseCurrentWindow)
+		.HasDownArrow(false)
+		.ContentPadding(FMargin(0.0f))
+		.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsActionMenuOpen = bOpen; })
+		.OnGetMenuContent(this, &SMixtormat::BuildQuickControlsActionsMenu)
+		.ButtonContent()
+		[
+			ActionsCard
+		];
+	ActionsCombo->SetRenderTransform(Reveal(FVector2D(0.0, 1.0)));
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		.Visibility(EVisibility::SelfHitTestInvisible)
 		+ SVerticalBox::Slot().AutoHeight()
@@ -988,7 +1042,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			SNew(SBox)
 			.MinDesiredWidth(PreviewMetrics.QuickControlsActionsWidth)
 			[
-				ActionsCard
+				ActionsCombo
 			]
 		];
 	// Keep card sizing independent of the viewport-wide backdrop.

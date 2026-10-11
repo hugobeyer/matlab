@@ -1598,7 +1598,7 @@ private:
 	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content);
 	// Q controls: a cursor-centred overlay with distance fading and pass-through gaps.
 	TSharedRef<SWidget> BuildQuickControlsOverlay();
-		TSharedRef<SWidget> BuildQuickControlsActions();
+		TSharedRef<SWidget> BuildQuickControlsActionsMenu();
 	void ToggleQuickControls();
 	void CloseQuickControls();
 	// How a group's buttons are laid out: the viewport's rails stack them down an edge, GLOBAL's

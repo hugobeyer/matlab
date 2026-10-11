@@ -56,17 +56,11 @@ namespace
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildQuickControlsActions()
+TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 {
-	return SNew(SComboButton)
-		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
-		.HasDownArrow(false)
-		.OnMenuOpenChanged_Lambda([this](bool bOpen) { bQuickControlsActionMenuOpen = bOpen; })
-		.OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
-		{
-			MixtormatMenu::FBuilder Menu;
-			const bool bLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
-			Menu.Item(LOCTEXT("QuickAddFill", "Fill Layer"), MixtormatIcons::LayerFill(),
+	MixtormatMenu::FBuilder Menu;
+	const bool bLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
+	Menu.Item(LOCTEXT("QuickAddFill", "Fill Layer"), MixtormatIcons::LayerFill(),
 				FSimpleDelegate::CreateLambda([this]()
 				{
 					if (!bHasWorkingMaterial)
@@ -180,23 +174,12 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActions()
 							.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanPasteAsGatingMask(Owner); }));
 						return Gates.Build();
 					}));
-			}
-			return Menu.Build();
-		})
-		.ButtonContent()
-		[
-			SNew(SBox)
-			.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
-			.HeightOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				SNew(SImage).Image(MixtormatIcons::ChevronDown())
-			]
-		];
-}
+		}
 
-TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
+		return Menu.Build();
+	}
+
+	TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 {
 	MixtormatMenu::FBuilder Menu;
 	Menu.Item(
