@@ -127,6 +127,7 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatPreviewViewport) {}
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
+		SLATE_EVENT(FSimpleDelegate, OnToggleMaskOverlay)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
 		// Bare 1-4 in the viewport: the workspace swaps the preview mesh through its own
@@ -225,6 +226,7 @@ private:
 	void HandleCameraWheel(float WheelDelta, bool bControlDown);
 	void ToggleOverlayUi();
 	void ToggleDisplacement();
+	void ToggleMaskOverlay();
 	void CycleChannelPreview();
 	void CycleModulePreview();
 	void ApplyChannelPreview();
@@ -286,6 +288,7 @@ private:
 	TSharedPtr<FEditorViewportClient> PreviewViewportClient;
 	FSimpleDelegate OnToggleOverlayUi;
 	FSimpleDelegate OnToggleDisplacement;
+	FSimpleDelegate OnToggleMaskOverlay;
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
 	FMixtormatSetPreviewMesh OnSetPreviewMesh;
