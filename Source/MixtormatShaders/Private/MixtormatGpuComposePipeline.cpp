@@ -1257,6 +1257,13 @@ namespace MixtormatGpuCompositor
 							HeightSnapshots.Add(LayerIndex, Snapshot);
 						}
 
+						if (Request.DebugSettings.bMaskOverlay
+							&& Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+							&& Request.DebugSettings.LayerIndex == LayerIndex)
+						{
+							Ctx.SelectedOverlayMask = LayerCtx.DebugMask;
+						}
+
 						PublishLayerRegionIdOutputs(Ctx, LayerCtx, Layer);
 						if (bPrefixCache
 							&& LayerIndex == Request.SnapshotLayer
@@ -1336,6 +1343,16 @@ namespace MixtormatGpuCompositor
 					AddCopyTexturePass(GraphBuilder, Rebuilt, FinalN);
 				}
 				} // End the MixtormatCompose GPU event scope before executing the graph.
+
+				// A display-only copy of the finished albedo. Mask colour is applied once,
+				// after every layer, and never changes the original PBR composition.
+				if (Request.DebugSettings.bMaskOverlay && Ctx.SelectedOverlayMask)
+				{
+					const int32 Final = Request.PublishedTargetIndex;
+					AddMaskOverlayPass(GraphBuilder, Ctx.OutputBC[Final],
+						Ctx.SelectedOverlayMask, Ctx.OutputDebug[Final],
+						Request.Resolution, Request.DebugSettings.MaskOverlayOpacity);
+				}
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;
 				if (Request.bRotateOutput90)
