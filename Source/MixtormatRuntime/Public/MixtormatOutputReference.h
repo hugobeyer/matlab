@@ -166,12 +166,27 @@ namespace MixtormatOutputReferences
 	// addressed by whatever name the producer published.
 	MIXTORMATRUNTIME_API FName CanonicalFieldOutputName(EMixtormatPublishedFieldKind Kind);
 
-	// Validates an explicit Sources shelf endpoint without treating it as a layer producer. Until
-	// Phase B adds producer evaluation, a well-formed enabled endpoint reports Unevaluated rather
-	// than becoming a valid material dependency.
+	// Validates an explicit Sources shelf endpoint without treating it as a layer producer. A linked
+	// instance resolves to its original for the payload checks (enabled, publishes), so a reference
+	// to an instance is exactly a reference to the producer, addressed under the instance's own
+	// identity. A broken link reports MissingSource rather than rebinding.
 	MIXTORMATRUNTIME_API FShelfSourceReferenceStatus ClassifyShelfSourceReference(
 		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatOutputReference& Reference);
+
+	// The entry that actually owns a shelf entry's producer: follows the linked-instance chain to
+	// its end. Null when the id names no entry, the chain is broken (missing original), or the
+	// chain cycles. Never rebinds -- a broken link stays broken.
+	MIXTORMATRUNTIME_API const FMixtormatSourceEntry* ResolveShelfProducerEntry(
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FGuid& SourceId);
+
+	// Address form of the above: the producer's SourceId, or an invalid GUID when it cannot be
+	// resolved. The identity a published shelf field is registered under, so every consumer key,
+	// instance or not, resolves to the one producer that is actually evaluated.
+	MIXTORMATRUNTIME_API FGuid ResolveShelfProducerId(
+		const TArray<FMixtormatSourceEntry>& Sources,
+		const FGuid& SourceId);
 
 	// The typed value contract each Noise family publishes. The lattice families and Bars are
 	// zero-centred and signed; Ridged, Billow and the Worley distances are 0..1 magnitudes. Canonical

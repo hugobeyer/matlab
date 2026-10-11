@@ -364,6 +364,16 @@ struct MIXTORMATRUNTIME_API FMixtormatSourceEntry
 	// persisted ownership data only until the source evaluator consumes supported tools and masks.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
 	TArray<FMixtormatLayerChild> OwnedChildren;
+
+	// Linked-instance link, appended for serialized compatibility. When valid, this entry is a
+	// linked instance of that Sources entry: it shares the original's producer and parameters and
+	// publishes nothing of its own, and its Child is an addressing shell (a fresh ChildId, a
+	// default payload) rather than a snapshot that could drift from the original. A broken link
+	// (deleted original) stays broken -- nothing ever silently rebinds it.
+	UPROPERTY()
+	FGuid InstanceOfSourceId;
+
+	bool IsInstance() const { return InstanceOfSourceId.IsValid(); }
 };
 
 namespace MixtormatHue

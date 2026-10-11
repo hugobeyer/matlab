@@ -714,11 +714,15 @@ namespace MixtormatGpuCompositor
 								&& Child.Mask.PublishedSourceChildIndex != INDEX_NONE
 								&& Child.Mask.PublishedSourceOutput == FName(TEXT("Value")))
 							{
-								// Noise.Value masks need the raw typed field and its kind across prefix reuse.
+								// Noise.Value masks need the raw typed field and its kind across prefix reuse. The
+								// owner is the mask's own discriminator, and a shelf address is already resolved
+								// past any linked instance by gather, so the key names the one real producer.
 								Ctx.PublishedFieldDemand.Add(FPublishedFieldKey{
-									Child.Mask.PublishedSourceLayerId,
+									Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf
+										? Child.Mask.PublishedSourceShelfId : Child.Mask.PublishedSourceLayerId,
 									Child.Mask.PublishedSourceChildIndex,
-									Child.Mask.PublishedSourceOutput});
+									Child.Mask.PublishedSourceOutput,
+									Child.Mask.PublishedSourceOwnerKind});
 							}
 							if (Child.Type == EMixtormatLayerChildType::OutputReference
 								&& Child.OutputReference.Source.ChildIndex != INDEX_NONE)

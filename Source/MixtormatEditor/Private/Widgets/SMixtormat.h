@@ -1507,6 +1507,25 @@ private:
 	TSharedRef<SWidget> BuildAddSourcesMenu();
 	TSharedRef<SWidget> BuildSourceContextMenu(const FGuid SourceId);
 	FReply AddSource(const EMixtormatGeneratorType Kind);
+	// A Noise source configured for coverage -- the mask-consumable scalar families -- named as a
+	// Mask rather than a Noise generator, so the reusable mask library starts one click away.
+	FReply AddMaskSource();
+	// Independent copy of a source (fresh identity, owned references remapped) or of the producer
+	// it links to when it is an instance. Returns the new entry's id; no history or UI side effects.
+	FGuid AppendSourceCopy(const FMixtormatSourceEntry& Source);
+	// Linked instance of an existing producer entry. The instance publishes nothing of its own and
+	// resolves to the original for evaluation. Invalid return when the producer cannot resolve.
+	FGuid AppendSourceInstance(const FGuid& ProducerSourceId);
+	// Break Instance on a shelf entry: the entry stops following its original and keeps the values
+	// it is showing as its own. SourceId and root ChildId are preserved, so every reference to the
+	// entry stays valid. False when the entry is not a resolvable instance.
+	bool BreakSourceInstance(const FGuid& SourceId);
+	// Break Instance at one consumer: duplicates the producer a shelf pair resolves to and returns
+	// the copy's addressing so the caller can repoint only its own reference. Other consumers keep
+	// reading the original. False when the pair does not resolve to an enabled producer.
+	bool LocalizeShelfLink(const FGuid& SourceShelfId, FGuid& OutSourceId, FGuid& OutChildId);
+	// The shared tail of every Sources edit: history, dirty flag, status text, list refresh.
+	void CommitSourcesEdit(const FGuid& SelectSourceId);
 	FReply DeleteSource(const FGuid SourceId);
 	FReply RenameSource(const FGuid SourceId, const FText NewName);
 	void SelectSource(const FGuid SourceId);
@@ -1701,6 +1720,10 @@ private:
 	// source clears the layer and group selection, so the inspector has one subject.
 	FGuid SelectedSourceId;
 	TOptional<FMixtormatSourceEntry> SourceClipboard;
+	// Copy as Instance: the resolved producer an instance paste will link to. Separate from the
+	// payload clipboard because the two pastes mean different things -- a copy is independent, a
+	// link shares the original's producer.
+	TOptional<FGuid> SourceInstanceClipboard;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
 	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;

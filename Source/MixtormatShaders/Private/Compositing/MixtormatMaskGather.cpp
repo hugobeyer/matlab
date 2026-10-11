@@ -8,7 +8,8 @@ namespace MixtormatGpuCompositor
 {
 bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
-	const TArray<FMixtormatLayer>& EffectiveLayers)
+	const TArray<FMixtormatLayer>& EffectiveLayers,
+	const TArray<FMixtormatSourceEntry>& Sources)
 {
 	// Consumed by the mask it is scoped to, never a node of its own down here. Skipped
 	// explicitly so it cannot fall through to whatever handles an unrecognised type.
@@ -95,7 +96,13 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			MaskData.PublishedSourceChildIndex = PublishedSourceChildIndex;
 			MaskData.PublishedSourceOutput = MaskLayer.PublishedSourceOutput;
 			MaskData.PublishedSourceOwnerKind = MaskLayer.PublishedSourceOwnerKind;
-			MaskData.PublishedSourceShelfId = MaskLayer.PublishedSourceShelfId;
+			// The address the render thread looks the field up under, resolved past any linked
+			// instance now, so one producer serves every instance that reads it. A broken link
+			// stays unresolved: the key misses and the mask reads the neutral signal.
+			MaskData.PublishedSourceShelfId =
+				MaskLayer.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf
+					? MixtormatOutputReferences::ResolveShelfProducerId(Sources, MaskLayer.PublishedSourceShelfId)
+					: MaskLayer.PublishedSourceShelfId;
 		}
 		else if (bNoise)
 		{

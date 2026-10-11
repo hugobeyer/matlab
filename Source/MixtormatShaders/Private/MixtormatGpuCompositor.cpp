@@ -1734,7 +1734,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (IsMaskGatherChild(LayerChild.Type))
 			{
-				if (!GatherMaskChild(Data, Layer, LayerChild, SourceChildIndex, EffectiveLayers))
+				if (!GatherMaskChild(Data, Layer, LayerChild, SourceChildIndex, EffectiveLayers, Sources))
 				{
 					return false;
 				}

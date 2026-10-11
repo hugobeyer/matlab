@@ -14,10 +14,13 @@ namespace MixtormatGpuCompositor
 	namespace
 	{
 		// A producer is evaluable only when its root payload is an enabled generator. Anything else
-		// publishes no fields, so it can neither satisfy demand nor carry demand onward.
+		// publishes no fields, so it can neither satisfy demand nor carry demand onward. A linked
+		// instance is not a producer at all: it publishes nothing of its own and every reference to
+		// it resolves to its original before scheduling.
 		bool IsEvaluableSource(const FMixtormatSourceEntry& Source)
 		{
-			return Source.Child.Type == EMixtormatLayerChildType::Generator
+			return !Source.IsInstance()
+				&& Source.Child.Type == EMixtormatLayerChildType::Generator
 				&& Source.Child.Generator.bEnabled;
 		}
 
@@ -32,8 +35,15 @@ namespace MixtormatGpuCompositor
 			const auto Collect = [&](const FMixtormatOutputReference& Reference, const bool bHeight)
 			{
 				if (!Reference.IsShelfSource()) { return; }
-				// A self reference can never be an edge; it would be a one-node cycle.
-				if (Reference.SourceShelfId == SelfId) { return; }
+				// The edge names the producer the reference ultimately reads: a reference to a linked
+				// instance resolves to its original, and a link that no longer resolves contributes no
+				// edge -- exactly like a missing endpoint.
+				const FGuid ProducerId = MixtormatOutputReferences::ResolveShelfProducerId(
+					Sources, Reference.SourceShelfId);
+				if (!ProducerId.IsValid()) { return; }
+				// A self reference can never be an edge; it would be a one-node cycle. Checked after
+				// resolution, so a source consuming an instance of itself cannot slip past it.
+				if (ProducerId == SelfId) { return; }
 				const bool bCompatible = bHeight
 					? Reference.Kind == EMixtormatPublishedFieldKind::ScalarSigned
 					: Reference.Kind == EMixtormatPublishedFieldKind::Flow
@@ -45,7 +55,7 @@ namespace MixtormatGpuCompositor
 				{
 					return;
 				}
-				OutDependencies.AddUnique(Reference.SourceShelfId);
+				OutDependencies.AddUnique(ProducerId);
 			};
 			Collect(Generator.HeightSource, true);
 			Collect(Generator.WarpSource, false);
@@ -189,7 +199,7 @@ namespace MixtormatGpuCompositor
 					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
 					if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 					{
-						Visit(Reference.SourceShelfId);
+						Visit(MixtormatOutputReferences::ResolveShelfProducerId(Sources, Reference.SourceShelfId));
 					}
 				}
 			}
@@ -202,11 +212,15 @@ namespace MixtormatGpuCompositor
 					|| !Child.Mask.HasPublishedSource()
 					|| Child.Mask.PublishedSourceOwnerKind != EMixtormatOutputReferenceOwnerKind::Shelf
 					|| Child.Mask.PublishedSourceOutput != FName(TEXT("Value"))) { continue; }
-				const int32* Index = IndexById.Find(Child.Mask.PublishedSourceShelfId);
-				if (!Index) { continue; }
+				// Addressing is checked against the entry the mask names; the producer checks run
+				// against the original a linked instance resolves to. A broken link demands nothing.
+				const FMixtormatSourceEntry* Named = Sources.FindByPredicate([&Child](const FMixtormatSourceEntry& Item)
+					{ return Item.SourceId == Child.Mask.PublishedSourceShelfId; });
+				const int32* Index = IndexById.Find(MixtormatOutputReferences::ResolveShelfProducerId(
+					Sources, Child.Mask.PublishedSourceShelfId));
+				if (!Named || Named->Child.ChildId != Child.Mask.PublishedSourceChildId || !Index) { continue; }
 				const FMixtormatSourceEntry& Source = Sources[*Index];
-				if (!IsEvaluableSource(Source) || Source.Child.ChildId != Child.Mask.PublishedSourceChildId
-					|| Source.Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
+				if (!IsEvaluableSource(Source) || Source.Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
 				Visit(Source.SourceId);
 			}
 		}

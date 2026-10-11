@@ -82,6 +82,33 @@ namespace MixtormatOutputReferences
 		}
 	}
 
+	const FMixtormatSourceEntry* ResolveShelfProducerEntry(
+		const TArray<FMixtormatSourceEntry>& Sources, const FGuid& SourceId)
+	{
+		const FMixtormatSourceEntry* Entry = Sources.FindByPredicate(
+			[&SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
+		// Bounded by the entry count: a chain that has not reached a producer by then either
+		// cycles or names entries that no longer exist. Both resolve to nothing rather than to
+		// whichever entry happened to be found last.
+		TSet<FGuid> Visited;
+		for (int32 Hop = 0; Entry && Entry->IsInstance() && Hop <= Sources.Num(); ++Hop)
+		{
+			if (Visited.Contains(Entry->SourceId)) { return nullptr; }
+			Visited.Add(Entry->SourceId);
+			const FGuid Next = Entry->InstanceOfSourceId;
+			Entry = Sources.FindByPredicate(
+				[&Next](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == Next; });
+		}
+		return Entry;
+	}
+
+	FGuid ResolveShelfProducerId(
+		const TArray<FMixtormatSourceEntry>& Sources, const FGuid& SourceId)
+	{
+		const FMixtormatSourceEntry* Producer = ResolveShelfProducerEntry(Sources, SourceId);
+		return Producer ? Producer->SourceId : FGuid();
+	}
+
 	FShelfSourceReferenceStatus ClassifyShelfSourceReference(
 		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatOutputReference& Reference)
@@ -156,18 +183,27 @@ namespace MixtormatOutputReferences
 			Status.Issue = EShelfSourceReferenceIssue::MissingChild;
 			return Status;
 		}
-		if (Source.Child.Type != EMixtormatLayerChildType::Generator)
+		// A linked instance publishes nothing of its own: the endpoint's payload is checked against
+		// the original it resolves to, while addressing stays the referenced entry's own. A link
+		// that no longer resolves is missing -- never rebound to another entry.
+		const FMixtormatSourceEntry* Producer = ResolveShelfProducerEntry(Sources, Reference.SourceShelfId);
+		if (!Producer)
+		{
+			Status.Issue = EShelfSourceReferenceIssue::MissingSource;
+			return Status;
+		}
+		if (Producer->Child.Type != EMixtormatLayerChildType::Generator)
 		{
 			Status.Issue = EShelfSourceReferenceIssue::WrongSourceKind;
 			return Status;
 		}
-		if (!Source.Child.Generator.bEnabled)
+		if (!Producer->Child.Generator.bEnabled)
 		{
 			Status.Issue = EShelfSourceReferenceIssue::DisabledSource;
 			return Status;
 		}
 		// Typed-output capability: the endpoint exists, but must actually publish this field.
-		if (!GeneratorPublishesField(Source.Child.Generator, Reference.Kind, Reference.OutputName))
+		if (!GeneratorPublishesField(Producer->Child.Generator, Reference.Kind, Reference.OutputName))
 		{
 			Status.Issue = EShelfSourceReferenceIssue::UnpublishedOutput;
 			return Status;

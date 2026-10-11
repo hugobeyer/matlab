@@ -27,6 +27,94 @@ public:
 	void Construct(const FArguments& InArgs) { ChildSlot[InArgs._Content.Widget]; }
 };
 
+namespace
+{
+	// Rewrites every reference a source entry's payload owns from one identity set to another: the
+	// single place source identity renewal is implemented. The copy's SourceId and child ids must
+	// already be assigned by the caller; FromSourceId is the identity being copied from. Independent
+	// paste, Duplicate and Break Instance all run through here, so a reference field added to a
+	// child can never be forgotten by one of them.
+	void CopySourcePayload(const FMixtormatSourceEntry& Source, FMixtormatSourceEntry& Copy,
+		const TMap<FGuid, FGuid>& ChildIdRemap, const FGuid& FromSourceId)
+	{
+		const FGuid ToSourceId = Copy.SourceId;
+		const auto Remap = [&ChildIdRemap, &FromSourceId, &ToSourceId](FGuid& Owner, FGuid& Child)
+		{
+			if (Owner != FromSourceId) return;
+			if (const FGuid* Next = ChildIdRemap.Find(Child)) { Owner = ToSourceId; Child = *Next; }
+		};
+		const auto RemapOutput = [&Remap](FMixtormatOutputReference& Reference)
+		{
+			if (Reference.IsShelfSource())
+			{
+				Remap(Reference.SourceShelfId, Reference.SourceChildId);
+			}
+			else
+			{
+				Remap(Reference.SourceLayerId, Reference.SourceChildId);
+			}
+		};
+		const auto Rewrite = [&ChildIdRemap, &Remap, &RemapOutput](FMixtormatLayerChild& Child)
+		{
+			if (const FGuid* Parent = ChildIdRemap.Find(Child.ScopeOwnerChildId)) Child.ScopeOwnerChildId = *Parent;
+			Remap(Child.SourceLayerId, Child.SourceChildId);
+			RemapOutput(Child.OutputReference);
+			RemapOutput(Child.Generator.HeightSource);
+			RemapOutput(Child.Generator.WarpSource);
+			// Whichever published-source form the mask uses, its child id remaps with the payload.
+			Remap(Child.Mask.PublishedSourceShelfId, Child.Mask.PublishedSourceChildId);
+			Remap(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
+			RemapOutput(Child.Behavior.Direction.Published);
+			RemapOutput(Child.Behavior.Height.Published);
+			RemapOutput(Child.Behavior.Influence.Published);
+			Remap(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
+			if (const FGuid* Input = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId)) Child.HeightColorRamp.SourceChildId = *Input;
+			for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
+			{
+				Remap(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+				Remap(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+			}
+		};
+
+		// Root and owned children keep the caller's addressing; only their payload moves, and the
+		// references they own follow the remap. Owned child ids were assigned by the caller too.
+		const FGuid RootChildId = Copy.Child.ChildId;
+		Copy.Child = Source.Child;
+		Copy.Child.ChildId = RootChildId;
+		Copy.OwnedChildren.SetNum(Source.OwnedChildren.Num());
+		for (int32 Index = 0; Index < Source.OwnedChildren.Num(); ++Index)
+		{
+			const FGuid OwnedChildId = Copy.OwnedChildren[Index].ChildId;
+			Copy.OwnedChildren[Index] = Source.OwnedChildren[Index];
+			Copy.OwnedChildren[Index].ChildId = OwnedChildId;
+		}
+		Rewrite(Copy.Child);
+		for (FMixtormatLayerChild& Owned : Copy.OwnedChildren) { Rewrite(Owned); }
+		// A copy is never a link. Only a caller that intends a link sets the field itself.
+		Copy.InstanceOfSourceId.Invalidate();
+	}
+
+	// One independent copy: fresh SourceId, root and owned child ids, every owned reference
+	// remapped onto the copy's identities. The name is the caller's to adjust.
+	FMixtormatSourceEntry MakeIndependentSourceCopy(const FMixtormatSourceEntry& Source)
+	{
+		FMixtormatSourceEntry Copy;
+		Copy.SourceId = FGuid::NewGuid();
+		Copy.DisplayName = Source.DisplayName;
+		Copy.Child.ChildId = FGuid::NewGuid();
+		Copy.OwnedChildren.SetNum(Source.OwnedChildren.Num());
+		TMap<FGuid, FGuid> ChildIdRemap;
+		ChildIdRemap.Add(Source.Child.ChildId, Copy.Child.ChildId);
+		for (int32 Index = 0; Index < Source.OwnedChildren.Num(); ++Index)
+		{
+			Copy.OwnedChildren[Index].ChildId = FGuid::NewGuid();
+			ChildIdRemap.Add(Source.OwnedChildren[Index].ChildId, Copy.OwnedChildren[Index].ChildId);
+		}
+		CopySourcePayload(Source, Copy, ChildIdRemap, Source.SourceId);
+		return Copy;
+	}
+}
+
 void SMixtormat::RebuildLayerList()
 {
 	for (auto It = CollapsedGeneratorAddresses.CreateIterator(); It; ++It)
@@ -556,17 +644,35 @@ void SMixtormat::RebuildSourcesList()
 				const FMixtormatSourceEntry* Source =
 					WorkingSources.FindByPredicate([SourceId](const FMixtormatSourceEntry& Candidate)
 					{ return Candidate.SourceId == SourceId; });
-				return Source
-					? StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(
-						static_cast<int64>(Source->Child.Generator.Type))
-					: FText::GetEmpty();
+				if (!Source) { return FText::GetEmpty(); }
+				// An instance reads as what it links to; a broken link says so rather than showing the
+				// shell's payload as if it were a producer.
+				if (Source->IsInstance())
+				{
+					const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+						WorkingSources, SourceId);
+					return Producer
+						? FText::Format(LOCTEXT("SourceInstanceKind", "Instance of {0}"), Producer->DisplayName)
+						: LOCTEXT("SourceInstanceMissingKind", "Missing source");
+				}
+				if (Source->Child.Type != EMixtormatLayerChildType::Generator) { return FText::GetEmpty(); }
+				// The Noise family is a Noise source's real type: "Worley F1" says more than "Noise"
+				// beside a row whose name already reads "Noise 1".
+				if (Source->Child.Generator.Type == EMixtormatGeneratorType::Noise)
+				{
+					return StaticEnum<EMixtormatNoiseType>()->GetDisplayNameTextByValue(
+						static_cast<int64>(Source->Child.Generator.Noise.NoiseType));
+				}
+				return StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(
+					static_cast<int64>(Source->Child.Generator.Type));
 			})
 			.bEnabled_Lambda([this, SourceId]()
 			{
-				const FMixtormatSourceEntry* Source =
-					WorkingSources.FindByPredicate([SourceId](const FMixtormatSourceEntry& Candidate)
-					{ return Candidate.SourceId == SourceId; });
-				return Source && Source->Child.Generator.bEnabled;
+				const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+					WorkingSources, SourceId);
+				return Producer
+					&& Producer->Child.Type == EMixtormatLayerChildType::Generator
+					&& Producer->Child.Generator.bEnabled;
 			})
 			.bSelected_Lambda([this, SourceId]() { return SelectedSourceId == SourceId; })
 			.OnSelected(FSimpleDelegate::CreateSP(this, &SMixtormat::SelectSource, SourceId))
@@ -575,7 +681,16 @@ void SMixtormat::RebuildSourcesList()
 				FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
 					[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
 				if (!Source) { return; }
-				Source->Child.Generator.bEnabled = !Source->Child.Generator.bEnabled;
+				// The switch lives on whatever publishes: an instance toggles its original.
+				FMixtormatSourceEntry* Target = Source;
+				if (Source->IsInstance())
+				{
+					const FGuid ProducerId = MixtormatOutputReferences::ResolveShelfProducerId(WorkingSources, SourceId);
+					Target = WorkingSources.FindByPredicate([ProducerId](const FMixtormatSourceEntry& Candidate)
+						{ return Candidate.SourceId == ProducerId; });
+				}
+				if (!Target || Target->Child.Type != EMixtormatLayerChildType::Generator) { return; }
+				Target->Child.Generator.bEnabled = !Target->Child.Generator.bEnabled;
 				RefreshLayeredPreview();
 			}))
 			.OnNameCommitted(FOnTextCommitted::CreateLambda([this, SourceId](const FText& Name, ETextCommit::Type)
@@ -592,9 +707,17 @@ void SMixtormat::RebuildSourcesList()
 
 TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 {
-	// The same six kinds the generator Add menu offers, with the same labels and glyph: a source
-	// is a generator payload in a different place, not a different node.
+	// Noise and Masks lead: the shelf is the reusable field library, and coverage producers are
+	// what most sources are read for. The generator kinds stay, unchanged, under their own caption
+	// rather than disappearing from the menu.
 	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(LOCTEXT("AddSourceFieldCaption", "Fields"));
+	Menu.Item(LOCTEXT("AddNoiseSource", "Noise"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Noise); }));
+	Menu.Item(LOCTEXT("AddMaskSource", "Mask"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this]() { AddMaskSource(); }));
+	Menu.Separator();
+	Menu.Caption(LOCTEXT("AddSourceGeneratorCaption", "Generators"));
 	Menu.Item(LOCTEXT("AddStrataCarverSource", "Strata Carver"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::StrataCarver); }));
 	Menu.Item(LOCTEXT("AddCracksSource", "Cracks"), MixtormatIcons::Generator(),
@@ -605,97 +728,30 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Pebbles); }));
 	Menu.Item(LOCTEXT("AddCliffStrataSource", "Cliff Strata"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::CliffStrata); }));
-	Menu.Item(LOCTEXT("AddNoiseSource", "Noise"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this]() { AddSource(EMixtormatGeneratorType::Noise); }));
+	Menu.Separator();
 	Menu.Item(LOCTEXT("PasteCopiedSource", "Paste Copied Source"), MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this]()
 		{
 			if (!bHasWorkingMaterial || !SourceClipboard.IsSet()) return;
-			FMixtormatSourceEntry Copy = SourceClipboard.GetValue();
-			Copy.SourceId = FGuid::NewGuid();
-			TMap<FGuid, FGuid> Ids;
-			const auto Renew = [&Ids](FMixtormatLayerChild& Child)
+			const FText ClipboardName = SourceClipboard->DisplayName;
+			const FGuid NewSourceId = AppendSourceCopy(SourceClipboard.GetValue());
+			if (!NewSourceId.IsValid()) { return; }
+			if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
+				[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
 			{
-				const FGuid Old = Child.ChildId;
-				// Generate all new IDs before remapping any references. RegenerateChildIdentity
-				// would pre-rewrite self references, breaking the original-ID map below.
-				Child.ChildId = FGuid::NewGuid();
-				Ids.Add(Old, Child.ChildId);
-			};
-			Renew(Copy.Child);
-			for (FMixtormatLayerChild& Child : Copy.OwnedChildren) Renew(Child);
-			const FGuid OriginalSourceId = SourceClipboard->SourceId;
-			const auto Remap = [&Ids, OriginalSourceId, &Copy](FGuid& Owner, FGuid& Child)
-			{
-				if (Owner != OriginalSourceId) return;
-				if (const FGuid* Next = Ids.Find(Child)) { Owner = Copy.SourceId; Child = *Next; }
-			};
-			const auto RemapOutput = [&Ids, OriginalSourceId, &Copy, &Remap](FMixtormatOutputReference& Reference)
-			{
-				if (Reference.IsShelfSource())
-				{
-					if (Reference.SourceShelfId == OriginalSourceId)
-					{
-						if (const FGuid* Mapped = Ids.Find(Reference.SourceChildId))
-						{
-							Reference.SourceShelfId = Copy.SourceId;
-							Reference.SourceChildId = *Mapped;
-						}
-					}
-				}
-				else
-				{
-					Remap(Reference.SourceLayerId, Reference.SourceChildId);
-				}
-			};
-			for (FMixtormatLayerChild* Child : [&Copy]()
-			{
-				TArray<FMixtormatLayerChild*> All;
-				All.Add(&Copy.Child);
-				for (FMixtormatLayerChild& Owned : Copy.OwnedChildren) All.Add(&Owned);
-				return All;
-			}())
-			{
-				if (const FGuid* Parent = Ids.Find(Child->ScopeOwnerChildId)) Child->ScopeOwnerChildId = *Parent;
-				Remap(Child->SourceLayerId, Child->SourceChildId);
-				RemapOutput(Child->OutputReference);
-				RemapOutput(Child->Generator.HeightSource);
-				RemapOutput(Child->Generator.WarpSource);
-				if (Child->Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf)
-				{
-					if (Child->Mask.PublishedSourceShelfId == OriginalSourceId)
-					{
-						if (const FGuid* Mapped = Ids.Find(Child->Mask.PublishedSourceChildId))
-						{
-							Child->Mask.PublishedSourceShelfId = Copy.SourceId;
-							Child->Mask.PublishedSourceChildId = *Mapped;
-						}
-					}
-				}
-				else
-				{
-					Remap(Child->Mask.PublishedSourceLayerId, Child->Mask.PublishedSourceChildId);
-				}
-				RemapOutput(Child->Behavior.Direction.Published);
-				RemapOutput(Child->Behavior.Height.Published);
-				RemapOutput(Child->Behavior.Influence.Published);
-				Remap(Child->HeightBlend.SourceLayerId, Child->HeightBlend.SourceChildId);
-				if (const FGuid* Input = Ids.Find(Child->HeightColorRamp.SourceChildId)) Child->HeightColorRamp.SourceChildId = *Input;
-				for (FMixtormatParameterBinding& Binding : Child->ParameterBindings)
-				{
-					Remap(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
-					Remap(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
-				}
+				Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), ClipboardName);
 			}
-			Copy.DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), Copy.DisplayName);
-			const FGuid NewSourceId = Copy.SourceId;
-			WorkingSources.Add(MoveTemp(Copy));
-			SelectSource(NewSourceId);
-			RecordEditHistory();
-			bIsWorkingMaterialDirty = !IsCurrentStateSaved();
-			WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
-			RebuildSourcesList();
+			CommitSourcesEdit(NewSourceId);
 		})).Enabled(SourceClipboard.IsSet());
+	Menu.Item(LOCTEXT("PasteSourceInstance", "Paste as Instance"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this]()
+		{
+			// A link, not a copy: the instance shares the clipboard producer and follows it.
+			if (!bHasWorkingMaterial || !SourceInstanceClipboard.IsSet()) return;
+			const FGuid NewSourceId = AppendSourceInstance(SourceInstanceClipboard.GetValue());
+			if (NewSourceId.IsValid()) { CommitSourcesEdit(NewSourceId); }
+		})).Enabled(SourceInstanceClipboard.IsSet()
+			&& MixtormatOutputReferences::ResolveShelfProducerEntry(WorkingSources, SourceInstanceClipboard.GetValue()) != nullptr);
 	return Menu.Build();
 }
 
@@ -711,6 +767,53 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 				SourceClipboard = *Source;
 			}
 		}));
+	Menu.Item(LOCTEXT("CopyShelfSourceAsInstance", "Copy as Instance"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, SourceId]()
+		{
+			// The link always names the producer: copying an instance records its original, so a
+			// chain of instances can never form.
+			if (const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+				WorkingSources, SourceId))
+			{
+				SourceInstanceClipboard = Producer->SourceId;
+			}
+		}));
+	Menu.Item(LOCTEXT("DuplicateSource", "Duplicate"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, SourceId]()
+		{
+			const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+				[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
+			if (!Source) { return; }
+			const FText SourceName = Source->DisplayName;
+			const FGuid NewSourceId = AppendSourceCopy(*Source);
+			if (!NewSourceId.IsValid()) { return; }
+			if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
+				[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
+			{
+				Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), SourceName);
+			}
+			CommitSourcesEdit(NewSourceId);
+		}));
+	// Instance-only operations, so a producer's menu stays exactly as it was.
+	if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+		[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
+	{
+		if (Source->IsInstance())
+		{
+			const FGuid ProducerId = MixtormatOutputReferences::ResolveShelfProducerId(WorkingSources, SourceId);
+			Menu.Separator();
+			Menu.Item(LOCTEXT("GoToSourceInstance", "Go to Original"), nullptr,
+				FSimpleDelegate::CreateLambda([this, ProducerId]() { SelectSource(ProducerId); }))
+				.Enabled(ProducerId.IsValid());
+			Menu.Item(LOCTEXT("BreakSourceInstance", "Break Instance"), nullptr,
+				FSimpleDelegate::CreateLambda([this, SourceId]()
+				{
+					// Keeps the values it is showing as this entry's own: the payload is grafted from
+					// the original while the entry's identity -- and every reference to it -- stays.
+					if (BreakSourceInstance(SourceId)) { CommitSourcesEdit(SourceId); }
+				})).Enabled(ProducerId.IsValid());
+		}
+	}
 	Menu.Item(LOCTEXT("RenameSource", "Rename"), nullptr,
 		FSimpleDelegate::CreateLambda([this, SourceId]()
 		{
@@ -778,21 +881,151 @@ FReply SMixtormat::AddSource(const EMixtormatGeneratorType Kind)
 			++SameKindCount;
 		}
 	}
+	// The row already shows the type in its own column; the default name does not repeat it word
+	// for word the way "Noise Source 1" read beside "Noise".
 	Entry.DisplayName = FText::Format(
-		LOCTEXT("SourceDefaultName", "{0} Source {1}"),
+		LOCTEXT("SourceDefaultName", "{0} {1}"),
 		StaticEnum<EMixtormatGeneratorType>()->GetDisplayNameTextByValue(static_cast<int64>(Kind)),
 		FText::AsNumber(SameKindCount));
 
-	SelectSource(Entry.SourceId);
-	RecordEditHistory();
-	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
-	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
-	RebuildSourcesList();
+	const FGuid NewSourceId = Entry.SourceId;
+	CommitSourcesEdit(NewSourceId);
 	if (AddSourceAnchor.IsValid())
 	{
 		AddSourceAnchor->SetIsOpen(false);
 	}
 	return FReply::Handled();
+}
+
+FReply SMixtormat::AddMaskSource()
+{
+	if (!bHasWorkingMaterial)
+	{
+		return FReply::Handled();
+	}
+
+	// A Mask source is the coverage-producing Noise family: its Value publishes as Scalar01,
+	// which the mask pipeline consumes as coverage directly rather than through the
+	// signed-to-0..1 conversion. Everything else about it is a regular Noise source.
+	const auto IsMaskSource = [](const FMixtormatSourceEntry& Candidate)
+	{
+		return !Candidate.IsInstance()
+			&& Candidate.Child.Type == EMixtormatLayerChildType::Generator
+			&& Candidate.Child.Generator.Type == EMixtormatGeneratorType::Noise
+			&& MixtormatOutputReferences::NoiseValueKind(Candidate.Child.Generator.Noise.NoiseType)
+				== EMixtormatPublishedFieldKind::Scalar01;
+	};
+
+	FMixtormatSourceEntry& Entry = WorkingSources.AddDefaulted_GetRef();
+	ApplyChildCreationDefaults(Entry.Child, CreationKindForGenerator(EMixtormatGeneratorType::Noise));
+	Entry.Child.ScopeOwnerChildId.Invalidate();
+	Entry.Child.Generator.Noise.NoiseType = EMixtormatNoiseType::WorleyF1;
+
+	int32 MaskSourceCount = 0;
+	for (const FMixtormatSourceEntry& Existing : WorkingSources)
+	{
+		if (IsMaskSource(Existing))
+		{
+			++MaskSourceCount;
+		}
+	}
+	Entry.DisplayName = FText::Format(
+		LOCTEXT("MaskSourceDefaultName", "Mask {0}"), FText::AsNumber(MaskSourceCount));
+
+	const FGuid NewSourceId = Entry.SourceId;
+	CommitSourcesEdit(NewSourceId);
+	if (AddSourceAnchor.IsValid())
+	{
+		AddSourceAnchor->SetIsOpen(false);
+	}
+	return FReply::Handled();
+}
+
+void SMixtormat::CommitSourcesEdit(const FGuid& SelectSourceId)
+{
+	if (SelectSourceId.IsValid()) { SelectSource(SelectSourceId); }
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
+	RebuildSourcesList();
+}
+
+FGuid SMixtormat::AppendSourceCopy(const FMixtormatSourceEntry& Source)
+{
+	// What a source shows is what gets copied: a linked instance keeps its payload on the original,
+	// so the copy is made from the resolved producer rather than the link's shell. A broken link
+	// has nothing to copy and reports no id rather than duplicating an empty entry.
+	const FMixtormatSourceEntry* Payload = MixtormatOutputReferences::ResolveShelfProducerEntry(
+		WorkingSources, Source.SourceId);
+	if (!Payload) { return FGuid(); }
+	FMixtormatSourceEntry Copy = MakeIndependentSourceCopy(*Payload);
+	Copy.DisplayName = Source.DisplayName;
+	const FGuid NewSourceId = Copy.SourceId;
+	WorkingSources.Add(MoveTemp(Copy));
+	return NewSourceId;
+}
+
+FGuid SMixtormat::AppendSourceInstance(const FGuid& ProducerSourceId)
+{
+	const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+		WorkingSources, ProducerSourceId);
+	if (!Producer) { return FGuid(); }
+	const FGuid NewProducerId = Producer->SourceId;
+	const FText ProducerName = Producer->DisplayName;
+
+	FMixtormatSourceEntry& Entry = WorkingSources.AddDefaulted_GetRef();
+	// Addressing only: a fresh ChildId and the generator child type, so every reference menu
+	// addresses the instance as itself. The payload stays a default -- evaluation follows the
+	// original, and a snapshot here could only ever drift from it.
+	Entry.Child.Type = EMixtormatLayerChildType::Generator;
+	Entry.Child.ChildId = FGuid::NewGuid();
+	Entry.Child.ScopeOwnerChildId.Invalidate();
+	Entry.InstanceOfSourceId = NewProducerId;
+	Entry.DisplayName = FText::Format(LOCTEXT("SourceInstanceName", "{0} Instance"), ProducerName);
+	return Entry.SourceId;
+}
+
+bool SMixtormat::BreakSourceInstance(const FGuid& SourceId)
+{
+	FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
+		[&SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
+	if (!Entry || !Entry->IsInstance()) { return false; }
+	const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+		WorkingSources, SourceId);
+	if (!Producer) { return false; }
+
+	// Graft the producer's payload onto the instance while the instance keeps its own addressing,
+	// so every reference that names it keeps resolving and starts reading the new payload. The
+	// root ChildId is preserved; owned children get fresh ids with their internal references
+	// remapped in the same pass.
+	FMixtormatSourceEntry Graft;
+	Graft.SourceId = Entry->SourceId;
+	Graft.DisplayName = Entry->DisplayName;
+	Graft.Child.ChildId = Entry->Child.ChildId;
+	Graft.OwnedChildren.SetNum(Producer->OwnedChildren.Num());
+	TMap<FGuid, FGuid> ChildIdRemap;
+	ChildIdRemap.Add(Producer->Child.ChildId, Graft.Child.ChildId);
+	for (int32 Index = 0; Index < Producer->OwnedChildren.Num(); ++Index)
+	{
+		Graft.OwnedChildren[Index].ChildId = FGuid::NewGuid();
+		ChildIdRemap.Add(Producer->OwnedChildren[Index].ChildId, Graft.OwnedChildren[Index].ChildId);
+	}
+	CopySourcePayload(*Producer, Graft, ChildIdRemap, Producer->SourceId);
+	*Entry = MoveTemp(Graft);
+	return true;
+}
+
+bool SMixtormat::LocalizeShelfLink(const FGuid& SourceShelfId, FGuid& OutSourceId, FGuid& OutChildId)
+{
+	const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+		WorkingSources, SourceShelfId);
+	if (!Producer) { return false; }
+	FMixtormatSourceEntry Copy = MakeIndependentSourceCopy(*Producer);
+	Copy.DisplayName = FText::Format(LOCTEXT("SourceBreakCopyName", "{0} Copy"), Producer->DisplayName);
+	OutSourceId = Copy.SourceId;
+	OutChildId = Copy.Child.ChildId;
+	WorkingSources.Add(MoveTemp(Copy));
+	return true;
 }
 
 FReply SMixtormat::DeleteSource(const FGuid SourceId)

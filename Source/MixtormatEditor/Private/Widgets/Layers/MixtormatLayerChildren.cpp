@@ -1200,12 +1200,21 @@ FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& A
 
 const FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& Address) const
 {
-	// A source's single child lives in its entry, not in a container array.
+	// A source's single child lives in its entry, not in a container array. The payload address
+	// check is the entry's own; an instance's payload is read from the original it resolves to,
+	// because the instance publishes nothing itself.
 	if (Address.OwnerType == EMixtormatChildOwnerType::Source)
 	{
 		const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
 			[&Address](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == Address.OwnerId; });
-		return Entry && Entry->Child.ChildId == Address.ChildId ? &Entry->Child : nullptr;
+		if (!Entry || Entry->Child.ChildId != Address.ChildId) { return nullptr; }
+		if (Entry->IsInstance())
+		{
+			const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+				WorkingSources, Entry->SourceId);
+			return Producer ? &Producer->Child : nullptr;
+		}
+		return &Entry->Child;
 	}
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	if (!Container)
@@ -2246,10 +2255,15 @@ FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
 const FMixtormatGenerator* SMixtormat::GetSelectedGenerator() const
 {
 	// A selected Sources shelf entry resolves its own generator payload, so the generator
-	// parameter panels serve sources through this same accessor. Everything below reads the
-	// layer stack and stays out of the way.
-	if (const FMixtormatSourceEntry* Source = GetSelectedSource())
+	// parameter panels serve sources through this same accessor. An instance shares the
+	// original's producer and parameters, so its panel shows and edits that original -- the
+	// thing the instance actually reads -- and a broken link shows nothing.
+	if (const FMixtormatSourceEntry* Selected = GetSelectedSource())
 	{
+		const FMixtormatSourceEntry* Source = Selected->IsInstance()
+			? MixtormatOutputReferences::ResolveShelfProducerEntry(WorkingSources, Selected->SourceId)
+			: Selected;
+		if (!Source) { return nullptr; }
 		return Source->Child.Type == EMixtormatLayerChildType::Generator
 			? &Source->Child.Generator : nullptr;
 	}
