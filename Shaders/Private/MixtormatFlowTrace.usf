@@ -40,7 +40,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         FlowDriverParamsA[0], FlowDriverParamsB[0]);
     const float Length = max(0.0f, MixtormatApplyDriver(TraceLength,
         FlowDriverSignal1.Load(int3(Pixel, 0)),
-        FlowDriverParamsA[1], FlowDriverParamsB[1]);
+        FlowDriverParamsA[1], FlowDriverParamsB[1]));
     if (!isfinite(Strength) || !isfinite(Length) || Strength == 0.0f || Length == 0.0f)
     {
         return;
