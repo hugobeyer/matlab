@@ -1,0 +1,62 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+
+// Canonical Flow -> lifted destination-to-source UV transport.
+// RK2 integrates the vector including its magnitude, with no SDF, source mode,
+// normalization, or direction propagation. The old multi-stage solver is not used.
+
+int2 OutputSize;
+float TraceLength;
+float WarpStrength;
+int Steps;
+float4 FlowDriverParamsA[2];
+float4 FlowDriverParamsB[2];
+Texture2D<float> FlowDriverSignal0;
+Texture2D<float> FlowDriverSignal1;
+Texture2D<float4> FlowField;
+Texture2D<float> FlowValidity;
+SamplerState LinearWrapSampler;
+RWTexture2D<float2> OutWarpedUV;
+
+float2 TraceVelocity(float2 UV)
+{
+    const float4 F = FlowField.SampleLevel(LinearWrapSampler, UV, 0.0f);
+    return all(isfinite(F)) ? F.xy : float2(0.0f, 0.0f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 Pixel = int2(DispatchThreadId.xy);
+    if (any(Pixel >= OutputSize)) { return; }
+    const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+    OutWarpedUV[Pixel] = UV;
+    if (FlowValidity.Load(int3(Pixel, 0)) <= 0.5f) { return; }
+
+    const float Strength = MixtormatApplyDriver(WarpStrength,
+        FlowDriverSignal0.Load(int3(Pixel, 0)),
+        FlowDriverParamsA[0], FlowDriverParamsB[0]);
+    const float Length = max(0.0f, MixtormatApplyDriver(TraceLength,
+        FlowDriverSignal1.Load(int3(Pixel, 0)),
+        FlowDriverParamsA[1], FlowDriverParamsB[1]);
+    if (!isfinite(Strength) || !isfinite(Length) || Strength == 0.0f || Length == 0.0f)
+    {
+        return;
+    }
+
+    const int Count = clamp(Steps, 1, 64);
+    const float Dt = Strength * Length / (float)Count;
+    float2 P = UV;
+    [loop]
+    for (int I = 0; I < Count; ++I)
+    {
+        const float2 K1 = TraceVelocity(P);
+        const float2 K2 = TraceVelocity(P - 0.5f * Dt * K1);
+        const float2 Next = P - Dt * K2;
+        if (!all(isfinite(Next))) { return; }
+        P = Next;
+    }
+    OutWarpedUV[Pixel] = P;
+}
