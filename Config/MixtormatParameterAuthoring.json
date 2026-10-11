@@ -1000,28 +1000,28 @@
 		"Generator.NoiseDirectionHeightWeight":
 		{
 			"default": 1,
-			"uiMin": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionSlopeWeight":
 		{
 			"default": 0,
-			"uiMin": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionCurlWeight":
 		{
 			"default": 0,
-			"uiMin": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionConstantWeight":
 		{
 			"default": 0,
-			"uiMin": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
@@ -1032,10 +1032,17 @@
 			"uiMax": 360,
 			"snap": 1
 		},
+		"Generator.NoiseDirectionGravity":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.01
+		},
 		"Generator.NoiseDirectionStrength":
 		{
 			"default": 1,
-			"uiMin": 0,
+			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
