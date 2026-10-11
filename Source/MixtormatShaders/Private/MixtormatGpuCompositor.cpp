@@ -831,7 +831,8 @@ namespace MixtormatGpuCompositor
 		// None has a case in the composite shader: exclude all three or DebugValue 0
 		// would overwrite the selected child's preview with flat DebugLow.
 		Parameters->WriteDebug =
-			Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
+			!Request.DebugSettings.bMaskOverlay
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::None
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Runoff
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ChildOutput
