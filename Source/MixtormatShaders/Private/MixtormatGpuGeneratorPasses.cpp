@@ -2004,6 +2004,17 @@ namespace
 					: nullptr;
 				Module.Height = AddGeneratorFeatherPasses(Ctx, Module.Height, Module.BoundaryField,
 					Child.Behavior, Gate, bMasked, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				if (bDirect && Owner.Generator.Type == EMixtormatGeneratorType::Noise
+					&& WorkingFlowValidity)
+				{
+					// Later siblings consume this snapshot; final Flow publication is separate.
+					const FPublishedField FlowField{EMixtormatPublishedFieldKind::Flow,
+						WorkingFlow, WorkingFlow, WorkingFlowValidity, false};
+					const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, FlowField,
+						Child.Behavior, Gate, bMasked, LayerCtx.LayerIndex, Child.SourceChildIndex);
+					WorkingFlow = Filtered.Texture;
+					WorkingFlowValidity = Filtered.Validity;
+				}
 				continue;
 			}
 			// A Deform directly beneath a Flow Field consumes that parent's completed

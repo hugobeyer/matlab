@@ -485,7 +485,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			Valid = !Inside;
 			if (Found)
 			{
-				const float Influence = FlowFade(Reach * (1.0f - Feather), Reach, Distance)
+				const float DrivenReach = max(0.0f, MixtormatApplyDriver(Reach,
+					FlowSettingsDriverSignal6.Load(int3(Pixel, 0)),
+					FlowSettingsDriverParamsA[6], FlowSettingsDriverParamsB[6]));
+				const float DrivenFeather = saturate(MixtormatApplyDriver(Feather,
+					FlowSettingsDriverSignal7.Load(int3(Pixel, 0)),
+					FlowSettingsDriverParamsA[7], FlowSettingsDriverParamsB[7]));
+				const float Influence = FlowFade(DrivenReach * (1.0f - DrivenFeather), DrivenReach, Distance)
 					* saturate(GravityDeflection);
 				Velocity -= Influence * min(dot(Velocity, Data.xy), 0.0f) * Data.xy;
 			}

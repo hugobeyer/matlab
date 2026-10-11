@@ -1025,7 +1025,8 @@ namespace MixtormatGpuCompositor
 								continue;
 							}
 							FScopedRegionIdView RegionView(LayerCtx, Layer, &Child, bHasIdGroups);
-							if (Child.Type == EMixtormatLayerChildType::Generator)
+							if (Child.Type == EMixtormatLayerChildType::Generator
+								|| Child.Type == EMixtormatLayerChildType::Behavior)
 							{
 								// Already run, before this loop started. It has no mask to
 								// contribute and no effect target to write, so falling through to

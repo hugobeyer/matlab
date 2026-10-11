@@ -597,7 +597,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		// and Flow MODE uses this field even if Write Height is disabled.
 		// Write Height gates only the subsequent bundle contribution.
 		P->HasMask = 0u;
-		P->ScopedMask = Value;
+		P->ScopedMask = Ctx.EmptyDriverSignal;
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
