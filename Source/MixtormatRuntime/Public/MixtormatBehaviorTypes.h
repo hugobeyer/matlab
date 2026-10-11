@@ -64,7 +64,7 @@ enum class EMixtormatBehaviorType : uint8
 {
 	Warp UMETA(DisplayName = "Warp"),
 	Push UMETA(DisplayName = "Push"),
-	Carve UMETA(DisplayName = "Carve / Deposit"),
+	Carve UMETA(DisplayName = "Sculpt"),
 	Deform UMETA(DisplayName = "Deform"),
 	FlowField UMETA(DisplayName = "Flow Field"),
 	Feather UMETA(DisplayName = "Feather")
