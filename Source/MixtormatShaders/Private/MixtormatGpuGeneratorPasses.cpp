@@ -1028,6 +1028,34 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorSculptCS,
 	"/Plugin/Mixtormat/Private/MixtormatBehaviorSculpt.usf", "MainCS", SF_Compute);
 
+
+class FMixtormatCanonicalFlowTraceCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCanonicalFlowTraceCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCanonicalFlowTraceCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, TraceLength)
+		SHADER_PARAMETER(float, WarpStrength)
+		SHADER_PARAMETER(int32, Steps)
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutWarpedUV)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatCanonicalFlowTraceCS,
+	"/Plugin/Mixtormat/Private/MixtormatFlowTrace.usf", "MainCS", SF_Compute);
+
 namespace
 {
 	// A module of a Generator layer: its payload and its child index in that layer. Publication
@@ -1051,8 +1079,46 @@ namespace
 		FRDGTextureRef Coordinates = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.OutputReference.FlowUV"));
+
+		if (bCanonical)
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatCanonicalFlowTraceCS::FParameters>();
+			P->OutputSize = Size;
+			P->TraceLength = Reference.FlowTraceLength;
+			P->WarpStrength = Reference.FlowAmount;
+			P->Steps = FMath::Clamp(Reference.FlowSteps, 1, 64);
+			FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+			for (int32 Slot = 0; Slot < 2; ++Slot)
+			{
+				const FScalarDriverRenderData* Driver = Drivers ? &Drivers[Slot] : nullptr;
+				FRDGTextureRef* Snapshot = Driver && Driver->bEnabled
+					? Ctx.DriverSnapshots.Find(Driver->SourceLayerId) : nullptr;
+				const bool bResolved = Snapshot != nullptr;
+				Signals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+				P->FlowDriverParamsA[Slot] = FVector4f(
+					bResolved ? 1.0f : 0.0f, Driver && Driver->bInvert ? 1.0f : 0.0f,
+					Driver ? Driver->InputMin : 0.0f, Driver ? Driver->InputMax : 1.0f);
+				P->FlowDriverParamsB[Slot] = FVector4f(
+					Driver ? Driver->OutputMin : 0.0f, Driver ? Driver->OutputMax : 1.0f,
+					Driver ? Driver->Amount : 0.0f,
+					Driver ? static_cast<float>(Driver->Combine) : 0.0f);
+			}
+			P->FlowDriverSignal0 = Signals[0];
+			P->FlowDriverSignal1 = Signals[1];
+			P->FlowField = Field.Texture;
+			P->FlowValidity = Field.Validity ? Field.Validity : Ctx.EmptyDriverSignal;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			P->OutWarpedUV = GraphBuilder.CreateUAV(Coordinates);
+			TShaderMapRef<FMixtormatCanonicalFlowTraceCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.CanonicalFlow.Trace.L%d.C%d", LayerIndex, ChildIndex),
+				Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8),
+					FMath::DivideAndRoundUp(Size.Y, 8), 1));
+			return Coordinates;
+		}
 		FMixtormatGeneratorFlowCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(bCanonical ? 10 : 8);
+		Permutation.Set<FMixtormatGeneratorFlowCS::FStage>(8);
 		TShaderMapRef<FMixtormatGeneratorFlowCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorFlowCS::FParameters>();
 		P->OutputSize = Size;
