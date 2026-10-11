@@ -1199,33 +1199,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 					.Title(LOCTEXT("BehaviorCarveStandardCard", "BOUNDARY CARVE"))[Standard]
 			]
 		];
-		AddSliderRow(Panel, MixtormatRow::MakeDropdown(
+		AddSliderRow(Panel, MixtormatRow::MakeTrailing(
 			LOCTEXT("BehaviorCarveModeLabel", "Carve Mode"),
-			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Carve]()
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("BehaviorCarveModeLabelStd", "Standard"), LOCTEXT("BehaviorCarveModeLabelTrace", "Traced")})
+			.ActiveIndex_Lambda([Carve]() { const auto* B = Carve(); return B && B->Flow.bUseTracedFlow ? 1 : 0; })
+			.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Carve](int32 Index)
 			{
-				const FMixtormatBehavior* B = Carve();
-				return B && B->Flow.bUseTracedFlow
-					? LOCTEXT("BehaviorCarveModeTraced", "Traced Flow")
-					: LOCTEXT("BehaviorCarveModeStandard", "Standard (SDF)");
-			}), FOnGetContent::CreateLambda([this, Carve]() -> TSharedRef<SWidget>
-			{
-				MixtormatMenu::FBuilder Menu;
-				const auto SetTraced = [this, Carve](bool bTraced)
+				if (auto* B = Carve())
 				{
-					if (FMixtormatBehavior* B = Carve())
-					{
-						B->Flow.bUseTracedFlow = bTraced;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				};
-				Menu.Item(LOCTEXT("BehaviorCarveModeStandardChoice", "Standard (SDF)"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(false); }));
-				Menu.Item(LOCTEXT("BehaviorCarveModeTracedChoice", "Traced Flow"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(true); }));
-				return Menu.Build();
-			})),
-			LOCTEXT("BehaviorCarveModeHint", "Standard carves across a boundary or SDF; Traced traces flow grooves and deposits.")));
+					B->Flow.bUseTracedFlow = Index == 1;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))));
 		AddSliderRow(Standard,
 			SNew(SBox)
 			.Visibility_Lambda([Carve]()
@@ -1838,33 +1825,20 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorDeformTracedCard", "TRACED DEFORM"))[TracedDeformPanel]
 			]
 		];
-		AddSliderRow(Operation, MixtormatRow::MakeDropdown(
+		AddSliderRow(Operation, MixtormatRow::MakeTrailing(
 			LOCTEXT("BehaviorDeformModeLabel", "Deform Mode"),
-			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Deform]()
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("BehaviorDeformModeLabelStd", "Standard"), LOCTEXT("BehaviorDeformModeLabelTrace", "Traced")})
+			.ActiveIndex_Lambda([Deform]() { const auto* B = Deform(); return B && B->Flow.bUseTracedFlow ? 1 : 0; })
+			.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Deform](int32 Index)
 			{
-				const FMixtormatBehavior* B = Deform();
-				return B && B->Flow.bUseTracedFlow
-					? LOCTEXT("BehaviorDeformModeTraced", "Traced Flow")
-					: LOCTEXT("BehaviorDeformModeStandard", "Standard");
-			}), FOnGetContent::CreateLambda([this, Deform]() -> TSharedRef<SWidget>
-			{
-				MixtormatMenu::FBuilder Menu;
-				const auto SetTraced = [this, Deform](bool bTraced)
+				if (auto* B = Deform())
 				{
-					if (FMixtormatBehavior* B = Deform())
-					{
-						B->Flow.bUseTracedFlow = bTraced;
-						RefreshLayeredPreview();
-						RebuildLayerList();
-					}
-				};
-				Menu.Item(LOCTEXT("BehaviorDeformModeStandardChoice", "Standard"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(false); }));
-				Menu.Item(LOCTEXT("BehaviorDeformModeTracedChoice", "Traced Flow"), nullptr,
-					FSimpleDelegate::CreateLambda([SetTraced]() { SetTraced(true); }));
-				return Menu.Build();
-			})),
-			LOCTEXT("BehaviorDeformModeHint", "Standard samples direction fields; Traced integrates boundary shape and flow paths locally.")));
+					B->Flow.bUseTracedFlow = Index == 1;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			}))));
 		AddSliderRow(Standard,
 			SNew(SBox)
 			.Visibility_Lambda([Deform]()
