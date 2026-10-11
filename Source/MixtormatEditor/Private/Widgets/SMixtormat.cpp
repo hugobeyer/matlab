@@ -10,6 +10,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Materials/MaterialInstanceConstant.h"
+#include "MixtormatEditorSettings.h"
 
 // Construct, edit history, the shared numeric/slider row builders, and the preview
 // refresh path every panel calls into.
@@ -68,6 +69,13 @@ void SMixtormat::Construct(const FArguments& InArgs)
 	AssetUpdatedHandle = AssetRegistryModule.Get().OnAssetUpdated().AddSP(
 		this, &SMixtormat::HandleReferencedCompositionUpdated);
 
+	if (const UMixtormatEditorSettings* Settings = GetDefault<UMixtormatEditorSettings>())
+	{
+		bGalleryPinned = Settings->bGalleryDrawerPinned;
+		GalleryDrawerHeight = Settings->GalleryDrawerHeight;
+		bBottomLibraryCollapsed = !bGalleryPinned;
+	}
+
 	BuildWorkspaceUI();
 
 	// Start with an editable Fill document instead of the inert "Create Material" empty state.
@@ -119,6 +127,11 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		if (KeyEvent.GetKey() == EKeys::P)
 		{
 			Self->ToggleInspectorCollapsed();
+			return true;
+		}
+		if (KeyEvent.GetKey() == EKeys::G)
+		{
+			Self->ToggleBottomLibraryCollapsed();
 			return true;
 		}
 		return false;
@@ -764,12 +777,6 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		{
 			return ToggleInspectorCollapsed();
 		}
-	}
-	// G for the bottom galleries, the same idea as H for the viewport overlay: one key,
-	// no modifier, toggles the panel that eats the most screen space.
-	if (!bModifierDown && InKeyEvent.GetKey() == EKeys::G)
-	{
-		return ToggleBottomLibraryCollapsed();
 	}
 	// Del on the selection: the same removals the context menus offer, no confirmation.
 	// Undoable like every edit -- the removal functions record history themselves.

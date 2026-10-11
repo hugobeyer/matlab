@@ -580,10 +580,16 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 							: LOCTEXT("PinGalleryHint", "Pin gallery open");
 					})
 					.OnClicked(FSimpleDelegate::CreateLambda([this]()
-											{
-												bGalleryPinned = !bGalleryPinned;
-												Invalidate(EInvalidateWidgetReason::Paint);
-											}))
+					{
+						bGalleryPinned = !bGalleryPinned;
+						if (bGalleryPinned)
+						{
+							GalleryDrawerHeight = GetGalleryOpenHeight();
+							bGalleryCursorPeek = false;
+						}
+						PersistGalleryPinState();
+						Invalidate(EInvalidateWidgetReason::Paint);
+					}))
 				]
 				+ SHorizontalBox::Slot().AutoWidth()
 				[

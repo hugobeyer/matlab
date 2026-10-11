@@ -1485,6 +1485,9 @@ private:
 	TSharedRef<SWidget> BuildBottomLibrary();
 	TSharedRef<SWidget> BuildStatusBar();
 	FReply ToggleBottomLibraryCollapsed();
+	float GetGalleryOpenHeight() const;
+	float GetGalleryPeekHeightAtCursor() const;
+	void PersistGalleryPinState();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
 	// Sources shelf expansion. UI only: closing the shelf disables nothing and never reaches the
@@ -1660,7 +1663,8 @@ private:
 	FMixtormatOverlayPanelState InspectorOverlay;
 	TSharedPtr<SWidget> InspectorOverlayFrame;
 	// The gallery is one bottom overlay drawer; its open state and height survive rebuilds.
-	bool bBottomLibraryCollapsed = false;
+	// Unpinned starts collapsed; pin restores open + height from editor settings.
+	bool bBottomLibraryCollapsed = true;
 	float GalleryDrawerHeight = 0.0f;
 	float GalleryColumnFraction = 0.67f;
 	bool bGalleryDrawerResizing = false;
@@ -1680,9 +1684,11 @@ private:
 	TSharedPtr<SBox> GalleryDrawerHeader;
 	TSharedPtr<SButton> BottomLibraryToggleButton;
 	bool bGalleryPinned = false;
+	bool bGalleryCursorPeek = false;
 	bool bGalleryDrawerAnimating = false;
 	bool bGalleryPointerInside = false;
 	float GalleryDrawerAnimatedHeight = 0.0f;
+	float GalleryPeekHeight = 0.0f;
 	TSharedPtr<SVerticalBox> CategoryListBox;
 	TSharedPtr<SWrapBox> SurfaceListBox;
 	TSharedPtr<SVerticalBox> UserLibraryListBox;

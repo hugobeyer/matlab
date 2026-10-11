@@ -79,4 +79,11 @@ public:
 
 	UPROPERTY(EditAnywhere, Config, Category = "Bake", meta = (DisplayName = "Default Output Path"))
 	FString DefaultBakeOutputPath = TEXT("/Game/Mixtormat/Baked");
+
+	// Written by the gallery pin and by a pinned resize. Unpinned G peeks are not saved.
+	UPROPERTY(Config)
+	bool bGalleryDrawerPinned = false;
+
+	UPROPERTY(Config)
+	float GalleryDrawerHeight = 0.0f;
 };

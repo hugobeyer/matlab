@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatOverlayPanel.h"
+#include "Framework/Application/SlateApplication.h"
 #include "InputCoreTypes.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
@@ -159,6 +160,13 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		const FVector2D ScreenPosition = MouseEvent.GetScreenSpacePosition();
+		if (!bBottomLibraryCollapsed && !bGalleryPinned && !bGalleryDrawerAnimating
+			&& !bGalleryDrawerResizing && GalleryDrawerHost.IsValid()
+			&& !GalleryDrawerHost->GetCachedGeometry().IsUnderLocation(ScreenPosition)
+			&& !FSlateApplication::Get().AnyMenusVisible())
+		{
+			ToggleBottomLibraryCollapsed();
+		}
 		if (InspectorPlacement == EInspectorPlacement::Overlay)
 		{
 			if (const int32 Corner = MixtormatOverlay::HitResizeGrip(InspectorOverlay, ScreenPosition);
@@ -182,9 +190,7 @@ FReply SMixtormat::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointer
 			bGalleryDrawerResizing = true;
 			bGalleryDrawerResizeMoved = false;
 			GalleryDrawerResizeOriginScreen = ScreenPosition;
-			GalleryDrawerHeightAtResizeStart = GalleryDrawerHeight > 0.0f
-				? GalleryDrawerHeight
-				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+			GalleryDrawerHeightAtResizeStart = GetGalleryOpenHeight();
 			return FReply::Handled().CaptureMouse(SharedThis(this));
 		}
 	}
@@ -236,6 +242,7 @@ FReply SMixtormat::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent&
 		{
 			return FReply::Handled();
 		}
+		bGalleryCursorPeek = false;
 		const float DeltaY = GalleryDrawerResizeOriginScreen.Y - MouseEvent.GetScreenSpacePosition().Y;
 		const float MaximumHeight = FMath::Max(MixtormatTokens::OverlayPanelMinHeight,
 			GetCachedGeometry().GetLocalSize().Y - FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInset * 2.0f);
@@ -288,6 +295,14 @@ FReply SMixtormat::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEv
 			&& GalleryDrawerHeader->GetCachedGeometry().IsUnderLocation(MouseEvent.GetScreenSpacePosition()))
 		{
 			ToggleBottomLibraryCollapsed();
+		}
+		else if (!bClick)
+		{
+			bGalleryCursorPeek = false;
+			if (bGalleryPinned)
+			{
+				PersistGalleryPinState();
+			}
 		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}

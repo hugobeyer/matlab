@@ -11,6 +11,7 @@
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
+#include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformProcess.h"
 #include "ISettingsModule.h"
 #include "MixtormatEditorSettings.h"
@@ -487,9 +488,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 				{
 					return FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight;
 				}
-			return GalleryDrawerHeight > 0.0f
-				? GalleryDrawerHeight
-				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight;
+				return GetGalleryOpenHeight();
 			})
 			[
 				SNew(SOverlay)
@@ -783,15 +782,59 @@ TSharedRef<SWidget> SMixtormat::BuildStatusBar()
 		];
 }
 
+float SMixtormat::GetGalleryOpenHeight() const
+{
+	if (bGalleryCursorPeek && GalleryPeekHeight > 0.0f)
+	{
+		return GalleryPeekHeight;
+	}
+	const Mixtormat::FMixtormatGalleryMetrics& Layout =
+		FMixtormatThemeStore::GetResolved().GalleryLayout;
+	return GalleryDrawerHeight > 0.0f ? GalleryDrawerHeight : Layout.DrawerInitialHeight;
+}
+
+float SMixtormat::GetGalleryPeekHeightAtCursor() const
+{
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const Mixtormat::FMixtormatGalleryMetrics& Gallery = Resolved.GalleryLayout;
+	const FGeometry& Geometry = GetCachedGeometry();
+	const FVector2D Local = Geometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
+	const float FromBottom = Geometry.GetLocalSize().Y - Local.Y;
+	const float PaneHeader = Resolved.Buttons.Height + Gallery.TilePadding * 2.0f;
+	const float FirstRowMid = Gallery.DrawerHeaderHeight + PaneHeader
+		+ Gallery.TilePadding + MaterialGalleryTileSize * 0.5f;
+	const float Minimum = Gallery.DrawerHeaderHeight + PaneHeader
+		+ Gallery.TilePadding * 2.0f + MaterialGalleryTileSize + Gallery.TileGap;
+	const float Maximum = FMath::Max(Minimum, Geometry.GetLocalSize().Y - Gallery.DrawerInset * 2.0f);
+	return FMath::Clamp(FromBottom - Gallery.DrawerInset + FirstRowMid, Minimum, Maximum);
+}
+
+void SMixtormat::PersistGalleryPinState()
+{
+	UMixtormatEditorSettings* Settings = GetMutableDefault<UMixtormatEditorSettings>();
+	Settings->bGalleryDrawerPinned = bGalleryPinned;
+	Settings->GalleryDrawerHeight = GalleryDrawerHeight;
+	Settings->SaveConfig();
+}
+
 FReply SMixtormat::ToggleBottomLibraryCollapsed()
 {
+	const bool bOpening = bBottomLibraryCollapsed;
+	if (bOpening && !bGalleryPinned)
+	{
+		GalleryPeekHeight = GetGalleryPeekHeightAtCursor();
+		bGalleryCursorPeek = true;
+	}
+	else if (!bOpening)
+	{
+		bGalleryCursorPeek = false;
+	}
+
 	if (!bGalleryDrawerAnimating)
 	{
-		GalleryDrawerAnimatedHeight = bBottomLibraryCollapsed
+		GalleryDrawerAnimatedHeight = bOpening
 			? FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight
-			: (GalleryDrawerHeight > 0.0f
-				? GalleryDrawerHeight
-				: FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerInitialHeight);
+			: GetGalleryOpenHeight();
 	}
 	bBottomLibraryCollapsed = !bBottomLibraryCollapsed;
 	bGalleryPointerInside = !bBottomLibraryCollapsed;
@@ -801,10 +844,9 @@ FReply SMixtormat::ToggleBottomLibraryCollapsed()
 		bGalleryDrawerAnimating = true;
 		RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda([this](double, const float DeltaTime)
 		{
-			const Mixtormat::FMixtormatGalleryMetrics& Layout = FMixtormatThemeStore::GetResolved().GalleryLayout;
 			const float TargetHeight = bBottomLibraryCollapsed
-				? Layout.DrawerCollapsedHeight
-				: (GalleryDrawerHeight > 0.0f ? GalleryDrawerHeight : Layout.DrawerInitialHeight);
+				? FMixtormatThemeStore::GetResolved().GalleryLayout.DrawerCollapsedHeight
+				: GetGalleryOpenHeight();
 			GalleryDrawerAnimatedHeight = FMath::FInterpTo(
 				GalleryDrawerAnimatedHeight, TargetHeight, DeltaTime, 14.0f);
 			if (FMath::Abs(GalleryDrawerAnimatedHeight - TargetHeight) <= 0.5f)
