@@ -1529,6 +1529,10 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 		FMixtormatLayerChild Child;
 		ApplyChildCreationDefaults(Child, Kind);
+		if (Child.Type == EMixtormatLayerChildType::Mask)
+		{
+			Child.DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
+		}
 		// A nested Flow reads the owning generator through its Behavior ancestors.
 		// Height is also a valid self fallback for any generator without boundary output.
 		if (Kind == EMixtormatChildCreation::BehaviorFlowField)
@@ -1588,6 +1592,10 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	FMixtormatLayer& Layer = WorkingLayers[Target.LayerIndex];
 	const int32 CreatedIndex = Layer.Children.AddDefaulted();
 	ApplyChildCreationDefaults(Layer.Children[CreatedIndex], Kind);
+	if (Layer.Children[CreatedIndex].Type == EMixtormatLayerChildType::Mask)
+	{
+		Layer.Children[CreatedIndex].DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
+	}
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
