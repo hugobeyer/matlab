@@ -26,6 +26,26 @@ field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBou
 distinction for the inspector and authoring defaults). Every other eligible generator keeps both
 source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md` (archived).
 
+## Shared native Flow foundation (Stage 1)
+
+- `MixtormatGpuNativeFlowPasses.*` / `MixtormatNativeFlow.usf` own the extracted Noise
+  intrinsic derivative pass. `AddNativeFlowPass` accepts explicitly signed destination-space
+  height (R32), signed boundary distance (R32), or the existing negative-inside UV-distance +
+  validity boundary contract (RG32). Packed boundaries require trusted centre and derivative
+  taps; arbitrary Gradient, unsigned coverage and ID fields are not converted implicitly.
+- Wrapped per-UV derivatives retain unit negative-gradient transport: downhill for height,
+  inward for signed boundary. Flow/FlowSmooth use RGBA16F (the same texture without authored
+  smoothing); reserved B stays zero, A carries influence, and validity remains separate R16F.
+- Scoped consumers seed working Flow before post-generation Behaviors. Sculpt (`Carve` backing
+  enum), traced Deform and traced Warp demand that seed without an additional Flow child.
+  The intrinsic field is adopted once; only explicit Noise MODE contributions use Add/Mix.
+- Noise retains its completed signed-height FlowDirection diagnostic, height-less scratch-field
+  diagnostic, weighted GeneratedFlow magnitude, normalization/gating and Feather ordering.
+  Native Flow publications reuse the existing FlowDirection address and preview renderer.
+- Strata Carver is excluded: its demand and execution are unchanged. Per-generator native
+  source selection/public output integrations and new inspector controls remain later stages;
+  boundary support here is an explicit derivation primitive, not SDF steering for Sculpt.
+
 ## Noise as a mask source (inline or live)
 
 Every Mask child can now read noise directly; the same producer family is reused rather than

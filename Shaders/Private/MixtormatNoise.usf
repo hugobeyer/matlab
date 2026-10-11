@@ -1,6 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
-// Noise: a tileable field producer. MainCS produces raw fields; FlowCS reads completed height.
+// Noise: a tileable field producer. Intrinsic transport is derived by MixtormatNativeFlow.usf.
 //
 // The module publishes what the algorithm genuinely produces and decides nothing about what it
 // means. Per pixel it writes:
@@ -100,38 +100,12 @@ void CoverageCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? saturate(CoverageSigned != 0u ? 0.5f * Value + 0.5f : Value) : 0.0f;
 }
 
-Texture2D<float> CompletedHeight;
-RWTexture2D<float4> OutFlow;
-RWTexture2D<float> OutFlowValidity;
-
-// An explicit transport output, independent of the heterogeneous raw Gradient contract.
-// Downhill unit direction in destination tile UV; flat/non-finite slopes have no influence.
-// Run after all scoped tools and structural remaps so placement is applied exactly once.
-[numthreads(8, 8, 1)]
-void FlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const int2 Pixel = int2(DispatchThreadId.xy);
-	if (any(Pixel >= OutputSize)) { return; }
-	const int2 XP = (Pixel + int2(1, 0)) % OutputSize;
-	const int2 XM = (Pixel + OutputSize - int2(1, 0)) % OutputSize;
-	const int2 YP = (Pixel + int2(0, 1)) % OutputSize;
-	const int2 YM = (Pixel + OutputSize - int2(0, 1)) % OutputSize;
-	const float2 Slope = 0.5f * float2(OutputSize) * float2(
-		CompletedHeight.Load(int3(XP, 0)) - CompletedHeight.Load(int3(XM, 0)),
-		CompletedHeight.Load(int3(YP, 0)) - CompletedHeight.Load(int3(YM, 0)));
-	const float Magnitude = length(Slope);
-	const bool Valid = all(isfinite(Slope)) && isfinite(Magnitude) && Magnitude > 1.0e-5f;
-	const float2 Direction = Valid ? -Slope / Magnitude : float2(0.0f, 0.0f);
-	OutFlow[Pixel] = float4(Direction, 0.0f, Valid ? 1.0f : 0.0f);
-	OutFlowValidity[Pixel] = Valid ? 1.0f : 0.0f;
-}
 
 // ---- P1 generated Flow (AgentDocs/FIELD_CONTRACT_P0.md sections 1, 3, 4) ----
 //
 // The weighted MODE contribution, in the canonical layout: RG = VectorXY with magnitude,
 // B = 0, A = influence; validity in a separate R16F texture. This is the node's generated
-// contribution -- distinct from the intrinsic FlowDirection diagnostic above, which keeps its
-// legacy normalized-direction layout and consumers until P2.
+// contribution -- distinct from the shared native FlowDirection unit-direction diagnostic.
 //
 //   GeneratedFlow = HeightWeight * Downhill(OwnHeight)
 //                 + SlopeWeight  * Downhill(SlopeHeight)      // P2 binds the snapshot

@@ -3,6 +3,7 @@
 #include "MixtormatGpuCompositorInternal.h"
 #include "Compositing/MixtormatComposeHash.h"
 #include "MixtormatGpuNoisePasses.h"
+#include "MixtormatGpuNativeFlowPasses.h"
 #include "MixtormatColorRampMath.h"
 #include "MixtormatScalarRampMath.h"
 
@@ -3406,23 +3407,40 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// One authored-order pass processes producers and height operations on the native field.
 		if (!bNoiseHeightless)
 		{
-			// Generate a native-height Flow snapshot only when a scoped consumer
-			// needs it. Noise's completed diagnostic still overwrites this temporary
-			// publication after its normal output normalization.
+			// Seed native Flow before the ordered Behavior chain, never from its
+			// already-modified result. Noise's completed diagnostic is still published
+			// separately after normalization; it is not composed back into working Flow.
 			const bool bNeedsWorkingFlow = Algo::AnyOf(Layer.Children,
 				[&Child](const FChildRenderData& Candidate)
 				{
-					return Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
-						&& ((Candidate.Type == EMixtormatLayerChildType::Generator
-							&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
-							|| (Candidate.Type == EMixtormatLayerChildType::Behavior
-								&& Candidate.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
-								&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
-									|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform)));
+					if (Candidate.ScopeOwnerSourceChildIndex != Child.SourceChildIndex) { return false; }
+					if (Candidate.Type == EMixtormatLayerChildType::Generator)
+					{
+						return Candidate.Generator.Type == EMixtormatGeneratorType::Noise;
+					}
+					if (Candidate.Type != EMixtormatLayerChildType::Behavior) { return false; }
+					const FBehaviorRenderData& Behavior = Candidate.Behavior;
+					if (Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::None
+						&& (Behavior.Type == EMixtormatBehaviorType::Warp
+							|| Behavior.Type == EMixtormatBehaviorType::Deform)) { return true; }
+					// Stage 1 leaves Strata Carver's existing demand and execution unchanged.
+					if (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver
+						|| Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { return false; }
+					return Behavior.Type == EMixtormatBehaviorType::Carve
+						|| (Behavior.Type == EMixtormatBehaviorType::Deform && Behavior.bUseTracedFlow)
+						|| (Behavior.Type == EMixtormatBehaviorType::Warp
+							&& (Behavior.Flow.ModeMix > 0.0f || Behavior.Flow.SettingsDrivers[8].bEnabled));
 				});
 			if (bNeedsWorkingFlow)
 			{
-				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+				const FPublishedField NativeFlow = AddNativeFlowPass(
+					Ctx, Layer, Child.SourceChildIndex, Module.Height);
+				if (Child.Generator.Type != EMixtormatGeneratorType::Noise
+					&& Child.Generator.Type != EMixtormatGeneratorType::StrataCarver)
+				{
+					AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
+						FName(TEXT("FlowDirection")), NativeFlow);
+				}
 			}
 			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 			// Normalize the unmasked Noise native height, then apply its scoped gate to the
@@ -3443,13 +3461,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 
 			if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 			{
-				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
+				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
 			// Direct Feather owns this Noise module's typed Flow outputs as well
-			// as its native height. This must run AFTER AddNoiseFlowPass, which
+			// as its native height. This must run AFTER AddNativeFlowPass, which
 			// replaces FlowDirection when Write Height is enabled. Otherwise
 			// Flow preview and consumers bypass the child's filter silently.
 			for (const FChildRenderData& Filter : Layer.Children)

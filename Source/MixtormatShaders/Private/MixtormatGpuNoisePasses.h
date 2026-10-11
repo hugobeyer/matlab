@@ -21,9 +21,6 @@ FRDGTextureRef AddNoiseMaskPass(FMixtormatComposeContext& Ctx, const FMixtormatN
 // Distinct R32_FLOAT coverage; preserves raw Value and any publication. Non-finite becomes zero.
 FRDGTextureRef AddNoiseCoveragePass(FMixtormatComposeContext& Ctx, FRDGTextureRef Value, bool bSigned);
 
-// Explicit downhill transport from completed destination-space height, with flat-slope validity.
-void AddNoiseFlowPass(FMixtormatComposeContext& Ctx, const FLayerRenderData& Layer,
-	int32 SourceChildIndex, FRDGTextureRef Height);
 
 // P1 generated Flow: the weighted Height/Slope/Curl/Constant MODE field in the canonical
 // layout (FIELD_CONTRACT_P0.md section 1), published under "GeneratedFlow". OwnHeight is the
