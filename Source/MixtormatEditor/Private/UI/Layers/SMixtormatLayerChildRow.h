@@ -36,6 +36,7 @@ public:
 		SLATE_NAMED_SLOT(FArguments, Disclosure)
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_EVENT(FOnTextCommitted, OnNameCommitted)
+		SLATE_ARGUMENT(bool, bNameEditable)
 		SLATE_ATTRIBUTE(FText, Kind)
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(bool, bActive)
