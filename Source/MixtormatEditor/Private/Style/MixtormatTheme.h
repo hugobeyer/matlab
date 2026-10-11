@@ -892,6 +892,10 @@ namespace Mixtormat
 		float DrawerHeaderHeight = 22.0f;
 		float DrawerCollapsedHeight = 18.0f;
 		float DrawerInitialHeight = 256.0f;
+		float DrawerPeekDistance = 96.0f;
+		float DrawerPeekMinHeight = 180.0f;
+		float DrawerPeekMaxHeight = 560.0f;
+		float DrawerPeekLerp = 0.5f;
 		float DrawerSurfaceOpacity = 0.68f;
 		// The ownership badge overlaid on library and mask tiles: its icon box and the padding
 		// between the icon and the badge plate.

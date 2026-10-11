@@ -473,7 +473,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					FMixtormatThemeStore::GetResolved().GalleryLayout;
 				// Collapsed, the tab sits flush with the workspace bottom -- directly above the status
 				// bar, as a drawer handle should; expanded, the drawer keeps its floating inset.
-				const float Bottom = bBottomLibraryCollapsed ? 0.0f : Gallery.DrawerInset;
+				const float Bottom = 0.0f;
 				return FMargin(Gallery.DrawerSideInset, Gallery.DrawerInset, Gallery.DrawerSideInset, Bottom);
 			})
 			[
@@ -801,12 +801,13 @@ float SMixtormat::GetGalleryPeekHeightAtCursor() const
 	const FVector2D Local = Geometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
 	const float FromBottom = Geometry.GetLocalSize().Y - Local.Y;
 	const float PaneHeader = Resolved.Buttons.Height + Gallery.TilePadding * 2.0f;
-	const float FirstRowMid = Gallery.DrawerHeaderHeight + PaneHeader
-		+ Gallery.TilePadding + MaterialGalleryTileSize * 0.5f;
-	const float Minimum = Gallery.DrawerHeaderHeight + PaneHeader
-		+ Gallery.TilePadding * 2.0f + MaterialGalleryTileSize + Gallery.TileGap;
-	const float Maximum = FMath::Max(Minimum, Geometry.GetLocalSize().Y - Gallery.DrawerInset * 2.0f);
-	return FMath::Clamp(FromBottom - Gallery.DrawerInset + FirstRowMid, Minimum, Maximum);
+	const float Available = Geometry.GetLocalSize().Y;
+	const float Minimum = FMath::Min(Available, Gallery.DrawerPeekMinHeight);
+	const float Maximum = FMath::Max(Minimum, FMath::Min(Available, Gallery.DrawerPeekMaxHeight));
+	const float Target = FromBottom + Gallery.DrawerPeekDistance;
+	const float Averaged = FMath::Lerp(Gallery.DrawerInitialHeight, Target,
+		FMath::Clamp(Gallery.DrawerPeekLerp, 0.0f, 1.0f));
+	return FMath::Clamp(Averaged, Minimum, Maximum);
 }
 
 void SMixtormat::PersistGalleryPinState()

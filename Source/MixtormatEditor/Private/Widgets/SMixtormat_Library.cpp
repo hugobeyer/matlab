@@ -483,38 +483,26 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 	const Mixtormat::FMixtormatGalleryMetrics& Gallery = FMixtormatThemeStore::GetResolved().GalleryLayout;
 
 	const Mixtormat::FMixtormatControlMetrics& Controls = FMixtormatThemeStore::GetResolved().ControlLayout;
-	const Mixtormat::FMixtormatShellTheme& Shell = FMixtormatThemeStore::GetTheme().ShellTheme;
-	const float ShadowRange = Shell.ColumnShadowRange;
-	const float ShadowFalloff = Shell.ColumnShadowFalloffPower;
-	const float ShadowOpacity = Shell.ColumnShadowOpacity;
-	constexpr int32 ShadowSteps = 8;
+	const float ShadowRange = FMixtormatThemeStore::GetTheme().ShellTheme.ColumnShadowRange;
 	TSharedRef<SOverlay> Drawer = SNew(SOverlay);
 
-	// Nested translucent plates sample the existing range/falloff into soft, theme-tuned bands.
-	for (int32 Step = 0; Step < ShadowSteps; ++Step)
-	{
-		const float T = static_cast<float>(Step) / static_cast<float>(ShadowSteps);
-		const float Inset = ShadowRange * T;
-		const float LayerOpacity = ShadowOpacity * FMath::Pow(1.0f - T, ShadowFalloff);
-		Drawer->AddSlot().Padding(FMargin(Inset, Inset,
-			Inset + MixtormatTokens::DragGhostShadowOffsetX,
-			Inset + Controls.DragGhostShadowOffsetY))
-		[
-			SNew(SMixtormatSurfaceBox)
-			.Recipe_Lambda([LayerOpacity]()
-			{
-				Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
-				Recipe.bTranslucent = true;
-				Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
-				Recipe.Base.Opacity = LayerOpacity;
-				return Recipe;
-			})
-		];
-	}
+	// A single broad, translucent backing replaces the nested rectangular shadow bands.
+	Drawer->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
+	[
+		SNew(SMixtormatSurfaceBox)
+		.Recipe_Lambda([]()
+		{
+			Mixtormat::FMixtormatSurfaceRecipe Recipe = Mixtormat::MakeGroundRecipe();
+			Recipe.bTranslucent = true;
+			Recipe.Base.Role = Mixtormat::EMixtormatColorRole::Shade;
+			Recipe.Base.Opacity = FMixtormatThemeStore::GetTheme().ShellTheme.ColumnShadowOpacity;
+			return Recipe;
+		})
+	];
 
 	Drawer->AddSlot().Padding(FMargin(ShadowRange, ShadowRange,
 		ShadowRange + MixtormatTokens::DragGhostShadowOffsetX,
-		ShadowRange + Controls.DragGhostShadowOffsetY))
+		0.0f))
 	[
 		SNew(SMixtormatSurfaceBox)
 			.Recipe_Lambda([]()
@@ -539,76 +527,65 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				.HeightOverride(Gallery.DrawerHeaderHeight)
 				.ToolTipText(LOCTEXT("GalleryDrawerHeaderHint", "Click to collapse the gallery. Drag to resize (G toggles)."))
 				[
-					SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-					.Padding(Gallery.CaptionInset, 0.0f)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("GalleryDrawerHeading", "GALLERY"))
-					.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-					.Padding(Gallery.CaptionInset, 0.0f)
-				[
-					SNew(SBox)
-					.WidthOverride(Gallery.DrawerHeaderGripSize)
-					.HeightOverride(Gallery.DrawerHeaderGripSize)
-					.ToolTipText(LOCTEXT("GalleryResizeHint", "Drag the gallery header to resize"))
+					SNew(SOverlay)
+					+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Fill)
 					[
-						SNew(SImage)
-						.Image(MixtormatIcons::Grip())
-						.Visibility(EVisibility::HitTestInvisible)
-						.ColorAndOpacity_Lambda([this]()
-						{
-							const bool bHovered = GalleryDrawerHeader.IsValid() && GalleryDrawerHeader->IsHovered();
-							const FLinearColor Color = FMixtormatThemeStore::GetResolved().Palette.Get(
-								bHovered ? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::TextMuted);
-							return FSlateColor(Color.CopyWithNewOpacity(bHovered ? 0.9f : 0.35f));
-						})
+						SNew(SButton)
+						.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
+						.ContentPadding(FMargin(0.0f))
+						.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+							.Padding(Gallery.CaptionInset, 0.0f)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("GalleryDrawerHeading", "GALLERY"))
+								.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
+							]
+						]
 					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SMixtormatIconButton)
-					.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
-					.Icon(MixtormatIcons::Pin())
-					.bActive_Lambda([this]() { return bGalleryPinned; })
-					.ToolTip_Lambda([this]()
-					{
-						return bGalleryPinned
-							? LOCTEXT("UnpinGalleryHint", "Unpin gallery; it will collapse when the pointer leaves")
-							: LOCTEXT("PinGalleryHint", "Pin gallery open");
-					})
-					.OnClicked(FSimpleDelegate::CreateLambda([this]()
-					{
-						bGalleryPinned = !bGalleryPinned;
-						if (bGalleryPinned)
-						{
-							GalleryDrawerHeight = GetGalleryOpenHeight();
-							bGalleryCursorPeek = false;
-						}
-						PersistGalleryPinState();
-						Invalidate(EInvalidateWidgetReason::Paint);
-					}))
-				]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SAssignNew(BottomLibraryToggleButton, SButton)
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.BottomLibraryCollapseButton")))
-										.ContentPadding(FMargin(0.0f))
-					.ToolTipText(LOCTEXT("ToggleBottomLibraryHint", "Close the material and mask drawer (G)."))
-					.OnClicked(this, &SMixtormat::ToggleBottomLibraryCollapsed)
+					+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
 					[
 						SNew(SBox)
-						.WidthOverride(Gallery.DrawerHeaderHeight)
-						.HeightOverride(Gallery.DrawerHeaderHeight)
-						.HAlign(HAlign_Center).VAlign(VAlign_Center)
+						.WidthOverride(Gallery.DrawerHeaderGripSize)
+						.HeightOverride(Gallery.DrawerHeaderGripSize)
 						[
-							SNew(SBox)
-							.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)].GlyphSize)
-							.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[static_cast<uint8>(Mixtormat::EMixtormatIconRole::LayerDisclosure)].GlyphSize)
-							[SNew(SImage).Image(MixtormatIcons::ChevronDown())]
+							SNew(SImage)
+							.Image(MixtormatIcons::Grip())
+							.Visibility(EVisibility::HitTestInvisible)
+							.ColorAndOpacity_Lambda([this]()
+							{
+								const bool bHovered = GalleryDrawerHeader.IsValid() && GalleryDrawerHeader->IsHovered();
+								const FLinearColor Color = FMixtormatThemeStore::GetResolved().Palette.Get(
+									bHovered ? Mixtormat::EMixtormatColorRole::Accent : Mixtormat::EMixtormatColorRole::TextMuted);
+								return FSlateColor(Color.CopyWithNewOpacity(bHovered ? 0.9f : 0.35f));
+							})
 						]
+					]
+					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Center)
+					[
+						SNew(SMixtormatIconButton)
+						.Role(Mixtormat::EMixtormatIconRole::GalleryToolbar)
+						.Icon(MixtormatIcons::Pin())
+						.bActive_Lambda([this]() { return bGalleryPinned; })
+						.ToolTip_Lambda([this]()
+						{
+							return bGalleryPinned
+								? LOCTEXT("UnpinGalleryHint", "Unpin gallery; it will collapse when the pointer leaves")
+								: LOCTEXT("PinGalleryHint", "Pin gallery open");
+						})
+						.OnClicked(FSimpleDelegate::CreateLambda([this]()
+						{
+							bGalleryPinned = !bGalleryPinned;
+							if (bGalleryPinned)
+							{
+								GalleryDrawerHeight = GetGalleryOpenHeight();
+								bGalleryCursorPeek = false;
+							}
+							PersistGalleryPinState();
+							Invalidate(EInvalidateWidgetReason::Paint);
+						}))
 					]
 				]
 				]

@@ -763,6 +763,10 @@ NUM("LayerLayout.SourcesAddTabHighlightBias", Sources, "Add Button", "Add Tab Hi
 				NUM("GalleryLayout.HeaderGap", GalleryShell, "Gallery Layout", "Header Gap", GalleryLayout.HeaderGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.MaskHeaderInset", GalleryShell, "Gallery Layout", "Masks Header Inset", GalleryLayout.MaskHeaderInset, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerAutoCollapseDistance", GalleryShell, "Gallery Layout", "Drawer Auto-Collapse Distance", GalleryLayout.DrawerAutoCollapseDistance, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerPeekDistance", GalleryShell, "Gallery Layout", "Peek Cursor Distance", GalleryLayout.DrawerPeekDistance, 0, 600, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerPeekMinHeight", GalleryShell, "Gallery Layout", "Peek Minimum Height", GalleryLayout.DrawerPeekMinHeight, 0, 1000, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerPeekMaxHeight", GalleryShell, "Gallery Layout", "Peek Maximum Height", GalleryLayout.DrawerPeekMaxHeight, 0, 1400, 2, 0, EMixtormatThemeRefreshMode::Reconstruct);
+				NUM("GalleryLayout.DrawerPeekLerp", GalleryShell, "Gallery Layout", "Peek Averaging Lerp", GalleryLayout.DrawerPeekLerp, 0, 1, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerInset", GalleryShell, "Gallery Layout", "Drawer Inset", GalleryLayout.DrawerInset, 0, 48, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerSideInset", GalleryShell, "Gallery Layout", "Drawer Side Inset", GalleryLayout.DrawerSideInset, 0, 96, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 				NUM("GalleryLayout.DrawerHeaderHeight", GalleryShell, "Gallery Layout", "Drawer Header Height", GalleryLayout.DrawerHeaderHeight, 14, 32, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
