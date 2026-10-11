@@ -1361,7 +1361,9 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 				ApplyChildCreationDefaults(Prototype, Entry.Creation);
 				if (!CanKeepScopedPlacement(Target, Prototype)) { continue; }
 				Menu.Item(Entry.Label,
-					Entry.bPushIcon ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural(),
+					Entry.Creation == EMixtormatChildCreation::BehaviorFeather
+						? MixtormatIcons::Filter()
+						: (Entry.bPushIcon ? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural()),
 					FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId, Entry]()
 					{
 						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
