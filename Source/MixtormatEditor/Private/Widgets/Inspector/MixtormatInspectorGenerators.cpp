@@ -17,80 +17,6 @@
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
-TSharedRef<SWidget> SMixtormat::BuildChildOutputsControls(const FMixtormatChildCapabilities& Capabilities)
-{
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	const TArray<FMixtormatPublishedOutputDesc> Copyable = GetCopyableOutputs(Capabilities);
-	TSet<FName> PairedCopies;
-	const auto AddOutputRow = [this, &Panel](const FText& Label,
-		const FMixtormatPublishedOutputDesc* Preview, const FMixtormatPublishedOutputDesc* Copy)
-	{
-		FMixtormatChildPreviewOutputSet PreviewSet;
-		if (Preview)
-		{
-			PreviewSet.Primary = FMixtormatPreviewOutputDesc{
-				Preview->Name, Preview->Label, Preview->Kind, Preview->PreviewGapMaskName};
-		}
-		const bool bCopyable = Copy != nullptr;
-		const FName CopyName = Copy ? Copy->Name : NAME_None;
-		AddSliderRow(Panel, MixtormatRow::Make(Label,
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
-			[
-				MakeChildOutputPreviewButton(PreviewSet)
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-				.Text(LOCTEXT("InspectorCopyChildOutput", "Copy"))
-				// A source has no published outputs yet, so Copy is disabled; the tooltip says why
-				// instead of repeating the layer-child promise the button cannot keep.
-				.ToolTipText_Lambda([this, Label]()
-				{
-					return GetSelectedSource()
-						? LOCTEXT("InspectorCopyChildOutputSourceHint",
-							"Sources do not publish outputs yet, so there is nothing to copy.")
-						: FText::Format(LOCTEXT("InspectorCopyChildOutputHint",
-							"Copy the live {0} output reference; the producer stays in place."), Label);
-				})
-				.IsEnabled_Lambda([this, bCopyable, CopyName]()
-				{
-					return bCopyable && CanCopyChildOutput(GetSelectedChildAddress(), CopyName);
-				})
-				.OnClicked_Lambda([this, CopyName]()
-				{
-					CopyChildOutput(GetSelectedChildAddress(), CopyName);
-					return FReply::Handled();
-				})
-			]));
-	};
-	for (const FMixtormatPublishedOutputDesc& Preview : Capabilities.Outputs)
-	{
-		if (!Preview.bPreviewable) { continue; }
-		const FMixtormatPublishedOutputDesc* Copy = Copyable.FindByPredicate(
-			[&Preview](const FMixtormatPublishedOutputDesc& Candidate) { return Candidate.Name == Preview.Name; });
-		// Typed previews can use a display address distinct from their published field address.
-		if (!Copy)
-		{
-			Copy = Copyable.FindByPredicate([&Preview](const FMixtormatPublishedOutputDesc& Candidate)
-			{
-				return Candidate.bCopyableAsField && Candidate.Kind == Preview.Kind;
-			});
-		}
-		if (Copy) { PairedCopies.Add(Copy->Name); }
-		AddOutputRow(Preview.Label, &Preview, Copy);
-	}
-	for (const FMixtormatPublishedOutputDesc& Copy : Copyable)
-	{
-		if (!PairedCopies.Contains(Copy.Name)) { AddOutputRow(Copy.Label, nullptr, &Copy); }
-	}
-	return SNew(SMixtormatInspectorCard)
-		.Title(LOCTEXT("InspectorChildOutputsHeading", "OUTPUTS"))
-		[Panel];
-}
-
 TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 {
 	const auto Carver = [this]() { return GetSelectedStrataCarver(); };
@@ -2873,10 +2799,10 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 			: N->NoisePreset == EMixtormatNoisePreset::Flow ? 1 : 0;
 		return TypeIndex * 3 + OutputMode;
 	};
-	TSharedRef<SWidgetSwitcher> Outputs = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
 	TSharedRef<SWidgetSwitcher> HeaderPreview = SNew(SWidgetSwitcher).WidgetIndex_Lambda(NoiseWidgetIndex);
-	// Use live preset/output gates, not only NoiseType, so the preview eye always
-	// describes the field being shown and GeneratedFlow appears when enabled.
+	// Noise keeps its single header preview control like the other generators.
+	// Published fields and Copy Output remain available in the child context menu;
+	// don't duplicate their per-output preview/copy rows inside the Inspector.
 	for (const EMixtormatNoiseType NoiseType : NoiseTypes)
 	{
 		for (int32 OutputMode = 0; OutputMode < 3; ++OutputMode)
@@ -2888,7 +2814,6 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 			Probe.Generator.Noise.NoisePreset = OutputMode == 1
 				? EMixtormatNoisePreset::Flow : EMixtormatNoisePreset::Noise;
 			Probe.Generator.Noise.bNoiseWriteFlow = OutputMode == 2;
-			Outputs->AddSlot()[BuildChildOutputsControls(GetChildCapabilities(Probe))];
 			HeaderPreview->AddSlot()[MakeChildOutputPreviewButton(GetChildPreviewOutputSet(Probe))];
 		}
 	}
@@ -2965,7 +2890,6 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 						}),
 						LOCTEXT("NoiseNormalizeHeightHint", "Centre height onto -1..1 so Height Blend compares fairly. Off uses the raw field.")))]);
 	}
-	Cards->AddSlot().AutoHeight()[Outputs];
 	Cards->AddSlot().AutoHeight()[BuildNoisePatternPlacementControls(Noise)];
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedNoise() ? EVisibility::Visible : EVisibility::Collapsed; })

@@ -637,7 +637,6 @@ private:
 	TSharedRef<SWidget> BuildBoundaryIdSourceMenu();
 	TSharedRef<SWidget> BuildIdGroupControls();
 	TSharedRef<SWidget> BuildIdGroupFeatureMenu();
-	TSharedRef<SWidget> BuildChildOutputsControls(const FMixtormatChildCapabilities& Capabilities);
 
 
 	FReply AddRandomIdToLayer(int32 LayerIndex);
