@@ -1720,7 +1720,7 @@ namespace
 		FRDGTextureRef Mask, const bool bHasMask, const int32 LayerIndex, const int32 ChildIndex)
 	{
 		if (!Source.IsComplete() || Source.Kind != EMixtormatPublishedFieldKind::Flow
-			|| (Behavior.Strength <= 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
+			|| (Behavior.Strength == 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
 			|| Behavior.FeatherRadius <= 0.0f)
 		{
 			return Source;
@@ -1746,7 +1746,7 @@ namespace
 			auto* P = Graph.AllocParameters<FMixtormatBehaviorFlowFeatherCS::FParameters>();
 			P->OutputSize = Size;
 			P->Radius = Behavior.FeatherRadius;
-			P->Strength = FMath::Clamp(Behavior.Strength, 0.0f, 1.0f);
+			P->Strength = Behavior.Strength;
 			P->DirectionBias = Behavior.FeatherDirectionBias;
 			P->HasMask = bHasMask && Mask ? 1u : 0u;
 			P->SourceFlow = Source.Texture;
@@ -1787,7 +1787,7 @@ namespace
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
 		if (!Height || Height->Desc.Format != PF_R32_FLOAT
-			|| (Behavior.Strength <= 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
+			|| (Behavior.Strength == 0.0f && !Behavior.ScalarDrivers[0].bEnabled)
 			|| Behavior.FeatherRadius <= 0.0f)
 		{
 			return Height;
@@ -1815,7 +1815,7 @@ namespace
 			auto* P = Graph.AllocParameters<FMixtormatBehaviorFeatherCS::FParameters>();
 			P->OutputSize = Size;
 			P->Radius = Behavior.FeatherRadius;
-			P->Strength = FMath::Clamp(Behavior.Strength, 0.0f, 1.0f);
+			P->Strength = Behavior.Strength;
 			SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
 			P->DirectionBias = Behavior.FeatherDirectionBias;
 			P->Side = static_cast<uint32>(Behavior.FeatherSide);

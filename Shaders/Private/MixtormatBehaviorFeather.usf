@@ -70,7 +70,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         BehaviorDriverSignal0.Load(int3(P, 0)),
         BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
     float Weight = isfinite(M) && isfinite(Driven)
-        ? saturate(Driven) * saturate(M) : 0.0f;
+        ? Driven * saturate(M) : 0.0f;
 #if FEATHER_STAGE == 3
     const float Distance = Arrival.Load(int3(P, 0));
     const float2 Boundary = HasBoundary != 0u
@@ -82,7 +82,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     const float T = saturate(Distance / max(Radius, 1.0e-4f));
     Weight *= 1.0f - T * T * (3.0f - 2.0f * T);
 #endif
-    OutHeight[P] = Weight > 0.0f ? lerp(H, BlurHeight(UV), Weight) : H;
+    OutHeight[P] = Weight != 0.0f ? lerp(H, BlurHeight(UV), Weight) : H;
 #elif FEATHER_STAGE == 1
     const float H = SampleHeight(P);
     bool Seed = false;
