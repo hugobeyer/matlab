@@ -1622,7 +1622,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveSourceMenu()
 		SNew(SBox).Visibility_Lambda([Warp]()
 		{
 			const FMixtormatBehavior* Selected = Warp();
-			return Selected && (Selected->Flow.ModeMix > 0.0f || Selected->Flow.bUseTracedFlow) ? EVisibility::Visible : EVisibility::Collapsed;
+			return Selected ? EVisibility::Visible : EVisibility::Collapsed;
 		})[TracedWarpPanel]
 	];
 	return SNew(SVerticalBox)

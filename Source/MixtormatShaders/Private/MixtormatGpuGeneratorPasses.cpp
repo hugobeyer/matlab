@@ -1841,10 +1841,10 @@ namespace
 					LayerCtx.LayerIndex, Child.SourceChildIndex,
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			}
-			else if (bStandardNeeded && Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight)
+			else if (bStandardNeeded && Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::OwnNativeHeight
+				&& Module.Height && (Child.Behavior.GradientReach != 0.0f
+					|| Child.Behavior.ScalarDrivers[1].bEnabled))
 			{
-				if (!Module.Height || (Child.Behavior.GradientReach == 0.0f
-					&& !Child.Behavior.ScalarDrivers[1].bEnabled)) { continue; }
 				const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 				FRDGTextureRef Gate = bHasMask
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
@@ -1857,19 +1857,19 @@ namespace
 			else if (bStandardNeeded && Child.Behavior.DirectionOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 			{
 				const FPublishedField* Published = Ctx.PublishedFieldOutputs.Find(Ref.Source);
-				if (!Published || !Published->IsComplete() || Published->Kind != Ref.Kind
-					|| Published->Texture->Desc.Extent != Size) { continue; }
+				if (Published && Published->IsComplete() && Published->Kind == Ref.Kind
+					&& Published->Texture->Desc.Extent == Size)
+				{
 				if (Ref.Kind == EMixtormatPublishedFieldKind::Flow)
 				{
 					// An active driver can produce displacement even when its authored
 					// scalar is zero. Unavailable signals keep their authored fallback.
-					if ((Ref.FlowAmount == 0.0f && !Child.Behavior.FlowDrivers[0].bEnabled)
-						|| (Ref.FlowTraceLength == 0.0f && !Child.Behavior.FlowDrivers[1].bEnabled))
+					if ((Ref.FlowAmount != 0.0f || Child.Behavior.FlowDrivers[0].bEnabled)
+						&& (Ref.FlowTraceLength != 0.0f || Child.Behavior.FlowDrivers[1].bEnabled))
 					{
-						continue;
+						Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
+							LayerCtx.LayerIndex, Child.SourceChildIndex, Child.Behavior.FlowDrivers);
 					}
-					Coordinates = AddReferencedFlowUVPass(Ctx, Ref, *Published,
-						LayerCtx.LayerIndex, Child.SourceChildIndex, Child.Behavior.FlowDrivers);
 				}
 				else if (Ref.Kind == EMixtormatPublishedFieldKind::UVMap
 					&& Published->Texture->Desc.Format == PF_G32R32F)
@@ -1888,6 +1888,7 @@ namespace
 					Coordinates = ScaleBehaviorUV(Ctx, Coordinates, BlendStrength, Gate,
 						bHasMask, Influence, bUseInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
 					Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
+				}
 				}
 			}
 			FRDGTextureRef TracedCoordinates = nullptr;
