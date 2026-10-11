@@ -1353,6 +1353,36 @@ FReply SMixtormat::RenameLayerGroup(const FGuid GroupId, const FText NewName)
 
 bool SMixtormat::BeginRenameSelection()
 {
+	FMixtormatChildAddress RenameChildAddress;
+	if (SelectedGroupId.IsValid() && SelectedGroupChildIndex != INDEX_NONE)
+	{
+		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
+		if (Group && Group->Children.IsValidIndex(SelectedGroupChildIndex)
+			&& Group->Children[SelectedGroupChildIndex].Type == EMixtormatLayerChildType::Mask)
+			RenameChildAddress = MakeGroupChildAddress(SelectedGroupId, SelectedGroupChildIndex);
+	}
+	else if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		const int32 ChildIndex = GetSelectedChildIndex();
+		if (WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(ChildIndex)
+			&& WorkingLayers[SelectedLayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
+			RenameChildAddress = MakeChildAddress(SelectedLayerIndex, ChildIndex);
+	}
+	if (RenameChildAddress.ChildId.IsValid())
+	{
+		if (const TWeakPtr<SMixtormatLayerChildRow>* Row = EditableChildRowWidgets.Find(RenameChildAddress))
+		{
+			RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateLambda(
+				[WeakRow = *Row](double, float)
+				{
+					if (const TSharedPtr<SMixtormatLayerChildRow> Pinned = WeakRow.Pin())
+						Pinned->BeginRename();
+					return EActiveTimerReturnType::Stop;
+				}));
+			return true;
+		}
+	}
+
 	// The group first: selecting a group clears the layer selection but leaves SelectedLayerIndex
 	// where it was, so asking the layer first would rename whatever was picked before the group.
 	const bool bRenamingGroup = SelectedGroupId.IsValid();
