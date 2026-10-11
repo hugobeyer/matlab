@@ -130,7 +130,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					[
 						SAssignNew(EditableName, SInlineEditableTextBlock)
 						.OnTextCommitted(InArgs._OnNameCommitted)
-						.IsReadOnly(!InArgs._OnNameCommitted.IsBound())
+						.IsReadOnly(!InArgs._bNameEditable)
 						.Font(NameTextStyle.Font)
 						.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
 						{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
