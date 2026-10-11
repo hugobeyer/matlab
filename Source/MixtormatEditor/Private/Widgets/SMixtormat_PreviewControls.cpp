@@ -544,10 +544,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls(const bool bMarkingMe
 		return Controls;
 	}
 
-	Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
-	[
-		MakePreviewFinalButton()
-	];
 	TSharedRef<SVerticalBox> QualityColumn = SNew(SVerticalBox);
 	for (const EMixtormatPreviewQuality Quality : { EMixtormatPreviewQuality::Default, EMixtormatPreviewQuality::Lumen })
 	{
@@ -963,8 +959,8 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 
 	TSharedRef<SVerticalBox> RenderRows = SNew(SVerticalBox);
 	AddSliderRow(RenderRows, BuildPreviewRenderControls(true));
-	TSharedRef<SVerticalBox> DisplacementRows = SNew(SVerticalBox);
-	AddSliderRow(DisplacementRows, BuildPreviewDisplacementControls());
+	TSharedRef<SVerticalBox> CompositionRows = SNew(SVerticalBox);
+	AddSliderRow(CompositionRows, BuildFinalSettingsControls());
 	TSharedRef<SVerticalBox> LightingRows = SNew(SVerticalBox);
 	AddSliderRow(LightingRows, BuildPreviewLightingControls(EPreviewControlLayout::Grid));
 	TSharedRef<SVerticalBox> GeometryRows = SNew(SVerticalBox);
@@ -1015,7 +1011,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
 			[
-				MakeCard(LOCTEXT("QuickControlsDisplacement", "DISPLACEMENT"), DisplacementRows, FVector2D(1.0, -1.0))
+				MakeCard(LOCTEXT("QuickControlsComposition", "COMPOSITION"), CompositionRows, FVector2D(1.0, -1.0))
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
