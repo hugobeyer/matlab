@@ -96,7 +96,8 @@ namespace MixtormatChildScope
 				&& Behavior.Type != EMixtormatBehaviorType::Push
 				&& Behavior.Type != EMixtormatBehaviorType::Carve
 				&& Behavior.Type != EMixtormatBehaviorType::Deform
-				&& Behavior.Type != EMixtormatBehaviorType::FlowField))
+				&& Behavior.Type != EMixtormatBehaviorType::FlowField
+				&& Behavior.Type != EMixtormatBehaviorType::Feather))
 		{
 			Result.Issue = EBehaviorInputIssue::UnsupportedOperation;
 			return Result;
@@ -215,7 +216,21 @@ namespace MixtormatChildScope
 			Result.SourceChildIndex = Index;
 			return EBehaviorInputIssue::None;
 		};
-		const bool bTraced = Behavior.Type != EMixtormatBehaviorType::Warp && Behavior.Flow.bUseTracedFlow;
+		// Feather is a signed-height modifier; it never consumes Flow sockets.
+		if (Behavior.Type == EMixtormatBehaviorType::Feather
+			&& (Behavior.Direction.Origin != EMixtormatBehaviorFieldOrigin::None
+				|| Behavior.Height.Origin != EMixtormatBehaviorFieldOrigin::None
+				|| Behavior.Influence.Origin != EMixtormatBehaviorFieldOrigin::None
+				|| !FMath::IsFinite(Behavior.Feather.Radius)
+				|| !FMath::IsFinite(Behavior.Feather.DirectionBias)
+				|| Behavior.Feather.Radius < 0.0f))
+		{
+			Result.Issue = EBehaviorInputIssue::WrongFieldKind;
+			return Result;
+		}
+		const bool bTraced = Behavior.Type != EMixtormatBehaviorType::Warp
+			&& Behavior.Type != EMixtormatBehaviorType::Feather
+			&& Behavior.Flow.bUseTracedFlow;
 		// An unconnected Warp/Deform automatically consumes the generator's
 		// ordered working Flow. A manually authored socket still validates strictly.
 		const bool bNeedsDirection = !bTraced

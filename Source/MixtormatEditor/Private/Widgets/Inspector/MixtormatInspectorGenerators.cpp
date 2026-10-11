@@ -2093,6 +2093,92 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 }
 
 
+TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
+{
+	const auto Get = [this]() -> FMixtormatBehavior*
+	{
+		FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return Child && Child->Type == EMixtormatLayerChildType::Behavior
+			&& Child->Behavior.Type == EMixtormatBehaviorType::Feather ? &Child->Behavior : nullptr;
+	};
+	const auto Settings = [Get]() -> FMixtormatBehaviorFeatherSettings*
+	{
+		FMixtormatBehavior* B = Get();
+		return B ? &B->Feather : nullptr;
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorFeatherOperationCard", "OPERATION"));
+	AddSliderRow(Operation, MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherMode", "Mode"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Mode));
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorFeatherStrength", "Strength"), Get,
+		&FMixtormatBehavior::Strength, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("BehaviorFeatherStrengthHelp", "Feather amount. Zero preserves the native generator output and skips GPU work.")));
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherRadius", "Width (px)"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Radius, 0.0, 32.0, 3.0, 0.1,
+		LOCTEXT("BehaviorFeatherRadiusHelp", "Blur footprint or Eikonal transition width in output texels.")));
+	TSharedRef<SVerticalBox> Eikonal = SNew(SVerticalBox);
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SBox).Visibility_Lambda([Settings]()
+		{
+			const FMixtormatBehaviorFeatherSettings* F = Settings();
+			return F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorCard)
+				.Title(LOCTEXT("BehaviorFeatherEikonalCard", "EIKONAL"))
+			[
+				Eikonal
+			]
+		]
+	];
+	AddSliderRow(Eikonal, MakeMemberSliderInt<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherIterations", "Iterations"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Iterations, 1, 64, 32,
+		LOCTEXT("BehaviorFeatherIterationsHelp", "Number of eight-neighbor distance relaxation passes.")));
+	AddSliderRow(Eikonal, MakeMemberEnum<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherSide", "Feather Side"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Side));
+	AddSliderRow(Eikonal, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherBias", "Direction Bias"), Settings,
+		&FMixtormatBehaviorFeatherSettings::DirectionBias, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("BehaviorFeatherBiasHelp", "Bias Eikonal propagation along the horizontal generator axis.")));
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([Get]() { return Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox).IsEnabled_Lambda([this]()
+			{
+				const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+				return Child && !Child->IsInstance();
+			})
+			[
+				SNew(SMixtormatInspectorGroup)
+				.Title(LOCTEXT("BehaviorFeatherTitle", "FEATHER"))
+				.InitiallyExpanded(true)
+				.HeaderAction(MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Get]()
+					{
+						const FMixtormatBehavior* B = Get();
+						return B && B->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}), FOnCheckStateChanged::CreateLambda([this, Get](ECheckBoxState State)
+					{
+						if (FMixtormatBehavior* B = Get())
+						{
+							B->bEnabled = State == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+							RebuildLayerList();
+						}
+					})))
+				[Panel]
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
 {
 	MixtormatMenu::FBuilder Menu;

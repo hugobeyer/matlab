@@ -1030,6 +1030,11 @@ namespace MixtormatGpuCompositor
 		float GradientReach = 0.02f;
 		float SlopeFeather = 0.5f;
 		float WarpAA = 0.0f;
+		EMixtormatBehaviorFeatherMode FeatherMode = EMixtormatBehaviorFeatherMode::Blur;
+		EMixtormatBehaviorFeatherSide FeatherSide = EMixtormatBehaviorFeatherSide::Both;
+		float FeatherRadius = 3.0f;
+		int32 FeatherIterations = 32;
+		float FeatherDirectionBias = 0.0f;
 		float CarveWidth = 0.02f;
 		FBehaviorFlowRenderData Flow;
 		bool bUseTracedFlow = false;

@@ -1448,7 +1448,8 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		|| Kind == EMixtormatChildCreation::BehaviorPush
 		|| Kind == EMixtormatChildCreation::BehaviorCarve
 		|| Kind == EMixtormatChildCreation::BehaviorDeform
-		|| Kind == EMixtormatChildCreation::BehaviorFlowField;
+		|| Kind == EMixtormatChildCreation::BehaviorFlowField
+		|| Kind == EMixtormatChildCreation::BehaviorFeather;
 	const bool bNoiseGate = Kind == EMixtormatChildCreation::NoiseMask && Target.ScopeOwnerChildId.IsValid();
 	const bool bScopedFlow = Kind == EMixtormatChildCreation::NoiseFlow
 		&& CanAddScopedFlowGenerator(Target);

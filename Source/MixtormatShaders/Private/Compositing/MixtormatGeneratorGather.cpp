@@ -320,8 +320,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	const bool bCarve = Behavior.Type == EMixtormatBehaviorType::Carve;
 	const bool bDeform = Behavior.Type == EMixtormatBehaviorType::Deform;
 	const bool bFlowField = Behavior.Type == EMixtormatBehaviorType::FlowField;
+	const bool bFeather = Behavior.Type == EMixtormatBehaviorType::Feather;
 	const bool bTraced = !bWarp && Behavior.Flow.bUseTracedFlow;
-	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField)
+	if (!Behavior.bEnabled || (!bWarp && !bPush && !bCarve && !bDeform && !bFlowField && !bFeather)
 		|| (Behavior.Stage != EMixtormatBehaviorStage::PostGeneration
 			&& !(Behavior.Stage == EMixtormatBehaviorStage::PreGeneration && bWarp
 				&& Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput))
@@ -444,6 +445,13 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		? FMath::Clamp(Behavior.SlopeFeather, 0.0f, 1.0f) : 0.0f;
 	Out.WarpAA = FMath::IsFinite(Behavior.WarpAA)
 		? FMath::Clamp(Behavior.WarpAA, 0.0f, 1.0f) : 0.0f;
+	Out.FeatherMode = Behavior.Feather.Mode;
+	Out.FeatherSide = Behavior.Feather.Side;
+	Out.FeatherRadius = FMath::IsFinite(Behavior.Feather.Radius)
+		? FMath::Clamp(Behavior.Feather.Radius, 0.0f, 64.0f) : 0.0f;
+	Out.FeatherIterations = FMath::Clamp(Behavior.Feather.Iterations, 1, 128);
+	Out.FeatherDirectionBias = FMath::IsFinite(Behavior.Feather.DirectionBias)
+		? FMath::Clamp(Behavior.Feather.DirectionBias, -1.0f, 1.0f) : 0.0f;
 	Out.CarveWidth = FMath::IsFinite(Behavior.CarveWidth)
 		? FMath::Max(Behavior.CarveWidth, 1e-6f) : 0.02f;
 	// Resolve the canonical Behavior scalar addresses; only earlier completed

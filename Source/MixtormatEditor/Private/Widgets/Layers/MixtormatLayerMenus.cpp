@@ -1336,7 +1336,8 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 				{EMixtormatChildCreation::BehaviorWarp, LOCTEXT("AddBehaviorWarpToGenerator", "Warp"), false},
 				{EMixtormatChildCreation::BehaviorPush, LOCTEXT("AddBehaviorPushToGenerator", "Push"), true},
 				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Carve / Deposit"), true},
-				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Deform"), false}};
+				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Deform"), false},
+				{EMixtormatChildCreation::BehaviorFeather, LOCTEXT("AddBehaviorFeatherToGenerator", "Feather"), false}};
 			if (Target.Type == EMixtormatLayerChildType::Generator)
 			{
 				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);

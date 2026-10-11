@@ -1,0 +1,113 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatEikonal.ush"
+
+int2 OutputSize;
+float Radius;
+float Strength;
+float DirectionBias;
+uint Side;
+uint HasBoundary;
+uint HasMask;
+
+Texture2D<float> SourceHeight;
+Texture2D<float2> BoundaryField;
+Texture2D<float> MaskField;
+Texture2D<float> Arrival;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutArrival;
+
+int2 WrapFeather(int2 P)
+{
+    return ((P % OutputSize) + OutputSize) % OutputSize;
+}
+
+float SampleHeight(int2 P)
+{
+    return SourceHeight.Load(int3(WrapFeather(P), 0));
+}
+
+float BlurHeight(float2 UV)
+{
+    const float2 R = max(Radius, 0.0f) / float2(OutputSize);
+    const float H = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0);
+    float Sum = 4.0f * H;
+    [unroll]
+    for (int Y = -1; Y <= 1; ++Y)
+    {
+        [unroll]
+        for (int X = -1; X <= 1; ++X)
+        {
+            if (X == 0 && Y == 0) { continue; }
+            const float V = SourceHeight.SampleLevel(LinearWrapSampler,
+                UV + float2(X, Y) * R, 0);
+            if (!isfinite(V)) { return H; }
+            Sum += (X == 0 || Y == 0 ? 2.0f : 1.0f) * V;
+        }
+    }
+    return Sum * (1.0f / 16.0f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 P = int2(DispatchThreadId.xy);
+    if (any(P >= OutputSize)) { return; }
+
+#if FEATHER_STAGE == 0 || FEATHER_STAGE == 3
+    const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+    const float H = SourceHeight.Load(int3(P, 0));
+    if (!isfinite(H)) { OutHeight[P] = 0.0f; return; }
+    const float M = HasMask != 0u ? MaskField.Load(int3(P, 0)) : 1.0f;
+    float Weight = isfinite(M) ? saturate(Strength) * saturate(M) : 0.0f;
+#if FEATHER_STAGE == 3
+    const float Distance = Arrival.Load(int3(P, 0));
+    const float2 Boundary = HasBoundary != 0u
+        ? BoundaryField.Load(int3(P, 0)) : float2(H, 1.0f);
+    if (!isfinite(Distance) || !all(isfinite(Boundary))
+        || (HasBoundary != 0u && Boundary.y <= 0.5f)) { Weight = 0.0f; }
+    if (Side == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
+    if (Side == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
+    const float T = saturate(Distance / max(Radius, 1.0e-4f));
+    Weight *= 1.0f - T * T * (3.0f - 2.0f * T);
+#endif
+    OutHeight[P] = Weight > 0.0f ? lerp(H, BlurHeight(UV), Weight) : H;
+#elif FEATHER_STAGE == 1
+    const float H = SampleHeight(P);
+    bool Seed = false;
+    if (HasBoundary != 0u)
+    {
+        const float2 B = BoundaryField.Load(int3(P, 0));
+        Seed = all(isfinite(B)) && B.y > 0.5f
+            && abs(B.x) <= 1.5f / (float)min(OutputSize.x, OutputSize.y);
+    }
+    else if (isfinite(H))
+    {
+        const float L = SampleHeight(P + int2(-1, 0));
+        const float R = SampleHeight(P + int2(1, 0));
+        const float D = SampleHeight(P + int2(0, -1));
+        const float U = SampleHeight(P + int2(0, 1));
+        Seed = all(isfinite(float4(L, R, D, U)))
+            && ((H < 0.0f && max(max(L, R), max(D, U)) >= 0.0f)
+                || (H > 0.0f && min(min(L, R), min(D, U)) <= 0.0f));
+    }
+    OutArrival[P] = Seed ? 0.0f : 65536.0f;
+#elif FEATHER_STAGE == 2
+    const float Center = Arrival.Load(int3(P, 0));
+    const float L = Arrival.Load(int3(WrapFeather(P + int2(-1, 0)), 0));
+    const float R = Arrival.Load(int3(WrapFeather(P + int2(1, 0)), 0));
+    const float D = Arrival.Load(int3(WrapFeather(P + int2(0, -1)), 0));
+    const float U = Arrival.Load(int3(WrapFeather(P + int2(0, 1)), 0));
+    const float NW = Arrival.Load(int3(WrapFeather(P + int2(-1, 1)), 0));
+    const float NE = Arrival.Load(int3(WrapFeather(P + int2(1, 1)), 0));
+    const float SW = Arrival.Load(int3(WrapFeather(P + int2(-1, -1)), 0));
+    const float SE = Arrival.Load(int3(WrapFeather(P + int2(1, -1)), 0));
+    const float Bias = clamp(DirectionBias, -1.0f, 1.0f) * 0.75f;
+    const float CostL = 1.0f + Bias;
+    const float CostR = 1.0f - Bias;
+    OutArrival[P] = MixtormatEikonalStepDirectional(Center, L, R, D, U, NW, NE, SW, SE,
+        float2(1.0f, 1.0f), CostL, CostR, 1.0f, 1.0f,
+        CostL, CostR, CostL, CostR);
+#endif
+}

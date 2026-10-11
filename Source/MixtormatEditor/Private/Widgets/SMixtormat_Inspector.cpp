@@ -260,6 +260,9 @@ bool SMixtormat::HasSelectedChildInspector() const
 		|| GetSelectedBehaviorDeform()
 		|| (ResolveChildAt(GetSelectedChildAddress())
 			&& ResolveChildAt(GetSelectedChildAddress())->Type == EMixtormatLayerChildType::Behavior
+			&& ResolveChildAt(GetSelectedChildAddress())->Behavior.Type == EMixtormatBehaviorType::Feather)
+		|| (ResolveChildAt(GetSelectedChildAddress())
+			&& ResolveChildAt(GetSelectedChildAddress())->Type == EMixtormatLayerChildType::Behavior
 			&& ResolveChildAt(GetSelectedChildAddress())->Behavior.Type == EMixtormatBehaviorType::FlowField);
 }
 
@@ -505,6 +508,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			+ SScrollBox::Slot()[BuildBehaviorPushControls()]
 			+ SScrollBox::Slot()[BuildBehaviorCarveControls()]
 			+ SScrollBox::Slot()[BuildBehaviorDeformControls()]
+				+ SScrollBox::Slot()[BuildBehaviorFeatherControls()]
 				]
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[

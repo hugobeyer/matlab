@@ -66,7 +66,45 @@ enum class EMixtormatBehaviorType : uint8
 	Push UMETA(DisplayName = "Push"),
 	Carve UMETA(DisplayName = "Carve / Deposit"),
 	Deform UMETA(DisplayName = "Deform"),
-	FlowField UMETA(DisplayName = "Flow Field")
+	FlowField UMETA(DisplayName = "Flow Field"),
+	Feather UMETA(DisplayName = "Feather")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatBehaviorFeatherMode : uint8
+{
+	Blur UMETA(DisplayName = "Blur"),
+	Eikonal UMETA(DisplayName = "Eikonal")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatBehaviorFeatherSide : uint8
+{
+	Both UMETA(DisplayName = "Both Sides"),
+	Inside UMETA(DisplayName = "Inside"),
+	Outside UMETA(DisplayName = "Outside")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBehaviorFeatherSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather")
+	EMixtormatBehaviorFeatherMode Mode = EMixtormatBehaviorFeatherMode::Blur;
+
+	// Blur footprint and eikonal transition width, expressed in output texels.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather", meta = (UIMin = "0.0", UIMax = "32.0", ClampMin = "0.0", ClampMax = "64.0"))
+	float Radius = 3.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather", meta = (UIMin = "1", UIMax = "64", ClampMin = "1", ClampMax = "128"))
+	int32 Iterations = 32;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather", meta = (UIMin = "-1.0", UIMax = "1.0", ClampMin = "-1.0", ClampMax = "1.0"))
+	float DirectionBias = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather")
+	EMixtormatBehaviorFeatherSide Side = EMixtormatBehaviorFeatherSide::Both;
 };
 
 // The stage is an explicit part of the behavior contract, not inferred from its UI parent.
@@ -394,6 +432,10 @@ struct MIXTORMATRUNTIME_API FMixtormatBehavior
 	// Warp-only height sampling AA. No filtering for IDs or signed-distance fields.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Warp", meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", ClampMax = "1.0", Delta = "0.01"))
 	float WarpAA = 0.0f;
+
+	// Applies only to the owning generator's signed native height, before normalization.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Behavior|Feather")
+	FMixtormatBehaviorFeatherSettings Feather;
 
 	// Signed footprint width of a Carve, in UV-distance units. The profile is a
 	// saturated ramp across the width, so this is the distance at which relief stops

@@ -698,6 +698,37 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorBundleCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorBundle.usf", "MainCS", SF_Compute);
 
+class FMixtormatBehaviorFeatherCS final : public FGlobalShader
+{
+public:
+    DECLARE_GLOBAL_SHADER(FMixtormatBehaviorFeatherCS);
+    SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorFeatherCS, FGlobalShader);
+    class FStage : SHADER_PERMUTATION_INT("FEATHER_STAGE", 4);
+    using FPermutationDomain = TShaderPermutationDomain<FStage>;
+    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+        SHADER_PARAMETER(FIntPoint, OutputSize)
+        SHADER_PARAMETER(float, Radius)
+        SHADER_PARAMETER(float, Strength)
+        SHADER_PARAMETER(float, DirectionBias)
+        SHADER_PARAMETER(uint32, Side)
+        SHADER_PARAMETER(uint32, HasBoundary)
+        SHADER_PARAMETER(uint32, HasMask)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MaskField)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
+        SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutArrival)
+    END_SHADER_PARAMETER_STRUCT()
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+    }
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorFeatherCS,
+    "/Plugin/Mixtormat/Private/MixtormatBehaviorFeather.usf", "MainCS", SF_Compute);
+
 class FMixtormatGeneratorHeightBlendCS final : public FGlobalShader
 {
 public:
@@ -1641,6 +1672,72 @@ namespace
 		FRDGTextureRef& InOutCoverage, FGeneratorBundle* Bundle, int32 OnlyBehaviorChildIndex,
 		FRDGTextureRef* OutWarpCoordinates = nullptr);
 
+	FRDGTextureRef AddGeneratorFeatherPasses(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef Height, FRDGTextureRef Boundary,
+		const FBehaviorRenderData& Behavior, FRDGTextureRef Mask, const bool bHasMask,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		if (!Height || Height->Desc.Format != PF_R32_FLOAT
+			|| Behavior.Strength <= 0.0f || Behavior.FeatherRadius <= 0.0f)
+		{
+			return Height;
+		}
+		FRDGBuilder& Graph = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const bool bBoundary = Boundary && Boundary->Desc.Extent == Size
+			&& Boundary->Desc.Format == PF_G32R32F;
+		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8),
+			FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		const auto Make = [&Graph, Size](const TCHAR* Name)
+		{
+			return Graph.CreateTexture(FRDGTextureDesc::Create2D(Size, PF_R32_FLOAT,
+				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
+		FRDGTextureRef Arrival[2] = {nullptr, nullptr};
+		int32 Read = 0;
+		const auto Dispatch = [&](const int32 Stage, FRDGTextureRef Output,
+			FRDGTextureRef InputArrival)
+		{
+			FMixtormatBehaviorFeatherCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatBehaviorFeatherCS::FStage>(Stage);
+			TShaderMapRef<FMixtormatBehaviorFeatherCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = Graph.AllocParameters<FMixtormatBehaviorFeatherCS::FParameters>();
+			P->OutputSize = Size;
+			P->Radius = Behavior.FeatherRadius;
+			P->Strength = FMath::Clamp(Behavior.Strength, 0.0f, 1.0f);
+			P->DirectionBias = Behavior.FeatherDirectionBias;
+			P->Side = static_cast<uint32>(Behavior.FeatherSide);
+			P->HasBoundary = bBoundary ? 1u : 0u;
+			P->HasMask = bHasMask && Mask ? 1u : 0u;
+			P->SourceHeight = Height;
+			P->BoundaryField = bBoundary ? Boundary : Ctx.EmptyPatternUV;
+			P->MaskField = bHasMask && Mask ? Mask : Ctx.EmptyDriverSignal;
+			P->Arrival = InputArrival ? InputArrival : Ctx.EmptyDriverSignal;
+			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+			if (Stage == 0 || Stage == 3) { P->OutHeight = Graph.CreateUAV(Output); }
+			else { P->OutArrival = Graph.CreateUAV(Output); }
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(Graph,
+				RDG_EVENT_NAME("Mixtormat.Feather.L%d.C%d.Stage%d", LayerIndex, ChildIndex, Stage),
+				Shader, P, Groups);
+		};
+		if (bEikonal)
+		{
+			Arrival[0] = Make(TEXT("Mixtormat.Feather.ArrivalA"));
+			Arrival[1] = Make(TEXT("Mixtormat.Feather.ArrivalB"));
+			Dispatch(1, Arrival[0], nullptr);
+			for (int32 Pass = 0; Pass < Behavior.FeatherIterations; ++Pass)
+			{
+				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
+				Read = 1 - Read;
+			}
+		}
+		FRDGTextureRef Out = Make(TEXT("Mixtormat.Feather.NativeHeight"));
+		Dispatch(bEikonal ? 3 : 0, Out, bEikonal ? Arrival[Read] : nullptr);
+		return Out;
+	}
+
 	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
@@ -1709,6 +1806,33 @@ namespace
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }
+			if (Child.Behavior.Type == EMixtormatBehaviorType::Feather)
+			{
+				// A filter under a generator runs after preceding native-height operations.
+				// A filter under Warp/Push/Carve/Deform acts immediately after its
+				// parent and leaves IDs, boundary distance and named fields unchanged.
+				const bool bDirect = Child.ScopeOwnerSourceChildIndex == Owner.SourceChildIndex;
+				const FChildRenderData* Parent = bDirect ? nullptr
+					: Layer.Children.FindByPredicate([&](const FChildRenderData& Candidate)
+					{
+						return Candidate.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
+							&& Candidate.SourceChildIndex < Child.SourceChildIndex
+							&& Candidate.Type == EMixtormatLayerChildType::Behavior
+							&& Candidate.Behavior.GeneratorChildIndex == Owner.SourceChildIndex
+							&& (Candidate.Behavior.Type == EMixtormatBehaviorType::Warp
+								|| Candidate.Behavior.Type == EMixtormatBehaviorType::Deform
+								|| Candidate.Behavior.Type == EMixtormatBehaviorType::Push
+								|| Candidate.Behavior.Type == EMixtormatBehaviorType::Carve);
+					});
+				if (!bDirect && !Parent) { continue; }
+				const bool bMasked = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+				FRDGTextureRef Gate = bMasked
+					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+					: nullptr;
+				Module.Height = AddGeneratorFeatherPasses(Ctx, Module.Height, Module.BoundaryField,
+					Child.Behavior, Gate, bMasked, LayerCtx.LayerIndex, Child.SourceChildIndex);
+				continue;
+			}
 			// A Deform directly beneath a Flow Field consumes that parent's completed
 			// field, while all unrelated nested behaviors stay operation-local.
 			const bool bNestedFlowDeform = Child.Behavior.Type == EMixtormatBehaviorType::Deform

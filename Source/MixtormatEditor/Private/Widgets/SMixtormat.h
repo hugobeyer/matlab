@@ -89,6 +89,7 @@ enum class EMixtormatChildCreation : uint8
 	BehaviorCarve,
 	BehaviorDeform,
 	BehaviorFlowField,
+	BehaviorFeather,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -588,6 +589,7 @@ private:
 	FMixtormatBehavior* GetSelectedBehaviorDeform();
 	const FMixtormatBehavior* GetSelectedBehaviorDeform() const;
 	TSharedRef<SWidget> BuildBehaviorDeformControls();
+	TSharedRef<SWidget> BuildBehaviorFeatherControls();
 	TSharedRef<SWidget> BuildBehaviorDeformSourceMenu();
 	FReply NavigateToChild(FMixtormatChildAddress Address);
 	// Mutates expansion only; the caller rebuilds if this returns true.
