@@ -35,23 +35,24 @@ float SampleHeight(int2 P)
 
 float BlurHeight(float2 UV)
 {
-    const float2 R = max(Radius, 0.0f) / float2(OutputSize);
-    const float H = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0);
-    float Sum = 4.0f * H;
+    const float2 Step = max(Radius, 0.0f) / (2.0f * float2(OutputSize));
+    const float Center = SourceHeight.SampleLevel(LinearWrapSampler, UV, 0);
+    float Sum = 0.0f;
     [unroll]
-    for (int Y = -1; Y <= 1; ++Y)
+    for (int Y = -2; Y <= 2; ++Y)
     {
+        const float Wy = Y == 0 ? 6.0f : abs(Y) == 1 ? 4.0f : 1.0f;
         [unroll]
-        for (int X = -1; X <= 1; ++X)
+        for (int X = -2; X <= 2; ++X)
         {
-            if (X == 0 && Y == 0) { continue; }
-            const float V = SourceHeight.SampleLevel(LinearWrapSampler,
-                UV + float2(X, Y) * R, 0);
-            if (!isfinite(V)) { return H; }
-            Sum += (X == 0 || Y == 0 ? 2.0f : 1.0f) * V;
+            const float Wx = X == 0 ? 6.0f : abs(X) == 1 ? 4.0f : 1.0f;
+            const float V = X == 0 && Y == 0 ? Center :
+                SourceHeight.SampleLevel(LinearWrapSampler, UV + float2(X, Y) * Step, 0);
+            if (!isfinite(V)) { return Center; }
+            Sum += (Wx * Wy) * V;
         }
     }
-    return Sum * (1.0f / 16.0f);
+    return Sum * (1.0f / 256.0f);
 }
 
 [numthreads(8, 8, 1)]

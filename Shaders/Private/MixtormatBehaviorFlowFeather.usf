@@ -27,21 +27,23 @@ int2 WrapFlowFeather(int2 P)
 
 float2 BlurredFlow(float2 UV, float2 Center)
 {
-    const float2 Step = max(0.0f, Radius) / float2(OutputSize);
-    float2 Sum = 4.0f * Center;
-    float Weight = 4.0f;
+    const float2 Step = max(0.0f, Radius) / (2.0f * float2(OutputSize));
+    float2 Sum = 36.0f * Center;
+    float Weight = 36.0f;
     [unroll]
-    for (int J = -1; J <= 1; J++)
+    for (int J = -2; J <= 2; ++J)
     {
+        const float Wy = J == 0 ? 6.0f : abs(J) == 1 ? 4.0f : 1.0f;
         [unroll]
-        for (int I = -1; I <= 1; I++)
+        for (int I = -2; I <= 2; ++I)
         {
             if (I == 0 && J == 0) { continue; }
+            const float Wx = I == 0 ? 6.0f : abs(I) == 1 ? 4.0f : 1.0f;
             const float2 P = UV + float2(I, J) * Step;
             const float V = Validity.SampleLevel(LinearWrapSampler, P, 0.0f);
             const float2 F = SourceFlow.SampleLevel(LinearWrapSampler, P, 0.0f).xy;
             if (!isfinite(V) || !all(isfinite(F)) || V < 0.5f) { continue; }
-            const float W = I == 0 || J == 0 ? 2.0f : 1.0f;
+            const float W = Wx * Wy;
             Sum += W * F;
             Weight += W;
         }

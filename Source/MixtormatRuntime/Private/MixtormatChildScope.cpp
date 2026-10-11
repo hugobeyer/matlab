@@ -107,6 +107,23 @@ namespace MixtormatChildScope
 			Result.Issue = EBehaviorInputIssue::Disabled;
 			return Result;
 		}
+		// A Behavior is a genuine child of its immediate parent, not an
+		// independent modifier of the nearest generator. Disabled intermediate
+		// Behaviors or scoped generators must suppress the entire subtree.
+		for (int32 AncestorIndex = ResolveOwnerIndex(Layer.Children, BehaviorChildIndex);
+			Layer.Children.IsValidIndex(AncestorIndex);
+			AncestorIndex = ResolveOwnerIndex(Layer.Children, AncestorIndex))
+		{
+			const FMixtormatLayerChild& Ancestor = Layer.Children[AncestorIndex];
+			if ((Ancestor.Type == EMixtormatLayerChildType::Behavior
+					&& !Ancestor.Behavior.bEnabled)
+				|| (Ancestor.Type == EMixtormatLayerChildType::Generator
+					&& !Ancestor.Generator.bEnabled))
+			{
+				Result.Issue = EBehaviorInputIssue::Disabled;
+				return Result;
+			}
+		}
 		if (!FMath::IsFinite(Behavior.Strength))
 		{
 			Result.Issue = EBehaviorInputIssue::InvalidStrength;

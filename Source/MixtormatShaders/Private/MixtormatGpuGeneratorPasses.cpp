@@ -36,6 +36,12 @@
 
 namespace MixtormatGpuCompositor
 {
+// The ordered Behavior pass may republish a Flow after its owning module's
+// diagnostic pass; use the same preview renderer rather than leaving stale Flow on screen.
+static void AddPublishedFieldPreview(FMixtormatComposeContext& Ctx,
+    const FMixtormatLayerPassContext& LayerCtx, const int32 ChildIndex,
+    const FName OutputName, const FPublishedField& Field);
+
 namespace
 {
 	// The grid a generator's distance solve runs on.
@@ -1878,6 +1884,39 @@ namespace
 				FGeneratorBundle ScopedBundle;
 				AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &ScopedBundle,
 					nullptr, Module.Height);
+				// Scoped Noise generators are evaluated inside their parent's Behavior
+				// chain, not in the outer generator loop. Apply their own Feather
+				// children here before height composition and Flow consumption.
+				for (const FChildRenderData& Filter : Layer.Children)
+				{
+					if (Filter.Type != EMixtormatLayerChildType::Behavior
+						|| Filter.Behavior.Type != EMixtormatBehaviorType::Feather
+						|| Filter.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+						|| Filter.Behavior.GeneratorChildIndex != Child.SourceChildIndex
+						|| Filter.SourceChildIndex <= Child.SourceChildIndex) { continue; }
+					const bool bFilterMask = HasScopedGeneratorMasks(Layer, Filter.SourceChildIndex);
+					FRDGTextureRef FilterGate = bFilterMask
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Filter.SourceChildIndex, true)
+						: nullptr;
+					if (ScopedBundle.Height)
+					{
+						ScopedBundle.Height = AddGeneratorFeatherPasses(Ctx, ScopedBundle.Height,
+							ScopedBundle.BoundaryField, Filter.Behavior, FilterGate, bFilterMask,
+							LayerCtx.LayerIndex, Filter.SourceChildIndex);
+					}
+					for (const FName Name : {FName(TEXT("GeneratedFlow")), FName(TEXT("FlowDirection"))})
+					{
+						const FPublishedFieldKey Key = PublishedKey(Layer, Child.SourceChildIndex, Name);
+						const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+						if (!Field || !Field->IsComplete()
+							|| Field->Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
+						const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
+							Filter.Behavior, FilterGate, bFilterMask,
+							LayerCtx.LayerIndex, Filter.SourceChildIndex);
+						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+						AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, Filtered);
+					}
+				}
 				if (ScopedBundle.Height && Module.Height)
 				{
 					const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
@@ -1937,6 +1976,8 @@ namespace
 						const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
 							Child.Behavior, Gate, bMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
 						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+						AddPublishedFieldPreview(Ctx, LayerCtx,
+							FlowParent->SourceChildIndex, FName(TEXT("FlowDirection")), Filtered);
 					}
 					continue;
 				}
@@ -4044,10 +4085,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				AddNoiseFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
 		}
-		if (bNoiseHeightless)
+		if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
-			// Any heightless Noise may still publish Flow fields. Filter only
-			// complete typed Flow outputs; never filter nonexistent native height.
+			// Direct Feather owns this Noise module's typed Flow outputs as well
+			// as its native height. This must run AFTER AddNoiseFlowPass, which
+			// replaces FlowDirection when Write Height is enabled. Otherwise
+			// Flow preview and consumers bypass the child's filter silently.
 			for (const FChildRenderData& Filter : Layer.Children)
 			{
 				if (Filter.Type != EMixtormatLayerChildType::Behavior
