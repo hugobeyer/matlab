@@ -762,7 +762,28 @@ TSharedRef<SWidget> SMixtormat::BuildAddSourcesMenu()
 TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 {
 	MixtormatMenu::FBuilder Menu;
-	Menu.Item(LOCTEXT("CopyShelfSource", "Copy Source"), MixtormatIcons::Duplicate(),
+	// Same shape as every other row menu in the stack: Duplicate / Copy / Copy as Instance first,
+	// then the instance-only actions, then Rename, then Remove last and destructive. A source is
+	// document data rather than a stack row, but it is reached by the same right-click habit, so
+	// it reads the same way.
+	Menu.Item(LOCTEXT("DuplicateSource", "Duplicate"), MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, SourceId]()
+		{
+			if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
+				[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
+			{
+				const FText SourceName = Source->DisplayName;
+				const FGuid NewSourceId = AppendSourceCopy(*Source);
+				if (!NewSourceId.IsValid()) { return; }
+				if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
+					[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
+				{
+					Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), SourceName);
+				}
+				CommitSourcesEdit(NewSourceId);
+			}
+		}));
+	Menu.Item(LOCTEXT("CopyShelfSource", "Copy"), MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, SourceId]()
 		{
 			if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
@@ -781,22 +802,6 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 			{
 				SourceInstanceClipboard = Producer->SourceId;
 			}
-		}));
-	Menu.Item(LOCTEXT("DuplicateSource", "Duplicate"), MixtormatIcons::Duplicate(),
-		FSimpleDelegate::CreateLambda([this, SourceId]()
-		{
-			const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
-				[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
-			if (!Source) { return; }
-			const FText SourceName = Source->DisplayName;
-			const FGuid NewSourceId = AppendSourceCopy(*Source);
-			if (!NewSourceId.IsValid()) { return; }
-			if (FMixtormatSourceEntry* Copy = WorkingSources.FindByPredicate(
-				[NewSourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == NewSourceId; }))
-			{
-				Copy->DisplayName = FText::Format(LOCTEXT("SourceCopyName", "{0} Copy"), SourceName);
-			}
-			CommitSourcesEdit(NewSourceId);
 		}));
 	// Instance-only operations, so a producer's menu stays exactly as it was.
 	if (const FMixtormatSourceEntry* Source = WorkingSources.FindByPredicate(
@@ -818,6 +823,7 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 				})).Enabled(ProducerId.IsValid());
 		}
 	}
+	Menu.Separator();
 	Menu.Item(LOCTEXT("RenameSource", "Rename"), nullptr,
 		FSimpleDelegate::CreateLambda([this, SourceId]()
 		{
@@ -828,10 +834,13 @@ TSharedRef<SWidget> SMixtormat::BuildSourceContextMenu(const FGuid SourceId)
 			}
 		}));
 	Menu.Item(
-		LOCTEXT("DeleteSource", "Delete Source"),
+		// The verb every other menu uses for this row. Deletion semantics are unchanged: this
+		// still removes the source and repairs every binding that named it.
+		LOCTEXT("RemoveSource", "Remove"),
 		MixtormatIcons::Trash(),
 		// The action returns FReply; the menu delegate takes void.
-		FSimpleDelegate::CreateLambda([this, SourceId]() { DeleteSource(SourceId); }));
+		FSimpleDelegate::CreateLambda([this, SourceId]() { DeleteSource(SourceId); }))
+		.Destructive();
 	return Menu.Build();
 }
 

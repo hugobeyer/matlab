@@ -328,21 +328,13 @@ void SMixtormat::AddSharedChildMenuItems(
 {
 	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 	const bool bInstance = Child && Child->IsInstance();
+	const bool bSupportsInstancing = !Child || GetChildCapabilities(*Child).bSupportsInstancing;
 
-	Menu.Item(
-		LOCTEXT("CopyChildContext", "Copy"),
-		MixtormatIcons::Duplicate(),
-		FSimpleDelegate::CreateLambda([this, Address]()
-		{
-			CopyChild(Address, false);
-		}));
-	Menu.Item(
-		LOCTEXT("CopyChildAsInstanceContext", "Copy as Instance"),
-		nullptr,
-		FSimpleDelegate::CreateLambda([this, Address]()
-		{
-			CopyChild(Address, true);
-		}));
+	// Type-specific actions first. Everything below this block is what *this* child can do that a
+	// sibling cannot -- its published outputs, the mask source it reads, the gate it owns. Callers
+	// put applicable child creation above this function, and the Duplicate/Copy/Paste rows this
+	// function appends below come after, so a menu always reads create -> specialise -> copy ->
+	// remove without any call site having to know the rule.
 	if (Child)
 	{
 		// One entry point for published data. The rows used to be repeated here as flattened
@@ -351,23 +343,9 @@ void SMixtormat::AddSharedChildMenuItems(
 		// there is nothing to publish, rather than shown disabled and spending a row on nothing.
 		if (!GetCopyableOutputs(GetChildCapabilities(*Child)).IsEmpty())
 		{
-			Menu.SubMenu(LOCTEXT("CopyChildOutputContext", "Outputs"), nullptr,
+			Menu.SubMenu(LOCTEXT("CopyChildOutputContext", "Outputs"), MixtormatIcons::Generated(),
 				FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address));
 		}
-	}
-	if (CanPasteChild(Address, ResolveChildIndexAt(Address)))
-	{
-		Menu.Item(LOCTEXT("PasteChildContext", "Paste"), nullptr,
-			FSimpleDelegate::CreateLambda([this, Address]()
-			{
-				PasteChild(Address, ResolveChildIndexAt(Address));
-			}));
-	}
-	// Only offered where it can land: a copied mask on a row that can own scoped masks.
-	if (Child && CanOwnScopedMasks(*Child) && CanCreateNoiseGate(Address))
-	{
-		Menu.Item(LOCTEXT("CreateNoiseGateContext", "Noise Gate"), MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }));
 	}
 	if (Child && Child->Type == EMixtormatLayerChildType::Mask && !bInstance)
 	{
@@ -376,6 +354,12 @@ void SMixtormat::AddSharedChildMenuItems(
 			{
 				return BuildMaskSourceMenuFor(Address);
 			}));
+	}
+	// Only offered where it can land: a copied mask on a row that can own scoped masks.
+	if (Child && CanOwnScopedMasks(*Child) && CanCreateNoiseGate(Address))
+	{
+		Menu.Item(LOCTEXT("CreateNoiseGateContext", "Noise Gate"), MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }));
 	}
 	if (CanPasteAsGatingMask(Address))
 	{
@@ -386,7 +370,6 @@ void SMixtormat::AddSharedChildMenuItems(
 	}
 	if (Child && Child->Type == EMixtormatLayerChildType::OutputReference && !bInstance)
 	{
-		Menu.Separator();
 		Menu.Item(LOCTEXT("GoToOutputSourceContext", "Go to Source"),
 			MixtormatIcons::ArrowUp(),
 			FSimpleDelegate::CreateLambda([this, Address]() { GoToChildInstanceSource(Address); }))
@@ -395,6 +378,36 @@ void SMixtormat::AddSharedChildMenuItems(
 		Menu.SubMenu(LOCTEXT("ReplaceOutputSourceContext", "Source"), nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildOutputReferenceSourceMenu, Address))
 			.Enabled(!bInstance);
+	}
+
+	// The clipboard verbs, in the one order every menu uses: Copy, then Copy as Instance, then the
+	// single Paste whose own Mode decides which of the two it lands as.
+	Menu.Item(
+		LOCTEXT("CopyChildContext", "Copy"),
+		MixtormatIcons::Duplicate(),
+		FSimpleDelegate::CreateLambda([this, Address]()
+		{
+			CopyChild(Address, false);
+		}));
+	// Only where a second row could share this child's identity. A scoped mask filter cannot, so
+	// offering the entry here would be an invitation the paste path refuses a click later.
+	if (bSupportsInstancing)
+	{
+		Menu.Item(
+			LOCTEXT("CopyChildAsInstanceContext", "Copy as Instance"),
+			MixtormatIcons::Duplicate(),
+			FSimpleDelegate::CreateLambda([this, Address]()
+			{
+				CopyChild(Address, true);
+			}));
+	}
+	if (CanPasteChild(Address, ResolveChildIndexAt(Address)))
+	{
+		Menu.Item(LOCTEXT("PasteChildContext", "Paste"), nullptr,
+			FSimpleDelegate::CreateLambda([this, Address]()
+			{
+				PasteChild(Address, ResolveChildIndexAt(Address));
+			}));
 	}
 	if (!bInstance)
 	{
@@ -506,7 +519,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 	AddIdGroupMenuItems(Menu, MakeGroupChildAddress(GroupId, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeGroupChildAddress(GroupId, ChildIndex));
 	Menu.Item(
-		LOCTEXT("RemoveGroupChildContext", "Delete"),
+		LOCTEXT("RemoveGroupChildContext", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
 		{
@@ -621,20 +634,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 	AddCreationSections(Menu, FMixtormatAddTarget::Group(GroupId));
 
 	Menu.Separator();
-	Menu.Item(
-		LOCTEXT("RenameGroupContext", "Rename"),
-		nullptr,
-		FSimpleDelegate::CreateLambda([this, GroupId]()
-		{
-			SelectLayerGroup(GroupId);
-			BeginRenameSelection();
-		}))
-		.Shortcut(LOCTEXT("RenameGroupShortcut", "F2"));
+	// Type-specific actions next: the things only a group row can do, before the shared verbs.
 	Menu.SubMenu(
 		LOCTEXT("GroupAccentContext", "Colour"),
 		nullptr,
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupAccentMenu, GroupId));
-	Menu.Separator();
 	Menu.Item(
 		bGroupEnabled
 			? LOCTEXT("DisableGroupContext", "Disable")
@@ -646,12 +650,22 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 		}));
 
 	Menu.Separator();
-	// Ungroup, not Delete: it releases the layers and keeps every one of them, which is the only
-	// group operation that cannot lose work.
+	// Ungroup, not Remove: it releases the layers and keeps every one of them, which is the only
+	// group operation that cannot lose work. A group therefore has no Remove row at all -- the
+	// verb means the same thing everywhere else and would promise a loss this action does not do.
 	Menu.Item(
 		LOCTEXT("UngroupGroupContext", "Ungroup"),
 		nullptr,
 		FSimpleDelegate::CreateLambda([this, GroupId]() { UngroupLayerGroup(GroupId); }));
+	Menu.Item(
+		LOCTEXT("RenameGroupContext", "Rename"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, GroupId]()
+		{
+			SelectLayerGroup(GroupId);
+			BeginRenameSelection();
+		}))
+		.Shortcut(LOCTEXT("RenameGroupShortcut", "F2"));
 
 	return Menu.Build();
 }
@@ -722,15 +736,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	}
 
 	Menu.Item(
-		LOCTEXT("RenameLayerContext", "Rename"),
-		nullptr,
-		FSimpleDelegate::CreateLambda([this, LayerIndex]()
-		{
-			SelectWorkingLayer(LayerIndex);
-			BeginRenameSelection();
-		}))
-		.Shortcut(LOCTEXT("RenameShortcut", "F2"));
-	Menu.Item(
 		LOCTEXT("DuplicateLayerContext", "Duplicate"),
 		MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this]() { DuplicateSelectedLayer(); }));
@@ -738,12 +743,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 	// Acts on the multi-selection, not on the row the menu opened over, so shift-picking a run of
 	// layers and right-clicking any of them does the same thing as the toolbar button.
 	// The menu is rebuilt on every open, so the count in the label is the count at open time.
+	// One verb, like Remove: "Group" says the same whether it groups one layer or twenty, and the
+	// count rides along rather than turning the action into a second, differently named command.
 	const int32 SelectionCount = GetSelectedLayerIndices().Num();
 	Menu.Item(
 		SelectionCount > 1
 			? FText::Format(LOCTEXT("CreateGroupFromManyContext", "Group {0} Layers"),
 				FText::AsNumber(SelectionCount))
-			: LOCTEXT("CreateGroupContext", "Create Group"),
+			: LOCTEXT("CreateGroupContext", "Group"),
 		MixtormatIcons::Folder(),
 		FSimpleDelegate::CreateLambda([this]() { CreateGroupFromSelection(); }))
 		.Enabled(TAttribute<bool>::CreateLambda([this]() { return CanCreateGroup(); }));
@@ -755,6 +762,16 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 			nullptr,
 			FSimpleDelegate::CreateLambda([this, GroupId]() { UngroupLayerGroup(GroupId); }));
 	}
+
+	Menu.Item(
+		LOCTEXT("RenameLayerContext", "Rename"),
+		nullptr,
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			SelectWorkingLayer(LayerIndex);
+			BeginRenameSelection();
+		}))
+		.Shortcut(LOCTEXT("RenameShortcut", "F2"));
 
 	// A plain copy lands at the end of the layer; an instance lands at the top, except that a
 	// source in this same layer pushes it to the first slot below that source. One Paste row for
@@ -791,7 +808,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 
 	Menu.Separator();
 	Menu.Item(
-		LOCTEXT("DeleteLayerContext", "Delete"),
+		LOCTEXT("RemoveLayerContext", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this]() { DeleteSelectedLayer(); }))
 		.Destructive();
@@ -1276,7 +1293,7 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
 	Menu.Item(
-		LOCTEXT("RemoveEffectChild", "Remove Effect"),
+		LOCTEXT("RemoveEffectChild", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
@@ -1433,76 +1450,14 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 	AddIdGroupMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
-	// Named after the row it is on. This menu serves generated masks, craquelure and colour id
-	// nodes, and "Remove Generated Mask" on a craquelure row reads like the wrong entry. Resolved
-	// here rather than bound, because the menu is rebuilt on every right-click.
-	FText RemoveLabel = LOCTEXT("RemoveGeneratedChild", "Remove Generated Mask");
-	if (WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
-	{
-		switch (ResolveChild(LayerIndex, ChildIndex)->Type)
-		{
-		case EMixtormatLayerChildType::Craquelure:
-			RemoveLabel = LOCTEXT("RemoveCraquelureChild", "Remove Craquelure");
-			break;
-		case EMixtormatLayerChildType::ColorId:
-			RemoveLabel = LOCTEXT("RemoveColorIdChild", "Remove Color ID Mask");
-			break;
-		case EMixtormatLayerChildType::Filter:
-			RemoveLabel = ResolveChild(LayerIndex, ChildIndex)->Filter.bSurfaceIds
-				? LOCTEXT("RemoveSurfaceIdsChild", "Remove Surface IDs")
-				: LOCTEXT("RemoveFilterChild", "Remove Cluster IDs");
-			break;
-		case EMixtormatLayerChildType::HsvFilter:
-			RemoveLabel = LOCTEXT("RemoveHsvFilterChild", "Remove HSV From IDs");
-			break;
-		case EMixtormatLayerChildType::RandomId:
-			RemoveLabel = LOCTEXT("RemoveRandomIdChild", "Remove Random From IDs");
-			break;
-		case EMixtormatLayerChildType::RampId:
-			RemoveLabel = LOCTEXT("RemoveRampIdChild", "Remove Ramp From IDs");
-			break;
-		case EMixtormatLayerChildType::UvFromIds:
-			RemoveLabel = LOCTEXT("RemoveUvIdChild", "Remove UV From IDs");
-			break;
-		case EMixtormatLayerChildType::ReliefFromIds:
-			RemoveLabel = LOCTEXT("RemoveReliefIdChild", "Remove Relief From IDs");
-			break;
-		case EMixtormatLayerChildType::BoundaryFromIds:
-			RemoveLabel = LOCTEXT("RemoveBoundaryIdChild", "Remove Boundary From IDs");
-			break;
-		case EMixtormatLayerChildType::PatternId:
-			RemoveLabel = LOCTEXT("RemovePatternIdChild", "Remove Pattern IDs");
-			break;
-
-		case EMixtormatLayerChildType::IdGroup:
-			RemoveLabel = LOCTEXT("RemoveIdGroupChild", "Remove ID Group");
-			break;
-		case EMixtormatLayerChildType::OutputReference:
-			RemoveLabel = LOCTEXT("RemoveOutputReferenceChild", "Remove Output Reference");
-			break;
-		case EMixtormatLayerChildType::Generator:
-			RemoveLabel = LOCTEXT("RemoveGeneratorChild", "Remove Generator");
-			break;
-		case EMixtormatLayerChildType::HeightBlend:
-			RemoveLabel = LOCTEXT("RemoveHeightBlendChild", "Remove Height Blend");
-			break;
-		case EMixtormatLayerChildType::HeightCurve:
-			RemoveLabel = LOCTEXT("RemoveHeightCurveChild", "Remove Height Remap");
-			break;
-		case EMixtormatLayerChildType::HeightColorRamp:
-			RemoveLabel = LOCTEXT("RemoveHeightColorRampChild", "Remove Height Color Ramp");
-			break;
-		case EMixtormatLayerChildType::Behavior:
-			RemoveLabel = LOCTEXT("RemoveBehaviorChild", "Remove Behavior");
-			break;
-		default:
-			break;
-		}
-	}
-
+	// One verb for every generated row. This menu serves masks, craquelure, colour ID nodes,
+	// generators, behaviors and the height ops, and the labels used to name the row type -- so the
+	// same menu said "Remove Generated Mask" on a craquelure row, "Remove Behavior" on a behavior
+	// and "Remove ID Group" on an ID group, three ways of saying one action on rows that are
+	// already visibly their own type. The row glyph and name say what it is; the menu says what
+	// pressing it does.
 	Menu.Item(
-		RemoveLabel,
+		LOCTEXT("RemoveGeneratedChild", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
@@ -1527,7 +1482,7 @@ TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, con
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
 	Menu.Item(
-		LOCTEXT("RemoveMaskFilterContext", "Remove Filter"),
+		LOCTEXT("RemoveMaskFilterContext", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
@@ -1598,7 +1553,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, MaskIndex));
 	Menu.Separator();
 	Menu.Item(
-		LOCTEXT("DeleteMaskContext", "Remove Mask"),
+		LOCTEXT("RemoveMaskContext", "Remove"),
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
 		{

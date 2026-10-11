@@ -348,7 +348,7 @@ FReply SMixtormat::UngroupLayerGroup(const FGuid GroupId)
 		return FReply::Handled();
 	}
 	// Order and contents are untouched; only the membership goes. Shared children go with the
-	// group, which is why this is Ungroup and not Delete.
+	// group, which is why this is Ungroup and not Remove.
 	for (FMixtormatLayer& Layer : WorkingLayers)
 	{
 		if (Layer.GroupId == GroupId)

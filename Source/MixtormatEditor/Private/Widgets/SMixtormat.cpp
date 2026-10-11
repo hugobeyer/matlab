@@ -396,7 +396,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 		: FMath::Clamp(SelectedLayerIndex, 0, WorkingLayers.Num() - 1);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	// Undoing past a Create Group leaves these naming layers and a group the restored state does
+	// Undoing past a Group leaves these naming layers and a group the restored state does
 	// not have. Dropping them is the same reasoning as clearing the child selection above: the
 	// state that comes back is not the state they were taken against.
 	SelectedLayerIds.Reset();

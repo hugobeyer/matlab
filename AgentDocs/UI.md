@@ -37,6 +37,31 @@ Published child outputs have one `Outputs` context submenu, populated from
 The formerly duplicated flattened Copy rows were removed; children without copyable outputs
 omit the submenu. `Widgets/Layers/MixtormatLayerMenus.cpp` owns this menu construction.
 
+## Context menu convention
+
+Every right-click menu in the stack reads in one order, so the same muscle memory works on a
+layer, a group, a child of any type, and a Sources-shelf row:
+
+1. **Create** — applicable child creation (Effects, IDs, Filter, Masks, Generators, scoped
+   children).
+2. **Type-specific** — only this row's own actions: Outputs, mask Source, Noise Gate,
+   Blend Mode, Gating Mask, Replace with…, Colour, Enable/Disable.
+3. **Shared verbs** — `Duplicate`, `Copy`, `Copy as Instance`, `Paste`, `Group`/`Ungroup`,
+   `Rename`. `Rename` carries the `F2` shortcut wherever it appears.
+4. **`Remove`** — always last, always `Trash()`, always `.Destructive()`.
+
+Verbs are unified across layers, generators, behaviors, masks, filters, effects and sources:
+the removal entry is **`Remove`** everywhere (not `Delete`, and not `Remove Generator` /
+`Remove Behavior` / `Remove Effect` / `Remove Mask` / `Remove Filter` / `Remove Generated Mask`
+— the row glyph and name already say what the row is), grouping is **`Group`** / **`Ungroup`**,
+and `Copy` / `Copy as Instance` are worded identically on shelf sources and stack children.
+`Copy as Instance` is offered only where `FMixtormatChildCapabilities::bSupportsInstancing` is
+set, so no menu lists an entry the paste path would refuse. Icons come from `MixtormatIcons`
+only — `Duplicate` for the copy pair, `Trash` for every removal — with no local sizing or
+palette values. Right-clicking one row of a multi-selection keeps the whole selection, so
+`Group` and `Remove` act on what was selected rather than on the row under the cursor.
+A group has no `Remove`: `Ungroup` is the non-destructive release and is labelled as such.
+
 Structural connection menus/labels and the atomic setter are shared by explicit child
 address in `Widgets/Layers/MixtormatStructuralConnections.cpp` (interaction v1 D3).
 Inspector Push/Warp wrappers use this adapter; existing sliders remain in place. Connection

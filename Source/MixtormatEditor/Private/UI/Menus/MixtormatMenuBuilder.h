@@ -22,7 +22,7 @@ struct FSlateBrush;
 //   Menu.Caption(LOCTEXT("Add", "Add"))
 //       .SubMenu(LOCTEXT("Mask", "Mask"), MaskIcon, FOnGetContent::CreateSP(...))
 //       .Separator()
-//       .Item(LOCTEXT("Delete", "Delete"), nullptr, Action).Destructive().Shortcut(Del);
+//       .Item(LOCTEXT("Remove", "Remove"), nullptr, Action).Destructive().Shortcut(Del);
 //   return Menu.Build();
 namespace MixtormatMenu
 {

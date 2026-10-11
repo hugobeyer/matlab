@@ -50,6 +50,14 @@ struct FMixtormatPublishedOutputDesc
 struct FMixtormatChildCapabilities
 {
 	TArray<FMixtormatPublishedOutputDesc> Outputs;
+
+	// Whether this child can be copied with Copy as Instance. True for the ordinary case: an
+	// instance is just a second row pointing at the first. False only where the child has no
+	// identity a second row could share -- a scoped mask filter, which is authored beneath the
+	// mask it filters and can never stand as a row of its own (see IsMaskFilter in
+	// MixtormatLayerClipboard.cpp). Context menus read this rather than deciding per call site,
+	// so the row is omitted once, everywhere, instead of being listed and then refused on paste.
+	bool bSupportsInstancing = true;
 };
 
 // The one place a future output gets taught to the system: a new producer needs one case here and

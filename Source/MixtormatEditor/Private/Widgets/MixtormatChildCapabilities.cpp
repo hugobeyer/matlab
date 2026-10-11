@@ -354,6 +354,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		// preview -- see priorities.md on hardcoded preview tables.
 		break;
 	}
+	// A scoped mask filter (Blur / Curvature under a mask) is the one child with no independent
+	// row identity: it exists to filter the mask it is authored beneath, and the paste path refuses
+	// it as a standalone row for the same reason. Declared here so every Copy as Instance call site
+	// agrees with that instead of offering an entry the paste would reject.
+	if (Child.Type == EMixtormatLayerChildType::Blur
+		|| Child.Type == EMixtormatLayerChildType::Curvature)
+	{
+		Result.bSupportsInstancing = false;
+	}
 	// Preview IDs use NAME_None; references use the registry's explicit RegionIds address.
 	const bool bPublishesIds = Result.Outputs.ContainsByPredicate(
 		[](const FMixtormatPublishedOutputDesc& Output)

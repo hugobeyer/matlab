@@ -611,7 +611,7 @@ void SMixtormat::UpdateMultiSelection(const int32 LayerIndex)
 
 	// Clicking inside an existing multi-selection keeps it. Right-click runs through here before
 	// the context menu opens, so collapsing here would mean picking three layers and then being
-	// offered "Create Group" for one of them -- the selection destroyed by the act of acting on it.
+	// offered "Group" for one of them -- the selection destroyed by the act of acting on it.
 	if (SelectedLayerIds.Num() > 1 && SelectedLayerIds.Contains(ClickedId))
 	{
 		return;
