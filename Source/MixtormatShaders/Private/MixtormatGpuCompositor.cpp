@@ -1437,7 +1437,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	// ChildTarget names a child by (LayerId, ChildId); every pass below still addresses a child
 	// by (LayerIndex, ChildIndex) the way LayerMask/ClusterIds always have, so resolve once here
 	// rather than teach each pass file a second, GUID-based comparison.
-	if (DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput)
+	if (DebugSettings.Mode == EMixtormatDebugPreviewMode::ChildOutput
+		|| (DebugSettings.bMaskOverlay && DebugSettings.ChildTarget.IsValid()))
 	{
 		DebugSettings.LayerIndex = INDEX_NONE;
 		DebugSettings.ChildIndex = INDEX_NONE;
