@@ -301,16 +301,28 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 
 bool SMixtormat::IsMaskOverlayTargetReady() const
 {
-	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+	const FMixtormatLayerChild* Child =
+		ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
+	if (!Child && SelectedGroupId.IsValid())
+	{
+		const FMixtormatLayerGroup* Group =
+			MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
+		if (Group && Group->Children.IsValidIndex(SelectedGroupChildIndex))
+		{
+			Child = &Group->Children[SelectedGroupChildIndex];
+		}
+	}
 	if (!Child || !IsChildOutputPreviewReady(*Child))
 	{
 		return false;
 	}
-	return Child->Type == EMixtormatLayerChildType::Mask
+	const bool bMask = Child->Type == EMixtormatLayerChildType::Mask
 		|| Child->Type == EMixtormatLayerChildType::Generated
 		|| Child->Type == EMixtormatLayerChildType::Craquelure
 		|| Child->Type == EMixtormatLayerChildType::ColorId
 		|| Child->Type == EMixtormatLayerChildType::RandomId;
+	return bMask && ResolveChildPreviewTarget(
+		NAME_None, EMixtormatPreviewOutputKind::Mask).IsValid();
 }
 
 FReply SMixtormat::ResetDiagnosticOverlays()
