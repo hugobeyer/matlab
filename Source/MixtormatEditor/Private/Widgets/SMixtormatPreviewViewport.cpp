@@ -412,7 +412,17 @@ public:
 			Owner.ToggleDisplacement();
 			return true;
 		}
-		// Display-only mask diagnostic; only the focused viewport consumes W.
+		// Our viewport has orbit/pan/light controls, not the editor's RMB flight camera.
+		// Consume WASD while RMB is held so the inherited viewport client cannot
+		// move the camera and W cannot toggle a diagnostic during lighting rotation.
+		if (EventArgs.Viewport
+			&& EventArgs.Viewport->KeyState(EKeys::RightMouseButton)
+			&& (EventArgs.Key == EKeys::W || EventArgs.Key == EKeys::A
+				|| EventArgs.Key == EKeys::S || EventArgs.Key == EKeys::D))
+		{
+			return true;
+		}
+		// W applies only when the focused viewport is not in RMB light-rotation mode.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::W
 			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
