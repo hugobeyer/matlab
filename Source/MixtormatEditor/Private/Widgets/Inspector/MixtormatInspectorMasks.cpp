@@ -1046,7 +1046,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 
 	// Exclusive source kinds use the same segmented group as the layer composition mode.
 	// Published Noise Value references remain available through the mask's source menu.
-	Cards->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
+	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
 		FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
 	[
 		SNew(SBox)
