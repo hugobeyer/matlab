@@ -63,8 +63,9 @@ struct FMixtormatNoiseRenderData
 	float ModeHeightWeight = 1.0f;
 	float ModeSlopeWeight = 0.0f;
 	float ModeCurlWeight = 0.0f;
-	float ModeConstantWeight = 0.0f;
+	float ModeForceWeight = 0.0f;
 	float ModeAngle = 0.0f;
+	float ModeGravity = 0.0f;
 	float ModeStrength = 1.0f;
 	float FlowAdd = 1.0f;
 	float FlowMix = 0.0f;
