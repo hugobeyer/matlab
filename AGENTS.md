@@ -7,6 +7,18 @@ subsystem doc and the right files; it is not the full manual.
 
 Minimize token consumption. Read only files necessary for the requested change if it was specified. Avoid repeated repository-wide searches, unnecessary explanations, and redundant tool calls. Preserve existing features or suggest necessities. When the request was literal, implement the task completely and report only modified files and essential findings.
 
+## Code Reuse — Recommended Practices
+
+- Prefer existing implementations before creating new functions, widgets, helpers or systems.
+- Consider **Reuse → Extend → Refactor → Create**, but use judgment.
+- Favor canonical ownership and a single source of truth.
+- Avoid duplicating logic unless separation provides a clear benefit.
+- Reuse shared components when appropriate; don't force incompatible abstractions.
+- Prefer modular, maintainable implementations over unnecessary generalization.
+- Preserve existing features and APIs unless removal is approved.
+- When a new implementation is preferable, proceed without unnecessary restrictions.
+- Keep changes focused and avoid unrelated refactoring.
+
 ## 0. Agent working style
 
 - The user has ADHD: keep responses short, direct, and scoped to the request.
