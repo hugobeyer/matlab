@@ -419,26 +419,12 @@ public:
 			Owner.ToggleMaskOverlay();
 			return true;
 		}
-		// Temporary: cycles the raw-channel diagnostic view. No toolbar yet -- WorkingStatusText
-		// is the only indication, same as every other viewport hotkey here.
-		if (EventArgs.Event == IE_Pressed
-			&& (EventArgs.Key == EKeys::U || EventArgs.Key == EKeys::M)
-			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		// V always returns to the untouched lit material. Other overlays use
+		// independent hotkeys; former M/U and V cycling no longer intercept keys.
+		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V
+			&& !IsCtrlPressed() && !IsAltPressed())
 		{
-			Owner.CycleModulePreview();
-			return true;
-		}
-		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V)
-		{
-			// Shift+V jumps straight back to Material instead of cycling through every channel.
-			if (IsShiftPressed())
-			{
-				Owner.ResetChannelPreview();
-			}
-			else
-			{
-				Owner.CycleChannelPreview();
-			}
+			Owner.ResetDiagnosticOverlays();
 			return true;
 		}
 		// Bare 1-4: the geometry rail's meshes, routed through the workspace.
@@ -558,6 +544,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnToggleMaskOverlay = InArgs._OnToggleMaskOverlay;
+	OnResetDiagnosticOverlays = InArgs._OnResetDiagnosticOverlays;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnSetPreviewMesh = InArgs._OnSetPreviewMesh;
@@ -1369,6 +1356,11 @@ void SMixtormatPreviewViewport::ToggleOverlayUi()
 	OnToggleOverlayUi.ExecuteIfBound();
 }
 
+void SMixtormatPreviewViewport::ResetDiagnosticOverlays()
+{
+	OnResetDiagnosticOverlays.ExecuteIfBound();
+}
+
 void SMixtormatPreviewViewport::ToggleMaskOverlay()
 {
 	OnToggleMaskOverlay.ExecuteIfBound();
@@ -1498,7 +1490,7 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 	if (ChannelPreview != EMixtormatChannelPreview::Material)
 	{
 		return FText::Format(
-			NSLOCTEXT("SMixtormatPreviewViewport", "ChannelPreviewModeLabel", "{0}  (Shift+V for Material)"),
+			NSLOCTEXT("SMixtormatPreviewViewport", "ChannelPreviewModeLabel", "{0}  (V for Material)"),
 			FText::FromString(GetChannelPreviewLabel()));
 	}
 	if (!bUsingDebugPreview)
