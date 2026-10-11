@@ -1044,31 +1044,50 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 					"from the asset -- so a mask built either way behaves identically."))
 		]);
 
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("MaskSourceLabel", "Source"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]() { return GetMaskSourceLabel(GetSelectedChildAddress()); }),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskSourceMenu), nullptr, TAttribute<FText>(), 0.0f),
-		LOCTEXT("MaskNoiseSourceHint", "Noise is inline coverage, not a height generator. Signed Value maps to 0..1; unsigned Value is clamped. Noise Value from… reads the existing generator's live completed output. Source changes preserve shaping, filters and scope; break an instance to edit its source.")));
-
-	AddSliderRow(Cards, SNew(SBox)
-		.Visibility_Lambda([this]()
-		{
-			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
-			return M && M->UsesNoise() ? EVisibility::Visible : EVisibility::Collapsed;
-		})
+	// Exclusive source kinds use the same segmented group as the layer composition mode.
+	// Published Noise Value references remain available through the mask's source menu.
+	Cards->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
+		FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
+	[
+		SNew(SBox)
 		.IsEnabled_Lambda([this]()
 		{
 			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 			return Child && !Child->IsInstance();
 		})
 		[
-			BuildNoisePatternPlacementControls([this]() -> FMixtormatNoise*
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("MaskSourceTextureChoice", "Texture"),
+				LOCTEXT("MaskSourceNoiseChoice", "Noise"),
+				LOCTEXT("MaskSourceValuesChoice", "Layer Values")})
+			.ToolTips(TArray<FText>{
+				LOCTEXT("MaskSourceTextureHint", "Sample an assigned mask texture."),
+				LOCTEXT("MaskSourceNoiseHint", "Produce inline tileable Noise coverage."),
+				LOCTEXT("MaskSourceValuesHint", "Read the selected material layer channel.")})
+			.ActiveIndex_Lambda([this]() -> int32
 			{
-				FMixtormatMaskLayer* M = GetSelectedLayerMask();
-				return M && M->UsesNoise() ? &M->Noise : nullptr;
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				if (!M || M->HasPublishedSource()) { return INDEX_NONE; }
+				switch (M->Source)
+				{
+				case EMixtormatMaskSource::Texture: return 0;
+				case EMixtormatMaskSource::Noise: return 1;
+				case EMixtormatMaskSource::LayerValues: return 2;
+				default: return INDEX_NONE;
+				}
 			})
-		]);
+			.OnChosen_Lambda([this](const int32 Index)
+			{
+				const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				if (!M || Index < 0 || Index > 2) { return; }
+				const EMixtormatMaskSource Kind = Index == 0
+					? EMixtormatMaskSource::Texture
+					: Index == 1 ? EMixtormatMaskSource::Noise : EMixtormatMaskSource::LayerValues;
+				SelectMaskSource(GetSelectedChildAddress(), Kind);
+			})
+		]
+	];
+
 
 	// Layer Values only, and collapsed on a texture mask where it would be a control over nothing.
 	// UsesLayerValues(), not the raw field: an explicit published source wins over either, and a
@@ -1121,6 +1140,27 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatMaskLayer>(
 		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
 
+
+	// Keep all placement transforms below source selection, blending and shaping.
+	AddSliderRow(Cards, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->UsesNoise() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.IsEnabled_Lambda([this]()
+		{
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			return Child && !Child->IsInstance();
+		})
+		[
+			BuildNoisePatternPlacementControls([this]() -> FMixtormatNoise*
+			{
+				FMixtormatMaskLayer* M = GetSelectedLayerMask();
+				return M && M->UsesNoise() ? &M->Noise : nullptr;
+			})
+		]);
+
 	// Source placement. Every transform here maps the unit square onto itself, which is the
 	// constraint: the read is wrapped in a frac(), so anything else seams at the repeat.
 	//
@@ -1168,13 +1208,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskRotationMenu), nullptr, TAttribute<FText>(), 0.0f),
 		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
 
-	AddSliderRow(Panel, PlacementCard);
 
 	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatMaskLayer* M = GetSelectedLayerMask();
 		return M ? &M->Shaping : nullptr;
 	});
+
+	AddSliderRow(Panel, PlacementCard);
 
 	return SNew(SBox)
 		// Gated on the selected child actually being a Mask, not just on a layer being selected:
