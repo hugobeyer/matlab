@@ -1,6 +1,6 @@
 # Behavior System — migration in progress
 
-Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; review PR #5 remains draft. Unreal 5.8, UHT, shader compilation, GPU runtime, save/load and performance validation have **not** run. Do not merge without authorized validation.
+Last source update: October 10, 2026. Branch: `feature/behavior-system-v2`; review PR #5 is open. Unreal 5.8, UHT, shader compilation, GPU runtime, save/load and performance validation have **not** run. Do not merge without authorized validation.
 
 This document describes the target architecture and the currently implemented Behavior paths. **Legacy effects remain live in the source**; do not treat the removal sections below as implementation evidence.
 
@@ -106,11 +106,12 @@ C++/UHT compilation, shader compilation, GPU runtime behaviour, six-family visua
 
 ## 8. Critical migration status (source-reviewed)
 
-- `MixtormatGpuGeneratorPasses.cpp` still calls `HasActiveFlowTools` and `AddGeneratorFlowToolPasses` before `ApplyGeneratorPostBehaviors`. This is a **parallel legacy execution path**.
-- The old producer publishes `FlowDirection` and `WarpedUV` using the jump-flood / resolve / smooth / apply pipeline. Moving its useful producer controls and publication to generator-owned typed field production is Phase 2 and **has not been implemented**.
-- Behavior `Warp`/`Deform` can consume published Flow/UVMap or derive a height-gradient UV map; this is **not equivalent** to migrating the legacy flow solve.
-- Behavior `Carve` presently uses `SignedCarveCS` and does **not** preserve the full traced legacy Flow Carve groove/deposit algorithm.
-- Do not remove legacy producers before a replacement publishes complete typed fields. Do not claim legacy removal, compilation, or runtime validation without evidence.
+- The earlier claim that `HasActiveFlowTools` and `AddGeneratorFlowToolPasses` are called before `ApplyGeneratorPostBehaviors` is **stale**. Neither symbol occurs in the current `MixtormatGpuGeneratorPasses.cpp`.
+- The generator call site builds pre-generation coordinates, then runs the generator. When a native-height working-flow snapshot is needed, it calls `AddNoiseFlowPass` before `ApplyGeneratorPostBehaviors`; post-generation processing runs before height normalization. Noise's completed `FlowDirection` diagnostic is published after normalization when height exists.
+- `ApplyGeneratorPostBehaviors` executes scoped Noise Flow composition in authored child order; it also still contains a `FlowField` Behavior solve path. These facts do **not** establish completion of the P3 removal of obsolete Behavior flow types or P4 typed-socket Inspector cleanup.
+- Behavior `Warp`/`Deform` may consume accumulated working Flow, a published Flow/UV map, or native-height gradients, depending on authoring and validation. These paths must be tested before asserting visual or algorithmic parity.
+- Behavior `Carve` uses `SignedCarveCS` with typed SDF or OwnBoundary distance. Full traced Flow-Carve groove/deposit parity has not been established by this source review.
+- Do not infer successful legacy cleanup, compilation, save/load, or GPU validation from static source alone.
 
 ## 9. Known remaining work
 
