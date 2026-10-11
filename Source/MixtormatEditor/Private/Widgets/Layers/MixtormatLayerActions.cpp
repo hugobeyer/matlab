@@ -1219,6 +1219,8 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 	if (FMixtormatLayerChild* Child = AppendGroupChild(GroupId, EMixtormatLayerChildType::Mask))
 	{
 		Child->Mask = MoveTemp(NewMask);
+		if (Child->DisplayName.IsEmpty())
+			Child->DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
 		MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 		FinishGroupChildEdit(GroupId);
 	}
