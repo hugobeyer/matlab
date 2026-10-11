@@ -22,6 +22,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "MixtormatGpuCompositor.h"
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
+#include "Preview/MixtormatViewportMaskPostFx.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Materials/Material.h"
@@ -539,6 +540,8 @@ SMixtormatPreviewViewport::SMixtormatPreviewViewport()
 
 SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 {
+	// Remove capture and post-process components before the preview scene tears down.
+	MaskPostFx.Reset();
 	if (PreviewMeshComponent)
 	{
 		PreviewScene.RemoveComponent(PreviewMeshComponent);
@@ -547,6 +550,38 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 	{
 		PreviewScene.RemoveComponent(StudioReflectionCapture);
 	}
+}
+
+void SMixtormatPreviewViewport::Tick(
+	const FGeometry& Geometry, const double CurrentTime, const float DeltaTime)
+{
+	SEditorViewport::Tick(Geometry, CurrentTime, DeltaTime);
+	UpdateMaskPostFx();
+}
+
+void SMixtormatPreviewViewport::UpdateMaskPostFx()
+{
+	if (!bMaskPostFxActive || !PreviewMeshComponent || !PreviewViewportClient.IsValid()
+		|| !PreviewViewportClient->Viewport || !LayerCompositor.IsValid())
+	{
+		if (MaskPostFx)
+		{
+			MaskPostFx->Disable();
+		}
+		return;
+	}
+	if (!MaskPostFx)
+	{
+		MaskPostFx = MakeUnique<FMixtormatViewportMaskPostFx>(PreviewScene);
+	}
+	MaskPostFx->Update(
+		*PreviewMeshComponent,
+		LayerCompositor->GetDebugOutput(),
+		LayerCompositor->GetHeightOutput(),
+		PreviewViewportClient->Viewport->GetSizeXY(),
+		PreviewViewportClient->GetViewLocation(),
+		PreviewViewportClient->GetViewRotation(),
+		CameraFov, bDisplacementEnabled, DisplacementAmount, MaskPostFxOpacity);
 }
 
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
@@ -679,6 +714,12 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
+	bMaskPostFxActive = DebugSettings.bMaskOverlay;
+	MaskPostFxOpacity = DebugSettings.MaskOverlayOpacity;
+	if (!bMaskPostFxActive && MaskPostFx)
+	{
+		MaskPostFx->Disable();
+	}
 
 	// A slider drag asks for a composite as fast as the hand moves. While the last one is still
 	// on the render thread, or (mid-drag) the interval sized to its cost has not passed, keep
@@ -833,15 +874,6 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		// Rebind the complete layer preview so removed overrides inherit the master again.
 		PreviewMaterialInstance->ClearParameterValues();
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
-		if (DebugSettings.bMaskOverlay)
-		{
-			// The compositor writes a display-only tinted albedo into its existing
-			// debug target; the PBR master still reads its original normals, RAM and
-			// height, and baked BaseColor remains unmodified.
-			PreviewMaterialInstance->SetTextureParameterValue(
-				MixtormatPreview::ChannelPreviewBaseColorParameter,
-				LayerCompositor->GetDebugOutput());
-		}
 		const TOptional<FLinearColor> FuzzColor =
 			MixtormatCompositionReferences::ComputeFuzzColor(Layers, Groups);
 		if (FuzzColor.IsSet())
