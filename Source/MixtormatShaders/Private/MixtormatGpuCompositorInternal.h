@@ -1611,6 +1611,8 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputRAM[2] = {};
 		FRDGTextureRef OutputHeight[2] = {};
 		FRDGTextureRef OutputDebug[2] = {};
+		// Selected mask survives the layer loop for one display-only tint pass.
+		FRDGTextureRef SelectedOverlayMask = nullptr;
 		FRDGTextureRef OutputRegionIdPick[2] = {};
 
 		FRDGTextureRef EmptyRegionIds = nullptr;
@@ -2123,6 +2125,15 @@ namespace MixtormatGpuCompositor
 	// ChildOutput target names it: no WriteDebug branch of the producer's own kernel to gate, no
 	// permutation, just colour the finished texture into OutputDebug after the fact. Callers are
 	// expected to guard the call with IsChildOutputPreviewTarget first.
+	// Uses the existing Debug RT as a display-only albedo target for mask visualization.
+	void AddMaskOverlayPass(
+		FRDGBuilder& GraphBuilder,
+		FRDGTextureRef BaseColor,
+		FRDGTextureRef Mask,
+		FRDGTextureRef OutputDebug,
+		FIntPoint Resolution,
+		float Opacity);
+
 	void AddDebugPreviewMaskBlitPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceMask,
