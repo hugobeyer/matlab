@@ -738,13 +738,19 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 		{
 			SetGlobalUVRotation90(State == ECheckBoxState::Checked);
 		}),
-		SNew(STextBlock)
-		.Text(LOCTEXT("GlobalUVRotation90", "90°"))
-		.Font(LabelStyle.Font)
-		.ColorAndOpacity_Lambda([this]()
-		{
-			return GetPreviewOverlayLabelColor(false, bGlobalUVRotation90);
-		})));
+		SNew(SBox)
+		.WidthOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+			static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
+		.HeightOverride(FMixtormatThemeStore::GetResolved().Icons.Roles[
+			static_cast<uint8>(Mixtormat::EMixtormatIconRole::PreviewToolbar)].GlyphSize)
+		[
+			SNew(SImage)
+			.Image(MixtormatIcons::RotateCoords())
+			.ColorAndOpacity_Lambda([this]()
+			{
+				return GetPreviewOverlayIconColor(false, bGlobalUVRotation90);
+			})
+		]));
 	return Layout == EPreviewControlLayout::Inline
 		? MakePreviewButtonRow(Buttons, ButtonGap)
 		: Layout == EPreviewControlLayout::Grid
