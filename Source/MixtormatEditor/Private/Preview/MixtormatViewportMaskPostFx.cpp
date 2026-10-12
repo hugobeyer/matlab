@@ -207,6 +207,7 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 
 void FMixtormatViewportMaskPostFx::Disable()
 {
+	bReady = false;
 	if (UvCapture)
 	{
 		UvCapture->bCaptureEveryFrame = false;
@@ -256,4 +257,5 @@ void FMixtormatViewportMaskPostFx::Update(
 	// PreviewScene worlds are not guaranteed to tick capture components on their
 	// own. Submit one view-matched UV capture per *active viewport* Slate tick.
 	UvCapture->CaptureScene();
+	bReady = true;
 }
