@@ -211,6 +211,16 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 				Result.Owner = EMixtormatParameterOwnerType::BehaviorFlowSettings;
 				return true;
 			}
+			if (Child.Type == EMixtormatLayerChildType::Behavior
+				&& Child.Behavior.Type == EMixtormatBehaviorType::Feather
+				&& Owner == &Child.Behavior.Feather
+				&& OwnerStruct == FMixtormatBehaviorFeatherSettings::StaticStruct())
+			{
+				Result.LayerId = ContainerId;
+				Result.ChildId = Child.ChildId;
+				Result.Owner = EMixtormatParameterOwnerType::BehaviorFeatherSettings;
+				return true;
+			}
 			if (Owner == OwnerPointer(Child))
 			{
 				Result.LayerId = ContainerId;
@@ -264,6 +274,16 @@ FMixtormatParameterAddress SMixtormat::BuildParameterAddress(
 
 	for (const FMixtormatSourceEntry& Source : WorkingSources)
 	{
+		if (Source.Child.Type == EMixtormatLayerChildType::Behavior
+			&& Source.Child.Behavior.Type == EMixtormatBehaviorType::Feather
+			&& Owner == &Source.Child.Behavior.Feather
+			&& OwnerStruct == FMixtormatBehaviorFeatherSettings::StaticStruct())
+		{
+			Result.LayerId = Source.SourceId;
+			Result.ChildId = Source.Child.ChildId;
+			Result.Owner = EMixtormatParameterOwnerType::BehaviorFeatherSettings;
+			return Result;
+		}
 		if (Owner == OwnerPointer(Source.Child))
 		{
 			Result.LayerId = Source.SourceId;

@@ -210,6 +210,11 @@ canonical authoring surface for Push/Warp operations.
 `MixtormatInspectorEffects.cpp`, `MixtormatInspectorHeight.cpp`.
 Builders are `SMixtormat::Build*Panel` members.
 
+Feather's Width, Iterations and Direction Bias are nested `BehaviorFeatherSettings`
+parameters. Their editor ranges, reset defaults and optional clamps are authored under
+`Feather` in `Config/MixtormatParameterAuthoring.json`; GPU Eikonal/Flow iteration
+execution retains a 512-pass safety maximum independently of editor settings.
+
 ## Cards / rows / atoms
 
 - Rows: `UI/Rows/SMixtormatRow.*` (`MixtormatRow::MakePair`, `AddSliderRow`).

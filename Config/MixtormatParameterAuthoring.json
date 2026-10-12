@@ -1283,6 +1283,36 @@
 			"clampMax": 4
 		}
 	},
+	"Feather":
+	{
+		"BehaviorFeatherSettings.Radius":
+		{
+			"default": 3,
+			"uiMin": 0,
+			"uiMax": 32,
+			"snap": 0.1,
+			"clampMin": 0,
+			"clampMax": 64
+		},
+		"BehaviorFeatherSettings.Iterations:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 64,
+			"snap": 1,
+			"clampMin": 1,
+			"clampMax": 128
+		},
+		"BehaviorFeatherSettings.DirectionBias":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.01,
+			"clampMin": -1,
+			"clampMax": 1
+		}
+	},
 	"Behavior":
 	{
 		"Behavior.Strength":

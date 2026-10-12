@@ -1706,7 +1706,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 	AddSliderRow(Eikonal, MakeMemberSliderInt<FMixtormatBehaviorFeatherSettings>(
 		LOCTEXT("BehaviorFeatherIterations", "Iterations"), Settings,
 		&FMixtormatBehaviorFeatherSettings::Iterations, 1, 64, 32,
-		LOCTEXT("BehaviorFeatherIterationsHelp", "Number of eight-neighbor distance relaxation passes.")));
+		LOCTEXT("BehaviorFeatherIterationsHelp", "Refinement budget for Eikonal feathering. Full-tile slope sweeps establish the base before diagonal refinements.")));
 	const auto IsFlowOwner = [this]()
 	{
 		const FMixtormatChildAddress Address = GetSelectedChildAddress();

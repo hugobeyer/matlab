@@ -49,7 +49,9 @@ enum class EMixtormatParameterOwnerType : uint8
 	// so one owner covers the payload and one covers the typed reference inside it.
 	Behavior = 27 UMETA(DisplayName = "Behavior"),
 	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow Ref"),
-	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow")
+	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow"),
+	// Nested Feather authoring fields are independently addressable without shifting prior enum values.
+	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather")
 };
 
 UENUM(BlueprintType)

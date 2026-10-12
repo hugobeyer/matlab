@@ -464,9 +464,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		? FMath::Clamp(Behavior.WarpAA, 0.0f, 1.0f) : 0.0f;
 	Out.FeatherMode = Behavior.Feather.Mode;
 	Out.FeatherSide = Behavior.Feather.Side;
+	// The editor's JSON authoring controls the preferred ranges and typed-value clamps.
+	// Rendering retains its own finite/nonnegative guards; the pass caps iterative work at 512.
 	Out.FeatherRadius = FMath::IsFinite(Behavior.Feather.Radius)
-		? FMath::Clamp(Behavior.Feather.Radius, 0.0f, 64.0f) : 0.0f;
-	Out.FeatherIterations = FMath::Clamp(Behavior.Feather.Iterations, 1, 128);
+		? FMath::Max(Behavior.Feather.Radius, 0.0f) : 0.0f;
+	Out.FeatherIterations = FMath::Max(Behavior.Feather.Iterations, 1);
 	Out.FeatherDirectionBias = FMath::IsFinite(Behavior.Feather.DirectionBias)
 		? FMath::Clamp(Behavior.Feather.DirectionBias, -1.0f, 1.0f) : 0.0f;
 	Out.CarveWidth = FMath::IsFinite(Behavior.CarveWidth)
