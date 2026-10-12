@@ -62,6 +62,7 @@ namespace MixtormatIcons
 	const FSlateBrush* ChevronDown()  { return Get(TEXT("Mixtormat.Icon.ChevronDown")); }
 	const FSlateBrush* ChevronRight() { return Get(TEXT("Mixtormat.Icon.ChevronRight")); }
 	const FSlateBrush* Refresh()      { return Get(TEXT("Mixtormat.Icon.Refresh")); }
+	const FSlateBrush* RotateCoords() { return Get(TEXT("Mixtormat.Icon.RotateCoords")); }
 	const FSlateBrush* Overflow()     { return Get(TEXT("Mixtormat.Icon.Overflow")); }
 	const FSlateBrush* Add()          { return Get(TEXT("Mixtormat.Icon.Add")); }
 	const FSlateBrush* Duplicate()    { return Get(TEXT("Mixtormat.Icon.Duplicate")); }
