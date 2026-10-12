@@ -98,6 +98,13 @@ namespace
 
 		auto* SceneColor = AddNode<UMaterialExpressionSceneTexture>(Material);
 		SceneColor->SceneTextureId = PPI_PostProcessInput0;
+		// PostProcessInput0 is RGBA; the cyan tint is RGB. Lerp requires
+		// matching vector arity, so drop scene alpha before the blend.
+		auto* SceneRgb = AddNode<UMaterialExpressionComponentMask>(Material);
+		SceneRgb->R = true;
+		SceneRgb->G = true;
+		SceneRgb->B = true;
+		SceneRgb->Input.Connect(0, SceneColor);
 		auto* ScreenUV = AddNode<UMaterialExpressionScreenPosition>(Material);
 		auto* UVSample = AddSample(Material, UvBufferName, UvDefault);
 		UVSample->Coordinates.Connect(0, ScreenUV);
@@ -132,7 +139,7 @@ namespace
 		auto* Cyan = AddNode<UMaterialExpressionConstant3Vector>(Material);
 		Cyan->Constant = FLinearColor(0.35f, 0.78f, 0.87f);
 		auto* Blend = AddNode<UMaterialExpressionLinearInterpolate>(Material);
-		Blend->A.Connect(0, SceneColor);
+		Blend->A.Connect(0, SceneRgb);
 		Blend->B.Connect(0, Cyan);
 		Blend->Alpha.Connect(0, Alpha);
 		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Blend);
