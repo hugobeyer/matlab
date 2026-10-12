@@ -919,6 +919,7 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.Duplicate"), TEXT("Icons/duplicate"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Folder"), TEXT("Icons/folder"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Refresh"), TEXT("Icons/refresh"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.RotateCoords"), TEXT("Icons/rotate-coords"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Trash"), TEXT("Icons/trash"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Grip"), TEXT("Icons/grip"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ArrowUp"), TEXT("Icons/arrow-up"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
