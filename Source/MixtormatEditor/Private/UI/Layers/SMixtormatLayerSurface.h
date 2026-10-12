@@ -14,8 +14,8 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerSurface)
 		: _Kind(Mixtormat::EMixtormatLayerKind::Layer), _GroupTint(FLinearColor::Transparent)
 		, _bVisible(true), _bReference(false), _bInstanceSource(false)
-		, _bSelected(false), _bHovered(false), _bSuppressActiveHalo(false)
-		, _bDiagnosticActive(false), _bContainsDiagnostic(false)
+		, _bSelected(false), _bDiagnosticActive(false), _bContainsDiagnostic(false)
+		, _bHovered(false), _bSuppressActiveHalo(false)
 	{}
 		SLATE_ARGUMENT(Mixtormat::EMixtormatLayerKind, Kind)
 		SLATE_ATTRIBUTE(FLinearColor, GroupTint)
