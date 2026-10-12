@@ -139,11 +139,10 @@ namespace
 		Material->MaterialDomain = MD_PostProcess;
 		Material->BlendableLocation = BL_SceneColorAfterTonemapping;
 		Material->BlendableOutputAlpha = true;
-		Material->bUsedWithEditorCompositing = true;
 		Material->SetShadingModel(MSM_Unlit);
 
+		// Output 0 of ScreenPosition is the viewport UV in 5.8; it has no mapping property.
 		auto* ScreenUV = AddNode<UMaterialExpressionScreenPosition>(Material);
-		ScreenUV->Mapping = EScreenPositionMapping::ViewportUV;
 
 		auto* UvSample = AddSample(Material, UvBufferName, nullptr);
 		UvSample->Coordinates.Connect(0, ScreenUV);

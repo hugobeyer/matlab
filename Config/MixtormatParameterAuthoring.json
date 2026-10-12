@@ -996,7 +996,7 @@
 		},
 		"Generator.NoiseDirectionHeightWeight":
 		{
-			"default": 1,
+			"default": 0,
 			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
@@ -1011,8 +1011,8 @@
 		"Generator.NoiseDirectionCurlWeight":
 		{
 			"default": 0,
-			"uiMin": -4,
-			"uiMax": 4,
+			"uiMin": -1,
+			"uiMax": 1,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionConstantWeight":
@@ -1039,23 +1039,25 @@
 		"Generator.NoiseDirectionStrength":
 		{
 			"default": 1,
-			"uiMin": -4,
-			"uiMax": 4,
+			"uiMin": -1,
+			"uiMax": 1,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseFlowAdd":
 		{
-			"default": 1,
+			"default": 0,
 			"uiMin": -4,
 			"uiMax": 4,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseFlowMix":
 		{
-			"default": 0,
+			"default": 1,
 			"uiMin": 0,
 			"uiMax": 1,
-			"snap": 0.0099999997764825821
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 1
 		},
 		"MaskNoise.NoiseType:Enum":
 		{
@@ -1290,7 +1292,7 @@
 			"default": 3,
 			"uiMin": 0,
 			"uiMax": 32,
-			"snap": 0.1,
+			"snap": 0.10000000149011612,
 			"clampMin": 0,
 			"clampMax": 64
 		},
@@ -1308,7 +1310,7 @@
 			"default": 0,
 			"uiMin": -1,
 			"uiMax": 1,
-			"snap": 0.01,
+			"snap": 0.0099999997764825821,
 			"clampMin": -1,
 			"clampMax": 1
 		}

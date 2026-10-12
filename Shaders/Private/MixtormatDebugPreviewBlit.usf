@@ -215,14 +215,13 @@ void MainRawFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 Texture2D<float4> ResampleSource;
 SamplerState ResampleSampler;
 RWTexture2D<float4> ResampleOutput;
-int2 ResampleOutputSize;
 
 [numthreads(8, 8, 1)]
 void MainDiagnosticResampleCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	const int2 Pixel = int2(DispatchThreadId.xy);
-	if (any(Pixel >= ResampleOutputSize)) { return; }
-	const float2 UV = (float2(Pixel) + 0.5f) / float2(ResampleOutputSize);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	ResampleOutput[Pixel] = ResampleSource.SampleLevel(ResampleSampler, UV, 0);
 }
 
