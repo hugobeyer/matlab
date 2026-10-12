@@ -4,6 +4,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDiagnosticOverlay.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDiagnosticColor.ush"
 
 // Legacy IDs/SDF/colour blits and data-only exports for viewport PostFX.
 RWTexture2D<float4> OutputDebug;
@@ -175,4 +176,50 @@ void MainOverlayMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Coverage = OverlaySourceIsSigned != 0 ? 0.5f * SourceValue + 0.5f : SourceValue;
 	OverlayOutputColor[Pixel] = float4(
 		isfinite(Coverage) ? saturate(Coverage) : 0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+// ORIGINAL, unrotated published field at producer resolution; never the raw diagnostic copy.
+// OutputSize is compose resolution. Flow needs a bilinear wrap sampler; UVMap uses exact Loads.
+Texture2D<float4> DiagnosticColorSource;
+int2 DiagnosticColorSourceSize;
+SamplerState DiagnosticColorSampler;
+uint DiagnosticColorIsUVMap;
+uint DiagnosticColorRotate90;
+RWTexture2D<float4> DiagnosticColorOutput;
+
+[numthreads(8, 8, 1)]
+void MainDiagnosticColorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	if (any(DiagnosticColorSourceSize <= 0))
+	{
+		DiagnosticColorOutput[Pixel] = 0.0f;
+		return;
+	}
+	const float2 OutputTexel = 1.0f / float2(OutputSize);
+	float4 Sum = 0.0f;
+	[unroll]
+	for (int SampleY = 0; SampleY < MIXTORMAT_DIAGNOSTIC_SAMPLES_PER_AXIS; ++SampleY)
+	{
+		[unroll]
+		for (int SampleX = 0; SampleX < MIXTORMAT_DIAGNOSTIC_SAMPLES_PER_AXIS; ++SampleX)
+		{
+			const float2 Subpixel = (float2(SampleX, SampleY) + 0.5f)
+				/ float(MIXTORMAT_DIAGNOSTIC_SAMPLES_PER_AXIS);
+			const float2 UV = (float2(Pixel) + Subpixel) * OutputTexel;
+			// Same source-pixel mapping as MainRawFlowCS; rotate only the query domain.
+			const float2 QueryUV = DiagnosticColorRotate90 != 0 ? float2(UV.y, 1.0f - UV.x) : UV;
+			const float4 Ink = DiagnosticColorIsUVMap != 0
+				? MixtormatDiagnosticUVColor(DiagnosticColorSource, DiagnosticColorSourceSize,
+					QueryUV, OutputTexel, DiagnosticColorRotate90)
+				: MixtormatDiagnosticFlowColor(DiagnosticColorSource, DiagnosticColorSampler, QueryUV);
+			// Each helper returns finite linear RGB, with independent binary coverage.
+			// Premultiply BEFORE averaging: invalid subpixels contribute neither color nor alpha.
+			if (all(isfinite(Ink))) { Sum += float4(Ink.rgb * Ink.a, Ink.a); }
+		}
+	}
+	// No unpremultiply: color mips average this directly and compose with source-over.
+	// This filters base-resolution detail; engine color mips handle far minification.
+	DiagnosticColorOutput[Pixel] = Sum / float(MIXTORMAT_DIAGNOSTIC_SAMPLE_COUNT);
 }
