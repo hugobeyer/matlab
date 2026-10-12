@@ -26,6 +26,8 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatLayerChildRow)
 		: _bActive(true)
 		, _bSelected(false)
+		, _bDiagnosticActive(false)
+		, _bContainsDiagnostic(false)
 		, _bInstanceSource(false)
 		, _ExtraIndent(0.0f)
 		, _bPreviewing(false)
@@ -41,6 +43,8 @@ public:
 		SLATE_ATTRIBUTE(FText, Badge)
 		SLATE_ATTRIBUTE(bool, bActive)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		SLATE_ATTRIBUTE(bool, bDiagnosticActive)
+		SLATE_ATTRIBUTE(bool, bContainsDiagnostic)
 		// This child is the source of the selected instance: it glows so the link is visible.
 		SLATE_ATTRIBUTE(bool, bInstanceSource)
 		SLATE_ARGUMENT(float, ExtraIndent)

@@ -34,6 +34,8 @@ public:
 		, _bExpanded(false)
 		, _bHasChildren(true)
 		, _bSelected(false)
+		, _bDiagnosticActive(false)
+		, _bContainsDiagnostic(false)
 		, _bReference(false)
 		, _bHoldsInstanceSource(false)
 
@@ -55,6 +57,8 @@ public:
 		// False: the disclosure chevron fades and ignores clicks -- nothing to open.
 		SLATE_ATTRIBUTE(bool, bHasChildren)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		SLATE_ATTRIBUTE(bool, bDiagnosticActive)
+		SLATE_ATTRIBUTE(bool, bContainsDiagnostic)
 		SLATE_ATTRIBUTE(bool, bReference)
 		// The selected instance's source sits inside this layer while it is collapsed, so the layer
 		// carries the source marker its hidden child row cannot show.

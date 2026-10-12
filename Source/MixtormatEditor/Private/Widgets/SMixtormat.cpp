@@ -1024,6 +1024,19 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		}
 	}
 
+	// Validate ownership before selection-only composition overrides are chosen.
+	const FMixtormatChildPreviewTarget OverlayTarget = bMaskOverlayEnabled
+		? ResolveMaskOverlayTarget(MaskOverlaySource, MaskOverlayOutputName) : FMixtormatChildPreviewTarget();
+	const bool bMaskOverlayReady = bMaskOverlayEnabled && OverlayTarget.IsValid()
+		&& OverlayTarget.OutputName == MaskOverlayOutputName;
+	if (bMaskOverlayEnabled && !bMaskOverlayReady)
+	{
+		bMaskOverlayEnabled = false;
+		MaskOverlaySource = FMixtormatChildAddress();
+		MaskOverlayOutputName = NAME_None;
+		bPreviewSubmitPending = true;
+	}
+
 	// Mouse held and nothing changed since the last submit: holding still must not recompose.
 	if (!bPreviewSubmitPending)
 	{
@@ -1053,7 +1066,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		PreviewGroups = &PreviewOverrideGroups;
 	};
 	const int32 BypassedChildIndex = GetSelectedChildIndex();
-	if (bBypassSelectedChild
+	if (!bMaskOverlayEnabled && bBypassSelectedChild
 		&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		&& WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(BypassedChildIndex))
 	{
@@ -1065,7 +1078,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		MixtormatLayersPrivate::SetChildEnabled(Child, false);
 		PreviewLayers = &PreviewOverrideLayers;
 	}
-	if (DebugPreviewMode == EMixtormatDebugPreviewMode::None
+	if (!bMaskOverlayEnabled && DebugPreviewMode == EMixtormatDebugPreviewMode::None
 		&& WorkingLayers.IsValidIndex(SoloLayerIndex))
 	{
 		FMixtormatLayer SoloLayer = (*PreviewLayers)[SoloLayerIndex];
@@ -1076,7 +1089,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		PreviewLayers = &PreviewOverrideLayers;
 		UseEnabledGroupsForIsolation();
 	}
-	else if (DebugPreviewMode == EMixtormatDebugPreviewMode::None
+	else if (!bMaskOverlayEnabled && DebugPreviewMode == EMixtormatDebugPreviewMode::None
 		&& bShowCompositionBefore
 		&& !WorkingLayers.IsEmpty())
 	{
@@ -1099,7 +1112,6 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 	// deferral above, which does no drawing at all, and the viewport spacing composites by their
 	// measured cost while the mouse is held. The release frame submits with bInteractive false,
 	// so the final value is always composed.
-	const bool bMaskOverlayReady = bMaskOverlayEnabled && IsMaskOverlayTargetReady();
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
 		if (Viewport.IsValid())
@@ -1116,9 +1128,7 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			// names the child by GUID, flattened to one concrete layer at click time (see
 			// ResolveChildPreviewTarget), and the compositor resolves it to indices itself, once,
 			// at the top of RequestComposeInternal.
-			DebugSettings.ChildTarget = bMaskOverlayReady
-				? ResolveChildPreviewTarget(NAME_None, EMixtormatPreviewOutputKind::Mask)
-				: ChildPreviewTarget;
+			DebugSettings.ChildTarget = bMaskOverlayReady ? OverlayTarget : ChildPreviewTarget;
 			Viewport->SetFinalSettings(WorkingFinalSettings);
 			// Sources ride every working-document preview: they are document data beside the
 			// layers, unaffected by solo/isolation overrides of the layer array itself.

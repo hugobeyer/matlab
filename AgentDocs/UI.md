@@ -39,6 +39,17 @@ translation units — search the member function, not the header.
   `MixtormatLayerMenus.cpp`, `MixtormatLayerHierarchy.cpp`,
   `MixtormatLayerClipboard.cpp`, `MixtormatMaskSources.cpp`, `MixtormatLayersPrivate.h`.
 
+Hierarchy diagnostic indicators use `SMixtormatLayerSurface`'s independent right-edge marker,
+not the selected-row tint/top hairline or instance-source left marker/glow. Layer, group and
+child builders bind `bDiagnosticActive` / `bContainsDiagnostic` dynamically to
+`SMixtormat::IsDiagnosticRowActive(Address, bIncludeDescendants)` using stable owner/child GUIDs.
+Exact sources use the stronger marker; ancestors (including scoped generator rows) use the
+softer marker, so collapsed branches still identify where a diagnostic lives. Owner-only
+layer/group addresses have an invalid `ChildId`. Diagnostic state stays owned by `SMixtormat`;
+the hierarchy does not infer it from selection or keep a second preview target.
+UI STYLE > Layers > Diagnostic owns `Layer.DiagnosticAccent`, `DiagnosticWidth`,
+`DiagnosticOpacity` and `DiagnosticAncestorOpacity`; the surface reads them live on paint.
+
 Published child outputs have one `Outputs` context submenu, populated from
 `GetCopyableOutputs(GetChildCapabilities(...))` with semantic labels and output-kind icons.
 The formerly duplicated flattened Copy rows were removed; children without copyable outputs

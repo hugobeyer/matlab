@@ -712,6 +712,17 @@ namespace MixtormatGpuCompositor
 					// Layer of each Driver source, for checking a snapshot holds every Driver signal
 					// the current stack asks for from below it.
 					TMap<FGuid, int32> LayerIndexById;
+					if (Request.DebugSettings.bMaskOverlay
+						&& Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+						&& Request.DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
+						&& !Request.DebugSettings.ChildTarget.OutputName.IsNone()
+						&& Request.Layers.IsValidIndex(Request.DebugSettings.LayerIndex))
+					{
+						// Demand before cache restore and producer dispatch, even if the output is absent.
+						Ctx.PublishedFieldDemand.Add(PublishedKey(
+							Request.Layers[Request.DebugSettings.LayerIndex],
+							Request.DebugSettings.ChildIndex, Request.DebugSettings.ChildTarget.OutputName));
+					}
 					for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 					{
 						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
@@ -1259,9 +1270,20 @@ namespace MixtormatGpuCompositor
 
 						if (Request.DebugSettings.bMaskOverlay
 							&& Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+							&& Request.DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
+							&& Request.DebugSettings.ChildTarget.OutputName.IsNone()
 							&& Request.DebugSettings.LayerIndex == LayerIndex)
 						{
-							Ctx.SelectedOverlayMask = LayerCtx.DebugMask;
+							// Layer coverage follows the final ping-pong slot; child previews retain scoped snapshots.
+							const FRDGTextureRef OverlayMask = Request.DebugSettings.ChildIndex == INDEX_NONE
+								? LayerCtx.CombinedMask : LayerCtx.DebugMask;
+							// Preserve the selected field before later layers reuse the mask targets.
+							if (OverlayMask)
+							{
+								Ctx.SelectedOverlayMask = GraphBuilder.CreateTexture(
+									OverlayMask->Desc, TEXT("Mixtormat.OverlayMaskSnapshot"));
+								AddCopyTexturePass(GraphBuilder, OverlayMask, Ctx.SelectedOverlayMask);
+							}
 						}
 
 						PublishLayerRegionIdOutputs(Ctx, LayerCtx, Layer);
@@ -1344,13 +1366,51 @@ namespace MixtormatGpuCompositor
 				}
 				} // End the MixtormatCompose GPU event scope before executing the graph.
 
-				// Only publish the selected raw field. The viewport's post-process
+				// Only publish the selected overlay coverage. The viewport's post-process
 				// reads it without writing to any composed material output.
-				if (Request.DebugSettings.bMaskOverlay && Ctx.SelectedOverlayMask)
+				if (Request.DebugSettings.bMaskOverlay)
 				{
+					bool bSourceSigned = false;
+					const FMixtormatDebugPreviewSettings& Debug = Request.DebugSettings;
+					if (Debug.Mode == EMixtormatDebugPreviewMode::LayerMask
+						&& Debug.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
+						&& !Debug.ChildTarget.OutputName.IsNone()
+						&& Request.Layers.IsValidIndex(Debug.LayerIndex))
+					{
+						const FPublishedFieldKey Key = PublishedKey(
+							Request.Layers[Debug.LayerIndex], Debug.ChildIndex, Debug.ChildTarget.OutputName);
+						if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key))
+						{
+							// Typed metadata wins over legacy aliases: never read vectors/IDs/colour as coverage.
+							if (Field->IsComplete()
+								&& (Field->Kind == EMixtormatPublishedFieldKind::Scalar01
+									|| Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned)
+								&& Field->Texture->Desc.Extent == Request.Resolution)
+							{
+								Ctx.SelectedOverlayMask = Field->Texture;
+								bSourceSigned = Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned;
+							}
+						}
+						else if (const FRDGTextureRef* Mask = Ctx.PublishedMaskOutputs.Find(Key))
+						{
+							if (*Mask && (*Mask)->Desc.Extent == Request.Resolution
+								&& ((*Mask)->Desc.Format == PF_R16F || (*Mask)->Desc.Format == PF_R32_FLOAT))
+							{
+								Ctx.SelectedOverlayMask = *Mask;
+							}
+						}
+					}
 					const int32 Final = Request.PublishedTargetIndex;
-					AddMaskOverlayPass(GraphBuilder, Ctx.SelectedOverlayMask,
-						Ctx.OutputDebug[Final], Request.Resolution);
+					if (Ctx.SelectedOverlayMask)
+					{
+						AddMaskOverlayPass(GraphBuilder, Ctx.SelectedOverlayMask,
+							Ctx.OutputDebug[Final], Request.Resolution, bSourceSigned);
+					}
+					else
+					{
+						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Ctx.OutputDebug[Final]),
+							FLinearColor::Black);
+					}
 				}
 
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;

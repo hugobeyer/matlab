@@ -25,6 +25,8 @@ public:
 		: _bEnabled(true)
 		, _bExpanded(true)
 		, _bSelected(false)
+		, _bDiagnosticActive(false)
+		, _bContainsDiagnostic(false)
 		, _MemberCount(0)
 		, _AccentColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f))
 	{}
@@ -32,6 +34,8 @@ public:
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bExpanded)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		SLATE_ATTRIBUTE(bool, bDiagnosticActive)
+		SLATE_ATTRIBUTE(bool, bContainsDiagnostic)
 		SLATE_ATTRIBUTE(int32, MemberCount)
 		// The group's tint, alpha zero meaning none. Applied to the row's own gradient rather than
 		// replacing it, so a coloured group still reads as enabled/hovered/selected.

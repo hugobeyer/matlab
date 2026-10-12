@@ -1326,6 +1326,8 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 			[
 			SAssignNew(GroupEditableRow, SMixtormatLayerChildRow)
+			.bDiagnosticActive_Lambda([this, Address]() { return IsDiagnosticRowActive(Address); })
+			.bContainsDiagnostic_Lambda([this, Address]() { return IsDiagnosticRowActive(Address, true); })
 			.Name(ChildName)
 			.bNameEditable(Child.Type == EMixtormatLayerChildType::Mask)
 			.OnNameCommitted_Lambda([this, GroupId, ChildIndex](const FText& Name, ETextCommit::Type)
@@ -1406,7 +1408,10 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 
 TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
 {
+	const FMixtormatChildAddress Address{ EMixtormatChildOwnerType::Group, GroupId, FGuid() };
 	const TSharedRef<SMixtormatLayerGroupRow> Row = SNew(SMixtormatLayerGroupRow)
+		.bDiagnosticActive_Lambda([this, Address]() { return IsDiagnosticRowActive(Address); })
+		.bContainsDiagnostic_Lambda([this, Address]() { return IsDiagnosticRowActive(Address, true); })
 		.Name_Lambda([this, GroupId]()
 		{
 			const FMixtormatLayerGroup* Group =
@@ -1469,6 +1474,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
 
 	const FGuid LayerId = Layer.LayerId;
+	const FMixtormatChildAddress LayerAddress{ EMixtormatChildOwnerType::Layer, LayerId, FGuid() };
 	TSharedPtr<SMixtormatLayerRow> Row;
 	TSharedRef<SMixtormatLayerContainer> Container = SNew(SMixtormatLayerContainer)
 		.bExpanded_Lambda([WeakOwner, LayerIndex]()
@@ -1492,6 +1498,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			{
 				RenameLayer(LayerId, Text);
 			})
+			.bDiagnosticActive_Lambda([this, LayerAddress]() { return IsDiagnosticRowActive(LayerAddress); })
+			.bContainsDiagnostic_Lambda([this, LayerAddress]() { return IsDiagnosticRowActive(LayerAddress, true); })
 			.bReference(!Layer.SourceComposition.IsNull())
 			.bHoldsInstanceSource_Lambda([this, LayerIndex]()
 			{
@@ -1660,6 +1668,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 				[
 				SAssignNew(ChildRow, SMixtormatLayerChildRow)
+				.bDiagnosticActive_Lambda([this, RowAddress]() { return IsDiagnosticRowActive(RowAddress); })
+				.bContainsDiagnostic_Lambda([this, RowAddress]() { return IsDiagnosticRowActive(RowAddress, true); })
 				.Disclosure()[BuildGeneratorDisclosure(RowAddress, bHasChildren, FText::GetEmpty())]
 				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
 				.ToolTip(RowToolTip)

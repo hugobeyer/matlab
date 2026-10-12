@@ -301,33 +301,154 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 
 bool SMixtormat::IsMaskOverlayTargetReady() const
 {
-	const FMixtormatLayerChild* Child =
-		ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-	if (!Child && SelectedGroupId.IsValid())
+	return ResolveMaskOverlayTarget(GetSelectedChildAddress()).IsValid();
+}
+
+FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
+	const FMixtormatChildAddress& Address, const FName RequiredOutputName) const
+{
+	FMixtormatChildPreviewTarget Target;
+	Target.Kind = EMixtormatPreviewOutputKind::Mask;
+	if (!Address.OwnerId.IsValid() || Address.OwnerType == EMixtormatChildOwnerType::Source)
 	{
-		const FMixtormatLayerGroup* Group =
-			MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
-		if (Group && Group->Children.IsValidIndex(SelectedGroupChildIndex))
+		return Target;
+	}
+	const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+		[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(
+		WorkingLayerGroups, Layer ? Layer->GroupId : Address.OwnerId);
+	if ((Layer && !Layer->bEnabled) || (Group && !Group->bEnabled)
+		|| (!Layer && !Group)) { return Target; }
+
+	const auto IsCoverageChild = [](const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Mask
+			|| Child.Type == EMixtormatLayerChildType::Generated
+			|| Child.Type == EMixtormatLayerChildType::Craquelure
+			|| Child.Type == EMixtormatLayerChildType::ColorId
+			|| Child.Type == EMixtormatLayerChildType::RandomId;
+	};
+	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+	if (Address.ChildId.IsValid())
+	{
+		if (!Child || !IsGroupChildEnabled(*Child)) { return Target; }
+		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+		FGuid ParentId = Child->ScopeOwnerChildId;
+		TSet<FGuid> Visited;
+		while (ParentId.IsValid())
 		{
-			Child = &Group->Children[SelectedGroupChildIndex];
+			if (!Children || Visited.Contains(ParentId)) { return Target; }
+			Visited.Add(ParentId);
+			const FMixtormatLayerChild* Parent = Children->FindByPredicate(
+				[ParentId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == ParentId; });
+			if (!Parent || !IsGroupChildEnabled(*Parent)) { return Target; }
+			ParentId = Parent->ScopeOwnerChildId;
+		}
+		const FMixtormatLayerChild* Instance = Child;
+		TSet<FGuid> InstanceSources;
+		while (Instance->IsInstance())
+		{
+			if (InstanceSources.Contains(Instance->SourceChildId)) { return Target; }
+			InstanceSources.Add(Instance->SourceChildId);
+			const FMixtormatLayer* SourceLayer = WorkingLayers.FindByPredicate(
+				[Instance](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Instance->SourceLayerId; });
+			const FMixtormatLayerGroup* SourceGroup = MixtormatLayerGroups::FindGroup(
+				WorkingLayerGroups, SourceLayer ? SourceLayer->GroupId : Instance->SourceLayerId);
+			if ((SourceLayer && !SourceLayer->bEnabled) || (SourceGroup && !SourceGroup->bEnabled)) { return Target; }
+			Instance = MixtormatParameterBinding::FindChild(
+				FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Instance->SourceLayerId, Instance->SourceChildId);
+			if (!Instance || !IsGroupChildEnabled(*Instance)) { return Target; }
+		}
+		if (!IsCoverageChild(*Child))
+		{
+			const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
+			const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
+				[RequiredOutputName](const FMixtormatPublishedOutputDesc& Candidate)
+				{
+					return (RequiredOutputName.IsNone() || Candidate.Name == RequiredOutputName)
+						&& Candidate.Kind == EMixtormatPreviewOutputKind::Mask && !Candidate.Name.IsNone()
+						&& (Candidate.bCopyableAsMask || (Candidate.bCopyableAsField
+							&& (Candidate.FieldKind == EMixtormatPublishedFieldKind::Scalar01
+								|| Candidate.FieldKind == EMixtormatPublishedFieldKind::ScalarSigned)));
+				});
+			if (!Output) { return Target; }
+			Target.OutputName = Output->Name;
 		}
 	}
-	if (!Child || !IsChildOutputPreviewReady(*Child))
+	else
 	{
-		return false;
+		// An aggregate mask is meaningful only when a real root coverage producer exists.
+		const auto HasCoverage = [&IsCoverageChild](const TArray<FMixtormatLayerChild>& Children)
+		{
+			return Children.ContainsByPredicate([&IsCoverageChild](const FMixtormatLayerChild& Candidate)
+			{
+				return !Candidate.ScopeOwnerChildId.IsValid() && IsCoverageChild(Candidate)
+					&& IsGroupChildEnabled(Candidate);
+			});
+		};
+		if (!Layer || (!HasCoverage(Layer->Children) && (!Group || !HasCoverage(Group->Children))))
+		{
+			return Target;
+		}
 	}
-	const bool bMask = Child->Type == EMixtormatLayerChildType::Mask
-		|| Child->Type == EMixtormatLayerChildType::Generated
-		|| Child->Type == EMixtormatLayerChildType::Craquelure
-		|| Child->Type == EMixtormatLayerChildType::ColorId
-		|| Child->Type == EMixtormatLayerChildType::RandomId;
-	return bMask && ResolveChildPreviewTarget(
-		NAME_None, EMixtormatPreviewOutputKind::Mask).IsValid();
+	Target.OwnerId = Address.OwnerId;
+	Target.ChildId = Address.ChildId;
+	if (Address.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		Target.OwnerId.Invalidate();
+		Target.ChildId.Invalidate();
+		for (const FMixtormatLayer& Member : WorkingLayers)
+		{
+			if (Member.GroupId == Address.OwnerId && Member.bEnabled)
+			{
+				Target.OwnerId = Member.LayerId;
+				Target.ChildId = MixtormatLayerGroups::MakeEffectiveChildId(
+					Address.OwnerId, Address.ChildId, Member.LayerId);
+				break;
+			}
+		}
+	}
+	return Target;
+}
+
+bool SMixtormat::IsDiagnosticRowActive(
+	const FMixtormatChildAddress& Address, const bool bIncludeDescendants) const
+{
+	if (!bMaskOverlayEnabled) { return false; }
+	if (Address.OwnerType == MaskOverlaySource.OwnerType && Address.OwnerId == MaskOverlaySource.OwnerId)
+	{
+		if (Address.ChildId == MaskOverlaySource.ChildId) { return true; }
+		if (!bIncludeDescendants) { return false; }
+		if (!Address.ChildId.IsValid()) { return true; }
+		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(MaskOverlaySource);
+		const FMixtormatLayerChild* Child = ResolveChildAt(MaskOverlaySource);
+		TSet<FGuid> Visited;
+		while (Children && Child && Child->ScopeOwnerChildId.IsValid())
+		{
+			const FGuid ParentId = Child->ScopeOwnerChildId;
+			if (Visited.Contains(ParentId)) { break; }
+			Visited.Add(ParentId);
+			if (Address.ChildId == ParentId) { return true; }
+			Child = Children->FindByPredicate(
+				[ParentId](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == ParentId; });
+		}
+	}
+	if (bIncludeDescendants && Address.OwnerType == EMixtormatChildOwnerType::Group
+		&& !Address.ChildId.IsValid() && MaskOverlaySource.OwnerType == EMixtormatChildOwnerType::Layer)
+	{
+		return WorkingLayers.ContainsByPredicate([this, &Address](const FMixtormatLayer& Layer)
+		{
+			return Layer.LayerId == MaskOverlaySource.OwnerId && Layer.GroupId == Address.OwnerId;
+		});
+	}
+	return false;
 }
 
 FReply SMixtormat::ResetDiagnosticOverlays()
 {
 	bMaskOverlayEnabled = false;
+	MaskOverlaySource = FMixtormatChildAddress();
+	MaskOverlayOutputName = NAME_None;
 	bAutomaticFlowPreview = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	ChildPreviewTarget = FMixtormatChildPreviewTarget();
@@ -348,7 +469,19 @@ FReply SMixtormat::ToggleMaskOverlayPreview()
 	{
 		return FReply::Handled();
 	}
-	bMaskOverlayEnabled = !bMaskOverlayEnabled;
+	const FMixtormatChildAddress SelectedSource = GetSelectedChildAddress();
+	const bool bSameSource = bMaskOverlayEnabled
+		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
+		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
+		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
+	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource);
+	if (!bSameSource && !SelectedTarget.IsValid())
+	{
+		return FReply::Handled();
+	}
+	bMaskOverlayEnabled = !bSameSource;
+	MaskOverlaySource = bMaskOverlayEnabled ? SelectedSource : FMixtormatChildAddress();
+	MaskOverlayOutputName = bMaskOverlayEnabled ? SelectedTarget.OutputName : NAME_None;
 	if (bMaskOverlayEnabled)
 	{
 		bAutomaticFlowPreview = false;

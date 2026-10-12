@@ -1451,7 +1451,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			const FGuid TargetChildId = DebugSettings.ChildTarget.ChildId;
 			if (!TargetChildId.IsValid())
 			{
-				if (EffectiveLayers[Index].Type != EMixtormatLayerType::Generator)
+				if (EffectiveLayers[Index].Type != EMixtormatLayerType::Generator
+					&& !DebugSettings.bMaskOverlay)
 				{
 					break;
 				}
@@ -1465,6 +1466,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				{
 					return Candidate.ChildId == TargetChildId;
 				});
+			if (DebugSettings.bMaskOverlay && DebugSettings.ChildIndex == INDEX_NONE)
+			{
+				DebugSettings.LayerIndex = INDEX_NONE;
+			}
 			break;
 		}
 	}
@@ -1966,7 +1971,16 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		// from a plain composite so that can never become an assumption.
 		if (DebugSettings.Mode != EMixtormatDebugPreviewMode::None)
 		{
-			Request.CacheLayerLimit = DebugSettings.LayerIndex >= 0 ? DebugSettings.LayerIndex : 0;
+			// Named scalar overlays export from the restored registry after all layers finish.
+			// Raw masks and replacement previews still need their selected layer to run.
+			const bool bNamedMaskOverlay = DebugSettings.bMaskOverlay
+				&& DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+				&& DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
+				&& !DebugSettings.ChildTarget.OutputName.IsNone();
+			if (!bNamedMaskOverlay)
+			{
+				Request.CacheLayerLimit = DebugSettings.LayerIndex >= 0 ? DebugSettings.LayerIndex : 0;
+			}
 			Request.SnapshotLayer = INDEX_NONE;
 		}
 		Request.PrefixHashes = MoveTemp(PrefixHashes);

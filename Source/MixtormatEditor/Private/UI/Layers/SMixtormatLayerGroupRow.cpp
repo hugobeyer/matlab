@@ -59,6 +59,8 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 			.GroupTint(AccentColor)
 			.bVisible(bGroupEnabled)
 			.bSelected(bSelected)
+			.bDiagnosticActive(InArgs._bDiagnosticActive)
+			.bContainsDiagnostic(InArgs._bContainsDiagnostic)
 			.bHovered_Lambda([this]() { return IsHovered(); })
 			[
 				SNew(SBox)

@@ -82,11 +82,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bHasWorkingMaterial && IsMaskOverlayTargetReady();
 	};
-	const auto bDiagnosticActive = [this, bChannelView, bMaskAvailable]()
+	const auto bDiagnosticActive = [this, bChannelView]()
 	{
 		return bChannelView()
 			|| DebugPreviewMode != EMixtormatDebugPreviewMode::None
-			|| (bMaskOverlayEnabled && bMaskAvailable());
+			|| bMaskOverlayEnabled;
 	};
 	const auto bPlaneFlip = [this]()
 	{
@@ -182,9 +182,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	AddGap(*Row, MaskVis);
 	AddPair(*Row, LOCTEXT("HintW", "W"), TAttribute<FText>::CreateLambda([this]()
 	{
-		return bMaskOverlayEnabled
-			? LOCTEXT("HintHideMask", "Hide mask")
-			: LOCTEXT("HintShowMask", "Show mask");
+		const FMixtormatChildAddress Selected = GetSelectedChildAddress();
+		const bool bSameSource = bMaskOverlayEnabled
+			&& Selected.OwnerType == MaskOverlaySource.OwnerType
+			&& Selected.OwnerId == MaskOverlaySource.OwnerId
+			&& Selected.ChildId == MaskOverlaySource.ChildId;
+		return bSameSource
+			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
+			: bMaskOverlayEnabled
+				? LOCTEXT("HintTransferDiagnostic", "Preview selected source")
+				: LOCTEXT("HintShowDiagnostic", "Show diagnostic");
 	}), MaskVis);
 
 	// -- V resets both the new mask tint and any remaining inspector diagnostics.

@@ -308,6 +308,8 @@ namespace Mixtormat
 		T.Layer.ChildHoverStrength = 1.0f;           // --child-hover-right-opacity
 		T.Layer.ChildSelectedStrength = 0.94f;       // --child-selected-right-opacity
 
+		T.Layer.DiagnosticAccent = SRGB(105, 190, 202);
+
 		T.Layer.ActiveGlow.Source = MakeColorRef(EMixtormatColorRole::Accent);
 		T.Layer.ActiveGlow.Blend = MixtormatCompositing::EMixtormatBlendMode::Additive;
 		T.Layer.ActiveGlow.Opacity = 0.18f;           // --layer-active-glow-opacity
@@ -1031,6 +1033,9 @@ namespace Mixtormat
 				Clamp01(TEXT("Layer.ReferenceRestTint"), InOutTheme.Layer.ReferenceRestTint);
 				Clamp01(TEXT("Layer.InstanceSourceLeftTint"), InOutTheme.Layer.InstanceSourceLeftTint);
 				Clamp01(TEXT("Layer.InstanceSourceRightTint"), InOutTheme.Layer.InstanceSourceRightTint);
+
+		Clamp01(TEXT("Layer.DiagnosticOpacity"), InOutTheme.Layer.DiagnosticOpacity);
+		Clamp01(TEXT("Layer.DiagnosticAncestorOpacity"), InOutTheme.Layer.DiagnosticAncestorOpacity);
 				Clamp01(TEXT("Layer.ChildLeftOpacity"), InOutTheme.Layer.ChildLeftOpacity);
 				Clamp01(TEXT("Layer.ChildHoverLeftOpacity"), InOutTheme.Layer.ChildHoverLeftOpacity);
 				Clamp01(TEXT("Layer.ChildSelectedLeftOpacity"), InOutTheme.Layer.ChildSelectedLeftOpacity);
@@ -1126,6 +1131,7 @@ namespace Mixtormat
 		ClampMin(TEXT("ControlLayout.BadgeTextInset"), InOutTheme.ControlLayout.BadgeTextInset, 0.0f);
 		ClampMin(TEXT("ControlLayout.InspectorTopMargin"), InOutTheme.ControlLayout.InspectorTopMargin, 0.0f);
 		ClampMin(TEXT("ControlLayout.InspectorHairlineThickness"), InOutTheme.ControlLayout.InspectorHairlineThickness, 0.0f);
+		ClampMin(TEXT("Layer.DiagnosticWidth"), InOutTheme.Layer.DiagnosticWidth, 0.0f);
 		ClampMin(TEXT("Layer.HairlineWidth"), InOutTheme.Layer.HairlineWidth, 0.0f);
 		ClampMin(TEXT("Layer.GroupHairlineWidth"), InOutTheme.Layer.GroupHairlineWidth, 0.0f);
 		ClampMin(TEXT("Layer.ChildHairlineWidth"), InOutTheme.Layer.ChildHairlineWidth, 0.0f);

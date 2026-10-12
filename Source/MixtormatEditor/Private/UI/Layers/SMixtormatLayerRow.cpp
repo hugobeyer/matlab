@@ -76,6 +76,8 @@ void SMixtormatLayerRow::Construct(const FArguments& InArgs)
 		[
 			SNew(SMixtormatLayerSurface)
 			.bSelected(bSelected)
+			.bDiagnosticActive(InArgs._bDiagnosticActive)
+			.bContainsDiagnostic(InArgs._bContainsDiagnostic)
 			.bVisible(bLayerEnabled)
 			.bReference(bReference)
 			.bHovered_Lambda([this]() { return IsHovered(); })

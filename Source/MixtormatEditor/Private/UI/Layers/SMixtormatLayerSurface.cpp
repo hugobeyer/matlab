@@ -3,6 +3,8 @@
 #include "UI/Layers/SMixtormatLayerSurface.h"
 
 #include "Style/MixtormatThemeStore.h"
+#include "Styling/CoreStyle.h"
+#include "Rendering/DrawElements.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 
 void SMixtormatLayerSurface::Construct(const FArguments& InArgs)
@@ -15,6 +17,8 @@ void SMixtormatLayerSurface::Construct(const FArguments& InArgs)
 	bReference = InArgs._bReference;
 	bInstanceSource = InArgs._bInstanceSource;
 	bSuppressActiveHalo = InArgs._bSuppressActiveHalo;
+	bDiagnosticActive = InArgs._bDiagnosticActive;
+	bContainsDiagnostic = InArgs._bContainsDiagnostic;
 	ChildSlot[InArgs._Content.Widget];
 }
 
@@ -144,6 +148,18 @@ int32 SMixtormatLayerSurface::OnPaint(const FPaintArgs& Args, const FGeometry& G
 				BandGeometry(0.0f, Width), MakeLayerHairlineRecipe(Theme, Context.bSelected, Kind),
 				Palette, Backdrop, 0.0f, DrawStyle);
 		}
+	}
+	// Right edge stays independent of selection's top hairline and the source's left marker.
+	const bool bExactDiagnostic = bDiagnosticActive.Get(false);
+	const float DiagnosticWidth = FMath::Clamp(Theme.Layer.DiagnosticWidth, 0.0f, Size.X);
+	if (DiagnosticWidth > 0.0f && (bExactDiagnostic || bContainsDiagnostic.Get(false)))
+	{
+		FLinearColor Color = Theme.Layer.DiagnosticAccent * WidgetStyle.GetColorAndOpacityTint();
+		Color.A *= bExactDiagnostic ? Theme.Layer.DiagnosticOpacity : Theme.Layer.DiagnosticAncestorOpacity;
+		FSlateDrawElement::MakeBox(Elements, ++PaintLayer,
+			Geometry.ToPaintGeometry(FVector2f(DiagnosticWidth, Size.Y),
+				FSlateLayoutTransform(FVector2f(Size.X - DiagnosticWidth, 0.0f))),
+			FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), DrawStyle.Effects, Color);
 	}
 	return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements, PaintLayer + 1,
 		WidgetStyle, bParentEnabled);

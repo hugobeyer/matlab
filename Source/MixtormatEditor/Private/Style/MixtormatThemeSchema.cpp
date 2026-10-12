@@ -546,6 +546,10 @@ void AddIconRole(
 		NUM_DEF("Layer.ReferenceRestTint", Layers, "Reference", "Rest Tint", Layer.ReferenceRestTint, 0, 1, .01, 2);
 		NUM_DEF("Layer.InstanceSourceLeftTint", Layers, "Reference", "Instance Left Tint", Layer.InstanceSourceLeftTint, 0, 1, .01, 2);
 		NUM_DEF("Layer.InstanceSourceRightTint", Layers, "Reference", "Instance Right Tint", Layer.InstanceSourceRightTint, 0, 1, .01, 2);
+		COL_DEF("Layer.DiagnosticAccent", Layers, "Diagnostic", "Diagnostic Accent", Layer.DiagnosticAccent);
+		NUM_DEF("Layer.DiagnosticWidth", Layers, "Diagnostic", "Marker Width", Layer.DiagnosticWidth, 0, 4, .25, 2);
+		NUM_DEF("Layer.DiagnosticOpacity", Layers, "Diagnostic", "Active Opacity", Layer.DiagnosticOpacity, 0, 1, .01, 2);
+		NUM_DEF("Layer.DiagnosticAncestorOpacity", Layers, "Diagnostic", "Ancestor Opacity", Layer.DiagnosticAncestorOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.HairlineWidth", Layers, "Rows", "Hairline Width", Layer.HairlineWidth, 0, 4, .25, 2);
 		NUM_DEF("Layer.HairlineOpacity", Layers, "Rows", "Hairline Opacity", Layer.HairlineOpacity, 0, 1, .01, 2);
 		NUM_DEF("Layer.GroupSaturation", Layers, "Group", "Group Saturation", Layer.GroupSaturation, 0, 4, .05, 2);

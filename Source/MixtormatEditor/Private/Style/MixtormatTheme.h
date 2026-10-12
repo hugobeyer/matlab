@@ -440,6 +440,11 @@ namespace Mixtormat
 		float ReferenceRestTint = 0.22f;
 		float InstanceSourceLeftTint = 0.55f;
 		float InstanceSourceRightTint = 0.10f;
+		// Independent right-edge diagnostic marker; never replaces selection or source glow.
+		FLinearColor DiagnosticAccent = FLinearColor::White;
+		float DiagnosticWidth = 2.0f;
+		float DiagnosticOpacity = 0.70f;
+		float DiagnosticAncestorOpacity = 0.28f;
 		// Resting top hairline per row kind; the selected row keeps its own Active pair below.
 		float GroupHairlineWidth = 1.0f;
 		float GroupHairlineOpacity = 0.46f;

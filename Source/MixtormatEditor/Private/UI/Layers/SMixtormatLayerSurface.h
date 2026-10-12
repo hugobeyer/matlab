@@ -15,6 +15,7 @@ public:
 		: _Kind(Mixtormat::EMixtormatLayerKind::Layer), _GroupTint(FLinearColor::Transparent)
 		, _bVisible(true), _bReference(false), _bInstanceSource(false)
 		, _bSelected(false), _bHovered(false), _bSuppressActiveHalo(false)
+		, _bDiagnosticActive(false), _bContainsDiagnostic(false)
 	{}
 		SLATE_ARGUMENT(Mixtormat::EMixtormatLayerKind, Kind)
 		SLATE_ATTRIBUTE(FLinearColor, GroupTint)
@@ -22,6 +23,8 @@ public:
 		SLATE_ATTRIBUTE(bool, bReference)
 		SLATE_ATTRIBUTE(bool, bInstanceSource)
 		SLATE_ATTRIBUTE(bool, bSelected)
+		SLATE_ATTRIBUTE(bool, bDiagnosticActive)
+		SLATE_ATTRIBUTE(bool, bContainsDiagnostic)
 		SLATE_ATTRIBUTE(bool, bHovered)
 		// Keep selected fill/edge and instance-source appearance; omit only the active halo.
 		SLATE_ATTRIBUTE(bool, bSuppressActiveHalo)
@@ -38,4 +41,5 @@ private:
 	TAttribute<FLinearColor> GroupTint;
 	TAttribute<bool> bSelected, bHovered, bVisible, bReference, bInstanceSource;
 	TAttribute<bool> bSuppressActiveHalo;
+	TAttribute<bool> bDiagnosticActive, bContainsDiagnostic;
 };

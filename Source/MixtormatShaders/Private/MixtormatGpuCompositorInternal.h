@@ -2125,12 +2125,13 @@ namespace MixtormatGpuCompositor
 	// ChildOutput target names it: no WriteDebug branch of the producer's own kernel to gate, no
 	// permutation, just colour the finished texture into OutputDebug after the fact. Callers are
 	// expected to guard the call with IsChildOutputPreviewTarget first.
-	// Exports the selected raw mask/influence into Debug RT for the viewport post-process.
+	// Exports mask/influence coverage into Debug RT; signed scalars remap from -1..1 to 0..1.
 	void AddMaskOverlayPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef Mask,
 		FRDGTextureRef OutputDebug,
-		FIntPoint Resolution);
+		FIntPoint Resolution,
+		bool bSourceSigned = false);
 
 	void AddDebugPreviewMaskBlitPass(
 		FRDGBuilder& GraphBuilder,

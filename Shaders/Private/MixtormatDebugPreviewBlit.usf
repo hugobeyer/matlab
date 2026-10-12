@@ -194,9 +194,10 @@ void MainRegionIdPickCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 
-// Raw selected mask/influence for the viewport's post-process blend.
+// Selected mask/influence coverage for the viewport's post-process blend.
 // Never encode a colour or modify the composite's material outputs here.
 Texture2D<float> OverlaySourceMask;
+uint OverlaySourceIsSigned;
 RWTexture2D<float4> OverlayOutputColor;
 
 [numthreads(8, 8, 1)]
@@ -207,7 +208,8 @@ void MainOverlayMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		return;
 	}
-	const float Coverage = OverlaySourceMask.Load(int3(Pixel, 0));
+	const float SourceValue = OverlaySourceMask.Load(int3(Pixel, 0));
+	const float Coverage = OverlaySourceIsSigned != 0 ? 0.5f * SourceValue + 0.5f : SourceValue;
 	OverlayOutputColor[Pixel] = float4(
 		isfinite(Coverage) ? saturate(Coverage) : 0.0f, 0.0f, 0.0f, 1.0f);
 }

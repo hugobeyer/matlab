@@ -84,7 +84,7 @@ Shortcut discoverability is incomplete.
 | `Z` (bare) | Toggle displacement — bare only, so `Ctrl+Z` still reaches undo |
 | `V` | Return to original PBR material; reset active diagnostics |
 | `Shift+V` | Reset diagnostics from the workspace preview key handler |
-| `W` | Toggle selected mask/gate PostFX when no mouse button is held |
+| `W` | Activate selected eligible scalar/mask PostFX; same owner toggles off, another transfers. Ownership survives selection and parameter edits. Viewport focus only, no mouse button held |
 | `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |
 | `5` | Toggle complete material UV rotation by 90°, exactly like the preview marking-menu button |
 | Mouse wheel | Zoom camera |

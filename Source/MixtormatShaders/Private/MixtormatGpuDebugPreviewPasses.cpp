@@ -193,6 +193,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, OverlaySourceIsSigned)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OverlaySourceMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OverlayOutputColor)
 	END_SHADER_PARAMETER_STRUCT()
@@ -215,7 +216,8 @@ namespace MixtormatGpuCompositor
 		FRDGBuilder& GraphBuilder,
 		const FRDGTextureRef Mask,
 		const FRDGTextureRef OutputDebug,
-		const FIntPoint Resolution)
+		const FIntPoint Resolution,
+		const bool bSourceSigned)
 	{
 		if (!Mask || !OutputDebug)
 		{
@@ -223,6 +225,7 @@ namespace MixtormatGpuCompositor
 		}
 		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatMaskOverlayCS::FParameters>();
 		Parameters->OutputSize = Resolution;
+		Parameters->OverlaySourceIsSigned = bSourceSigned ? 1u : 0u;
 		Parameters->OverlaySourceMask = Mask;
 		Parameters->OverlayOutputColor = GraphBuilder.CreateUAV(OutputDebug);
 		TShaderMapRef<FMixtormatMaskOverlayCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
