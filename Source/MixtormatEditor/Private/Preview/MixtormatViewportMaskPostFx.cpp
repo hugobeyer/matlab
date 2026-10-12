@@ -154,6 +154,10 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	UvTarget.Reset(NewObject<UTextureRenderTarget2D>(GetTransientPackage()));
 	UvTarget->RenderTargetFormat = RTF_RGBA32f;
 	UvTarget->ClearColor = FLinearColor::Black;
+	// These are pixel-aligned coordinates plus a binary mesh-validity flag.
+	// Bilinear filtering mixes foreground validity with the black background,
+	// creating a cyan fringe when the post material multiplies by channel B.
+	UvTarget->Filter = TF_Nearest;
 	UvTarget->InitAutoFormat(16, 16);
 	UvTarget->UpdateResourceImmediate(true);
 	CapturedSize = FIntPoint(16, 16);
