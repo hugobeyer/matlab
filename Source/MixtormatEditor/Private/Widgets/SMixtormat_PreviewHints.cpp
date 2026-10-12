@@ -93,10 +93,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		return PreviewMesh == EMixtormatPreviewMesh::Plane;
 	};
 	const auto bNoMaterial = [this]() { return !bHasWorkingMaterial; };
-	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bPlaneFlip, bNoMaterial]()
+	const auto bUvRotationAvailable = [this]() { return bHasWorkingMaterial; };
+	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bPlaneFlip, bNoMaterial, bUvRotationAvailable]()
 	{
 		return bQuickControls() || bDiagnosticActive() || bMaskAvailable()
-			|| bPlaneFlip() || bNoMaterial();
+			|| bPlaneFlip() || bNoMaterial() || bUvRotationAvailable();
 	};
 
 	// One pair: optional keycap and action text, both with live visibility.
@@ -154,6 +155,22 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		return bQuickControls() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddPair(*Row, LOCTEXT("HintEsc", "Esc"), LOCTEXT("HintCloseQuickControls", "Close quick controls"), QuickControlsVis);
+
+	// -- 5 shares the marking-menu's document-wide 90-degree UV rotation toggle.
+	const TAttribute<EVisibility> UvRotationVis = TAttribute<EVisibility>::CreateLambda(
+		[bUvRotationAvailable, bQuickControls]()
+	{
+		return bUvRotationAvailable() && !bQuickControls()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	});
+	AddGap(*Row, UvRotationVis);
+	AddPair(*Row, LOCTEXT("HintUVRotateKey", "5"),
+		TAttribute<FText>::CreateLambda([this]()
+		{
+			return bGlobalUVRotation90
+				? LOCTEXT("HintUVRotateOff", "Reset UV rotation")
+				: LOCTEXT("HintUVRotateOn", "Rotate UVs 90°");
+		}), UvRotationVis);
 
 	// -- A supported selected mask can be toggled whether already visible or not.
 	const TAttribute<EVisibility> MaskVis = TAttribute<EVisibility>::CreateLambda(
