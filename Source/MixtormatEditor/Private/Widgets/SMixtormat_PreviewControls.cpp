@@ -962,7 +962,50 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 	TSharedRef<SVerticalBox> RenderRows = SNew(SVerticalBox);
 	AddSliderRow(RenderRows, BuildPreviewRenderControls(true));
 	TSharedRef<SVerticalBox> CompositionRows = SNew(SVerticalBox);
-	AddSliderRow(CompositionRows, BuildFinalSettingsControls());
+	const auto Final = [this]() -> FMixtormatFinalSettings*
+	{
+		return bHasWorkingMaterial ? &WorkingFinalSettings : nullptr;
+	};
+	AddSliderRow(CompositionRows, MakeMemberSlider<FMixtormatFinalSettings>(
+		LOCTEXT("QuickControlsAOIntensity", "AO Intensity"), Final, &FMixtormatFinalSettings::HeightAOAmount,
+		0.0, 1.0, 0.5, 0.01,
+		LOCTEXT("QuickControlsAOIntensityHint", "Ambient occlusion from the final height, applied once after every layer. Layers and effects never write AO.")));
+	AddSliderRow(CompositionRows, MakeMemberSlider<FMixtormatFinalSettings>(
+		LOCTEXT("QuickControlsAORadius", "AO Radius"), Final, &FMixtormatFinalSettings::HeightAORadius,
+		1.0, 64.0, 8.0, 0.5,
+		LOCTEXT("QuickControlsAORadiusHint", "How far the occlusion reaches, in pixels at 1024. Scales with resolution.")));
+	AddSliderRow(CompositionRows,
+		SNew(SBox)
+		.IsEnabled_Lambda([this]() { return bPreviewDisplacementEnabled; })
+		[
+			MakeSlider(
+				LOCTEXT("QuickControlsDisplacementAmount", "Displacement"),
+				TAttribute<double>::CreateLambda([this]() { return static_cast<double>(PreviewDisplacementAmount); }),
+				0.0, 4.0, 1.0, 0.05, false,
+				FMixtormatOnSliderValueChanged::CreateLambda([this](const double Value)
+				{
+					SetPreviewDisplacementAmount(static_cast<float>(Value));
+				}),
+				FSimpleDelegate::CreateLambda([this]() { SetPreviewDisplacementAmount(1.0f); }),
+				LOCTEXT("QuickControlsDisplacementAmountHint", "Scale the centered composited Height used by the authored displacement path."))
+		]);
+	AddSliderRow(CompositionRows, MixtormatRow::MakePair(
+		MixtormatRow::Make(
+			LOCTEXT("QuickControlsDisplacement", "Displacement"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					return bPreviewDisplacementEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					SetPreviewDisplacementEnabled(State == ECheckBoxState::Checked);
+				}),
+				LOCTEXT("QuickControlsDisplacementHint", "Preview the composited Height through the protected master's authored displacement path."))),
+		MakeMemberToggle<FMixtormatFinalSettings>(
+			LOCTEXT("QuickControlsAutoRemapHeight", "Auto Remap Height"), Final,
+			&FMixtormatFinalSettings::bAutoRemapHeight,
+			LOCTEXT("QuickControlsAutoRemapHeightHint", "Remap the finished height to 0-1 from its own lowest and highest point, before AO and normals."))));
 	TSharedRef<SVerticalBox> LightingRows = SNew(SVerticalBox);
 	AddSliderRow(LightingRows, BuildPreviewLightingControls(EPreviewControlLayout::Grid));
 	TSharedRef<SVerticalBox> GeometryRows = SNew(SVerticalBox);
