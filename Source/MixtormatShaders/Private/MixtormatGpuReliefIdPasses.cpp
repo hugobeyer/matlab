@@ -589,12 +589,7 @@ namespace MixtormatGpuCompositor
 		{
 			Ctx.PublishedMaskOutputs.Add(
 				FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, Names[Index]}, Outputs[Index]);
-			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Mask,
-				Names[Index], LayerCtx.LayerIndex, Child.SourceChildIndex))
-			{
-				AddDebugPreviewMaskBlitPass(GraphBuilder, Outputs[Index],
-					Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
-			}
+
 		}
 	}
 
@@ -801,11 +796,9 @@ namespace MixtormatGpuCompositor
 				continue;
 			}
 			const FRampIdRenderData& Ramp = Child.RampId;
-			// The preview builds the gradient even at zero strength: it shows what the node would
-			// lay down, which is what an artist needs before turning the height up.
-			const bool bPreviewRamp = IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
-				FName(TEXT("Ramp")), LayerIndex, Child.SourceChildIndex);
-			if (Ramp.HeightAmount <= 0.0f && !bPreviewRamp)
+			const FPublishedFieldKey RampKey = PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Ramp")));
+			// Keep the packed ramp available to PostFX even when it contributes no height.
+			if (Ramp.HeightAmount <= 0.0f && !Ctx.PublishedFieldDemand.Contains(RampKey))
 			{
 				continue;
 			}
@@ -819,12 +812,8 @@ namespace MixtormatGpuCompositor
 				Ramp,
 				LayerIndex,
 				Child.SourceChildIndex);
-			if (bPreviewRamp)
-			{
-				// The gradient is the field's first channel, which is what the mask blit reads.
-				AddDebugPreviewMaskBlitPass(GraphBuilder, RampField,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
-			}
+			// The mask alias exposes only R; G remains computational ramp data.
+			Ctx.PublishedMaskOutputs.Add(RampKey, RampField);
 			if (Ramp.HeightAmount <= 0.0f)
 			{
 				continue;

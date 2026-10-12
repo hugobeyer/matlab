@@ -3,7 +3,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatCurvature.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
 
 // Reduced-resolution stain transport, resolved into a layer mask at composition resolution.
 //
@@ -77,7 +77,7 @@ RWTexture2D<float4> OutputStateA;
 RWTexture2D<float4> OutputStateB;
 RWTexture2D<float4> OutputSurface;
 RWTexture2D<float> OutputMask;
-RWTexture2D<float4> OutputDebug;
+
 
 int2 OutputSize;
 int2 SurfaceSize;
@@ -90,7 +90,7 @@ uint UseLayerMask;
 uint UseDirtMask;
 uint InvertSourceMask;
 uint InvertDirtMask;
-uint WriteDebug;
+
 uint Initialize;
 uint SurfaceValid;
 uint UseGeneratorNormal;
@@ -521,12 +521,6 @@ void SimulateState(int2 Pixel, float2 UV)
 	OutputStateB[Pixel] = float4(Velocity, OldB.zw);
 }
 
-// The same unlit ramp every other feature preview writes, so the stain reads as one more channel
-// view rather than as its own kind of display.
-float3 StainDebugColor(float Value)
-{
-	return MixtormatDebugRamp(Value);
-}
 
 void ResolveStain(int2 Pixel, float2 UV)
 {
@@ -549,13 +543,7 @@ void ResolveStain(int2 Pixel, float2 UV)
 		// leaving it unmasked.
 		OutputMask[Pixel] = Initialize != 0 ? 1.0f : saturate(Previous);
 
-		// Still write the preview. An empty view is the honest answer -- there is genuinely no
-		// coverage here -- and it is a different answer from leaving the target untouched, which
-		// shows whatever the last composite happened to leave and reads as the eye being broken.
-		if (WriteDebug != 0)
-		{
-			OutputDebug[Pixel] = float4(StainDebugColor(0.0f), 1.0f);
-		}
+
 		return;
 	}
 
@@ -606,12 +594,7 @@ void ResolveStain(int2 Pixel, float2 UV)
 	const float Blended = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));
 
-	// It shows the solve itself, before Strength blends it into the accumulated mask, which is
-	// what the other previews show too.
-	if (WriteDebug != 0)
-	{
-		OutputDebug[Pixel] = float4(StainDebugColor(Incoming), 1.0f);
-	}
+
 }
 
 [numthreads(8, 8, 1)]

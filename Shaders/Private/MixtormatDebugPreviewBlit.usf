@@ -5,77 +5,9 @@
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDiagnosticOverlay.ush"
 
-// Post-hoc debug blits for the generic child-output preview (Breakup's Region IDs/Gap/Edge/
-// Pieces, Worn Edges' Wear): these are already-produced textures, not values the composite or a
-// producer's own kernel computes, so rather than teach every producer shader a WriteDebug branch
-// of its own, one small pass colours whichever texture the target names, after the fact.
-// Cluster/Pattern Region IDs keep their own inline debug write instead of switching to
-// this: they already exist and already work, and Pattern additionally blackens its own invalid
-// pixels inline, which this pass exists to do for Breakup instead.
-//
-// Scalar outputs (Wear, Edge, Pieces) go straight to grayscale rather than through the plum/green
-// coverage ramp every other feature preview uses: those are named, self-explanatory masks a user
-// is inspecting directly (0 = none, 1 = full), not a signal being related back to the same palette
-// as every other debug view. The value is read as the grey it should display as, so it goes
-// through the same sRGB-to-linear step as the palette: 0.5 shows as mid grey. Unclamped -- a value
-// outside 0..1 is data, and the display clips it on its own.
-
-Texture2D<float> SourceMask;
+// Legacy IDs/SDF/colour blits and data-only exports for viewport PostFX.
 RWTexture2D<float4> OutputDebug;
-
 int2 OutputSize;
-
-[numthreads(8, 8, 1)]
-void MainMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const uint2 Pixel = DispatchThreadId.xy;
-	if (any(Pixel >= uint2(OutputSize)))
-	{
-		return;
-	}
-	const float Value = MixtormatSrgbToLinearChannel(SourceMask.Load(int3(Pixel, 0)));
-	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
-}
-
-Texture2D<float> SourceScalar;
-uint SourceIsSigned;
-
-[numthreads(8, 8, 1)]
-void MainScalarCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const uint2 Pixel = DispatchThreadId.xy;
-	if (any(Pixel >= uint2(OutputSize)))
-	{
-		return;
-	}
-	const float SourceValue = SourceScalar.Load(int3(Pixel, 0));
-	const float DisplayValue = SourceIsSigned != 0 ? 0.5f * SourceValue + 0.5f : SourceValue;
-	const float Value = MixtormatSrgbToLinearChannel(DisplayValue);
-	OutputDebug[Pixel] = float4(Value, Value, Value, 1.0f);
-}
-
-Texture2D<float2> SourceVector;
-
-[numthreads(8, 8, 1)]
-void MainVectorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const uint2 Pixel = DispatchThreadId.xy;
-	if (any(Pixel >= uint2(OutputSize)))
-	{
-		return;
-	}
-	const float2 Vector = SourceVector.Load(int3(Pixel, 0));
-	if (!all(isfinite(Vector)) || all(Vector == float2(0.0f, 0.0f)))
-	{
-		OutputDebug[Pixel] = float4(MixtormatDebugColor(float3(0.12f, 0.12f, 0.12f)), 1.0f);
-		return;
-	}
-	// Direction alone determines hue, independent of the producer's vector units.
-	const float Hue = frac(atan2(Vector.y, Vector.x) / 6.28318530718f + 0.5f);
-	const float3 Rgb = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
-	const float3 Colour = 0.8f * lerp(float3(1.0f, 1.0f, 1.0f), Rgb, 0.85f);
-	OutputDebug[Pixel] = float4(MixtormatDebugColor(Colour), 1.0f);
-}
 
 // A signed distance (negative inside) as two colours with iso-lines, for a field whose range has
 // nothing to do with 0..1 -- a mask blit of one is black on the inside and white a few texels out.
@@ -155,7 +87,7 @@ void MainRegionIdsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 // A colour field published by a Generator-layer Height Color Ramp. Already linear, so it goes to
-// the debug target as authored rather than through the scalar blit's sRGB-to-linear step.
+// the debug target as authored, without display remapping.
 Texture2D<float4> SourceColor;
 
 [numthreads(8, 8, 1)]
@@ -194,7 +126,7 @@ void MainRegionIdPickCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 
-// Raw published Flow/UV data. Rotate only the texture domain, never the stored components.
+// Raw published Flow/Vector2/UV data. Rotate the domain, never the stored components.
 Texture2D<float4> RawFlowSource;
 uint RawFlowRotate90;
 RWTexture2D<float4> RawFlowOutput;

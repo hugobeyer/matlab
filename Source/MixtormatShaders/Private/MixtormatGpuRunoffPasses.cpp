@@ -187,8 +187,6 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatRunoffApplyCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatRunoffApplyCS, FGlobalShader);
 
-	class FWriteDebugDim : SHADER_PERMUTATION_BOOL("MIXTORMAT_RUNOFF_WRITE_DEBUG");
-	using FPermutationDomain = TShaderPermutationDomain<FWriteDebugDim>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -200,7 +198,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FeatureMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -253,7 +251,7 @@ namespace MixtormatGpuCompositor
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
-		FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
+
 		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
@@ -286,9 +284,7 @@ namespace MixtormatGpuCompositor
 		// composite gates its own debug write, so two runoffs on different layers cannot fight
 		// over one target. Only the apply pass touches the shared debug target, and only on the
 		// permutation that declares it.
-		const bool bWriteRunoffDebug =
-			Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::Runoff
-			&& Request.DebugSettings.LayerIndex == LayerIndex;
+
 
 		// Three analysis-resolution intermediates. At 4K these are ten megabytes between them
 		// where the single full-resolution source field they replace was sixty-seven, and the
@@ -400,10 +396,7 @@ namespace MixtormatGpuCompositor
 
 		// Pass four: scope, the mask chain blend and Strength, at the composition's resolution.
 		{
-			FMixtormatRunoffApplyCS::FPermutationDomain Permutation;
-			Permutation.Set<FMixtormatRunoffApplyCS::FWriteDebugDim>(bWriteRunoffDebug);
-			TShaderMapRef<FMixtormatRunoffApplyCS> Shader(
-				GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			TShaderMapRef<FMixtormatRunoffApplyCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 
 			FMixtormatRunoffApplyCS::FParameters* P =
 				GraphBuilder.AllocParameters<FMixtormatRunoffApplyCS::FParameters>();
@@ -420,12 +413,6 @@ namespace MixtormatGpuCompositor
 			P->LinearWrapSampler = RunoffSampler;
 			P->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
 
-			// Left null on the permutation that does not declare it. RDG only requires a binding
-			// for what the compiled shader actually references, and the non-previewing
-			// permutation references nothing here.
-			P->OutputDebug = bWriteRunoffDebug
-				? GraphBuilder.CreateUAV(OutputDebug[Request.PublishedTargetIndex])
-				: nullptr;
 
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,

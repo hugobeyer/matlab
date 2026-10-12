@@ -35,7 +35,7 @@ Texture2D<float> LayerHeightMask;
 Texture2D<float> BorderBaseHeight;
 Texture2D<float4> EffectData;
 Texture2D<float> EffectHeight;
-Texture2D<float> DebugMask;
+
 #define MIXTORMAT_MAX_LAYER_GRADES 8
 Texture2D<float> GradeMask0;
 Texture2D<float> GradeMask1;
@@ -1335,9 +1335,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		DebugInputs.BorderNormal = DebugMode == 4
 			? saturate(length(SampleBorderGradient(UV, 0)) * max(HeightBorderWidth, 1.0e-4f))
 			: 0.0f;
-		DebugInputs.MaskValue = DebugMode == 5
-			? DebugMask.SampleLevel(LinearWrapSampler, UV, 0.0f)
-			: 0.0f;
+
 		OutputDebug[DispatchThreadId.xy] = float4(
 			MixtormatDebugModeColor(DebugMode, DebugInputs), 1.0f);
 	}

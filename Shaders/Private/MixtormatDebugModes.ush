@@ -52,8 +52,7 @@ struct FMixtormatDebugModeInputs
 	float ContactField;
 	// Mode 4: the border normal's strength, already scaled by the border width.
 	float BorderNormal;
-	// Mode 5: the layer mask, sampled by the caller.
-	float MaskValue;
+
 };
 
 // One mode's colour, ready to write into the debug target.
@@ -81,10 +80,7 @@ float3 MixtormatDebugModeColor(uint DebugMode, FMixtormatDebugModeInputs In)
 	{
 		DebugValue = In.BorderNormal;
 	}
-	else if (DebugMode == 5)
-	{
-		DebugValue = In.MaskValue;
-	}
+
 	return MixtormatDebugRamp(DebugValue);
 }
 

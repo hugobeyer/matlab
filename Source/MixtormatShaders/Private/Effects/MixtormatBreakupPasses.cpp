@@ -336,8 +336,7 @@ namespace MixtormatGpuCompositor
 			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Pieces"))},
 			Pending.Pieces);
 
-		// The generic child-output preview eye. Breakup always builds all four of these, so
-		// unlike Pattern IDs' Gap there is no demand-gating to extend -- only a debug blit to add.
+		// Region IDs retain gap-aware colouring; masks are exported for PostFX.
 		const FRDGTextureRef DebugTarget = Ctx.OutputDebug[Request.PublishedTargetIndex];
 		if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::RegionIds, NAME_None,
 			LayerCtx.LayerIndex, Child.SourceChildIndex))
@@ -347,21 +346,7 @@ namespace MixtormatGpuCompositor
 			AddDebugPreviewRegionIdsBlitPass(
 				GraphBuilder, Pending.GeneratedRegionIds, Pending.Gap, DebugTarget, Request.Resolution);
 		}
-		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
-			FName(TEXT("Gap")), LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Gap, DebugTarget, Request.Resolution);
-		}
-		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
-			FName(TEXT("Edge")), LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Edge, DebugTarget, Request.Resolution);
-		}
-		else if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
-			FName(TEXT("Pieces")), LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewMaskBlitPass(GraphBuilder, Pending.Pieces, DebugTarget, Request.Resolution);
-		}
+
 	}
 
 

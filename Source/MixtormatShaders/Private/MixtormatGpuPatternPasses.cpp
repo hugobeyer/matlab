@@ -873,13 +873,7 @@ namespace MixtormatGpuCompositor
 		}
 		Ctx.PublishedMaskOutputs.Add(
 			FPublishedMaskKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("Boundary"))}, Boundary);
-		if (IsChildOutputPreviewTarget(
-			Ctx.Request, EMixtormatPreviewOutputKind::Mask, FName(TEXT("Boundary")),
-			LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewMaskBlitPass(GraphBuilder, Boundary,
-				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
-		}
+
 		return GroupIds;
 	}
 
@@ -1275,14 +1269,7 @@ namespace MixtormatGpuCompositor
 							Child.SourceChildIndex,
 							FName(TEXT("Gap"))},
 						PatternOutput.Gap);
-					if (IsChildOutputPreviewTarget(
-						Request, EMixtormatPreviewOutputKind::Mask, FName(TEXT("Gap")),
-						LayerIndex, Child.SourceChildIndex))
-					{
-						AddDebugPreviewMaskBlitPass(
-							GraphBuilder, PatternOutput.Gap,
-							OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
-					}
+
 				}
 
 				PublishRegionIds(RegionIdMaps, Child.SourceChildIndex, RegionIds);

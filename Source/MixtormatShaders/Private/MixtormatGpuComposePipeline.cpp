@@ -1397,7 +1397,9 @@ namespace MixtormatGpuCompositor
 						const EMixtormatPublishedFieldKind ExpectedKind = Debug.ChildTarget.Kind
 							== EMixtormatPreviewOutputKind::WarpedUVGrid
 							? EMixtormatPublishedFieldKind::UVMap : EMixtormatPublishedFieldKind::Flow;
-						if (Field && Field->Kind == ExpectedKind && Field->IsComplete())
+						const bool bVectorDiagnostic = Debug.ChildTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
+							&& Field && Field->Kind == EMixtormatPublishedFieldKind::Vector2;
+						if (Field && (Field->Kind == ExpectedKind || bVectorDiagnostic) && Field->IsComplete())
 						{
 							// A producer resolution that differs from the composition's is resampled
 							// rather than dropped; matching extents keep the exact Load/store.
@@ -1427,7 +1429,7 @@ namespace MixtormatGpuCompositor
 						{
 							bLoggedFlowUnavailable = true;
 							UE_LOG(LogMixtormatComposition, Warning,
-								TEXT("Diagnostic Flow output '%s' is unavailable (missing, incomplete or not a Flow field); the E overlay shows nothing."),
+								TEXT("Diagnostic direction/UV output '%s' is unavailable (missing, incomplete or wrong field kind); the overlay shows nothing."),
 								*Debug.ChildTarget.OutputName.ToString());
 						}
 					}
@@ -1467,7 +1469,9 @@ namespace MixtormatGpuCompositor
 						}
 						else if (const FRDGTextureRef* Mask = Ctx.PublishedMaskOutputs.Find(Key))
 						{
-							if (*Mask && ((*Mask)->Desc.Format == PF_R16F || (*Mask)->Desc.Format == PF_R32_FLOAT))
+							// Legacy packed mask aliases (Ramp) expose R, not their computational G channel.
+							if (*Mask && ((*Mask)->Desc.Format == PF_R16F || (*Mask)->Desc.Format == PF_R32_FLOAT
+								|| (*Mask)->Desc.Format == PF_G16R16F))
 							{
 								Ctx.SelectedOverlayMask = (*Mask)->Desc.Extent == Request.Resolution
 									? *Mask

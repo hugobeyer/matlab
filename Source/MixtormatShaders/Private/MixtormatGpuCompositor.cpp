@@ -257,7 +257,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RegionUVOrientationField)
 		SHADER_PARAMETER(uint32, ReferencedUVEnabled)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, ReferencedUVField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DebugMask)
+
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputBC)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputN)
@@ -785,7 +785,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef& CombinedMask = LayerCtx.CombinedMask;
 		FRDGTextureRef& CombinedEffectData = LayerCtx.CombinedEffectData;
 		FRDGTextureRef& CombinedEffectHeight = LayerCtx.CombinedEffectHeight;
-		FRDGTextureRef& DebugMask = LayerCtx.DebugMask;
+
 		TShaderMapRef<FMixtormatCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		const int32 WriteIndex = LayerIndex & 1;
 		const int32 ReadIndex = 1 - WriteIndex;
@@ -837,6 +837,7 @@ namespace MixtormatGpuCompositor
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Stain
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::Runoff
 			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::ChildOutput
+			&& Request.DebugSettings.Mode != EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex ? 1u : 0u;
 		Parameters->Opacity = Layer.Opacity;
 		Parameters->Tiling = Layer.Tiling;
@@ -983,7 +984,7 @@ namespace MixtormatGpuCompositor
 			bSmoothHeightMask ? Layer.HeightSmoothAmount : 0.0f;
 		Parameters->EffectData = CombinedEffectData;
 		Parameters->EffectHeight = CombinedEffectHeight;
-		Parameters->DebugMask = DebugMask;
+
 
 		// Per-region colour variation. Applied here rather than in a pass of its own
 		// because line-for-line this is the layer's colour-rewrite site already --

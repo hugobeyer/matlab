@@ -49,7 +49,7 @@
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskOps.ush"
-#include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
+
 
 // The grid this dispatch writes, always. Every pass bounds-checks against it and derives its UV
 // from it, so no entry point can address its output with another pass's resolution.
@@ -107,9 +107,7 @@ RWTexture2D<float2> OutputSource;
 RWTexture2D<float> OutputRunoff;
 RWTexture2D<float> OutputMask;
 
-#if MIXTORMAT_RUNOFF_WRITE_DEBUG
-RWTexture2D<float4> OutputDebug;
-#endif
+
 
 // The reference the CPU already divided StreakRadius by. Here only to turn a UV length back into
 // a sane tap floor, so a step never collapses to nothing on a very short run.
@@ -688,11 +686,5 @@ void ApplyCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Blended = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
 	OutputMask[Pixel] = saturate(lerp(Previous, Blended, saturate(Strength)));
 
-	// The runoff before Strength blends it into the chain, matching what every other feature
-	// preview in the plugin shows: the same unlit ramp, so runoff reads as one more channel view
-	// rather than as its own kind of display. Compiled out entirely on the permutation that is
-	// not previewing, so the shared debug target is neither bound nor addressable from here.
-#if MIXTORMAT_RUNOFF_WRITE_DEBUG
-	OutputDebug[Pixel] = float4(MixtormatDebugRamp(Incoming), 1.0f);
-#endif
+
 }

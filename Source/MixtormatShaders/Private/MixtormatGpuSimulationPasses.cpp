@@ -167,7 +167,7 @@ public:
 		SHADER_PARAMETER(uint32, UseDirtMask)
 		SHADER_PARAMETER(uint32, InvertSourceMask)
 		SHADER_PARAMETER(uint32, InvertDirtMask)
-		SHADER_PARAMETER(uint32, WriteDebug)
+
 		SHADER_PARAMETER(uint32, Initialize)
 		SHADER_PARAMETER(uint32, SurfaceValid)
 		SHADER_PARAMETER(uint32, UseGeneratorNormal)
@@ -206,7 +206,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputStateB)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputSurface)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -242,7 +242,7 @@ namespace MixtormatGpuCompositor
 		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
 		FRDGTextureRef* const OutputN = Ctx.OutputN;
 		FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
-		FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
+
 		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
 		const int32 LayerIndex = LayerCtx.LayerIndex;
 		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
@@ -369,13 +369,6 @@ namespace MixtormatGpuCompositor
 		AddClearUAVPass(
 			GraphBuilder, GraphBuilder.CreateUAV(StainMaskDummy), FVector4f(0.0f));
 
-		// The feature-preview eye on the Stain group. Gated on the selected
-		// layer the way the composite gates its own debug write, so two stains
-		// on different layers cannot fight over one target. Only the resolve
-		// binds the shared debug target; the solve passes take a dummy.
-		const bool bWriteStainDebug =
-			Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::Stain
-			&& Request.DebugSettings.LayerIndex == LayerIndex;
 
 		FRDGTextureRef StainSourceMask = Effect.StainSourceMask.IsValid()
 			? RegisterTexture(
@@ -420,7 +413,7 @@ namespace MixtormatGpuCompositor
 			P->UseDirtMask = Effect.StainDirtMask.IsValid() ? 1u : 0u;
 			P->InvertSourceMask = Effect.bStainSourceMaskInvert ? 1u : 0u;
 			P->InvertDirtMask = Effect.bStainDirtMaskInvert ? 1u : 0u;
-			P->WriteDebug = 0u;
+
 			P->Initialize = MaskPassIndex == 0 ? 1u : 0u;
 			P->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
 			const bool bUseGeneratorNormal = LayerCtx.bGeneratedHeight;
@@ -473,7 +466,7 @@ namespace MixtormatGpuCompositor
 			P->OutputStateB = GraphBuilder.CreateUAV(StateWriteDummyB);
 			P->OutputSurface = GraphBuilder.CreateUAV(SurfaceWriteDummy);
 			P->OutputMask = GraphBuilder.CreateUAV(StainMaskDummy);
-			P->OutputDebug = GraphBuilder.CreateUAV(StateWriteDummyA);
+
 		}
 
 		// Created once rather than per iteration, for the same reason the parameter block is.
@@ -539,12 +532,11 @@ namespace MixtormatGpuCompositor
 		Resolve->OutputSize = Request.Resolution;
 		Resolve->Mode = 2;
 		Resolve->Iteration = Effect.StainIterations;
-		Resolve->WriteDebug = bWriteStainDebug ? 1u : 0u;
+
 		Resolve->PreviousStateA = StateA[StateReadIndex];
 		Resolve->PreviousStateB = StateB[StateReadIndex];
 		Resolve->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
-		Resolve->OutputDebug = GraphBuilder.CreateUAV(
-			OutputDebug[Request.PublishedTargetIndex]);
+
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME(

@@ -360,13 +360,6 @@ namespace MixtormatGpuCompositor
 					FName(TEXT("Wear"))},
 				EdgeWearMask);
 
-			if (IsChildOutputPreviewTarget(Request, EMixtormatPreviewOutputKind::Mask,
-				FName(TEXT("Wear")), LayerIndex, PendingWear.SourceChildIndex))
-			{
-				AddDebugPreviewMaskBlitPass(
-					GraphBuilder, EdgeWearMask,
-					Ctx.OutputDebug[Request.PublishedTargetIndex], Request.Resolution);
-			}
 
 			FRDGTextureRef WornRAM = GraphBuilder.CreateTexture(
 				OutputRAM[WriteIndex]->Desc, TEXT("Mixtormat.WornEdges.HeightDerivedRAM"));

@@ -37,11 +37,6 @@
 
 namespace MixtormatGpuCompositor
 {
-// The ordered Behavior pass may republish a Flow after its owning module's
-// diagnostic pass; use the same preview renderer rather than leaving stale Flow on screen.
-static void AddPublishedFieldPreview(FMixtormatComposeContext& Ctx,
-    const FMixtormatLayerPassContext& LayerCtx, const int32 ChildIndex,
-    const FName OutputName, const FPublishedField& Field);
 
 namespace
 {
@@ -963,24 +958,6 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatCanonicalFlowTraceCS,
 	"/Plugin/Mixtormat/Private/MixtormatFlowTrace.usf", "MainCS", SF_Compute);
 
-class FMixtormatFlowPreviewCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatFlowPreviewCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatFlowPreviewCS, FGlobalShader);
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-	END_SHADER_PARAMETER_STRUCT()
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-IMPLEMENT_GLOBAL_SHADER(FMixtormatFlowPreviewCS,
-	"/Plugin/Mixtormat/Private/MixtormatFlowPreview.usf", "MainCS", SF_Compute);
 
 class FMixtormatScalarBoundaryPackCS final : public FGlobalShader
 {
@@ -1939,10 +1916,9 @@ namespace
 						{
 							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
 								Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
-							AddPublishedFieldPreview(Ctx, LayerCtx, Filter.SourceChildIndex,
-								FName(TEXT("FlowDirection")), Filtered);
+
 						}
-						AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, Filtered);
+
 					}
 				}
 				if (ScopedBundle.Height && Module.Height)
@@ -2006,10 +1982,7 @@ namespace
 						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
 						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
 							Child.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
-						AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
-							FName(TEXT("FlowDirection")), Filtered);
-						AddPublishedFieldPreview(Ctx, LayerCtx,
-							FlowParent->SourceChildIndex, FName(TEXT("FlowDirection")), Filtered);
+
 					}
 					continue;
 				}
@@ -3216,43 +3189,6 @@ P->HasScopedMask = bHasScopedMask ? 1u : 0u;
 
 }
 
-static void AddPublishedFieldPreview(FMixtormatComposeContext& Ctx,
-	const FMixtormatLayerPassContext& LayerCtx, const int32 ChildIndex,
-	const FName OutputName, const FPublishedField& Field)
-{
-	if (!Field.IsComplete()) { return; }
-	const bool bScalar = Field.Kind == EMixtormatPublishedFieldKind::Scalar01
-		|| Field.Kind == EMixtormatPublishedFieldKind::ScalarSigned;
-	const bool bVector = Field.Kind == EMixtormatPublishedFieldKind::Vector2;
-	const bool bFlow = Field.Kind == EMixtormatPublishedFieldKind::Flow;
-	if (!bScalar && !bVector && !bFlow) { return; }
-	const EMixtormatPreviewOutputKind PreviewKind = bScalar
-		? EMixtormatPreviewOutputKind::Mask : EMixtormatPreviewOutputKind::FlowDirection;
-	if (!IsChildOutputPreviewTarget(Ctx.Request, PreviewKind, OutputName, LayerCtx.LayerIndex, ChildIndex)) { return; }
-	const FIntPoint Size = Ctx.Request.Resolution;
-	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-	if (bScalar)
-	{
-		AddDebugPreviewScalarBlitPass(Ctx.GraphBuilder, Field.Texture,
-			Field.Kind == EMixtormatPublishedFieldKind::ScalarSigned, Debug, Size);
-	}
-	else if (bVector)
-	{
-		AddDebugPreviewVectorBlitPass(Ctx.GraphBuilder, Field.Texture, Debug, Size);
-	}
-	else
-	{
-		TShaderMapRef<FMixtormatFlowPreviewCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatFlowPreviewCS::FParameters>();
-		P->OutputSize = Size;
-		P->FlowField = Field.Texture;
-		P->FlowValidity = Field.Validity;
-		P->OutputDebug = Ctx.GraphBuilder.CreateUAV(Debug);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.PublishedFlow.Preview.C%d", ChildIndex),
-			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-	}
-}
 
 void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
@@ -3273,7 +3209,7 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 		const FPublishedField Field = *Source;
 		Ctx.PublishedFieldOutputs.Add(
 			PublishedKey(Layer, Child.SourceChildIndex, Reference.Source.Output), Field);
-		AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Reference.Source.Output, Field);
+
 		if (Reference.Kind == EMixtormatPublishedFieldKind::UVMap)
 		{
 			LayerCtx.ReferencedUV = Field.Texture;
@@ -3496,23 +3432,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				// Rock/Pebbles/Cracks use signed boundaries; Cliff uses native height.
 				const bool bHasBoundary = Module.BoundaryField
 					&& Module.BoundaryField->Desc.Format == PF_G32R32F;
-				const FPublishedField NativeFlow = AddNativeFlowPass(Ctx, Layer,
+				AddNativeFlowPass(Ctx, Layer,
 					Child.SourceChildIndex, bHasBoundary ? Module.BoundaryField : Module.Height,
 					bHasBoundary ? ENativeFlowSource::SignedBoundary : ENativeFlowSource::SignedHeight,
 					bHasBoundary ? Module.RegionIds : nullptr, &Child.Generator.NativeFlow, Module.Height);
-				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
-					FName(TEXT("FlowDirection")), NativeFlow);
+
 			}
 			else if (bNeedsWorkingFlow)
 			{
-				const FPublishedField NativeFlow = AddNativeFlowPass(
-					Ctx, Layer, Child.SourceChildIndex, Module.Height);
-				if (Child.Generator.Type != EMixtormatGeneratorType::Noise
-					&& Child.Generator.Type != EMixtormatGeneratorType::StrataCarver)
-				{
-					AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
-						FName(TEXT("FlowDirection")), NativeFlow);
-				}
+				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
 			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
 			// Normalize the unmasked Noise native height, then apply its scoped gate to the
@@ -3567,8 +3495,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					{
 						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
 							Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
-						AddPublishedFieldPreview(Ctx, LayerCtx, Filter.SourceChildIndex,
-							FName(TEXT("FlowDirection")), Filtered);
+
 					}
 				}
 			}
@@ -3580,7 +3507,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
 					PublishedKey(Layer, Child.SourceChildIndex, Name));
 				if (!Field) { continue; }
-				AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, *Field);
+
 				// Keep authored mask references to Value working, while Copy preserves its typed payload.
 				if (Name == FName(TEXT("Value")))
 				{
@@ -3623,18 +3550,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key),
 					FPublishedField{EMixtormatPublishedFieldKind::SDF, Mask.Value, nullptr, nullptr, false});
 			}
-			if (IsChildOutputPreviewTarget(Ctx.Request,
-				bDistance ? EMixtormatPreviewOutputKind::SignedDistance : EMixtormatPreviewOutputKind::Mask,
+			if (bDistance && IsChildOutputPreviewTarget(Ctx.Request,
+				EMixtormatPreviewOutputKind::SignedDistance,
 				Mask.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
 			{
-				if (bDistance)
-				{
-					AddDebugPreviewSignedDistanceBlitPass(Ctx.GraphBuilder, Mask.Value, (float)Size.X, Debug, Size);
-				}
-				else
-				{
-					AddDebugPreviewMaskBlitPass(Ctx.GraphBuilder, Mask.Value, Debug, Size);
-				}
+				AddDebugPreviewSignedDistanceBlitPass(Ctx.GraphBuilder, Mask.Value, (float)Size.X, Debug, Size);
 			}
 		}
 

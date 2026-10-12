@@ -1,22 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 #include "/Engine/Public/Platform.ush"
 int2 OutputSize;
-Texture2D<float4> FlowField;
-Texture2D<float> FlowValidity;
-RWTexture2D<float4> OutputDebug;
-[numthreads(8,8,1)]
-void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-    int2 Pixel = int2(DispatchThreadId.xy);
-    if (any(Pixel >= OutputSize)) return;
-    float4 F = FlowField.Load(int3(Pixel,0));
-    float V = FlowValidity.Load(int3(Pixel,0));
-    if (V <= 0.5f || !all(isfinite(F))) { OutputDebug[Pixel] = float4(0,0,0,1); return; }
-    float Hue = atan2(F.y,F.x) / 6.28318530718f + 0.5f;
-    float3 RGB = saturate(abs(frac(Hue + float3(0.0f,0.6666667f,0.3333333f))*6.0f-3.0f)-1.0f);
-    OutputDebug[Pixel] = float4(RGB * (0.2f+0.8f*saturate(length(F.xy))),1.0f);
-}
-
+// Computational boundary packing only; diagnostic colouring belongs to PostFX.
 Texture2D<float> ScalarBoundary;
 RWTexture2D<float2> OutBoundary;
 [numthreads(8,8,1)]
