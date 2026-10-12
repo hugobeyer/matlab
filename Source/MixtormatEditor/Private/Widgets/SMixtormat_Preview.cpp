@@ -973,6 +973,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			{
 				SetPreviewDisplacementEnabled(!bPreviewDisplacementEnabled);
 			}))
+			.OnToggleGlobalUVRotation90(FSimpleDelegate::CreateLambda([this]()
+			{
+				if (bHasWorkingMaterial)
+				{
+					SetGlobalUVRotation90(!bGlobalUVRotation90);
+				}
+			}))
 			// Temporary: V has no toolbar readout yet, so the status line is the only feedback.
 			.OnChannelPreviewChanged(FSimpleDelegate::CreateLambda([this]()
 			{
