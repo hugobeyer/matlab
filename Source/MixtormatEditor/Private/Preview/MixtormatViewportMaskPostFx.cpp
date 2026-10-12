@@ -5,6 +5,7 @@
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
+#include "Components/SceneCaptureComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -192,7 +193,7 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	UvCapture = NewObject<USceneCaptureComponent2D>();
 	UvCapture->SetMobility(EComponentMobility::Movable);
 	UvCapture->CaptureSource = SCS_SceneColorHDR;
-	UvCapture->PrimitiveRenderMode = PRM_UseShowOnlyList;
+	UvCapture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
 	UvCapture->TextureTarget = UvTarget.Get();
 	UvCapture->bCaptureEveryFrame = false;
 	UvCapture->bCaptureOnMovement = false;
