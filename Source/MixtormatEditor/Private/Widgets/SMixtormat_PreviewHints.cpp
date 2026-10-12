@@ -82,11 +82,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsMaskOverlayTargetReady());
 	};
-	const auto bCycleAvailable = [this]()
-	{
-		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-		return bHasWorkingMaterial && (!Child || IsGroupChildEnabled(*Child));
-	};
+	const auto bCycleAvailable = [this]() { return bHasWorkingMaterial; };
 	const auto bFlowAvailable = [this]()
 	{
 		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsFlowOverlayTargetReady());
@@ -257,7 +253,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, CycleVis);
-	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintCyclePreview", "Cycle diagnostics"), CycleVis);
+	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintCyclePreview", "Cycle material channels"), CycleVis);
 
 	// -- Shift+V resets PostFX, module diagnostics and material-channel views.
 	const TAttribute<EVisibility> ResetVis = TAttribute<EVisibility>::CreateLambda(

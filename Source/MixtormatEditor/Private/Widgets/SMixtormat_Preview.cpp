@@ -1223,11 +1223,23 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					SetGlobalUVRotation90(!bGlobalUVRotation90);
 				}
 			}))
-			// Temporary: V has no toolbar readout yet, so the status line is the only feedback.
+			// PBR channel views must not inherit a module replacement or PostFX tint.
 			.OnChannelPreviewChanged(FSimpleDelegate::CreateLambda([this]()
 			{
 				if (!PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid())
 				{
+					if (PreviewViewports[0]->GetChannelPreview() != EMixtormatChannelPreview::Material
+						&& (bMaskOverlayEnabled || DebugPreviewMode != EMixtormatDebugPreviewMode::None))
+					{
+						bMaskOverlayEnabled = false;
+						MaskOverlaySource = FMixtormatChildAddress();
+						MaskOverlayOutputName = NAME_None;
+						MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
+						bAutomaticFlowPreview = false;
+						DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+						ChildPreviewTarget = FMixtormatChildPreviewTarget();
+						RefreshLayeredPreview(false);
+					}
 					WorkingStatusText = FString::Printf(
 						TEXT("Preview: %s"),
 						*PreviewViewports[0]->GetChannelPreviewLabel());

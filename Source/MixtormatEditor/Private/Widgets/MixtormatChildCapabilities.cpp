@@ -300,6 +300,14 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, false, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
+		else if (Child.Behavior.Type == EMixtormatBehaviorType::Warp)
+		{
+			// Both standard and traced Warp publish the final mixed coordinates, not a Flow vector.
+			Result.Outputs.Add({FName(TEXT("WarpedUV")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowUV", "Warped UV"),
+				EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::UVMap});
+		}
 		else if (Child.Behavior.Type != EMixtormatBehaviorType::FlowField
 			&& Child.Behavior.Flow.bUseTracedFlow)
 		{

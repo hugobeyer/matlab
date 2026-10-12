@@ -480,7 +480,7 @@ public:
 				return true;
 			}
 		}
-		// V advances diagnostics; Shift+V restores the untouched lit material.
+		// V cycles PBR material channels regardless of selection; Shift+V restores Material.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V
 			&& !IsCtrlPressed() && !IsAltPressed())
 		{
@@ -490,7 +490,7 @@ public:
 			}
 			else
 			{
-				Owner.CycleModulePreview();
+				Owner.CycleChannelPreview();
 			}
 			return true;
 		}
