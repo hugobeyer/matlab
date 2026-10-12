@@ -66,8 +66,8 @@ struct FMixtormatComposeResources
 // Growing a propagated craquelure network is one full-resolution dispatch per pixel of reach --
 // up to a thousand of them, each doing on the order of eighty texture loads per pixel -- and the
 // panel recomposites the entire stack on every frame of a slider drag. Almost nothing a user
-// touches while tuning changes the network: Width, Contrast, Balance, Offset, Weight, Invert,
-// the blend mode and all four relief controls are applied to the finished distance field, not
+// touches while tuning changes the network: Width, Input Levels, Curve, Offset,
+// Weight, Invert, blend mode and all four relief controls apply to the finished distance field, not
 // during growth. Regrowing it for those was the dominant cost of interacting with the tool.
 //
 // Keyed on exactly the parameters growth reads, so a hit is the same field the miss would have

@@ -143,10 +143,13 @@ are demanded ahead of the layer stack. `Paste Copied Noise Value` remains for
 supported copied mask references. Inline selection
 clears published GUIDs first, because a published source otherwise wins; `UsesNoise()` mirrors
 `UsesLayerValues()` precedence. Source changes preserve blending, shaping, filters and scope, and
-instances stay locked (they mirror their source child). The inline Noise controls reuse the
-generator inspector's PATTERN/PLACEMENT rows via `BuildNoisePatternPlacementControls`; generator
-Height-only settings do not appear because masks read Value coverage. Mask Tiling/UV/Rotation
-stay visible for Texture, published and inline-noise sources and stay hidden for Layer Values.
+instances stay locked (they mirror their source child). Inline Noise controls reuse
+the generator's PATTERN/DISTORTION sections through `BuildNoisePatternPlacementControls`,
+without a second Placement card or generator Flow-only rows. The Mask inspector
+orders SOURCE → PATTERN → DISTORTION → SHAPING → PLACEMENT → BLENDING. Mask
+placement applies to Texture, published, and inline Noise sources; Layer Values
+have no spatial placement. Shaping uses Normalize, Input Min/Max, Curve, Offset
+and Invert; the redundant Balance/Contrast controls were removed.
 Right-click a scoped-mask owner (generators and effects, including Gravity Flow) → `Noise Gate`
 (`CreateNoiseGate`) to author one scoped Mask child with Source=Noise in a single edit. This UI
 half is source-reviewed only; the GPU half is `AddNoiseMaskPass`/`AddNoiseCoveragePass` plus the

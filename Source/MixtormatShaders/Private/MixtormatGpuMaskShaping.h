@@ -11,8 +11,6 @@
 // Matches MixtormatMaskShaping.ush. All mask producers use the same binding contract.
 #define MIXTORMAT_MASK_SHAPING_PARAMETERS \
 	SHADER_PARAMETER(uint32, Invert) \
-	SHADER_PARAMETER(float, Balance) \
-	SHADER_PARAMETER(float, Contrast) \
 	SHADER_PARAMETER(float, Offset) \
 	SHADER_PARAMETER(FVector2f, MaskInputLevels) \
 	SHADER_PARAMETER(uint32, MaskRawOutput) \
@@ -26,8 +24,6 @@ namespace MixtormatGpuCompositor
 	void BindMaskShaping(TParameters& Parameters, const FMixtormatMaskShaping& Shaping)
 	{
 		Parameters.Invert = Shaping.bInvert ? 1u : 0u;
-		Parameters.Balance = Shaping.Balance;
-		Parameters.Contrast = Shaping.Contrast;
 		Parameters.Offset = Shaping.Offset;
 		Parameters.MaskInputLevels = FVector2f(Shaping.InputMin, Shaping.InputMax);
 		Parameters.MaskRawOutput = 0u;

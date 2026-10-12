@@ -7,8 +7,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatScalarRampCapacity.ush"
 
 uint Invert;
-float Balance;
-float Contrast;
+
 float Offset;
 float2 MaskInputLevels;
 uint MaskRawOutput;
@@ -73,7 +72,7 @@ float MixtormatShapeMaskInput(float Incoming)
 	}
 	const float Leveled = MixtormatRemapMaskInput(Incoming, MaskInputLevels);
 	const float CurveBiased = MixtormatEvalScalarRamp(Leveled);
-	return MixtormatShapeMask(CurveBiased, Contrast, Offset, Balance, Invert);
+	return MixtormatShapeMask(CurveBiased, Offset, Invert);
 }
 
 float MixtormatBlendShapedMask(float Previous, float Incoming, uint BlendMode, float Weight)

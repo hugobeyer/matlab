@@ -25,7 +25,15 @@ Minimize token consumption. Read only files necessary for the requested change i
 - Do not wander into unrelated analysis, changes, or recommendations.
 - Do not introduce hardcoded values; use canonical settings, constants, tokens, or metadata.
 - If you have a question or a material uncertainty, ask the user before proceeding.
-- There is no authored artist content in this repository; plugin-created assets need no special protection.
+- **Unshipped development:** no released authored artist content needs backward
+  compatibility. Do not create migration stubs, deprecated fields, dormant code
+  paths, redirects or guards for hypothetical old user assets.
+- Preserve working features unless removal is approved. Once approved, delete
+  obsolete parameters, runtime fields, gather/bindings, shaders, inspector
+  controls, JSON metadata and associated docs together. No compatibility
+  scaffolding solely for pre-release history.
+- Maintain consistency across current code and internal data; ask if a genuine
+  active dependency or unresolved design issue would be broken.
 - Do not add or run tests unless the user explicitly asks.
 - Update only documentation directly related to a completed change; keep it current.
 
@@ -80,8 +88,9 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
   Use targeted source reads and static review only. Builds, commands and Unreal
   launches require explicit user consent; testing requires explicit consent too.
 - Identify canonical ownership before editing; do not duplicate definitions.
-- Do not remove parameters, behavior, compatibility paths, or public APIs that
-  merely look unused — confirm readers first (reflection, shader tags, gather).
+- Before removing parameters, behavior or APIs, confirm their active readers
+  (reflection, shader tags, gather) and update those readers. Unshipped backward
+  compatibility is not a reason to retain explicitly retired features.
 - Preserve the Runtime → Shaders → Editor direction. Never include Editor from
   Runtime or Shaders.
 - Shader parameter changes must be traced through: CPU declaration → gather →
@@ -101,8 +110,9 @@ Three modules, one-way dependency: **Runtime ← Shaders ← Editor**.
   or unstyled `SToolTip`). All help popovers must use `SMixtormatHelp` or its
   `MakeStyledToolTip` adapter for interactive widgets. Text, appearance and timing
   must be centralized; no local tooltip styling. See `AgentDocs/HELPERS.md`.
-- Enum values are serialized by value: append, never reorder. Renames go in
-  `Config/DefaultMixtormat.ini` `[CoreRedirects]`.
+- Enums serialize numeric values. Preserve values consumed by current data and
+  code; deliberate pre-release schema changes may remove obsolete entries once
+  their readers are updated. Do not add CoreRedirects just for unshipped assets.
 
 ## 6. Navigation recipes
 

@@ -510,8 +510,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 	AddSliderRow(Panel, Slider(LOCTEXT("CraqWeight", "Weight"), &FMixtormatCraquelure::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("CraqWeightHint", "How far the blend is taken. 0 is the off switch for this node.")));
 
-	// The shared shaping block, so Invert / Balance / Contrast / Offset behave here exactly as they
-	// do on a texture mask instead of being a fourth hand-written copy with its own ranges.
+	// Reuse the shared levels, curve and offset controls on all mask producers.
 	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatCraquelure* C = GetSelectedCraquelure();
@@ -948,42 +947,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	// cards for grouping, and pairs where both labels are one short word.
 	const auto Mask = [this]() { return GetSelectedLayerMask(); };
 
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		.Visibility_Lambda([this]() { return GetSelectedLayerMask() ? EVisibility::Visible : EVisibility::Collapsed; });
-
-	const TSharedRef<SVerticalBox> Cards = Panel;
-	Panel = SNew(SVerticalBox);
-	Cards->AddSlot().AutoHeight()
-	[
-		SNew(SMixtormatInspectorCard)
-		.Title_Lambda([this]()
-		{
-			const FMixtormatMaskLayer* Selected = GetSelectedLayerMask();
-			if (!Selected)
-			{
-				return LOCTEXT("NoSelectedMask", "No mask selected");
-			}
-			if (Selected->UsesNoise() || Selected->HasPublishedSource())
-			{
-				return GetMaskSourceLabel(GetSelectedChildAddress());
-			}
-			if (Selected->UsesLayerValues())
-			{
-				// Naming the channel, because that is the whole identity of this mask -- there is
-				// no asset to name and two Layer Values masks on one layer differ only by it.
-				return FText::Format(
-					LOCTEXT("SelectedMaskLayerValuesName", "Layer Values - {0}"),
-					MixtormatUI::LayerValueChannelText(Selected->LayerValueChannel));
-			}
-			const FSoftObjectPath Path = !Selected->Mask.IsNull()
-				? Selected->Mask.ToSoftObjectPath()
-				: Selected->MaskTexture.ToSoftObjectPath();
-			return FText::FromString(Path.GetAssetName());
-		})
-		[
-			Panel
-		]
-	];
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("MaskSourceCard", "SOURCE"));
 
 	// The asset, on the node itself. Before this the only way to change a texture mask's map was
 	// the row's context menu, which swapped in whatever the bottom gallery happened to have
@@ -1118,27 +1084,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 					"and is what reads as brightness; the single channels are the raw albedo "
 					"components. Roughness is the layer's resolved roughness, after its bias, "
 					"contrast and offset.\n\n"
-					"Inversion, Balance, Contrast and Offset under Shaping do the levelling -- "
-					"there is no second set of range controls here."))
+					"Input Levels, Curve, Offset and Invert under Shaping control the final mask."))
 		]);
-
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("SelectedMaskBlendMode", "Blend Mode"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatMaskLayer* Selected = GetSelectedLayerMask();
-				return Selected
-					? MixtormatUI::MaskBlendModeText(Selected->BlendMode)
-					: FText::GetEmpty();
-			}),
-			FOnGetContent::CreateLambda([this]()
-			{
-				return BuildMaskBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
-			}), nullptr, TAttribute<FText>(), 0.0f)));
-
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatMaskLayer>(
-		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
 
 
 	// Keep all placement transforms below source selection, blending and shaping.
@@ -1158,7 +1105,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 			{
 				FMixtormatMaskLayer* M = GetSelectedLayerMask();
 				return M && M->UsesNoise() ? &M->Noise : nullptr;
-			})
+			}, true)
 		]);
 
 	// Source placement. Every transform here maps the unit square onto itself, which is the
@@ -1209,13 +1156,33 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		LOCTEXT("MaskRotationHint", "Quarter turns only. An arbitrary angle drags the corners of the tile outside the wrapped domain and seams; 90 degree steps are permutations of the unit square, so they stay tileable. Applied before the tiling, so the mask turns and the lattice repeats the turned result.")));
 
 
-	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatMaskLayer* M = GetSelectedLayerMask();
 		return M ? &M->Shaping : nullptr;
 	});
 
-	AddSliderRow(Panel, PlacementCard);
+	AddSliderRow(Cards, PlacementCard);
+
+	const TSharedRef<SVerticalBox> Blend = AddCard(Cards, LOCTEXT("MaskBlendCard", "BLENDING"));
+	AddSliderRow(Blend, MixtormatRow::MakeDropdown(
+		LOCTEXT("SelectedMaskBlendMode", "Blend Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatMaskLayer* Selected = GetSelectedLayerMask();
+				return Selected
+					? MixtormatUI::MaskBlendModeText(Selected->BlendMode)
+					: FText::GetEmpty();
+			}),
+			FOnGetContent::CreateLambda([this]()
+			{
+				return BuildMaskBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
+			}), nullptr, TAttribute<FText>(), 0.0f)));
+
+	AddSliderRow(Blend, MakeMemberSlider<FMixtormatMaskLayer>(
+		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
+
 
 	return SNew(SBox)
 		// Gated on the selected child actually being a Mask, not just on a layer being selected:
@@ -1230,16 +1197,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("LayerMaskHeading", "MASK BLENDING"))
+			.Title(LOCTEXT("LayerMaskHeading", "MASK"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
-				[
-					MakeFeaturePreviewButton(
-						EMixtormatDebugPreviewMode::LayerMask,
-						LOCTEXT("PreviewSelectedMask", "Preview the selected processed mask in unlit dark red and cyan"))
-				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
 					MixtormatRow::MakeCheckbox(
@@ -1289,7 +1250,7 @@ void SMixtormat::AddMaskShapingRows(
 		[
 			SNew(STextBlock)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
-			.Text(LOCTEXT("MaskCurveBiasLabel", "Curve Bias"))
+			.Text(LOCTEXT("MaskCurveBiasLabel", "Curve"))
 		]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
@@ -1317,19 +1278,10 @@ void SMixtormat::AddMaskShapingRows(
 		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
 		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); })
 		]);
-	AddSliderRow(TargetPanel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatMaskShaping>(
-			LOCTEXT("MaskBalanceLabel", "Balance"), Resolve, &FMixtormatMaskShaping::Balance,
-			0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("MaskBalanceHint", "Thins the mask toward black above the middle and thickens it toward white below, as a power curve -- so it erodes what is there rather than fading it out. The ends are aggressive but never flatten the mask.")),
-		MakeMemberSlider<FMixtormatMaskShaping>(
-			LOCTEXT("MaskContrastLabel", "Contrast"), Resolve, &FMixtormatMaskShaping::Contrast,
-			0.0, 4.0, 1.0, 0.01,
-			LOCTEXT("MaskContrastHint", "Hardens the transition about the mask's midpoint. Masks are stored raw rather than sRGB, so that midpoint really is the 50% grey you painted."))));
 	AddSliderRow(TargetPanel, MakeMemberSlider<FMixtormatMaskShaping>(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,
-		LOCTEXT("MaskOffsetHint", "Lifts the whole mask after contrast. Plus one reaches full white and minus one full black from any input, whatever the contrast is set to.")));
+		LOCTEXT("MaskOffsetHint", "Offsets the curved mask before clamping to 0..1.")));
 	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
 		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
 

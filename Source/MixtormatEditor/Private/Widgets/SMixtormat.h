@@ -575,7 +575,7 @@ private:
 	FMixtormatNoise* GetSelectedNoise();
 	const FMixtormatNoise* GetSelectedNoise() const;
 	TSharedRef<SWidget> BuildNoiseControls();
-	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise);
+	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise, bool bMaskEmbedded = false);
 	bool CanCreateNoiseGate(const FMixtormatChildAddress& Owner) const;
 	bool ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const;
 	void CreateNoiseGate(const FMixtormatChildAddress& Owner);
