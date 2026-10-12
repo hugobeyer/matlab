@@ -617,8 +617,6 @@ FReply SMixtormat::ReplaceMaskInLayer(
 		Replacement.TilingY = Replacement.TilingX;
 		// Offset is deliberately not carried here, unlike when a mask is first added: replacing
 		// the picture under an existing mask keeps the offset the user dialled against it.
-		Replacement.Shaping.Balance = Mask->DefaultBalance;
-		Replacement.Shaping.Contrast = Mask->DefaultContrast;
 		Replacement.Shaping.bInvert = Mask->bDefaultInvert;
 	}
 	else if (Cast<UTexture2D>(MaskObject))

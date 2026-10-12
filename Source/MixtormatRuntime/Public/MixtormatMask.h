@@ -34,12 +34,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "1.0", UIMax = "16.0", Delta = "1.0"))
 	float DefaultTiling = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0", UIMax = "2.0"))
-	float DefaultBalance = 0.5f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0", UIMax = "10.0"))
-	float DefaultContrast = 1.0f;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
 	bool bDefaultInvert = false;
 

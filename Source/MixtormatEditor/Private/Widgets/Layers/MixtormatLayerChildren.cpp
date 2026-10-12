@@ -978,8 +978,6 @@ namespace MixtormatLayersPrivate
 			OutMask.MaskTexture = TSoftObjectPtr<UTexture2D>(Mask->MaskTexture.Get());
 			OutMask.TilingX = FMath::Max(FMath::RoundToInt(Mask->DefaultTiling), 1);
 			OutMask.TilingY = OutMask.TilingX;
-			OutMask.Shaping.Balance = Mask->DefaultBalance;
-			OutMask.Shaping.Contrast = Mask->DefaultContrast;
 			OutMask.Shaping.Offset = Mask->DefaultOffset;
 			OutMask.Shaping.bInvert = Mask->bDefaultInvert;
 			return true;
