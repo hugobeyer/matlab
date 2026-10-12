@@ -383,7 +383,9 @@ public:
 				Settings.WeightedBlendables.Array.Add(FWeightedBlendable(1.0f, Blend));
 			}
 		}
-		View.OverridePostProcessSettings(Settings, 1.0f);
+		// Blendable materials are disabled by the default override call path.
+		// Opt in explicitly so the viewport-only W post pass reaches the scene view.
+		View.OverridePostProcessSettings(Settings, 1.0f, true);
 	}
 
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
