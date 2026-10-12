@@ -10,6 +10,7 @@
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Layout/WidgetPath.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "MixtormatEditorSettings.h"
 
@@ -26,8 +27,11 @@ namespace
 	class FMixtormatWorkspaceHotkeys final : public IInputProcessor
 	{
 	public:
-		explicit FMixtormatWorkspaceHotkeys(TFunction<bool(const FKeyEvent&)>&& InHandleKey)
-			: HandleKey(MoveTemp(InHandleKey))
+		explicit FMixtormatWorkspaceHotkeys(
+			const TWeakPtr<SMixtormat>& InWorkspace,
+			TFunction<bool(const FKeyEvent&)>&& InHandleKey)
+			: Workspace(InWorkspace)
+			, HandleKey(MoveTemp(InHandleKey))
 		{
 		}
 
@@ -41,14 +45,29 @@ namespace
 				return false;
 			}
 
+			const TSharedPtr<SMixtormat> Owner = Workspace.Pin();
 			const TSharedPtr<SWidget> FocusedWidget = SlateApp.GetKeyboardFocusedWidget();
-			if (FocusedWidget.IsValid())
+			if (!Owner.IsValid() || !FocusedWidget.IsValid())
 			{
-				const FString WidgetType = FocusedWidget->GetType().ToString();
-				if (WidgetType.Contains(TEXT("EditableText")) || WidgetType.Contains(TEXT("TextEntry")))
-				{
-					return false;
-				}
+				return false;
+			}
+
+			// Input preprocessors run across *every* Unreal editor window.
+			// Only consume keys with real keyboard focus inside this active workspace;
+			// a Material Editor, another tab, or a different Mixtormat instance
+			// must never change the preview/lighting/layer UI here.
+			FWidgetPath FocusPath;
+			if (!SlateApp.FindPathToWidget(FocusedWidget.ToSharedRef(), FocusPath, EVisibility::Visible)
+				|| !FocusPath.ContainsWidget(Owner.Get())
+				|| FocusPath.TopLevelWindow != SlateApp.GetActiveTopLevelWindow())
+			{
+				return false;
+			}
+
+			const FString WidgetType = FocusedWidget->GetType().ToString();
+			if (WidgetType.Contains(TEXT("EditableText")) || WidgetType.Contains(TEXT("TextEntry")))
+			{
+				return false;
 			}
 
 			return HandleKey ? HandleKey(KeyEvent) : false;
@@ -57,6 +76,7 @@ namespace
 		virtual const TCHAR* GetDebugName() const override { return TEXT("MixtormatWorkspaceHotkeys"); }
 
 	private:
+		TWeakPtr<SMixtormat> Workspace;
 		TFunction<bool(const FKeyEvent&)> HandleKey;
 	};
 }
@@ -88,7 +108,7 @@ void SMixtormat::Construct(const FArguments& InArgs)
 	StartNewMaterialWith(EMixtormatLayerType::Fill);
 
 	const TWeakPtr<SMixtormat> WeakSelf = StaticCastSharedRef<SMixtormat>(AsShared());
-	WorkspaceHotkeyProcessor = MakeShared<FMixtormatWorkspaceHotkeys>([WeakSelf](const FKeyEvent& KeyEvent)
+	WorkspaceHotkeyProcessor = MakeShared<FMixtormatWorkspaceHotkeys>(WeakSelf, [WeakSelf](const FKeyEvent& KeyEvent)
 	{
 		const TSharedPtr<SMixtormat> Self = WeakSelf.Pin();
 		if (!Self.IsValid())
