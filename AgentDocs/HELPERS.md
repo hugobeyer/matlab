@@ -42,12 +42,13 @@ plus the TODO lists for mapping and architecture work on top of it.
 
 ## Hotkey catalog — workspace (`SMixtormat`)
 
-`L`/`P` fire workspace-wide through the Slate input preprocessor
-(`SMixtormat.cpp::Construct`); the rest go through `OnKeyDown`, so they need
-workspace focus. The preprocessor yields for focused-widget type names containing
-`EditableText` or `TextEntry`; that is a type check, not a general text-input proof.
-It has no workspace/tab/window ownership guard (`SMixtormat.cpp` L30–48); verify
-unrelated editor windows and modal/popup focus before extending it.
+`Shift+1`–`Shift+5`, `L`, `P`, `G`, and the quick-controls `Q` close action use
+the Slate input preprocessor (`SMixtormat.cpp::Construct`). The preprocessor
+requires a focused widget within this specific `SMixtormat` workspace and
+requires its top-level window to be active; it yields for editable text fields.
+Shortcuts therefore do not act on Mixtormat when the user is focused in another
+Unreal editor window, another tab, or another Mixtormat instance. Other
+workspace shortcuts use `OnKeyDown` and follow normal Slate focus routing.
 
 Workspace layout: Layers/Library/Global are the normal left-column rail/pages. Layers can
 pop out and return by rail click or snap-back drag. The gallery is one MATERIALS/MASKS
