@@ -446,6 +446,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	const bool bFlowBehavior = Child.Type == EMixtormatLayerChildType::Behavior
 		&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
 		&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+			|| Child.Behavior.Type == EMixtormatBehaviorType::Push
 			|| Child.Behavior.Type == EMixtormatBehaviorType::Deform
 			|| Child.Behavior.Type == EMixtormatBehaviorType::Carve
 			|| Child.Behavior.Type == EMixtormatBehaviorType::Feather

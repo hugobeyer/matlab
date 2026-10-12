@@ -102,6 +102,13 @@
 - `MixtormatViewportMaskPostFx.cpp` binds the completed owner-matched texture and composites premultiplied color in both built-in material modes. Mode 0 uses alpha once, without multiplying mask `Field.R` again; mode 1 retains `Field.R` as the availability gate. Existing artist-authored materials are not edited automatically: add `DA_DiagnosticColor`, replace the Custom-node visualization with its sampled color, and use premultiplied source-over blending. See `AgentDocs/UNIFIED_POSTFX.md` for the exact graph contract.
 - This diagnostic path already has a code-built PostFX material when no authored override loads. That narrows the asset dependency for this path only; **REL-02 remains open** for other required preview/gizmo/bake assets.
 
+**Selection/toggle correction — same scoped update:**
+
+- W/E now use the existing workspace hotkey processor, not viewport-only focus. Text entry, modified/repeated keys and other editor windows retain their existing routing.
+- An active diagnostic can be dismissed by its key without reselecting the original source. Stack selection retargets the active kind to the newly selected eligible source; unsupported selections clear it instead of pinning old output.
+- Push exposes its existing ordered Flow snapshot. Layer/header E selection resolves a real enabled root generator's completed scope, not an invented global Flow sum. Group/header and layer selection clear stale selection lanes.
+- These fixes address concrete input/selection causes of stuck diagnostics. Mesh-rotation attachment and parameter-driven GPU output behavior still require runtime inspection; they are not claimed verified.
+
 **Remaining acceptance checks / limits:**
 
 - Compile the new global shader, mip-generation dispatch and generated material graph in the target Unreal version.

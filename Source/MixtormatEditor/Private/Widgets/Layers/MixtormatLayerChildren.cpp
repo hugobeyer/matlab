@@ -1129,10 +1129,10 @@ FMixtormatChildAddress SMixtormat::MakeGroupChildAddress(const FGuid GroupId, co
 	FMixtormatChildAddress Address;
 	if (const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId))
 	{
+		Address.OwnerType = EMixtormatChildOwnerType::Group;
+		Address.OwnerId = GroupId;
 		if (Group->Children.IsValidIndex(ChildIndex))
 		{
-			Address.OwnerType = EMixtormatChildOwnerType::Group;
-			Address.OwnerId = GroupId;
 			Address.ChildId = Group->Children[ChildIndex].ChildId;
 		}
 	}

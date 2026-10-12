@@ -432,7 +432,25 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 	}
 	else
 	{
-		if (RequiredKind != EMixtormatPreviewOutputKind::Mask) { return Target; }
+		if (RequiredKind != EMixtormatPreviewOutputKind::Mask)
+		{
+			// A layer's Flow belongs to its enabled root generator's completed scope,
+			// not an invented cross-layer sum. Resolve that real child with the same typed path.
+			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+			if (!Children) { return Target; }
+			for (int32 Index = Children->Num() - 1; Index >= 0; --Index)
+			{
+				const FMixtormatLayerChild& Root = (*Children)[Index];
+				if (Root.Type == EMixtormatLayerChildType::Generator
+					&& !Root.ScopeOwnerChildId.IsValid() && IsGroupChildEnabled(Root))
+				{
+					FMixtormatChildAddress RootAddress = Address;
+					RootAddress.ChildId = Root.ChildId;
+					return ResolveMaskOverlayTarget(RootAddress, RequiredOutputName, RequiredKind);
+				}
+			}
+			return Target;
+		}
 		// An aggregate mask is meaningful only when a real root coverage producer exists.
 		const auto HasCoverage = [&IsCoverageChild](const TArray<FMixtormatLayerChild>& Children)
 		{
@@ -537,6 +555,19 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 	{
 		return FReply::Handled();
 	}
+	// Bare W/E can dismiss their active diagnostic from any workspace selection.
+	// Explicit output-eye actions retain their output-specific switching behavior.
+	const bool bActiveFlow = MaskOverlayOutputKind != EMixtormatPreviewOutputKind::Mask;
+	if (bMaskOverlayEnabled && RequiredOutputName.IsNone()
+		&& bActiveFlow == (Kind != EMixtormatPreviewOutputKind::Mask))
+	{
+		bMaskOverlayEnabled = false;
+		MaskOverlaySource = FMixtormatChildAddress();
+		MaskOverlayOutputName = NAME_None;
+		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
+		RefreshLayeredPreview(false);
+		return FReply::Handled();
+	}
 	const FMixtormatChildAddress SelectedSource = GetSelectedChildAddress();
 	const bool bSelectedIsOwner = bMaskOverlayEnabled
 		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
@@ -576,8 +607,7 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 		RefreshLayeredPreview(false);
 		return FReply::Handled();
 	}
-	// No eligible output for this key on the selection. An active overlay is preserved -- only
-	// the same key on its own target dismisses it -- and the refusal is said out loud.
+	// Starting/switching requires a real output on the selection. Dismissal above never does.
 	WorkingStatusText = Kind == EMixtormatPreviewOutputKind::FlowDirection
 		? LOCTEXT("NoFlowDiagnosticTarget", "No eligible Flow output on this selection").ToString()
 		: LOCTEXT("NoMaskDiagnosticTarget", "No eligible mask output on this selection").ToString();
@@ -718,7 +748,23 @@ bool SMixtormat::UpdateAutomaticFlowPreview()
 {
 	if (bMaskOverlayEnabled)
 	{
-		return false;
+		const FMixtormatChildAddress Selected = GetSelectedChildAddress();
+		if (Selected.OwnerType == MaskOverlaySource.OwnerType
+			&& Selected.OwnerId == MaskOverlaySource.OwnerId
+			&& Selected.ChildId == MaskOverlaySource.ChildId)
+		{
+			return false;
+		}
+		const EMixtormatPreviewOutputKind Kind = MaskOverlayOutputKind == EMixtormatPreviewOutputKind::Mask
+			? EMixtormatPreviewOutputKind::Mask : EMixtormatPreviewOutputKind::FlowDirection;
+		const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(Selected, NAME_None, Kind);
+		bMaskOverlayEnabled = Target.IsValid();
+		MaskOverlaySource = Target.IsValid() ? Selected : FMixtormatChildAddress();
+		MaskOverlayOutputName = Target.IsValid() ? Target.OutputName : NAME_None;
+		MaskOverlayOutputKind = Target.IsValid() ? Target.Kind : EMixtormatPreviewOutputKind::Mask;
+		// Every selection caller already refreshes when this returns true. Never keep
+		// a diagnostic pinned to the old source while edits apply to the new selection.
+		return true;
 	}
 	// Selection and parameter edits must not activate the unlit Flow replacement.
 	// Retain cleanup of an automatic preview without touching explicit preview eyes.

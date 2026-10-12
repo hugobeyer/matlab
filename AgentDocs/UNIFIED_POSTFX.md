@@ -41,12 +41,13 @@ tinting Base Color or creating a replacement lit material.
   while RMB mouse drag still rotates the studio light.
 - W ownership is an authored `FMixtormatChildAddress` plus output name in
   `SMixtormat` (`MaskOverlaySource`, `MaskOverlayOutputName`, `MaskOverlayOutputKind`, enabled state),
-  independent of Inspector selection and legacy `ChildPreviewTarget`.
+  separate from legacy `ChildPreviewTarget` but following the current stack selection.
   `ResolveMaskOverlayTarget` resolves that address on every submitted compose,
   including group-authored children mapped to an enabled member's effective GUID.
-  Reordering and rebuilding rows do not replace ownership. W on the same address
-  disables it; W on another eligible address transfers it. The existing diagnostic
-  reset also clears the stored address; V/Shift+V and channel cycling are unchanged.
+  Reordering and rebuilding rows retain stable identity. Selection changes transfer an
+  active diagnostic to the new eligible selected source; an ineligible selection clears
+  it rather than retaining unrelated pixels. Bare W dismisses an active mask from any
+  workspace focus/selection. Diagnostic reset and V/Shift+V remain available.
 - Coverage supports Texture/Noise/Noise Gate masks, scoped gates, Generated,
   Craquelure, Color ID and Random ID masks, including nested/group/instance
   placements. Layers and fill layers expose aggregate coverage only when an
@@ -70,7 +71,8 @@ tinting Base Color or creating a replacement lit material.
 - While W owns the field, selection-only bypass/solo/composition-before overrides
   are suspended so they cannot omit or alter its source. Their state is retained.
   Explicit Inspector preview-eye actions keep their existing behavior and rendering
-  paths, including dismissing W. Ordinary selection and parameter edits do not.
+  paths, including dismissing W. Ordinary selection retargets the active diagnostic;
+  parameter edits recompose the currently selected source without activating another mode.
 - The capture, proxy and post process are created lazily the first time W
   is activated; when W is off the capture and post-process pass are disabled.
   Original old green inspector-eye preview paths remain available and unchanged.
@@ -85,25 +87,27 @@ inspection has been performed.
 - **W remains scalar/mask/gate; E activates raw Flow.** Both use the existing
   `ResolveMaskOverlayTarget`, canonical ownership, group expansion, instance payload
   resolution and GUID-bound hierarchy indicators. There is only one active PostFX
-  source. The same key on the same target toggles it off; W -> E and E -> W on the
-  same owner switch the diagnostic type in place; either key on another eligible
-  source transfers ownership. An ineligible selection never dismisses an active
-  overlay -- the press is a no-op and says so in the status bar. With no active
-  overlay, an ineligible selection does nothing.
-  Selection and Inspector rebuilds do not redirect it. Selecting a Flow module
-  or editing Write Flow no longer automatically activates the legacy unlit Flow
-  replacement; E explicitly activates raw Flow PostFX. Existing V/Shift+V resets,
+  source. Bare W or E dismisses its active diagnostic kind regardless of the selected
+  owner or focused workspace panel. The other key switches to that kind on the
+  current eligible selection. Selection changes retarget an active diagnostic to
+  the new selected layer/child; unsupported selections clear it instead of leaving
+  an unrelated source stuck on screen. Inspector rebuilds retain stable identity.
+  Selecting a Flow module or editing Write Flow does not activate the legacy unlit
+  Flow replacement; E explicitly activates diagnostic PostFX. Existing V/Shift+V resets,
   channel cycling, explicit preview eyes and legacy debug blits are unchanged.
-- E is handled only by the existing viewport client, bare, including while mouse
-  buttons are held. W has the same mouse-independent activation. No workspace/global
-  input processor is added; modified keys retain their existing routing. Diagnostic
-  activation does not enable Unreal flight movement; orbit/pan/zoom remain unchanged.
+- Bare W/E are handled by the existing workspace input processor across the layer
+  stack, Inspector and viewport. It rejects repeat/modifier keys, text-entry focus
+  and focus outside the active Mixtormat workspace. The viewport retains its direct
+  input path and held-key camera suppression, without double-toggling processed events.
+  Orbit/pan/zoom remain unchanged.
 - Selection uses typed `GetChildCapabilities` outputs, not texture channel count.
-  Prefer a primary `Flow` output, then the first declared `Flow`, then `UVMap`.
-  Retain its exact name and preview kind for all later resolves. Noise with Write
-  Flow selects `GeneratedFlow`; other Noise selections select `FlowDirection`.
-  Generic `Vector2` gradients are not silently treated as Flow. Native Flow uses
-  the producer's existing demand/publication path; no new Flow generator exists.
+  E prefers the real `AccumulatedFlow` snapshot at the selected module's stack
+  position, then declared Flow/UV outputs. Push now exposes the same snapshot already
+  published by the ordered Behavior chain, alongside Sculpt, Deform and Warp.
+  A selected layer/header resolves its last enabled root generator's completed scope;
+  this is not a fabricated cross-layer Flow sum. Explicit output eyes retain named
+  output selection. Generic Vector2 gradients require explicit output selection.
+  Native Flow uses the existing demand/publication path; no new Flow generator exists.
 - Supported producers are Noise (including Flow preset/Write Flow), native Flow
   outputs declared by Cracks, Rock Formation, Pebbles and Cliff Strata, traced
   Behavior outputs when actually published, Feather beneath Noise or Flow Field,
@@ -235,7 +239,7 @@ Single shader dispatch mode, shared opacity `[0,1]`; compositing should be `lerp
 
 ## UX contract
 
-The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. Eligible selection shows `W · Show diagnostic`; the active owner shows `W · Hide diagnostic`; another eligible source shows `W · Preview selected source`. Existing V reset help remains visible while W is active even if the selected row is ineligible. Preserve all existing V/Shift+V, channel-preview cycling, Inspector eyes and replacement rendering paths; W/E share persistent ownership and row presentation. Eligible Flow selections also show `E · Show raw Flow`, `E · Hide diagnostic` or `E · Preview selected Flow`. While an overlay is active, W/E remain advertised even with an ineligible selection and say `Diagnostic active` for that key. Keep `Esc`, plane flip and missing-material hints in their existing contexts.
+The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. An active mask always shows `W · Hide diagnostic`; active Flow/UV always shows `E · Hide diagnostic`, regardless of selected owner. The other key can switch to a real eligible output on the current stack selection. Selection retargets the active kind rather than retaining an old source. Keep V/Shift+V reset, channel cycling, explicit output eyes, row indicators, Esc, plane flip and missing-material hints.
 
 Future overlay controls may add shared opacity and exact-ID boundaries. They must not redefine or migrate existing shortcuts or Inspector diagnostics as part of W persistence. No authored material or local `.uasset` is changed by this implementation.
 

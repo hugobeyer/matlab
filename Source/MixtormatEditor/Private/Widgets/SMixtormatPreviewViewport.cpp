@@ -451,8 +451,8 @@ public:
 			Owner.ToggleDisplacement();
 			return true;
 		}
-		// Diagnostic toggles remain viewport-only, but also work during mouse drags.
-		// Camera suppression is independent: Tick discards inherited flight movement.
+		// The workspace input processor handles bare W/E across all panels. Retain the
+		// viewport route for direct viewport input, including drags; handled keys must not fly the camera.
 		if (EventArgs.Key == EKeys::E && !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
 			if (EventArgs.Event == IE_Pressed)

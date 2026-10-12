@@ -493,7 +493,9 @@ FReply SMixtormat::ToggleGroupExpanded(const FGuid GroupId)
 FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 {
 	SelectedGroupId = GroupId;
-	// The header, not one of its shared children.
+	// The header, not one of its shared children or a previously selected layer.
+	SelectedLayerIndex = INDEX_NONE;
+	bHasSelectedLayer = false;
 	SelectedGroupChildIndex = INDEX_NONE;
 	// One subject for the inspector: picking the group drops the layer-child selection rather
 	// than leaving two things looking selected at once.
@@ -634,6 +636,7 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
+	SelectedSourceId.Invalidate();
 	bHasSelectedLayer = true;
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;

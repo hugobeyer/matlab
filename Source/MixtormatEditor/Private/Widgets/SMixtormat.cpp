@@ -139,6 +139,18 @@ void SMixtormat::Construct(const FArguments& InArgs)
 			}
 			return false;
 		}
+		// Shared diagnostics follow the stack selection, not the widget with keyboard focus.
+		// The processor's workspace/text-entry guards prevent stealing typing or other editor keys.
+		if (KeyEvent.GetKey() == EKeys::W)
+		{
+			Self->ToggleMaskOverlayPreview();
+			return true;
+		}
+		if (KeyEvent.GetKey() == EKeys::E)
+		{
+			Self->ToggleFlowOverlayPreview();
+			return true;
+		}
 		if (KeyEvent.GetKey() == EKeys::L)
 		{
 			Self->SetPreviewQuality(Self->PreviewQuality == EMixtormatPreviewQuality::Lumen
