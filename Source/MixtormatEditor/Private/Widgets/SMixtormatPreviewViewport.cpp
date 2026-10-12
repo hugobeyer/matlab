@@ -325,6 +325,27 @@ public:
 		bLockFlightCamera = true;
 	}
 
+	virtual void Tick(float DeltaSeconds) override
+	{
+		// InputKey consumes WASD, but the inherited editor camera also polls
+		// held keys during Tick (notably RMB+W). This studio viewport's camera
+		// is owned by OrbitCamera/PanCamera/ZoomCamera/FocusCamera instead.
+		// Keep the base tick for editor viewport maintenance, then discard any
+		// camera movement that came from the default flight/navigation path.
+		const FVector ViewLocation = GetViewLocation();
+		const FRotator ViewRotation = GetViewRotation();
+		const FVector LookAtLocation = GetLookAtLocation();
+		FEditorViewportClient::Tick(DeltaSeconds);
+		if (!GetViewLocation().Equals(ViewLocation)
+			|| !GetViewRotation().Equals(ViewRotation)
+			|| !GetLookAtLocation().Equals(LookAtLocation))
+		{
+			SetLookAtLocation(LookAtLocation, false);
+			SetViewLocation(ViewLocation);
+			SetViewRotation(ViewRotation);
+		}
+	}
+
 	virtual FLinearColor GetBackgroundColor() const override
 	{
 		return FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::OverlayGround);
