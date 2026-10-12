@@ -57,7 +57,10 @@ namespace
 		auto* Sample = AddNode<UMaterialExpressionTextureSampleParameter2D>(Material);
 		Sample->SetParameterName(Parameter);
 		Sample->ExpressionGUID = FGuid::NewGuid();
-		Sample->SamplerType = SAMPLERTYPE_LinearColor;
+		// The dynamically created render targets are exposed to UE's material
+		// compiler as Color textures. LinearColor rejects them even though
+		// their float data is intended to remain unmodified.
+		Sample->SamplerType = SAMPLERTYPE_Color;
 		Sample->Texture = Default;
 		return Sample;
 	}
