@@ -135,6 +135,8 @@ public:
 		// Bare 1-4 in the viewport: the workspace swaps the preview mesh through its own
 		// SetPreviewMesh, so the Plane re-press orientation toggle stays in one place.
 		SLATE_EVENT(FMixtormatSetPreviewMesh, OnSetPreviewMesh)
+		// Bare 5 toggles the same full-material 90-degree UV rotation as the rail.
+		SLATE_EVENT(FSimpleDelegate, OnToggleGlobalUVRotation90)
 		// Bare Q in the viewport: the workspace opens its quick controls. Routed through the client
 		// rather than a global preprocessor, so text entry and Slate's own focus navigation keep
 		// their keys everywhere else.
@@ -191,6 +193,7 @@ public:
 	void RequestQuickControls();
 	// Called by the viewport client when bare 1-4 arrives; the workspace swaps the mesh.
 	void RequestSetPreviewMesh(EMixtormatPreviewMesh MeshType);
+	void RequestToggleGlobalUVRotation90();
 	// Called by the viewport client when Escape arrives; true when the workspace closed something.
 	bool RequestDismissQuickControls();
 	UTextureRenderTarget2D* GetCompositedBaseColor() const;
@@ -298,6 +301,7 @@ private:
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
 	FMixtormatSetPreviewMesh OnSetPreviewMesh;
+	FSimpleDelegate OnToggleGlobalUVRotation90;
 	FSimpleDelegate OnRequestQuickControls;
 	FMixtormatDismissQuickControls OnDismissQuickControls;
 	FMixtormatCameraFovChanged OnCameraFovChanged;
