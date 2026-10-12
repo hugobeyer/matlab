@@ -1426,7 +1426,8 @@ namespace
 		const FScalarDriverRenderData* Drivers,
 		const FBehaviorFieldComposition& Composition)
 	{
-		// A neutral socket must not cost a pass: identity amplitude and no reverse
+		AddBehaviorMaskDiagnosticPass(Ctx, LayerIndex, ChildIndex, Mask, bUseMask, Influence, bUseInfluence);
+		// A neutral socket must not cost a deformation pass: identity amplitude and no reverse
 		// reproduce the source map exactly, so only composition beyond the default
 		// joins Strength, the masks and the drivers as reasons to run.
 		const bool bCompositionNeutral = Composition.Amplitude == 1.0f
@@ -1507,6 +1508,7 @@ namespace
 		const FScalarDriverRenderData* Drivers,
 		const FBehaviorFieldComposition& Composition)
 	{
+		AddBehaviorMaskDiagnosticPass(Ctx, LayerIndex, ChildIndex, Mask, bUseMask, Influence, bUseInfluence);
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
@@ -1540,6 +1542,7 @@ namespace
 		FRDGTextureRef Influence, const bool bUseInfluence,
 		const int32 LayerIndex, const int32 ChildIndex)
 	{
+		AddBehaviorMaskDiagnosticPass(Ctx, LayerIndex, ChildIndex, Mask, bUseMask, Influence, bUseInfluence);
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Result = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),

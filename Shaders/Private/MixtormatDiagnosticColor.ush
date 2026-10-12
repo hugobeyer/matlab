@@ -23,6 +23,7 @@
 #define MIXTORMAT_DIAGNOSTIC_FOLD_COLOR float3(1.0f, 0.10f, 0.08f)
 #define MIXTORMAT_DIAGNOSTIC_FLOW_SATURATION 0.85f
 #define MIXTORMAT_DIAGNOSTIC_FLOW_STRENGTH_SCALE 1.0f
+#define MIXTORMAT_DIAGNOSTIC_FLOW_MIN_VALUE 0.55f
 #define MIXTORMAT_DIAGNOSTIC_TWO_PI 6.28318530718f
 
 // Float4 published fields need RG only. B/A are NOT a generic validity mask.
@@ -161,7 +162,11 @@ float4 MixtormatDiagnosticFlowColor(Texture2D<float4> Source, SamplerState Sourc
 	// Scale first to avoid length-squared overflow for large but finite Vector2 fields.
 	const float2 Scaled = Flow / MaxComponent;
 	const float Hue = atan2(Scaled.y, Scaled.x) / MIXTORMAT_DIAGNOSTIC_TWO_PI + 0.5f;
-	const float Value = saturate(MaxComponent * (length(Scaled) * MIXTORMAT_DIAGNOSTIC_FLOW_STRENGTH_SCALE));
+	// Keep every finite nonzero direction legible. Compress magnitude rather than clipping
+	// at one; this form avoids overflowing length(Flow) for large finite components.
+	const float RelativeStrength = MaxComponent / (MaxComponent
+		+ (1.0f / MIXTORMAT_DIAGNOSTIC_FLOW_STRENGTH_SCALE) / length(Scaled));
+	const float Value = lerp(MIXTORMAT_DIAGNOSTIC_FLOW_MIN_VALUE, 1.0f, RelativeStrength);
 	const float3 HueColor = saturate(abs(frac(Hue + float3(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f);
 	const float3 Color = MixtormatDebugColor(Value
 		* lerp(float3(1.0f, 1.0f, 1.0f), HueColor, MIXTORMAT_DIAGNOSTIC_FLOW_SATURATION));

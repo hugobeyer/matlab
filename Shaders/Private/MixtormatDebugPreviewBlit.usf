@@ -178,6 +178,33 @@ void MainOverlayMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		isfinite(Coverage) ? saturate(Coverage) : 0.0f, 0.0f, 0.0f, 1.0f);
 }
 
+// Display-only snapshot of the two coverage gates actually consumed by a Behavior.
+// Strength/height/UV displacement are not masks and are deliberately not folded into coverage.
+uint DiagnosticUseMask;
+uint DiagnosticUseInfluence;
+Texture2D<float> DiagnosticScopedMask;
+Texture2D<float> DiagnosticInfluence;
+RWTexture2D<float> DiagnosticBehaviorMask;
+
+[numthreads(8, 8, 1)]
+void MainBehaviorMaskCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	float Coverage = 1.0f;
+	if (DiagnosticUseMask != 0)
+	{
+		const float Mask = DiagnosticScopedMask.Load(int3(Pixel, 0));
+		Coverage *= isfinite(Mask) ? saturate(Mask) : 0.0f;
+	}
+	if (DiagnosticUseInfluence != 0)
+	{
+		const float Influence = DiagnosticInfluence.Load(int3(Pixel, 0));
+		Coverage *= isfinite(Influence) ? saturate(Influence) : 0.0f;
+	}
+	DiagnosticBehaviorMask[Pixel] = Coverage;
+}
+
 // ORIGINAL, unrotated published field at producer resolution; never the raw diagnostic copy.
 // OutputSize is compose resolution. Flow needs a bilinear wrap sampler; UVMap uses exact Loads.
 Texture2D<float4> DiagnosticColorSource;

@@ -419,7 +419,8 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 				{
 					return (RequiredOutputName.IsNone() || Candidate.Name == RequiredOutputName)
 						&& Candidate.Kind == EMixtormatPreviewOutputKind::Mask && !Candidate.Name.IsNone()
-						&& (Candidate.bCopyableAsMask || (Candidate.bCopyableAsField
+						&& (Candidate.Name == MixtormatDiagnosticOutputs::BehaviorMask
+							|| Candidate.bCopyableAsMask || (Candidate.bCopyableAsField
 							&& (Candidate.FieldKind == EMixtormatPublishedFieldKind::Scalar01
 								|| Candidate.FieldKind == EMixtormatPublishedFieldKind::ScalarSigned)));
 				});

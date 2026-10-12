@@ -107,6 +107,9 @@
 - W/E now use the existing workspace hotkey processor, not viewport-only focus. Text entry, modified/repeated keys and other editor windows retain their existing routing.
 - An active diagnostic can be dismissed by its key without reselecting the original source. Stack selection retargets the active kind to the newly selected eligible source; unsupported selections clear it instead of pinning old output.
 - Push exposes its existing ordered Flow snapshot. Layer/header E selection resolves a real enabled root generator's completed scope, not an invented global Flow sum. Group/header and layer selection clear stale selection lanes.
+- Shared preview refresh (`FlushPendingPreviewRefresh`) reconciles selection changes so duplication, undo, and programmatic selection updates immediately retarget active diagnostics.
+- Added `MixtormatDiagnosticOutputs::BehaviorMask` (`MainBehaviorMaskCS` / `AddBehaviorMaskDiagnosticPass`) so Warp, Push, and Deform expose their real evaluated scoped-mask × Influence gate to W.
+- Compressed Flow vector visualization with an explicit brightness floor (`0.55`) and rational scaling so subtle flow magnitudes remain visible and distinguishable from black.
 - These fixes address concrete input/selection causes of stuck diagnostics. Mesh-rotation attachment and parameter-driven GPU output behavior still require runtime inspection; they are not claimed verified.
 
 **Remaining acceptance checks / limits:**

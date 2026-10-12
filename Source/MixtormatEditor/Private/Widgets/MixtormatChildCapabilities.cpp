@@ -292,6 +292,25 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	case EMixtormatLayerChildType::Behavior:
+		// W exposes the executed scalar result/gate independently of the tracing switch.
+		if (Child.Behavior.Type == EMixtormatBehaviorType::Carve
+			&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration)
+		{
+			Result.Outputs.Add({FName(TEXT("CarveMask")),
+				NSLOCTEXT("SMixtormat", "BehaviorFlowCarveMask", "Carve Mask"),
+				EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::Scalar01});
+		}
+		else if (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+			|| ((Child.Behavior.Type == EMixtormatBehaviorType::Push
+				|| Child.Behavior.Type == EMixtormatBehaviorType::Deform)
+				&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration))
+		{
+			Result.Outputs.Add({MixtormatDiagnosticOutputs::BehaviorMask,
+				NSLOCTEXT("SMixtormat", "BehaviorDiagnosticMask", "Effective Mask"),
+				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None,
+				false, EMixtormatPublishedFieldKind::Scalar01});
+		}
 		if (Child.Behavior.Type == EMixtormatBehaviorType::Feather)
 		{
 			// Published only where Feather actually filters a typed Flow field.
@@ -331,13 +350,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "BehaviorFlowValidity", "Validity"),
 				EMixtormatPreviewOutputKind::Mask, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Scalar01});
-			if (Child.Behavior.Type == EMixtormatBehaviorType::Carve)
-			{
-				Result.Outputs.Add({FName(TEXT("CarveMask")),
-					NSLOCTEXT("SMixtormat", "BehaviorFlowCarveMask", "Carve Mask"),
-					EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None,
-					true, EMixtormatPublishedFieldKind::Scalar01});
-			}
+
 		}
 		break;
 	case EMixtormatLayerChildType::Effect:

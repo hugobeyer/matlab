@@ -104,10 +104,15 @@ inspection has been performed.
   E prefers the real `AccumulatedFlow` snapshot at the selected module's stack
   position, then declared Flow/UV outputs. Push now exposes the same snapshot already
   published by the ordered Behavior chain, alongside Sculpt, Deform and Warp.
+  W exposes `BehaviorMask` (evaluated scoped mask × Influence gate) on Warp, Push,
+  and Deform, matching Carve's executed `CarveMask`.
   A selected layer/header resolves its last enabled root generator's completed scope;
   this is not a fabricated cross-layer Flow sum. Explicit output eyes retain named
   output selection. Generic Vector2 gradients require explicit output selection.
   Native Flow uses the existing demand/publication path; no new Flow generator exists.
+- Flow visualization in `MixtormatDiagnosticColor.ush` applies rational magnitude
+  compression with a `0.55` base brightness floor. Small or subtle vectors retain
+  distinct directional hue and never clip to black.
 - Supported producers are Noise (including Flow preset/Write Flow), native Flow
   outputs declared by Cracks, Rock Formation, Pebbles and Cliff Strata, traced
   Behavior outputs when actually published, Feather beneath Noise or Flow Field,

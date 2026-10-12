@@ -29,6 +29,8 @@ namespace MixtormatDiagnosticOutputs
 {
 	// Preview-only snapshot of the running Flow at a module's authored stack position.
 	inline const FName AccumulatedFlow(TEXT("AccumulatedFlow"));
+	// Actual scoped-mask x Influence gate consumed by Warp/Push/Deform; display-only.
+	inline const FName BehaviorMask(TEXT("BehaviorMask"));
 }
 
 enum class EMixtormatDebugPreviewMode : uint8

@@ -208,8 +208,62 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatDiagnosticColorCS,
 	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainDiagnosticColorCS", SF_Compute);
 
+class FMixtormatBehaviorMaskDiagnosticCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBehaviorMaskDiagnosticCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorMaskDiagnosticCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, DiagnosticUseMask)
+		SHADER_PARAMETER(uint32, DiagnosticUseInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DiagnosticScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, DiagnosticInfluence)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, DiagnosticBehaviorMask)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBehaviorMaskDiagnosticCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainBehaviorMaskCS", SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
+	void AddBehaviorMaskDiagnosticPass(FMixtormatComposeContext& Ctx, const int32 LayerIndex,
+		const int32 ChildIndex, const FRDGTextureRef Mask, const bool bUseMask,
+		const FRDGTextureRef Influence, const bool bUseInfluence)
+	{
+		if (!Ctx.Request.Layers.IsValidIndex(LayerIndex)) { return; }
+		const FPublishedFieldKey Key = PublishedKey(Ctx.Request.Layers[LayerIndex],
+			ChildIndex, MixtormatDiagnosticOutputs::BehaviorMask);
+		if (!Ctx.PublishedFieldDemand.Contains(Key)
+			|| (bUseMask && !Mask) || (bUseInfluence && !Influence)) { return; }
+
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Output = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Diagnostic.BehaviorMask"));
+		auto* Parameters = Ctx.GraphBuilder.AllocParameters<FMixtormatBehaviorMaskDiagnosticCS::FParameters>();
+		Parameters->OutputSize = Size;
+		Parameters->DiagnosticUseMask = bUseMask ? 1u : 0u;
+		Parameters->DiagnosticUseInfluence = bUseInfluence ? 1u : 0u;
+		// Unused shader resources still need bindings; disabled gates evaluate to identity,
+		// exactly as the Behavior shader does. An unavailable connected gate never becomes white.
+		Parameters->DiagnosticScopedMask = bUseMask ? Mask : Ctx.EmptyDriverSignal;
+		Parameters->DiagnosticInfluence = bUseInfluence ? Influence : Ctx.EmptyDriverSignal;
+		Parameters->DiagnosticBehaviorMask = Ctx.GraphBuilder.CreateUAV(Output);
+		TShaderMapRef<FMixtormatBehaviorMaskDiagnosticCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.BehaviorMask"),
+			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		Ctx.PublishedFieldOutputs.Add(Key,
+			FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Output, nullptr, nullptr, false});
+	}
+
 	void AddDiagnosticColorPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
 		const FRDGTextureRef Output, const FIntPoint Resolution, const bool bUVMap,
 		const bool bRotateOutput90, const bool bMask)

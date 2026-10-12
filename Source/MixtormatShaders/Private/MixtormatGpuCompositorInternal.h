@@ -2143,6 +2143,11 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Output, FIntPoint Resolution, bool bUVMap, bool bRotateOutput90,
 		bool bMask = false);
 
+	// Snapshot only when demanded; masks are the same inputs/flags used by the executed Behavior.
+	void AddBehaviorMaskDiagnosticPass(FMixtormatComposeContext& Ctx, int32 LayerIndex,
+		int32 ChildIndex, FRDGTextureRef Mask, bool bUseMask,
+		FRDGTextureRef Influence, bool bUseInfluence);
+
 	// Bilinear resample of a diagnostic field whose producer resolution differs from the
 	// composition's. Returns the resampled texture at Resolution; callers keep the exact
 	// Load/store path when the extents already match.

@@ -1037,6 +1037,13 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 		}
 	}
 
+	// Duplication, undo and other stack edits can change selection without the row-click path.
+	// Reconcile at the shared submit boundary so every refresh uses the current selected owner.
+	if (bMaskOverlayEnabled && UpdateAutomaticFlowPreview())
+	{
+		bPreviewSubmitPending = true;
+	}
+
 	// Validate ownership before selection-only composition overrides are chosen.
 	const FMixtormatChildPreviewTarget OverlayTarget = bMaskOverlayEnabled
 		? ResolveMaskOverlayTarget(MaskOverlaySource, MaskOverlayOutputName, MaskOverlayOutputKind)
