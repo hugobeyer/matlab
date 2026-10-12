@@ -304,8 +304,15 @@ bool SMixtormat::IsMaskOverlayTargetReady() const
 	return ResolveMaskOverlayTarget(GetSelectedChildAddress()).IsValid();
 }
 
+bool SMixtormat::IsFlowOverlayTargetReady() const
+{
+	return ResolveMaskOverlayTarget(GetSelectedChildAddress(), NAME_None,
+		EMixtormatPreviewOutputKind::FlowDirection).IsValid();
+}
+
 FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
-	const FMixtormatChildAddress& Address, const FName RequiredOutputName) const
+	const FMixtormatChildAddress& Address, const FName RequiredOutputName,
+	const EMixtormatPreviewOutputKind RequiredKind) const
 {
 	FMixtormatChildPreviewTarget Target;
 	Target.Kind = EMixtormatPreviewOutputKind::Mask;
@@ -359,7 +366,39 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 				FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups}, Instance->SourceLayerId, Instance->SourceChildId);
 			if (!Instance || !IsGroupChildEnabled(*Instance)) { return Target; }
 		}
-		if (!IsCoverageChild(*Child))
+		if (RequiredKind != EMixtormatPreviewOutputKind::Mask)
+		{
+			const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
+			const auto Matches = [RequiredOutputName, RequiredKind](const FMixtormatPublishedOutputDesc& Candidate)
+			{
+				return Candidate.bCopyableAsField && !Candidate.Name.IsNone()
+					&& (RequiredOutputName.IsNone() || Candidate.Name == RequiredOutputName)
+					&& ((RequiredKind == EMixtormatPreviewOutputKind::FlowDirection
+						&& Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow)
+						|| Candidate.FieldKind == EMixtormatPublishedFieldKind::UVMap);
+			};
+			// Respect an existing primary Flow output (e.g. Noise.GeneratedFlow), then typed Flow,
+			// then absolute UVs. Vector2 gradients are not reinterpreted as generated Flow.
+			const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
+				[&Matches](const FMixtormatPublishedOutputDesc& Candidate)
+				{
+					return Matches(Candidate) && Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow
+						&& Candidate.bPreviewable && !Candidate.bSecondaryPreview;
+				});
+			if (!Output)
+			{
+				Output = Capabilities.Outputs.FindByPredicate([&Matches](const FMixtormatPublishedOutputDesc& Candidate)
+				{
+					return Matches(Candidate) && Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow;
+				});
+			}
+			if (!Output) { Output = Capabilities.Outputs.FindByPredicate(Matches); }
+			if (!Output) { return Target; }
+			Target.OutputName = Output->Name;
+			Target.Kind = Output->FieldKind == EMixtormatPublishedFieldKind::UVMap
+				? EMixtormatPreviewOutputKind::WarpedUVGrid : EMixtormatPreviewOutputKind::FlowDirection;
+		}
+		else if (!IsCoverageChild(*Child))
 		{
 			const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
 			const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
@@ -377,6 +416,7 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 	}
 	else
 	{
+		if (RequiredKind != EMixtormatPreviewOutputKind::Mask) { return Target; }
 		// An aggregate mask is meaningful only when a real root coverage producer exists.
 		const auto HasCoverage = [&IsCoverageChild](const TArray<FMixtormatLayerChild>& Children)
 		{
@@ -449,6 +489,7 @@ FReply SMixtormat::ResetDiagnosticOverlays()
 	bMaskOverlayEnabled = false;
 	MaskOverlaySource = FMixtormatChildAddress();
 	MaskOverlayOutputName = NAME_None;
+	MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
 	bAutomaticFlowPreview = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	ChildPreviewTarget = FMixtormatChildPreviewTarget();
@@ -465,6 +506,16 @@ FReply SMixtormat::ResetDiagnosticOverlays()
 
 FReply SMixtormat::ToggleMaskOverlayPreview()
 {
+	return ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind::Mask);
+}
+
+FReply SMixtormat::ToggleFlowOverlayPreview()
+{
+	return ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind::FlowDirection);
+}
+
+FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputKind Kind)
+{
 	if (!bHasWorkingMaterial)
 	{
 		return FReply::Handled();
@@ -473,8 +524,10 @@ FReply SMixtormat::ToggleMaskOverlayPreview()
 	const bool bSameSource = bMaskOverlayEnabled
 		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
 		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
-		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
-	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource);
+		&& SelectedSource.ChildId == MaskOverlaySource.ChildId
+		&& ((Kind == EMixtormatPreviewOutputKind::Mask)
+			== (MaskOverlayOutputKind == EMixtormatPreviewOutputKind::Mask));
+	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource, NAME_None, Kind);
 	if (!bSameSource && !SelectedTarget.IsValid())
 	{
 		return FReply::Handled();
@@ -482,6 +535,7 @@ FReply SMixtormat::ToggleMaskOverlayPreview()
 	bMaskOverlayEnabled = !bSameSource;
 	MaskOverlaySource = bMaskOverlayEnabled ? SelectedSource : FMixtormatChildAddress();
 	MaskOverlayOutputName = bMaskOverlayEnabled ? SelectedTarget.OutputName : NAME_None;
+	MaskOverlayOutputKind = bMaskOverlayEnabled ? SelectedTarget.Kind : EMixtormatPreviewOutputKind::Mask;
 	if (bMaskOverlayEnabled)
 	{
 		bAutomaticFlowPreview = false;
@@ -1097,6 +1151,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnToggleMaskOverlay(FSimpleDelegate::CreateLambda([this]()
 			{
 				ToggleMaskOverlayPreview();
+			}))
+			.OnToggleFlowOverlay(FSimpleDelegate::CreateLambda([this]()
+			{
+				ToggleFlowOverlayPreview();
 			}))
 			.OnResetDiagnosticOverlays(FSimpleDelegate::CreateLambda([this]()
 			{

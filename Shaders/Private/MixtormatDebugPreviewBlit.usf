@@ -194,6 +194,21 @@ void MainRegionIdPickCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 
+// Raw published Flow/UV data. Rotate only the texture domain, never the stored components.
+Texture2D<float4> RawFlowSource;
+uint RawFlowRotate90;
+RWTexture2D<float4> RawFlowOutput;
+
+[numthreads(8, 8, 1)]
+void MainRawFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const int2 SourcePixel = RawFlowRotate90 != 0
+		? int2(Pixel.y, OutputSize.x - 1 - Pixel.x) : Pixel;
+	RawFlowOutput[Pixel] = RawFlowSource.Load(int3(SourcePixel, 0));
+}
+
 // Selected mask/influence coverage for the viewport's post-process blend.
 // Never encode a colour or modify the composite's material outputs here.
 Texture2D<float> OverlaySourceMask;

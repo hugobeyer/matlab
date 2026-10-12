@@ -129,6 +129,7 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleOverlayUi)
 		SLATE_EVENT(FSimpleDelegate, OnToggleDisplacement)
 		SLATE_EVENT(FSimpleDelegate, OnToggleMaskOverlay)
+		SLATE_EVENT(FSimpleDelegate, OnToggleFlowOverlay)
 		SLATE_EVENT(FSimpleDelegate, OnResetDiagnosticOverlays)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
 		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
@@ -234,6 +235,7 @@ private:
 	void ToggleOverlayUi();
 	void ToggleDisplacement();
 	void ToggleMaskOverlay();
+	void ToggleFlowOverlay();
 	void ResetDiagnosticOverlays();
 	void CycleChannelPreview();
 	void CycleModulePreview();
@@ -298,6 +300,7 @@ private:
 	FSimpleDelegate OnToggleOverlayUi;
 	FSimpleDelegate OnToggleDisplacement;
 	FSimpleDelegate OnToggleMaskOverlay;
+	FSimpleDelegate OnToggleFlowOverlay;
 	FSimpleDelegate OnResetDiagnosticOverlays;
 	FSimpleDelegate OnChannelPreviewChanged;
 	FSimpleDelegate OnCycleModulePreview;
@@ -320,6 +323,8 @@ private:
 	TUniquePtr<FMixtormatGpuCompositor> LayerCompositor;
 	TUniquePtr<FMixtormatViewportMaskPostFx> MaskPostFx;
 	bool bMaskPostFxActive = false;
+	// Request projection only; persistent ownership remains in SMixtormat.
+	FMixtormatChildPreviewTarget MaskPostFxTarget;
 	float MaskPostFxOpacity = 0.55f;
 	TUniquePtr<FPreviewSceneProfile> StudioPreviewProfile;
 	TStrongObjectPtr<UTextureCube> StudioEnvironmentCubemap;

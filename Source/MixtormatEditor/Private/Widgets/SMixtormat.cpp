@@ -1026,14 +1026,16 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 
 	// Validate ownership before selection-only composition overrides are chosen.
 	const FMixtormatChildPreviewTarget OverlayTarget = bMaskOverlayEnabled
-		? ResolveMaskOverlayTarget(MaskOverlaySource, MaskOverlayOutputName) : FMixtormatChildPreviewTarget();
+		? ResolveMaskOverlayTarget(MaskOverlaySource, MaskOverlayOutputName, MaskOverlayOutputKind)
+				: FMixtormatChildPreviewTarget();
 	const bool bMaskOverlayReady = bMaskOverlayEnabled && OverlayTarget.IsValid()
-		&& OverlayTarget.OutputName == MaskOverlayOutputName;
+		&& OverlayTarget.OutputName == MaskOverlayOutputName && OverlayTarget.Kind == MaskOverlayOutputKind;
 	if (bMaskOverlayEnabled && !bMaskOverlayReady)
 	{
 		bMaskOverlayEnabled = false;
 		MaskOverlaySource = FMixtormatChildAddress();
 		MaskOverlayOutputName = NAME_None;
+		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
 		bPreviewSubmitPending = true;
 	}
 

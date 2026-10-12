@@ -82,6 +82,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bHasWorkingMaterial && IsMaskOverlayTargetReady();
 	};
+	const auto bFlowAvailable = [this]()
+	{
+		return bHasWorkingMaterial && IsFlowOverlayTargetReady();
+	};
 	const auto bDiagnosticActive = [this, bChannelView]()
 	{
 		return bChannelView()
@@ -94,9 +98,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	};
 	const auto bNoMaterial = [this]() { return !bHasWorkingMaterial; };
 	const auto bUvRotationAvailable = [this]() { return bHasWorkingMaterial; };
-	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bPlaneFlip, bNoMaterial, bUvRotationAvailable]()
+	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bFlowAvailable, bPlaneFlip, bNoMaterial, bUvRotationAvailable]()
 	{
-		return bQuickControls() || bDiagnosticActive() || bMaskAvailable()
+		return bQuickControls() || bDiagnosticActive() || bMaskAvailable() || bFlowAvailable()
 			|| bPlaneFlip() || bNoMaterial() || bUvRotationAvailable();
 	};
 
@@ -186,13 +190,30 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		const bool bSameSource = bMaskOverlayEnabled
 			&& Selected.OwnerType == MaskOverlaySource.OwnerType
 			&& Selected.OwnerId == MaskOverlaySource.OwnerId
-			&& Selected.ChildId == MaskOverlaySource.ChildId;
+			&& Selected.ChildId == MaskOverlaySource.ChildId
+			&& MaskOverlayOutputKind == EMixtormatPreviewOutputKind::Mask;
 		return bSameSource
 			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
 			: bMaskOverlayEnabled
 				? LOCTEXT("HintTransferDiagnostic", "Preview selected source")
 				: LOCTEXT("HintShowDiagnostic", "Show diagnostic");
 	}), MaskVis);
+
+	const TAttribute<EVisibility> FlowVis = TAttribute<EVisibility>::CreateLambda(
+		[bFlowAvailable, bQuickControls]()
+	{
+		return bFlowAvailable() && !bQuickControls()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	});
+	AddGap(*Row, FlowVis);
+	AddPair(*Row, LOCTEXT("HintE", "E"), TAttribute<FText>::CreateLambda([this]()
+	{
+		const bool bSameSource = bMaskOverlayEnabled && GetSelectedChildAddress() == MaskOverlaySource
+			&& MaskOverlayOutputKind != EMixtormatPreviewOutputKind::Mask;
+		return bSameSource ? LOCTEXT("HintHideFlow", "Hide Flow")
+			: bMaskOverlayEnabled ? LOCTEXT("HintTransferFlow", "Preview selected Flow")
+				: LOCTEXT("HintShowFlow", "Show raw Flow");
+	}), FlowVis);
 
 	// -- V resets both the new mask tint and any remaining inspector diagnostics.
 	const TAttribute<EVisibility> ResetVis = TAttribute<EVisibility>::CreateLambda(

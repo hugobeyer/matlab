@@ -105,10 +105,11 @@ struct FMixtormatDebugPreviewSettings
 	EMixtormatDebugPreviewMode Mode = EMixtormatDebugPreviewMode::None;
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
-	// Only meaningful when Mode == ChildOutput. LayerIndex/ChildIndex above are resolved from
+	// Used by ChildOutput and W/E overlays. LayerIndex/ChildIndex above are resolved from
 	// this once, at the top of RequestComposeInternal, and every pass below reads those exactly
 	// like it does for LayerMask -- only the resolution step is new.
 	FMixtormatChildPreviewTarget ChildTarget;
+	// Existing overlay switch; ChildTarget.Kind distinguishes W coverage from E raw Flow/UV.
 	bool bMaskOverlay = false;
 	float MaskOverlayOpacity = 0.55f;
 };
@@ -182,6 +183,8 @@ public:
 	UTextureRenderTarget2D* GetRAMOutput() const;
 	UTextureRenderTarget2D* GetHeightOutput() const;
 	UTextureRenderTarget2D* GetDebugOutput() const;
+	// Raw typed Flow/UV snapshot for the requested overlay owner, never another source's pixels.
+	UTextureRenderTarget2D* GetDiagnosticFlowOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 	// The raw Region IDs behind the current Region IDs preview, one float per pixel, -1 where no
 	// region covers it. Written only while such a preview is up, and cleared to -1 otherwise, so
 	// the Exact ID picker can never read a stale id from a preview that has been switched off.
@@ -212,6 +215,8 @@ private:
 	};
 
 	FTargetSet Targets[2];
+	// Allocated only for raw Flow/UV diagnostics; float32 preserves published RG exactly.
+	TStrongObjectPtr<UTextureRenderTarget2D> DiagnosticFlowOutput;
 
 	// Cache of generated networks keyed on the parameters that shape them. Growing one is by a wide
 	// margin the most expensive thing in the graph, and almost nothing a user touches while

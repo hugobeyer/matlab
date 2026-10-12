@@ -272,10 +272,14 @@ private:
 	bool UpdateAutomaticFlowPreview();
 	FReply CycleSelectedModulePreview();
 	FReply ToggleMaskOverlayPreview();
+	FReply ToggleFlowOverlayPreview();
+	FReply ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind Kind);
 	FReply ResetDiagnosticOverlays();
 	bool IsMaskOverlayTargetReady() const;
+	bool IsFlowOverlayTargetReady() const;
 	FMixtormatChildPreviewTarget ResolveMaskOverlayTarget(
-		const FMixtormatChildAddress& Address, FName RequiredOutputName = NAME_None) const;
+		const FMixtormatChildAddress& Address, FName RequiredOutputName = NAME_None,
+		EMixtormatPreviewOutputKind RequiredKind = EMixtormatPreviewOutputKind::Mask) const;
 	bool IsDiagnosticRowActive(const FMixtormatChildAddress& Address, bool bIncludeDescendants = false) const;
 	// Resolves the currently selected child to a preview target naming OutputName/Kind (and,
 	// for a RegionIds output, GapMaskName) on it. A group-authored selection is flattened to one
@@ -1865,6 +1869,7 @@ private:
 	// Authored placement identity; selection and effective GPU indices are resolved separately.
 	FMixtormatChildAddress MaskOverlaySource;
 	FName MaskOverlayOutputName = NAME_None;
+	EMixtormatPreviewOutputKind MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
 	int32 SelectedLayerIndex = INDEX_NONE;
 	int32 SoloLayerIndex = INDEX_NONE;
 	int32 SelectedEffectIndex = INDEX_NONE;

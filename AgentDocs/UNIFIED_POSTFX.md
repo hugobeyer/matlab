@@ -39,7 +39,7 @@ tinting Base Color or creating a replacement lit material.
   Mixtormat's explicit orbit/pan/zoom/focus remain the only camera controls,
   while RMB mouse drag still rotates the studio light.
 - W ownership is an authored `FMixtormatChildAddress` plus output name in
-  `SMixtormat` (`MaskOverlaySource`, `MaskOverlayOutputName`, enabled state),
+  `SMixtormat` (`MaskOverlaySource`, `MaskOverlayOutputName`, `MaskOverlayOutputKind`, enabled state),
   independent of Inspector selection and legacy `ChildPreviewTarget`.
   `ResolveMaskOverlayTarget` resolves that address on every submitted compose,
   including group-authored children mapped to an enabled member's effective GUID.
@@ -79,24 +79,103 @@ frame is required while active to preserve displaced-surface UVs. This is
 a source implementation only: no Unreal build, shader compile or runtime
 inspection has been performed.
 
+## Raw Flow integration — E (local main, 2026-10-12)
+
+- **W remains scalar/mask/gate; E activates raw Flow.** Both use the existing
+  `ResolveMaskOverlayTarget`, canonical ownership, group expansion, instance payload
+  resolution and GUID-bound hierarchy indicators. There is only one active PostFX
+  source. E on its active Flow source disables it; E on another supported source
+  transfers it. W/E can transfer between scalar and Flow outputs on the same row.
+  Selection and Inspector rebuilds do not redirect it. Existing V/Shift+V resets,
+  channel cycling, preview eyes and legacy debug blits are unchanged.
+- E is handled only by the existing viewport client, bare and with no mouse button
+  held. No workspace/global input processor is added. Mouse-gesture E is consumed
+  without activation; modified E keys retain their existing routing.
+- Selection uses typed `GetChildCapabilities` outputs, not texture channel count.
+  Prefer a primary `Flow` output, then the first declared `Flow`, then `UVMap`.
+  Retain its exact name and preview kind for all later resolves. Noise with Write
+  Flow selects `GeneratedFlow`; other Noise selections select `FlowDirection`.
+  Generic `Vector2` gradients are not silently treated as Flow. Native Flow uses
+  the producer's existing demand/publication path; no new Flow generator exists.
+- Supported producers are Noise (including Flow preset/Write Flow), native Flow
+  outputs declared by Cracks, Rock Formation, Pebbles and Cliff Strata, traced
+  Behavior outputs when actually published, and local typed Flow/UV Output
+  References. Nested/group-authored placements and child instances use the same
+  resolver. Sources shelf rows, unpublished operations and generic Vector2 outputs
+  remain unsupported directly; no placeholder field is created for them.
+- The compositor demands the exact field before prefix-cache restoration, resolves
+  it from the final published registry, and exports **`Field.Texture`**, not its
+  `FlowSmooth` companion or a colourized legacy preview. A lazy RGBA32F render
+  target holds the raw GPU snapshot; the data-only `MainRawFlowCS` performs a Load
+  and store with no saturate, normalize, frac, gamma conversion or visualization.
+  This is a data export within the existing compose/PostFX path, not another
+  capture or rendering pipeline. Flow's existing half-float values widen without
+  additional quantization; UVMap's float32 RG is retained at float32 precision.
+- `Flow` is a relative directional/transport vector payload; RG units/magnitude
+  are those of the actual producer, not universally unit-length. `UVMap` is an
+  absolute/transformed coordinate payload. No UV-minus-base conversion is done.
+  Existing Flow B/A payloads pass through too; they are producer-specific and
+  should not be assumed to be a universal validity mask. For two-channel UVMap
+  textures only RG has a semantic contract.
+- Material bindings: `DA_DiagnosticFlow` is the raw texture and
+  `DA_DiagnosticMode` is **0 = existing scalar coverage, 1 = relative Flow,
+  2 = absolute UVMap**. `DA_DiagnosticUvBuffer`, `DA_DiagnosticField` and
+  `DA_DiagnosticOpacity` keep their names and mask behavior. During E,
+  `DA_DiagnosticField.R` is field availability (1 for a successfully exported
+  field, otherwise 0), not a Flow visualization or per-texel Flow validity.
+- The raw target uses linear data and wrapping U/V addressing. Captured mesh UVs
+  stay non-tiled. Global quarter-turn rotates texture lookup positions exactly
+  like the material outputs but does **not** rotate, wrap or otherwise change RG
+  component values. The authored material controls all sampling/appearance.
+- The viewport rebinds only a completed, matching owner/child/name/kind snapshot.
+  While recomposition/transfer is pending, or a typed field is unavailable, the
+  Flow PostFX is disabled; unavailable targets are cleared, so old-source pixels
+  cannot be shown. Mask activation removes the Flow texture binding and sets mode
+  zero. The existing UV capture/displaced proxy remains unchanged.
+
+### Artist-authored Material Editor setup
+
+Modify your local `M_MixtormatDiagnosticPost` yourself; plugin code does not edit
+or regenerate this material or any `.uasset`.
+
+1. Add **Texture Sample Parameter 2D**, parameter name **`DA_DiagnosticFlow`**.
+   Use **Sampler Type: Linear Color** and **Sampler Source: Shared: Wrap**.
+   Supply any suitable linear default texture in the material; the active E
+   preview replaces it with the real GPU field, never generated placeholder Flow.
+2. Connect the existing sampled **`DA_DiagnosticUvBuffer.RG`** directly to this
+   sample's **UVs**. Keep the UV-buffer sample itself at screen/view UVs and its
+   existing nearest/non-tiled sampling; do not add tiling to the capture buffer.
+   Wrap applies to **field lookup addresses**, never to sampled Flow RG values.
+3. Add **Scalar Parameter `DA_DiagnosticMode`**, default **0**. Branch your own
+   material logic on 0/1/2 as above. Mode 0 must retain the existing mask graph.
+4. Read raw **RG** from `DA_DiagnosticFlow` for all your visual design. Do not put
+   Normalize, Frac or Saturate on RG unless you intentionally want that operation.
+5. Retain mesh-validity gating **`DA_DiagnosticUvBuffer.B >= 0.5`**, existing
+   **`DA_DiagnosticOpacity`**, and **`PostProcessInput0`** compositing. For E, use
+   **`DA_DiagnosticField.R`** as the availability gate. Do not treat signed Flow
+   components as mask coverage; design their appearance entirely in this material.
+
+No builds, tests, shader compilation or Unreal launches were run. Static source
+review only; sampler/material behavior and runtime rebinding need Unreal review.
+
 ## Remaining work
 
 - Confirm exact matching between capture pixels and the preview viewport's
   actual projection under non-default aspect ratios and temporal upscaling.
-- Sources shelf W routing remains unsupported; no field is invented for sources
-  without a scalar publication. Vector, colour, ID, UV and SDF visualizations remain
-  outside this scalar-coverage overlay. Signed scalar fields use midpoint-normalized
-  coverage, not a two-colour signed-height display.
-- Add Flow / Height / IDs / UV visualizations using the same post pipeline;
-  permit Flow and UV lines over a mutually exclusive scalar/ID base.
-- Remove retired replacement preview paths only after their full functionality
-  has migrated; the current W path does not modify them.
+- Sources shelf diagnostic rows remain unsupported directly. Generic Vector2,
+  colour, ID and SDF data are not exposed by E. Published Flow and absolute UVMap
+  data are exposed raw, without plugin-authored visualization. Signed scalar fields
+  use midpoint-normalized coverage, not a two-colour signed-height display.
+- Flow/UV appearance is artist-authored only; this integration adds no arrows,
+  grids, animation or visualization controls. Height/ID overlays are not added here.
+- Existing replacement previews, Inspector eyes and channel shortcuts remain
+  supported and are not migrated or removed by W/E integration.
 
 ## One semantic shader
 
 | Semantic | Visualization |
 |---|---|
-| Flow/UV direction | Sparse UV-space arrows or short trails; density anchored to material UV, direction from vector field |
+| Flow/UV direction | Raw RG data only; all appearance is authored locally in the Post Process material |
 | IDs | Deterministic hash of integer ID to subdued categorical RGB; optional exact-ID neighbour boundary |
 | Mask | Single-colour translucent coverage, proportional to mask value |
 | Height | Warm positive, cool negative, zero transparent; preserve signed input |
@@ -106,7 +185,7 @@ Single shader dispatch mode, shared opacity `[0,1]`; compositing should be `lerp
 
 ## UX contract
 
-The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. Eligible selection shows `W · Show diagnostic`; the active owner shows `W · Hide diagnostic`; another eligible source shows `W · Preview selected source`. Existing V reset help remains visible while W is active even if the selected row is ineligible. Preserve all existing V/Shift+V, channel-preview cycling, Inspector eyes and replacement rendering paths; this work changes only W ownership and row presentation. Keep `Esc`, plane flip and missing-material hints in their existing contexts.
+The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. Eligible selection shows `W · Show diagnostic`; the active owner shows `W · Hide diagnostic`; another eligible source shows `W · Preview selected source`. Existing V reset help remains visible while W is active even if the selected row is ineligible. Preserve all existing V/Shift+V, channel-preview cycling, Inspector eyes and replacement rendering paths; W/E share persistent ownership and row presentation. Eligible Flow selections also show `E · Show raw Flow`, `E · Hide Flow` or `E · Preview selected Flow`. Keep `Esc`, plane flip and missing-material hints in their existing contexts.
 
 Future overlay controls may add shared opacity and exact-ID boundaries. They must not redefine or migrate existing shortcuts or Inspector diagnostics as part of W persistence. No authored material or local `.uasset` is changed by this implementation.
 

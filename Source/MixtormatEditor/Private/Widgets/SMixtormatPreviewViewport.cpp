@@ -458,6 +458,15 @@ public:
 			&& (EventArgs.Viewport->KeyState(EKeys::LeftMouseButton)
 				|| EventArgs.Viewport->KeyState(EKeys::MiddleMouseButton)
 				|| EventArgs.Viewport->KeyState(EKeys::RightMouseButton));
+		// E shares W's viewport-only, bare-key, no-mouse-gesture protections.
+		if (EventArgs.Key == EKeys::E && !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			if (!bMouseGesture && EventArgs.Event == IE_Pressed)
+			{
+				Owner.ToggleFlowOverlay();
+			}
+			return true;
+		}
 		// Mouse gestures own the camera/light; no WASD shortcuts during a drag.
 		if (bNavigationKey && bMouseGesture)
 		{
@@ -653,6 +662,16 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		}
 		return;
 	}
+	const bool bFlow = MaskPostFxTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
+		|| MaskPostFxTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid;
+	UTextureRenderTarget2D* FlowField = bFlow
+		? LayerCompositor->GetDiagnosticFlowOutput(MaskPostFxTarget) : nullptr;
+	if (bFlow && !FlowField)
+	{
+		// Never show the previous owner's field while a transfer or recomposition is pending.
+		if (MaskPostFx) { MaskPostFx->Disable(); }
+		return;
+	}
 	if (!MaskPostFx)
 	{
 		MaskPostFx = MakeUnique<FMixtormatViewportMaskPostFx>(PreviewScene);
@@ -665,7 +684,8 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		PreviewViewportClient->Viewport->GetSizeXY(),
 		PreviewViewportClient->GetViewLocation(),
 		PreviewViewportClient->GetViewRotation(),
-		CameraFov, bDisplacementEnabled, DisplacementAmount, MaskPostFxOpacity);
+		CameraFov, bDisplacementEnabled, DisplacementAmount, MaskPostFxOpacity,
+		FlowField, MaskPostFxTarget.Kind);
 }
 
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
@@ -673,6 +693,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleOverlayUi = InArgs._OnToggleOverlayUi;
 	OnToggleDisplacement = InArgs._OnToggleDisplacement;
 	OnToggleMaskOverlay = InArgs._OnToggleMaskOverlay;
+	OnToggleFlowOverlay = InArgs._OnToggleFlowOverlay;
 	OnResetDiagnosticOverlays = InArgs._OnResetDiagnosticOverlays;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
@@ -800,6 +821,7 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
 	bMaskPostFxActive = DebugSettings.bMaskOverlay;
+	MaskPostFxTarget = DebugSettings.ChildTarget;
 	MaskPostFxOpacity = DebugSettings.MaskOverlayOpacity;
 	if (!bMaskPostFxActive && MaskPostFx)
 	{
@@ -1493,6 +1515,11 @@ void SMixtormatPreviewViewport::ToggleMaskOverlay()
 	OnToggleMaskOverlay.ExecuteIfBound();
 }
 
+void SMixtormatPreviewViewport::ToggleFlowOverlay()
+{
+	OnToggleFlowOverlay.ExecuteIfBound();
+}
+
 void SMixtormatPreviewViewport::ToggleDisplacement()
 {
 	// The owner holds the displacement state (its checkbox and the library preview read it), so
@@ -1629,6 +1656,10 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 	{
 		if (bDebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask)
 		{
+			if (bMaskPostFxActive && MaskPostFxTarget.Kind != EMixtormatPreviewOutputKind::Mask)
+			{
+				return NSLOCTEXT("SMixtormatPreviewViewport", "RawFlowOverlayPreviewModeLabel", "Raw Flow overlay");
+			}
 			return NSLOCTEXT("SMixtormatPreviewViewport", "MaskOverlayPreviewModeLabel", "Mask overlay");
 		}
 		return NSLOCTEXT("SMixtormatPreviewViewport", "MaterialPreviewModeLabel", "Material");

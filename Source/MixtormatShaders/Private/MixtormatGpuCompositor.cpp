@@ -1338,6 +1338,7 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 	}
 
 	Resolution = InResolution;
+	DiagnosticFlowOutput.Reset();
 	for (FTargetSet& Set : Targets)
 	{
 		Set.BaseColor.Reset(CreateTarget(Resolution, FLinearColor::Black));
@@ -1519,6 +1520,20 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	Request.DebugSettings = DebugSettings;
 	Request.OnComplete = MoveTemp(OnComplete);
 	Request.Targets = MakeShared<FMixtormatComposeResources, ESPMode::ThreadSafe>();
+	if (DebugSettings.bMaskOverlay
+		&& (DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
+			|| DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid))
+	{
+		// A failed gather must not leave the previous request eligible for raw Flow binding.
+		PendingOutputs.Reset();
+		if (!DiagnosticFlowOutput.IsValid())
+		{
+			DiagnosticFlowOutput.Reset(CreateTarget(Resolution, FLinearColor::Black, PF_A32B32G32R32F));
+		}
+		Request.Targets->Pins.Emplace(DiagnosticFlowOutput.Get());
+		Request.Targets->DiagnosticFlow = DiagnosticFlowOutput->GameThread_GetRenderTargetResource();
+		Request.Targets->DiagnosticTarget = DebugSettings.ChildTarget;
+	}
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
 		const auto CaptureTarget = [&Request](UTextureRenderTarget2D* Target)
@@ -1971,11 +1986,10 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		// from a plain composite so that can never become an assumption.
 		if (DebugSettings.Mode != EMixtormatDebugPreviewMode::None)
 		{
-			// Named scalar overlays export from the restored registry after all layers finish.
+			// Named typed overlays export from the restored registry after all layers finish.
 			// Raw masks and replacement previews still need their selected layer to run.
 			const bool bNamedMaskOverlay = DebugSettings.bMaskOverlay
 				&& DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-				&& DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
 				&& !DebugSettings.ChildTarget.OutputName.IsNone();
 			if (!bNamedMaskOverlay)
 			{
@@ -2049,6 +2063,18 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetHeightOutput() const
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRegionIdPickOutput() const
 {
 	return Targets[PublishedTargetIndex].RegionIdPick.Get();
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticFlowOutput(
+	const FMixtormatChildPreviewTarget& ExpectedTarget) const
+{
+	if (IsComposeInFlight() || !PendingOutputs.IsValid() || !PendingOutputs->bSucceeded
+		|| !PendingOutputs->bDiagnosticFlowPublished
+		|| !(PendingOutputs->DiagnosticTarget == ExpectedTarget))
+	{
+		return nullptr;
+	}
+	return DiagnosticFlowOutput.Get();
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDebugOutput() const

@@ -40,6 +40,10 @@ struct FMixtormatComposeResources
 	FTextureRenderTargetResource* Height[2] = {};
 	FTextureRenderTargetResource* Debug[2] = {};
 	FTextureRenderTargetResource* RegionIdPick[2] = {};
+	FTextureRenderTargetResource* DiagnosticFlow = nullptr;
+	FMixtormatChildPreviewTarget DiagnosticTarget;
+	// Read on the game thread only after the compose's InFlight release/acquire handoff.
+	bool bDiagnosticFlowPublished = false;
 	int32 PublishedIndex = 0;
 	// Only read/written on the render thread. A failed child must not publish stale pixels.
 	bool bSucceeded = false;
@@ -2125,6 +2129,10 @@ namespace MixtormatGpuCompositor
 	// ChildOutput target names it: no WriteDebug branch of the producer's own kernel to gate, no
 	// permutation, just colour the finished texture into OutputDebug after the fact. Callers are
 	// expected to guard the call with IsChildOutputPreviewTarget first.
+	// Lossless data export only: no normalization, wrapping of values or artistic encoding.
+	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
+		FRDGTextureRef Output, FIntPoint Resolution, bool bRotateOutput90);
+
 	// Exports mask/influence coverage into Debug RT; signed scalars remap from -1..1 to 0..1.
 	void AddMaskOverlayPass(
 		FRDGBuilder& GraphBuilder,

@@ -373,6 +373,7 @@ namespace MixtormatGpuCompositor
 				// Filled during the graph and stored once it has executed, when the extracted
 				// targets actually exist.
 				TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> PendingSnapshot;
+				FRDGTextureRef RawDiagnosticFlow = nullptr;
 				{
 				RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatCompose, "Mixtormat.Compose");
 				TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
@@ -414,6 +415,15 @@ namespace MixtormatGpuCompositor
 						RegisteredTextures,
 						Request.OutputRegionIdPick[Index],
 						TEXT("Mixtormat.OutputRegionIdPick"));
+				}
+
+				if (Request.Targets->DiagnosticFlow)
+				{
+					const FTextureRHIRef FlowRhi = Request.Targets->DiagnosticFlow->GetRenderTargetTexture();
+					if (!FlowRhi.IsValid()) { return; }
+					RawDiagnosticFlow = RegisterTexture(GraphBuilder, RegisteredTextures, FlowRhi,
+						TEXT("Mixtormat.Diagnostic.RawFlow"));
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RawDiagnosticFlow), FLinearColor::Black);
 				}
 
 				AddClearUAVPass(
@@ -714,7 +724,6 @@ namespace MixtormatGpuCompositor
 					TMap<FGuid, int32> LayerIndexById;
 					if (Request.DebugSettings.bMaskOverlay
 						&& Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
-						&& Request.DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::Mask
 						&& !Request.DebugSettings.ChildTarget.OutputName.IsNone()
 						&& Request.Layers.IsValidIndex(Request.DebugSettings.LayerIndex))
 					{
@@ -1368,7 +1377,30 @@ namespace MixtormatGpuCompositor
 
 				// Only publish the selected overlay coverage. The viewport's post-process
 				// reads it without writing to any composed material output.
-				if (Request.DebugSettings.bMaskOverlay)
+				if (Request.DebugSettings.bMaskOverlay && RawDiagnosticFlow)
+				{
+					const FMixtormatDebugPreviewSettings& Debug = Request.DebugSettings;
+					if (Request.Layers.IsValidIndex(Debug.LayerIndex) && !Debug.ChildTarget.OutputName.IsNone())
+					{
+						const FPublishedFieldKey Key = PublishedKey(Request.Layers[Debug.LayerIndex],
+							Debug.ChildIndex, Debug.ChildTarget.OutputName);
+						const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+						const EMixtormatPublishedFieldKind ExpectedKind = Debug.ChildTarget.Kind
+							== EMixtormatPreviewOutputKind::WarpedUVGrid
+							? EMixtormatPublishedFieldKind::UVMap : EMixtormatPublishedFieldKind::Flow;
+						if (Field && Field->Kind == ExpectedKind && Field->IsComplete()
+							&& Field->Texture->Desc.Extent == Request.Resolution)
+						{
+							AddRawFlowOverlayPass(GraphBuilder, Field->Texture, RawDiagnosticFlow,
+								Request.Resolution, Request.bRotateOutput90);
+							Request.Targets->bDiagnosticFlowPublished = true;
+						}
+					}
+					// The existing field is an availability gate for Flow, not a visualization.
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Ctx.OutputDebug[Request.PublishedTargetIndex]),
+						Request.Targets->bDiagnosticFlowPublished ? FLinearColor::White : FLinearColor::Black);
+				}
+				else if (Request.DebugSettings.bMaskOverlay)
 				{
 					bool bSourceSigned = false;
 					const FMixtormatDebugPreviewSettings& Debug = Request.DebugSettings;
@@ -1427,6 +1459,10 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(
 					Ctx.OutputRegionIdPick[FinalTargetIndex], ERHIAccess::SRVMask);
+				if (RawDiagnosticFlow)
+				{
+					GraphBuilder.SetTextureAccessFinal(RawDiagnosticFlow, ERHIAccess::SRVMask);
+				}
 				GraphBuilder.Execute();
 				Request.Targets->bSucceeded = true;
 				if (PendingSnapshot.IsValid() && Request.PrefixCache.IsValid())

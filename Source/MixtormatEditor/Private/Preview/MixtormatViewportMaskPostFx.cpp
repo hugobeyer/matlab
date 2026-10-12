@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Preview/MixtormatViewportMaskPostFx.h"
+#include "MixtormatGpuCompositor.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "AdvancedPreviewScene.h"
@@ -40,6 +41,10 @@ namespace
 {
 	const FName UvBufferName(TEXT("DA_DiagnosticUvBuffer"));
 	const FName FieldName(TEXT("DA_DiagnosticField"));
+	const FName FlowName(TEXT("DA_DiagnosticFlow"));
+	const FName ModeName(TEXT("DA_DiagnosticMode"));
+	// Material parameter contract; values must match the documented artist-authored graph.
+	enum class EDiagnosticDataMode : uint8 { Coverage = 0, RelativeFlow = 1, AbsoluteUV = 2 };
 	const FName OpacityName(TEXT("DA_DiagnosticOpacity"));
 	const FName HeightName(TEXT("DA_Height"));
 	const FName UseHeightName(TEXT("DA_UseHeight"));
@@ -213,7 +218,9 @@ void FMixtormatViewportMaskPostFx::Update(
 	const float FovDegrees,
 	const bool bDisplace,
 	const float DisplacementAmount,
-	const float OverlayOpacity)
+	const float OverlayOpacity,
+	UTextureRenderTarget2D* FlowField,
+	const EMixtormatPreviewOutputKind OutputKind)
 {
 	if (!MaskField || !HeightField || !PreviewMesh.GetStaticMesh()
 		|| ViewSize.X <= 0 || ViewSize.Y <= 0 || !EnsureResources(MaskField))
@@ -242,6 +249,11 @@ void FMixtormatViewportMaskPostFx::Update(
 	UvCapture->FOVAngle = FovDegrees;
 	BlendInstance->SetTextureParameterValue(UvBufferName, UvTarget.Get());
 	BlendInstance->SetTextureParameterValue(FieldName, MaskField);
+	BlendInstance->SetTextureParameterValue(FlowName, FlowField);
+	const EDiagnosticDataMode Mode = OutputKind == EMixtormatPreviewOutputKind::WarpedUVGrid
+		? EDiagnosticDataMode::AbsoluteUV : OutputKind == EMixtormatPreviewOutputKind::FlowDirection
+			? EDiagnosticDataMode::RelativeFlow : EDiagnosticDataMode::Coverage;
+	BlendInstance->SetScalarParameterValue(ModeName, static_cast<float>(Mode));
 	BlendInstance->SetScalarParameterValue(OpacityName, OverlayOpacity);
 	// PreviewScene worlds are not guaranteed to tick capture components on their
 	// own. Submit one view-matched UV capture per *active viewport* Slate tick.

@@ -10,6 +10,7 @@ class UMaterialInstanceDynamic;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
 class UTextureRenderTarget2D;
+enum class EMixtormatPreviewOutputKind : uint8;
 
 // A viewport-only after-tonemapping mask blend. Its capture proxy carries the
 // identical mesh, transform, height field and displacement controls as the lit
@@ -21,7 +22,7 @@ public:
 	explicit FMixtormatViewportMaskPostFx(FAdvancedPreviewScene& InScene);
 	~FMixtormatViewportMaskPostFx();
 
-	// Called from the live viewport when W is enabled; no capture/PP cost while off.
+	// Called for W mask or E raw Flow diagnostics; no capture/PP cost while off.
 	void Update(
 		const UStaticMeshComponent& PreviewMesh,
 		UTextureRenderTarget2D* MaskField,
@@ -32,7 +33,9 @@ public:
 		float FovDegrees,
 		bool bDisplace,
 		float DisplacementAmount,
-		float OverlayOpacity);
+		float OverlayOpacity,
+		UTextureRenderTarget2D* FlowField,
+		EMixtormatPreviewOutputKind OutputKind);
 	void Disable();
 	UMaterialInstanceDynamic* GetBlendInstance() const { return bReady ? BlendInstance.Get() : nullptr; }
 

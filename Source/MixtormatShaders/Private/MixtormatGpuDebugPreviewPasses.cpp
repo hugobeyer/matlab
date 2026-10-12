@@ -210,8 +210,45 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainOverlayMaskCS",
 	SF_Compute);
 
+// Data-only export into a float32 target; legacy colour/debug blits are unchanged.
+class FMixtormatRawFlowOverlayCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRawFlowOverlayCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRawFlowOverlayCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, RawFlowRotate90)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, RawFlowSource)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, RawFlowOutput)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatRawFlowOverlayCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainRawFlowCS", SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
+	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
+		const FRDGTextureRef Output, const FIntPoint Resolution, const bool bRotateOutput90)
+	{
+		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatRawFlowOverlayCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->RawFlowRotate90 = bRotateOutput90 ? 1u : 0u;
+		Parameters->RawFlowSource = Source;
+		Parameters->RawFlowOutput = GraphBuilder.CreateUAV(Output);
+		TShaderMapRef<FMixtormatRawFlowOverlayCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.RawFlow"),
+			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8), 1));
+	}
+
 	void AddMaskOverlayPass(
 		FRDGBuilder& GraphBuilder,
 		const FRDGTextureRef Mask,
