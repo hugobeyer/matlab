@@ -25,6 +25,7 @@
 #include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/ScopeExit.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
 #include "RenderingThread.h"
@@ -1404,6 +1405,8 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	if (!MixtormatCompositionReferences::Validate(Layers, OwnerPath, ReferenceError))
 	{
 		UE_LOG(LogMixtormatComposition, Warning, TEXT("%s"), *ReferenceError.ToString());
+		PendingOutputs.Reset();
+		CompletedDiagnosticOutputs.Reset();
 		return false;
 	}
 	TSet<const UMixtormatMaterial*> ActiveSources;
@@ -1423,6 +1426,18 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
 	TRACE_CPUPROFILER_EVENT_SCOPE(Mixtormat_RequestCompose);
+
+		// Recognize completion before another request replaces the pending generation.
+		RefreshCompletedDiagnosticOutputs();
+		bool bRequestSubmitted = false;
+		ON_SCOPE_EXIT
+		{
+			if (!bRequestSubmitted)
+			{
+				PendingOutputs.Reset();
+				CompletedDiagnosticOutputs.Reset();
+			}
+		};
 
 	// Groups become ordinary layers here and nowhere else. Below this point EffectiveLayers is the
 	// only stack that exists -- resolving references against the authored array instead would look
@@ -1520,19 +1535,22 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	Request.DebugSettings = DebugSettings;
 	Request.OnComplete = MoveTemp(OnComplete);
 	Request.Targets = MakeShared<FMixtormatComposeResources, ESPMode::ThreadSafe>();
+	if (DebugSettings.bMaskOverlay)
+	{
+		Request.Targets->DiagnosticTarget = DebugSettings.ChildTarget;
+	}
 	if (DebugSettings.bMaskOverlay
 		&& (DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
 			|| DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid))
 	{
-		// A failed gather must not leave the previous request eligible for raw Flow binding.
-		PendingOutputs.Reset();
+
 		if (!DiagnosticFlowOutput.IsValid())
 		{
 			DiagnosticFlowOutput.Reset(CreateTarget(Resolution, FLinearColor::Black, PF_A32B32G32R32F));
 		}
 		Request.Targets->Pins.Emplace(DiagnosticFlowOutput.Get());
 		Request.Targets->DiagnosticFlow = DiagnosticFlowOutput->GameThread_GetRenderTargetResource();
-		Request.Targets->DiagnosticTarget = DebugSettings.ChildTarget;
+		Request.Targets->DiagnosticFlowTexture = DiagnosticFlowOutput.Get();
 	}
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
@@ -1936,6 +1954,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		: CompositedTargetIndex;
 	Request.NetworkCache = NetworkCache;
 	Request.Targets->PublishedIndex = PublishedTargetIndex;
+	Request.Targets->DiagnosticFieldTexture = Targets[PublishedTargetIndex].Debug.Get();
 	PendingOutputs = Request.Targets;
 
 	// Layer-prefix cache. The snapshot goes just below the lowest layer this request changed:
@@ -2020,6 +2039,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	Request.InFlight = InFlight;
 	InFlight->store(true);
 	EnqueueCompose(MoveTemp(Request));
+	bRequestSubmitted = true;
 
 	return true;
 }
@@ -2065,16 +2085,38 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRegionIdPickOutput() const
 	return Targets[PublishedTargetIndex].RegionIdPick.Get();
 }
 
+void FMixtormatGpuCompositor::RefreshCompletedDiagnosticOutputs() const
+{
+	if (!IsComposeInFlight())
+	{
+		CompletedDiagnosticOutputs = PendingOutputs.IsValid() && PendingOutputs->bSucceeded
+			? PendingOutputs : nullptr;
+	}
+}
+
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticFlowOutput(
 	const FMixtormatChildPreviewTarget& ExpectedTarget) const
 {
-	if (IsComposeInFlight() || !PendingOutputs.IsValid() || !PendingOutputs->bSucceeded
-		|| !PendingOutputs->bDiagnosticFlowPublished
-		|| !(PendingOutputs->DiagnosticTarget == ExpectedTarget))
+	RefreshCompletedDiagnosticOutputs();
+	if (!CompletedDiagnosticOutputs.IsValid()
+		|| !CompletedDiagnosticOutputs->bDiagnosticFlowPublished
+		|| !(CompletedDiagnosticOutputs->DiagnosticTarget == ExpectedTarget))
 	{
 		return nullptr;
 	}
-	return DiagnosticFlowOutput.Get();
+	return CompletedDiagnosticOutputs->DiagnosticFlowTexture;
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticFieldOutput(
+	const FMixtormatChildPreviewTarget& ExpectedTarget) const
+{
+	RefreshCompletedDiagnosticOutputs();
+	if (!CompletedDiagnosticOutputs.IsValid()
+		|| !(CompletedDiagnosticOutputs->DiagnosticTarget == ExpectedTarget))
+	{
+		return nullptr;
+	}
+	return CompletedDiagnosticOutputs->DiagnosticFieldTexture;
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDebugOutput() const

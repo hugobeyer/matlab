@@ -185,6 +185,7 @@ public:
 	UTextureRenderTarget2D* GetDebugOutput() const;
 	// Raw typed Flow/UV snapshot for the requested overlay owner, never another source's pixels.
 	UTextureRenderTarget2D* GetDiagnosticFlowOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
+		UTextureRenderTarget2D* GetDiagnosticFieldOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 	// The raw Region IDs behind the current Region IDs preview, one float per pixel, -1 where no
 	// region covers it. Written only while such a preview is up, and cleared to -1 otherwise, so
 	// the Exact ID picker can never read a stale id from a preview that has been switched off.
@@ -203,6 +204,9 @@ private:
 
 	// A submission owns its targets independently of this instance and any later resize.
 	TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> PendingOutputs;
+		// Completed resource generation, not another diagnostic ownership state.
+		mutable TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> CompletedDiagnosticOutputs;
+		void RefreshCompletedDiagnosticOutputs() const;
 
 	struct FTargetSet
 	{

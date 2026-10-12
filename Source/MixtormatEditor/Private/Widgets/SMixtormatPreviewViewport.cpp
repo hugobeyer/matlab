@@ -666,9 +666,10 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		|| MaskPostFxTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid;
 	UTextureRenderTarget2D* FlowField = bFlow
 		? LayerCompositor->GetDiagnosticFlowOutput(MaskPostFxTarget) : nullptr;
-	if (bFlow && !FlowField)
+	UTextureRenderTarget2D* DiagnosticField = LayerCompositor->GetDiagnosticFieldOutput(MaskPostFxTarget);
+	if (!DiagnosticField || (bFlow && !FlowField))
 	{
-		// Never show the previous owner's field while a transfer or recomposition is pending.
+		// Keep completed same-owner bindings during edits; hide unmatched transfers.
 		if (MaskPostFx) { MaskPostFx->Disable(); }
 		return;
 	}
@@ -679,7 +680,7 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 	PreviewViewportClient->EngineShowFlags.SetPostProcessing(true);
 	MaskPostFx->Update(
 		*PreviewMeshComponent,
-		LayerCompositor->GetDebugOutput(),
+		DiagnosticField,
 		LayerCompositor->GetHeightOutput(),
 		PreviewViewportClient->Viewport->GetSizeXY(),
 		PreviewViewportClient->GetViewLocation(),

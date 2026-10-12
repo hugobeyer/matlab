@@ -41,11 +41,14 @@ struct FMixtormatComposeResources
 	FTextureRenderTargetResource* Debug[2] = {};
 	FTextureRenderTargetResource* RegionIdPick[2] = {};
 	FTextureRenderTargetResource* DiagnosticFlow = nullptr;
+	// Kept alive by Pins, including when compositor targets are resized.
+	UTextureRenderTarget2D* DiagnosticFlowTexture = nullptr;
+	UTextureRenderTarget2D* DiagnosticFieldTexture = nullptr;
 	FMixtormatChildPreviewTarget DiagnosticTarget;
 	// Read on the game thread only after the compose's InFlight release/acquire handoff.
 	bool bDiagnosticFlowPublished = false;
 	int32 PublishedIndex = 0;
-	// Only read/written on the render thread. A failed child must not publish stale pixels.
+	// Game-thread readers require the InFlight release/acquire handoff too.
 	bool bSucceeded = false;
 
 	~FMixtormatComposeResources();

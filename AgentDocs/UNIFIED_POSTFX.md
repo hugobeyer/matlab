@@ -61,8 +61,8 @@ tinting Base Color or creating a replacement lit material.
   before later layers reuse ping-pong targets. Missing GPU fields clear the debug
   target instead of retaining stale pixels. Typed signed scalars use the existing
   scalar-preview convention `saturate(0.5 * Value + 0.5)` in the W export only;
-  raw masks and Scalar01 remain unchanged. The viewport continues obtaining the
-  compositor's latest published debug target each tick, never a stored field pointer.
+  raw masks and Scalar01 remain unchanged. The viewport resolves a completed,
+  matching diagnostic resource generation each tick, never a stored published-field pointer.
 - The hierarchy uses dynamic GUID-bound right-edge markers from UI STYLE > Layers
   > Diagnostic. Exact owners and their ancestors use separate opacity tokens;
   selection's top hairline and instance-source left marker/glow remain independent.
@@ -127,11 +127,16 @@ inspection has been performed.
   stay non-tiled. Global quarter-turn rotates texture lookup positions exactly
   like the material outputs but does **not** rotate, wrap or otherwise change RG
   component values. The authored material controls all sampling/appearance.
-- The viewport rebinds only a completed, matching owner/child/name/kind snapshot.
-  While recomposition/transfer is pending, or a typed field is unavailable, the
-  Flow PostFX is disabled; unavailable targets are cleared, so old-source pixels
-  cannot be shown. Mask activation removes the Flow texture binding and sets mode
-  zero. The existing UV capture/displaced proxy remains unchanged.
+- The compositor retains the last completed diagnostic resource generation, with
+  its textures pinned, separately from the pending request. It recognizes completion
+  both at request entry and during viewport binding. Same-owner recomposition keeps
+  the completed binding visible instead of disabling E on every parameter edit.
+  Both W coverage and E Flow bind against matching owner/child/name/kind metadata;
+  a transfer stays hidden until its matching request completes. Failed submissions
+  invalidate retained diagnostics, and completed unavailable fields clear coverage
+  or reject Flow binding rather than retaining an older successful result. Mask
+  activation removes the Flow binding and sets mode zero. The UV capture/displaced
+  proxy, canonical UI ownership and legacy previews remain unchanged.
 
 ### Artist-authored Material Editor setup
 
