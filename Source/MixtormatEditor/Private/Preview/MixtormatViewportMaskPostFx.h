@@ -50,6 +50,11 @@ private:
 
 	TStrongObjectPtr<UMaterialInstanceDynamic> UvInstance;
 	TStrongObjectPtr<UMaterialInstanceDynamic> BlendInstance;
+	// Built-in fallback for the artist-authored material; created only when no override loads.
+	TStrongObjectPtr<UMaterial> DefaultPostMaterial;
 	FIntPoint CapturedSize = FIntPoint::ZeroValue;
 	bool bReady = false;
+	// Latched after a failed initialization so a per-tick Update cannot rebuild the UV target
+	// and re-run the material search for a state that cannot change on its own.
+	bool bInitializationFailed = false;
 };

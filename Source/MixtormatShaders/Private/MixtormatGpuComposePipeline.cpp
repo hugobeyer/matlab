@@ -26,6 +26,15 @@ DECLARE_GPU_STAT_NAMED(MixtormatLayerBlur, TEXT("Mixtormat Layer Blur"));
 DECLARE_GPU_STAT_NAMED(MixtormatFinalAO, TEXT("Mixtormat Final AO"));
 DECLARE_GPU_STAT_NAMED(MixtormatFinalNormal, TEXT("Mixtormat Final Normal"));
 
+namespace
+{
+	// Render-thread only: EnqueueCompose runs on the render thread. The latches keep a
+	// persistent diagnostic failure to one log line instead of one per composed frame.
+	bool bLoggedFlowUnavailable = false;
+	bool bLoggedFlowResampled = false;
+	bool bLoggedMaskUnavailable = false;
+}
+
 // Normal from the finished height with the composited detail on top. See MixtormatFinalNormal.usf.
 class FMixtormatFinalNormalCS final : public FGlobalShader
 {
@@ -1388,13 +1397,45 @@ namespace MixtormatGpuCompositor
 						const EMixtormatPublishedFieldKind ExpectedKind = Debug.ChildTarget.Kind
 							== EMixtormatPreviewOutputKind::WarpedUVGrid
 							? EMixtormatPublishedFieldKind::UVMap : EMixtormatPublishedFieldKind::Flow;
-						if (Field && Field->Kind == ExpectedKind && Field->IsComplete()
-							&& Field->Texture->Desc.Extent == Request.Resolution)
+						if (Field && Field->Kind == ExpectedKind && Field->IsComplete())
 						{
-							AddRawFlowOverlayPass(GraphBuilder, Field->Texture, RawDiagnosticFlow,
+							// A producer resolution that differs from the composition's is resampled
+							// rather than dropped; matching extents keep the exact Load/store.
+							FRDGTextureRef FlowSource = Field->Texture;
+							if (FlowSource->Desc.Extent != Request.Resolution)
+							{
+								FlowSource = AddDiagnosticResamplePass(GraphBuilder, FlowSource, Request.Resolution);
+								if (!bLoggedFlowResampled)
+								{
+									bLoggedFlowResampled = true;
+									UE_LOG(LogMixtormatComposition, Log,
+										TEXT("Diagnostic Flow field %dx%d resampled to the %dx%d composition."),
+										Field->Texture->Desc.Extent.X, Field->Texture->Desc.Extent.Y,
+										Request.Resolution.X, Request.Resolution.Y);
+								}
+							}
+							else
+							{
+								bLoggedFlowResampled = false;
+							}
+							AddRawFlowOverlayPass(GraphBuilder, FlowSource, RawDiagnosticFlow,
 								Request.Resolution, Request.bRotateOutput90);
 							Request.Targets->bDiagnosticFlowPublished = true;
+							bLoggedFlowUnavailable = false;
 						}
+						else if (!bLoggedFlowUnavailable)
+						{
+							bLoggedFlowUnavailable = true;
+							UE_LOG(LogMixtormatComposition, Warning,
+								TEXT("Diagnostic Flow output '%s' is unavailable (missing, incomplete or not a Flow field); the E overlay shows nothing."),
+								*Debug.ChildTarget.OutputName.ToString());
+						}
+					}
+					else if (!bLoggedFlowUnavailable)
+					{
+						bLoggedFlowUnavailable = true;
+						UE_LOG(LogMixtormatComposition, Warning,
+							TEXT("Diagnostic Flow target could not be resolved to a layer; the E overlay shows nothing."));
 					}
 					// The existing field is an availability gate for Flow, not a visualization.
 					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Ctx.OutputDebug[Request.PublishedTargetIndex]),
@@ -1416,19 +1457,21 @@ namespace MixtormatGpuCompositor
 							// Typed metadata wins over legacy aliases: never read vectors/IDs/colour as coverage.
 							if (Field->IsComplete()
 								&& (Field->Kind == EMixtormatPublishedFieldKind::Scalar01
-									|| Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned)
-								&& Field->Texture->Desc.Extent == Request.Resolution)
+									|| Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned))
 							{
-								Ctx.SelectedOverlayMask = Field->Texture;
+								Ctx.SelectedOverlayMask = Field->Texture->Desc.Extent == Request.Resolution
+									? Field->Texture
+									: AddDiagnosticResamplePass(GraphBuilder, Field->Texture, Request.Resolution);
 								bSourceSigned = Field->Kind == EMixtormatPublishedFieldKind::ScalarSigned;
 							}
 						}
 						else if (const FRDGTextureRef* Mask = Ctx.PublishedMaskOutputs.Find(Key))
 						{
-							if (*Mask && (*Mask)->Desc.Extent == Request.Resolution
-								&& ((*Mask)->Desc.Format == PF_R16F || (*Mask)->Desc.Format == PF_R32_FLOAT))
+							if (*Mask && ((*Mask)->Desc.Format == PF_R16F || (*Mask)->Desc.Format == PF_R32_FLOAT))
 							{
-								Ctx.SelectedOverlayMask = *Mask;
+								Ctx.SelectedOverlayMask = (*Mask)->Desc.Extent == Request.Resolution
+									? *Mask
+									: AddDiagnosticResamplePass(GraphBuilder, *Mask, Request.Resolution);
 							}
 						}
 					}
@@ -1437,11 +1480,20 @@ namespace MixtormatGpuCompositor
 					{
 						AddMaskOverlayPass(GraphBuilder, Ctx.SelectedOverlayMask,
 							Ctx.OutputDebug[Final], Request.Resolution, bSourceSigned);
+						bLoggedMaskUnavailable = false;
 					}
 					else
 					{
 						AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(Ctx.OutputDebug[Final]),
 							FLinearColor::Black);
+						if (!bLoggedMaskUnavailable)
+						{
+							bLoggedMaskUnavailable = true;
+							UE_LOG(LogMixtormatComposition, Warning,
+								TEXT("Diagnostic mask overlay has no published coverage for '%s'; the W overlay shows nothing."),
+								Debug.ChildTarget.OutputName.IsNone()
+									? TEXT("<layer aggregate>") : *Debug.ChildTarget.OutputName.ToString());
+						}
 					}
 				}
 

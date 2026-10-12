@@ -2136,6 +2136,12 @@ namespace MixtormatGpuCompositor
 	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
 		FRDGTextureRef Output, FIntPoint Resolution, bool bRotateOutput90);
 
+	// Bilinear resample of a diagnostic field whose producer resolution differs from the
+	// composition's. Returns the resampled texture at Resolution; callers keep the exact
+	// Load/store path when the extents already match.
+	FRDGTextureRef AddDiagnosticResamplePass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
+		FIntPoint Resolution);
+
 	// Exports mask/influence coverage into Debug RT; signed scalars remap from -1..1 to 0..1.
 	void AddMaskOverlayPass(
 		FRDGBuilder& GraphBuilder,

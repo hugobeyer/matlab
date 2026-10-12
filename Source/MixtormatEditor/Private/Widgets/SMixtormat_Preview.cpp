@@ -538,25 +538,34 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputK
 		return FReply::Handled();
 	}
 	const FMixtormatChildAddress SelectedSource = GetSelectedChildAddress();
-	const bool bSameSource = bMaskOverlayEnabled
+	const bool bSelectedIsOwner = bMaskOverlayEnabled
 		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
 		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
 		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
 	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource, NAME_None, Kind);
-	if (!bMaskOverlayEnabled && !SelectedTarget.IsValid())
+	// The same key on the same target toggles off. A different kind on the same owner is a
+	// switch, not a dismissal: W -> E and E -> W replace the diagnostic type in place.
+	const bool bSameTarget = bSelectedIsOwner && SelectedTarget.IsValid()
+		&& SelectedTarget.OutputName == MaskOverlayOutputName
+		&& SelectedTarget.Kind == MaskOverlayOutputKind;
+	if (bSameTarget)
 	{
+		bMaskOverlayEnabled = false;
+		MaskOverlaySource = FMixtormatChildAddress();
+		MaskOverlayOutputName = NAME_None;
+		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
+		RefreshLayeredPreview(false);
 		return FReply::Handled();
 	}
-	// An active overlay can always be dismissed, even with no eligible selection.
-	bMaskOverlayEnabled = !bSameSource && SelectedTarget.IsValid();
-	MaskOverlaySource = bMaskOverlayEnabled ? SelectedSource : FMixtormatChildAddress();
-	MaskOverlayOutputName = bMaskOverlayEnabled ? SelectedTarget.OutputName : NAME_None;
-	MaskOverlayOutputKind = bMaskOverlayEnabled ? SelectedTarget.Kind : EMixtormatPreviewOutputKind::Mask;
-	if (bMaskOverlayEnabled)
+	if (SelectedTarget.IsValid())
 	{
+		// Activate, transfer or switch. The V-family preview state is deliberately untouched:
+		// the overlay suspends it while active and it resumes when the overlay turns off.
+		bMaskOverlayEnabled = true;
+		MaskOverlaySource = SelectedSource;
+		MaskOverlayOutputName = SelectedTarget.OutputName;
+		MaskOverlayOutputKind = SelectedTarget.Kind;
 		bAutomaticFlowPreview = false;
-		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
-		ChildPreviewTarget = FMixtormatChildPreviewTarget();
 		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 		{
 			if (Viewport.IsValid())
@@ -564,8 +573,14 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputK
 				Viewport->ResetChannelPreview();
 			}
 		}
+		RefreshLayeredPreview(false);
+		return FReply::Handled();
 	}
-	RefreshLayeredPreview(false);
+	// No eligible output for this key on the selection. An active overlay is preserved -- only
+	// the same key on its own target dismisses it -- and the refusal is said out loud.
+	WorkingStatusText = Kind == EMixtormatPreviewOutputKind::FlowDirection
+		? LOCTEXT("NoFlowDiagnosticTarget", "No eligible Flow output on this selection").ToString()
+		: LOCTEXT("NoMaskDiagnosticTarget", "No eligible mask output on this selection").ToString();
 	return FReply::Handled();
 }
 

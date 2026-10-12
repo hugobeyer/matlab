@@ -191,11 +191,24 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			&& Selected.OwnerType == MaskOverlaySource.OwnerType
 			&& Selected.OwnerId == MaskOverlaySource.OwnerId
 			&& Selected.ChildId == MaskOverlaySource.ChildId;
-		return bSameSource || (bMaskOverlayEnabled && !IsMaskOverlayTargetReady())
-			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
-			: bMaskOverlayEnabled
+		const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(
+			Selected, NAME_None, EMixtormatPreviewOutputKind::Mask);
+		const bool bSameTarget = bSameSource && Target.IsValid()
+			&& Target.OutputName == MaskOverlayOutputName && Target.Kind == MaskOverlayOutputKind;
+		if (bSameTarget)
+		{
+			return LOCTEXT("HintHideDiagnostic", "Hide diagnostic");
+		}
+		if (Target.IsValid())
+		{
+			return bMaskOverlayEnabled
 				? LOCTEXT("HintTransferDiagnostic", "Preview selected source")
 				: LOCTEXT("HintShowDiagnostic", "Show diagnostic");
+		}
+		// An active overlay survives an ineligible selection; W is a no-op here.
+		return bMaskOverlayEnabled
+			? LOCTEXT("HintDiagnosticActive", "Diagnostic active")
+			: LOCTEXT("HintShowDiagnostic", "Show diagnostic");
 	}), MaskVis);
 
 	const TAttribute<EVisibility> FlowVis = TAttribute<EVisibility>::CreateLambda(
@@ -207,11 +220,29 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	AddGap(*Row, FlowVis);
 	AddPair(*Row, LOCTEXT("HintE", "E"), TAttribute<FText>::CreateLambda([this]()
 	{
-		const bool bSameSource = bMaskOverlayEnabled && GetSelectedChildAddress() == MaskOverlaySource;
-		return bMaskOverlayEnabled && (bSameSource || !IsFlowOverlayTargetReady())
-			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
-			: bMaskOverlayEnabled ? LOCTEXT("HintTransferFlow", "Preview selected Flow")
+		const FMixtormatChildAddress Selected = GetSelectedChildAddress();
+		const bool bSameSource = bMaskOverlayEnabled
+			&& Selected.OwnerType == MaskOverlaySource.OwnerType
+			&& Selected.OwnerId == MaskOverlaySource.OwnerId
+			&& Selected.ChildId == MaskOverlaySource.ChildId;
+		const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(
+			Selected, NAME_None, EMixtormatPreviewOutputKind::FlowDirection);
+		const bool bSameTarget = bSameSource && Target.IsValid()
+			&& Target.OutputName == MaskOverlayOutputName && Target.Kind == MaskOverlayOutputKind;
+		if (bSameTarget)
+		{
+			return LOCTEXT("HintHideDiagnostic", "Hide diagnostic");
+		}
+		if (Target.IsValid())
+		{
+			return bMaskOverlayEnabled
+				? LOCTEXT("HintTransferFlow", "Preview selected Flow")
 				: LOCTEXT("HintShowFlow", "Show raw Flow");
+		}
+		// An active overlay survives an ineligible selection; E is a no-op here.
+		return bMaskOverlayEnabled
+			? LOCTEXT("HintDiagnosticActive", "Diagnostic active")
+			: LOCTEXT("HintShowFlow", "Show raw Flow");
 	}), FlowVis);
 
 	// -- V resets both the new mask tint and any remaining inspector diagnostics.

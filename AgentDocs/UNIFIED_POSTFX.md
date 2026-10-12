@@ -85,12 +85,11 @@ inspection has been performed.
 - **W remains scalar/mask/gate; E activates raw Flow.** Both use the existing
   `ResolveMaskOverlayTarget`, canonical ownership, group expansion, instance payload
   resolution and GUID-bound hierarchy indicators. There is only one active PostFX
-  source. E on its active Flow source disables it; E on another supported source
-  transfers it. Either W or E dismisses the active overlay when the selection has
-  no eligible output for that key, including an empty selection. With no active
-  overlay, an ineligible selection does nothing. Either key on the active source
-  toggles it off regardless of its current output kind; changing modes on that
-  same source requires turning it off, then activating the desired key.
+  source. The same key on the same target toggles it off; W -> E and E -> W on the
+  same owner switch the diagnostic type in place; either key on another eligible
+  source transfers ownership. An ineligible selection never dismisses an active
+  overlay -- the press is a no-op and says so in the status bar. With no active
+  overlay, an ineligible selection does nothing.
   Selection and Inspector rebuilds do not redirect it. Selecting a Flow module
   or editing Write Flow no longer automatically activates the legacy unlit Flow
   replacement; E explicitly activates raw Flow PostFX. Existing V/Shift+V resets,
@@ -161,7 +160,10 @@ inspection has been performed.
 ### Artist-authored Material Editor setup
 
 Modify your local `M_MixtormatDiagnosticPost` yourself; plugin code does not edit
-or regenerate this material or any `.uasset`.
+or regenerate this material or any `.uasset`. When no artist-authored material is
+found at the searched paths, the plugin builds a self-contained default post-process
+material with the same parameter contract (single-colour coverage for modes 0/3,
+raw RG passthrough for modes 1/2), so W/E never depend on a `/Game/` asset existing.
 
 1. Add **Texture Sample Parameter 2D**, parameter name **`DA_DiagnosticFlow`**.
    Use **Sampler Type: Linear Color** and **Sampler Source: Shared: Wrap**.
@@ -214,7 +216,7 @@ Single shader dispatch mode, shared opacity `[0,1]`; compositing should be `lerp
 
 ## UX contract
 
-The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. Eligible selection shows `W · Show diagnostic`; the active owner shows `W · Hide diagnostic`; another eligible source shows `W · Preview selected source`. Existing V reset help remains visible while W is active even if the selected row is ineligible. Preserve all existing V/Shift+V, channel-preview cycling, Inspector eyes and replacement rendering paths; W/E share persistent ownership and row presentation. Eligible Flow selections also show `E · Show raw Flow`, `E · Hide diagnostic` or `E · Preview selected Flow`. While an overlay is active, W/E remain advertised even with an ineligible selection and say `Hide diagnostic` for that key. Keep `Esc`, plane flip and missing-material hints in their existing contexts.
+The contextual viewport hint strip (`SMixtormat_PreviewHints.cpp`) must match implemented shortcuts. Eligible selection shows `W · Show diagnostic`; the active owner shows `W · Hide diagnostic`; another eligible source shows `W · Preview selected source`. Existing V reset help remains visible while W is active even if the selected row is ineligible. Preserve all existing V/Shift+V, channel-preview cycling, Inspector eyes and replacement rendering paths; W/E share persistent ownership and row presentation. Eligible Flow selections also show `E · Show raw Flow`, `E · Hide diagnostic` or `E · Preview selected Flow`. While an overlay is active, W/E remain advertised even with an ineligible selection and say `Diagnostic active` for that key. Keep `Esc`, plane flip and missing-material hints in their existing contexts.
 
 Future overlay controls may add shared opacity and exact-ID boundaries. They must not redefine or migrate existing shortcuts or Inspector diagnostics as part of W persistence. No authored material or local `.uasset` is changed by this implementation.
 

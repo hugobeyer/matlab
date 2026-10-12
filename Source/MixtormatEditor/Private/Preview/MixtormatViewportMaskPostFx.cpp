@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Preview/MixtormatViewportMaskPostFx.h"
+#include "MixtormatEditorModule.h"
 #include "MixtormatGpuCompositor.h"
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -12,14 +13,17 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Engine/TextureRenderTarget2D.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAppendVector.h"
+#include "Materials/MaterialExpressionClamp.h"
 #include "Materials/MaterialExpressionComponentMask.h"
 #include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionConstant3Vector.h"
+#include "Materials/MaterialExpressionIf.h"
 #include "Materials/MaterialExpressionLinearInterpolate.h"
 #include "Materials/MaterialExpressionMultiply.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionSceneTexture.h"
 #include "Materials/MaterialExpressionScreenPosition.h"
+#include "Materials/MaterialExpressionSubtract.h"
 #include "Materials/MaterialExpressionTextureCoordinate.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
@@ -52,7 +56,8 @@ namespace
 
 	static UMaterialInterface* LoadDiagnosticPostMaterial()
 	{
-		// Try a few common local-only asset locations.
+		// Artist-authored override, tried first. The built-in default below removes any
+		// dependency on these assets existing: a miss is normal, not an error.
 		static const TCHAR* CandidatePaths[] =
 		{
 			TEXT("/Game/M_MixtormatDiagnosticPost.M_MixtormatDiagnosticPost"),
@@ -65,18 +70,16 @@ namespace
 		{
 			if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, Path))
 			{
-				UE_LOG(LogTemp, Log,
-					TEXT("Mixtormat: loaded diagnostic post material: %s"), Path);
+				UE_LOG(LogMixtormat, Log,
+					TEXT("Mixtormat: using artist-authored diagnostic post material: %s"), Path);
 				return Mat;
 			}
 		}
 
-		UE_LOG(LogTemp, Warning,
-			TEXT("Mixtormat: could not load M_MixtormatDiagnosticPost. ")
-			TEXT("Expected one of: /Game/M_MixtormatDiagnosticPost, ")
-			TEXT("/Game/Materials/M_MixtormatDiagnosticPost, ")
-			TEXT("/Mixtormat/M_MixtormatDiagnosticPost, ")
-			TEXT("/Mixtormat/Materials/M_MixtormatDiagnosticPost"));
+		UE_LOG(LogMixtormat, Log,
+			TEXT("Mixtormat: no artist-authored M_MixtormatDiagnosticPost found; using the built-in default. ")
+			TEXT("Searched: /Game/M_MixtormatDiagnosticPost, /Game/Materials/M_MixtormatDiagnosticPost, ")
+			TEXT("/Mixtormat/M_MixtormatDiagnosticPost, /Mixtormat/Materials/M_MixtormatDiagnosticPost"));
 		return nullptr;
 	}
 
@@ -124,6 +127,116 @@ namespace
 		return Material;
 	}
 
+	// Self-contained fallback for the artist-authored material: the same parameter contract
+	// (DA_DiagnosticUvBuffer / DA_DiagnosticField / DA_DiagnosticFlow / DA_DiagnosticMode /
+	// DA_DiagnosticOpacity, PostProcessInput0 compositing) built from material expressions, so
+	// W/E work with no /Game/ asset present. Modes 0/3 show single-colour coverage from
+	// DA_DiagnosticField.R; modes 1/2 pass the raw Flow/UV RG through unchanged.
+	UMaterial* MakeDefaultPostMaterial(UTextureRenderTarget2D* FieldDefault)
+	{
+		UMaterial* Material = NewObject<UMaterial>(
+			GetTransientPackage(), NAME_None, RF_Transient);
+		Material->MaterialDomain = MD_PostProcess;
+		Material->BlendableLocation = BL_SceneColorAfterTonemapping;
+		Material->BlendableOutputAlpha = true;
+		Material->bUsedWithEditorCompositing = true;
+		Material->SetShadingModel(MSM_Unlit);
+
+		auto* ScreenUV = AddNode<UMaterialExpressionScreenPosition>(Material);
+		ScreenUV->Mapping = EScreenPositionMapping::ViewportUV;
+
+		auto* UvSample = AddSample(Material, UvBufferName, nullptr);
+		UvSample->Coordinates.Connect(0, ScreenUV);
+
+		auto* FieldSample = AddSample(Material, FieldName, FieldDefault);
+		FieldSample->Coordinates.Connect(0, UvSample);
+
+		auto* FlowSample = AddSample(Material, FlowName, nullptr);
+		FlowSample->SamplerSource = SSM_Wrap_WorldGroupSettings;
+		FlowSample->Coordinates.Connect(0, UvSample);
+
+		auto* Mode = AddNode<UMaterialExpressionScalarParameter>(Material);
+		Mode->ParameterName = ModeName;
+		Mode->DefaultValue = 0.0f;
+
+		// FlowWeight is 1 for modes 1/2 and 0 for modes 0/3: saturate(Mode) * saturate(2.5 - Mode).
+		auto* ModeClamped = AddNode<UMaterialExpressionClamp>(Material);
+		ModeClamped->Input.Connect(0, Mode);
+		auto* TwoPointFive = AddNode<UMaterialExpressionConstant>(Material);
+		TwoPointFive->R = 2.5f;
+		auto* ModeInverse = AddNode<UMaterialExpressionSubtract>(Material);
+		ModeInverse->A.Connect(0, TwoPointFive);
+		ModeInverse->B.Connect(0, Mode);
+		auto* ModeInverseClamped = AddNode<UMaterialExpressionClamp>(Material);
+		ModeInverseClamped->Input.Connect(0, ModeInverse);
+		auto* FlowWeight = AddNode<UMaterialExpressionMultiply>(Material);
+		FlowWeight->A.Connect(0, ModeClamped);
+		FlowWeight->B.Connect(0, ModeInverseClamped);
+
+		// Coverage ink: a single dark red for mask/scalar modes, raw RG for Flow/UV modes.
+		auto* InkColour = AddNode<UMaterialExpressionConstant3Vector>(Material);
+		InkColour->Constant = FLinearColor(0.5f, 0.05f, 0.05f, 1.0f);
+		auto* FlowRg = AddNode<UMaterialExpressionComponentMask>(Material);
+		FlowRg->Input.Connect(0, FlowSample);
+		FlowRg->R = true;
+		FlowRg->G = true;
+		FlowRg->B = false;
+		FlowRg->A = false;
+		auto* Zero = AddNode<UMaterialExpressionConstant>(Material);
+		Zero->R = 0.0f;
+		auto* FlowRgb = AddNode<UMaterialExpressionAppendVector>(Material);
+		FlowRgb->A.Connect(0, FlowRg);
+		FlowRgb->B.Connect(0, Zero);
+		auto* Ink = AddNode<UMaterialExpressionLinearInterpolate>(Material);
+		Ink->A.Connect(0, InkColour);
+		Ink->B.Connect(0, FlowRgb);
+		Ink->Alpha.Connect(0, FlowWeight);
+
+		// Alpha = Opacity * Field.R * (UvBuffer.B >= 0.5), the documented contract.
+		auto* Coverage = AddNode<UMaterialExpressionComponentMask>(Material);
+		Coverage->Input.Connect(0, FieldSample);
+		Coverage->R = true;
+		Coverage->G = false;
+		Coverage->B = false;
+		Coverage->A = false;
+		auto* Validity = AddNode<UMaterialExpressionComponentMask>(Material);
+		Validity->Input.Connect(0, UvSample);
+		Validity->R = false;
+		Validity->G = false;
+		Validity->B = true;
+		Validity->A = false;
+		auto* Half = AddNode<UMaterialExpressionConstant>(Material);
+		Half->R = 0.5f;
+		auto* One = AddNode<UMaterialExpressionConstant>(Material);
+		One->R = 1.0f;
+		auto* ValidityGate = AddNode<UMaterialExpressionIf>(Material);
+		ValidityGate->A.Connect(0, Validity);
+		ValidityGate->B.Connect(0, Half);
+		ValidityGate->AGreaterThanB.Connect(0, One);
+		ValidityGate->AEqualsB.Connect(0, One);
+		ValidityGate->ALessThanB.Connect(0, Zero);
+		auto* Opacity = AddNode<UMaterialExpressionScalarParameter>(Material);
+		Opacity->ParameterName = OpacityName;
+		Opacity->DefaultValue = 0.55f;
+		auto* CoverageGated = AddNode<UMaterialExpressionMultiply>(Material);
+		CoverageGated->A.Connect(0, Coverage);
+		CoverageGated->B.Connect(0, ValidityGate);
+		auto* Alpha = AddNode<UMaterialExpressionMultiply>(Material);
+		Alpha->A.Connect(0, CoverageGated);
+		Alpha->B.Connect(0, Opacity);
+
+		auto* SceneColor = AddNode<UMaterialExpressionSceneTexture>(Material);
+		SceneColor->SceneTextureId = PPI_PostProcessInput0;
+		SceneColor->Coordinates.Connect(0, ScreenUV);
+		auto* Final = AddNode<UMaterialExpressionLinearInterpolate>(Material);
+		Final->A.Connect(0, SceneColor);
+		Final->B.Connect(0, Ink);
+		Final->Alpha.Connect(0, Alpha);
+		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Final);
+		Material->PostEditChange();
+		return Material;
+	}
+
 }
 
 FMixtormatViewportMaskPostFx::FMixtormatViewportMaskPostFx(
@@ -151,7 +264,9 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	{
 		return true;
 	}
-	if (!InitialField)
+	// A failed initialization is latched: retrying it every tick would rebuild the UV target
+	// and re-run the material search for a state that cannot change on its own.
+	if (bInitializationFailed || !InitialField)
 	{
 		return false;
 	}
@@ -169,9 +284,19 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 
 	UvMaterial.Reset(MakeUvMaterial(InitialField));
 
+	// The artist-authored material stays the first choice; the built-in default removes the
+	// dependency on a /Game/ asset that may not exist in this project.
 	UMaterialInterface* LoadedPostMaterial = LoadDiagnosticPostMaterial();
+	if (!LoadedPostMaterial)
+	{
+		DefaultPostMaterial.Reset(MakeDefaultPostMaterial(InitialField));
+		LoadedPostMaterial = DefaultPostMaterial.Get();
+	}
 	if (!UvMaterial.IsValid() || !LoadedPostMaterial)
 	{
+		bInitializationFailed = true;
+		UE_LOG(LogMixtormat, Warning,
+			TEXT("Mixtormat: diagnostic PostFX initialization failed; W/E overlays are unavailable."));
 		return false;
 	}
 	UvProxy = NewObject<UStaticMeshComponent>();

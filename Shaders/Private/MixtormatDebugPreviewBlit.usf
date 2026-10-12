@@ -209,6 +209,23 @@ void MainRawFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	RawFlowOutput[Pixel] = RawFlowSource.Load(int3(SourcePixel, 0));
 }
 
+// Bilinear resample for a diagnostic field whose producer resolution differs from the
+// composition's. Used only when the extents differ; matching extents keep the exact Load/store
+// above. Values are interpolated, never remapped, saturated or renormalized.
+Texture2D<float4> ResampleSource;
+SamplerState ResampleSampler;
+RWTexture2D<float4> ResampleOutput;
+int2 ResampleOutputSize;
+
+[numthreads(8, 8, 1)]
+void MainDiagnosticResampleCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= ResampleOutputSize)) { return; }
+	const float2 UV = (float2(Pixel) + 0.5f) / float2(ResampleOutputSize);
+	ResampleOutput[Pixel] = ResampleSource.SampleLevel(ResampleSampler, UV, 0);
+}
+
 // Selected mask/influence coverage for the viewport's post-process blend.
 // Never encode a colour or modify the composite's material outputs here.
 Texture2D<float> OverlaySourceMask;

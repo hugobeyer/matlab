@@ -233,6 +233,30 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatRawFlowOverlayCS,
 	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainRawFlowCS", SF_Compute);
 
+// Bilinear resample for diagnostic exports whose producer resolution differs from the
+// composition's. Only engaged on a mismatch; matching extents keep the exact Load/store.
+class FMixtormatDiagnosticResampleCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatDiagnosticResampleCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatDiagnosticResampleCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ResampleSource)
+		SHADER_PARAMETER_SAMPLER(SamplerState, ResampleSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ResampleOutput)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatDiagnosticResampleCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainDiagnosticResampleCS", SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
 	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
@@ -247,6 +271,26 @@ namespace MixtormatGpuCompositor
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.RawFlow"),
 			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Resolution.X, 8),
 				FMath::DivideAndRoundUp(Resolution.Y, 8), 1));
+	}
+
+	FRDGTextureRef AddDiagnosticResamplePass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
+		const FIntPoint Resolution)
+	{
+		FRDGTextureRef Output = GraphBuilder.CreateTexture(
+			FRDGTextureDesc::Create2D(Resolution, PF_A32B32G32R32F,
+				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+			TEXT("Mixtormat.Diagnostic.Resample"));
+		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatDiagnosticResampleCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->ResampleSource = Source;
+		Parameters->ResampleSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+		Parameters->ResampleOutput = GraphBuilder.CreateUAV(Output);
+		TShaderMapRef<FMixtormatDiagnosticResampleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.Resample"),
+			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8), 1));
+		return Output;
 	}
 
 	void AddMaskOverlayPass(
