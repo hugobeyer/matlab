@@ -48,6 +48,7 @@ is authoritative; this note does not claim final-size artwork has been visually 
 
 ### Viewport
 
+- `RotateCoords` · `rotate-coords.svg` — temporary copy of `refresh.svg`, bound to global 90° UV rotation (shortcut `5`); replace artwork later without changing the wrapper or registration.
 - `Cube` · `cube.png`
 - `Sphere` · `sphere.png`
 - `Plane` · `plane.png`
