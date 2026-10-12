@@ -621,13 +621,13 @@ FReply SMixtormatPreviewViewport::OnPreviewMouseButtonDown(
 		|| MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton
 		|| MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
-		if (const TSharedPtr<FSceneViewport> SceneViewport = GetSceneViewport())
+		if (const TSharedPtr<FSceneViewport> ActiveSceneViewport = GetSceneViewport())
 		{
-			if (const TSharedPtr<SWidget> ViewportWidget = SceneViewport->GetWidget().Pin())
+			if (const TSharedPtr<SWidget> FocusTarget = ActiveSceneViewport->GetWidget().Pin())
 			{
-				if (ViewportWidget->IsHovered())
+				if (FocusTarget->IsHovered())
 				{
-					FSlateApplication::Get().SetKeyboardFocus(ViewportWidget, EFocusCause::Mouse);
+					FSlateApplication::Get().SetKeyboardFocus(FocusTarget, EFocusCause::Mouse);
 				}
 			}
 		}
