@@ -368,24 +368,13 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 		}
 		if (RequiredKind != EMixtormatPreviewOutputKind::Mask)
 		{
-			if (Child->Type == EMixtormatLayerChildType::Behavior
-				&& Child->Behavior.Type == EMixtormatBehaviorType::Feather)
-			{
-				FMixtormatChildAddress ParentAddress = Address;
-				ParentAddress.ChildId = Child->ScopeOwnerChildId;
-				const FMixtormatLayerChild* Parent = ResolveChildAt(ParentAddress);
-				if (!Parent || !((Parent->Type == EMixtormatLayerChildType::Generator
-					&& Parent->Generator.Type == EMixtormatGeneratorType::Noise)
-					|| (Parent->Type == EMixtormatLayerChildType::Behavior
-						&& Parent->Behavior.Type == EMixtormatBehaviorType::FlowField)))
-				{
-					return Target;
-				}
-			}
+
 			const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
 			const auto Matches = [RequiredOutputName, RequiredKind](const FMixtormatPublishedOutputDesc& Candidate)
 			{
-				return Candidate.bCopyableAsField && !Candidate.Name.IsNone()
+				return (Candidate.bCopyableAsField
+										|| Candidate.Name == MixtormatDiagnosticOutputs::AccumulatedFlow)
+									&& !Candidate.Name.IsNone()
 					&& (RequiredOutputName.IsNone() || Candidate.Name == RequiredOutputName)
 					&& ((RequiredKind == EMixtormatPreviewOutputKind::FlowDirection
 						&& (Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow
@@ -393,14 +382,22 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 									&& Candidate.FieldKind == EMixtormatPublishedFieldKind::Vector2)))
 						|| Candidate.FieldKind == EMixtormatPublishedFieldKind::UVMap);
 			};
-			// Respect an existing primary Flow output (e.g. Noise.GeneratedFlow), then typed Flow,
-			// then absolute UVs. Only an explicitly named diagnostic may select a Vector2 gradient.
+			// E inspects the actual running result at this module, never an isolated contribution.
 			const FMixtormatPublishedOutputDesc* Output = Capabilities.Outputs.FindByPredicate(
 				[&Matches](const FMixtormatPublishedOutputDesc& Candidate)
 				{
-					return Matches(Candidate) && Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow
-						&& Candidate.bPreviewable && !Candidate.bSecondaryPreview;
+					return Matches(Candidate)
+						&& Candidate.Name == MixtormatDiagnosticOutputs::AccumulatedFlow;
 				});
+			if (!Output)
+			{
+				Output = Capabilities.Outputs.FindByPredicate(
+					[&Matches](const FMixtormatPublishedOutputDesc& Candidate)
+					{
+						return Matches(Candidate) && Candidate.FieldKind == EMixtormatPublishedFieldKind::Flow
+							&& Candidate.bPreviewable && !Candidate.bSecondaryPreview;
+					});
+			}
 			if (!Output)
 			{
 				Output = Capabilities.Outputs.FindByPredicate([&Matches](const FMixtormatPublishedOutputDesc& Candidate)
@@ -533,7 +530,8 @@ FReply SMixtormat::ToggleFlowOverlayPreview()
 	return ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind::FlowDirection);
 }
 
-FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputKind Kind)
+FReply SMixtormat::ToggleDiagnosticOverlayPreview(
+	const EMixtormatPreviewOutputKind Kind, const FName RequiredOutputName)
 {
 	if (!bHasWorkingMaterial)
 	{
@@ -544,7 +542,7 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputK
 		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
 		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
 		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
-	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource, NAME_None, Kind);
+	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource, RequiredOutputName, Kind);
 	// The same key on the same target toggles off. A different kind on the same owner is a
 	// switch, not a dismissal: W -> E and E -> W replace the diagnostic type in place.
 	const bool bSameTarget = bSelectedIsOwner && SelectedTarget.IsValid()
@@ -742,6 +740,12 @@ FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& 
 	if (!Target.IsValid())
 	{
 		return FReply::Handled();
+	}
+	if (Target.Kind == EMixtormatPreviewOutputKind::Mask
+		|| Target.Kind == EMixtormatPreviewOutputKind::FlowDirection
+		|| Target.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid)
+	{
+		return ToggleDiagnosticOverlayPreview(Target.Kind, Target.OutputName);
 	}
 	bAutomaticFlowPreview = false;
 	bMaskOverlayEnabled = false;
@@ -995,7 +999,16 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 
 	const auto MatchesDesc = [this](const FMixtormatPreviewOutputDesc& Desc)
 	{
-		return DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
+		if (Desc.Kind == EMixtormatPreviewOutputKind::Mask
+			|| Desc.Kind == EMixtormatPreviewOutputKind::FlowDirection
+			|| Desc.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid)
+		{
+			const FMixtormatChildAddress Selected = GetSelectedChildAddress();
+			const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(Selected, Desc.Name, Desc.Kind);
+			return bMaskOverlayEnabled && IsDiagnosticRowActive(Selected) && Target.IsValid()
+				&& Target.OutputName == MaskOverlayOutputName && Target.Kind == MaskOverlayOutputKind;
+		}
+		return !bMaskOverlayEnabled && DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
 			&& ChildPreviewTarget.IsValid()
 			&& ChildPreviewTarget == ResolveChildPreviewTarget(Desc.Name, Desc.Kind, Desc.GapMaskName);
 	};
@@ -1035,6 +1048,11 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 		{
 			if (IsAnyActive())
 			{
+				if (bMaskOverlayEnabled)
+				{
+					ToggleDiagnosticOverlayPreview(MaskOverlayOutputKind, MaskOverlayOutputName);
+					return;
+				}
 				bAutomaticFlowPreview = false;
 				DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 				ChildPreviewTarget = FMixtormatChildPreviewTarget();

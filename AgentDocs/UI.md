@@ -365,9 +365,17 @@ including scalar coverage) and Flow (1, including warped UVs); 3 is reserved for
 future PostFX IDs and 2 is unused. Artist-authored materials must put their Flow/UV
 visualization in branch 1, not the former branch 2. R toggles the existing Region IDs
 preview (I remains an alias); IDs have not moved to PostFX yet.
-E on Warp selects its final `WarpedUV` output (mode 1), independent of the obsolete
-traced-Flow flag; standard and traced Warp share this output. Entering a material-channel view clears active module and PostFX
-diagnostics so they cannot tint or replace the displayed PBR channel.
+E prefers the preview-only `AccumulatedFlow` snapshot at the selected module's
+position in its generator's ordered chain: Flow generators expose the accumulated
+result, Warp exposes transported Flow, Sculpt/Deform expose consumed Flow and
+Feather exposes the filtered result. It never substitutes a later module's result.
+Pre-generation Warp exposes its composed `WarpedUV` map instead; its coordinate
+format remains distinct from direction vectors despite sharing PostFX mode 1.
+Flow-related eyes use the same persistent PostFX owner as E; mask/scalar eyes use
+W's path. Explicit individual Flow/UV outputs remain available in the output menu.
+IDs/SDF retain their legacy rendering, and ID primary eyes remain unchanged.
+Entering a material-channel view clears active module and PostFX diagnostics so
+they cannot tint or replace the displayed PBR channel.
 The contextual hint strip (`Widgets/SMixtormat_PreviewHints.cpp::BuildPreviewHintStrip`)
 is one compact line of key/action pairs at the viewport's bottom-left: first matching
 context wins (quick controls > channel view > debug view > selected module > default

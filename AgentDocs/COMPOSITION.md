@@ -12,6 +12,19 @@ Identity-sized footprints keep ordinary bilinear sampling. IDs, coverage and SDF
 fields retain their existing transport; filtering does not clamp displacement or
 prevent genuine UV folds. Inherited/traced Flow is not implicitly blurred.
 
+Flow diagnostics use `MixtormatDiagnosticOutputs::AccumulatedFlow`, a preview-only
+registry name, not a copyable authored source. The ordered generator chain retains
+immutable RDG Flow/validity references after each scoped producer or Behavior;
+Sculpt/Deform retain the Flow they consume, Warp retains its transported result,
+and direct Flow Feather retains its filtered revision. A demanded Feather under a
+scoped Noise producer computes an isolated composition snapshot at that filter's
+position without altering the real running sum. Height-less root Noise exposes its
+completed generated/directional result, including its Flow filters. Demand includes
+the owning generator so native Flow is evaluated even for a selected consumer.
+These are generator-scope results, not a new cross-layer global Flow channel.
+Pre-generation Warp publishes its composed coordinate map. Existing diagnostic
+render targets are reused; no persistent per-module preview targets are allocated.
+
 ## Entry points
 
 | Thing | File |

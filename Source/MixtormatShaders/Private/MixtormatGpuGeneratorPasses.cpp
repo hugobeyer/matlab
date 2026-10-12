@@ -9,6 +9,7 @@
 
 #include "Algo/AnyOf.h"
 #include "GlobalShader.h"
+#include "Misc/ScopeExit.h"
 #include "RenderGraphUtils.h"
 #include "RHIStaticStates.h"
 #include "ShaderParameterStruct.h"
@@ -1678,6 +1679,9 @@ namespace
 				bInfluence, LayerCtx.LayerIndex, Child.SourceChildIndex,
 				Child.Behavior.ScalarDrivers, Child.Behavior.DirectionComposition);
 			Current = Current ? RemapBundleField(Ctx, Current, UV, 3) : UV;
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("WarpedUV"))),
+				FPublishedField{EMixtormatPublishedFieldKind::UVMap, Current, nullptr, nullptr, false});
 		}
 		return Current;
 	}
@@ -1864,11 +1868,34 @@ namespace
 			WorkingFlow = Intrinsic->Texture;
 			WorkingFlowValidity = Intrinsic->Validity;
 		}
+		const auto PublishFlowSnapshot = [&](const int32 ChildIndex)
+		{
+			if (!WorkingFlow || !WorkingFlowValidity) { return; }
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, ChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow),
+				FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow,
+					WorkingFlow, WorkingFlowValidity, false});
+		};
+		ON_SCOPE_EXIT { PublishFlowSnapshot(Owner.SourceChildIndex); };
 		for (const FChildRenderData& Child : Layer.Children)
 		{
-			if (Child.Type == EMixtormatLayerChildType::Generator
+			const bool bScopedNoise = Child.Type == EMixtormatLayerChildType::Generator
 				&& Child.ScopeOwnerSourceChildIndex == Owner.SourceChildIndex
-				&& Child.Generator.Type == EMixtormatGeneratorType::Noise)
+				&& Child.Generator.Type == EMixtormatGeneratorType::Noise;
+			const bool bScopedBehavior = Child.Type == EMixtormatLayerChildType::Behavior
+				&& Child.Behavior.GeneratorChildIndex == Owner.SourceChildIndex
+				&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration;
+			bool bPublishWorkingFlow = true;
+			// Capture after processing, including early continue paths for consumers such as Sculpt.
+			// Existing RDG textures are immutable revisions; no diagnostic copy/allocation is needed.
+			ON_SCOPE_EXIT
+			{
+				if (bPublishWorkingFlow && (bScopedNoise || bScopedBehavior))
+								{
+									PublishFlowSnapshot(Child.SourceChildIndex);
+								}
+			};
+			if (bScopedNoise)
 			{
 				FMixtormatNoiseRenderData Noise;
 				if (!MixtormatNoiseRenderStore().Find(
@@ -1918,6 +1945,33 @@ namespace
 						}
 
 					}
+					const FPublishedFieldKey SnapshotKey = PublishedKey(Layer,
+						Filter.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow);
+					if (Ctx.PublishedFieldDemand.Contains(SnapshotKey))
+					{
+						FRDGTextureRef Snapshot = WorkingFlow;
+						FRDGTextureRef SnapshotValidity = WorkingFlowValidity;
+						if (Noise.bWriteFlow)
+						{
+							const FPublishedField* Contribution = Ctx.PublishedFieldOutputs.Find(
+								PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GeneratedFlow"))));
+							if (Contribution && Contribution->IsComplete())
+							{
+								const bool bScopedMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+								FRDGTextureRef ScopedMask = bScopedMask ? AddScopedFeatureMask(Ctx,
+									LayerCtx, Layer, Child.SourceChildIndex, true) : nullptr;
+								Snapshot = AddNoiseFlowComposePass(Ctx, WorkingFlow, Contribution->Texture,
+									ScopedMask, Noise.FlowAdd, Noise.FlowMix, SnapshotValidity,
+									TEXT("Mixtormat.Diagnostic.FlowFeatherSnapshot"));
+							}
+						}
+						if (Snapshot && SnapshotValidity)
+						{
+							Ctx.PublishedFieldOutputs.Add(SnapshotKey,
+								FPublishedField{EMixtormatPublishedFieldKind::Flow, Snapshot,
+									Snapshot, SnapshotValidity, false});
+						}
+					}
 				}
 				if (ScopedBundle.Height && Module.Height)
 				{
@@ -1943,10 +1997,7 @@ namespace
 				WorkingFlow = AddNoiseFlowComposePass(Ctx, WorkingFlow, Generated->Texture, Mask,
 					Noise.FlowAdd, Noise.FlowMix, WorkingFlowValidity,
 					TEXT("Mixtormat.Generator.AccumulatedFlow"));
-				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
-					FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow, WorkingFlow,
-						WorkingFlowValidity, false});
+
 				continue;
 			}
 			if (Child.Type != EMixtormatLayerChildType::Behavior
@@ -1980,7 +2031,9 @@ namespace
 						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
 						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
 							Child.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
-
+						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+							Child.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow), Filtered);
+						bPublishWorkingFlow = false;
 					}
 					continue;
 				}
@@ -2229,10 +2282,7 @@ namespace
 					{
 						WorkingFlow = AddNoiseFlowTransportPass(Ctx, WorkingFlow,
 							WorkingFlowValidity, Coordinates, WorkingFlowValidity);
-						Ctx.PublishedFieldOutputs.Add(
-							PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("AccumulatedFlow"))),
-							FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow,
-								WorkingFlow, WorkingFlowValidity, false});
+
 					}
 				}
 			}
@@ -3417,7 +3467,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// when a consumer, explicit output reference, or selected preview needs them.
 			// Shelf roots evaluate conservatively: generator input sockets use their
 			// own source graph and must retain the full published Flow contract.
-			const bool bNativeFlowDemanded = bNeedsWorkingFlow
+			const bool bFlowSnapshotDemanded = Ctx.PublishedFieldDemand.Contains(PublishedKey(
+				Layer, Child.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow));
+			const bool bNativeFlowDemanded = bNeedsWorkingFlow || bFlowSnapshotDemanded
 				|| LayerCtx.LayerIndex == INDEX_NONE
 				|| Ctx.PublishedFieldDemand.Contains(PublishedKey(
 					Layer, Child.SourceChildIndex, FName(TEXT("FlowDirection"))))
@@ -3436,7 +3488,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					bHasBoundary ? Module.RegionIds : nullptr, &Child.Generator.NativeFlow, Module.Height);
 
 			}
-			else if (bNeedsWorkingFlow)
+			else if (bNeedsWorkingFlow || bFlowSnapshotDemanded)
 			{
 				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
@@ -3493,7 +3545,31 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					{
 						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
 							Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
-
+						if (bNoiseHeightless)
+						{
+							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+								Filter.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow), Filtered);
+						}
+					}
+				}
+			}
+		}
+		if (bNoiseHeightless)
+		{
+			FMixtormatNoiseRenderData Noise;
+			if (MixtormatNoiseRenderStore().Find(
+				FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise))
+			{
+				const FName ResultName = Noise.bWriteFlow
+					? FName(TEXT("GeneratedFlow")) : FName(TEXT("FlowDirection"));
+				if (const FPublishedField* Result = Ctx.PublishedFieldOutputs.Find(
+					PublishedKey(Layer, Child.SourceChildIndex, ResultName)))
+				{
+					if (Result->IsComplete())
+					{
+						const FPublishedField Snapshot = *Result;
+						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+							Child.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow), Snapshot);
 					}
 				}
 			}

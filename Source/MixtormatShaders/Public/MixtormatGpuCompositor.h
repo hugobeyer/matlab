@@ -25,6 +25,12 @@ struct FMixtormatNetworkCache;
 struct FMixtormatPrefixCache;
 struct FMixtormatNodeCache;
 
+namespace MixtormatDiagnosticOutputs
+{
+	// Preview-only snapshot of the running Flow at a module's authored stack position.
+	inline const FName AccumulatedFlow(TEXT("AccumulatedFlow"));
+}
+
 enum class EMixtormatDebugPreviewMode : uint8
 {
 	None,

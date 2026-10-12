@@ -737,9 +737,29 @@ namespace MixtormatGpuCompositor
 						&& Request.Layers.IsValidIndex(Request.DebugSettings.LayerIndex))
 					{
 						// Demand before cache restore and producer dispatch, even if the output is absent.
-						Ctx.PublishedFieldDemand.Add(PublishedKey(
-							Request.Layers[Request.DebugSettings.LayerIndex],
+						const FLayerRenderData& DiagnosticLayer = Request.Layers[Request.DebugSettings.LayerIndex];
+						Ctx.PublishedFieldDemand.Add(PublishedKey(DiagnosticLayer,
 							Request.DebugSettings.ChildIndex, Request.DebugSettings.ChildTarget.OutputName));
+						if (Request.DebugSettings.ChildTarget.OutputName == MixtormatDiagnosticOutputs::AccumulatedFlow)
+						{
+							const FChildRenderData* Selected = DiagnosticLayer.Children.FindByPredicate(
+								[&Request](const FChildRenderData& Child)
+								{
+									return Child.SourceChildIndex == Request.DebugSettings.ChildIndex;
+								});
+							if (Selected)
+							{
+								const int32 OwnerIndex = Selected->Type == EMixtormatLayerChildType::Behavior
+									? Selected->Behavior.GeneratorChildIndex
+									: Selected->ScopeOwnerSourceChildIndex != INDEX_NONE
+										? Selected->ScopeOwnerSourceChildIndex : Selected->SourceChildIndex;
+								if (OwnerIndex != INDEX_NONE)
+								{
+									Ctx.PublishedFieldDemand.Add(PublishedKey(DiagnosticLayer,
+										OwnerIndex, MixtormatDiagnosticOutputs::AccumulatedFlow));
+								}
+							}
+						}
 					}
 					for (int32 LayerIndex = 0; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 					{

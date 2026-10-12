@@ -273,7 +273,7 @@ private:
 	FReply CycleSelectedModulePreview();
 	FReply ToggleMaskOverlayPreview();
 	FReply ToggleFlowOverlayPreview();
-	FReply ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind Kind);
+	FReply ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind Kind, FName RequiredOutputName = NAME_None);
 	FReply ResetDiagnosticOverlays();
 	bool IsMaskOverlayTargetReady() const;
 	bool IsFlowOverlayTargetReady() const;

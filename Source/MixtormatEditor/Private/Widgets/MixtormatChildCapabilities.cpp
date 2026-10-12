@@ -443,6 +443,40 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		Result.Outputs.Add({Name, Label, Preview, false,
 			Kind == EMixtormatPublishedFieldKind::Color, false, NAME_None, true, Kind});
 	}
+	const bool bFlowBehavior = Child.Type == EMixtormatLayerChildType::Behavior
+		&& Child.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration
+		&& (Child.Behavior.Type == EMixtormatBehaviorType::Warp
+			|| Child.Behavior.Type == EMixtormatBehaviorType::Deform
+			|| Child.Behavior.Type == EMixtormatBehaviorType::Carve
+			|| Child.Behavior.Type == EMixtormatBehaviorType::Feather
+			|| Child.Behavior.Type == EMixtormatBehaviorType::FlowField);
+	if (Child.Type == EMixtormatLayerChildType::Generator || bFlowBehavior)
+	{
+		const bool bHasPrimary = Result.Outputs.ContainsByPredicate(
+			[](const FMixtormatPublishedOutputDesc& Output)
+			{
+				return Output.bPreviewable && !Output.bSecondaryPreview;
+			});
+		const bool bFlowPrimary = bFlowBehavior || Result.Outputs.ContainsByPredicate(
+			[](const FMixtormatPublishedOutputDesc& Output)
+			{
+				return Output.bPreviewable && !Output.bSecondaryPreview
+					&& (Output.Kind == EMixtormatPreviewOutputKind::FlowDirection
+						|| Output.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid);
+			});
+		if (bFlowPrimary)
+		{
+			for (FMixtormatPublishedOutputDesc& Output : Result.Outputs)
+			{
+				if (Output.bPreviewable) { Output.bSecondaryPreview = true; }
+			}
+		}
+		// Diagnostic snapshots are not authored field-reference outputs.
+		Result.Outputs.Add({MixtormatDiagnosticOutputs::AccumulatedFlow,
+			NSLOCTEXT("SMixtormat", "PreviewAccumulatedFlow", "Accumulated Flow"),
+			EMixtormatPreviewOutputKind::FlowDirection, false, true, bHasPrimary && !bFlowPrimary, NAME_None,
+			false, EMixtormatPublishedFieldKind::Flow});
+	}
 	return Result;
 }
 
