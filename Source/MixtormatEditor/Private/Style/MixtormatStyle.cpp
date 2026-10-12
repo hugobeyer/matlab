@@ -574,6 +574,29 @@ void FMixtormatStyle::Refresh()
 		SelectionColor.A *= T.SelectionOpacity;
 		Edit.TextStyle.SetSelectedBackgroundColor(FSlateColor(SelectionColor));
 		StyleInstance->Set(TEXT("Mixtormat.TextField"), Edit);
+
+				FInlineEditableTextBlockStyle InlineEdit;
+				InlineEdit.SetEditableTextBoxStyle(Edit);
+				StyleInstance->Set(TEXT("Mixtormat.InlineTextField"), InlineEdit);
+
+				FSearchBoxStyle SearchEdit = FCoreStyle::Get().GetWidgetStyle<FSearchBoxStyle>(TEXT("SearchBox"));
+				SearchEdit.SetTextBoxStyle(Edit).SetActiveFont(Edit.TextStyle.Font);
+				StyleInstance->Set(TEXT("Mixtormat.TextField.Search"), SearchEdit);
+
+						FSpinBoxStyle SpinEdit = FCoreStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("SpinBox"));
+						SpinEdit.SetBackgroundBrush(Edit.BackgroundImageNormal)
+							.SetHoveredBackgroundBrush(Edit.BackgroundImageHovered)
+							.SetActiveBackgroundBrush(Edit.BackgroundImageFocused)
+							.SetForegroundColor(Edit.ForegroundColor)
+							.SetTextPadding(Edit.Padding);
+						FLinearColor FillShade = T.Shade;
+						FillShade.A = T.ShadeOpacity;
+						const FLinearColor FillSurface = MixtormatCompositing::ApplyBlend(T.ShadeBlend, T.Surface, FillShade);
+						const FSlateRoundedBoxBrush Fill(FillSurface, T.Radius);
+						const FSlateRoundedBoxBrush ActiveFill(
+							MixtormatCompositing::ApplyBlend(T.HighlightBlend, FillSurface, Highlight), T.Radius);
+						SpinEdit.SetInactiveFillBrush(Fill).SetHoveredFillBrush(ActiveFill).SetActiveFillBrush(ActiveFill);
+						StyleInstance->Set(TEXT("Mixtormat.TextField.Spin"), SpinEdit);
 	}
 
 	// A circle is a rounded box whose radius is half its size.

@@ -5,6 +5,8 @@
 #include "MixtormatLayerGroups.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatStyle.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
@@ -508,7 +510,11 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				SNew(SBox)
 				.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.RowFieldMinWidth)
 				[
+				SNew(SMixtormatTextFieldGradient)
+				[
 				SNew(SSpinBox<int32>)
+				.Style(&FMixtormatStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("Mixtormat.TextField.Spin")))
+				.Font(FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")).TextStyle.Font)
 				.MinValue(0)
 				.MinSliderValue(0)
 				.MaxSliderValue(4096)
@@ -526,6 +532,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 						RefreshLayeredPreview();
 					}
 				})
+				]
 				]
 				],
 				LOCTEXT("IdExactRegionHint",

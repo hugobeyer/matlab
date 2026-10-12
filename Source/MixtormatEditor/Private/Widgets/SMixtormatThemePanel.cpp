@@ -8,6 +8,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Controls/SMixtormatTabStrip.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Menus/SMixtormatHelp.h"
 
 #include "HAL/FileManager.h"
@@ -212,16 +213,25 @@ void SMixtormatThemePanel::Construct(const FArguments& InArgs)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f)
 			[
-				SNew(SSearchBox)
-				.HintText(LOCTEXT("Search", "Search property, section, or id..."))
-				.OnTextChanged_Lambda([this](const FText& Text)
-				{
-					Filter = Text.ToString().TrimStartAndEnd();
-					if (PropertyScroll.IsValid())
-					{
-						PropertyScroll->ScrollToStart();
-					}
-				})
+				SNew(SMixtormatTextFieldGradient)
+				[
+					SNew(SBox)
+					.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+					.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+					[
+						SNew(SSearchBox)
+						.Style(&FMixtormatStyle::Get().GetWidgetStyle<FSearchBoxStyle>(TEXT("Mixtormat.TextField.Search")))
+						.HintText(LOCTEXT("Search", "Search property, section, or id..."))
+						.OnTextChanged_Lambda([this](const FText& Text)
+						{
+							Filter = Text.ToString().TrimStartAndEnd();
+							if (PropertyScroll.IsValid())
+							{
+								PropertyScroll->ScrollToStart();
+							}
+						})
+					]
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
 			[TabStrip]
@@ -311,9 +321,13 @@ TSharedRef<SWidget> SMixtormatThemePanel::MakePropertyRow(
 	case Mixtormat::EMixtormatThemePropertyKind::Number:
 		Row->AddSlot().AutoWidth().VAlign(VAlign_Center)
 		[
+			SNew(SMixtormatTextFieldGradient)
+			[
 			SNew(SBox).WidthOverride(EditorControlWidth)
 			[
 				SNew(SSpinBox<float>)
+					.Style(&FMixtormatStyle::Get().GetWidgetStyle<FSpinBoxStyle>(TEXT("Mixtormat.TextField.Spin")))
+					.Font(FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")).TextStyle.Font)
 					.MinValue(P.Minimum).MaxValue(P.Maximum)
 					.MinSliderValue(P.Minimum).MaxSliderValue(P.Maximum)
 					.Delta(P.Step)
@@ -323,6 +337,7 @@ TSharedRef<SWidget> SMixtormatThemePanel::MakePropertyRow(
 					.Value_Lambda([this, Property]() { return NumberValue(*Property); })
 					.OnValueChanged_Lambda([this, Id=P.Id](float V) { PreviewNumber(Id, V); })
 					.OnValueCommitted_Lambda([this, Id=P.Id](float V, ETextCommit::Type) { CommitNumber(Id, V); })
+			]
 			]
 		];
 		break;

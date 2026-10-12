@@ -1034,7 +1034,7 @@
 			"default": 0,
 			"uiMin": 0,
 			"uiMax": 2,
-			"snap": 0.01
+			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionStrength":
 		{
@@ -1290,66 +1290,63 @@
 			"default": 1,
 			"uiMin": -4,
 			"uiMax": 4,
-			"snap": 0.01
+			"snap": 0.0099999997764825821
 		},
 		"Behavior.GradientReach":
 		{
-			"default": 0.02,
+			"default": 0.019999999552965164,
 			"uiMin": 0,
 			"uiMax": 0.25,
-			"snap": 0.001
+			"snap": 0.0010000000474974513
 		},
 		"Behavior.CarveWidth":
 		{
-			"default": 0.02,
-			"uiMin": 0.001,
+			"default": 0.019999999552965164,
+			"uiMin": 0.0010000000474974513,
 			"uiMax": 0.25,
-			"snap": 0.001
-		}
-	},
-	"Behavior Flow":
-	{
+			"snap": 0.0010000000474974513
+		},
 		"BehaviorFlowSettings.FlowAmount":
 		{
-			"default": 1.0,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.FlowTangent":
 		{
-			"default": 0.0,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.FlowAngle":
 		{
-			"default": 0.0,
-			"uiMin": -180.0,
-			"uiMax": 180.0,
-			"snap": 1.0
+			"default": 0,
+			"uiMin": -180,
+			"uiMax": 180,
+			"snap": 1
 		},
 		"BehaviorFlowSettings.GravitySurfaceFollow":
 		{
-			"default": 1.0,
-			"uiMin": 0.0,
-			"uiMax": 2.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.GravityDeflection":
 		{
-			"default": 1.0,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.FlowBend":
 		{
-			"default": 0.0,
-			"uiMin": -180.0,
-			"uiMax": 180.0,
-			"snap": 1.0
+			"default": 0,
+			"uiMin": -180,
+			"uiMax": 180,
+			"snap": 1
 		},
 		"BehaviorFlowSettings.FlowSeed:Int":
 		{
@@ -1367,94 +1364,108 @@
 		},
 		"BehaviorFlowSettings.FlowSmooth":
 		{
-			"default": 8.0,
-			"uiMin": 0.0,
-			"uiMax": 64.0,
+			"default": 8,
+			"uiMin": 0,
+			"uiMax": 64,
 			"snap": 0.5
 		},
 		"BehaviorFlowSettings.Reach":
 		{
-			"default": 0.1,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.001
+			"default": 0.10000000149011612,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0010000000474974513
 		},
 		"BehaviorFlowSettings.Feather":
 		{
 			"default": 0.5,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.FlowOffsetAlong":
 		{
-			"default": 0.0,
-			"uiMin": -1.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.FlowOffsetAcross":
 		{
-			"default": 0.0,
-			"uiMin": -1.0,
-			"uiMax": 1.0,
-			"snap": 0.01
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.ShapeOffset":
 		{
-			"default": 0.0,
+			"default": 0,
 			"uiMin": -0.25,
 			"uiMax": 0.25,
-			"snap": 0.001
+			"snap": 0.0010000000474974513
 		},
 		"BehaviorFlowSettings.Bulge":
 		{
-			"default": 0.0,
+			"default": 0,
 			"uiMin": -0.25,
 			"uiMax": 0.25,
-			"snap": 0.001
+			"snap": 0.0010000000474974513
 		},
 		"BehaviorFlowSettings.TraceLength":
 		{
-			"default": 0.1,
-			"uiMin": 0.0,
-			"uiMax": 1.0,
-			"snap": 0.001
+			"default": 0.05000000074505806,
+			"uiMin": 0,
+			"uiMax": 0.10000000149011612,
+			"snap": 0.0010000000474974513
 		},
 		"BehaviorFlowSettings.TraceSteps:Int":
 		{
-			"default": 16,
+			"default": 32,
 			"uiMin": 1,
 			"uiMax": 64,
 			"snap": 1
 		},
 		"BehaviorFlowSettings.WarpStrength":
 		{
-			"default": 1.0,
-			"uiMin": -4.0,
-			"uiMax": 4.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.Depth":
 		{
-			"default": 1.0,
-			"uiMin": 0.0,
-			"uiMax": 2.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 2,
+			"snap": 0.0099999997764825821
 		},
 		"BehaviorFlowSettings.Width":
 		{
-			"default": 0.01,
-			"uiMin": 0.0,
+			"default": 0.0099999997764825821,
+			"uiMin": 0,
 			"uiMax": 0.25,
-			"snap": 0.001
+			"snap": 0.0010000000474974513
 		},
 		"BehaviorFlowSettings.Falloff":
 		{
-			"default": 1.0,
-			"uiMin": 0.1,
-			"uiMax": 8.0,
-			"snap": 0.01
+			"default": 1,
+			"uiMin": 0.10000000149011612,
+			"uiMax": 8,
+			"snap": 0.0099999997764825821
+		},
+		"BehaviorFlowSettings.StandardTraceLength":
+		{
+			"default": 0.05000000074505806,
+			"uiMin": 0,
+			"uiMax": 0.10000000149011612,
+			"snap": 0.0010000000474974513
+		},
+		"BehaviorFlowSettings.StandardTraceSteps:Int":
+		{
+			"default": 32,
+			"uiMin": 1,
+			"uiMax": 256,
+			"snap": 0
 		}
 	}
 }

@@ -10,19 +10,26 @@
 class SMixtormatTextFieldGradient final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatTextFieldGradient) {}
+	SLATE_BEGIN_ARGS(SMixtormatTextFieldGradient) : _PaintBackground(true) {}
+		SLATE_ATTRIBUTE(bool, PaintBackground)
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& Args)
 	{
-		ChildSlot [ Args._Content.Widget ];
+		PaintBackground = Args._PaintBackground;
+				ChildSlot [ Args._Content.Widget ];
 	}
 
 	int32 OnPaint(const FPaintArgs& Args, const FGeometry& Geometry,
 		const FSlateRect& CullingRect, FSlateWindowElementList& Elements,
 		const int32 LayerId, const FWidgetStyle& WidgetStyle, const bool bParentEnabled) const override
 	{
+		if (!PaintBackground.Get(true))
+		{
+			return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements,
+				LayerId, WidgetStyle, bParentEnabled);
+		}
 		const Mixtormat::FMixtormatTextFieldTheme& Theme = FMixtormatThemeStore::GetTheme().TextField;
 		FLinearColor TopShade = Theme.Shade;
 		TopShade.A = FMath::Clamp(Theme.ShadeOpacity, 0.0f, 1.0f);
@@ -38,4 +45,7 @@ public:
 		return SCompoundWidget::OnPaint(Args, Geometry, CullingRect, Elements,
 			LayerId + 1, WidgetStyle, bParentEnabled);
 	}
+
+private:
+	TAttribute<bool> PaintBackground;
 };

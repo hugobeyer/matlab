@@ -15,6 +15,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "UI/Controls/MixtormatEntryCommit.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
@@ -125,14 +126,23 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						]
 						+ SWidgetSwitcher::Slot()
 						[
-							SAssignNew(NameEditBox, SEditableTextBox)
-							.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
-							{
-								return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, KeyEvent) : FReply::Unhandled();
-							})
-							.SelectAllTextWhenFocused(true)
-							.ClearKeyboardFocusOnCommit(true)
-							.OnTextCommitted(this, &SMixtormatLayerGroupRow::HandleNameCommitted)
+							SNew(SMixtormatTextFieldGradient)
+							[
+								SNew(SBox)
+								.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+								.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+								[
+									SAssignNew(NameEditBox, SEditableTextBox)
+									.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+									.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+									{
+										return NameEntry.IsValid() ? NameEntry->HandleKeyDown(Geometry, KeyEvent) : FReply::Unhandled();
+									})
+									.SelectAllTextWhenFocused(true)
+									.ClearKeyboardFocusOnCommit(true)
+									.OnTextCommitted(this, &SMixtormatLayerGroupRow::HandleNameCommitted)
+								]
+							]
 						]
 					]
 

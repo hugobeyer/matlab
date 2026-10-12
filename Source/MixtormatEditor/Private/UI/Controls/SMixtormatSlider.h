@@ -7,7 +7,7 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Styling/SlateTypes.h"
 
-class SEditableText;
+class SEditableTextBox;
 class FMixtormatEntryCommit;
 
 DECLARE_DELEGATE_OneParam(FMixtormatOnSliderValueChanged, double);
@@ -159,7 +159,7 @@ private:
 	FTextBlockStyle ControlLabelTextStyle;
 	FTextBlockStyle DisabledControlLabelTextStyle;
 	FTextBlockStyle ControlValueTextStyle;
-	TSharedPtr<SEditableText> EntryWidget;
+	TSharedPtr<SEditableTextBox> EntryWidget;
 	bool bEditing = false;
 	// Shared typed-entry rules (Enter/Tab/focus loss/left click accept; Escape/right click cancel).
 	TSharedPtr<FMixtormatEntryCommit> EntrySession;

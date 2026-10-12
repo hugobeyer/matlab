@@ -530,7 +530,16 @@
 		"LayerConnections.TextGap": 4,
 		"LayerConnections.PickerWidth": 300,
 		"LayerConnections.PickerListMaxHeight": 260,
-		"Layer.ChildActiveHairlineOpacity": 0.019999999552965164
+		"Layer.ChildActiveHairlineOpacity": 0.019999999552965164,
+		"Layer.DiagnosticAccent": [
+			0.14126329123973846,
+			0.51491767168045044,
+			0.59061884880065918,
+			1
+		],
+		"Layer.DiagnosticWidth": 2,
+		"Layer.DiagnosticOpacity": 0.69999998807907104,
+		"Layer.DiagnosticAncestorOpacity": 0.2800000011920929
 	},
 	"buttons":
 	{
@@ -662,13 +671,13 @@
 		"GalleryLayout.OverlayInset": 4,
 		"GalleryLayout.HeaderGap": 8,
 		"GalleryLayout.MaskHeaderInset": 12,
-		"GalleryLayout.DrawerAutoCollapseDistance": 12,
+		"GalleryLayout.DrawerAutoCollapseDistance": 32,
 		"GalleryLayout.DrawerInset": 8,
 		"GalleryLayout.DrawerSideInset": 75,
 		"GalleryLayout.DrawerHeaderHeight": 14,
 		"GalleryLayout.DrawerCollapsedHeight": 18,
-		"GalleryLayout.DrawerInitialHeight": 200,
-		"GalleryLayout.DrawerSurfaceOpacity": 0.93000000715255737,
+		"GalleryLayout.DrawerInitialHeight": 128,
+		"GalleryLayout.DrawerSurfaceOpacity": 0.59999996423721313,
 		"ShellTheme.SplitterHoverSource": [
 			0.043674048036336899,
 			0.04943307489156723,

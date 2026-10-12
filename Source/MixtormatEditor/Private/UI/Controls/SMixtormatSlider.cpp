@@ -15,7 +15,8 @@
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "UI/Primitives/MixtormatWell.h"
 #include "Styling/SlateTypes.h"
-#include "Widgets/Input/SEditableText.h"
+#include "Widgets/Input/SEditableTextBox.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 
 #define LOCTEXT_NAMESPACE "Mixtormat"
 
@@ -57,21 +58,24 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	SetToolTip(SMixtormatHelp::MakeStyledToolTip(HelpText));
 
 	ChildSlot
-	.Padding(TAttribute<FMargin>::CreateLambda([]() { return FMargin(FMixtormatThemeStore::GetResolved().ControlLayout.DraggerTextInset, 0.0f); }))
+
 	.VAlign(VAlign_Center)
 	[
-		SAssignNew(EntryWidget, SEditableText)
-		.Font(ControlValueTextStyle.Font)
-		.ColorAndOpacity(ControlValueTextStyle.ColorAndOpacity)
-		.SelectAllTextWhenFocused(true)
-		.ClearKeyboardFocusOnCommit(!bKeepPopupOpenOnCommit)
-		.RevertTextOnEscape(true)
-		.Visibility(EVisibility::Collapsed)
-		.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
-		{
-			return EntrySession->HandleKeyDown(Geometry, KeyEvent);
-		})
-		.OnTextCommitted(this, &SMixtormatSlider::HandleTextCommitted)
+		SNew(SMixtormatTextFieldGradient)
+		.PaintBackground_Lambda([this]() { return bEditing; })
+		[
+			SAssignNew(EntryWidget, SEditableTextBox)
+			.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+			.SelectAllTextWhenFocused(true)
+			.ClearKeyboardFocusOnCommit(!bKeepPopupOpenOnCommit)
+			.RevertTextOnEscape(true)
+			.Visibility(EVisibility::Collapsed)
+			.OnKeyDownHandler_Lambda([this](const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+			{
+				return EntrySession->HandleKeyDown(Geometry, KeyEvent);
+			})
+			.OnTextCommitted(this, &SMixtormatSlider::HandleTextCommitted)
+		]
 	];
 }
 
@@ -168,7 +172,7 @@ void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit:
 		CommitValue(Parsed, false);
 	}
 
-	// Enter normally clears keyboard focus after SEditableText commits. In an application-menu
+	// Enter normally clears keyboard focus after SEditableTextBox commits. In an application-menu
 	// submenu that is also interpreted as leaving the menu stack, which closes the developer
 	// authoring popup. Put focus on this slider instead. Tab is deliberately not redirected here:
 	// Slate's navigation is allowed to continue to the next focusable developer slider.

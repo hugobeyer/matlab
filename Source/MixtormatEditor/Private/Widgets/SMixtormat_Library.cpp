@@ -10,6 +10,7 @@
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
@@ -413,7 +414,7 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const TSharedRef<SEditableTextBox> SearchEdit = SNew(SEditableTextBox)
-		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
+		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
 		.HintText(LOCTEXT("SearchUserLibraryHint", "Search saved mixes..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
 		{
@@ -430,7 +431,13 @@ TSharedRef<SWidget> SMixtormat::BuildUserLibraryPage()
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 		.Padding(Layout.LibrarySearchInnerPadding, 0.0f)
 		[
-			SearchEdit
+			SNew(SMixtormatTextFieldGradient)
+			[
+				SNew(SBox)
+				.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+				.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+				[SearchEdit]
+			]
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		.Padding(0.0f, 0.0f, Layout.LibrarySearchInnerPadding, 0.0f)
@@ -626,7 +633,7 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 	const bool bHasDeveloperSources =
 		!FMixtormatSurfaceImporter::EnumerateShippedSourceDirectories().IsEmpty();
 	const TSharedRef<SEditableTextBox> SearchEdit = SNew(SEditableTextBox)
-		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.SearchBox")))
+		.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
 		.HintText(LOCTEXT("SearchHint", "Search materials..."))
 		.OnTextChanged_Lambda([this](const FText& Text)
 		{
@@ -637,7 +644,16 @@ TSharedRef<SWidget> SMixtormat::BuildLibraryPage()
 			}
 		});
 	SearchEdit->SetText(FText::FromString(SearchText));
-	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)[SearchEdit];
+	const TSharedRef<SWidget> SearchBox = SNew(SMixtormatWellBox)
+	[
+		SNew(SMixtormatTextFieldGradient)
+		[
+			SNew(SBox)
+			.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+			.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+			[SearchEdit]
+		]
+	];
 
 	// The two developer actions beside the category dropdown. Their gaps come from the gallery's own
 	// spacing rather than the legacy 3px RowGap, which left two 30px buttons almost touching.

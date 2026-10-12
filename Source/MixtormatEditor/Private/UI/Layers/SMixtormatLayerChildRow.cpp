@@ -9,6 +9,7 @@
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Widgets/Layout/SBox.h"
@@ -130,13 +131,34 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					.FillWidth(1.0f)
 					.VAlign(VAlign_Center)
 					[
-						SAssignNew(EditableName, SInlineEditableTextBlock)
-						.OnTextCommitted(InArgs._OnNameCommitted)
-						.IsReadOnly(!InArgs._bNameEditable)
-						.Font(NameTextStyle.Font)
-						.ColorAndOpacity_Lambda([State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
-						{ FLinearColor Color = Base.GetSpecifiedColor(); if (!State.Get(true)) Color.A *= 0.45f; return FSlateColor(Color); })
-						.Text(InArgs._Name)
+						SNew(SMixtormatTextFieldGradient)
+						.PaintBackground_Lambda([this]()
+						{
+							return EditableName.IsValid() && EditableName->IsInEditMode();
+						})
+						[
+							SAssignNew(EditableName, SInlineEditableTextBlock)
+							.Style(&FMixtormatStyle::Get().GetWidgetStyle<FInlineEditableTextBlockStyle>(TEXT("Mixtormat.InlineTextField")))
+							.OnTextCommitted(InArgs._OnNameCommitted)
+							.IsReadOnly(!InArgs._bNameEditable)
+							.Font_Lambda([this, Font = NameTextStyle.Font]()
+							{
+								return EditableName.IsValid() && EditableName->IsInEditMode()
+									? FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")).TextStyle.Font
+									: Font;
+							})
+							.ColorAndOpacity_Lambda([this, State = InArgs._bActive, Base = NameTextStyle.ColorAndOpacity]()
+							{
+								if (EditableName.IsValid() && EditableName->IsInEditMode())
+								{
+									return FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")).ForegroundColor;
+								}
+								FLinearColor Color = Base.GetSpecifiedColor();
+								if (!State.Get(true)) Color.A *= 0.45f;
+								return FSlateColor(Color);
+							})
+							.Text(InArgs._Name)
+						]
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

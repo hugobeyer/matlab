@@ -227,6 +227,13 @@ Builders are `SMixtormat::Build*Panel` members.
 `SMixtormatTabStrip.*` (UI STYLE panel), `SMixtormatIconRail.*` (left column navigation),
 `SMixtormatTile.*`, `MixtormatEntryCommit.*`, `SMixtormatGroupAction.h`.
 
+Text entries use `Mixtormat.TextField` with `SMixtormatTextFieldGradient`.
+Child inline rename, search widgets and native spin boxes use the derived
+`Mixtormat.InlineTextField`, `Mixtormat.TextField.Search` and
+`Mixtormat.TextField.Spin` styles. Inline names and slider entries paint the
+field gradient only while editing; resting labels and slider scrub controls retain
+their existing presentation. Native spin-box selection remains Slate-owned.
+
 ## Ramp widgets
 
 `UI/Controls/SMixtormatScalarRamp.*`, `SMixtormatColorRamp.*`,

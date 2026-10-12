@@ -7,8 +7,10 @@
 #include "IContentBrowserSingleton.h"
 #include "Modules/ModuleManager.h"
 #include "Style/MixtormatDesignTokens.h"
+#include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
+#include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -63,13 +65,22 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
-					SAssignNew(DestinationTextBox, SEditableTextBox)
-					.Text(FText::FromString(Settings.DestinationPath))
-					.OnTextChanged_Lambda([this](const FText& Text)
-					{
-						Settings.DestinationPath = Text.ToString();
-						ValidationText = FText::GetEmpty();
-					})
+					SNew(SMixtormatTextFieldGradient)
+					[
+						SNew(SBox)
+						.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+						.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+						[
+							SAssignNew(DestinationTextBox, SEditableTextBox)
+							.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+							.Text(FText::FromString(Settings.DestinationPath))
+							.OnTextChanged_Lambda([this](const FText& Text)
+							{
+								Settings.DestinationPath = Text.ToString();
+								ValidationText = FText::GetEmpty();
+							})
+						]
+					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f, 0.0f, 0.0f)
 				[
@@ -89,13 +100,22 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
 			[
-				SNew(SEditableTextBox)
-				.Text(FText::FromString(Settings.BaseName))
-				.OnTextChanged_Lambda([this](const FText& Text)
-				{
-					Settings.BaseName = Text.ToString();
-					ValidationText = FText::GetEmpty();
-				})
+				SNew(SMixtormatTextFieldGradient)
+				[
+					SNew(SBox)
+					.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+					.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+					[
+						SNew(SEditableTextBox)
+						.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+						.Text(FText::FromString(Settings.BaseName))
+						.OnTextChanged_Lambda([this](const FText& Text)
+						{
+							Settings.BaseName = Text.ToString();
+							ValidationText = FText::GetEmpty();
+						})
+					]
+				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
