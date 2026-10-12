@@ -74,9 +74,11 @@ controls, the mode label and/or status bar. Shortcut discoverability is incomple
 | `F` | Frame the mesh (focus camera) — same meaning as elsewhere in the editor |
 | `Space` or `H` | Toggle viewport overlay UI |
 | `Z` (bare) | Toggle displacement — bare only, so `Ctrl+Z` still reaches undo |
-| `V` | Cycle channel preview (Normal / RAM / Height / …) |
-| `Shift+V` | Jump straight back to Material (also in the mode label) |
-| `U` or `M` | Cycle module preview — **marked Temporary in source** |
+| `V` | Return to original PBR material; reset active diagnostics |
+| `Shift+V` | Reset diagnostics from the workspace preview key handler |
+| `W` | Toggle selected mask/gate PostFX when no mouse button is held |
+| `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |
+| `5` | Toggle complete material UV rotation by 90°, exactly like the preview marking-menu button |
 | Mouse wheel | Zoom camera |
 | `Q` (bare) | Toggle viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Q again, Escape, an outside click, or choosing a mesh/light preset dismisses. Opening remains viewport-scoped; Q closes while the popup has focus. **Implemented, needs in-editor verification** — opening is routed through `FMixtormatPreviewViewportClient::InputKey`; closing while a control has focus uses the workspace input processor. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). Archived delivery history: `AgentDocs/old_docs/viewport-quick-controls-plan.md` |
 
