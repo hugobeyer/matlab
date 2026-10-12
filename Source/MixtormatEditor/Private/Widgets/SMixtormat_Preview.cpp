@@ -524,15 +524,14 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(const EMixtormatPreviewOutputK
 	const bool bSameSource = bMaskOverlayEnabled
 		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
 		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
-		&& SelectedSource.ChildId == MaskOverlaySource.ChildId
-		&& ((Kind == EMixtormatPreviewOutputKind::Mask)
-			== (MaskOverlayOutputKind == EMixtormatPreviewOutputKind::Mask));
+		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
 	const FMixtormatChildPreviewTarget SelectedTarget = ResolveMaskOverlayTarget(SelectedSource, NAME_None, Kind);
-	if (!bSameSource && !SelectedTarget.IsValid())
+	if (!bMaskOverlayEnabled && !SelectedTarget.IsValid())
 	{
 		return FReply::Handled();
 	}
-	bMaskOverlayEnabled = !bSameSource;
+	// An active overlay can always be dismissed, even with no eligible selection.
+	bMaskOverlayEnabled = !bSameSource && SelectedTarget.IsValid();
 	MaskOverlaySource = bMaskOverlayEnabled ? SelectedSource : FMixtormatChildAddress();
 	MaskOverlayOutputName = bMaskOverlayEnabled ? SelectedTarget.OutputName : NAME_None;
 	MaskOverlayOutputKind = bMaskOverlayEnabled ? SelectedTarget.Kind : EMixtormatPreviewOutputKind::Mask;
@@ -639,39 +638,8 @@ bool SMixtormat::UpdateAutomaticFlowPreview()
 	{
 		return false;
 	}
-	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-	FName FlowOutput = NAME_None;
-	if (Child && IsChildOutputPreviewReady(*Child))
-	{
-		if (Child->Type == EMixtormatLayerChildType::Generator
-			&& Child->Generator.Type == EMixtormatGeneratorType::Noise
-			&& Child->Generator.bEnabled)
-		{
-			const FMixtormatNoise& Noise = Child->Generator.Noise;
-			if (Noise.bNoiseWriteFlow)
-			{
-				FlowOutput = FName(TEXT("GeneratedFlow"));
-			}
-			else if (Noise.NoisePreset == EMixtormatNoisePreset::Flow)
-			{
-				FlowOutput = FName(TEXT("FlowDirection"));
-			}
-		}
-	}
-	if (!FlowOutput.IsNone())
-	{
-		const FMixtormatChildPreviewTarget Target =
-			ResolveChildPreviewTarget(FlowOutput, EMixtormatPreviewOutputKind::FlowDirection);
-		if (Target.IsValid())
-		{
-			const bool bChanged = DebugPreviewMode != EMixtormatDebugPreviewMode::ChildOutput
-				|| !(ChildPreviewTarget == Target);
-			DebugPreviewMode = EMixtormatDebugPreviewMode::ChildOutput;
-			ChildPreviewTarget = Target;
-			bAutomaticFlowPreview = true;
-			return bChanged;
-		}
-	}
+	// Selection and parameter edits must not activate the unlit Flow replacement.
+	// Retain cleanup of an automatic preview without touching explicit preview eyes.
 	if (bAutomaticFlowPreview)
 	{
 		bAutomaticFlowPreview = false;

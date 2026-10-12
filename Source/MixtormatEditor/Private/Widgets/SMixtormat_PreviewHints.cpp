@@ -80,11 +80,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	};
 	const auto bMaskAvailable = [this]()
 	{
-		return bHasWorkingMaterial && IsMaskOverlayTargetReady();
+		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsMaskOverlayTargetReady());
 	};
 	const auto bFlowAvailable = [this]()
 	{
-		return bHasWorkingMaterial && IsFlowOverlayTargetReady();
+		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsFlowOverlayTargetReady());
 	};
 	const auto bDiagnosticActive = [this, bChannelView]()
 	{
@@ -190,9 +190,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		const bool bSameSource = bMaskOverlayEnabled
 			&& Selected.OwnerType == MaskOverlaySource.OwnerType
 			&& Selected.OwnerId == MaskOverlaySource.OwnerId
-			&& Selected.ChildId == MaskOverlaySource.ChildId
-			&& MaskOverlayOutputKind == EMixtormatPreviewOutputKind::Mask;
-		return bSameSource
+			&& Selected.ChildId == MaskOverlaySource.ChildId;
+		return bSameSource || (bMaskOverlayEnabled && !IsMaskOverlayTargetReady())
 			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
 			: bMaskOverlayEnabled
 				? LOCTEXT("HintTransferDiagnostic", "Preview selected source")
@@ -208,9 +207,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	AddGap(*Row, FlowVis);
 	AddPair(*Row, LOCTEXT("HintE", "E"), TAttribute<FText>::CreateLambda([this]()
 	{
-		const bool bSameSource = bMaskOverlayEnabled && GetSelectedChildAddress() == MaskOverlaySource
-			&& MaskOverlayOutputKind != EMixtormatPreviewOutputKind::Mask;
-		return bSameSource ? LOCTEXT("HintHideFlow", "Hide Flow")
+		const bool bSameSource = bMaskOverlayEnabled && GetSelectedChildAddress() == MaskOverlaySource;
+		return bMaskOverlayEnabled && (bSameSource || !IsFlowOverlayTargetReady())
+			? LOCTEXT("HintHideDiagnostic", "Hide diagnostic")
 			: bMaskOverlayEnabled ? LOCTEXT("HintTransferFlow", "Preview selected Flow")
 				: LOCTEXT("HintShowFlow", "Show raw Flow");
 	}), FlowVis);
