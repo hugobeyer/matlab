@@ -48,7 +48,7 @@ namespace
 	const FName FlowName(TEXT("DA_DiagnosticFlow"));
 	const FName ModeName(TEXT("DA_DiagnosticMode"));
 	// Material parameter contract; values must match the documented artist-authored graph.
-	enum class EDiagnosticDataMode : uint8 { Coverage = 0, RelativeFlow = 1, AbsoluteUV = 2, Scalar = 3 };
+	enum class EDiagnosticDataMode : uint8 { Mask = 0, Flow = 1, ReservedIds = 3 };
 	const FName OpacityName(TEXT("DA_DiagnosticOpacity"));
 	const FName HeightName(TEXT("DA_Height"));
 	const FName UseHeightName(TEXT("DA_UseHeight"));
@@ -130,8 +130,8 @@ namespace
 	// Self-contained fallback for the artist-authored material: the same parameter contract
 	// (DA_DiagnosticUvBuffer / DA_DiagnosticField / DA_DiagnosticFlow / DA_DiagnosticMode /
 	// DA_DiagnosticOpacity, PostProcessInput0 compositing) built from material expressions, so
-	// W/E work with no /Game/ asset present. Modes 0/3 show single-colour coverage from
-	// DA_DiagnosticField.R; modes 1/2 pass the raw Flow/UV RG through unchanged.
+	// W/E work with no /Game/ asset present. Mode 0 shows mask/scalar coverage from
+	// DA_DiagnosticField.R; mode 1 passes raw Flow/UV RG through unchanged. Mode 3 is reserved for IDs.
 	UMaterial* MakeDefaultPostMaterial(UTextureRenderTarget2D* FieldDefault)
 	{
 		UMaterial* Material = NewObject<UMaterial>(
@@ -158,19 +158,9 @@ namespace
 		Mode->ParameterName = ModeName;
 		Mode->DefaultValue = 0.0f;
 
-		// FlowWeight is 1 for modes 1/2 and 0 for modes 0/3: saturate(Mode) * saturate(2.5 - Mode).
-		auto* ModeClamped = AddNode<UMaterialExpressionClamp>(Material);
-		ModeClamped->Input.Connect(0, Mode);
-		auto* TwoPointFive = AddNode<UMaterialExpressionConstant>(Material);
-		TwoPointFive->R = 2.5f;
-		auto* ModeInverse = AddNode<UMaterialExpressionSubtract>(Material);
-		ModeInverse->A.Connect(0, TwoPointFive);
-		ModeInverse->B.Connect(0, Mode);
-		auto* ModeInverseClamped = AddNode<UMaterialExpressionClamp>(Material);
-		ModeInverseClamped->Input.Connect(0, ModeInverse);
-		auto* FlowWeight = AddNode<UMaterialExpressionMultiply>(Material);
-		FlowWeight->A.Connect(0, ModeClamped);
-		FlowWeight->B.Connect(0, ModeInverseClamped);
+		// Only Mask (0) and Flow (1) are emitted by the current PostFX path.
+		auto* FlowWeight = AddNode<UMaterialExpressionClamp>(Material);
+		FlowWeight->Input.Connect(0, Mode);
 
 		// Coverage ink: a single dark red for mask/scalar modes, raw RG for Flow/UV modes.
 		auto* InkColour = AddNode<UMaterialExpressionConstant3Vector>(Material);
@@ -344,8 +334,7 @@ void FMixtormatViewportMaskPostFx::Update(
 	const float DisplacementAmount,
 	const float OverlayOpacity,
 	UTextureRenderTarget2D* FlowField,
-	const EMixtormatPreviewOutputKind OutputKind,
-	const bool bScalarDiagnostic)
+	const EMixtormatPreviewOutputKind OutputKind)
 {
 	if (!MaskField || !HeightField || !PreviewMesh.GetStaticMesh()
 		|| ViewSize.X <= 0 || ViewSize.Y <= 0 || !EnsureResources(MaskField))
@@ -375,10 +364,9 @@ void FMixtormatViewportMaskPostFx::Update(
 	BlendInstance->SetTextureParameterValue(UvBufferName, UvTarget.Get());
 	BlendInstance->SetTextureParameterValue(FieldName, MaskField);
 	BlendInstance->SetTextureParameterValue(FlowName, FlowField);
-	const EDiagnosticDataMode Mode = OutputKind == EMixtormatPreviewOutputKind::WarpedUVGrid
-		? EDiagnosticDataMode::AbsoluteUV : OutputKind == EMixtormatPreviewOutputKind::FlowDirection
-			? EDiagnosticDataMode::RelativeFlow : bScalarDiagnostic
-				? EDiagnosticDataMode::Scalar : EDiagnosticDataMode::Coverage;
+	const bool bFlow = OutputKind == EMixtormatPreviewOutputKind::FlowDirection
+		|| OutputKind == EMixtormatPreviewOutputKind::WarpedUVGrid;
+	const EDiagnosticDataMode Mode = bFlow ? EDiagnosticDataMode::Flow : EDiagnosticDataMode::Mask;
 	BlendInstance->SetScalarParameterValue(ModeName, static_cast<float>(Mode));
 	BlendInstance->SetScalarParameterValue(OpacityName, OverlayOpacity);
 	// PreviewScene worlds are not guaranteed to tick capture components on their

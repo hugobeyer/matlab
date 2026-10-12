@@ -63,7 +63,7 @@ opens/closes the drawer. See the overlay-workspace handoff.
 | `L` | Cycle the layer stack's placement: Docked → Overlay → Hidden → Docked. The left column's icon rail stays docked; only the stack travels | Top-bar tooltip `"Cycle Layers placement: Docked → Overlay → Hidden → Docked (L)."`; the control's label reads `Layers: Docked` / `Overlay` / `Hidden` |
 | `P` | Cycle Inspector placement: Docked → Overlay → Hidden | Top-bar tooltip `"Cycle Inspector placement: Docked → Overlay → Hidden → Docked (P)."`; the control's own label reads `Inspector: Docked` / `Overlay` / `Hidden` |
 | `G` | Collapse/expand bottom galleries | Gallery collapse tooltip `"… (G)."` |
-| `I` | Toggle region-ID preview for the selected child | Not advertised — no tooltip found |
+| `R` / `I` | Toggle existing region-ID preview for the selected child; I retained as an alias | PostFX mode 3 reserved for future IDs; current IDs retain their existing rendering |
 | `F2` / `F12` | Rename selected layer or group | Menus `.Shortcut("F2")`; F12 undocumented alias |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo (tooltip also names `Ctrl+Shift+Z`) | Top-bar tooltips |
 | `Backspace` | Reset hovered numeric control | Slider tooltip (see below) |
@@ -85,7 +85,8 @@ Shortcut discoverability is incomplete.
 | `V` | Cycle PBR material channels regardless of selection: Material → Base Color → Normal → Roughness → AO → Metallic → F0 → Height → Fuzz → Material. Not module diagnostics or PostFX output modes |
 | `Shift+V` | Reset PostFX, module diagnostics and material-channel views; works in the viewport and workspace preview key handler |
 | `W` | Activate selected eligible scalar/mask PostFX; same key on the same target toggles off, W↔E switches type, another eligible source transfers. An ineligible selection never dismisses an active overlay. Ownership survives selection and parameter edits. Viewport focus only; works during mouse drags |
-| `E` (bare) | Toggle persistent raw published Flow/UV PostFX; same key on the same target toggles off, E↔W switches type, another supported source transfers the shared W/E owner. An ineligible selection never dismisses an active overlay. Viewport focus only; works during mouse drags; artist-authored appearance, built-in default when absent |
+| `R` (bare) | Toggle existing Region IDs preview through the workspace handler; viewport yields the key. PostFX mode 3 remains reserved, not implemented |
+| `E` (bare) | Toggle persistent raw published Flow/UV PostFX (mode 1; Mask/scalar uses mode 0); same key on the same target toggles off, E↔W switches type, another supported source transfers the shared W/E owner. An ineligible selection never dismisses an active overlay. Viewport focus only; works during mouse drags; artist-authored appearance, built-in default when absent |
 | `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |
 | `5` | Toggle complete material UV rotation by 90°, exactly like the preview marking-menu button |
 | Mouse wheel | Zoom camera |

@@ -480,6 +480,12 @@ public:
 				return true;
 			}
 		}
+		// Let bare R bubble to the workspace's shared Region IDs toggle.
+		if (EventArgs.Key == EKeys::R
+			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		{
+			return false;
+		}
 		// V cycles PBR material channels regardless of selection; Shift+V restores Material.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V
 			&& !IsCtrlPressed() && !IsAltPressed())
@@ -682,7 +688,7 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		PreviewViewportClient->GetViewLocation(),
 		PreviewViewportClient->GetViewRotation(),
 		CameraFov, bDisplacementEnabled, DisplacementAmount, MaskPostFxOpacity,
-		FlowField, MaskPostFxTarget.Kind, MaskPostFxTarget.bScalarDiagnostic);
+		FlowField, MaskPostFxTarget.Kind);
 }
 
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)

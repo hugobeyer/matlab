@@ -767,7 +767,8 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		return FReply::Handled();
 	}
 	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
-		&& !InKeyEvent.IsRepeat() && InKeyEvent.GetKey() == EKeys::I)
+		&& !InKeyEvent.IsRepeat()
+				&& (InKeyEvent.GetKey() == EKeys::R || InKeyEvent.GetKey() == EKeys::I))
 	{
 		if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
 			&& ChildPreviewTarget.Kind == EMixtormatPreviewOutputKind::RegionIds)
