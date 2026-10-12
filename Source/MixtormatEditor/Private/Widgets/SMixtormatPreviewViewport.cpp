@@ -10,6 +10,8 @@
 #include "EditorViewportClient.h"
 #include "Engine/Scene.h"
 #include "Engine/StaticMesh.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Slate/SceneViewport.h"
 #include "Engine/Texture2D.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Engine/TextureCube.h"
@@ -605,6 +607,32 @@ SMixtormatPreviewViewport::~SMixtormatPreviewViewport()
 	{
 		PreviewScene.RemoveComponent(StudioReflectionCapture);
 	}
+}
+
+FReply SMixtormatPreviewViewport::OnPreviewMouseButtonDown(
+	const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	// After clicking the Inspector, a plain click on the preview does not
+	// reliably return keyboard focus to SViewport; a drag happens to do it.
+	// Focus the actual rendering widget on the initial click instead of
+	// requiring camera motion before viewport-only shortcuts work again.
+	// IsHovered excludes floating Inspector / quick-control buttons above it.
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton
+		|| MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton
+		|| MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	{
+		if (const TSharedPtr<FSceneViewport> SceneViewport = GetSceneViewport())
+		{
+			if (const TSharedPtr<SWidget> ViewportWidget = SceneViewport->GetWidget().Pin())
+			{
+				if (ViewportWidget->IsHovered())
+				{
+					FSlateApplication::Get().SetKeyboardFocus(ViewportWidget, EFocusCause::Mouse);
+				}
+			}
+		}
+	}
+	return SEditorViewport::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
 }
 
 void SMixtormatPreviewViewport::Tick(
