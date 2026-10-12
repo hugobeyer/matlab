@@ -43,7 +43,7 @@ private:
 	USceneCaptureComponent2D* UvCapture = nullptr;
 	TStrongObjectPtr<UTextureRenderTarget2D> UvTarget;
 	TStrongObjectPtr<UMaterial> UvMaterial;
-	TStrongObjectPtr<UMaterial> BlendMaterial;
+
 	TStrongObjectPtr<UMaterialInstanceDynamic> UvInstance;
 	TStrongObjectPtr<UMaterialInstanceDynamic> BlendInstance;
 	FIntPoint CapturedSize = FIntPoint::ZeroValue;

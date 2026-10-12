@@ -24,6 +24,8 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "UObject/SoftObjectPath.h"
 
 namespace MixtormatPreview
 {
@@ -42,6 +44,36 @@ namespace
 	const FName HeightName(TEXT("DA_Height"));
 	const FName UseHeightName(TEXT("DA_UseHeight"));
 	const FName HeightAmountName(TEXT("DA_HeightAmount"));
+
+	static UMaterialInterface* LoadDiagnosticPostMaterial()
+	{
+		// Try a few common local-only asset locations.
+		static const TCHAR* CandidatePaths[] =
+		{
+			TEXT("/Game/M_MixtormatDiagnosticPost.M_MixtormatDiagnosticPost"),
+			TEXT("/Game/Materials/M_MixtormatDiagnosticPost.M_MixtormatDiagnosticPost"),
+			TEXT("/Mixtormat/M_MixtormatDiagnosticPost.M_MixtormatDiagnosticPost"),
+			TEXT("/Mixtormat/Materials/M_MixtormatDiagnosticPost.M_MixtormatDiagnosticPost")
+		};
+
+		for (const TCHAR* Path : CandidatePaths)
+		{
+			if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, Path))
+			{
+				UE_LOG(LogTemp, Log,
+					TEXT("Mixtormat: loaded diagnostic post material: %s"), Path);
+				return Mat;
+			}
+		}
+
+		UE_LOG(LogTemp, Warning,
+			TEXT("Mixtormat: could not load M_MixtormatDiagnosticPost. ")
+			TEXT("Expected one of: /Game/M_MixtormatDiagnosticPost, ")
+			TEXT("/Game/Materials/M_MixtormatDiagnosticPost, ")
+			TEXT("/Mixtormat/M_MixtormatDiagnosticPost, ")
+			TEXT("/Mixtormat/Materials/M_MixtormatDiagnosticPost"));
+		return nullptr;
+	}
 
 	template<typename T>
 	T* AddNode(UMaterial* Material)
@@ -87,65 +119,6 @@ namespace
 		return Material;
 	}
 
-	UMaterial* MakePostMaterial(
-		UTextureRenderTarget2D* UvDefault, UTextureRenderTarget2D* FieldDefault)
-	{
-		UMaterial* Material = NewObject<UMaterial>(
-			GetTransientPackage(), NAME_None, RF_Transient);
-		Material->MaterialDomain = MD_PostProcess;
-		Material->BlendableLocation = BL_SceneColorAfterTonemapping;
-		Material->bIsBlendable = false;
-
-		auto* SceneColor = AddNode<UMaterialExpressionSceneTexture>(Material);
-		SceneColor->SceneTextureId = PPI_PostProcessInput0;
-		// PostProcessInput0 is RGBA; the cyan tint is RGB. Lerp requires
-		// matching vector arity, so drop scene alpha before the blend.
-		auto* SceneRgb = AddNode<UMaterialExpressionComponentMask>(Material);
-		SceneRgb->R = true;
-		SceneRgb->G = true;
-		SceneRgb->B = true;
-		SceneRgb->Input.Connect(0, SceneColor);
-		auto* ScreenUV = AddNode<UMaterialExpressionScreenPosition>(Material);
-		auto* UVSample = AddSample(Material, UvBufferName, UvDefault);
-		UVSample->Coordinates.Connect(0, ScreenUV);
-
-		auto* MaterialUV = AddNode<UMaterialExpressionComponentMask>(Material);
-		MaterialUV->R = true;
-		MaterialUV->G = true;
-		MaterialUV->Input.Connect(0, UVSample);
-
-		auto* Coverage = AddSample(Material, FieldName, FieldDefault);
-		Coverage->Coordinates.Connect(0, MaterialUV);
-		auto* FieldR = AddNode<UMaterialExpressionComponentMask>(Material);
-		FieldR->R = true;
-		FieldR->Input.Connect(0, Coverage);
-
-		// UV capture clears to zero outside the subject. Validity lives in B,
-		// so the post pass never colors the floor/background with the edge texel.
-		auto* Validity = AddNode<UMaterialExpressionComponentMask>(Material);
-		Validity->B = true;
-		Validity->Input.Connect(0, UVSample);
-		auto* Gated = AddNode<UMaterialExpressionMultiply>(Material);
-		Gated->A.Connect(0, FieldR);
-		Gated->B.Connect(0, Validity);
-
-		auto* Opacity = AddNode<UMaterialExpressionScalarParameter>(Material);
-		Opacity->SetParameterName(OpacityName);
-		Opacity->ExpressionGUID = FGuid::NewGuid();
-		Opacity->DefaultValue = 0.55f;
-		auto* Alpha = AddNode<UMaterialExpressionMultiply>(Material);
-		Alpha->A.Connect(0, Gated);
-		Alpha->B.Connect(0, Opacity);
-		auto* Cyan = AddNode<UMaterialExpressionConstant3Vector>(Material);
-		Cyan->Constant = FLinearColor(0.35f, 0.78f, 0.87f);
-		auto* Blend = AddNode<UMaterialExpressionLinearInterpolate>(Material);
-		Blend->A.Connect(0, SceneRgb);
-		Blend->B.Connect(0, Cyan);
-		Blend->Alpha.Connect(0, Alpha);
-		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Blend);
-		Material->PostEditChange();
-		return Material;
-	}
 }
 
 FMixtormatViewportMaskPostFx::FMixtormatViewportMaskPostFx(
@@ -186,8 +159,9 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	CapturedSize = FIntPoint(16, 16);
 
 	UvMaterial.Reset(MakeUvMaterial(InitialField));
-	BlendMaterial.Reset(MakePostMaterial(UvTarget.Get(), InitialField));
-	if (!UvMaterial.IsValid() || !BlendMaterial.IsValid())
+
+	UMaterialInterface* LoadedPostMaterial = LoadDiagnosticPostMaterial();
+	if (!UvMaterial.IsValid() || !LoadedPostMaterial)
 	{
 		return false;
 	}
@@ -212,7 +186,7 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	UvCapture->ShowOnlyComponent(UvProxy);
 
 	BlendInstance.Reset(UMaterialInstanceDynamic::Create(
-		BlendMaterial.Get(), UvCapture));
+		LoadedPostMaterial, GetTransientPackage()));
 	return true;
 }
 
