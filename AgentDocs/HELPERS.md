@@ -70,8 +70,12 @@ opens/closes the drawer. See the overlay-workspace handoff.
 
 ## Hotkey catalog — viewport (`FMixtormatPreviewViewportClient::InputKey`)
 
-Focus = the viewport. Feedback varies by action: camera/overlay changes, existing
-controls, the mode label and/or status bar. Shortcut discoverability is incomplete.
+Focus = the viewport. Clicking the preview's actual `SViewport` surface restores
+keyboard focus immediately in `SMixtormatPreviewViewport::OnPreviewMouseButtonDown`,
+even when returning from Inspector controls; no drag is required. Floating Inspector
+and quick-control widgets are excluded from this focus handoff. Feedback varies by
+action: camera/overlay changes, existing controls, the mode label and/or status bar.
+Shortcut discoverability is incomplete.
 
 | Key | Action |
 |---|---|
