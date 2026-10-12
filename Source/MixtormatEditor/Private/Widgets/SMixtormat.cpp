@@ -717,9 +717,11 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		return ToggleLayerSolo(SelectedLayerIndex);
 	if (HasShortcut(EShortcut::ToggleEnabled) && WorkingLayers.IsValidIndex(SelectedLayerIndex)
 		&& !SelectedGroupId.IsValid() && !SelectedSourceId.IsValid())
+	{
 		SetWorkingLayerEnabled(WorkingLayers[SelectedLayerIndex].bEnabled
 			? ECheckBoxState::Unchecked : ECheckBoxState::Checked, SelectedLayerIndex);
 		return FReply::Handled();
+	}
 	if (HasShortcut(EShortcut::Copy))
 	{
 		if (SelectedSourceId.IsValid())
