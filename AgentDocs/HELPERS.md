@@ -49,6 +49,9 @@ requires its top-level window to be active; it yields for editable text fields.
 Shortcuts therefore do not act on Mixtormat when the user is focused in another
 Unreal editor window, another tab, or another Mixtormat instance. Other
 workspace shortcuts use `OnKeyDown` and follow normal Slate focus routing.
+`OnKeyDown` must return `Handled()` only for matched Mixtormat actions; all
+other keys (including Unreal's `Ctrl+Shift+S` Save All) remain unhandled so
+normal editor commands work with Mixtormat focused or docked.
 
 Workspace layout: Layers/Library/Global are the normal left-column rail/pages. Layers can
 pop out and return by rail click or snap-back drag. The gallery is one MATERIALS/MASKS
