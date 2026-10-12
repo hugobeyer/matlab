@@ -34,7 +34,7 @@ public:
 		float DisplacementAmount,
 		float OverlayOpacity);
 	void Disable();
-	UMaterialInstanceDynamic* GetBlendInstance() const { return BlendInstance.Get(); }
+	UMaterialInstanceDynamic* GetBlendInstance() const { return bReady ? BlendInstance.Get() : nullptr; }
 
 private:
 	bool EnsureResources(UTextureRenderTarget2D* InitialField);
@@ -47,4 +47,5 @@ private:
 	TStrongObjectPtr<UMaterialInstanceDynamic> UvInstance;
 	TStrongObjectPtr<UMaterialInstanceDynamic> BlendInstance;
 	FIntPoint CapturedSize = FIntPoint::ZeroValue;
+	bool bReady = false;
 };
