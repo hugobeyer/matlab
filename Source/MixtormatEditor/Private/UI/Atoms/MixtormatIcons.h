@@ -57,6 +57,7 @@ namespace MixtormatIcons
 	const FSlateBrush* ChevronDown();
 	const FSlateBrush* ChevronRight();
 	const FSlateBrush* Refresh();
+	const FSlateBrush* RotateCoords();
 	const FSlateBrush* Overflow();
 	const FSlateBrush* Add();
 	const FSlateBrush* Duplicate();
