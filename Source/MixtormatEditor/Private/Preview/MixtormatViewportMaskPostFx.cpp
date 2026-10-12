@@ -132,8 +132,8 @@ namespace
 	// Self-contained fallback for the artist-authored material: the same parameter contract
 	// (DA_DiagnosticUvBuffer / DA_DiagnosticField / DA_DiagnosticColor / DA_DiagnosticMode /
 	// DA_DiagnosticOpacity, PostProcessInput0 compositing) built from material expressions, so
-	// W/E work with no /Game/ asset present. Mode 0 retains mask/scalar coverage;
-	// mode 1 composites code-generated premultiplied Flow/UV color. Raw Flow stays bound for overrides.
+	// W/E work with no /Game/ asset present. Modes 0/1 both composite generated color:
+	// mask/scalar coverage in mode 0, Flow/UV in mode 1. Raw fields stay bound for overrides.
 	UMaterial* MakeDefaultPostMaterial(UTextureRenderTarget2D* FieldDefault)
 	{
 		UMaterial* Material = NewObject<UMaterial>(
@@ -166,9 +166,7 @@ namespace
 		auto* FlowWeight = AddNode<UMaterialExpressionClamp>(Material);
 		FlowWeight->Input.Connect(0, Mode);
 
-		// Mask ink is opaque; Flow/UV RGB is already premultiplied by its own coverage.
-		auto* InkColour = AddNode<UMaterialExpressionConstant3Vector>(Material);
-		InkColour->Constant = FLinearColor(0.5f, 0.05f, 0.05f, 1.0f);
+		// Both diagnostic modes supply premultiplied RGB and independent coverage A.
 		auto* ColorRgb = AddNode<UMaterialExpressionComponentMask>(Material);
 		ColorRgb->Input.Connect(0, ColorSample);
 		ColorRgb->R = true;
@@ -183,12 +181,7 @@ namespace
 		ColorCoverage->A = true;
 		auto* Zero = AddNode<UMaterialExpressionConstant>(Material);
 		Zero->R = 0.0f;
-		auto* Ink = AddNode<UMaterialExpressionLinearInterpolate>(Material);
-		Ink->A.Connect(0, InkColour);
-		Ink->B.Connect(0, ColorRgb);
-		Ink->Alpha.Connect(0, FlowWeight);
-
-		// Alpha = Opacity * Field.R * (UvBuffer.B >= 0.5), the documented contract.
+		// Mask coverage is already in Color.a; only Flow uses Field.R as availability.
 		auto* Coverage = AddNode<UMaterialExpressionComponentMask>(Material);
 		Coverage->Input.Connect(0, FieldSample);
 		Coverage->R = true;
@@ -214,8 +207,12 @@ namespace
 		auto* Opacity = AddNode<UMaterialExpressionScalarParameter>(Material);
 		Opacity->ParameterName = OpacityName;
 		Opacity->DefaultValue = 0.55f;
+		auto* Availability = AddNode<UMaterialExpressionLinearInterpolate>(Material);
+		Availability->A.Connect(0, One);
+		Availability->B.Connect(0, Coverage);
+		Availability->Alpha.Connect(0, FlowWeight);
 		auto* CoverageGated = AddNode<UMaterialExpressionMultiply>(Material);
-		CoverageGated->A.Connect(0, Coverage);
+		CoverageGated->A.Connect(0, Availability);
 		CoverageGated->B.Connect(0, ValidityGate);
 		auto* Alpha = AddNode<UMaterialExpressionMultiply>(Material);
 		Alpha->A.Connect(0, CoverageGated);
@@ -224,19 +221,15 @@ namespace
 		auto* SceneColor = AddNode<UMaterialExpressionSceneTexture>(Material);
 		SceneColor->SceneTextureId = PPI_PostProcessInput0;
 		SceneColor->Coordinates.Connect(0, ScreenUV);
-		auto* InkCoverage = AddNode<UMaterialExpressionLinearInterpolate>(Material);
-		InkCoverage->A.Connect(0, One);
-		InkCoverage->B.Connect(0, ColorCoverage);
-		InkCoverage->Alpha.Connect(0, FlowWeight);
 		auto* FinalAlpha = AddNode<UMaterialExpressionMultiply>(Material);
 		FinalAlpha->A.Connect(0, Alpha);
-		FinalAlpha->B.Connect(0, InkCoverage);
+		FinalAlpha->B.Connect(0, ColorCoverage);
 		auto* Background = AddNode<UMaterialExpressionLinearInterpolate>(Material);
 		Background->A.Connect(0, SceneColor);
 		Background->B.Connect(0, Zero);
 		Background->Alpha.Connect(0, FinalAlpha);
 		auto* Foreground = AddNode<UMaterialExpressionMultiply>(Material);
-		Foreground->A.Connect(0, Ink);
+		Foreground->A.Connect(0, ColorRgb);
 		Foreground->B.Connect(0, Alpha);
 		auto* Final = AddNode<UMaterialExpressionAdd>(Material);
 		Final->A.Connect(0, Background);

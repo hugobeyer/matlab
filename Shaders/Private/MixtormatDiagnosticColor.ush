@@ -6,7 +6,9 @@
 #include "/Plugin/Mixtormat/Private/MixtormatDebugColor.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorWarp.ush"
 
-// Code-owned styling; palette entries are sRGB, converted before filtering/blending.
+// Code-owned styling; Flow/UV palette entries are sRGB, converted before filtering/blending.
+// Mask ink keeps the existing PostFX's linear color exactly; its coverage lives only in alpha.
+#define MIXTORMAT_DIAGNOSTIC_MASK_COLOR_LINEAR float3(0.5f, 0.05f, 0.05f)
 #define MIXTORMAT_DIAGNOSTIC_CHECKER_DENSITY 16.0f
 #define MIXTORMAT_DIAGNOSTIC_LINE_WIDTH 0.025f // Total width in checker cells.
 #define MIXTORMAT_DIAGNOSTIC_TINT_AMOUNT 0.55f
@@ -136,9 +138,10 @@ float4 MixtormatDiagnosticUVColor(Texture2D<float4> Source, int2 Size, float2 Qu
 		MixtormatDebugColor(MIXTORMAT_DIAGNOSTIC_CHECKER_LIGHT), Checker);
 
 	// Apply determinant styling at EACH subpixel, not just at the output centre.
-	const float3 Tint = Det < 0.0f ? MIXTORMAT_DIAGNOSTIC_FOLD_COLOR
+	const float3 Tint = Det <= 0.0f ? MIXTORMAT_DIAGNOSTIC_FOLD_COLOR
 		: (Det < 1.0f ? MIXTORMAT_DIAGNOSTIC_CONTRACTION_COLOR : MIXTORMAT_DIAGNOSTIC_EXPANSION_COLOR);
-	const float TintWeight = Det < 0.0f ? 1.0f : saturate(abs(Det - 1.0f));
+	const float TintWeight = Det <= 0.0f ? 1.0f
+		: saturate(abs(log2(max(Det, MIXTORMAT_DIAGNOSTIC_EPSILON))));
 	Color = lerp(Color, MixtormatDebugColor(Tint), MIXTORMAT_DIAGNOSTIC_TINT_AMOUNT * TintWeight);
 	const float LineX = MixtormatDiagnosticGridAverage(Cell.x, CellWidth.x);
 	const float LineY = MixtormatDiagnosticGridAverage(Cell.y, CellWidth.y);

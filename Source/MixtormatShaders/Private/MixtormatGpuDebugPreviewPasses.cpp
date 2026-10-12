@@ -192,6 +192,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(FIntPoint, DiagnosticColorSourceSize)
 		SHADER_PARAMETER(uint32, DiagnosticColorIsUVMap)
+		SHADER_PARAMETER(uint32, DiagnosticColorIsMask)
 		SHADER_PARAMETER(uint32, DiagnosticColorRotate90)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, DiagnosticColorSource)
 		SHADER_PARAMETER_SAMPLER(SamplerState, DiagnosticColorSampler)
@@ -211,12 +212,13 @@ namespace MixtormatGpuCompositor
 {
 	void AddDiagnosticColorPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
 		const FRDGTextureRef Output, const FIntPoint Resolution, const bool bUVMap,
-		const bool bRotateOutput90)
+		const bool bRotateOutput90, const bool bMask)
 	{
 		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatDiagnosticColorCS::FParameters>();
 		Parameters->OutputSize = Resolution;
 		Parameters->DiagnosticColorSourceSize = Source->Desc.Extent;
 		Parameters->DiagnosticColorIsUVMap = bUVMap ? 1u : 0u;
+		Parameters->DiagnosticColorIsMask = bMask ? 1u : 0u;
 		Parameters->DiagnosticColorRotate90 = bRotateOutput90 ? 1u : 0u;
 		Parameters->DiagnosticColorSource = Source;
 		Parameters->DiagnosticColorSampler =

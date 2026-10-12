@@ -184,6 +184,7 @@ Texture2D<float4> DiagnosticColorSource;
 int2 DiagnosticColorSourceSize;
 SamplerState DiagnosticColorSampler;
 uint DiagnosticColorIsUVMap;
+uint DiagnosticColorIsMask;
 uint DiagnosticColorRotate90;
 RWTexture2D<float4> DiagnosticColorOutput;
 
@@ -195,6 +196,14 @@ void MainDiagnosticColorCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(DiagnosticColorSourceSize <= 0))
 	{
 		DiagnosticColorOutput[Pixel] = 0.0f;
+		return;
+	}
+	if (DiagnosticColorIsMask != 0)
+	{
+		// Input is the final normalized/rotated mask field. Its R is coverage, not another gate.
+		const float Value = DiagnosticColorSource.Load(int3(Pixel, 0)).r;
+		const float Coverage = isfinite(Value) ? saturate(Value) : 0.0f;
+		DiagnosticColorOutput[Pixel] = float4(MIXTORMAT_DIAGNOSTIC_MASK_COLOR_LINEAR * Coverage, Coverage);
 		return;
 	}
 	const float2 OutputTexel = 1.0f / float2(OutputSize);

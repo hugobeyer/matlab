@@ -668,10 +668,9 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		|| MaskPostFxTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid;
 	UTextureRenderTarget2D* FlowField = bFlow
 		? LayerCompositor->GetDiagnosticFlowOutput(MaskPostFxTarget) : nullptr;
-	UTextureRenderTarget2D* DiagnosticColor = bFlow
-		? LayerCompositor->GetDiagnosticColorOutput(MaskPostFxTarget) : nullptr;
+	UTextureRenderTarget2D* DiagnosticColor = LayerCompositor->GetDiagnosticColorOutput(MaskPostFxTarget);
 	UTextureRenderTarget2D* DiagnosticField = LayerCompositor->GetDiagnosticFieldOutput(MaskPostFxTarget);
-	if (!DiagnosticField || (bFlow && (!FlowField || !DiagnosticColor)))
+	if (!DiagnosticField || !DiagnosticColor || (bFlow && !FlowField))
 	{
 		// Keep completed same-owner bindings during edits; hide unmatched transfers.
 		if (MaskPostFx) { MaskPostFx->Disable(); }

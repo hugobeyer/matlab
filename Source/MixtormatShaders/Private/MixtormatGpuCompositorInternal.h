@@ -49,6 +49,7 @@ struct FMixtormatComposeResources
 	FMixtormatChildPreviewTarget DiagnosticTarget;
 	// Read on the game thread only after the compose's InFlight release/acquire handoff.
 	bool bDiagnosticFlowPublished = false;
+	bool bDiagnosticColorPublished = false;
 	int32 PublishedIndex = 0;
 	// Game-thread readers require the InFlight release/acquire handoff too.
 	bool bSucceeded = false;
@@ -2139,7 +2140,8 @@ namespace MixtormatGpuCompositor
 
 	// Evaluate the original producer field into premultiplied display color, then filter color mips.
 	void AddDiagnosticColorPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
-		FRDGTextureRef Output, FIntPoint Resolution, bool bUVMap, bool bRotateOutput90);
+		FRDGTextureRef Output, FIntPoint Resolution, bool bUVMap, bool bRotateOutput90,
+		bool bMask = false);
 
 	// Bilinear resample of a diagnostic field whose producer resolution differs from the
 	// composition's. Returns the resampled texture at Resolution; callers keep the exact

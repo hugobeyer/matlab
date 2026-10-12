@@ -1453,10 +1453,11 @@ namespace MixtormatGpuCompositor
 								Request.Resolution, Request.bRotateOutput90);
 							if (DiagnosticColor)
 							{
-								// Evaluate BEFORE any raw-coordinate resampling: UV winding belongs to producer texels.
+								// Evaluate the original field, not the resampled raw copy: winding belongs to producer texels.
 								AddDiagnosticColorPass(GraphBuilder, Field->Texture, DiagnosticColor,
 									Request.Resolution, ExpectedKind == EMixtormatPublishedFieldKind::UVMap,
 									Request.bRotateOutput90);
+								Request.Targets->bDiagnosticColorPublished = true;
 							}
 							Request.Targets->bDiagnosticFlowPublished = true;
 							bLoggedFlowUnavailable = false;
@@ -1542,6 +1543,15 @@ namespace MixtormatGpuCompositor
 				{
 					FinalTargetIndex = 1 - Request.PublishedTargetIndex;
 					AddRotateOutputPass(Ctx, Request.PublishedTargetIndex, FinalTargetIndex);
+				}
+
+				if (Request.DebugSettings.bMaskOverlay && !RawDiagnosticFlow && DiagnosticColor)
+				{
+					// Mask coverage is already normalized and rotated in the completed debug field.
+					// Encode coverage once into color alpha, then filter the same color mip chain as E.
+					AddDiagnosticColorPass(GraphBuilder, Ctx.OutputDebug[FinalTargetIndex], DiagnosticColor,
+						Request.Resolution, false, false, true);
+					Request.Targets->bDiagnosticColorPublished = true;
 				}
 
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputBC[FinalTargetIndex], ERHIAccess::SRVMask);

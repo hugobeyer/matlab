@@ -2,6 +2,8 @@
 
 **Coverage note:** 4 of 5 areas audited (Composition, Generators/Masks/IDs, UI/UX, Perf/Release). **Behavior System V2 was not audited** — its agent failed twice per your instruction; treat all Behavior-related conclusions below as partial (they come incidentally from other areas).
 
+**Scoped update — 2026-10-12:** Code-owned filtered Flow/UV diagnostic color is implemented in source (see §G). No build, shader compilation, runtime AA check or GPU profiling was run. Readiness estimates and unrelated findings below have not been re-audited.
+
 ---
 
 ## A. Overall readiness — ~65% (±10%)
@@ -85,6 +87,27 @@
 | 9 | COMP-02/04, GEN-03/06: binding remap, publication policy, enum redirects, flow publish order | P2 | Medium |
 | 10 | Doc refresh (FILE_MAP, ARCHITECTURE, GENERATORS) + delete dead `MixtormatLayerPreview` | P2 | Small |
 | 11 | **Full Behavior V2 audit + runtime pass** (see below) | ? | Large |
+
+---
+
+## G. Incremental update — filtered Flow/UV diagnostics (2026-10-12)
+
+**Status: source implementation complete; compile/runtime acceptance pending.**
+
+- New **`DA_DiagnosticColor`** binding supplies linear **premultiplied RGB + coverage A** in **mode 0 (mask/scalar) and mode 1 (Flow/UV)**. The existing `DA_DiagnosticFlow` raw binding remains unchanged; authored PBR outputs, mask normalization and mask ink color are preserved.
+- `MixtormatDebugPreviewBlit.usf::MainDiagnosticColorCS` evaluates the original published field at producer resolution into a composition-resolution display texture. Flow/Vector2 uses direction hue and strength value; UVMap uses a warped checker/grid with contraction, expansion and fold tint.
+- `MixtormatDiagnosticColor.ush` owns display styling, lifted-coordinate sampling, source-texel Jacobians, integrated periodic checker/grid coverage and 2×2 subpixel color/tint evaluation. Displacement is recovered before interpolation; stored values and multi-tile travel are not wrapped or rounded.
+- `MixtormatGpuDebugPreviewPasses.cpp::AddDiagnosticColorPass` explicitly generates color mips after the compute write. `MixtormatGpuCompositor.cpp` allocates a mip-enabled linear float color target with trilinear wrapping; raw coordinate data does not receive color filtering.
+- Mode 0 color allocation, generation and completed-owner binding no longer depend on raw Flow publication. The color pass consumes final normalized/rotated mask coverage, encodes the existing linear ink with alpha, then generates color mips. Missing mask coverage produces a transparent texture, not stale Flow color.
+- `MixtormatViewportMaskPostFx.cpp` binds the completed owner-matched texture and composites premultiplied color in both built-in material modes. Mode 0 uses alpha once, without multiplying mask `Field.R` again; mode 1 retains `Field.R` as the availability gate. Existing artist-authored materials are not edited automatically: add `DA_DiagnosticColor`, replace the Custom-node visualization with its sampled color, and use premultiplied source-over blending. See `AgentDocs/UNIFIED_POSTFX.md` for the exact graph contract.
+- This diagnostic path already has a code-built PostFX material when no authored override loads. That narrows the asset dependency for this path only; **REL-02 remains open** for other required preview/gizmo/bake assets.
+
+**Remaining acceptance checks / limits:**
+
+- Compile the new global shader, mip-generation dispatch and generated material graph in the target Unreal version.
+- Inspect zoomed-out/oblique views, folded/multi-tile maps, mismatched producer sizes, quarter-turn rotation, zero/non-finite fields and same-owner recomposition.
+- Texture-space filtering does **not** resolve the capture's binary mesh silhouette or guarantee alignment with temporal jitter/upscaling. Those remain separate viewport concerns.
+- Profile the new active-diagnostic compute/mip work; no performance improvement or release-readiness increase is claimed.
 
 ---
 

@@ -132,20 +132,26 @@ inspection has been performed.
   Existing Flow B/A payloads pass through too; they are producer-specific and
   should not be assumed to be a universal validity mask. For two-channel UVMap
   textures only RG has a semantic contract.
-- Material bindings: `DA_DiagnosticFlow` is the raw texture and
-  `DA_DiagnosticMode` is **0 = mask/gate coverage, 1 = relative Flow,
-  2 = absolute UVMap, 3 = published scalar diagnostic**. W selects mode 3 for
-  typed Scalar01/ScalarSigned outputs on non-coverage children (Noise Value,
-  Behavior Influence and scalar features); coverage producers and aggregate
-  layer masks remain mode 0. This presentation flag is derived by the existing
-  resolver and participates in completed-target matching, not separate ownership. `DA_DiagnosticUvBuffer`, `DA_DiagnosticField` and
+- Material bindings: `DA_DiagnosticFlow` remains the raw texture;
+  **`DA_DiagnosticColor`** supplies code-rendered, mip-filtered linear premultiplied
+  RGB and independent coverage A in **both modes 0 and 1**. Mode 0 encodes the
+  normalized mask/scalar coverage with the existing linear mask ink; mode 1 encodes
+  Flow/UV visualization. Color has its own completed-publication flag, independent
+  of raw Flow availability. The current C++ PostFX implementation emits
+  `DA_DiagnosticMode` **0 for W mask/scalar coverage and 1 for E Flow/UV**.
+  Flow versus UVMap is selected by the typed completed target in the color pass,
+  not a separate material mode. `DA_DiagnosticUvBuffer`, `DA_DiagnosticField` and
   `DA_DiagnosticOpacity` keep their names and mask behavior. During E,
   `DA_DiagnosticField.R` is field availability (1 for a successfully exported
   field, otherwise 0), not a Flow visualization or per-texel Flow validity.
 - The raw target uses linear data and wrapping U/V addressing. Captured mesh UVs
   stay non-tiled. Global quarter-turn rotates texture lookup positions exactly
   like the material outputs but does **not** rotate, wrap or otherwise change RG
-  component values. The authored material controls all sampling/appearance.
+  component values. The separate color pass evaluates the original published field
+  before any coordinate resampling can affect its winding. Its linear RGBA16F target
+  uses 2×2 subpixel evaluation, integrated periodic checker/grid coverage and explicit
+  color mip generation after each successful compute write. Only display color is
+  mip-filtered; the raw field remains unchanged.
 - The compositor retains the last completed diagnostic resource generation, with
   its textures pinned, separately from the pending request. It recognizes completion
   both at request entry and during viewport binding. Same-owner recomposition keeps
@@ -162,8 +168,9 @@ inspection has been performed.
 Modify your local `M_MixtormatDiagnosticPost` yourself; plugin code does not edit
 or regenerate this material or any `.uasset`. When no artist-authored material is
 found at the searched paths, the plugin builds a self-contained default post-process
-material with the same parameter contract (single-colour coverage for modes 0/3,
-raw RG passthrough for modes 1/2), so W/E never depend on a `/Game/` asset existing.
+material with the same parameter contract (filtered mask/scalar ink for mode 0,
+filtered Flow/UV ink for mode 1), so W/E never depend on a `/Game/`
+asset existing. Existing authored overrides must add the new color sample themselves.
 
 1. Add **Texture Sample Parameter 2D**, parameter name **`DA_DiagnosticFlow`**.
    Use **Sampler Type: Linear Color** and **Sampler Source: Shared: Wrap**.
@@ -173,18 +180,28 @@ raw RG passthrough for modes 1/2), so W/E never depend on a `/Game/` asset exist
    sample's **UVs**. Keep the UV-buffer sample itself at screen/view UVs and its
    existing nearest/non-tiled sampling; do not add tiling to the capture buffer.
    Wrap applies to **field lookup addresses**, never to sampled Flow RG values.
-3. Add **Scalar Parameter `DA_DiagnosticMode`**, default **0**. Branch your own
-   material logic on 0/1/2/3 as above. Mode 0 must retain the existing mask graph.
-      Mode 3 reads `DA_DiagnosticField.R`, using the same captured mesh UVs. Its data
-      keeps the existing scalar export convention: Scalar01 unchanged, ScalarSigned
-      mapped with `saturate(0.5 * Value + 0.5)`. It is not raw signed scalar data.
-      Author the scalar visualization separately; do not route mode 3 to Flow.
-4. Read raw **RG** from `DA_DiagnosticFlow` for all your visual design. Do not put
-   Normalize, Frac or Saturate on RG unless you intentionally want that operation.
-5. Retain mesh-validity gating **`DA_DiagnosticUvBuffer.B >= 0.5`**, existing
-   **`DA_DiagnosticOpacity`**, and **`PostProcessInput0`** compositing. For E, use
-   **`DA_DiagnosticField.R`** as the availability gate. Do not treat signed Flow
-   components as mask coverage; design their appearance entirely in this material.
+3. Add **Texture Sample Parameter 2D `DA_DiagnosticColor`** for the code-rendered
+   visualization in **both modes 0 and 1**. Use the existing Color sampler convention for runtime render targets,
+   **Sampler Source: From texture asset** and automatic mip selection (no explicit mip 0).
+   The bound target is forced-linear, trilinear and wrapping. Connect
+   **`DA_DiagnosticUvBuffer.RG`** directly to its UVs, without `Frac`; derivatives of the
+   continuous mesh UV select color mips. Replace the Custom-node checker/tint calculation
+   with this sample. Flow is direction hue/strength value; UVMap is warped checker/grid
+   plus determinant tint. Styling constants live in `MixtormatDiagnosticColor.ush`.
+4. Add **Scalar Parameter `DA_DiagnosticMode`**, default **0**. Mode 0 is mask/scalar;
+   mode 1 is Flow/UV. Both read `DA_DiagnosticColor`; only the extra availability
+   gate differs. Existing raw mask/scalar graphs may still use `DA_DiagnosticField`.
+   `DA_DiagnosticFlow` stays available for intentional raw-data visualization, without
+   normalization, wrapping or saturation of its stored values.
+5. Keep **`DA_DiagnosticUvBuffer.B >= 0.5`** and **`DA_DiagnosticOpacity`**.
+   Color is **premultiplied**; use the same source-over blend in both modes:
+   `Availability = (Mode == 1) ? DA_DiagnosticField.R : 1`;
+   `Gate = Opacity * MeshValidity * Availability`;
+   `Result = PostProcessInput0 * (1 - Gate * Color.a) + Gate * Color.rgb`.
+   Mode 0 already carries mask coverage in `Color.a`: **do not multiply by Field.R again**.
+   Do not use `lerp(Scene, Color.rgb, Gate * Color.a)`: that multiplies coverage twice.
+   Keep the material after tonemapping; color filtering is independent of TAA/TSR.
+   Capture silhouettes and temporal projection alignment remain separate limitations.
 
 No builds, tests, shader compilation or Unreal launches were run. Static source
 review only; sampler/material behavior and runtime rebinding need Unreal review.
@@ -195,10 +212,11 @@ review only; sampler/material behavior and runtime rebinding need Unreal review.
   actual projection under non-default aspect ratios and temporal upscaling.
 - Sources shelf diagnostic rows remain unsupported directly. Generic Vector2,
   colour, ID and SDF data are not exposed by E. Published Flow and absolute UVMap
-  data are exposed raw, without plugin-authored visualization. Signed scalar fields
+  data retain their raw binding and now also supply code-rendered filtered color. Signed scalar fields
   use midpoint-normalized coverage, not a two-colour signed-height display.
-- Flow/UV appearance is artist-authored only; this integration adds no arrows,
-  grids, animation or visualization controls. Height/ID overlays are not added here.
+- Flow/UV color is code-owned; authored PostFX overrides must connect
+  `DA_DiagnosticColor` to use it. No arrows, animation or new inspector controls are
+  added. Height/ID overlays are not added here. Active-diagnostic GPU cost is unprofiled.
 - Existing replacement previews, Inspector eyes and channel shortcuts remain
   supported and are not migrated or removed by W/E integration.
 
@@ -206,7 +224,8 @@ review only; sampler/material behavior and runtime rebinding need Unreal review.
 
 | Semantic | Visualization |
 |---|---|
-| Flow/UV direction | Raw RG data only; all appearance is authored locally in the Post Process material |
+| Flow direction | Raw RG preserved; code-rendered direction hue/strength value in filtered diagnostic color |
+| UVMap | Raw RG preserved; lifted warped checker/grid with determinant tint in filtered diagnostic color |
 | IDs | Deterministic hash of integer ID to subdued categorical RGB; optional exact-ID neighbour boundary |
 | Mask | Single-colour translucent coverage, proportional to mask value |
 | Height | Warm positive, cool negative, zero transparent; preserve signed input |

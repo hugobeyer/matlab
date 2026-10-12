@@ -193,7 +193,7 @@ public:
 	UTextureRenderTarget2D* GetDebugOutput() const;
 	// Raw typed Flow/UV snapshot for the requested overlay owner, never another source's pixels.
 	UTextureRenderTarget2D* GetDiagnosticFlowOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
-	// Filtered linear premultiplied color/coverage for the same completed Flow/UV owner.
+	// Filtered linear premultiplied color/coverage for the same completed W/E owner.
 	UTextureRenderTarget2D* GetDiagnosticColorOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 		UTextureRenderTarget2D* GetDiagnosticFieldOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 	// The raw Region IDs behind the current Region IDs preview, one float per pixel, -1 where no

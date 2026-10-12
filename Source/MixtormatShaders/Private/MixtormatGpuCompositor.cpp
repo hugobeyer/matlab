@@ -1541,6 +1541,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	if (DebugSettings.bMaskOverlay)
 	{
 		Request.Targets->DiagnosticTarget = DebugSettings.ChildTarget;
+		if (!DiagnosticColorOutput.IsValid())
+		{
+			DiagnosticColorOutput.Reset(CreateTarget(Resolution, FLinearColor::Transparent, PF_FloatRGBA, true));
+		}
+		Request.Targets->Pins.Emplace(DiagnosticColorOutput.Get());
+		Request.Targets->DiagnosticColor = DiagnosticColorOutput->GameThread_GetRenderTargetResource();
+		Request.Targets->DiagnosticColorTexture = DiagnosticColorOutput.Get();
 	}
 	if (DebugSettings.bMaskOverlay
 		&& (DebugSettings.ChildTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
@@ -1554,13 +1561,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Request.Targets->Pins.Emplace(DiagnosticFlowOutput.Get());
 		Request.Targets->DiagnosticFlow = DiagnosticFlowOutput->GameThread_GetRenderTargetResource();
 		Request.Targets->DiagnosticFlowTexture = DiagnosticFlowOutput.Get();
-		if (!DiagnosticColorOutput.IsValid())
-		{
-			DiagnosticColorOutput.Reset(CreateTarget(Resolution, FLinearColor::Transparent, PF_FloatRGBA, true));
-		}
-		Request.Targets->Pins.Emplace(DiagnosticColorOutput.Get());
-		Request.Targets->DiagnosticColor = DiagnosticColorOutput->GameThread_GetRenderTargetResource();
-		Request.Targets->DiagnosticColorTexture = DiagnosticColorOutput.Get();
 	}
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
@@ -2122,7 +2122,7 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticColorOutput(
 {
 	RefreshCompletedDiagnosticOutputs();
 	if (!CompletedDiagnosticOutputs.IsValid()
-		|| !CompletedDiagnosticOutputs->bDiagnosticFlowPublished
+		|| !CompletedDiagnosticOutputs->bDiagnosticColorPublished
 		|| !(CompletedDiagnosticOutputs->DiagnosticTarget == ExpectedTarget))
 	{
 		return nullptr;
