@@ -464,7 +464,8 @@ public:
 			Owner.ResetDiagnosticOverlays();
 			return true;
 		}
-		// Bare 1-4: the geometry rail's meshes, routed through the workspace.
+		// Bare 1-4 select the geometry rail's meshes. Bare 5 uses the same
+		// 90-degree global UV rotation toggle as the marking-menu control.
 		if (EventArgs.Event == IE_Pressed
 			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
@@ -486,6 +487,11 @@ public:
 			if (EventArgs.Key == EKeys::Four)
 			{
 				Owner.RequestSetPreviewMesh(EMixtormatPreviewMesh::Cylinder);
+				return true;
+			}
+			if (EventArgs.Key == EKeys::Five)
+			{
+				Owner.RequestToggleGlobalUVRotation90();
 				return true;
 			}
 		}
@@ -620,6 +626,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
 	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnSetPreviewMesh = InArgs._OnSetPreviewMesh;
+	OnToggleGlobalUVRotation90 = InArgs._OnToggleGlobalUVRotation90;
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
 	OnDismissQuickControls = InArgs._OnDismissQuickControls;
 	OnCameraFovChanged = InArgs._OnCameraFovChanged;
@@ -1471,6 +1478,11 @@ void SMixtormatPreviewViewport::RequestQuickControls()
 void SMixtormatPreviewViewport::RequestSetPreviewMesh(const EMixtormatPreviewMesh MeshType)
 {
 	OnSetPreviewMesh.ExecuteIfBound(MeshType);
+}
+
+void SMixtormatPreviewViewport::RequestToggleGlobalUVRotation90()
+{
+	OnToggleGlobalUVRotation90.ExecuteIfBound();
 }
 
 bool SMixtormatPreviewViewport::RequestDismissQuickControls()
