@@ -357,6 +357,12 @@ when their target is in another window. Typography `Body` deliberately has no li
 assembles the preview UI; shared preview state/setters are on `SMixtormat`.
 `Widgets/SMixtormatPreviewViewport.*` owns viewport rendering/scene and input,
 delegating workspace actions back to `SMixtormat`.
+Bare V cycles selected-module diagnostics and returns to material after the last output;
+without a selected module it cycles material channels (including Normal and AO).
+Migrated mask/scalar/Flow/UV-map candidates use the persistent PostFX owner, while
+IDs, SDF, colour and layer UV retain their existing diagnostic paths. Shift+V resets
+all diagnostics. W/E remain independent PostFX toggles; V advances from a matching
+W/E target rather than restarting the cycle. Duplicate targets are skipped.
 The contextual hint strip (`Widgets/SMixtormat_PreviewHints.cpp::BuildPreviewHintStrip`)
 is one compact line of key/action pairs at the viewport's bottom-left: first matching
 context wins (quick controls > channel view > debug view > selected module > default

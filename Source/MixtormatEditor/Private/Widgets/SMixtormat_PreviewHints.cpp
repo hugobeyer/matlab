@@ -4,7 +4,7 @@
 // Its screen corner is configured by ContextLayout (typically top-right).
 //
 // Pairs reflect live actions, including W when a supported mask is selected,
-// V when a diagnostic is active, Esc in quick controls, and the Plane flip.
+// V for cycling, Shift+V when a diagnostic is active, Esc in quick controls, and the Plane flip.
 // Visibility lambdas track selection and overlay changes without rebuilding.
 //
 // Hit-test-invisible like the light gizmo, so camera navigation passes through. The
@@ -82,6 +82,11 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsMaskOverlayTargetReady());
 	};
+	const auto bCycleAvailable = [this]()
+	{
+		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return bHasWorkingMaterial && (!Child || IsGroupChildEnabled(*Child));
+	};
 	const auto bFlowAvailable = [this]()
 	{
 		return bHasWorkingMaterial && (bMaskOverlayEnabled || IsFlowOverlayTargetReady());
@@ -98,10 +103,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	};
 	const auto bNoMaterial = [this]() { return !bHasWorkingMaterial; };
 	const auto bUvRotationAvailable = [this]() { return bHasWorkingMaterial; };
-	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bFlowAvailable, bPlaneFlip, bNoMaterial, bUvRotationAvailable]()
+	const auto bAnyContext = [bQuickControls, bDiagnosticActive, bMaskAvailable, bFlowAvailable, bCycleAvailable, bPlaneFlip, bNoMaterial, bUvRotationAvailable]()
 	{
 		return bQuickControls() || bDiagnosticActive() || bMaskAvailable() || bFlowAvailable()
-			|| bPlaneFlip() || bNoMaterial() || bUvRotationAvailable();
+			|| bCycleAvailable() || bPlaneFlip() || bNoMaterial() || bUvRotationAvailable();
 	};
 
 	// One pair: optional keycap and action text, both with live visibility.
@@ -245,7 +250,16 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			: LOCTEXT("HintShowFlow", "Show raw Flow");
 	}), FlowVis);
 
-	// -- V resets both the new mask tint and any remaining inspector diagnostics.
+	const TAttribute<EVisibility> CycleVis = TAttribute<EVisibility>::CreateLambda(
+		[bCycleAvailable, bQuickControls]()
+	{
+		return bCycleAvailable() && !bQuickControls()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	});
+	AddGap(*Row, CycleVis);
+	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintCyclePreview", "Cycle diagnostics"), CycleVis);
+
+	// -- Shift+V resets PostFX, module diagnostics and material-channel views.
 	const TAttribute<EVisibility> ResetVis = TAttribute<EVisibility>::CreateLambda(
 		[bDiagnosticActive, bQuickControls]()
 	{
@@ -253,7 +267,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddGap(*Row, ResetVis);
-	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintResetPreview", "Original material"), ResetVis);
+	AddPair(*Row, LOCTEXT("HintShiftV", "Shift+V"), LOCTEXT("HintResetPreview", "Original material"), ResetVis);
 
 	// -- Re-selecting Plane (2) flips the orientation, but not while a diagnostic is active.
 	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(

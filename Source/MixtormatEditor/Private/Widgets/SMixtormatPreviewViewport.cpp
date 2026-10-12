@@ -480,12 +480,18 @@ public:
 				return true;
 			}
 		}
-		// V always returns to the untouched lit material. Other overlays use
-		// independent hotkeys; former M/U and V cycling no longer intercept keys.
+		// V advances diagnostics; Shift+V restores the untouched lit material.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V
 			&& !IsCtrlPressed() && !IsAltPressed())
 		{
-			Owner.ResetDiagnosticOverlays();
+			if (IsShiftPressed())
+			{
+				Owner.ResetDiagnosticOverlays();
+			}
+			else
+			{
+				Owner.CycleModulePreview();
+			}
 			return true;
 		}
 		// Bare 1-4 select the geometry rail's meshes. Bare 5 uses the same
@@ -1640,7 +1646,7 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 	if (ChannelPreview != EMixtormatChannelPreview::Material)
 	{
 		return FText::Format(
-			NSLOCTEXT("SMixtormatPreviewViewport", "ChannelPreviewModeLabel", "{0}  (V for Material)"),
+			NSLOCTEXT("SMixtormatPreviewViewport", "ChannelPreviewModeLabel", "{0}  (Shift+V for Material)"),
 			FText::FromString(GetChannelPreviewLabel()));
 	}
 	if (!bUsingDebugPreview)

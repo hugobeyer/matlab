@@ -82,8 +82,8 @@ Shortcut discoverability is incomplete.
 | `F` | Frame the mesh (focus camera) — same meaning as elsewhere in the editor |
 | `Space` or `H` | Toggle viewport overlay UI |
 | `Z` (bare) | Toggle displacement — bare only, so `Ctrl+Z` still reaches undo |
-| `V` | Return to original PBR material; reset active diagnostics |
-| `Shift+V` | Reset diagnostics from the workspace preview key handler |
+| `V` | Cycle selected module diagnostics, then original material. Mask/scalar/Flow/UV-map outputs use PostFX; IDs/SDF/colour and layer UV retain their existing render paths. With no module selected, cycle material channels (Normal, AO, etc.) |
+| `Shift+V` | Reset PostFX, module diagnostics and material-channel views; works in the viewport and workspace preview key handler |
 | `W` | Activate selected eligible scalar/mask PostFX; same key on the same target toggles off, W↔E switches type, another eligible source transfers. An ineligible selection never dismisses an active overlay. Ownership survives selection and parameter edits. Viewport focus only; works during mouse drags |
 | `E` (bare) | Toggle persistent raw published Flow/UV PostFX; same key on the same target toggles off, E↔W switches type, another supported source transfers the shared W/E owner. An ineligible selection never dismisses an active overlay. Viewport focus only; works during mouse drags; artist-authored appearance, built-in default when absent |
 | `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |

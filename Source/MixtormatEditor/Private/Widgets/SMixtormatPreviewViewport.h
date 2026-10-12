@@ -216,6 +216,7 @@ public:
 	FText GetPreviewModeLabel() const;
 	void SetChannelPreview(EMixtormatChannelPreview NewMode);
 	void ResetChannelPreview();
+	void CycleChannelPreview();
 	FQuat GetCameraRotation() const;
 	FVector GetLightDirection() const;
 	// True while the light is being rotated, and briefly after, so the gizmo can show only then.
@@ -237,7 +238,6 @@ private:
 	void ToggleMaskOverlay();
 	void ToggleFlowOverlay();
 	void ResetDiagnosticOverlays();
-	void CycleChannelPreview();
 	void CycleModulePreview();
 	void ApplyChannelPreview();
 	void UpdateMaskPostFx();
