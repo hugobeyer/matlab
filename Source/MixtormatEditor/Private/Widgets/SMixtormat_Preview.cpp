@@ -368,6 +368,20 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 		}
 		if (RequiredKind != EMixtormatPreviewOutputKind::Mask)
 		{
+			if (Child->Type == EMixtormatLayerChildType::Behavior
+				&& Child->Behavior.Type == EMixtormatBehaviorType::Feather)
+			{
+				FMixtormatChildAddress ParentAddress = Address;
+				ParentAddress.ChildId = Child->ScopeOwnerChildId;
+				const FMixtormatLayerChild* Parent = ResolveChildAt(ParentAddress);
+				if (!Parent || !((Parent->Type == EMixtormatLayerChildType::Generator
+					&& Parent->Generator.Type == EMixtormatGeneratorType::Noise)
+					|| (Parent->Type == EMixtormatLayerChildType::Behavior
+						&& Parent->Behavior.Type == EMixtormatBehaviorType::FlowField)))
+				{
+					return Target;
+				}
+			}
 			const FMixtormatChildCapabilities Capabilities = GetChildCapabilities(*Child);
 			const auto Matches = [RequiredOutputName, RequiredKind](const FMixtormatPublishedOutputDesc& Candidate)
 			{
@@ -412,6 +426,9 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 				});
 			if (!Output) { return Target; }
 			Target.OutputName = Output->Name;
+			Target.bScalarDiagnostic = Output->bCopyableAsField
+				&& (Output->FieldKind == EMixtormatPublishedFieldKind::Scalar01
+					|| Output->FieldKind == EMixtormatPublishedFieldKind::ScalarSigned);
 		}
 	}
 	else

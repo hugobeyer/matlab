@@ -89,6 +89,8 @@ struct FMixtormatChildPreviewTarget
 	// already encodes its own invalid pixels (Cluster IDs has none; Pattern IDs blacken
 	// them inside their own kernel and need no second texture here).
 	FName GapMaskName;
+	// PostFX presentation metadata derived from the selected published scalar output.
+	bool bScalarDiagnostic = false;
 
 	bool IsValid() const { return OwnerId.IsValid(); }
 
@@ -96,7 +98,7 @@ struct FMixtormatChildPreviewTarget
 	{
 		return A.OwnerId == B.OwnerId && A.ChildId == B.ChildId
 			&& A.OutputName == B.OutputName && A.Kind == B.Kind
-			&& A.GapMaskName == B.GapMaskName;
+			&& A.GapMaskName == B.GapMaskName && A.bScalarDiagnostic == B.bScalarDiagnostic;
 	}
 };
 

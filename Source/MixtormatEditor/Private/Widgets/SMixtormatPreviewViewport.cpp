@@ -676,7 +676,7 @@ void SMixtormatPreviewViewport::UpdateMaskPostFx()
 		PreviewViewportClient->GetViewLocation(),
 		PreviewViewportClient->GetViewRotation(),
 		CameraFov, bDisplacementEnabled, DisplacementAmount, MaskPostFxOpacity,
-		FlowField, MaskPostFxTarget.Kind);
+		FlowField, MaskPostFxTarget.Kind, MaskPostFxTarget.bScalarDiagnostic);
 }
 
 void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
@@ -1650,6 +1650,10 @@ FText SMixtormatPreviewViewport::GetPreviewModeLabel() const
 			if (bMaskPostFxActive && MaskPostFxTarget.Kind != EMixtormatPreviewOutputKind::Mask)
 			{
 				return NSLOCTEXT("SMixtormatPreviewViewport", "RawFlowOverlayPreviewModeLabel", "Raw Flow overlay");
+			}
+			if (bMaskPostFxActive && MaskPostFxTarget.bScalarDiagnostic)
+			{
+				return NSLOCTEXT("SMixtormatPreviewViewport", "ScalarOverlayPreviewModeLabel", "Scalar overlay");
 			}
 			return NSLOCTEXT("SMixtormatPreviewViewport", "MaskOverlayPreviewModeLabel", "Mask overlay");
 		}

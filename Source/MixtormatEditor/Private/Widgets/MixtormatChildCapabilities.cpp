@@ -292,7 +292,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		break;
 	case EMixtormatLayerChildType::Behavior:
-		if (Child.Behavior.Type != EMixtormatBehaviorType::FlowField
+		if (Child.Behavior.Type == EMixtormatBehaviorType::Feather)
+		{
+			// Published only where Feather actually filters a typed Flow field.
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "BehaviorFeatherFlow", "Filtered Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
+		}
+		else if (Child.Behavior.Type != EMixtormatBehaviorType::FlowField
 			&& Child.Behavior.Flow.bUseTracedFlow)
 		{
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),

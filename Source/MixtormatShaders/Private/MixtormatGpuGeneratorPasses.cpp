@@ -1905,6 +1905,16 @@ namespace
 							Filter.Behavior, FilterGate, bFilterMask,
 							LayerCtx.LayerIndex, Filter.SourceChildIndex);
 						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+						// Match Noise's E choice: generated contribution when published, otherwise direction.
+						if (Name == FName(TEXT("GeneratedFlow"))
+							|| !Ctx.PublishedFieldOutputs.Contains(PublishedKey(Layer,
+								Child.SourceChildIndex, FName(TEXT("GeneratedFlow")))))
+						{
+							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+								Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
+							AddPublishedFieldPreview(Ctx, LayerCtx, Filter.SourceChildIndex,
+								FName(TEXT("FlowDirection")), Filtered);
+						}
 						AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex, Name, Filtered);
 					}
 				}
@@ -1967,6 +1977,10 @@ namespace
 						const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
 							Child.Behavior, Gate, bMask, LayerCtx.LayerIndex, Child.SourceChildIndex);
 						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+							Child.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
+						AddPublishedFieldPreview(Ctx, LayerCtx, Child.SourceChildIndex,
+							FName(TEXT("FlowDirection")), Filtered);
 						AddPublishedFieldPreview(Ctx, LayerCtx,
 							FlowParent->SourceChildIndex, FName(TEXT("FlowDirection")), Filtered);
 					}
@@ -3520,6 +3534,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					const FPublishedField Filtered = AddFlowFeatherPasses(Ctx, *Field,
 						Filter.Behavior, Gate, bMask, LayerCtx.LayerIndex, Filter.SourceChildIndex);
 					Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+					if (Name == FName(TEXT("GeneratedFlow"))
+						|| !Ctx.PublishedFieldOutputs.Contains(PublishedKey(Layer,
+							Child.SourceChildIndex, FName(TEXT("GeneratedFlow")))))
+					{
+						Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer,
+							Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
+						AddPublishedFieldPreview(Ctx, LayerCtx, Filter.SourceChildIndex,
+							FName(TEXT("FlowDirection")), Filtered);
+					}
 				}
 			}
 		}

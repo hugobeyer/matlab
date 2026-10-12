@@ -107,8 +107,16 @@ inspection has been performed.
   the producer's existing demand/publication path; no new Flow generator exists.
 - Supported producers are Noise (including Flow preset/Write Flow), native Flow
   outputs declared by Cracks, Rock Formation, Pebbles and Cliff Strata, traced
-  Behavior outputs when actually published, and local typed Flow/UV Output
-  References. Nested/group-authored placements and child instances use the same
+  Behavior outputs when actually published, Feather beneath Noise or Flow Field,
+  and local typed Flow/UV Output References. Feather publishes its existing filtered
+  result as typed `FlowDirection` under its own child identity, without changing
+  the parent's publication. Noise Feather uses filtered GeneratedFlow when that
+  contribution is published, otherwise filtered FlowDirection; Flow Field Feather
+  uses its parent's filtered FlowDirection. These are stage-specific snapshots:
+  editing Feather updates its active E diagnostic even after another row is selected.
+  Height-only Feather beneath other behaviors is not a Flow source and is rejected
+  by the resolver. No Flow is synthesized for it. Nested/group-authored placements
+  and child instances use the same
   resolver. Sources shelf rows, unpublished operations and generic Vector2 outputs
   remain unsupported directly; no placeholder field is created for them.
 - The compositor demands the exact field before prefix-cache restoration, resolves
@@ -126,8 +134,12 @@ inspection has been performed.
   should not be assumed to be a universal validity mask. For two-channel UVMap
   textures only RG has a semantic contract.
 - Material bindings: `DA_DiagnosticFlow` is the raw texture and
-  `DA_DiagnosticMode` is **0 = existing scalar coverage, 1 = relative Flow,
-  2 = absolute UVMap**. `DA_DiagnosticUvBuffer`, `DA_DiagnosticField` and
+  `DA_DiagnosticMode` is **0 = mask/gate coverage, 1 = relative Flow,
+  2 = absolute UVMap, 3 = published scalar diagnostic**. W selects mode 3 for
+  typed Scalar01/ScalarSigned outputs on non-coverage children (Noise Value,
+  Behavior Influence and scalar features); coverage producers and aggregate
+  layer masks remain mode 0. This presentation flag is derived by the existing
+  resolver and participates in completed-target matching, not separate ownership. `DA_DiagnosticUvBuffer`, `DA_DiagnosticField` and
   `DA_DiagnosticOpacity` keep their names and mask behavior. During E,
   `DA_DiagnosticField.R` is field availability (1 for a successfully exported
   field, otherwise 0), not a Flow visualization or per-texel Flow validity.
@@ -160,7 +172,11 @@ or regenerate this material or any `.uasset`.
    existing nearest/non-tiled sampling; do not add tiling to the capture buffer.
    Wrap applies to **field lookup addresses**, never to sampled Flow RG values.
 3. Add **Scalar Parameter `DA_DiagnosticMode`**, default **0**. Branch your own
-   material logic on 0/1/2 as above. Mode 0 must retain the existing mask graph.
+   material logic on 0/1/2/3 as above. Mode 0 must retain the existing mask graph.
+      Mode 3 reads `DA_DiagnosticField.R`, using the same captured mesh UVs. Its data
+      keeps the existing scalar export convention: Scalar01 unchanged, ScalarSigned
+      mapped with `saturate(0.5 * Value + 0.5)`. It is not raw signed scalar data.
+      Author the scalar visualization separately; do not route mode 3 to Flow.
 4. Read raw **RG** from `DA_DiagnosticFlow` for all your visual design. Do not put
    Normalize, Frac or Saturate on RG unless you intentionally want that operation.
 5. Retain mesh-validity gating **`DA_DiagnosticUvBuffer.B >= 0.5`**, existing

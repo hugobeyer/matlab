@@ -44,7 +44,7 @@ namespace
 	const FName FlowName(TEXT("DA_DiagnosticFlow"));
 	const FName ModeName(TEXT("DA_DiagnosticMode"));
 	// Material parameter contract; values must match the documented artist-authored graph.
-	enum class EDiagnosticDataMode : uint8 { Coverage = 0, RelativeFlow = 1, AbsoluteUV = 2 };
+	enum class EDiagnosticDataMode : uint8 { Coverage = 0, RelativeFlow = 1, AbsoluteUV = 2, Scalar = 3 };
 	const FName OpacityName(TEXT("DA_DiagnosticOpacity"));
 	const FName HeightName(TEXT("DA_Height"));
 	const FName UseHeightName(TEXT("DA_UseHeight"));
@@ -220,7 +220,8 @@ void FMixtormatViewportMaskPostFx::Update(
 	const float DisplacementAmount,
 	const float OverlayOpacity,
 	UTextureRenderTarget2D* FlowField,
-	const EMixtormatPreviewOutputKind OutputKind)
+	const EMixtormatPreviewOutputKind OutputKind,
+	const bool bScalarDiagnostic)
 {
 	if (!MaskField || !HeightField || !PreviewMesh.GetStaticMesh()
 		|| ViewSize.X <= 0 || ViewSize.Y <= 0 || !EnsureResources(MaskField))
@@ -252,7 +253,8 @@ void FMixtormatViewportMaskPostFx::Update(
 	BlendInstance->SetTextureParameterValue(FlowName, FlowField);
 	const EDiagnosticDataMode Mode = OutputKind == EMixtormatPreviewOutputKind::WarpedUVGrid
 		? EDiagnosticDataMode::AbsoluteUV : OutputKind == EMixtormatPreviewOutputKind::FlowDirection
-			? EDiagnosticDataMode::RelativeFlow : EDiagnosticDataMode::Coverage;
+			? EDiagnosticDataMode::RelativeFlow : bScalarDiagnostic
+				? EDiagnosticDataMode::Scalar : EDiagnosticDataMode::Coverage;
 	BlendInstance->SetScalarParameterValue(ModeName, static_cast<float>(Mode));
 	BlendInstance->SetScalarParameterValue(OpacityName, OverlayOpacity);
 	// PreviewScene worlds are not guaranteed to tick capture components on their

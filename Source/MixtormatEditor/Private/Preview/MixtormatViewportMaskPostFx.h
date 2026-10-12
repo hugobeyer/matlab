@@ -35,7 +35,8 @@ public:
 		float DisplacementAmount,
 		float OverlayOpacity,
 		UTextureRenderTarget2D* FlowField,
-		EMixtormatPreviewOutputKind OutputKind);
+		EMixtormatPreviewOutputKind OutputKind,
+		bool bScalarDiagnostic);
 	void Disable();
 	UMaterialInstanceDynamic* GetBlendInstance() const { return bReady ? BlendInstance.Get() : nullptr; }
 
