@@ -319,6 +319,10 @@ public:
 		: FEditorViewportClient(nullptr, &InPreviewScene, InViewport)
 		, Owner(InOwner)
 	{
+		// Mixtormat owns orbit, pan and lighting movement explicitly. The
+		// inherited flight camera otherwise polls WASD while mouse buttons
+		// are held and translates independently of InputKey handling.
+		bLockFlightCamera = true;
 	}
 
 	virtual FLinearColor GetBackgroundColor() const override
@@ -422,22 +426,35 @@ public:
 			Owner.ToggleDisplacement();
 			return true;
 		}
-		// Our viewport has orbit/pan/light controls, not the editor's RMB flight camera.
-		// Consume WASD while RMB is held so the inherited viewport client cannot
-		// move the camera and W cannot toggle a diagnostic during lighting rotation.
-		if (EventArgs.Viewport
-			&& EventArgs.Viewport->KeyState(EKeys::RightMouseButton)
-			&& (EventArgs.Key == EKeys::W || EventArgs.Key == EKeys::A
-				|| EventArgs.Key == EKeys::S || EventArgs.Key == EKeys::D))
+		const bool bNavigationKey = EventArgs.Key == EKeys::W
+			|| EventArgs.Key == EKeys::A || EventArgs.Key == EKeys::S
+			|| EventArgs.Key == EKeys::D;
+		const bool bMouseGesture = EventArgs.Viewport
+			&& (EventArgs.Viewport->KeyState(EKeys::LeftMouseButton)
+				|| EventArgs.Viewport->KeyState(EKeys::MiddleMouseButton)
+				|| EventArgs.Viewport->KeyState(EKeys::RightMouseButton));
+		// Mouse gestures own the camera/light; no WASD shortcuts during a drag.
+		if (bNavigationKey && bMouseGesture)
 		{
 			return true;
 		}
-		// W applies only when the focused viewport is not in RMB light-rotation mode.
-		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::W
-			&& !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
+		// W is an overlay toggle, never forward motion. A/S/D have no Mixtormat
+		// viewport action and must not fall through to the editor flight camera.
+		if (!IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
-			Owner.ToggleMaskOverlay();
-			return true;
+			if (EventArgs.Key == EKeys::W)
+			{
+				if (EventArgs.Event == IE_Pressed)
+				{
+					Owner.ToggleMaskOverlay();
+				}
+				return true;
+			}
+			if (EventArgs.Key == EKeys::A || EventArgs.Key == EKeys::S
+				|| EventArgs.Key == EKeys::D)
+			{
+				return true;
+			}
 		}
 		// V always returns to the untouched lit material. Other overlays use
 		// independent hotkeys; former M/U and V cycling no longer intercept keys.
