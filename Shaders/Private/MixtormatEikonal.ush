@@ -21,3 +21,10 @@ float MixtormatEikonalStep(float Self, float L, float R, float D, float U,
     return MixtormatEikonalStepDirectional(Self, L, R, D, U, NW, NE, SW, SE, Texel,
         Cost, Cost, Cost, Cost, Cost, Cost, Cost, Cost);
 }
+
+// Signed slope envelopes: x is the lowest permitted height, y the highest.
+// A pass can only lower the first envelope or raise the second.
+float2 MixtormatEikonalEnvelopeStep(float2 Self, float2 Neighbor, float Cost)
+{
+    return float2(min(Self.x, Neighbor.x + Cost), max(Self.y, Neighbor.y - Cost));
+}

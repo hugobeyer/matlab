@@ -646,7 +646,7 @@ class FMixtormatBehaviorFeatherCS final : public FGlobalShader
 public:
     DECLARE_GLOBAL_SHADER(FMixtormatBehaviorFeatherCS);
     SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorFeatherCS, FGlobalShader);
-    class FStage : SHADER_PERMUTATION_INT("FEATHER_STAGE", 4);
+    class FStage : SHADER_PERMUTATION_INT("FEATHER_STAGE", 8);
     using FPermutationDomain = TShaderPermutationDomain<FStage>;
     BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
         SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -664,9 +664,12 @@ public:
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MaskField)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, FeatherEnvelope)
+        SHADER_PARAMETER(int32, FeatherJump)
         SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutArrival)
+        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutFeatherEnvelope)
     END_SHADER_PARAMETER_STRUCT()
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
@@ -1788,16 +1791,14 @@ namespace
 			&& Boundary->Desc.Format == PF_G32R32F;
 		const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8),
 			FMath::DivideAndRoundUp(Size.Y, 8), 1);
-		const auto Make = [&Graph, Size](const TCHAR* Name)
+		const auto Make = [&Graph, Size](const TCHAR* Name, EPixelFormat Format)
 		{
-			return Graph.CreateTexture(FRDGTextureDesc::Create2D(Size, PF_R32_FLOAT,
+			return Graph.CreateTexture(FRDGTextureDesc::Create2D(Size, Format,
 				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
 		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
-		FRDGTextureRef Arrival[2] = {nullptr, nullptr};
-		int32 Read = 0;
 		const auto Dispatch = [&](const int32 Stage, FRDGTextureRef Output,
-			FRDGTextureRef InputArrival)
+			FRDGTextureRef InputEnvelope, const int32 Jump)
 		{
 			FMixtormatBehaviorFeatherCS::FPermutationDomain Permutation;
 			Permutation.Set<FMixtormatBehaviorFeatherCS::FStage>(Stage);
@@ -1814,29 +1815,55 @@ namespace
 			P->SourceHeight = Height;
 			P->BoundaryField = bBoundary ? Boundary : Ctx.EmptyPatternUV;
 			P->MaskField = bHasMask && Mask ? Mask : Ctx.EmptyDriverSignal;
-			P->Arrival = InputArrival ? InputArrival : Ctx.EmptyDriverSignal;
+			P->Arrival = Ctx.EmptyDriverSignal;
+			P->FeatherEnvelope = InputEnvelope ? InputEnvelope : Ctx.EmptyPatternUV;
+			P->FeatherJump = Jump;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			if (Stage == 0 || Stage == 3) { P->OutHeight = Graph.CreateUAV(Output); }
-			else { P->OutArrival = Graph.CreateUAV(Output); }
+			if (Stage == 0 || Stage == 7) { P->OutHeight = Graph.CreateUAV(Output); }
+			else { P->OutFeatherEnvelope = Graph.CreateUAV(Output); }
 			ClearUnusedGraphResources(Shader, P);
+			const FIntVector DispatchGroups = Stage == 4
+				? FIntVector(FMath::DivideAndRoundUp(Size.Y, 64), 1, 1)
+				: Stage == 5
+					? FIntVector(FMath::DivideAndRoundUp(Size.X, 64), 1, 1)
+					: Groups;
 			FComputeShaderUtils::AddPass(Graph,
 				RDG_EVENT_NAME("Mixtormat.Feather.L%d.C%d.Stage%d", LayerIndex, ChildIndex, Stage),
-				Shader, P, Groups);
+				Shader, P, DispatchGroups);
 		};
-		if (bEikonal)
+		FRDGTextureRef Out = Make(TEXT("Mixtormat.Feather.NativeHeight"), PF_R32_FLOAT);
+		if (!bEikonal)
 		{
-			Arrival[0] = Make(TEXT("Mixtormat.Feather.ArrivalA"));
-			Arrival[1] = Make(TEXT("Mixtormat.Feather.ArrivalB"));
-			Dispatch(1, Arrival[0], nullptr);
-			const int32 Iterations = ResolveFeatherIterations(Behavior.FeatherIterations);
-			for (int32 Pass = 0; Pass < Iterations; ++Pass)
-			{
-				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
-				Read = 1 - Read;
-			}
+			Dispatch(0, Out, nullptr, 0);
+			return Out;
 		}
-		FRDGTextureRef Out = Make(TEXT("Mixtormat.Feather.NativeHeight"));
-		Dispatch(bEikonal ? 3 : 0, Out, bEikonal ? Arrival[Read] : nullptr);
+		// A complete pair of cyclic line sweeps covers the entire wrapped tile.
+		// Diagonal jump refinements improve the Euclidean slope without an O(radius)
+		// Jacobi chain. The authored iteration budget controls refinement quality.
+		FRDGTextureRef Envelope[2] = {
+			Make(TEXT("Mixtormat.Feather.EnvelopeA"), PF_G32R32F),
+			Make(TEXT("Mixtormat.Feather.EnvelopeB"), PF_G32R32F)
+		};
+		Dispatch(4, Envelope[0], nullptr, 0);
+		Dispatch(5, Envelope[1], Envelope[0], 0);
+		int32 Read = 1;
+		const int32 Budget = ResolveFeatherIterations(Behavior.FeatherIterations);
+		const int32 MaxJump = FMath::Max(1, FMath::Min(
+			FMath::CeilToInt(Behavior.FeatherRadius), FMath::Max(Size.X, Size.Y) / 2));
+		int32 Jump = 1;
+		while (Jump <= MaxJump / 2) { Jump *= 2; }
+		int32 Corrections = 0;
+		for (; Jump >= 1 && Corrections < Budget; Jump /= 2, ++Corrections)
+		{
+			Dispatch(6, Envelope[1 - Read], Envelope[Read], Jump);
+			Read = 1 - Read;
+		}
+		for (int32 I = 0; I < FMath::Min(Budget - Corrections, 2); ++I)
+		{
+			Dispatch(6, Envelope[1 - Read], Envelope[Read], 1);
+			Read = 1 - Read;
+		}
+		Dispatch(7, Out, Envelope[Read], 0);
 		return Out;
 	}
 

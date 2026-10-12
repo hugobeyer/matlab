@@ -22,6 +22,9 @@ Texture2D<float> Arrival;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutHeight;
 RWTexture2D<float> OutArrival;
+Texture2D<float2> FeatherEnvelope;
+RWTexture2D<float2> OutFeatherEnvelope;
+int FeatherJump;
 
 int2 WrapFeather(int2 P)
 {
@@ -55,9 +58,84 @@ float BlurHeight(float2 UV)
     return Sum * (1.0f / 256.0f);
 }
 
+// Each lane sweeps a full wrapped row or column; the opposite-direction passes
+// make propagation independent of the tile width rather than iteration-limited.
+#if FEATHER_STAGE == 4 || FEATHER_STAGE == 5
+[numthreads(64, 1, 1)]
+#else
 [numthreads(8, 8, 1)]
+#endif
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
+#if FEATHER_STAGE == 4 || FEATHER_STAGE == 5
+    const int Lane = int(DispatchThreadId.x);
+#if FEATHER_STAGE == 4
+    if (Lane >= OutputSize.y) { return; }
+    const int Count = OutputSize.x;
+#else
+    if (Lane >= OutputSize.x) { return; }
+    const int Count = OutputSize.y;
+#endif
+    const float Bias = clamp(DirectionBias, -1.0f, 1.0f) * 0.75f;
+    const float Slope = rcp(max(Radius, 1.0e-4f));
+#if FEATHER_STAGE == 4
+    const float ForwardCost = Slope * (1.0f + Bias);
+    const float ReverseCost = Slope * (1.0f - Bias);
+#else
+    const float ForwardCost = Slope;
+    const float ReverseCost = Slope;
+#endif
+    float2 Running = 0.0f;
+    [loop]
+    for (int I = 0; I < Count; ++I)
+    {
+#if FEATHER_STAGE == 4
+        const int2 Q = int2(I, Lane);
+        const float H = SourceHeight.Load(int3(Q, 0));
+        const float V = isfinite(H) ? H : 0.0f;
+        const float2 Original = float2(V, V);
+#else
+        const int2 Q = int2(Lane, I);
+        const float2 Original = FeatherEnvelope.Load(int3(Q, 0));
+#endif
+        Running = I == 0 ? Original : MixtormatEikonalEnvelopeStep(Original, Running, ForwardCost);
+        OutFeatherEnvelope[Q] = Running;
+    }
+
+    // Seed from the opposite edge to propagate across the periodic seam.
+#if FEATHER_STAGE == 4
+    Running = OutFeatherEnvelope[int2(0, Lane)];
+#else
+    Running = OutFeatherEnvelope[int2(Lane, 0)];
+#endif
+    [loop]
+    for (int I = Count - 1; I >= 0; --I)
+    {
+#if FEATHER_STAGE == 4
+        const int2 Q = int2(I, Lane);
+#else
+        const int2 Q = int2(Lane, I);
+#endif
+        Running = MixtormatEikonalEnvelopeStep(OutFeatherEnvelope[Q], Running, ReverseCost);
+        OutFeatherEnvelope[Q] = Running;
+    }
+#if FEATHER_STAGE == 4
+    Running = OutFeatherEnvelope[int2(Count - 1, Lane)];
+#else
+    Running = OutFeatherEnvelope[int2(Lane, Count - 1)];
+#endif
+    [loop]
+    for (int I = 0; I < Count; ++I)
+    {
+#if FEATHER_STAGE == 4
+        const int2 Q = int2(I, Lane);
+#else
+        const int2 Q = int2(Lane, I);
+#endif
+        Running = MixtormatEikonalEnvelopeStep(OutFeatherEnvelope[Q], Running, ForwardCost);
+        OutFeatherEnvelope[Q] = Running;
+    }
+#else
     const int2 P = int2(DispatchThreadId.xy);
     if (any(P >= OutputSize)) { return; }
 
@@ -119,5 +197,44 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     OutArrival[P] = MixtormatEikonalStepDirectional(Center, L, R, D, U, NW, NE, SW, SE,
         float2(1.0f, 1.0f), CostL, CostR, 1.0f, 1.0f,
         CostL, CostR, CostL, CostR);
+#elif FEATHER_STAGE == 6
+    float2 Envelope = FeatherEnvelope.Load(int3(P, 0));
+    const float Slope = rcp(max(Radius, 1.0e-4f));
+    const float Bias = clamp(DirectionBias, -1.0f, 1.0f) * 0.75f;
+    [unroll]
+    for (int Y = -1; Y <= 1; ++Y)
+    {
+        [unroll]
+        for (int X = -1; X <= 1; ++X)
+        {
+            if (X == 0 && Y == 0) { continue; }
+            const int2 Q = WrapFeather(P + int2(X, Y) * FeatherJump);
+            const float2 Other = FeatherEnvelope.Load(int3(Q, 0));
+            const float HorizontalBias = X < 0 ? 1.0f + Bias : X > 0 ? 1.0f - Bias : 1.0f;
+            const float Cost = length(float2(X, Y)) * float(FeatherJump) * Slope * HorizontalBias;
+            Envelope = MixtormatEikonalEnvelopeStep(Envelope, Other, Cost);
+        }
+    }
+    OutFeatherEnvelope[P] = Envelope;
+#elif FEATHER_STAGE == 7
+    const float H = SourceHeight.Load(int3(P, 0));
+    if (!isfinite(H)) { OutHeight[P] = 0.0f; return; }
+    const float M = HasMask != 0u ? MaskField.Load(int3(P, 0)) : 1.0f;
+    const float Driven = MixtormatApplyDriver(Strength,
+        BehaviorDriverSignal0.Load(int3(P, 0)),
+        BehaviorDriverParamsA[0], BehaviorDriverParamsB[0]);
+    const float2 Bounds = FeatherEnvelope.Load(int3(P, 0));
+    const float2 Boundary = HasBoundary != 0u
+        ? BoundaryField.Load(int3(P, 0)) : float2(H, 1.0f);
+    float Weight = isfinite(M) && isfinite(Driven) && all(isfinite(Bounds))
+        && all(isfinite(Boundary)) && (HasBoundary == 0u || Boundary.y > 0.5f)
+        ? Driven * saturate(M) : 0.0f;
+    if (Side == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
+    if (Side == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
+    // The mean of the high-to-low and low-to-high slope envelopes bevels a
+    // hard edge without moving the entire feature as a broad Gaussian does.
+    const float Feathered = 0.5f * (Bounds.x + Bounds.y);
+    OutHeight[P] = Weight != 0.0f ? lerp(H, Feathered, Weight) : H;
+#endif
 #endif
 }
