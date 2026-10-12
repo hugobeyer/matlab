@@ -383,6 +383,7 @@ namespace MixtormatGpuCompositor
 				// targets actually exist.
 				TSharedPtr<FMixtormatPrefixCache::FEntry, ESPMode::ThreadSafe> PendingSnapshot;
 				FRDGTextureRef RawDiagnosticFlow = nullptr;
+				FRDGTextureRef DiagnosticColor = nullptr;
 				{
 				RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatCompose, "Mixtormat.Compose");
 				TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
@@ -433,6 +434,14 @@ namespace MixtormatGpuCompositor
 					RawDiagnosticFlow = RegisterTexture(GraphBuilder, RegisteredTextures, FlowRhi,
 						TEXT("Mixtormat.Diagnostic.RawFlow"));
 					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RawDiagnosticFlow), FLinearColor::Black);
+				}
+
+				if (Request.Targets->DiagnosticColor)
+				{
+					const FTextureRHIRef ColorRhi = Request.Targets->DiagnosticColor->GetRenderTargetTexture();
+					if (!ColorRhi.IsValid()) { return; }
+					DiagnosticColor = RegisterTexture(GraphBuilder, RegisteredTextures, ColorRhi,
+						TEXT("Mixtormat.Diagnostic.Color"));
 				}
 
 				AddClearUAVPass(
@@ -1442,6 +1451,13 @@ namespace MixtormatGpuCompositor
 							}
 							AddRawFlowOverlayPass(GraphBuilder, FlowSource, RawDiagnosticFlow,
 								Request.Resolution, Request.bRotateOutput90);
+							if (DiagnosticColor)
+							{
+								// Evaluate BEFORE any raw-coordinate resampling: UV winding belongs to producer texels.
+								AddDiagnosticColorPass(GraphBuilder, Field->Texture, DiagnosticColor,
+									Request.Resolution, ExpectedKind == EMixtormatPublishedFieldKind::UVMap,
+									Request.bRotateOutput90);
+							}
 							Request.Targets->bDiagnosticFlowPublished = true;
 							bLoggedFlowUnavailable = false;
 						}
@@ -1538,6 +1554,10 @@ namespace MixtormatGpuCompositor
 				if (RawDiagnosticFlow)
 				{
 					GraphBuilder.SetTextureAccessFinal(RawDiagnosticFlow, ERHIAccess::SRVMask);
+				}
+				if (DiagnosticColor)
+				{
+					GraphBuilder.SetTextureAccessFinal(DiagnosticColor, ERHIAccess::SRVMask);
 				}
 				GraphBuilder.Execute();
 				Request.Targets->bSucceeded = true;

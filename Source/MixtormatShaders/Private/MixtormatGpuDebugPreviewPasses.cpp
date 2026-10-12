@@ -2,12 +2,13 @@
 
 #include "MixtormatGpuCompositorInternal.h"
 
+#include "GenerateMips.h"
 #include "GlobalShader.h"
 #include "RenderGraphUtils.h"
 #include "ShaderParameterStruct.h"
 
-// Legacy IDs/SDF/colour previews remain here. Mask/scalar/Flow/Vector2 diagnostics
-// export data only; their visualization belongs exclusively to viewport PostFX.
+// Mask/scalar and raw Flow exports remain data-only. Flow/UV display color is
+// evaluated separately and mip-filtered before the viewport PostFX composites it.
 
 class FMixtormatDebugPreviewSignedDistanceCS final : public FGlobalShader
 {
@@ -181,8 +182,59 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatDiagnosticResampleCS,
 	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainDiagnosticResampleCS", SF_Compute);
 
+class FMixtormatDiagnosticColorCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatDiagnosticColorCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatDiagnosticColorCS, FGlobalShader);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, DiagnosticColorSourceSize)
+		SHADER_PARAMETER(uint32, DiagnosticColorIsUVMap)
+		SHADER_PARAMETER(uint32, DiagnosticColorRotate90)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, DiagnosticColorSource)
+		SHADER_PARAMETER_SAMPLER(SamplerState, DiagnosticColorSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, DiagnosticColorOutput)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatDiagnosticColorCS,
+	"/Plugin/Mixtormat/Private/MixtormatDebugPreviewBlit.usf", "MainDiagnosticColorCS", SF_Compute);
+
 namespace MixtormatGpuCompositor
 {
+	void AddDiagnosticColorPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
+		const FRDGTextureRef Output, const FIntPoint Resolution, const bool bUVMap,
+		const bool bRotateOutput90)
+	{
+		auto* Parameters = GraphBuilder.AllocParameters<FMixtormatDiagnosticColorCS::FParameters>();
+		Parameters->OutputSize = Resolution;
+		Parameters->DiagnosticColorSourceSize = Source->Desc.Extent;
+		Parameters->DiagnosticColorIsUVMap = bUVMap ? 1u : 0u;
+		Parameters->DiagnosticColorRotate90 = bRotateOutput90 ? 1u : 0u;
+		Parameters->DiagnosticColorSource = Source;
+		Parameters->DiagnosticColorSampler =
+			TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		Parameters->DiagnosticColorOutput = GraphBuilder.CreateUAV(Output);
+		TShaderMapRef<FMixtormatDiagnosticColorCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Diagnostic.Color"),
+			Shader, Parameters, FIntVector(FMath::DivideAndRoundUp(Resolution.X, 8),
+				FMath::DivideAndRoundUp(Resolution.Y, 8), 1));
+		// The UAV write is outside the render target's automatic update path. Explicitly
+		// schedule every color mip AFTER it; never generate mips for raw coordinate data.
+		if (Output->Desc.NumMips > 1)
+		{
+			FGenerateMips::ExecuteCompute(GraphBuilder, GMaxRHIFeatureLevel, Output,
+				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI());
+		}
+	}
+
 	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, const FRDGTextureRef Source,
 		const FRDGTextureRef Output, const FIntPoint Resolution, const bool bRotateOutput90)
 	{

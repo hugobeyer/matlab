@@ -41,8 +41,10 @@ struct FMixtormatComposeResources
 	FTextureRenderTargetResource* Debug[2] = {};
 	FTextureRenderTargetResource* RegionIdPick[2] = {};
 	FTextureRenderTargetResource* DiagnosticFlow = nullptr;
+	FTextureRenderTargetResource* DiagnosticColor = nullptr;
 	// Kept alive by Pins, including when compositor targets are resized.
 	UTextureRenderTarget2D* DiagnosticFlowTexture = nullptr;
+	UTextureRenderTarget2D* DiagnosticColorTexture = nullptr;
 	UTextureRenderTarget2D* DiagnosticFieldTexture = nullptr;
 	FMixtormatChildPreviewTarget DiagnosticTarget;
 	// Read on the game thread only after the compose's InFlight release/acquire handoff.
@@ -2134,6 +2136,10 @@ namespace MixtormatGpuCompositor
 	// Lossless data export only: no normalization, wrapping of values or artistic encoding.
 	void AddRawFlowOverlayPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
 		FRDGTextureRef Output, FIntPoint Resolution, bool bRotateOutput90);
+
+	// Evaluate the original producer field into premultiplied display color, then filter color mips.
+	void AddDiagnosticColorPass(FRDGBuilder& GraphBuilder, FRDGTextureRef Source,
+		FRDGTextureRef Output, FIntPoint Resolution, bool bUVMap, bool bRotateOutput90);
 
 	// Bilinear resample of a diagnostic field whose producer resolution differs from the
 	// composition's. Returns the resampled texture at Resolution; callers keep the exact

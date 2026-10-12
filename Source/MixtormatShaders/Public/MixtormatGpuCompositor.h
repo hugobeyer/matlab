@@ -193,6 +193,8 @@ public:
 	UTextureRenderTarget2D* GetDebugOutput() const;
 	// Raw typed Flow/UV snapshot for the requested overlay owner, never another source's pixels.
 	UTextureRenderTarget2D* GetDiagnosticFlowOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
+	// Filtered linear premultiplied color/coverage for the same completed Flow/UV owner.
+	UTextureRenderTarget2D* GetDiagnosticColorOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 		UTextureRenderTarget2D* GetDiagnosticFieldOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
 	// The raw Region IDs behind the current Region IDs preview, one float per pixel, -1 where no
 	// region covers it. Written only while such a preview is up, and cleared to -1 otherwise, so
@@ -229,6 +231,8 @@ private:
 	FTargetSet Targets[2];
 	// Allocated only for raw Flow/UV diagnostics; float32 preserves published RG exactly.
 	TStrongObjectPtr<UTextureRenderTarget2D> DiagnosticFlowOutput;
+	// Display-only color mip chain; never replaces the raw published field.
+	TStrongObjectPtr<UTextureRenderTarget2D> DiagnosticColorOutput;
 
 	// Cache of generated networks keyed on the parameters that shape them. Growing one is by a wide
 	// margin the most expensive thing in the graph, and almost nothing a user touches while

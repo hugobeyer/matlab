@@ -12,6 +12,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Components/StaticMeshComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionAppendVector.h"
 #include "Materials/MaterialExpressionClamp.h"
 #include "Materials/MaterialExpressionComponentMask.h"
@@ -46,6 +47,7 @@ namespace
 	const FName UvBufferName(TEXT("DA_DiagnosticUvBuffer"));
 	const FName FieldName(TEXT("DA_DiagnosticField"));
 	const FName FlowName(TEXT("DA_DiagnosticFlow"));
+	const FName ColorName(TEXT("DA_DiagnosticColor"));
 	const FName ModeName(TEXT("DA_DiagnosticMode"));
 	// Material parameter contract; values must match the documented artist-authored graph.
 	enum class EDiagnosticDataMode : uint8 { Mask = 0, Flow = 1, ReservedIds = 3 };
@@ -128,10 +130,10 @@ namespace
 	}
 
 	// Self-contained fallback for the artist-authored material: the same parameter contract
-	// (DA_DiagnosticUvBuffer / DA_DiagnosticField / DA_DiagnosticFlow / DA_DiagnosticMode /
+	// (DA_DiagnosticUvBuffer / DA_DiagnosticField / DA_DiagnosticColor / DA_DiagnosticMode /
 	// DA_DiagnosticOpacity, PostProcessInput0 compositing) built from material expressions, so
-	// W/E work with no /Game/ asset present. Mode 0 shows mask/scalar coverage from
-	// DA_DiagnosticField.R; mode 1 passes raw Flow/UV RG through unchanged. Mode 3 is reserved for IDs.
+	// W/E work with no /Game/ asset present. Mode 0 retains mask/scalar coverage;
+	// mode 1 composites code-generated premultiplied Flow/UV color. Raw Flow stays bound for overrides.
 	UMaterial* MakeDefaultPostMaterial(UTextureRenderTarget2D* FieldDefault)
 	{
 		UMaterial* Material = NewObject<UMaterial>(
@@ -150,9 +152,11 @@ namespace
 		auto* FieldSample = AddSample(Material, FieldName, FieldDefault);
 		FieldSample->Coordinates.Connect(0, UvSample);
 
-		auto* FlowSample = AddSample(Material, FlowName, nullptr);
-		FlowSample->SamplerSource = SSM_Wrap_WorldGroupSettings;
-		FlowSample->Coordinates.Connect(0, UvSample);
+		auto* ColorSample = AddSample(Material, ColorName, FieldDefault);
+		// Use the target's trilinear wrap sampler and implicit mesh-UV derivatives.
+		// A forced mip-zero sample would defeat the color mip chain.
+		ColorSample->SamplerSource = SSM_FromTextureAsset;
+		ColorSample->Coordinates.Connect(0, UvSample);
 
 		auto* Mode = AddNode<UMaterialExpressionScalarParameter>(Material);
 		Mode->ParameterName = ModeName;
@@ -162,23 +166,26 @@ namespace
 		auto* FlowWeight = AddNode<UMaterialExpressionClamp>(Material);
 		FlowWeight->Input.Connect(0, Mode);
 
-		// Coverage ink: a single dark red for mask/scalar modes, raw RG for Flow/UV modes.
+		// Mask ink is opaque; Flow/UV RGB is already premultiplied by its own coverage.
 		auto* InkColour = AddNode<UMaterialExpressionConstant3Vector>(Material);
 		InkColour->Constant = FLinearColor(0.5f, 0.05f, 0.05f, 1.0f);
-		auto* FlowRg = AddNode<UMaterialExpressionComponentMask>(Material);
-		FlowRg->Input.Connect(0, FlowSample);
-		FlowRg->R = true;
-		FlowRg->G = true;
-		FlowRg->B = false;
-		FlowRg->A = false;
+		auto* ColorRgb = AddNode<UMaterialExpressionComponentMask>(Material);
+		ColorRgb->Input.Connect(0, ColorSample);
+		ColorRgb->R = true;
+		ColorRgb->G = true;
+		ColorRgb->B = true;
+		ColorRgb->A = false;
+		auto* ColorCoverage = AddNode<UMaterialExpressionComponentMask>(Material);
+		ColorCoverage->Input.Connect(0, ColorSample);
+		ColorCoverage->R = false;
+		ColorCoverage->G = false;
+		ColorCoverage->B = false;
+		ColorCoverage->A = true;
 		auto* Zero = AddNode<UMaterialExpressionConstant>(Material);
 		Zero->R = 0.0f;
-		auto* FlowRgb = AddNode<UMaterialExpressionAppendVector>(Material);
-		FlowRgb->A.Connect(0, FlowRg);
-		FlowRgb->B.Connect(0, Zero);
 		auto* Ink = AddNode<UMaterialExpressionLinearInterpolate>(Material);
 		Ink->A.Connect(0, InkColour);
-		Ink->B.Connect(0, FlowRgb);
+		Ink->B.Connect(0, ColorRgb);
 		Ink->Alpha.Connect(0, FlowWeight);
 
 		// Alpha = Opacity * Field.R * (UvBuffer.B >= 0.5), the documented contract.
@@ -217,10 +224,23 @@ namespace
 		auto* SceneColor = AddNode<UMaterialExpressionSceneTexture>(Material);
 		SceneColor->SceneTextureId = PPI_PostProcessInput0;
 		SceneColor->Coordinates.Connect(0, ScreenUV);
-		auto* Final = AddNode<UMaterialExpressionLinearInterpolate>(Material);
-		Final->A.Connect(0, SceneColor);
-		Final->B.Connect(0, Ink);
-		Final->Alpha.Connect(0, Alpha);
+		auto* InkCoverage = AddNode<UMaterialExpressionLinearInterpolate>(Material);
+		InkCoverage->A.Connect(0, One);
+		InkCoverage->B.Connect(0, ColorCoverage);
+		InkCoverage->Alpha.Connect(0, FlowWeight);
+		auto* FinalAlpha = AddNode<UMaterialExpressionMultiply>(Material);
+		FinalAlpha->A.Connect(0, Alpha);
+		FinalAlpha->B.Connect(0, InkCoverage);
+		auto* Background = AddNode<UMaterialExpressionLinearInterpolate>(Material);
+		Background->A.Connect(0, SceneColor);
+		Background->B.Connect(0, Zero);
+		Background->Alpha.Connect(0, FinalAlpha);
+		auto* Foreground = AddNode<UMaterialExpressionMultiply>(Material);
+		Foreground->A.Connect(0, Ink);
+		Foreground->B.Connect(0, Alpha);
+		auto* Final = AddNode<UMaterialExpressionAdd>(Material);
+		Final->A.Connect(0, Background);
+		Final->B.Connect(0, Foreground);
 		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Final);
 		Material->PostEditChange();
 		return Material;
@@ -334,6 +354,7 @@ void FMixtormatViewportMaskPostFx::Update(
 	const float DisplacementAmount,
 	const float OverlayOpacity,
 	UTextureRenderTarget2D* FlowField,
+	UTextureRenderTarget2D* DiagnosticColor,
 	const EMixtormatPreviewOutputKind OutputKind)
 {
 	if (!MaskField || !HeightField || !PreviewMesh.GetStaticMesh()
@@ -364,6 +385,7 @@ void FMixtormatViewportMaskPostFx::Update(
 	BlendInstance->SetTextureParameterValue(UvBufferName, UvTarget.Get());
 	BlendInstance->SetTextureParameterValue(FieldName, MaskField);
 	BlendInstance->SetTextureParameterValue(FlowName, FlowField);
+	BlendInstance->SetTextureParameterValue(ColorName, DiagnosticColor);
 	const bool bFlow = OutputKind == EMixtormatPreviewOutputKind::FlowDirection
 		|| OutputKind == EMixtormatPreviewOutputKind::WarpedUVGrid;
 	const EDiagnosticDataMode Mode = bFlow ? EDiagnosticDataMode::Flow : EDiagnosticDataMode::Mask;

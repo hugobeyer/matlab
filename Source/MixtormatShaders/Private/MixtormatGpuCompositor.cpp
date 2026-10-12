@@ -456,13 +456,14 @@ namespace MixtormatGpuCompositor
 	static UTextureRenderTarget2D* CreateTarget(
 		const FIntPoint Resolution,
 		const FLinearColor ClearColor,
-		const EPixelFormat Format = PF_FloatRGBA)
+		const EPixelFormat Format = PF_FloatRGBA,
+		const bool bColorMips = false)
 	{
 		UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
 		Target->ClearColor = ClearColor;
 		Target->bCanCreateUAV = true;
-		Target->bAutoGenerateMips = false;
-		Target->Filter = TF_Bilinear;
+		Target->bAutoGenerateMips = bColorMips;
+		Target->Filter = bColorMips ? TF_Trilinear : TF_Bilinear;
 		Target->AddressX = TA_Wrap;
 		Target->AddressY = TA_Wrap;
 		Target->InitCustomFormat(Resolution.X, Resolution.Y, Format, true);
@@ -1341,6 +1342,7 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 
 	Resolution = InResolution;
 	DiagnosticFlowOutput.Reset();
+	DiagnosticColorOutput.Reset();
 	for (FTargetSet& Set : Targets)
 	{
 		Set.BaseColor.Reset(CreateTarget(Resolution, FLinearColor::Black));
@@ -1552,6 +1554,13 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Request.Targets->Pins.Emplace(DiagnosticFlowOutput.Get());
 		Request.Targets->DiagnosticFlow = DiagnosticFlowOutput->GameThread_GetRenderTargetResource();
 		Request.Targets->DiagnosticFlowTexture = DiagnosticFlowOutput.Get();
+		if (!DiagnosticColorOutput.IsValid())
+		{
+			DiagnosticColorOutput.Reset(CreateTarget(Resolution, FLinearColor::Transparent, PF_FloatRGBA, true));
+		}
+		Request.Targets->Pins.Emplace(DiagnosticColorOutput.Get());
+		Request.Targets->DiagnosticColor = DiagnosticColorOutput->GameThread_GetRenderTargetResource();
+		Request.Targets->DiagnosticColorTexture = DiagnosticColorOutput.Get();
 	}
 	for (int32 Index = 0; Index < 2; ++Index)
 	{
@@ -2106,6 +2115,19 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticFlowOutput(
 		return nullptr;
 	}
 	return CompletedDiagnosticOutputs->DiagnosticFlowTexture;
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticColorOutput(
+	const FMixtormatChildPreviewTarget& ExpectedTarget) const
+{
+	RefreshCompletedDiagnosticOutputs();
+	if (!CompletedDiagnosticOutputs.IsValid()
+		|| !CompletedDiagnosticOutputs->bDiagnosticFlowPublished
+		|| !(CompletedDiagnosticOutputs->DiagnosticTarget == ExpectedTarget))
+	{
+		return nullptr;
+	}
+	return CompletedDiagnosticOutputs->DiagnosticColorTexture;
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetDiagnosticFieldOutput(
