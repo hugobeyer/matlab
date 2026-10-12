@@ -32,9 +32,10 @@ tinting Base Color or creating a replacement lit material.
   material samples UVs to look up the selected mask field and alpha-blends
   its artist-authored color over `PostProcessInput0` after tonemapping, without
   changing the PBR master.
-- `W` toggles the overlay; `V` returns to the original material. RMB+WASD
-  events are consumed by the viewport rather than passed to the inherited fly
-  camera; the viewport client also restores its pre-tick view transform after
+- `W` toggles the overlay; `V` returns to the original material. W/E toggles work
+  during mouse drags, including RMB. Bare WASD events are consumed by the viewport
+  rather than passed to the inherited fly camera; the viewport client also restores
+  its pre-tick view transform after
   inherited editor Tick, since Unreal independently polls held WASD keys there.
   Mixtormat's explicit orbit/pan/zoom/focus remain the only camera controls,
   while RMB mouse drag still rotates the studio light.
@@ -94,9 +95,10 @@ inspection has been performed.
   or editing Write Flow no longer automatically activates the legacy unlit Flow
   replacement; E explicitly activates raw Flow PostFX. Existing V/Shift+V resets,
   channel cycling, explicit preview eyes and legacy debug blits are unchanged.
-- E is handled only by the existing viewport client, bare and with no mouse button
-  held. No workspace/global input processor is added. Mouse-gesture E is consumed
-  without activation; modified E keys retain their existing routing.
+- E is handled only by the existing viewport client, bare, including while mouse
+  buttons are held. W has the same mouse-independent activation. No workspace/global
+  input processor is added; modified keys retain their existing routing. Diagnostic
+  activation does not enable Unreal flight movement; orbit/pan/zoom remain unchanged.
 - Selection uses typed `GetChildCapabilities` outputs, not texture channel count.
   Prefer a primary `Flow` output, then the first declared `Flow`, then `UVMap`.
   Retain its exact name and preview kind for all later resolves. Noise with Write

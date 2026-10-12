@@ -451,27 +451,17 @@ public:
 			Owner.ToggleDisplacement();
 			return true;
 		}
-		const bool bNavigationKey = EventArgs.Key == EKeys::W
-			|| EventArgs.Key == EKeys::A || EventArgs.Key == EKeys::S
-			|| EventArgs.Key == EKeys::D;
-		const bool bMouseGesture = EventArgs.Viewport
-			&& (EventArgs.Viewport->KeyState(EKeys::LeftMouseButton)
-				|| EventArgs.Viewport->KeyState(EKeys::MiddleMouseButton)
-				|| EventArgs.Viewport->KeyState(EKeys::RightMouseButton));
-		// E shares W's viewport-only, bare-key, no-mouse-gesture protections.
+		// Diagnostic toggles remain viewport-only, but also work during mouse drags.
+		// Camera suppression is independent: Tick discards inherited flight movement.
 		if (EventArgs.Key == EKeys::E && !IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
 		{
-			if (!bMouseGesture && EventArgs.Event == IE_Pressed)
+			if (EventArgs.Event == IE_Pressed)
 			{
 				Owner.ToggleFlowOverlay();
 			}
 			return true;
 		}
-		// Mouse gestures own the camera/light; no WASD shortcuts during a drag.
-		if (bNavigationKey && bMouseGesture)
-		{
-			return true;
-		}
+
 		// W is an overlay toggle, never forward motion. A/S/D have no Mixtormat
 		// viewport action and must not fall through to the editor flight camera.
 		if (!IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed())
