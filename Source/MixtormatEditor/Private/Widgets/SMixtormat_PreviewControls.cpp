@@ -733,7 +733,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 	Buttons.Add(MakePreviewRailButton(
 		TAttribute<bool>::CreateLambda([this]() { return bGlobalUVRotation90; }),
 		TAttribute<bool>::CreateLambda([this]() { return bHasWorkingMaterial; }),
-		LOCTEXT("GlobalUVRotation90Hint", "Rotate the complete material UVs 90 degrees. All channels rotate together, including tangent-space normal direction."),
+		LOCTEXT("GlobalUVRotation90Hint", "Rotate the complete material UVs 90 degrees (5). All channels rotate together, including tangent-space normal direction."),
 		FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
 		{
 			SetGlobalUVRotation90(State == ECheckBoxState::Checked);
