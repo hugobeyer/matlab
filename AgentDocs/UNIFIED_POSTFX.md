@@ -34,7 +34,10 @@ tinting Base Color or creating a replacement lit material.
   changing the PBR master.
 - `W` toggles the overlay; `V` returns to the original material. RMB+WASD
   events are consumed by the viewport rather than passed to the inherited fly
-  camera, while RMB mouse drag still rotates the studio light.
+  camera; the viewport client also restores its pre-tick view transform after
+  inherited editor Tick, since Unreal independently polls held WASD keys there.
+  Mixtormat's explicit orbit/pan/zoom/focus remain the only camera controls,
+  while RMB mouse drag still rotates the studio light.
 - Mask/gate selection is resolved by stable owner/child GUID after group
   expansion, reusing the existing `ResolveChildPreviewTarget` and compositor
   output routing. This covers Mask children including Texture/Noise/Noise Gate
