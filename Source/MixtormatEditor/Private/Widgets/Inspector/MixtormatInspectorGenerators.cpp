@@ -1123,7 +1123,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 				SNew(SMixtormatInspectorCard).Title(LOCTEXT("BehaviorWarpTracedCard", "TRACED FLOW"))[TracedWarpPanel]
 			]
 		];
-		TSharedRef<SVerticalBox> Filter = AddCard(Panel, LOCTEXT("BehaviorWarpFilteringCard", "FILTERING"));
+
 		AddSliderRow(Operation, SNew(SBox)
 			.Visibility_Lambda([Warp]()
 			{
@@ -1231,15 +1231,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,
 		LOCTEXT("BehaviorWarpStrengthHint", "Signed strength of the displacement. Zero is neutral; negative reverses displacement.")));
-	AddSliderRow(Filter, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatBehavior>(
-			LOCTEXT("BehaviorWarpSlopeFeather", "Slope Feather"),
-			Warp, &FMixtormatBehavior::SlopeFeather, 0.0, 1.0, 0.5, 0.01,
-			LOCTEXT("BehaviorWarpSlopeFeatherHint", "Feather noisy height-gradient directions before tracing. 0 preserves the original slope.")),
-		MakeMemberSlider<FMixtormatBehavior>(
-			LOCTEXT("BehaviorWarpAA", "Warp AA"),
-			Warp, &FMixtormatBehavior::WarpAA, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("BehaviorWarpAAHint", "One-texel directional AA of warped height only. Leaves IDs and boundaries sharp."))));
+
 	AddSliderRow(Standard, SNew(SBox).Visibility_Lambda([Warp]()
 	{
 		const FMixtormatBehavior* B = Warp();

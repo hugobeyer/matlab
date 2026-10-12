@@ -104,7 +104,7 @@ Four simultaneous directional contributions. No dropdown.
 
 | Weight | Input basis |
 |---|---|
-| `HeightWeight` | Downhill gradient of **this node's own** noise height. |
+| `HeightWeight` | Soft-limited downhill gradient of **this node's own** noise height: `G / (1 + length(G))`. |
 | `SlopeWeight` | Downhill gradient of the **accumulated** height from preceding operations. |
 | `CurlWeight` | Existing Noise V2 curl vector (`MixtormatNoiseV2Curl`), reused, not duplicated. |
 | `ConstantWeight` | Uniform Vector2 from `Angle`. |
@@ -113,6 +113,7 @@ Formula (FINAL_BEHAVIOR_PLAN section 3):
 
 ```
 Own    = DownhillGradient(OwnNoiseHeight);
+Own   /= 1 + length(Own); // Same soft slope response as standard Warp.
 Slope  = DownhillGradient(CurrentHeight);
 Curl   = CurlNoise(UV);
 Const  = float2(cos(Angle), sin(Angle));
@@ -133,9 +134,10 @@ GeneratedFlow *= Strength;
 - **Angle orientation:** degrees, counterclockwise from +U in tile UV with V up;
   the GPU writes `(cos Angle, -sin Angle)` into the texture's V-down frame.
   0° points +U, 90° points "up" in the authored material.
-- **Magnitude semantics:** each basis carries its natural magnitude; the combined
-  vector is never normalized. Weights scale contributions linearly; opposing
-  contributions cancel; a zero result stays exactly zero.
+- **Magnitude semantics:** Height's own gradient is soft-limited before weighting;
+  its magnitude approaches 1 for steep slopes, while weak slopes remain responsive.
+  Other bases retain their natural magnitude. The combined vector is never normalized.
+  Weights scale contributions linearly; opposing contributions can cancel; zero stays zero.
 - **Resolution independence:** gradient bases are computed per UV unit (the
   existing `0.5 * OutputSize * delta` scaling), so changing texture resolution or
   Noise Scale does not multiply movement strength. Curl is already

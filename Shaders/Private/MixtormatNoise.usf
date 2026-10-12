@@ -113,8 +113,9 @@ void CoverageCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 //                 + ForceWeight * Force(Angle, Gravity, CurrentHeight);
 //   GeneratedFlow *= Strength;
 //
-// Bases carry magnitude; the combination is never normalized, so zero stays exactly zero and
-// opposing weights cancel. Gradients are per-UV (resolution-independent) and wrapped taps keep
+// Height soft-limits its own gradient magnitude before weighting; other bases retain theirs.
+// The combination is never normalized, so zero stays zero and opposing contributions can cancel.
+// Gradients are per-UV (resolution-independent) and wrapped taps keep
 // the field tileable. An invalid or unavailable basis contributes zero and never invents
 // movement.
 
@@ -170,6 +171,8 @@ void GeneratedFlowCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float2 Basis;
 		if (ModeDownhill(ModeOwnHeight, Pixel, Basis))
 		{
+			// Match standard Warp's soft slope response without normalizing the Flow sum.
+			Basis /= 1.0f + length(Basis);
 			Result += ModeHeightWeight * Basis;
 			bValid = true;
 		}

@@ -458,10 +458,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	Out.Strength = Behavior.Strength;
 	Out.GradientReach = FMath::IsFinite(Behavior.GradientReach)
 		? FMath::Max(Behavior.GradientReach, 0.0f) : 0.0f;
-	Out.SlopeFeather = FMath::IsFinite(Behavior.SlopeFeather)
-		? FMath::Clamp(Behavior.SlopeFeather, 0.0f, 1.0f) : 0.0f;
-	Out.WarpAA = FMath::IsFinite(Behavior.WarpAA)
-		? FMath::Clamp(Behavior.WarpAA, 0.0f, 1.0f) : 0.0f;
+
 	Out.FeatherMode = Behavior.Feather.Mode;
 	Out.FeatherSide = Behavior.Feather.Side;
 	// The editor's JSON authoring controls the preferred ranges and typed-value clamps.

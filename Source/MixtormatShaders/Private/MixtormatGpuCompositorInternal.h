@@ -1046,8 +1046,7 @@ namespace MixtormatGpuCompositor
 		int32 GeneratorChildIndex = INDEX_NONE;
 		float Strength = 1.0f;
 		float GradientReach = 0.02f;
-		float SlopeFeather = 0.5f;
-		float WarpAA = 0.0f;
+
 		EMixtormatBehaviorFeatherMode FeatherMode = EMixtormatBehaviorFeatherMode::Blur;
 		EMixtormatBehaviorFeatherSide FeatherSide = EMixtormatBehaviorFeatherSide::Both;
 		float FeatherRadius = 3.0f;

@@ -4,6 +4,14 @@ The GPU compositor turns an authored `UMixtormatMaterial` into BaseColor /
 Normal / RAM / Height render targets. Gather (game thread) → RDG passes
 (render thread).
 
+Warp filtering is automatic, with no Slope Feather / Warp AA artist controls.
+Own-height Warp gradients use a wrapped 3×3 Sobel kernel; Deform retains central
+differences. Post-generation Warp filters signed height using its UV Jacobian's
+source-pixel footprint, blending extra filtering only above a one-texel footprint.
+Identity-sized footprints keep ordinary bilinear sampling. IDs, coverage and SDF
+fields retain their existing transport; filtering does not clamp displacement or
+prevent genuine UV folds. Inherited/traced Flow is not implicitly blurred.
+
 ## Entry points
 
 | Thing | File |
