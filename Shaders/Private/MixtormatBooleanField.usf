@@ -1,0 +1,98 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Heightfield Boolean, Round and Bevel; signed heights are NOT metric SDFs.
+#include "/Engine/Public/Platform.ush"
+
+int2 OutputSize;
+int Mode;
+int FieldOperation;
+uint HasSource;
+uint HasScopedMask;
+float FieldWidth;
+float FieldBias;
+float FieldAmount;
+Texture2D<float> RunningHeight;
+Texture2D<float> BelowHeight;
+Texture2D<float> SourceHeight;
+Texture2D<float> ScopedMask;
+RWTexture2D<float> OutHeightDelta;
+RWTexture2D<float> OutFieldMask;
+RWTexture2D<float> OutFieldBoundary;
+RWTexture2D<float> OutFieldDifference;
+RWTexture2D<float> OutFieldContribution;
+
+float field_smax(float a, float b, float k)
+{
+    if (k <= 0.0f) return max(a, b);
+    float h = saturate(0.5f + 0.5f * (a - b) / k);
+    return lerp(b, a, h) + k * h * (1.0f - h);
+}
+float field_smin(float a, float b, float k)
+{
+    return -field_smax(-a, -b, k);
+}
+float field_bmax(float a, float b, float k)
+{
+    return max(max(a, b), 0.5f * (a + b + k));
+}
+float field_bmin(float a, float b, float k)
+{
+    return min(min(a, b), 0.5f * (a + b - k));
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    int2 pixel = int2(DispatchThreadId.xy);
+    if (any(pixel >= OutputSize)) return;
+    float a = BelowHeight.Load(int3(pixel, 0)) + RunningHeight.Load(int3(pixel, 0));
+    float delta = 0.0f;
+    float difference = 0.0f;
+    float boundary = 0.0f;
+    float area = 0.0f;
+    if (HasSource != 0 && isfinite(a))
+    {
+        float source = SourceHeight.Load(int3(pixel, 0));
+        float below = BelowHeight.Load(int3(pixel, 0));
+        if (isfinite(source) && isfinite(below))
+        {
+            // Modules publish signed deltas; reconstruct surfaces over one base.
+            float b = below + source + FieldBias;
+            float k = max(0.0f, FieldWidth);
+            float target = a;
+            difference = a - b;
+            if (FieldOperation == 0)
+            {
+                target = Mode == 2 ? field_smax(a, b, k)
+                    : Mode == 3 ? field_bmax(a, b, k) : max(a, b);
+            }
+            else if (FieldOperation == 1)
+            {
+                target = Mode == 2 ? field_smin(a, b, k)
+                    : Mode == 3 ? field_bmin(a, b, k) : min(a, b);
+            }
+            else
+            {
+                // Single-valued relief subtraction, not true 3D solid subtraction.
+                float d = source + FieldBias;
+                float depth = max(0.0f, d);
+                if (Mode == 2 && k > 0.0f)
+                    depth = max(0.0f, field_smax(0.0f, d, k) - 0.25f * k);
+                if (Mode == 3 && k > 0.0f)
+                    depth = max(0.0f, field_bmax(0.0f, d, k) - 0.5f * k);
+                target = a - depth;
+                difference = d;
+            }
+            float weight = HasScopedMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
+            weight = isfinite(weight) ? saturate(weight) : 0.0f;
+            delta = (target - a) * saturate(FieldAmount) * weight;
+            boundary = 1.0f - saturate(abs(difference) / max(k, 0.00001f));
+            area = abs(delta) > 0.000001f ? 1.0f : 0.0f;
+            if (!isfinite(delta)) delta = 0.0f;
+        }
+    }
+    OutHeightDelta[pixel] = delta;
+    OutFieldMask[pixel] = area;
+    OutFieldBoundary[pixel] = boundary;
+    OutFieldDifference[pixel] = difference;
+    OutFieldContribution[pixel] = delta;
+}

@@ -579,6 +579,7 @@ private:
 	FMixtormatBooleanOps* GetSelectedBooleanOps();
 	const FMixtormatBooleanOps* GetSelectedBooleanOps() const;
 	TSharedRef<SWidget> BuildBooleanOpsControls();
+    TSharedRef<SWidget> BuildBooleanOpsSourceMenu();
 	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise, bool bMaskEmbedded = false);
 	bool CanCreateNoiseGate(const FMixtormatChildAddress& Owner) const;
 	bool ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const;

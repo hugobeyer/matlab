@@ -1081,6 +1081,24 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 
 
 
+// Scatter Carve uses finite volumes. The other modes combine signed height surfaces.
+UENUM(BlueprintType)
+enum class EMixtormatBooleanMode : uint8
+{
+    ScatterCarve UMETA(DisplayName = "Scatter Carve"),
+    Boolean UMETA(DisplayName = "Boolean"),
+    Round UMETA(DisplayName = "Round"),
+    Bevel UMETA(DisplayName = "Bevel")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatBooleanFieldOperation : uint8
+{
+    Union UMETA(DisplayName = "Union"),
+    Intersect UMETA(DisplayName = "Intersect"),
+    Subtract UMETA(DisplayName = "Subtract")
+};
+
 UENUM(BlueprintType)
 enum class EMixtormatBooleanOperation : uint8
 {
@@ -1099,6 +1117,26 @@ USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatBooleanOps
 {
     GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops")
+    EMixtormatBooleanMode Mode = EMixtormatBooleanMode::ScatterCarve;
+
+    // Earlier generator in the same layer; missing/forward sources are neutral.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field")
+    FGuid SourceChildId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field")
+    EMixtormatBooleanFieldOperation FieldOperation = EMixtormatBooleanFieldOperation::Union;
+
+    // Join width in signed height units, not metric XY SDF distance.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float FieldWidth = 0.10f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "-2.0", UIMax = "2.0"))
+    float FieldBias = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float FieldAmount = 1.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape")
     EMixtormatBooleanOperation Operation = EMixtormatBooleanOperation::Subtract;

@@ -422,12 +422,131 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 }
 
 
+TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
+{
+    MixtormatMenu::FBuilder Menu;
+    if (!GetSelectedBooleanOps()) { return Menu.Build(); }
+    Menu.Item(LOCTEXT("BooleanSourceNone", "None"), nullptr,
+        FSimpleDelegate::CreateLambda([this]()
+        {
+            if (FMixtormatBooleanOps* B = GetSelectedBooleanOps())
+            {
+                B->SourceChildId.Invalidate();
+                RefreshLayeredPreview();
+            }
+        }));
+    if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) { return Menu.Build(); }
+    const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+    const FMixtormatChildAddress Address = GetSelectedChildAddress();
+    const int32 SelectedIndex = Layer.Children.IndexOfByPredicate(
+        [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+    if (SelectedIndex == INDEX_NONE) { return Menu.Build(); }
+    for (int32 Index = 0; Index < SelectedIndex; ++Index)
+    {
+        const FMixtormatLayerChild& Child = Layer.Children[Index];
+        if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled) { continue; }
+        const FGuid ChildId = Child.ChildId;
+        Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
+            FSimpleDelegate::CreateLambda([this, ChildId]()
+            {
+                if (FMixtormatBooleanOps* B = GetSelectedBooleanOps())
+                {
+                    B->SourceChildId = ChildId;
+                    RefreshLayeredPreview();
+                }
+            }));
+    }
+    return Menu.Build();
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 {
 	const auto B = [this]() { return GetSelectedBooleanOps(); };
-	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+    TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+    TSharedRef<SVerticalBox> ScatterCards = SNew(SVerticalBox);
+    TSharedRef<SVerticalBox> FieldCards = SNew(SVerticalBox);
+    {
+        TSharedRef<SVerticalBox> Main = AddCard(Cards, LOCTEXT("BooleanModeCard", "OPERATION"));
+        AddSliderRow(Main, MakeMemberEnum<FMixtormatBooleanOps, EMixtormatBooleanMode>(
+            LOCTEXT("BooleanMode", "Mode"), B, &FMixtormatBooleanOps::Mode,
+            LOCTEXT("BooleanModeHint", "Scatter Carve uses finite cutters; Boolean, Round and Bevel combine signed height fields."),
+            FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+    }
+    {
+        TSharedRef<SVerticalBox> Field = AddCard(FieldCards, LOCTEXT("BooleanFieldCard", "FIELD COMBINE"));
+        AddSliderRow(Field, MixtormatRow::MakePair(
+            MakeMemberEnum<FMixtormatBooleanOps, EMixtormatBooleanFieldOperation>(
+                LOCTEXT("BooleanFieldOp", "Boolean"), B, &FMixtormatBooleanOps::FieldOperation,
+                LOCTEXT("BooleanFieldOpHint", "Union/intersection combine vertical surfaces; subtraction removes positive signed source relief.")),
+            MixtormatRow::MakeTrailing(
+                LOCTEXT("BooleanFieldSource", "Source"),
+                MixtormatRow::MakeChip(
+                    TAttribute<FText>::CreateLambda([this]()
+                    {
+                        const FMixtormatBooleanOps* Selected = GetSelectedBooleanOps();
+                        if (!Selected || !Selected->SourceChildId.IsValid())
+                            return LOCTEXT("BooleanFieldSourceNone", "None");
+                        if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+                        {
+                            for (const FMixtormatLayerChild& Candidate : WorkingLayers[SelectedLayerIndex].Children)
+                            {
+                                if (Candidate.ChildId == Selected->SourceChildId)
+                                    return GetLayerChildName(Candidate);
+                            }
+                        }
+                        return LOCTEXT("BooleanFieldSourceMissing", "Missing");
+                    }),
+                    FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanOpsSourceMenu)),
+                LOCTEXT("BooleanFieldSourceHint", "An earlier Generator module's signed height; None is identity."))));
+        AddSliderRow(Field, MixtormatRow::MakePair(
+            MakeMemberSlider<FMixtormatBooleanOps>(
+                LOCTEXT("BooleanFieldBias", "Height Bias"), B, &FMixtormatBooleanOps::FieldBias,
+                -2.0, 2.0, 0.0, 0.005,
+                LOCTEXT("BooleanFieldBiasHint", "Shift the source vertically in raw signed height units.")),
+            MakeMemberSlider<FMixtormatBooleanOps>(
+                LOCTEXT("BooleanFieldAmount", "Amount"), B, &FMixtormatBooleanOps::FieldAmount,
+                0.0, 1.0, 1.0, 0.01,
+                LOCTEXT("BooleanFieldAmountHint", "Blend the result into the running signed height."))));
+        AddSliderRow(Field,
+            SNew(SBox)
+            .Visibility_Lambda([B]()
+            {
+                const FMixtormatBooleanOps* Selected = B();
+                return Selected && (Selected->Mode == EMixtormatBooleanMode::Round
+                    || Selected->Mode == EMixtormatBooleanMode::Bevel)
+                    ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            [
+                MakeMemberSlider<FMixtormatBooleanOps>(
+                    LOCTEXT("BooleanFieldWidth", "Join Width"), B, &FMixtormatBooleanOps::FieldWidth,
+                    0.0, 1.0, 0.10, 0.005,
+                    LOCTEXT("BooleanFieldWidthHint", "Round or bevel reach in signed height units."))
+            ]);
+    }
+    Cards->AddSlot().AutoHeight()
+    [
+        SNew(SBox)
+        .Visibility_Lambda([B]()
+        {
+            const FMixtormatBooleanOps* Selected = B();
+            return Selected && Selected->Mode == EMixtormatBooleanMode::ScatterCarve
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [ScatterCards]
+    ];
+    Cards->AddSlot().AutoHeight()
+    [
+        SNew(SBox)
+        .Visibility_Lambda([B]()
+        {
+            const FMixtormatBooleanOps* Selected = B();
+            return Selected && Selected->Mode != EMixtormatBooleanMode::ScatterCarve
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [FieldCards]
+    ];
 	{
-		TSharedRef<SVerticalBox> Scatter = AddCard(Cards, LOCTEXT("BooleanScatter", "SCATTER CARVE"));
+		TSharedRef<SVerticalBox> Scatter = AddCard(ScatterCards, LOCTEXT("BooleanScatter", "SCATTER CARVE"));
 		AddSliderRow(Scatter, MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatBooleanOps>(
 				LOCTEXT("BooleanSeed", "Seed"), B, &FMixtormatBooleanOps::Seed, 0, 9999, 1,
@@ -444,7 +563,7 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 				LOCTEXT("BooleanRadiusVariationHint", "Per-cutter radius reduction."))));
 	}
 	{
-		TSharedRef<SVerticalBox> Shape = AddCard(Cards, LOCTEXT("BooleanShape", "GEOMETRY"));
+		TSharedRef<SVerticalBox> Shape = AddCard(ScatterCards, LOCTEXT("BooleanShape", "GEOMETRY"));
 		AddSliderRow(Shape, MakeMemberEnum<FMixtormatBooleanOps>(
 			LOCTEXT("BooleanOperation", "Boolean"), B, &FMixtormatBooleanOps::Operation,
 			LOCTEXT("BooleanOperationHint", "Subtract cuts the existing solid; Union adds the cutter.")));
@@ -467,7 +586,7 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 				LOCTEXT("BooleanRotationVarHint", "Symmetric random rotation in degrees."))));
 	}
 	{
-		TSharedRef<SVerticalBox> Height = AddCard(Cards, LOCTEXT("BooleanHeight", "DEPTH"));
+		TSharedRef<SVerticalBox> Height = AddCard(ScatterCards, LOCTEXT("BooleanHeight", "DEPTH"));
 		AddSliderRow(Height, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatBooleanOps>(
 				LOCTEXT("BooleanCenterDepth", "Center Depth"), B, &FMixtormatBooleanOps::CenterDepth, -1.0, 1.0, 0.02, 0.005,
@@ -484,7 +603,7 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 				LOCTEXT("BooleanDepthScaleHint", "Vertical cutter radius relative to its UV radius."))));
 	}
 	{
-		TSharedRef<SVerticalBox> Chamfer = AddCard(Cards, LOCTEXT("BooleanChamfer", "CHAMFER"));
+		TSharedRef<SVerticalBox> Chamfer = AddCard(ScatterCards, LOCTEXT("BooleanChamfer", "CHAMFER"));
 		AddSliderRow(Chamfer, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatBooleanOps>(
 				LOCTEXT("BooleanChamferFraction", "Width"), B, &FMixtormatBooleanOps::ChamferFraction, 0.0, 1.0, 0.2, 0.005,
@@ -507,13 +626,46 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
-					MakeChildOutputPreviewButton([]()
-					{
-						FMixtormatLayerChild Probe;
-						Probe.Type = EMixtormatLayerChildType::Generator;
-						Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
-						return GetChildPreviewOutputSet(Probe);
-					}())
+					SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [
+                        SNew(SBox)
+                        .Visibility_Lambda([B]()
+                        {
+                            const FMixtormatBooleanOps* Selected = B();
+                            return Selected && Selected->Mode == EMixtormatBooleanMode::ScatterCarve
+                                ? EVisibility::Visible : EVisibility::Collapsed;
+                        })
+                        [
+                            MakeChildOutputPreviewButton([]()
+                            {
+                                FMixtormatLayerChild Probe;
+                                Probe.Type = EMixtormatLayerChildType::Generator;
+                                Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
+                                return GetChildPreviewOutputSet(Probe);
+                            }())
+                        ]
+                    ]
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [
+                        SNew(SBox)
+                        .Visibility_Lambda([B]()
+                        {
+                            const FMixtormatBooleanOps* Selected = B();
+                            return Selected && Selected->Mode != EMixtormatBooleanMode::ScatterCarve
+                                ? EVisibility::Visible : EVisibility::Collapsed;
+                        })
+                        [
+                            MakeChildOutputPreviewButton([]()
+                            {
+                                FMixtormatLayerChild Probe;
+                                Probe.Type = EMixtormatLayerChildType::Generator;
+                                Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
+                                Probe.Generator.BooleanOps.Mode = EMixtormatBooleanMode::Boolean;
+                                return GetChildPreviewOutputSet(Probe);
+                            }())
+                        ]
+                    ]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[

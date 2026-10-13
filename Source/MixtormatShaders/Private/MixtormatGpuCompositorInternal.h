@@ -956,8 +956,14 @@ namespace MixtormatGpuCompositor
 	};
 
 	struct FBooleanOpsRenderData
-	{
-		int32 Operation = 0, Shape = 1;
+    {
+        int32 Mode = 0;
+        int32 SourceChildIndex = INDEX_NONE;
+        int32 FieldOperation = 0;
+        float FieldWidth = 0.10f;
+        float FieldBias = 0.0f;
+        float FieldAmount = 1.0f;
+        int32 Operation = 0, Shape = 1;
 		int32 Seed = 1;
 		int32 Count = 16;
 		float Radius = 0.06f;

@@ -30,9 +30,32 @@ field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBou
 distinction for the inspector and authoring defaults). Every other eligible generator keeps both
 source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md` (archived).
 
-## Boolean Ops — Scatter Carve
+## Boolean Ops — Scatter Carve and field combining
 
-`BooleanOps` currently authors one operation family: Scatter Carve. Finite
+`BooleanOps` authors four modes: **Scatter Carve**, **Boolean**, **Round** and
+**Bevel**. Scatter Carve preserves its existing finite-volume implementation.
+The other modes combine the current signed height surface with the signed Height
+output of an explicitly chosen **earlier generator module in the same layer**.
+The operand is selected by stable child GUID; missing/disabled/forward references
+are an exact zero-delta identity.
+
+- **Boolean:** hard union (max) and intersection (min) of single-valued vertical
+  surfaces; subtract removes positive authored source relief from the running
+  height (a *relief cut*, not a general 3D solid difference).
+- **Round:** polynomial rounded variants of those heightfield joins.
+- **Bevel:** analytic chamfered variants of those heightfield joins.
+- Parameters: source chip, operation, raw signed Height Bias, Amount; Round and
+  Bevel additionally use Join Width in signed height units.
+- Outputs: Height (signed delta), copyable FieldMask and FieldBoundary,
+  signed FieldDifference and FieldContribution. Scoped masks blend the result.
+- These field modes use one compute dispatch. They do not normalize or clamp
+  signed height or presume height is a metric SDF.
+
+Heightfields cannot represent arbitrary 3D undercuts, and these Round/Bevel
+operations are heightfield joins rather than Euclidean solid SDF operations.
+The existing Height Blend sublayer remains independent.
+
+Scatter Carve: Finite
 ellipsoid or polygon-prism cutters are seeded periodically in UV; each cutter
 samples the original signed height at its seed to stay rigid. Subtract removes
 the union of intersecting depth intervals, revisiting overlaps; Union projects
@@ -53,8 +76,9 @@ The full seed-count range is available but expensive; default 16, UI range
 `AgentDocs/Prototypes/ScatterCarve/scatter_carve.cl`.
 
 Implementation: `FMixtormatBooleanOps` →
-`GatherGeneratorChild` → `AddBooleanCarvePasses` →
-`MixtormatBooleanCarve.usf` → `BuildBooleanOpsControls`.
+`GatherGeneratorChild` → `AddBooleanCarvePasses` / `AddBooleanFieldPasses` →
+`MixtormatBooleanCarve.usf` / `MixtormatBooleanField.usf` →
+`BuildBooleanOpsControls`. Previews are mode-specific.
 Static source review only; no Unreal build or runtime validation performed.
 
 ## Shared native Flow foundation (Stage 1)

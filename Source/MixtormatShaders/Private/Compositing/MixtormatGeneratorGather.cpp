@@ -253,7 +253,27 @@ namespace MixtormatGpuCompositor
 		const auto Finite = [](float V, float Fallback) { return FMath::IsFinite(V) ? V : Fallback; };
 		ChildData.Generator.bNormalizeHeight = false;
 		ChildData.Generator.HeightScale = 1.0f;
-		Out.Operation = static_cast<int32>(B.Operation);
+        Out.Mode = static_cast<int32>(B.Mode);
+        Out.FieldOperation = static_cast<int32>(B.FieldOperation);
+        Out.FieldWidth = FMath::Max(0.0f, Finite(B.FieldWidth, Defaults.FieldWidth));
+        Out.FieldBias = Finite(B.FieldBias, Defaults.FieldBias);
+        Out.FieldAmount = FMath::Clamp(Finite(B.FieldAmount, Defaults.FieldAmount), 0.0f, 1.0f);
+        Out.SourceChildIndex = INDEX_NONE;
+        if (B.SourceChildId.IsValid())
+        {
+            for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
+            {
+                const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+                if (Candidate.ChildId == B.SourceChildId
+                    && Candidate.Type == EMixtormatLayerChildType::Generator
+                    && Candidate.Generator.bEnabled)
+                {
+                    Out.SourceChildIndex = Index;
+                    break;
+                }
+            }
+        }
+        Out.Operation = static_cast<int32>(B.Operation);
 		Out.Shape = static_cast<int32>(B.Shape);
 		Out.Seed = B.Seed;
 		Out.Count = B.Count;
