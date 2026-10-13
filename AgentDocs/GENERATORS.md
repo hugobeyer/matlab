@@ -46,9 +46,8 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 - Noise retains its completed signed-height FlowDirection diagnostic, height-less scratch-field
   diagnostic, weighted GeneratedFlow magnitude, normalization/gating and Feather ordering.
   Native Flow publications reuse the existing FlowDirection address and preview renderer.
-- Strata Carver is excluded: its demand and execution are unchanged. Per-generator native
-  source selection/public output integrations and new inspector controls remain later stages;
-  boundary support here is an explicit derivation primitive, not SDF steering for Sculpt.
+- Strata Carver is excluded from the universal native Flow integration. Boundary support is
+  an explicit derivation primitive, not SDF steering for Sculpt.
 
 ## Universal native Flow integration
 
@@ -84,7 +83,7 @@ Strata Carver is excluded from this integration.
   expose Cracks Flow without new inspector controls or a separate preview/shader implementation.
   Height, IDs, masks, chamfer, Noise and Strata Carver keep their existing behavior.
 - Validity is a conservative local-stencil guard, not subpixel boundary reconstruction or a
-  physics/collision guarantee. Other generator native integrations remain later stages.
+  physics/collision guarantee.
 
 ## Noise as a mask source (inline or live)
 
@@ -134,30 +133,23 @@ Noise-specific numeric/enum authoring defaults are registered for Generator/Mask
 applies; pixel-based Noise GPU Driver evaluation is **not** implemented yet.
 See [NOISE_V2.md](NOISE_V2.md) for parameters and constraints.
 
-## Gravity Flow (texture-space generator child)
+## Ordered Flow and post-generation Behaviors
 
-- Right-click an eligible generator → **Gravity Flow**. It uses the same ownership rules as
-  existing flow tools: Strata Carver, Rock Formation, Pebbles, Cracks, Cliff Strata and Noise.
-  Noise- and Cliff-scoped tools start with Height steering; Signed Distance is unavailable there
-  because neither publishes a signed boundary field.
-- `GravityFlow = 12` is appended to `EMixtormatEffectType`. New children start with Height
-  steering. `GeneratorFlowAngle` rotates `(0,-1)`: 0 degrees = -V, 90 = +U, 180 = +V.
-- Height steering is local, keeps gravity active on flat texels and avoids seed/JFA passes.
-  `GravityFlowSurfaceFollow` controls bounded downhill steering; zero gives uniform gravity
-  when Bend is also zero. Surface steering retains a positive component along gravity.
-- Signed Distance steering optionally projects incoming gravity along trusted owner outlines.
-  `GravityFlowDeflection`, Reach and Feather control this; known interiors remain unmoved.
-  This is approximate owner-boundary steering, not an external obstacle-mask/scene collision
-  solver. Head-on flows can stop; invalid or unsampled outlines cannot guarantee collision.
-- The owned RK2 trace checks potentially crossed outlines with half-texel segment samples;
-  near-boundary segments exceeding 32 output texels stop. Increase Steps or reduce Trace
-  Length/Warp Strength. The nearest-seed distance limits checks to the boundary neighbourhood.
-  Published Flow references use the existing generic trace and do not carry that boundary check.
-- Stage 9 in `MixtormatGeneratorFlow.usf` resolves gravity; stage 3 mode 3 uses the existing
-  RK2/apply and aligned bundle remap. FlowDirection, WarpedUV, Influence and Validity outputs
-  remain available through existing publication/preview plumbing. Masks gate only this child.
-- Existing flow types and serialized enum values are unchanged. New parameters use reflected
-  runtime metadata and the shared gather/inspector path; layer-prefix hashing includes them.
+- `ApplyGeneratorPostBehaviors` adopts native Flow once, then evaluates scoped Noise and
+  Behaviors in authored order. Noise `GeneratedFlow` retains vector magnitude and composes as
+  `lerp(FlowIn, Generated, saturate(Mix * Mask)) + Generated * Add * Mask`.
+- Noise MODE combines weighted own-height downhill, preceding-height downhill, periodic Curl
+  and angular Force with optional height-gravity steering. Opposing contributions can cancel.
+- `MixtormatFlowTrace.usf` integrates canonical Flow with RK2 into lifted destination-to-source
+  coordinates. It preserves magnitude; it does not solve or enforce SDF collisions.
+- Scoped masks gate their owner only. Independent scopes start white and do not modify the
+  layer CombinedMask. Warp masks scale traced displacement toward identity after tracing.
+- Sculpt (`Carve` backing type) consumes current Height and accumulated Flow. Push composes
+  signed Height without transport. Deform resamples Height only, leaving companion fields fixed.
+- Warp remaps the generator bundle and transports accumulated Flow at the same coordinates.
+  Feather filters Height or an explicitly scoped Flow publication according to its owner.
+- Noise Value/Gradient remain raw and ungated; mask consumers convert signed Value to coverage
+  before applying their own placement, shaping and filters.
 
 ## Height Push (structural module)
 
@@ -199,11 +191,11 @@ Structural Warp Flow Amount and Trace Length now accept the existing scalar Driv
 is per target: `GeneratorStructuralDisplacements` (RG32F) and the existing
 `GeneratorHeightPushFields` (R32F). `MixtormatGeneratorStructuralWarp.usf` writes fresh
 resources: `D_new = d + sample(D_old, psi)`, `B_new = sample(B_old, psi)`, `psi = x + d`.
-Flow reuses the stage-8 reference trace helper, applies amount once, then masks displacement.
+Flow uses the canonical RK2 reference trace, applies amount once, then masks displacement.
 Strata regenerates in its structural frame. Rock Formation, Pebbles, Cracks, Cliff Strata and
 Noise use one completed-bundle pullback after native generation, existing flow and signed
 normalization. That operation owns Height/Coverage and companion remapping together, so neither
-is double-warped. `PebbleCoverage`/`CliffCoverage` remain aliases of the single moved coverage.
+is double-warped. Named coverage outputs must remain aligned with bundle Coverage.
 
 Strata evaluates warped coordinates with placement once and gradients `g*A*J`; final B's
 already-destination gradient is not multiplied by J again. Active warp emits direct RG32F

@@ -92,8 +92,9 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
   `B_new = sample(B_old, psi)`. State lives in `GeneratorStructuralDisplacements` and
   `GeneratorHeightPushFields`; Strata regenerates, while the other generators use one typed
   completed-bundle pullback.
-- Flow uses the stage-8 reference trace helper with amount once; scoped masks gate the
-  resulting displacement after tracing. UVMap uses periodic lifted-coordinate sampling.
+- Flow references use `MixtormatFlowTrace.usf`: magnitude-preserving RK2 produces lifted
+  coordinates without SDF collision solving. Scoped masks gate displacement after tracing.
+  UVMap uses periodic lifted-coordinate sampling.
 - Strata applies placement once at warped coordinates; gradients are `g*A*J + grad(B)`
   where applicable. B's destination gradient receives no second J. Active warp writes a
   direct RG32F negative-inside distance/validity boundary; inactive retains bundle stage 8.
@@ -111,15 +112,16 @@ Broken StructuralWarp tests were removed at user request; no agent build, shader
 runtime or test results are claimed. Raster derivatives/distances remain approximations;
 legacy centre/orientation inverse handling and geological defects are not fixed here.
 
-Noise preview/copy/flow integration: typed scalar and Vector2 debug blits now read
-completed published fields. Signed values are display-remapped only. Noise Value and
-Gradient support full-precision storage as well as the default half-precision contracts.
-`MixtormatNoise.usf::FlowCS` derives explicit destination-UV downhill Flow from completed
-signed Height after scoped tools/structural pullback, with zero validity at flat or
-non-finite slopes. It publishes the same resolved field as raw/smoothed Flow plus a
-separate validity texture; no extra smoothing is implied. Raw Gradient remains
-source-frame Vector2. Noise can own Height-based flow tools, not Signed Distance.
-These integration changes are source-reviewed only; no build/shader/runtime checks run.
+Noise preview/copy integration: typed scalar and Vector2 debug blits read completed
+published fields. Signed values are display-remapped only. Noise Value and Gradient support
+full-precision storage as well as the default half-precision contracts.
+`MixtormatNativeFlow.usf` owns intrinsic downhill Flow derivation, with zero validity at
+flat or non-finite slopes. Raw/smoothed publications share the resolved texture unless
+explicitly filtered; validity is separate. Noise Gradient is not implicitly canonical Flow.
+`MixtormatNoise.usf::GeneratedFlowCS` combines weighted Height/Slope/Curl/Force bases;
+`FlowComposeCS` applies masked Add/Mix and `FlowTransportCS` samples accumulated Flow through
+a coordinate remap without normalization. Scoped height masks do not gate raw Value/Gradient.
+These contracts are source-reviewed only; no build/shader/runtime checks run.
 
 ## Erosion carve-depth solve
 
