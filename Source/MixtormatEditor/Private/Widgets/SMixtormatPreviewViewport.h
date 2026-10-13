@@ -150,7 +150,7 @@ public:
 	SMixtormatPreviewViewport();
 	virtual ~SMixtormatPreviewViewport() override;
 	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual void Tick(const FGeometry& Geometry, double CurrentTime, float DeltaTime) override;
+
 
 	void Construct(const FArguments& InArgs);
 	void SetPreviewMaterial(UMaterialInterface* Material);

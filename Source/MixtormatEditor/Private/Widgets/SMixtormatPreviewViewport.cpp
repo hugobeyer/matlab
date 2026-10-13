@@ -346,6 +346,9 @@ public:
 			SetViewLocation(ViewLocation);
 			SetViewRotation(ViewRotation);
 		}
+		// The realtime viewport can redraw without a Slate widget tick (cached UI/input drags).
+		// Capture after camera maintenance on the viewport lifecycle, not only on UI updates.
+		Owner.UpdateMaskPostFx();
 	}
 
 	virtual FLinearColor GetBackgroundColor() const override
@@ -646,12 +649,6 @@ FReply SMixtormatPreviewViewport::OnPreviewMouseButtonDown(
 	return SEditorViewport::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
 }
 
-void SMixtormatPreviewViewport::Tick(
-	const FGeometry& Geometry, const double CurrentTime, const float DeltaTime)
-{
-	SEditorViewport::Tick(Geometry, CurrentTime, DeltaTime);
-	UpdateMaskPostFx();
-}
 
 void SMixtormatPreviewViewport::UpdateMaskPostFx()
 {

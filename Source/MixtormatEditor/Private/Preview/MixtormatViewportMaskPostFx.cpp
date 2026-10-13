@@ -385,7 +385,8 @@ void FMixtormatViewportMaskPostFx::Update(
 	BlendInstance->SetScalarParameterValue(ModeName, static_cast<float>(Mode));
 	BlendInstance->SetScalarParameterValue(OpacityName, OverlayOpacity);
 	// PreviewScene worlds are not guaranteed to tick capture components on their
-	// own. Submit one view-matched UV capture per *active viewport* Slate tick.
+	// own. The viewport client invokes this after camera maintenance each viewport tick;
+	// UV mapping refreshes independently of Slate invalidation and generator recomposition.
 	UvCapture->CaptureScene();
 	bReady = true;
 }

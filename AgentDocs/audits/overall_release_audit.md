@@ -110,7 +110,8 @@
 - Shared preview refresh (`FlushPendingPreviewRefresh`) reconciles selection changes so duplication, undo, and programmatic selection updates immediately retarget active diagnostics.
 - Added `MixtormatDiagnosticOutputs::BehaviorMask` (`MainBehaviorMaskCS` / `AddBehaviorMaskDiagnosticPass`) so Warp, Push, and Deform expose their real evaluated scoped-mask × Influence gate to W.
 - Compressed Flow vector visualization with an explicit brightness floor (`0.55`) and rational scaling so subtle flow magnitudes remain visible and distinguishable from black.
-- These fixes address concrete input/selection causes of stuck diagnostics. Mesh-rotation attachment and parameter-driven GPU output behavior still require runtime inspection; they are not claimed verified.
+- UV recapture/binding now runs in `FMixtormatPreviewViewportClient::Tick`, after camera maintenance, instead of `SMixtormatPreviewViewport::Tick`. This ties mapping updates to the realtime viewport rather than Slate invalidation; it does not regenerate diagnostic color on camera movement.
+- These fixes address input/selection and capture scheduling paths implicated in stuck diagnostics. Mesh-rotation attachment and parameter-driven GPU output behavior still require runtime inspection; they are not claimed verified.
 
 **Remaining acceptance checks / limits:**
 

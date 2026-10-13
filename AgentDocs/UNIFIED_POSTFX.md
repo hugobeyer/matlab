@@ -23,6 +23,9 @@ tinting Base Color or creating a replacement lit material.
   `MixtormatPreview::AddHeightDisplacement` helper. It writes mesh UV into
   HDR R/G and a subject-validity bit in B.
 - The capture component renders only the proxy into a view-sized HDR target.
+  `FMixtormatPreviewViewportClient::Tick` refreshes capture/bindings after camera
+  maintenance, independently of Slate widget ticks or generator parameter edits.
+  Camera movement reprojects the cached diagnostic texture; it does not recompose it.
   The UV target uses **nearest** filtering because its B channel is a binary
   mesh-validity signal; interpolating it with background black creates a false
   translucent fringe. The locally authored Post Process material must still
