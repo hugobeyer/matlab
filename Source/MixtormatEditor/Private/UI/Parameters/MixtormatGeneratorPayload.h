@@ -17,6 +17,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Pebbles: return &Generator.Pebbles;
 		case EMixtormatGeneratorType::CliffStrata: return &Generator.CliffStrata;
 		case EMixtormatGeneratorType::Noise: return &Generator.Noise;
+	case EMixtormatGeneratorType::BooleanOps: return &Generator.BooleanOps;
 		}
 		return nullptr;
 	}
@@ -32,6 +33,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();
 		case EMixtormatGeneratorType::CliffStrata: return FMixtormatCliffStrata::StaticStruct();
 		case EMixtormatGeneratorType::Noise: return FMixtormatNoise::StaticStruct();
+	case EMixtormatGeneratorType::BooleanOps: return FMixtormatBooleanOps::StaticStruct();
 		}
 		return nullptr;
 	}

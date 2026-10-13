@@ -1,7 +1,8 @@
 # Scatter Carve — minimal Houdini COP OpenCL prototype
 
-One node, analytic ellipsoid geometry projection, hard subtraction or union.
-No Unreal integration, mesh input, SDF rebuild, or simulation.
+One node, analytic finite-cutter geometry projection, subtract or union with a chamfer Boolean.
+The Boolean Ops generator in Mixtormat ports this kernel to Unreal as Scatter Carve.
+No mesh input, combined-surface SDF rebuild, or simulation.
 Uses the same `#runover layer` / named-layer bindings as `../Behaviorsopencls/`.
 
 ## Setup

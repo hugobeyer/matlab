@@ -741,6 +741,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
+		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::BooleanOps;
 		default:                                      return EMixtormatChildCreation::StrataCarver;
 		}
 	}
@@ -769,6 +770,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::BooleanOps:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
@@ -843,6 +845,9 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Noise:
 			Child.Generator.Type = EMixtormatGeneratorType::Noise;
+			break;
+		case EMixtormatChildCreation::BooleanOps:
+			Child.Generator.Type = EMixtormatGeneratorType::BooleanOps;
 			break;
 		case EMixtormatChildCreation::NoiseFlow:
 		{
@@ -1493,6 +1498,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("PebblesChildName", "Pebbles");
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
+		case EMixtormatGeneratorType::BooleanOps:
+			return LOCTEXT("BooleanOpsChildName", "Boolean Ops");
 		case EMixtormatGeneratorType::Noise:
 			// Preset identity persists independently of the output toggles: a Flow that later
 			// enables Height stays a Flow (FINAL_BEHAVIOR_PLAN section 12).
@@ -2130,6 +2137,18 @@ const FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata() const
 {
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
+}
+
+FMixtormatBooleanOps* SMixtormat::GetSelectedBooleanOps()
+{
+	FMixtormatGenerator* G = GetSelectedGenerator();
+	return G && G->Type == EMixtormatGeneratorType::BooleanOps ? &G->BooleanOps : nullptr;
+}
+
+const FMixtormatBooleanOps* SMixtormat::GetSelectedBooleanOps() const
+{
+	const FMixtormatGenerator* G = GetSelectedGenerator();
+	return G && G->Type == EMixtormatGeneratorType::BooleanOps ? &G->BooleanOps : nullptr;
 }
 
 FMixtormatNoise* SMixtormat::GetSelectedNoise()

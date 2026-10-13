@@ -76,6 +76,50 @@ namespace
 
 }
 
+
+class FMixtormatBooleanCarveCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBooleanCarveCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBooleanCarveCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Seed)
+		SHADER_PARAMETER(int32, Count)
+		SHADER_PARAMETER(int32, Operation)
+		SHADER_PARAMETER(int32, Shape)
+		SHADER_PARAMETER(int32, Sides)
+		SHADER_PARAMETER(float, Radius)
+		SHADER_PARAMETER(float, RadiusVariation)
+		SHADER_PARAMETER(float, CenterDepth)
+		SHADER_PARAMETER(float, DepthVariation)
+		SHADER_PARAMETER(float, ReferenceHeight)
+		SHADER_PARAMETER(float, DepthScale)
+		SHADER_PARAMETER(float, Irregularity)
+		SHADER_PARAMETER(float, Rotation)
+		SHADER_PARAMETER(float, RotationVariation)
+		SHADER_PARAMETER(float, ChamferFraction)
+		SHADER_PARAMETER(float, ChamferVariation)
+		SHADER_PARAMETER(float, HeightToUV)
+		SHADER_PARAMETER(uint32, HasScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BelowHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeightDelta)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCutDepth)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGeometryFront)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGeometryBack)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGeometryMask)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
+	{
+		return IsFeatureLevelSupported(P.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBooleanCarveCS,
+	"/Plugin/Mixtormat/Private/MixtormatBooleanCarve.usf", "MainCS", SF_Compute);
+
 // Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
 // position inside each bed and per-bed random alongside the signed height.
 class FMixtormatStrataCarverResolveCS final : public FGlobalShader
@@ -2347,6 +2391,88 @@ namespace
 	// The bedding coordinate reads the source height (Height Follow), so this cannot publish in
 	// the ID phase: its bed IDs exist from here on, for the children below it, and UV From IDs
 	// -- which resolves before the layer's source is read -- cannot key off them.
+
+	// Boolean Ops currently exposes only Scatter Carve. Its shader reads the
+	// existing signed stack and produces the change needed by the Generator-layer
+	// additive chain. Neither its input nor its delta is normalized.
+	void AddBooleanCarvePasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight,
+		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const FBooleanOpsRenderData& B = Child.Generator.BooleanOps;
+		const auto Make = [&GraphBuilder, Size](const TCHAR* Name)
+		{
+			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, PF_R32_FLOAT, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		FRDGTextureRef Delta = Make(TEXT("Mixtormat.BooleanCarve.Delta"));
+		FRDGTextureRef CutDepth = Make(TEXT("Mixtormat.BooleanCarve.CutDepth"));
+		FRDGTextureRef Front = Make(TEXT("Mixtormat.BooleanCarve.Front"));
+		FRDGTextureRef Back = Make(TEXT("Mixtormat.BooleanCarve.Back"));
+		FRDGTextureRef Footprint = Make(TEXT("Mixtormat.BooleanCarve.GeometryMask"));
+		const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+		FRDGTextureRef Scoped = bHasMask
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+			: RunningHeight;
+		auto* P = GraphBuilder.AllocParameters<FMixtormatBooleanCarveCS::FParameters>();
+		P->OutputSize = Size;
+		P->Seed = B.Seed;
+		P->Count = B.Count;
+		P->Operation = B.Operation;
+		P->Shape = B.Shape;
+		P->Sides = B.Sides;
+		P->Radius = B.Radius;
+		P->RadiusVariation = B.RadiusVariation;
+		P->CenterDepth = B.CenterDepth;
+		P->DepthVariation = B.DepthVariation;
+		P->ReferenceHeight = B.ReferenceHeight;
+		P->DepthScale = B.DepthScale;
+		P->Irregularity = B.Irregularity;
+		P->Rotation = B.Rotation;
+		P->RotationVariation = B.RotationVariation;
+		P->ChamferFraction = B.ChamferFraction;
+		P->ChamferVariation = B.ChamferVariation;
+		P->HeightToUV = B.HeightToUV;
+		P->HasScopedMask = bHasMask ? 1u : 0u;
+		P->RunningHeight = RunningHeight;
+		P->BelowHeight = BelowHeight;
+		P->ScopedMask = Scoped;
+		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+		P->OutHeightDelta = GraphBuilder.CreateUAV(Delta);
+		P->OutCutDepth = GraphBuilder.CreateUAV(CutDepth);
+		P->OutGeometryFront = GraphBuilder.CreateUAV(Front);
+		P->OutGeometryBack = GraphBuilder.CreateUAV(Back);
+		P->OutGeometryMask = GraphBuilder.CreateUAV(Footprint);
+		TShaderMapRef<FMixtormatBooleanCarveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.BooleanCarve.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+
+		Bundle->Height = Delta;
+		Bundle->RegisterNamedMask(FName(TEXT("GeometryMask")), Footprint,
+			FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		for (const TPair<FName, FRDGTextureRef>& Output : {
+			TPair<FName, FRDGTextureRef>{FName(TEXT("CutDepth")), CutDepth},
+			TPair<FName, FRDGTextureRef>{FName(TEXT("GeometryFront")), Front},
+			TPair<FName, FRDGTextureRef>{FName(TEXT("GeometryBack")), Back}})
+		{
+			Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Output.Key),
+				FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Output.Value, nullptr, nullptr, false});
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
+				Output.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
+				AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Output.Value, (float)Size.X, Debug, Size);
+			}
+		}
+	}
+
 	FRDGTextureRef AddStrataCarverPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -3413,11 +3539,32 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
+		case EMixtormatGeneratorType::BooleanOps:
+			AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
+				Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
+			break;
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
 			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, RunningHeight);
 			break;
+		}
+		if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+		{
+			// No normalize/flow/second mask pass: the delta is already final signed CSG.
+			if (Module.Height)
+			{
+				LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
+					FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+				for (const auto& Named : Module.NamedMasks)
+				{
+					Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Named.Key), Named.Value);
+				}
+				AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+			}
+			continue;
 		}
 		if (!Module.Height && Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
 		// A Noise module with Write Height OFF produces no height: it contributes nothing to the

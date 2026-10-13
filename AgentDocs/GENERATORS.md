@@ -15,7 +15,7 @@ effect (post-composite filter) nor a mask (0..1 coverage).
 | `MixtormatCanOwnGeneratorFlow` | `MixtormatGeneratorTypes.h` (~L34) |
 
 Current types: `StrataCarver`, `Cracks`, `RockFormation`, `Pebbles`,
-`CliffStrata`, `Noise`. Enum is serialized by value — **append, never reorder**.
+`CliffStrata`, `Noise`, `BooleanOps`. Enum is serialized by value — **append, never reorder**.
 
 Strata Carver is frozen and excluded from Mixtormat 1.0 authoring and shipping requirements.
 Its creation entries are removed from layer, child and Sources menus. Types, shaders,
@@ -29,6 +29,33 @@ combine. Noise and Cliff Strata support Height steering only: neither publishes 
 field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBoundary` names that
 distinction for the inspector and authoring defaults). Every other eligible generator keeps both
 source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md` (archived).
+
+## Boolean Ops — Scatter Carve
+
+`BooleanOps` currently authors one operation family: Scatter Carve. Finite
+ellipsoid or polygon-prism cutters are seeded periodically in UV; each cutter
+samples the original signed height at its seed to stay rigid. Subtract removes
+the union of intersecting depth intervals, revisiting overlaps; Union projects
+the frontmost cutter. `CenterDepth < 0` also selects Union as in the prototype.
+Chamfer uses the root-refined finite-volume distance method, not morphological
+erosion, Eikonal propagation or a height-stamp approximation. Scoped masks blend
+the finished result.
+
+The compute pass evaluates `CompositeBelow + RunningHeight` as its raw target,
+outputs `resolved - target`, then uses the standard additive running-height
+chain. No normalization or additional Height Scale is applied to this delta.
+Outputs: Height (signed delta), CutDepth (signed removal), GeometryFront,
+GeometryBack (unclipped original cutter envelope), and copyable GeometryMask.
+Normals remain on the standard final-height path. In this first iteration
+Boolean Ops does not publish a combined-surface SDF, IDs, or native Flow.
+The full seed-count range is available but expensive; default 16, UI range
+0–256, and a hard cap of 4096. The source prototype is
+`AgentDocs/Prototypes/ScatterCarve/scatter_carve.cl`.
+
+Implementation: `FMixtormatBooleanOps` →
+`GatherGeneratorChild` → `AddBooleanCarvePasses` →
+`MixtormatBooleanCarve.usf` → `BuildBooleanOpsControls`.
+Static source review only; no Unreal build or runtime validation performed.
 
 ## Shared native Flow foundation (Stage 1)
 

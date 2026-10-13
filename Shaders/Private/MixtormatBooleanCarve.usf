@@ -1,0 +1,351 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Scatter Carve: signed finite-volume subtract / union with a chamfer Boolean.
+// Adapted from AgentDocs/Prototypes/ScatterCarve/scatter_carve.cl.
+// No private per-pixel seed arrays: hard-cut intervals are revisited analytically.
+#include "/Engine/Public/Platform.ush"
+
+#define SCATTER_CARVE_MAX_SEEDS 4096
+#define SCATTER_CARVE_ROOT_STEPS 24
+
+int2 OutputSize;
+int Seed;
+int Count;
+int Operation;
+int Shape;
+int Sides;
+float Radius;
+float RadiusVariation;
+float CenterDepth;
+float DepthVariation;
+float ReferenceHeight;
+float DepthScale;
+float Irregularity;
+float Rotation;
+float RotationVariation;
+float ChamferFraction;
+float ChamferVariation;
+float HeightToUV;
+uint HasScopedMask;
+
+Texture2D<float> RunningHeight;
+Texture2D<float> BelowHeight;
+Texture2D<float> ScopedMask;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeightDelta;
+RWTexture2D<float> OutCutDepth;
+RWTexture2D<float> OutGeometryFront;
+RWTexture2D<float> OutGeometryBack;
+RWTexture2D<float> OutGeometryMask;
+
+uint carve_hash(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    return x ^ (x >> 16);
+}
+
+float carve_random(uint key, uint channel)
+{
+    return (float)(carve_hash(key + channel * 0x9e3779b9u) >> 8)
+        * (1.0f / 16777216.0f);
+}
+
+// Unit side normal and support distance of an irregular convex polygon.
+float3 carve_side(uint key, int side, int sides, float radius,
+                  float angle, float irregularity)
+{
+    float theta = 6.28318530718f * (float)side / (float)sides + angle;
+    float2 n = float2(cos(theta), sin(theta));
+    float support = radius * (1.0f + irregularity
+        * (2.0f * carve_random(key, 16u + (uint)side) - 1.0f));
+    return float3(n.x, n.y, support);
+}
+
+// Signed distance to the convex half-plane polygon. Outside distance uses
+// clipped face segments, including redundant planes and non-adjacent corners.
+float carve_polygon_distance(uint key, int sides, float radius, float angle,
+                             float irregularity, float2 p, float bound)
+{
+    float3 first = carve_side(key, 0, sides, radius, angle, irregularity);
+    float plane_distance = dot(first.xy, p) - first.z;
+    for (int i = 1; i < sides; ++i)
+    {
+        float3 side = carve_side(key, i, sides, radius, angle, irregularity);
+        plane_distance = max(plane_distance, dot(side.xy, p) - side.z);
+    }
+    if (plane_distance <= 0.0f)
+        return plane_distance;
+
+    float best = 0.0f;
+    int found = 0;
+    for (int i = 0; i < sides; ++i)
+    {
+        float3 side = carve_side(key, i, sides, radius, angle, irregularity);
+        float2 origin = side.xy * side.z;
+        float2 tangent = float2(-side.y, side.x);
+        float lo = -bound;
+        float hi = bound;
+        for (int j = 0; j < sides; ++j)
+        {
+            if (j == i)
+                continue;
+            float3 clip = carve_side(key, j, sides, radius, angle, irregularity);
+            float along = dot(clip.xy, tangent);
+            float remaining = clip.z - dot(clip.xy, origin);
+            if (along > 0.0f)
+                hi = min(hi, remaining / along);
+            else if (along < 0.0f)
+                lo = max(lo, remaining / along);
+            else if (remaining < 0.0f)
+                lo = bound + 1.0f;
+            if (lo > hi)
+                break;
+        }
+        if (lo > hi)
+            continue;
+        float t = clamp(dot(p - origin, tangent), lo, hi);
+        float distance = length(p - (origin + t * tangent));
+        if (!found || distance < best)
+        {
+            best = distance;
+            found = 1;
+        }
+    }
+    // Negative/degenerate supports may define an empty polygon.
+    return found ? best : bound + length(p) + radius;
+}
+
+// Outside distance is Euclidean. Inside, only the sign is needed by the
+// bevel root solve; the analytic ray interval preserves the exact solid.
+float carve_volume_distance(int shape, float lateral, float radius,
+                            float half_height, float z_offset)
+{
+    if (shape == 1)
+    {
+        float2 q = float2(lateral, abs(z_offset) - half_height);
+        return length(max(q, float2(0.0f, 0.0f)))
+            + min(max(q.x, q.y), 0.0f);
+    }
+
+    float2 p = float2(lateral, abs(z_offset));
+    float2 axes = float2(radius, half_height);
+    if (radius == half_height)
+        return length(p) - radius;
+    float norm = length(p / axes);
+    if (norm <= 1.0f)
+        return (norm - 1.0f) * min(radius, half_height);
+
+    // Closest point on the meridian ellipse. Normalizing the calculation is
+    // numerical conditioning only; it never changes the stored raw heights.
+    float scale = max(radius, half_height);
+    p /= scale;
+    axes /= scale;
+    float2 axes2 = axes * axes;
+    float lo = 0.0f;
+    float hi = length(axes * p);
+    for (int i = 0; i < SCATTER_CARVE_ROOT_STEPS; ++i)
+    {
+        float mid = lo + (hi - lo) * 0.5f;
+        if (mid == lo || mid == hi)
+            break;
+        float2 q = axes * p / (axes2 + mid);
+        if (dot(q, q) > 1.0f)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    float2 closest = axes2 * p / (axes2 + hi);
+    return length(p - closest) * scale;
+}
+
+// A = vertical signed height field; D = signed cutter distance.
+// Subtract: max(A, -D, (A-D+width)/sqrt(2)).
+// Union:    min(A,  D, (A+D-width)/sqrt(2)).
+// With A = direction*t, the extra bevel volume ends at D(t)+t-width = 0.
+// Its exterior crossing is monotone because Euclidean distance is 1-Lipschitz.
+float carve_chamfer_travel(int shape, float lateral, float radius,
+                           float half_height, float z_offset,
+                           float width, float direction)
+{
+    float lo = 0.0f;
+    float hi = width;
+    float end_distance = carve_volume_distance(shape, lateral, radius,
+        half_height, z_offset + direction * hi);
+    if (end_distance <= 0.0f)
+        return hi; // The sharp cutter interval continues beyond the bevel band.
+    for (int i = 0; i < SCATTER_CARVE_ROOT_STEPS; ++i)
+    {
+        float mid = lo + (hi - lo) * 0.5f;
+        if (mid == lo || mid == hi)
+            break;
+        float distance = carve_volume_distance(shape, lateral, radius,
+            half_height, z_offset + direction * mid);
+        if (distance + mid >= width)
+            hi = mid;
+        else
+            lo = mid;
+    }
+    return hi;
+}
+
+
+// One rigid cutter, anchored to the source height at its scatter seed.
+// A candidate can contribute a chamfer without intersecting the sharp ray.
+bool carve_seed_geometry(int index, float2 uv, bool bevelEnabled,
+    out float lower, out float upper, out float lateral,
+    out float r, out float hz, out float width, out float reach, out float z)
+{
+    lower = upper = lateral = r = hz = width = reach = z = 0.0f;
+    uint key = carve_hash((uint)Seed + (uint)index * 0x9e3779b9u);
+    float2 center = float2(carve_random(key, 1u), carve_random(key, 2u));
+    r = Radius * lerp(1.0f - saturate(RadiusVariation), 1.0f, carve_random(key, 3u));
+    if (!isfinite(r) || r <= 0.0f) return false;
+    width = r * ChamferFraction * (1.0f + ChamferVariation *
+        (2.0f * carve_random(key, 4096u) - 1.0f));
+    reach = bevelEnabled && isfinite(width) && width > 0.0f ? width : 0.0f;
+    hz = r * DepthScale;
+    if (!isfinite(hz) || hz <= 0.0f) return false;
+
+    float2 d = uv - center;
+    d -= floor(d + 0.5f);
+    float span = 0.0f;
+
+    if (Shape == 0)
+    {
+        lateral = length(d);
+        if (lateral > r + reach) return false;
+        float2 q = d / r;
+        float discriminant = 1.0f - dot(q, q);
+        if (discriminant > 0.0f) span = hz * sqrt(discriminant);
+    }
+    else if (Shape == 1 && Sides >= 3)
+    {
+        float angle = (Rotation + RotationVariation *
+            (2.0f * carve_random(key, 5u) - 1.0f)) * 0.01745329252f;
+        float polygonBound = r * (1.0f + abs(Irregularity)) /
+            cos(3.14159265359f / (float)Sides);
+        float bound = polygonBound + reach;
+        if (!isfinite(bound)) return false;
+        int xmin = (int)ceil(-bound - d.x);
+        int xmax = (int)floor(bound - d.x);
+        int ymin = (int)ceil(-bound - d.y);
+        int ymax = (int)floor(bound - d.y);
+        bool found = false;
+        [loop] for (int ty = ymin; ty <= ymax; ++ty)
+        {
+            [loop] for (int tx = xmin; tx <= xmax; ++tx)
+            {
+                float2 p = d + float2((float)tx, (float)ty);
+                if (dot(p, p) > bound * bound) continue;
+                float distance = carve_polygon_distance(key, Sides, r,
+                    angle, Irregularity, p, polygonBound);
+                if (!found || distance < lateral)
+                {
+                    lateral = distance;
+                    found = true;
+                }
+            }
+        }
+        if (!found || lateral > reach) return false;
+        if (lateral <= 0.0f) span = hz;
+    }
+    else return false;
+
+    float surface = BelowHeight.SampleLevel(LinearWrapSampler, center, 0) +
+        RunningHeight.SampleLevel(LinearWrapSampler, center, 0);
+    z = surface + ReferenceHeight - CenterDepth +
+        (2.0f * carve_random(key, 4u) - 1.0f) * abs(DepthVariation);
+    if (!isfinite(z)) return false;
+
+    if (span > 0.0f)
+    {
+        lower = z - span;
+        upper = z + span;
+    }
+    return true;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    int2 pixel = int2(DispatchThreadId.xy);
+    if (any(pixel >= OutputSize)) return;
+    float base = BelowHeight.Load(int3(pixel, 0)) +
+        RunningHeight.Load(int3(pixel, 0));
+    float weight = HasScopedMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
+    weight = isfinite(weight) ? saturate(weight) : 0.0f;
+    float result = base;
+    int operation = CenterDepth < 0.0f ? 1 : Operation;
+    bool bevelEnabled = isfinite(HeightToUV) && HeightToUV > 0.0f &&
+        (operation == 0 || operation == 1);
+    float front = 0.0f;
+    float back = 0.0f;
+    int hits = 0;
+    float cutWidth = 0.0f;
+    int seedCount = clamp(Count, 0, SCATTER_CARVE_MAX_SEEDS);
+
+    if (seedCount > 0 && Radius > 0.0f && DepthScale > 0.0f)
+    {
+        float2 uv = (float2(pixel) + 0.5f) / float2(OutputSize);
+        [loop] for (int i = 0; i < seedCount; ++i)
+        {
+            float lo, hi, lateral, r, hz, width, reach, z;
+            if (!carve_seed_geometry(i, uv, bevelEnabled,
+                lo, hi, lateral, r, hz, width, reach, z)) continue;
+            if (hi > lo)
+            {
+                front = hits == 0 ? hi : max(front, hi);
+                back = hits == 0 ? lo : min(back, lo);
+                ++hits;
+            }
+            float scaledHz = hz * HeightToUV;
+            float zOffset = (base - z) * HeightToUV;
+            if (reach <= 0.0f || !isfinite(scaledHz) || scaledHz <= 0.0f ||
+                !isfinite(zOffset)) continue;
+            float distance = carve_volume_distance(Shape, lateral, r, scaledHz, zOffset);
+            if (!isfinite(distance) || distance >= reach) continue;
+            float direction = operation == 0 ? -1.0f : 1.0f;
+            float travel = carve_chamfer_travel(Shape, lateral, r, scaledHz,
+                zOffset, reach, direction);
+            float beveled = base + direction * (travel / HeightToUV);
+            if (!isfinite(beveled)) continue;
+            if (operation == 0 && beveled < result)
+            {
+                result = beveled;
+                cutWidth = width;
+            }
+            else if (operation == 1)
+                result = max(result, beveled);
+        }
+
+        // Subtract all overlapping finite cutter intervals, not their envelope.
+        // Re-evaluation avoids thousands of private shader registers per pixel.
+        [loop] for (int pass = 0; operation == 0 && pass < hits; ++pass)
+        {
+            float previous = result;
+            [loop] for (int i = 0; i < seedCount; ++i)
+            {
+                float lo, hi, lateral, r, hz, width, reach, z;
+                if (!carve_seed_geometry(i, uv, bevelEnabled,
+                    lo, hi, lateral, r, hz, width, reach, z)) continue;
+                if (hi > lo && lo < result && hi >= result)
+                {
+                    result = lo;
+                    cutWidth = width;
+                }
+            }
+            if (result == previous) break;
+        }
+        if (operation == 1 && hits > 0)
+            result = max(result, front);
+    }
+
+    result = lerp(base, result, weight);
+    OutHeightDelta[pixel] = result - base;
+    OutCutDepth[pixel] = base - result;
+    OutGeometryFront[pixel] = front;
+    OutGeometryBack[pixel] = back;
+    OutGeometryMask[pixel] = hits > 0 ? 1.0f : 0.0f;
+}

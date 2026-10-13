@@ -49,6 +49,7 @@ namespace
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
 		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
 		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
+		{LOCTEXT("AddGeneratorLayerBooleanOps", "Boolean Ops"), EMixtormatChildCreation::BooleanOps},
 	};
 	for (const auto& Entry : Entries)
 	{
@@ -1175,6 +1176,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
+		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean Ops"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::BooleanOps); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();

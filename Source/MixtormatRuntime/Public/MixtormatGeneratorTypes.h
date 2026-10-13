@@ -26,7 +26,8 @@ enum class EMixtormatGeneratorType : uint8
 	CliffStrata UMETA(DisplayName = "Cliff Strata"),
 	// Appended: a plain field producer. It publishes Value / Gradient / IDs and decides nothing
 	// about what they mean -- height, roughness, mask and the rest are downstream decisions.
-	Noise UMETA(DisplayName = "Noise")
+	Noise UMETA(DisplayName = "Noise"),
+	BooleanOps UMETA(DisplayName = "Boolean Ops")
 };
 
 // How a pebble's cut planes are oriented.
@@ -1079,6 +1080,79 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 };
 
 
+
+UENUM(BlueprintType)
+enum class EMixtormatBooleanOperation : uint8
+{
+    Subtract UMETA(DisplayName = "Subtract"),
+    Union UMETA(DisplayName = "Union")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatBooleanShape : uint8
+{
+    Ellipsoid UMETA(DisplayName = "Ellipsoid"),
+    PolygonPrism UMETA(DisplayName = "Polygon Prism")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBooleanOps
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape")
+    EMixtormatBooleanOperation Operation = EMixtormatBooleanOperation::Subtract;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape")
+    EMixtormatBooleanShape Shape = EMixtormatBooleanShape::PolygonPrism;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Scatter", meta = (UIMin = "0", UIMax = "9999"))
+    int32 Seed = 1;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Scatter", meta = (UIMin = "0", UIMax = "256"))
+    int32 Count = 16;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Scatter", meta = (UIMin = "0.0", UIMax = "0.5"))
+    float Radius = 0.06f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Scatter", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float RadiusVariation = 0.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Height", meta = (UIMin = "-1.0", UIMax = "1.0"))
+    float CenterDepth = 0.02f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Height", meta = (UIMin = "0.0", UIMax = "0.5"))
+    float DepthVariation = 0.08f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Height", meta = (UIMin = "-1.0", UIMax = "1.0"))
+    float ReferenceHeight = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Height", meta = (UIMin = "0.0", UIMax = "8.0"))
+    float DepthScale = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape", meta = (UIMin = "3", UIMax = "32"))
+    int32 Sides = 7;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float Irregularity = 0.25f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape", meta = (UIMin = "-180.0", UIMax = "180.0"))
+    float Rotation = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Shape", meta = (UIMin = "0.0", UIMax = "180.0"))
+    float RotationVariation = 180.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float ChamferFraction = 0.2f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Chamfer", meta = (UIMin = "0.0", UIMax = "1.0"))
+    float ChamferVariation = 0.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Chamfer", meta = (UIMin = "0.01", UIMax = "4.0"))
+    float HeightToUV = 1.0f;
+
+};
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -1174,4 +1248,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Noise"))
 	FMixtormatNoise Noise;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::BooleanOps"))
+	FMixtormatBooleanOps BooleanOps;
 };

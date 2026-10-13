@@ -955,6 +955,26 @@ namespace MixtormatGpuCompositor
 		float GravityAngle = -90.0f;
 	};
 
+	struct FBooleanOpsRenderData
+	{
+		int32 Operation = 0, Shape = 1;
+		int32 Seed = 1;
+		int32 Count = 16;
+		float Radius = 0.06f;
+		float RadiusVariation = 0.5f;
+		float CenterDepth = 0.02f;
+		float DepthVariation = 0.08f;
+		float ReferenceHeight = 0.0f;
+		float DepthScale = 1.0f;
+		int32 Sides = 7;
+		float Irregularity = 0.25f;
+		float Rotation = 0.0f;
+		float RotationVariation = 180.0f;
+		float ChamferFraction = 0.2f;
+		float ChamferVariation = 0.5f;
+		float HeightToUV = 1.0f;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
@@ -967,6 +987,7 @@ namespace MixtormatGpuCompositor
 		FRockFormationRenderData RockFormation;
 		FPebblesRenderData Pebbles;
 		FCliffStrataRenderData CliffStrata;
+		FBooleanOpsRenderData BooleanOps;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a

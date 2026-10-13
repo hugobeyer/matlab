@@ -421,6 +421,125 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 		];
 }
 
+
+TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
+{
+	const auto B = [this]() { return GetSelectedBooleanOps(); };
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	{
+		TSharedRef<SVerticalBox> Scatter = AddCard(Cards, LOCTEXT("BooleanScatter", "SCATTER CARVE"));
+		AddSliderRow(Scatter, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanSeed", "Seed"), B, &FMixtormatBooleanOps::Seed, 0, 9999, 1,
+				LOCTEXT("BooleanSeedHint", "Repeatable cutter distribution.")),
+			MakeMemberSliderInt<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanCount", "Count"), B, &FMixtormatBooleanOps::Count, 0, 256, 16,
+				LOCTEXT("BooleanCountHint", "Independent cutters; large counts are GPU-expensive."))));
+		AddSliderRow(Scatter, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanRadius", "Radius"), B, &FMixtormatBooleanOps::Radius, 0.0, 0.5, 0.06, 0.001,
+				LOCTEXT("BooleanRadiusHint", "Cutter radius in tile UV units.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanRadiusVariation", "Radius Var"), B, &FMixtormatBooleanOps::RadiusVariation, 0.0, 1.0, 0.5, 0.01,
+				LOCTEXT("BooleanRadiusVariationHint", "Per-cutter radius reduction."))));
+	}
+	{
+		TSharedRef<SVerticalBox> Shape = AddCard(Cards, LOCTEXT("BooleanShape", "GEOMETRY"));
+		AddSliderRow(Shape, MakeMemberEnum<FMixtormatBooleanOps>(
+			LOCTEXT("BooleanOperation", "Boolean"), B, &FMixtormatBooleanOps::Operation,
+			LOCTEXT("BooleanOperationHint", "Subtract cuts the existing solid; Union adds the cutter.")));
+		AddSliderRow(Shape, MakeMemberEnum<FMixtormatBooleanOps>(
+			LOCTEXT("BooleanShapeType", "Shape"), B, &FMixtormatBooleanOps::Shape,
+			LOCTEXT("BooleanShapeTypeHint", "Ellipsoid or a convex polygon prism.")));
+		AddSliderRow(Shape, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanSides", "Sides"), B, &FMixtormatBooleanOps::Sides, 3, 32, 7,
+				LOCTEXT("BooleanSidesHint", "Polygon side count.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanIrregularity", "Irregularity"), B, &FMixtormatBooleanOps::Irregularity, 0.0, 1.0, 0.25, 0.01,
+				LOCTEXT("BooleanIrregularityHint", "Randomized polygon support planes."))));
+		AddSliderRow(Shape, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanRotation", "Rotation"), B, &FMixtormatBooleanOps::Rotation, -180.0, 180.0, 0.0, 1.0,
+				LOCTEXT("BooleanRotationHint", "Angle in degrees.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanRotationVar", "Rotation Var"), B, &FMixtormatBooleanOps::RotationVariation, 0.0, 180.0, 180.0, 1.0,
+				LOCTEXT("BooleanRotationVarHint", "Symmetric random rotation in degrees."))));
+	}
+	{
+		TSharedRef<SVerticalBox> Height = AddCard(Cards, LOCTEXT("BooleanHeight", "DEPTH"));
+		AddSliderRow(Height, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanCenterDepth", "Center Depth"), B, &FMixtormatBooleanOps::CenterDepth, -1.0, 1.0, 0.02, 0.005,
+				LOCTEXT("BooleanCenterDepthHint", "Positive embeds the cutters; negative forces union, as in the prototype.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanDepthVar", "Depth Var"), B, &FMixtormatBooleanOps::DepthVariation, 0.0, 0.5, 0.08, 0.005,
+				LOCTEXT("BooleanDepthVarHint", "Seed-centered depth variation."))));
+		AddSliderRow(Height, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanRefHeight", "Reference Height"), B, &FMixtormatBooleanOps::ReferenceHeight, -1.0, 1.0, 0.0, 0.005,
+				LOCTEXT("BooleanRefHeightHint", "Offset from the existing surface at each seed.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanDepthScale", "Depth Scale"), B, &FMixtormatBooleanOps::DepthScale, 0.0, 8.0, 1.0, 0.01,
+				LOCTEXT("BooleanDepthScaleHint", "Vertical cutter radius relative to its UV radius."))));
+	}
+	{
+		TSharedRef<SVerticalBox> Chamfer = AddCard(Cards, LOCTEXT("BooleanChamfer", "CHAMFER"));
+		AddSliderRow(Chamfer, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanChamferFraction", "Width"), B, &FMixtormatBooleanOps::ChamferFraction, 0.0, 1.0, 0.2, 0.005,
+				LOCTEXT("BooleanChamferFractionHint", "Chamfer reach relative to each cutter radius.")),
+			MakeMemberSlider<FMixtormatBooleanOps>(
+				LOCTEXT("BooleanChamferVar", "Variation"), B, &FMixtormatBooleanOps::ChamferVariation, 0.0, 1.0, 0.5, 0.01,
+				LOCTEXT("BooleanChamferVarHint", "Per-cutter chamfer width variation."))));
+		AddSliderRow(Chamfer, MakeMemberSlider<FMixtormatBooleanOps>(
+			LOCTEXT("BooleanHeightToUV", "Height / UV"), B, &FMixtormatBooleanOps::HeightToUV, 0.01, 4.0, 1.0, 0.01,
+			LOCTEXT("BooleanHeightToUVHint", "Raw signed height units converted to tile UV distance for the chamfer solve.")));
+	}
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedBooleanOps() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("BooleanOpsHeading", "BOOLEAN OPS"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
+					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
+					{
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* Generator = GetSelectedGenerator();
+							return Generator && Generator->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* Generator = GetSelectedGenerator())
+							{
+								Generator->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+								RebuildLayerList();
+							}
+						}),
+						LOCTEXT("BooleanEnabledHint", "Enable Scatter Carve"))
+				])
+			[
+				Cards
+			]
+		];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 {
 	const auto Pebble = [this]() { return GetSelectedPebbles(); };

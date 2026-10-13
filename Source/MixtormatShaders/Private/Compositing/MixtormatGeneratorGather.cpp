@@ -245,6 +245,38 @@ namespace MixtormatGpuCompositor
 		if(bCacheLayers){MixtormatComposeHash::FHasher Hasher;Hasher.SkipTopLevel={TEXT("bCliffNormalizeHeight"),TEXT("CliffHeightScale")};Hasher.Struct(FMixtormatCliffStrata::StaticStruct(),&Cliff);Out.FieldKey=MixtormatComposeHash::Combine(Hasher.Get(),0x436C696666537472ull)|1ull;}
 		break;
 	}
+	case EMixtormatGeneratorType::BooleanOps:
+	{
+		const FMixtormatBooleanOps& B = Generator.BooleanOps;
+		const FMixtormatBooleanOps Defaults;
+		FBooleanOpsRenderData& Out = ChildData.Generator.BooleanOps;
+		const auto Finite = [](float V, float Fallback) { return FMath::IsFinite(V) ? V : Fallback; };
+		ChildData.Generator.bNormalizeHeight = false;
+		ChildData.Generator.HeightScale = 1.0f;
+		Out.Operation = static_cast<int32>(B.Operation);
+		Out.Shape = static_cast<int32>(B.Shape);
+		Out.Seed = B.Seed;
+		Out.Count = B.Count;
+		Out.Radius = Finite(B.Radius, Defaults.Radius);
+		Out.RadiusVariation = Finite(B.RadiusVariation, Defaults.RadiusVariation);
+		Out.CenterDepth = Finite(B.CenterDepth, Defaults.CenterDepth);
+		Out.DepthVariation = Finite(B.DepthVariation, Defaults.DepthVariation);
+		Out.ReferenceHeight = Finite(B.ReferenceHeight, Defaults.ReferenceHeight);
+		Out.DepthScale = Finite(B.DepthScale, Defaults.DepthScale);
+		Out.Sides = B.Sides;
+		Out.Irregularity = Finite(B.Irregularity, Defaults.Irregularity);
+		Out.Rotation = Finite(B.Rotation, Defaults.Rotation);
+		Out.RotationVariation = Finite(B.RotationVariation, Defaults.RotationVariation);
+		Out.ChamferFraction = Finite(B.ChamferFraction, Defaults.ChamferFraction);
+		Out.ChamferVariation = Finite(B.ChamferVariation, Defaults.ChamferVariation);
+		Out.HeightToUV = Finite(B.HeightToUV, Defaults.HeightToUV);
+		Out.Count = FMath::Clamp(Out.Count, 0, 4096);
+		Out.Sides = FMath::Clamp(Out.Sides, 3, 32);
+		Out.Radius = FMath::Max(Out.Radius, 0.0f);
+		Out.DepthScale = FMath::Max(Out.DepthScale, 0.0f);
+		Out.HeightToUV = FMath::Max(Out.HeightToUV, 0.00001f);
+		break;
+	}
 	case EMixtormatGeneratorType::Noise:
 	{
 		// A field producer: the gather only resolves the settings and hands them to the pass.
@@ -269,6 +301,7 @@ namespace MixtormatGpuCompositor
 	}
 	// Native Flow settings do not belong to the geometry cache keys.
 	if (Generator.Type != EMixtormatGeneratorType::Noise
+		&& Generator.Type != EMixtormatGeneratorType::BooleanOps
 		&& Generator.Type != EMixtormatGeneratorType::StrataCarver)
 	{
 		const FMixtormatNativeFlowSettings Defaults;

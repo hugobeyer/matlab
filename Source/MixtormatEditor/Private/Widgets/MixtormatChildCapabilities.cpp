@@ -250,6 +250,24 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+		{
+			Result.Outputs.Add({FName(TEXT("GeometryMask")),
+				NSLOCTEXT("SMixtormat", "PreviewBooleanGeometryMask", "Cutter Footprint"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("CutDepth")),
+				NSLOCTEXT("SMixtormat", "PreviewBooleanCutDepth", "Signed Cut Depth"),
+				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::ScalarSigned});
+			Result.Outputs.Add({FName(TEXT("GeometryFront")),
+				NSLOCTEXT("SMixtormat", "PreviewBooleanFront", "Cutter Front"),
+				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::ScalarSigned});
+			Result.Outputs.Add({FName(TEXT("GeometryBack")),
+				NSLOCTEXT("SMixtormat", "PreviewBooleanBack", "Cutter Back"),
+				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::ScalarSigned});
+		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Noise)
 		{
 			const EMixtormatNoiseType NoiseType = Child.Generator.Noise.NoiseType;

@@ -74,6 +74,7 @@ enum class EMixtormatChildCreation : uint8
 	Pebbles,
 	CliffStrata,
 	Noise,
+	BooleanOps,
 	// The Flow creation preset: the same Noise generator with the P0 Flow defaults
 	// (Write Height OFF, Write Flow ON, Curl weight 1). Editor-only, never serialized.
 	NoiseFlow,
@@ -575,6 +576,9 @@ private:
 	FMixtormatNoise* GetSelectedNoise();
 	const FMixtormatNoise* GetSelectedNoise() const;
 	TSharedRef<SWidget> BuildNoiseControls();
+	FMixtormatBooleanOps* GetSelectedBooleanOps();
+	const FMixtormatBooleanOps* GetSelectedBooleanOps() const;
+	TSharedRef<SWidget> BuildBooleanOpsControls();
 	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise, bool bMaskEmbedded = false);
 	bool CanCreateNoiseGate(const FMixtormatChildAddress& Owner) const;
 	bool ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const;

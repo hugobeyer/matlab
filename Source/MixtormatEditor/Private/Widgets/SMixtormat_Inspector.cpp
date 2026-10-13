@@ -498,6 +498,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildPebblesControls()]
 					+ SScrollBox::Slot()[BuildCliffStrataControls()]
 					+ SScrollBox::Slot()[BuildNoiseControls()]
+					+ SScrollBox::Slot()[BuildBooleanOpsControls()]
 					+ SScrollBox::Slot()[BuildHeightBlendModuleControls()]
 					+ SScrollBox::Slot()[BuildHeightCurveControls()]
 					+ SScrollBox::Slot()[BuildHeightColorRampControls()]
@@ -563,6 +564,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						+ SVerticalBox::Slot().AutoHeight()[BuildRockFormationControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildPebblesControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildCliffStrataControls()]
+						+ SVerticalBox::Slot().AutoHeight()[BuildBooleanOpsControls()]
 
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in
 						// COMPOSITION, which writes the same ChannelMode. Two controls for one field
