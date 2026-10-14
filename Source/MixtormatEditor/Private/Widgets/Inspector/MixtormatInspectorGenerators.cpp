@@ -2271,10 +2271,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
 		LOCTEXT("HeightRemapOffset", "Offset"), Curve, &FMixtormatGeneratorHeightCurve::Offset, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightRemapOffsetHint", "Signed addition. Identity at 0.")));
-	// True means -x, not 1-x. Identity when false.
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapInvert", "Invert"), Curve, &FMixtormatGeneratorHeightCurve::bInvert,
-		LOCTEXT("HeightRemapInvertHint", "Negate the result (-x, not 1-x).")));
+
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
 		LOCTEXT("HeightRemapAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("HeightRemapAmountHint", "How much of the remapped result replaces the running height.")));
@@ -2285,6 +2282,15 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 			return C ? C->Curve : FMixtormatScalarRamp();
 		}))
 		.CanonicalXMin(-1.0f).CanonicalXMax(1.0f)
+		.bInverted_Lambda([Curve]() { const FMixtormatGeneratorHeightCurve* C = Curve(); return C && C->bInvert; })
+		.OnInvertChanged_Lambda([this, Curve](ECheckBoxState State)
+		{
+			if (FMixtormatGeneratorHeightCurve* C = Curve())
+			{
+				C->bInvert = State == ECheckBoxState::Checked;
+				RefreshLayeredPreview();
+			}
+		})
 		.CanonicalYMin(-1.0f).CanonicalYMax(1.0f)
 		.SoftYMin(-1.5f).SoftYMax(1.5f)
 		.ExtendedYMin(-3.0f).ExtendedYMax(3.0f)

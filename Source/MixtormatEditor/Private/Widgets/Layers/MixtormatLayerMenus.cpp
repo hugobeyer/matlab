@@ -351,7 +351,8 @@ void SMixtormat::AddSharedChildMenuItems(
 				FOnGetContent::CreateSP(this, &SMixtormat::BuildCopyChildOutputMenu, Address));
 		}
 	}
-	if (Child && Child->Type == EMixtormatLayerChildType::Mask && !bInstance)
+	if (Child && Child->Type == EMixtormatLayerChildType::Mask
+		&& !bInstance && !Child->Mask.HasPublishedSource())
 	{
 		Menu.SubMenu(LOCTEXT("MaskSourceContext", "Source"), nullptr,
 			FOnGetContent::CreateLambda([this, Address]()

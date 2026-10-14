@@ -93,6 +93,12 @@ protected:
 	virtual float GetInputViewYMin() const { return GetViewYMin(); }
 	virtual float GetInputViewYMax() const { return GetViewYMax(); }
 	virtual void FrameView() {}
+	// Scalar ramps can add point-reflection and semantic inversion without changing color ramps.
+	virtual bool SupportsHorizontalFlip() const { return false; }
+	virtual void FlipHorizontally() {}
+	virtual bool HasInvertControl() const { return false; }
+	virtual bool IsInverted() const { return false; }
+	virtual void SetInverted(bool bValue) {}
 	// Screen-space centre of the interactive marker for the given point. Scalar ramps map the
 	// curve (X,Y); colour ramps place handles under the gradient bar. Hit-testing and selection
 	// rings must use this rather than assuming graph Y = 0.

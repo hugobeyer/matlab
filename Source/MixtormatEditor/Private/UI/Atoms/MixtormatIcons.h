@@ -97,4 +97,5 @@ namespace MixtormatIcons
 	const FSlateBrush* ScalarRampBSpline();
 	const FSlateBrush* ScalarRampFrame();
 	const FSlateBrush* ScalarRampReset();
+	const FSlateBrush* ScalarRampFlipHorizontal();
 }

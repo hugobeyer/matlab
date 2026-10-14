@@ -55,6 +55,16 @@ Published child outputs have one `Outputs` context submenu, populated from
 The formerly duplicated flattened Copy rows were removed; children without copyable outputs
 omit the submenu. `Widgets/Layers/MixtormatLayerMenus.cpp` owns this menu construction.
 
+Published gate masks keep their output-reference source in the inspector. The Source
+card shows a read-only gate source label and hides Texture/Noise/Layer Values selection;
+context Source switching is reserved for unlinked masks, preventing loss of the
+original named output. Standalone masks keep the normal source selector.
+
+Scalar curve toolbars now share interpolation, frame, reset, **horizontal Flip** and
+an inline Invert toggle. Flip reflects authored point X positions across the curve's
+own input domain (including signed Height Remap), while Invert uses the existing
+mask shaping / signed-height invert property; color ramps retain their toolbar.
+
 ## Context menu convention
 
 Every right-click menu in the stack reads in one order, so the same muscle memory works on a

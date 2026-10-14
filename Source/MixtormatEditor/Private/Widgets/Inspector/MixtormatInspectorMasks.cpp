@@ -1010,12 +1010,33 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 					"from the asset -- so a mask built either way behaves identically."))
 		]);
 
+	// A published/gating mask reads an existing child output. Switching to Texture/Noise/Values
+	// discards that reference, with no way to restore the original output from these buttons.
+	// Show the resolved connection instead; only standalone masks select their inline source.
+	AddSliderRow(Panel, SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && M->HasPublishedSource() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::Make(LOCTEXT("PublishedGateSource", "Gate Source"),
+				SNew(STextBlock)
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerSource")))
+				.Text_Lambda([this]() { return GetMaskSourceLabel(GetSelectedChildAddress()); }))
+		]);
+
 	// Exclusive source kinds use the same segmented group as the layer composition mode.
-	// Published Noise Value references remain available through the mask's source menu.
+	// These are for standalone masks only; published connections are displayed above.
 	Panel->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
 		FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
 	[
 		SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatMaskLayer* M = GetSelectedLayerMask();
+			return M && !M->HasPublishedSource() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
 		.IsEnabled_Lambda([this]()
 		{
 			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
@@ -1261,6 +1282,15 @@ void SMixtormat::AddMaskShapingRows(
 			return Shaping ? Shaping->CurveBias : FMixtormatScalarRamp();
 		})
 		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
+		.bInverted_Lambda([Resolve]() { const FMixtormatMaskShaping* S = Resolve(); return S && S->bInvert; })
+		.OnInvertChanged_Lambda([this, Resolve](ECheckBoxState State)
+		{
+			if (FMixtormatMaskShaping* S = Resolve())
+			{
+				S->bInvert = State == ECheckBoxState::Checked;
+				RefreshLayeredPreview();
+			}
+		})
 		.CanonicalYMin(0.0f)
 		.CanonicalYMax(1.0f)
 		.SoftYMin(-1.5f)
@@ -1282,8 +1312,7 @@ void SMixtormat::AddMaskShapingRows(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("MaskOffsetHint", "Offsets the curved mask before clamping to 0..1.")));
-	AddSliderRow(TargetPanel, MakeMemberToggle<FMixtormatMaskShaping>(
-		LOCTEXT("MaskInvertLabel", "Invert"), Resolve, &FMixtormatMaskShaping::bInvert));
+
 
 }
 

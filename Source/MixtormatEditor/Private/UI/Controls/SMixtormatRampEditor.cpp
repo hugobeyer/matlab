@@ -8,6 +8,9 @@
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatIconButton.h"
+#include "UI/Rows/SMixtormatRow.h"
+#include "Style/MixtormatStyle.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -49,6 +52,41 @@ void SMixtormatRampEditorBase::BuildLayout()
 	AddButton(MixtormatIcons::ScalarRampReset(), FText::FromString(TEXT("Reset Curve")),
 		FSimpleDelegate::CreateLambda([this]() { ResetRamp(); }), false,
 		FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap);
+
+	if (SupportsHorizontalFlip())
+	{
+		AddButton(MixtormatIcons::ScalarRampFlipHorizontal(),
+			FText::FromString(TEXT("Flip Curve Horizontally")),
+			FSimpleDelegate::CreateLambda([this]() { FlipHorizontally(); }), false,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGroupGap);
+	}
+	if (HasInvertControl())
+	{
+		Toolbar->AddSlot().AutoWidth().VAlign(VAlign_Center)
+		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGroupGap, 0.0f, 0.0f, 0.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("Invert")))
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconGap, 0.0f)
+			[
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([this]()
+					{
+						return IsInverted() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State)
+					{
+						SetInverted(State == ECheckBoxState::Checked);
+					}))
+			]
+		];
+	}
 
 	ChildSlot
 	[

@@ -7,6 +7,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatRampEditor.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Widgets/Input/SCheckBox.h"
 
 DECLARE_DELEGATE_OneParam(FOnMixtormatScalarRampChanged, const FMixtormatScalarRamp&);
 

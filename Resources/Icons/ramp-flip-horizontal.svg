@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" version="1.1" id="ramp-flip-horizontal">
+  <title>Flip curve horizontally</title>
+  <path fill="#f9f9f9" d="M31 9h2v46h-2zM9 28l15-14v28zm46 8L40 50V22z"/>
+  <path fill="#f9f9f9" d="M9 51h17v4H9zm29-42h17v4H38z"/>
+</svg>

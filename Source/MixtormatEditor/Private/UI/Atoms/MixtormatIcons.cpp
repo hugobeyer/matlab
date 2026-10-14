@@ -92,4 +92,5 @@ namespace MixtormatIcons
 	const FSlateBrush* ScalarRampBSpline() { return Get(TEXT("Mixtormat.Icon.ScalarRampBSpline")); }
 	const FSlateBrush* ScalarRampFrame() { return Get(TEXT("Mixtormat.Icon.ScalarRampFrame")); }
 	const FSlateBrush* ScalarRampReset() { return Get(TEXT("Mixtormat.Icon.ScalarRampReset")); }
+	const FSlateBrush* ScalarRampFlipHorizontal() { return Get(TEXT("Mixtormat.Icon.ScalarRampFlipHorizontal")); }
 }

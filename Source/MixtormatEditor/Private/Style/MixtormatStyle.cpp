@@ -970,6 +970,7 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampBSpline"), TEXT("Icons/ramp-bspline"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampFrame"), TEXT("Icons/frame"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampReset"), TEXT("Icons/ramp-reset"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.ScalarRampFlipHorizontal"), TEXT("Icons/ramp-flip-horizontal"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize, FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampIconSize));
 
 	// What a layer's children are. Each glyph says what kind of thing the child is, since the row
 	// beside it is already carrying the name and the blend mode -- a mask outline for something

@@ -34,7 +34,8 @@ void SMixtormat::CreateNoiseGate(const FMixtormatChildAddress& Owner)
 void SMixtormat::SelectMaskSource(const FMixtormatChildAddress& Destination, const EMixtormatMaskSource Source)
 {
 	FMixtormatLayerChild* Child = ResolveChildAt(Destination);
-	if (!Child || Child->Type != EMixtormatLayerChildType::Mask || Child->IsInstance()) { return; }
+	if (!Child || Child->Type != EMixtormatLayerChildType::Mask || Child->IsInstance()
+		|| Child->Mask.HasPublishedSource()) { return; }
 	Child->Mask.Source = Source;
 	// Explicit inline selection must beat the published-address precedence rule.
 	Child->Mask.PublishedSourceLayerId.Invalidate();

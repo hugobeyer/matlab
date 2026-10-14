@@ -42,6 +42,8 @@ void SMixtormatScalarRamp::Construct(const FArguments& Args)
 	DomainMin = CanonicalXMin;
 	DomainMax = CanonicalXMax;
 	OnChanged = Args._OnChanged;
+	InvertedAttribute = Args._bInverted;
+	OnInvertChanged = Args._OnInvertChanged;
 	OnBeginInteractiveEdit = Args._OnBeginInteractiveEdit;
 	OnEndInteractiveEdit = Args._OnEndInteractiveEdit;
 	EscapeArms.Init(EEscapeArm::None, Ramp.Points.Num());
@@ -237,6 +239,25 @@ void SMixtormatScalarRamp::OnRampEdited(const bool bInteractive)
 {
 	if (bAutoZoom) { FrameCurve(); }
 	OnChanged.ExecuteIfBound(Ramp);
+}
+
+void SMixtormatScalarRamp::FlipHorizontally()
+{
+	OnBeginInteractiveEdit.ExecuteIfBound();
+	const float MirrorSum = CanonicalXMin + CanonicalXMax;
+	for (FMixtormatScalarRampPoint& Point : Ramp.Points)
+	{
+		Point.X = MirrorSum - Point.X;
+	}
+	Ramp.Points.Sort([](const FMixtormatScalarRampPoint& A, const FMixtormatScalarRampPoint& B)
+	{
+		return A.X < B.X;
+	});
+	Ramp.Sanitize();
+	EscapeArms.Init(EEscapeArm::None, Ramp.Points.Num());
+	DragPoint = SelectedPoint = HoverPoint = INDEX_NONE;
+	NotifyEdit(true);
+	OnEndInteractiveEdit.ExecuteIfBound();
 }
 
 void SMixtormatScalarRamp::SetInterpolation(const int32 Index)
