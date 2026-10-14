@@ -38,6 +38,8 @@ public:
 		SLATE_ARGUMENT(float, ExtendedYMin)
 		SLATE_ARGUMENT(float, ExtendedYMax)
 		SLATE_EVENT(FOnMixtormatScalarRampChanged, OnChanged)
+		SLATE_ATTRIBUTE(bool, bInverted)
+		SLATE_EVENT(FOnCheckStateChanged, OnInvertChanged)
 		SLATE_EVENT(FSimpleDelegate, OnBeginInteractiveEdit)
 		SLATE_EVENT(FSimpleDelegate, OnEndInteractiveEdit)
 	SLATE_END_ARGS()
@@ -81,6 +83,14 @@ protected:
 	virtual float GetInputViewYMin() const override { return bDragging ? DragViewYMin : ViewYMin; }
 	virtual float GetInputViewYMax() const override { return bDragging ? DragViewYMax : ViewYMax; }
 	virtual void FrameView() override { bAutoZoom = true; FrameCurve(); }
+	virtual bool SupportsHorizontalFlip() const override { return true; }
+	virtual void FlipHorizontally() override;
+	virtual bool HasInvertControl() const override { return OnInvertChanged.IsBound(); }
+	virtual bool IsInverted() const override { return InvertedAttribute.Get(false); }
+	virtual void SetInverted(bool bValue) override
+	{
+		OnInvertChanged.ExecuteIfBound(bValue ? ECheckBoxState::Checked : ECheckBoxState::Unchecked);
+	}
 	virtual FVector2f GetMarkerScreenPosition(const FVector2D& Size, int32 Index) const override;
 
 private:
@@ -93,6 +103,8 @@ private:
 	TAttribute<FMixtormatScalarRamp> RampAttribute;
 	FMixtormatScalarRamp Ramp;
 	FOnMixtormatScalarRampChanged OnChanged;
+	TAttribute<bool> InvertedAttribute;
+	FOnCheckStateChanged OnInvertChanged;
 	float CanonicalXMin = 0.0f;
 	float CanonicalXMax = 1.0f;
 	float CanonicalYMin = 0.0f;

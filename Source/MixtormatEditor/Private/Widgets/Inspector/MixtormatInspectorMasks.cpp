@@ -1268,16 +1268,9 @@ void SMixtormat::AddMaskShapingRows(
 			LOCTEXT("MaskInputMaxLabel", "Input Max"), Resolve, &FMixtormatMaskShaping::InputMax,
 			0.0, 1.0, 1.0, 0.01,
 			LOCTEXT("MaskInputMaxHint", "White point applied after optional input normalization."))));
-	AddSliderRow(TargetPanel,
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGapTight)
-		[
-			SNew(STextBlock)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
-			.Text(LOCTEXT("MaskCurveBiasLabel", "Curve"))
-		]
-		+ SVerticalBox::Slot().AutoHeight()
-		[
+	// Construct the ramp separately; nested Slate slots inside AddSliderRow can
+	// obscure the actual type error at the widget argument.
+	const TSharedRef<SWidget> CurveEditor =
 			SNew(SMixtormatScalarRamp)
 		.Ramp_Lambda([Resolve]()
 		{
@@ -1309,8 +1302,16 @@ void SMixtormat::AddMaskShapingRows(
 			}
 		})
 		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
-		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); })
-		]);
+		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
+	const TSharedRef<SVerticalBox> CurveRows = SNew(SVerticalBox);
+	CurveRows->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGapTight)
+	[
+		SNew(STextBlock)
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Text(LOCTEXT("MaskCurveBiasLabel", "Curve"))
+	];
+	CurveRows->AddSlot().AutoHeight()[CurveEditor];
+	AddSliderRow(TargetPanel, CurveRows);
 	AddSliderRow(TargetPanel, MakeMemberSlider<FMixtormatMaskShaping>(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,
