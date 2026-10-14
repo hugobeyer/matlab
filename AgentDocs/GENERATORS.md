@@ -41,8 +41,11 @@ and multi-child clipboard duplication remap Boolean operand GUIDs along with
 Height Blend and Color Ramp references; moving a lone Boolean to another
 owner clears its now-invalid local source. Missing, disabled, nested,
 heightless Noise and forward references are an exact zero-delta identity.
-The inspector lists only eligible earlier height-generating modules; an invalid
-selection displays Unavailable instead of a misleading valid source name.
+The inspector uses the canonical child-container resolver for either a
+Generator layer or a shared layer group, and lists only earlier, height-writing
+generator modules. A source selected in a group is remapped separately for
+each member during expansion. Invalid selection displays Unavailable instead
+of a misleading valid source name.
 
 - **Boolean:** hard union (max) and intersection (min) of single-valued vertical
   surfaces; subtract removes positive authored source relief from the running

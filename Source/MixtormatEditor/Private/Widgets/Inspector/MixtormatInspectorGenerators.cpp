@@ -435,19 +435,18 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
                 RefreshLayeredPreview();
             }
         }));
-    if (SelectedSourceId.IsValid() || !WorkingLayers.IsValidIndex(SelectedLayerIndex))
-        { return Menu.Build(); }
-    const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
     const FMixtormatChildAddress Address = GetSelectedChildAddress();
-    const int32 SelectedIndex = Layer.Children.IndexOfByPredicate(
+    const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+    if (!Children) { return Menu.Build(); }
+    const int32 SelectedIndex = Children->IndexOfByPredicate(
         [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
     if (SelectedIndex == INDEX_NONE) { return Menu.Build(); }
     for (int32 Index = 0; Index < SelectedIndex; ++Index)
     {
-        const FMixtormatLayerChild& Child = Layer.Children[Index];
+        const FMixtormatLayerChild& Child = (*Children)[Index];
         if (Child.Type != EMixtormatLayerChildType::Generator
             || !Child.Generator.bEnabled
-            || MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) != INDEX_NONE
+            || MixtormatChildScope::ResolveOwnerIndex(*Children, Index) != INDEX_NONE
             || (Child.Generator.Type == EMixtormatGeneratorType::Noise
                 && !Child.Generator.Noise.bNoiseWriteHeight)) { continue; }
         const FGuid ChildId = Child.ChildId;
@@ -491,19 +490,18 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
                         const FMixtormatBooleanOps* Selected = GetSelectedBooleanOps();
                         if (!Selected || !Selected->SourceChildId.IsValid())
                             return LOCTEXT("BooleanFieldSourceNone", "None");
-                        if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+                        const FMixtormatChildAddress Address = GetSelectedChildAddress();
+                        if (const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address))
                         {
-                            const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
-                            const FMixtormatChildAddress Address = GetSelectedChildAddress();
-                            const int32 CurrentIndex = Layer.Children.IndexOfByPredicate(
+                            const int32 CurrentIndex = Children->IndexOfByPredicate(
                                 [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
                             for (int32 Index = 0; Index < CurrentIndex; ++Index)
                             {
-                                const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+                                const FMixtormatLayerChild& Candidate = (*Children)[Index];
                                 if (Candidate.ChildId == Selected->SourceChildId
                                     && Candidate.Type == EMixtormatLayerChildType::Generator
                                     && Candidate.Generator.bEnabled
-                                    && MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) == INDEX_NONE
+                                    && MixtormatChildScope::ResolveOwnerIndex(*Children, Index) == INDEX_NONE
                                     && (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
                                         || Candidate.Generator.Noise.bNoiseWriteHeight))
                                     return GetLayerChildName(Candidate);
