@@ -39,8 +39,9 @@ namespace MixtormatLayersPrivate
 			Specific = Child.Behavior.Type == EMixtormatBehaviorType::Push
 				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural();
 		}
-		else if (Child.Type == EMixtormatLayerChildType::Generator
-			&& Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+		else if (Child.Type == EMixtormatLayerChildType::Boolean
+			|| (Child.Type == EMixtormatLayerChildType::Generator
+				&& Child.Generator.Type == EMixtormatGeneratorType::BooleanOps))
 		{
 			Specific = MixtormatIcons::BooleanOps();
 		}
@@ -385,7 +386,8 @@ FReply SMixtormat::ToggleGeneratorExpanded(const FMixtormatChildAddress Address)
 	if (!ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex)) { return FReply::Unhandled(); }
 	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
 		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
-	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { return FReply::Unhandled(); }
+	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator
+		&& Children[ChildIndex].Type != EMixtormatLayerChildType::Boolean) { return FReply::Unhandled(); }
 	if (!CollapsedGeneratorAddresses.Remove(Address)) { CollapsedGeneratorAddresses.Add(Address); }
 	RebuildLayerList();
 	return FReply::Handled();
@@ -399,7 +401,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorDisclosure(const FMixtormatChildAd
 	{ return SNullWidget::NullWidget; }
 	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
 		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
-	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { return SNullWidget::NullWidget; }
+	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator
+		&& Children[ChildIndex].Type != EMixtormatLayerChildType::Boolean) { return SNullWidget::NullWidget; }
 	return SNew(SMixtormatLayerIcon)
 		.MaxSize(FMixtormatThemeStore::GetResolved().LayerLayout.ChildRowHeight)
 		.ToolTipText(ToolTip.IsEmpty() ? LOCTEXT("GeneratorDisclosure", "Show or hide this generator's displayed children.") : ToolTip)
@@ -1012,6 +1015,23 @@ FText SMixtormat::GetLayerChildSourceText(
 		return Child.ScopeOwnerChildId.IsValid() ? LOCTEXT("NoiseGateSource", "NOISE · GATE")
 			: LOCTEXT("NoiseMaskSource", "NOISE");
 	}
+	if (Child.Type == EMixtormatLayerChildType::Boolean)
+	{
+		int32 Count = 0;
+		bool bEligible = true;
+		for (const FMixtormatLayerChild& Candidate : Layer.Children)
+		{
+			if (Candidate.ScopeOwnerChildId != Child.ChildId) { continue; }
+			++Count;
+			bEligible &= Candidate.Type == EMixtormatLayerChildType::Generator
+				&& Candidate.Generator.bEnabled
+				&& (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
+					|| Candidate.Generator.Noise.bNoiseWriteHeight);
+		}
+		return Count == 1 && bEligible ? LOCTEXT("BooleanSelfLabel", "SELF")
+			: Count > 0 && !bEligible ? LOCTEXT("BooleanInvalidLabel", "UNAVAILABLE")
+			: LOCTEXT("BooleanStackKind", "BOOLEAN");
+	}
 	if (!Child.ScopeOwnerChildId.IsValid())
 	{
 		return IsFlowWarp(Child)
@@ -1025,6 +1045,18 @@ FText SMixtormat::GetLayerChildSourceText(
 		return LOCTEXT("MissingScopeOwner", "OWNER MISSING");
 	}
 	const FMixtormatLayerChild& Owner = Layer.Children[OwnerIndex];
+	if (Owner.Type == EMixtormatLayerChildType::Boolean
+		&& Child.Type == EMixtormatLayerChildType::Generator)
+	{
+		int32 Position = 0;
+		for (int32 Index = OwnerIndex + 1; Index <= ChildIndex; ++Index)
+		{
+			if (Layer.Children[Index].ScopeOwnerChildId == Owner.ChildId
+				&& Layer.Children[Index].Type == EMixtormatLayerChildType::Generator) { ++Position; }
+		}
+		return Position == 1 ? LOCTEXT("BooleanTargetRole", "TARGET")
+			: LOCTEXT("BooleanSourceRole", "SOURCE");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FText::GetEmpty();
@@ -1614,6 +1646,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			// items. It is not a mask and must not fall through to the mask row, which would
 			// toggle FMixtormatLayerChild::Mask on a child that has none.
 			|| Child.Type == EMixtormatLayerChildType::Generator
+			|| Child.Type == EMixtormatLayerChildType::Boolean
 			// The Generator sublayers and Behaviors are the same case: they carry their own
 			// enable flag, so their row toggle has to route through the procedural path
 			// rather than SetMaskEnabled.
@@ -1700,7 +1733,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// The caller paints the branch in the existing scope gutter.
 				// Only children that have a blend mode get a badge menu: masks, and generated
 				// masks that emit coverage (not filters, ID nodes or generators).
-				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Mask
+				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Boolean
+					? FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanStackRowMenu, LayerIndex, ChildIndex)
+					: Child.Type == EMixtormatLayerChildType::Mask
 					? FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, ChildIndex)
 					: (Child.Type == EMixtormatLayerChildType::Generated
 						|| Child.Type == EMixtormatLayerChildType::Craquelure

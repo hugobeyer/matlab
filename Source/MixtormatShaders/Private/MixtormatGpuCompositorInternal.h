@@ -1158,6 +1158,24 @@ namespace MixtormatGpuCompositor
 		bool bInvertDistance = false;
 	};
 
+	struct FBooleanStackRenderData
+	{
+		int32 TargetChildIndex = INDEX_NONE;
+		int32 SourceChildIndex = INDEX_NONE;
+		int32 LastChildIndex = INDEX_NONE;
+		bool bComplete = false;
+		bool bSelf = false;
+		int32 Operation = 0;
+		int32 EdgeStyle = 0;
+		FVector2f TargetOffset = FVector2f::ZeroVector;
+		FVector2f SourceOffset = FVector2f::ZeroVector;
+		float TargetHeightOffset = 0.0f;
+		float SourceHeightOffset = 0.0f;
+		float SourceScale = 1.0f;
+		float Amount = 1.0f;
+		float JoinWidth = 0.1f;
+	};
+
 	struct FChildRenderData
 	{
 		EMixtormatLayerChildType Type = EMixtormatLayerChildType::Mask;
@@ -1179,6 +1197,7 @@ namespace MixtormatGpuCompositor
 
 		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
+		FBooleanStackRenderData Boolean;
 		FGeneratorHeightBlendRenderData HeightBlend;
 		FGeneratorHeightCurveRenderData HeightCurve;
 		FGeneratorHeightColorRampRenderData HeightColorRamp;

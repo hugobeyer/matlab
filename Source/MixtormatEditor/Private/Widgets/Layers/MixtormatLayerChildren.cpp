@@ -77,6 +77,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::IdGroup:         return Child.IdGroup.bEnabled;
 		case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 		case EMixtormatLayerChildType::Generator:       return Child.Generator.bEnabled;
+		case EMixtormatLayerChildType::Boolean:         return Child.Boolean.bEnabled;
 		case EMixtormatLayerChildType::Blur:            return Child.Blur.bEnabled;
 		case EMixtormatLayerChildType::Curvature:       return Child.Curvature.bEnabled;
 		case EMixtormatLayerChildType::HeightBlend:     return Child.HeightBlend.bEnabled;
@@ -111,6 +112,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::IdGroup:         Child.IdGroup.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Generator:       Child.Generator.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Boolean:         Child.Boolean.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Blur:            Child.Blur.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Curvature:       Child.Curvature.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::HeightBlend:     Child.HeightBlend.bEnabled = bEnabled; break;
@@ -651,6 +653,17 @@ namespace MixtormatLayersPrivate
 		{
 			return INDEX_NONE;
 		}
+		if (Children[OwnerChildIndex].Type == EMixtormatLayerChildType::Boolean)
+		{
+			const FGuid ParentId = Children[OwnerChildIndex].ChildId;
+			int32 OperandCount = 0;
+			for (const FMixtormatLayerChild& Existing : Children)
+			{
+				if (Existing.ScopeOwnerChildId == ParentId
+					&& Existing.Type == EMixtormatLayerChildType::Generator) { ++OperandCount; }
+			}
+			if (OperandCount >= 2) { return INDEX_NONE; }
+		}
 		const int32 InsertAt = FindSubtreeEnd(Children, OwnerChildIndex);
 		Child.ScopeOwnerChildId = Children[OwnerChildIndex].ChildId;
 		Children.Insert(MoveTemp(Child), InsertAt);
@@ -682,6 +695,12 @@ namespace MixtormatLayersPrivate
 	{
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
+			if (Owner.Type == EMixtormatLayerChildType::Boolean)
+			{
+				return Child.Generator.Type != EMixtormatGeneratorType::BooleanOps
+					&& !(Child.Generator.Type == EMixtormatGeneratorType::Noise
+						&& !Child.Generator.Noise.bNoiseWriteHeight);
+			}
 			return Owner.Type == EMixtormatLayerChildType::Generator
 				&& !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
 					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
@@ -770,7 +789,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
-		case EMixtormatChildCreation::BooleanOps:      return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::BooleanOps:      return EMixtormatLayerChildType::Boolean;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
 		case EMixtormatChildCreation::HeightColorRamp: return EMixtormatLayerChildType::HeightColorRamp;
@@ -847,7 +866,6 @@ namespace MixtormatLayersPrivate
 			Child.Generator.Type = EMixtormatGeneratorType::Noise;
 			break;
 		case EMixtormatChildCreation::BooleanOps:
-			Child.Generator.Type = EMixtormatGeneratorType::BooleanOps;
 			break;
 		case EMixtormatChildCreation::NoiseFlow:
 		{
@@ -1484,6 +1502,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		return LOCTEXT("CraquelureChildName", "Craquelure");
 	}
+	if (Child.Type == EMixtormatLayerChildType::Boolean)
+	{
+		return LOCTEXT("BooleanStackChildName", "Boolean");
+	}
 	if (Child.Type == EMixtormatLayerChildType::Generator)
 	{
 		switch (Child.Generator.Type)
@@ -1705,6 +1727,7 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 	const int32 OwnerIndex = FindChildById(*Children, Target.ScopeOwnerChildId);
 	return Children->IsValidIndex(OwnerIndex)
 		&& ((*Children)[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup
+			|| (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::Boolean
 			|| CanOwnScopedMasks((*Children)[OwnerIndex]))
 		&& CanAddScopedChild(*Children, OwnerIndex);
 }
@@ -1712,9 +1735,20 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 // Modules live only at the root of a Generator layer; groups and material layers never host them.
 bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 {
-	return !Target.IsGroup() && !Target.ScopeOwnerChildId.IsValid()
-		&& WorkingLayers.IsValidIndex(Target.LayerIndex)
-		&& WorkingLayers[Target.LayerIndex].Type == EMixtormatLayerType::Generator;
+	if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
+		|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator) { return false; }
+	if (!Target.ScopeOwnerChildId.IsValid()) { return true; }
+	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
+	const int32 OwnerIndex = FindChildById(Children, Target.ScopeOwnerChildId);
+	if (!Children.IsValidIndex(OwnerIndex)
+		|| Children[OwnerIndex].Type != EMixtormatLayerChildType::Boolean) { return false; }
+	int32 Count = 0;
+	for (const FMixtormatLayerChild& Child : Children)
+	{
+		if (Child.ScopeOwnerChildId == Target.ScopeOwnerChildId
+			&& Child.Type == EMixtormatLayerChildType::Generator) { ++Count; }
+	}
+	return Count < 2;
 }
 
 bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const
@@ -2137,6 +2171,18 @@ const FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata() const
 {
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::CliffStrata ? &Generator->CliffStrata : nullptr;
+}
+
+FMixtormatBooleanStack* SMixtormat::GetSelectedBooleanStack()
+{
+	return const_cast<FMixtormatBooleanStack*>(
+		static_cast<const SMixtormat*>(this)->GetSelectedBooleanStack());
+}
+
+const FMixtormatBooleanStack* SMixtormat::GetSelectedBooleanStack() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Boolean ? &Child->Boolean : nullptr;
 }
 
 FMixtormatBooleanOps* SMixtormat::GetSelectedBooleanOps()

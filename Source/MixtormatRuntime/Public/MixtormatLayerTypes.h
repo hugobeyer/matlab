@@ -169,7 +169,49 @@ enum class EMixtormatLayerChildType : uint8
 	StructuralWarp UMETA(DisplayName = "Structural Warp", Deprecated = "Use EMixtormatLayerChildType::Behavior"),
 	// Appended: a Generator child that rewrites an earlier Generator's own output.
 	// This is the one and only structural authoring path.
-	Behavior UMETA(DisplayName = "Behavior")
+	Behavior UMETA(DisplayName = "Behavior"),
+	Boolean UMETA(DisplayName = "Boolean")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatBooleanEdgeStyle : uint8
+{
+	Hard UMETA(DisplayName = "Hard"),
+	Round UMETA(DisplayName = "Round"),
+	Bevel UMETA(DisplayName = "Bevel")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBooleanStack
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
+	bool bEnabled = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
+	bool bLocked = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
+	EMixtormatBooleanFieldOperation Operation = EMixtormatBooleanFieldOperation::Union;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
+	EMixtormatBooleanEdgeStyle EdgeStyle = EMixtormatBooleanEdgeStyle::Hard;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Target", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float TargetOffsetX = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Target", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float TargetOffsetY = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Target", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float TargetHeightOffset = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Source", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float SourceOffsetX = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Source", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float SourceOffsetY = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Source", meta = (UIMin = "-2.0", UIMax = "2.0"))
+	float SourceHeightOffset = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Shaping", meta = (UIMin = "-4.0", UIMax = "4.0"))
+	float SourceScale = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Shaping", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float Amount = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean|Shaping", meta = (UIMin = "0.0", UIMax = "1.0"))
+	float JoinWidth = 0.1f;
 };
 
 USTRUCT(BlueprintType)
@@ -253,6 +295,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	// struct there and touches nothing here, in the child dispatch, or in any saved asset.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Generator"))
 	FMixtormatGenerator Generator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Boolean"))
+	FMixtormatBooleanStack Boolean;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::UvFromIds"))
 	FMixtormatUvIdFilter UvId;

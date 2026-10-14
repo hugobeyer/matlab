@@ -1,8 +1,21 @@
 # Boolean — layer stack container
 
-Status: approved design; implementation pending. Replaces the previous
-`BooleanOps` Generator architecture. Do not present the old Generator mode
-selector as the finished UI.
+Status: core stack execution integrated (source review only; not user-compiled or
+runtime-verified). A dedicated Boolean child now owns up to two scoped
+height-producing generators. One authored enabled operand aliases the single
+native signed field for Self; authored invalid/disabled second operands fail
+neutral. Per-operand UV and height offsets and signed Source Scale are gathered
+and sampled by the private Boolean stack GPU pass. Nested operands are not
+double-added to the outer signed-zero generator chain. Parent row operation
+and edge-style picker, offset inspector, signed Height, Affected Area, Join
+Boundary, and Difference descriptors are connected.
+
+Still pending: selected-pair Group as Boolean, empty-slot drag/drop, Copy as
+Boolean Source/Paste as Boolean Target, Swap/Lock authoring enforcement,
+clipboard-specific remap UX and full source/publication/preview integration.
+The retired `BooleanOps` Generator cannot be newly created through the
+normal Add Generator menus, but its pre-existing execution and inspector remain
+while finite-volume Scatter Carve is reclassified separately.
 
 ## Canonical structure
 

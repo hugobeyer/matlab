@@ -230,6 +230,15 @@ namespace MixtormatLayerBadges
 		{
 			return ForMaskBlendMode(Child.RandomId.BlendMode);
 		}
+		if (Child.Type == EMixtormatLayerChildType::Boolean)
+		{
+			switch (Child.Boolean.Operation)
+			{
+			case EMixtormatBooleanFieldOperation::Union: return LOCTEXT("BooleanOpUnionBadge", "UNION");
+			case EMixtormatBooleanFieldOperation::Intersect: return LOCTEXT("BooleanOpIntersectBadge", "INTER");
+			case EMixtormatBooleanFieldOperation::Subtract: return LOCTEXT("BooleanOpSubtractBadge", "SUB");
+			}
+		}
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
 			// Generators are plain signed field producers now; the row name says which one it is.

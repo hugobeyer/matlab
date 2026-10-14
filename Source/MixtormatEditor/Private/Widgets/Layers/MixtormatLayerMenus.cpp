@@ -37,7 +37,60 @@ namespace
 	}
 }
 
-	TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
+	TSharedRef<SWidget> SMixtormat::BuildBooleanStackRowMenu(const int32 LayerIndex, const int32 ChildIndex)
+{
+	MixtormatMenu::FBuilder Menu;
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		|| WorkingLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Boolean)
+	{
+		return Menu.Build();
+	}
+	const auto SetOperation = [this, LayerIndex, ChildIndex](EMixtormatBooleanFieldOperation Op)
+	{
+		return FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Op]()
+		{
+			if (!WorkingLayers.IsValidIndex(LayerIndex)
+				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)) { return; }
+			FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+			if (Child.Type != EMixtormatLayerChildType::Boolean || Child.Boolean.Operation == Op) { return; }
+			Child.Boolean.Operation = Op;
+			LastHistoryRecordTime = 0.0;
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		});
+	};
+	const auto SetEdge = [this, LayerIndex, ChildIndex](EMixtormatBooleanEdgeStyle Style)
+	{
+		return FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Style]()
+		{
+			if (!WorkingLayers.IsValidIndex(LayerIndex)
+				|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)) { return; }
+			FMixtormatLayerChild& Child = WorkingLayers[LayerIndex].Children[ChildIndex];
+			if (Child.Type != EMixtormatLayerChildType::Boolean || Child.Boolean.EdgeStyle == Style) { return; }
+			Child.Boolean.EdgeStyle = Style;
+			LastHistoryRecordTime = 0.0;
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		});
+	};
+	Menu.Item(LOCTEXT("BooleanStackUnion", "Union"), MixtormatIcons::BooleanOps(),
+		SetOperation(EMixtormatBooleanFieldOperation::Union));
+	Menu.Item(LOCTEXT("BooleanStackSubtract", "Subtract"), MixtormatIcons::BooleanOps(),
+		SetOperation(EMixtormatBooleanFieldOperation::Subtract));
+	Menu.Item(LOCTEXT("BooleanStackIntersect", "Intersect"), MixtormatIcons::BooleanOps(),
+		SetOperation(EMixtormatBooleanFieldOperation::Intersect));
+	Menu.Separator();
+	Menu.Item(LOCTEXT("BooleanStackHard", "Hard"), MixtormatIcons::BooleanOps(),
+		SetEdge(EMixtormatBooleanEdgeStyle::Hard));
+	Menu.Item(LOCTEXT("BooleanStackRound", "Round"), MixtormatIcons::BooleanOps(),
+		SetEdge(EMixtormatBooleanEdgeStyle::Round));
+	Menu.Item(LOCTEXT("BooleanStackBevel", "Bevel"), MixtormatIcons::BooleanOps(),
+		SetEdge(EMixtormatBooleanEdgeStyle::Bevel));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 {
 	MixtormatMenu::FBuilder Menu;
 	// Noise and Flow are two creation presets of one generator (FINAL_BEHAVIOR_PLAN section 12);
@@ -49,7 +102,6 @@ namespace
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
 		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
 		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
-		{LOCTEXT("AddGeneratorLayerBooleanOps", "Boolean Ops"), EMixtormatChildCreation::BooleanOps},
 	};
 	for (const auto& Entry : Entries)
 	{
@@ -1179,7 +1231,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean Ops"), MixtormatIcons::BooleanOps(),
+	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean"), MixtormatIcons::BooleanOps(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::BooleanOps); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
@@ -1347,7 +1399,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	// A generator has no blend mode either, and for a stronger reason than a filter does: a
 	// filter at least emits something into the layer, whereas a generator rewrites the height
 	// the layer is built from before any blending exists to take part in.
-	const bool bGenerator = RowType == EMixtormatLayerChildType::Generator;
+	const bool bGenerator = RowType == EMixtormatLayerChildType::Generator
+		|| RowType == EMixtormatLayerChildType::Boolean;
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
@@ -1384,6 +1437,29 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 				{EMixtormatChildCreation::BehaviorCarve, LOCTEXT("AddBehaviorCarveToGenerator", "Sculpt"), true},
 				{EMixtormatChildCreation::BehaviorDeform, LOCTEXT("AddBehaviorDeformToGenerator", "Deform"), false},
 				{EMixtormatChildCreation::BehaviorFeather, LOCTEXT("AddBehaviorFeatherToGenerator", "Feather"), false}};
+			if (Target.Type == EMixtormatLayerChildType::Boolean)
+			{
+				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+				Destination.ScopeOwnerChildId = TargetChildId;
+				if (CanAddGeneratorModule(Destination))
+				{
+					struct FOperandEntry { EMixtormatChildCreation Kind; FText Label; };
+					const FOperandEntry Options[] = {
+						{EMixtormatChildCreation::RockFormation, LOCTEXT("BooleanAddRock", "Add Rock Formation")},
+						{EMixtormatChildCreation::Cracks, LOCTEXT("BooleanAddCracks", "Add Cracks")},
+						{EMixtormatChildCreation::Pebbles, LOCTEXT("BooleanAddPebbles", "Add Pebbles")},
+						{EMixtormatChildCreation::CliffStrata, LOCTEXT("BooleanAddCliff", "Add Cliff Strata")},
+						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")}};
+					for (const FOperandEntry& Entry : Options)
+					{
+						Menu.Item(Entry.Label, MixtormatIcons::Generator(),
+							FSimpleDelegate::CreateLambda([this, Destination, Kind = Entry.Kind]()
+							{
+								CreateChild(Destination, Kind);
+							}));
+					}
+				}
+			}
 			if (Target.Type == EMixtormatLayerChildType::Generator)
 			{
 				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);

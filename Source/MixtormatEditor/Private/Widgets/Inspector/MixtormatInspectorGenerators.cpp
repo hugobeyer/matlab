@@ -422,6 +422,71 @@ TSharedRef<SWidget> SMixtormat::BuildFinalSettingsControls()
 }
 
 
+TSharedRef<SWidget> SMixtormat::BuildBooleanStackControls()
+{
+	const auto B = [this]() { return GetSelectedBooleanStack(); };
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> Target = AddCard(Cards, LOCTEXT("BooleanStackTarget", "TARGET"));
+	AddSliderRow(Target, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackTargetX", "Offset X"), B, &FMixtormatBooleanStack::TargetOffsetX,
+			-2.0, 2.0, 0.0, 0.005,
+			LOCTEXT("BooleanStackTargetXHint", "Periodic target offset in tile UV X.")),
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackTargetY", "Offset Y"), B, &FMixtormatBooleanStack::TargetOffsetY,
+			-2.0, 2.0, 0.0, 0.005,
+			LOCTEXT("BooleanStackTargetYHint", "Periodic target offset in tile UV Y."))));
+	AddSliderRow(Target, MakeMemberSlider<FMixtormatBooleanStack>(
+		LOCTEXT("BooleanStackTargetHeight", "Height Offset"), B, &FMixtormatBooleanStack::TargetHeightOffset,
+		-2.0, 2.0, 0.0, 0.005,
+		LOCTEXT("BooleanStackTargetHeightHint", "Move target in signed height units.")));
+
+	TSharedRef<SVerticalBox> Source = AddCard(Cards, LOCTEXT("BooleanStackSource", "SOURCE"));
+	AddSliderRow(Source, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackSourceX", "Offset X"), B, &FMixtormatBooleanStack::SourceOffsetX,
+			-2.0, 2.0, 0.0, 0.005,
+			LOCTEXT("BooleanStackSourceXHint", "Periodic source offset in tile UV X.")),
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackSourceY", "Offset Y"), B, &FMixtormatBooleanStack::SourceOffsetY,
+			-2.0, 2.0, 0.0, 0.005,
+			LOCTEXT("BooleanStackSourceYHint", "Periodic source offset in tile UV Y."))));
+	AddSliderRow(Source, MakeMemberSlider<FMixtormatBooleanStack>(
+		LOCTEXT("BooleanStackSourceHeight", "Height Offset"), B, &FMixtormatBooleanStack::SourceHeightOffset,
+		-2.0, 2.0, 0.0, 0.005,
+		LOCTEXT("BooleanStackSourceHeightHint", "Move source in signed height units after scale.")));
+
+	TSharedRef<SVerticalBox> Shaping = AddCard(Cards, LOCTEXT("BooleanStackShaping", "SHAPING"));
+	AddSliderRow(Shaping, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackScale", "Source Scale"), B, &FMixtormatBooleanStack::SourceScale,
+			-4.0, 4.0, 1.0, 0.01,
+			LOCTEXT("BooleanStackScaleHint", "Signed source relief gain; negative values flip relief.")),
+		MakeMemberSlider<FMixtormatBooleanStack>(
+			LOCTEXT("BooleanStackAmount", "Amount"), B, &FMixtormatBooleanStack::Amount,
+			0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("BooleanStackAmountHint", "Blend the combined field against the target."))));
+	AddSliderRow(Shaping, SNew(SBox)
+		.Visibility_Lambda([B]()
+		{
+			const FMixtormatBooleanStack* Selected = B();
+			return Selected && Selected->EdgeStyle != EMixtormatBooleanEdgeStyle::Hard
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSlider<FMixtormatBooleanStack>(
+				LOCTEXT("BooleanStackWidth", "Join Width"), B, &FMixtormatBooleanStack::JoinWidth,
+				0.0, 1.0, 0.1, 0.005,
+				LOCTEXT("BooleanStackWidthHint", "Round or bevel width in signed height units."))
+		]);
+	return SNew(SBox)
+		.Visibility_Lambda([this]()
+		{
+			return GetSelectedBooleanStack() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[Cards];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
 {
     MixtormatMenu::FBuilder Menu;

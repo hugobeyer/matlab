@@ -1,0 +1,126 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Private signed-height Boolean stack combine; operands are not metric SDFs.
+#include "/Engine/Public/Platform.ush"
+
+int2 OutputSize;
+int Operation;
+int EdgeStyle;
+uint HasMask;
+float2 TargetOffset;
+float2 SourceOffset;
+float TargetHeightOffset;
+float SourceHeightOffset;
+float SourceScale;
+float Amount;
+float JoinWidth;
+Texture2D<float> TargetHeight;
+Texture2D<float> SourceHeight;
+Texture2D<float> ScopedMask;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutArea;
+RWTexture2D<float> OutBoundary;
+RWTexture2D<float> OutDifference;
+
+int2 WrapPixel(int2 p)
+{
+    return (p % OutputSize + OutputSize) % OutputSize;
+}
+
+float SampleHeight(Texture2D<float> tex, int2 pixel, float2 offset)
+{
+    // No resampling for identity shifts: preserve the native signed texel exactly.
+    if (all(offset == 0.0f)) return tex.Load(int3(pixel, 0));
+    float2 uv = (float2(pixel) + 0.5f) / float2(OutputSize) - offset;
+    float2 coord = frac(uv) * float2(OutputSize) - 0.5f;
+    int2 p = int2(floor(coord));
+    float2 t = frac(coord);
+    float a = tex.Load(int3(WrapPixel(p), 0));
+    float b = tex.Load(int3(WrapPixel(p + int2(1, 0)), 0));
+    float c = tex.Load(int3(WrapPixel(p + int2(0, 1)), 0));
+    float d = tex.Load(int3(WrapPixel(p + int2(1, 1)), 0));
+    return lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+}
+
+float SmoothMax(float a, float b, float k)
+{
+    if (k <= 0.0f) return max(a, b);
+    float h = saturate(0.5f + 0.5f * (a - b) / k);
+    return lerp(b, a, h) + k * h * (1.0f - h);
+}
+
+float BevelMax(float a, float b, float k)
+{
+    return max(max(a, b), 0.5f * (a + b + k));
+}
+
+float CutDepth(float d, float k)
+{
+    if (d <= 0.0f) return 0.0f;
+    if (k <= 0.0f || d >= k || EdgeStyle == 0) return d;
+    if (EdgeStyle == 1)
+    {
+        float t = saturate(d / k);
+        return d * t * t * (3.0f - 2.0f * t);
+    }
+    return max(0.0f, 2.0f * d - k);
+}
+
+float TargetAt(int2 pixel)
+{
+    return SampleHeight(TargetHeight, pixel, TargetOffset) + TargetHeightOffset;
+}
+
+float SourceAt(int2 pixel)
+{
+    return SampleHeight(SourceHeight, pixel, SourceOffset) * SourceScale + SourceHeightOffset;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    int2 pixel = int2(DispatchThreadId.xy);
+    if (any(pixel >= OutputSize)) return;
+    float a = TargetAt(pixel);
+    float b = SourceAt(pixel);
+    float outputHeight = 0.0f;
+    float area = 0.0f;
+    float boundary = 0.0f;
+    float difference = 0.0f;
+    if (isfinite(a) && isfinite(b))
+    {
+        float k = max(0.0f, JoinWidth);
+        float combined = a;
+        difference = Operation == 2 ? b : a - b;
+        if (Operation == 0)
+            combined = EdgeStyle == 1 ? SmoothMax(a, b, k)
+                : EdgeStyle == 2 ? BevelMax(a, b, k) : max(a, b);
+        else if (Operation == 1)
+            combined = EdgeStyle == 1 ? -SmoothMax(-a, -b, k)
+                : EdgeStyle == 2 ? -BevelMax(-a, -b, k) : min(a, b);
+        else
+            combined = a - CutDepth(b, k);
+
+        float weight = HasMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
+        weight = isfinite(weight) ? saturate(weight) : 0.0f;
+        float influence = saturate(Amount) * weight;
+        outputHeight = lerp(a, combined, influence);
+        area = abs(combined - a) > 0.000001f ? influence : 0.0f;
+        if (EdgeStyle != 0 && k > 0.0f)
+            boundary = (1.0f - saturate(abs(difference) / k)) * influence;
+        else
+        {
+            float dx = Operation == 2 ? SourceAt(WrapPixel(pixel + int2(1, 0)))
+                : TargetAt(WrapPixel(pixel + int2(1, 0))) - SourceAt(WrapPixel(pixel + int2(1, 0)));
+            float dy = Operation == 2 ? SourceAt(WrapPixel(pixel + int2(0, 1)))
+                : TargetAt(WrapPixel(pixel + int2(0, 1))) - SourceAt(WrapPixel(pixel + int2(0, 1)));
+            boundary = (difference == 0.0f
+                || (difference < 0.0f && (dx > 0.0f || dy > 0.0f))
+                || (difference > 0.0f && (dx < 0.0f || dy < 0.0f))) ? influence : 0.0f;
+        }
+        if (!isfinite(outputHeight)) outputHeight = 0.0f;
+    }
+    OutHeight[pixel] = outputHeight;
+    OutArea[pixel] = area;
+    OutBoundary[pixel] = boundary;
+    OutDifference[pixel] = difference;
+}

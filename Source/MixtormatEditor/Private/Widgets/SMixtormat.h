@@ -576,6 +576,10 @@ private:
 	FMixtormatNoise* GetSelectedNoise();
 	const FMixtormatNoise* GetSelectedNoise() const;
 	TSharedRef<SWidget> BuildNoiseControls();
+	FMixtormatBooleanStack* GetSelectedBooleanStack();
+	const FMixtormatBooleanStack* GetSelectedBooleanStack() const;
+	TSharedRef<SWidget> BuildBooleanStackControls();
+	TSharedRef<SWidget> BuildBooleanStackRowMenu(int32 LayerIndex, int32 ChildIndex);
 	FMixtormatBooleanOps* GetSelectedBooleanOps();
 	const FMixtormatBooleanOps* GetSelectedBooleanOps() const;
 	TSharedRef<SWidget> BuildBooleanOpsControls();

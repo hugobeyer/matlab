@@ -1786,7 +1786,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
-			if (LayerChild.Type == EMixtormatLayerChildType::HeightBlend
+			if (LayerChild.Type == EMixtormatLayerChildType::Boolean
+				|| LayerChild.Type == EMixtormatLayerChildType::HeightBlend
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightCurve
 				|| LayerChild.Type == EMixtormatLayerChildType::HeightColorRamp)
 			{

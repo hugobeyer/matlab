@@ -109,6 +109,39 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBooleanFieldCS,
     "/Plugin/Mixtormat/Private/MixtormatBooleanField.usf", "MainCS", SF_Compute);
 
+class FMixtormatBooleanStackCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatBooleanStackCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatBooleanStackCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(int32, Operation)
+		SHADER_PARAMETER(int32, EdgeStyle)
+		SHADER_PARAMETER(uint32, HasMask)
+		SHADER_PARAMETER(FVector2f, TargetOffset)
+		SHADER_PARAMETER(FVector2f, SourceOffset)
+		SHADER_PARAMETER(float, TargetHeightOffset)
+		SHADER_PARAMETER(float, SourceHeightOffset)
+		SHADER_PARAMETER(float, SourceScale)
+		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(float, JoinWidth)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, TargetHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutArea)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBoundary)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutDifference)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
+	{
+		return IsFeatureLevelSupported(P.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatBooleanStackCS,
+	"/Plugin/Mixtormat/Private/MixtormatBooleanStack.usf", "MainCS", SF_Compute);
+
 class FMixtormatBooleanCarveCS final : public FGlobalShader
 {
 public:
@@ -2512,6 +2545,66 @@ namespace
         }
     }
 
+	void AddBooleanStackPasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, FRDGTextureRef TargetHeight,
+		FRDGTextureRef SourceHeight, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		const FBooleanStackRenderData& B = Child.Boolean;
+		const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+		const auto Make = [&GraphBuilder, Size](const TCHAR* Name)
+		{
+			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, PF_R32_FLOAT, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		FRDGTextureRef Height = Make(TEXT("Mixtormat.Boolean.StackHeight"));
+		FRDGTextureRef Area = Make(TEXT("Mixtormat.Boolean.AffectedArea"));
+		FRDGTextureRef Boundary = Make(TEXT("Mixtormat.Boolean.Boundary"));
+		FRDGTextureRef Difference = Make(TEXT("Mixtormat.Boolean.Difference"));
+		auto* P = GraphBuilder.AllocParameters<FMixtormatBooleanStackCS::FParameters>();
+		P->OutputSize = Size;
+		P->Operation = B.Operation;
+		P->EdgeStyle = B.EdgeStyle;
+		P->HasMask = bHasMask ? 1u : 0u;
+		P->TargetOffset = B.TargetOffset;
+		P->SourceOffset = B.SourceOffset;
+		P->TargetHeightOffset = B.TargetHeightOffset;
+		P->SourceHeightOffset = B.SourceHeightOffset;
+		P->SourceScale = B.SourceScale;
+		P->Amount = B.Amount;
+		P->JoinWidth = B.JoinWidth;
+		P->TargetHeight = TargetHeight;
+		P->SourceHeight = SourceHeight;
+		P->ScopedMask = bHasMask
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : TargetHeight;
+		P->OutHeight = GraphBuilder.CreateUAV(Height);
+		P->OutArea = GraphBuilder.CreateUAV(Area);
+		P->OutBoundary = GraphBuilder.CreateUAV(Boundary);
+		P->OutDifference = GraphBuilder.CreateUAV(Difference);
+		TShaderMapRef<FMixtormatBooleanStackCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder,
+			RDG_EVENT_NAME("Mixtormat.Boolean.Stack.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		Bundle->Height = Height;
+		Bundle->RegisterNamedMask(FName(TEXT("FieldMask")), Area,
+			FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		Bundle->RegisterNamedMask(FName(TEXT("FieldBoundary")), Boundary,
+			FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		const FName DifferenceName(TEXT("FieldDifference"));
+		Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, DifferenceName),
+			FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Difference, nullptr, nullptr, false});
+		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
+			DifferenceName, LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Difference,
+				Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex], Size);
+		}
+	}
+
 	// Scatter Carve uses finite-volume evaluation. Its shader reads the
 	// existing signed stack and produces the change needed by the Generator-layer
 	// additive chain. Neither its input nor its delta is normalized.
@@ -3555,10 +3648,61 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 		TEXT("Mixtormat.Generator.SignedRunningHeight"));
 	AddClearUAVPass(Ctx.GraphBuilder, Ctx.GraphBuilder.CreateUAV(RunningHeight), FLinearColor::Black);
+	const FRDGTextureRef BooleanNeutralHeight = RunningHeight;
+	const FChildRenderData* PendingBoolean = nullptr;
+	auto FinishBoolean = [&]()
+	{
+		if (!PendingBoolean) { return; }
+		const FChildRenderData& Parent = *PendingBoolean;
+		const FBooleanStackRenderData& B = Parent.Boolean;
+		if (B.bComplete)
+		{
+			const FRDGTextureRef* Target = LayerCtx.GeneratorModuleHeights.Find(B.TargetChildIndex);
+			const FRDGTextureRef* Source = LayerCtx.GeneratorModuleHeights.Find(B.SourceChildIndex);
+			if (Target && *Target && Source && *Source)
+			{
+				FGeneratorBundle Combined;
+				AddBooleanStackPasses(Ctx, LayerCtx, Layer, Parent, *Target, *Source, &Combined);
+				LayerCtx.GeneratorModuleHeights.Add(Parent.SourceChildIndex, Combined.Height);
+				Ctx.PublishedFieldOutputs.Add(
+					PublishedKey(Layer, Parent.SourceChildIndex, FName(TEXT("Height"))),
+					FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned,
+						Combined.Height, nullptr, nullptr, false});
+				for (const TPair<FName, FRDGTextureRef>& Named : Combined.NamedMasks)
+				{
+					Ctx.PublishedMaskOutputs.Add(
+						PublishedKey(Layer, Parent.SourceChildIndex, Named.Key), Named.Value);
+				}
+				if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
+					FName(TEXT("Height")), LayerCtx.LayerIndex, Parent.SourceChildIndex))
+				{
+					AddDebugPreviewSignedHeightBlitPass(Ctx.GraphBuilder, Combined.Height, Debug, Size);
+				}
+				AddGeneratorModuleCombine(Ctx, RunningHeight, Combined, Parent, RunningHeight);
+			}
+		}
+		PendingBoolean = nullptr;
+	};
 
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
+		if (PendingBoolean && Child.SourceChildIndex > PendingBoolean->Boolean.LastChildIndex)
+		{
+			FinishBoolean();
+		}
+		if (Child.Type == EMixtormatLayerChildType::Boolean)
+		{
+			FinishBoolean();
+			PendingBoolean = &Child;
+			continue;
+		}
+		const bool bBooleanOperand = PendingBoolean
+			&& Child.Type == EMixtormatLayerChildType::Generator
+			&& Child.ScopeOwnerSourceChildIndex == PendingBoolean->SourceChildIndex
+			&& (Child.SourceChildIndex == PendingBoolean->Boolean.TargetChildIndex
+				|| Child.SourceChildIndex == PendingBoolean->Boolean.SourceChildIndex);
+		const FRDGTextureRef OperandRunningHeight = bBooleanOperand ? BooleanNeutralHeight : RunningHeight;
 		// Generator-layer sublayers rewrite the running signed height in place (or publish colour).
 		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
 		{
@@ -3635,7 +3779,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			continue;
 		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
-		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE) { continue; }
+		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE && !bBooleanOperand) { continue; }
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		FGeneratorBundle Module;
@@ -3675,7 +3819,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
-			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, RunningHeight);
+			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, OperandRunningHeight);
 			break;
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
@@ -3776,7 +3920,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			{
 				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
-			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, RunningHeight);
+			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, OperandRunningHeight);
 			// Normalize the unmasked Noise native height, then apply its scoped gate to the
 			// resolved signed result. Gating before centring turns masked zeros into negative height.
 			// Other generators keep the historical zero-preserving max-abs contract.
@@ -3919,9 +4063,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// Height-less Noise contributes nothing to the running height.
 		if (Module.Height)
 		{
-			AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+			if (!bBooleanOperand)
+			{
+				AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+			}
 		}
 	}
+	FinishBoolean();
 	// Color Ramp only publishes Color. The Generator layer owns whether the last valid ordered
 	// Color result becomes this layer's Base Color input. When nothing in the stack produced a
 	// colour, bGeneratorColor stays false and the composite keeps the base colour below instead

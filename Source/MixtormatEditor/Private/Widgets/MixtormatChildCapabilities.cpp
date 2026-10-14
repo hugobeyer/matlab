@@ -142,6 +142,22 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			NSLOCTEXT("SMixtormat", "PreviewOutputRampIdRamp", "Ramp"),
 			EMixtormatPreviewOutputKind::Mask, false, true, false, NAME_None});
 		break;
+	case EMixtormatLayerChildType::Boolean:
+		Result.Outputs.Add({FName(TEXT("Height")),
+			NSLOCTEXT("SMixtormat", "PreviewBooleanStackHeight", "Height"),
+			EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+			true, EMixtormatPublishedFieldKind::ScalarSigned});
+		Result.Outputs.Add({FName(TEXT("FieldMask")),
+			NSLOCTEXT("SMixtormat", "PreviewBooleanStackArea", "Affected Area"),
+			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		Result.Outputs.Add({FName(TEXT("FieldBoundary")),
+			NSLOCTEXT("SMixtormat", "PreviewBooleanStackBoundary", "Join Boundary"),
+			EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+		Result.Outputs.Add({FName(TEXT("FieldDifference")),
+			NSLOCTEXT("SMixtormat", "PreviewBooleanStackDiff", "Field Difference"),
+			EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
+			true, EMixtormatPublishedFieldKind::ScalarSigned});
+		break;
 	case EMixtormatLayerChildType::Generator:
 		if (Child.Generator.Type == EMixtormatGeneratorType::Cracks)
 		{

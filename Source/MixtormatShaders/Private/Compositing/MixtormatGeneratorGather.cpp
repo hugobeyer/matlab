@@ -708,6 +708,46 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 
 	switch (LayerChild.Type)
 	{
+	case EMixtormatLayerChildType::Boolean:
+	{
+		if (!LayerChild.Boolean.bEnabled) { return; }
+		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+		ChildData.Type = EMixtormatLayerChildType::Boolean;
+		ChildData.SourceChildIndex = SourceChildIndex;
+		FBooleanStackRenderData& Out = ChildData.Boolean;
+		const FMixtormatBooleanStack& B = LayerChild.Boolean;
+		const auto Finite = [](float V, float Fallback) { return FMath::IsFinite(V) ? V : Fallback; };
+		Out.Operation = static_cast<int32>(B.Operation);
+		Out.EdgeStyle = static_cast<int32>(B.EdgeStyle);
+		Out.TargetOffset = FVector2f(Finite(B.TargetOffsetX, 0.0f), Finite(B.TargetOffsetY, 0.0f));
+		Out.SourceOffset = FVector2f(Finite(B.SourceOffsetX, 0.0f), Finite(B.SourceOffsetY, 0.0f));
+		Out.TargetHeightOffset = Finite(B.TargetHeightOffset, 0.0f);
+		Out.SourceHeightOffset = Finite(B.SourceHeightOffset, 0.0f);
+		Out.SourceScale = Finite(B.SourceScale, 1.0f);
+		Out.Amount = FMath::Clamp(Finite(B.Amount, 1.0f), 0.0f, 1.0f);
+		Out.JoinWidth = FMath::Max(0.0f, Finite(B.JoinWidth, 0.1f));
+		int32 AuthoredCount = 0;
+		bool bEveryOperandEligible = true;
+		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
+		{
+			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+			if (Candidate.ScopeOwnerChildId != LayerChild.ChildId) { continue; }
+			++AuthoredCount;
+			const bool bEligible = Candidate.Type == EMixtormatLayerChildType::Generator
+				&& Candidate.Generator.bEnabled
+				&& Candidate.Generator.Type != EMixtormatGeneratorType::BooleanOps
+				&& (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
+					|| Candidate.Generator.Noise.bNoiseWriteHeight);
+			bEveryOperandEligible &= bEligible;
+			if (AuthoredCount == 1) { Out.TargetChildIndex = Index; }
+			else if (AuthoredCount == 2) { Out.SourceChildIndex = Index; }
+			Out.LastChildIndex = Index;
+		}
+		Out.bComplete = bEveryOperandEligible && (AuthoredCount == 1 || AuthoredCount == 2);
+		Out.bSelf = Out.bComplete && AuthoredCount == 1;
+		if (Out.bSelf) { Out.SourceChildIndex = Out.TargetChildIndex; }
+		break;
+	}
 	case EMixtormatLayerChildType::HeightBlend:
 	{
 		const FMixtormatGeneratorHeightBlend& Blend = LayerChild.HeightBlend;
