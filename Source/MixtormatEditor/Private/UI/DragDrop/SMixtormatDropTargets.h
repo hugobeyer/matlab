@@ -802,16 +802,20 @@ public:
 			Zone = EMixtormatRowDropZone::None;
 			return FReply::Unhandled();
 		}
-		Zone = MixtormatDropZone::ForGroupRow(Geometry, Event, true);
-		if (Zone == EMixtormatRowDropZone::Into)
+		// Most generator rows cannot own another generator. A central drop must
+		// still reorder siblings instead of rejecting most of the target's surface.
+		// Reparent only on a genuinely eligible owner; otherwise use the insertion
+		// side ReorderLayerChild actually implements (before when moving up,
+		// after when moving down), independent of the cursor's fractional height.
+		const bool bWantsInto = MixtormatDropZone::ForGroupRow(Geometry, Event, true)
+			== EMixtormatRowDropZone::Into;
+		const bool bCanNest = bWantsInto && OnChildCanReparent.IsBound()
+			&& OnChildCanReparent.Execute(LayerIndex, Operation->ChildIndex, ChildIndex);
+		Zone = bCanNest ? EMixtormatRowDropZone::Into
+			: Operation->ChildIndex < ChildIndex
+				? EMixtormatRowDropZone::After : EMixtormatRowDropZone::Before;
+		if (bCanNest)
 		{
-			if (!OnChildCanReparent.IsBound()
-				|| !OnChildCanReparent.Execute(LayerIndex, Operation->ChildIndex, ChildIndex))
-			{
-				Zone = EMixtormatRowDropZone::None;
-				Operation->ResetToDefaultToolTip();
-				return FReply::Unhandled();
-			}
 			Operation->SetToolTip(LOCTEXT("ReparentChildIntoRow", "Release to move under this child"),
 				MixtormatIcons::Add());
 		}

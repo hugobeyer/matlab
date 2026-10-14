@@ -534,6 +534,8 @@ FReply SMixtormat::ReorderLayerChild(
 		SelectedEffectIndex = FindChildById(Layer.Children, SelectedEffectId);
 		SelectedMaskIndex = FindChildById(Layer.Children, SelectedMaskId);
 	}
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();
@@ -608,6 +610,8 @@ FReply SMixtormat::ReorderGroupChild(
 				return Candidate.ChildId == SelectedChildId;
 			});
 	}
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();
