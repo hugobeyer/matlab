@@ -266,9 +266,12 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 				}), nullptr, TAttribute<FText>(), 0.0f),
 				LOCTEXT("SurfaceIdFeatureHint", "Choose a continuous surface guide. Curvature reads height; Normal Flatness measures neighboring normal agreement, including tilted flat patches. Matching bands share an ID even across disconnected areas."));
 		};
-		AddSliderRow(Panel, MixtormatRow::MakePair(
-			FeatureRow(LOCTEXT("SurfaceIdsPrimary", "Primary"), &FMixtormatClusterFilter::PrimaryFeature),
-			FeatureRow(LOCTEXT("SurfaceIdsSecondary", "Secondary"), &FMixtormatClusterFilter::SecondaryFeature)));
+		// Feature labels such as "Normal Flatness" need a full-width chip; pairing two
+		// dropdowns clips their value text even at the normal Inspector width.
+		AddSliderRow(Panel,
+			FeatureRow(LOCTEXT("SurfaceIdsPrimary", "Primary"), &FMixtormatClusterFilter::PrimaryFeature));
+		AddSliderRow(Panel,
+			FeatureRow(LOCTEXT("SurfaceIdsSecondary", "Secondary"), &FMixtormatClusterFilter::SecondaryFeature));
 		AddSliderRow(Panel, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatClusterFilter>(LOCTEXT("SurfaceIdsMix", "Mix"),
 				Filter, &FMixtormatClusterFilter::FeatureMix, 0.0, 1.0, 0.0, 0.01,

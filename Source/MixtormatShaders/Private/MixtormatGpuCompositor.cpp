@@ -104,6 +104,7 @@ public:
 		SHADER_PARAMETER(uint32, OverrideMetallic)
 		SHADER_PARAMETER(uint32, CompositionMode)
 		SHADER_PARAMETER(uint32, IsFill)
+		SHADER_PARAMETER(uint32, FillPassThrough)
 		SHADER_PARAMETER(uint32, IsGenerator)
 		SHADER_PARAMETER(uint32, GeneratorAlbedo)
 		// A generator layer only writes its albedo when the stack actually produced a colour;
@@ -294,6 +295,11 @@ public:
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(float, ConstantHeight)
 		SHADER_PARAMETER(uint32, LayerInputResolved)
+		SHADER_PARAMETER(uint32, FillPassThrough)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousBC)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousN)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousHeight)
 		SHADER_PARAMETER(uint32, HasNormal)
 		SHADER_PARAMETER(uint32, FlipNormalY)
 		SHADER_PARAMETER(float, Tiling)
@@ -636,6 +642,12 @@ namespace MixtormatGpuCompositor
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
 		Parameters->ConstantHeight = Layer.ConstantHeight;
 		Parameters->LayerInputResolved = 0u;
+		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
+		const int32 PreviousIndex = 1 - (LayerCtx.LayerIndex & 1);
+		Parameters->PreviousBC = Ctx.OutputBC[PreviousIndex];
+		Parameters->PreviousN = Ctx.OutputN[PreviousIndex];
+		Parameters->PreviousRAM = Ctx.OutputRAM[PreviousIndex];
+		Parameters->PreviousHeight = Ctx.OutputHeight[PreviousIndex];
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 		Parameters->Tiling = Layer.Tiling;
@@ -721,16 +733,16 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatLayerValuesCS::FParameters>();
 		Parameters->OutputSize = Request.Resolution;
 
-		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
-		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideBaseColor = !Layer.bFillPassThrough && Layer.bOverrideBaseColor ? 1u : 0u;
+		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
 		Parameters->FillColor = Layer.FillColor;
 		Parameters->FillRoughness = Layer.FillRoughness;
-		Parameters->HueShift = Layer.HueShift;
-		Parameters->Saturation = Layer.Saturation;
-		Parameters->Value = Layer.Value;
-		Parameters->RoughnessBias = Layer.RoughnessBias;
-		Parameters->RoughnessContrast = Layer.RoughnessContrast;
-		Parameters->RoughnessOffset = Layer.RoughnessOffset;
+		Parameters->HueShift = Layer.bFillPassThrough ? 0.0f : Layer.HueShift;
+		Parameters->Saturation = Layer.bFillPassThrough ? 1.0f : Layer.Saturation;
+		Parameters->Value = Layer.bFillPassThrough ? 1.0f : Layer.Value;
+		Parameters->RoughnessBias = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.bFillPassThrough ? 1.0f : Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessOffset;
 		Parameters->LayerBC = LayerCtx.LayerInputBC;
 		Parameters->LayerRAM = LayerCtx.LayerInputRAM;
 		Parameters->LinearWrapSampler = TStaticSamplerState<
@@ -797,11 +809,12 @@ namespace MixtormatGpuCompositor
 		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
 
 		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
-		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor ? 1u : 0u;
-		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideBaseColor = !Layer.bFillPassThrough && Layer.bOverrideBaseColor ? 1u : 0u;
+		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
 		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
-		Parameters->CompositionMode = Layer.bCoat ? 1u : 0u;
+		Parameters->CompositionMode = !Layer.bFillPassThrough && Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
+		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
 		Parameters->IsGenerator = Layer.bGenerator ? 1u : 0u;
 		Parameters->GeneratorAlbedo = Layer.bGeneratorAlbedo ? 1u : 0u;
 		// A referenced colour field resolved into LayerInputBC is also a real colour contribution;
@@ -813,12 +826,12 @@ namespace MixtormatGpuCompositor
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight || LayerCtx.bGeneratedHeight ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
-		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
+		Parameters->UseSourceF0 = Layer.bFillPassThrough || Layer.bUseSourceF0 ? 1u : 0u;
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
-		Parameters->NormalOnly = Layer.bNormalOnly ? 1u : 0u;
-		Parameters->OverrideNormal = Layer.bOverrideNormal ? 1u : 0u;
+		Parameters->NormalOnly = !Layer.bFillPassThrough && Layer.bNormalOnly ? 1u : 0u;
+		Parameters->OverrideNormal = !Layer.bFillPassThrough && Layer.bOverrideNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-		Parameters->HeightOp = static_cast<uint32>(Layer.HeightBlend.Op);
+		Parameters->HeightOp = Layer.bFillPassThrough ? 0u : static_cast<uint32>(Layer.HeightBlend.Op);
 		Parameters->HeightSoftness = Layer.HeightBlend.Softness;
 		Parameters->HeightAmount = Layer.HeightBlend.Amount;
 		Parameters->HeightSource = Layer.HeightSource;
@@ -849,19 +862,19 @@ namespace MixtormatGpuCompositor
 		Parameters->UVOffset = Layer.UVOffset;
 		Parameters->Rotation = Layer.Rotation;
 		Parameters->NormalIntensity = Layer.NormalIntensity;
-		Parameters->HueShift = Layer.HueShift;
-		Parameters->Saturation = Layer.Saturation;
-		Parameters->Value = Layer.Value;
-		Parameters->RoughnessBias = Layer.RoughnessBias;
-		Parameters->RoughnessContrast = Layer.RoughnessContrast;
-		Parameters->RoughnessOffset = Layer.RoughnessOffset;
+		Parameters->HueShift = Layer.bFillPassThrough ? 0.0f : Layer.HueShift;
+		Parameters->Saturation = Layer.bFillPassThrough ? 1.0f : Layer.Saturation;
+		Parameters->Value = Layer.bFillPassThrough ? 1.0f : Layer.Value;
+		Parameters->RoughnessBias = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.bFillPassThrough ? 1.0f : Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessOffset;
 		Parameters->FillRoughness = Layer.FillRoughness;
 		Parameters->FillMetallic = Layer.FillMetallic;
 		Parameters->LayerF0 = Layer.LayerF0;
 		Parameters->HeightBoost = Layer.HeightBoost;
 		Parameters->HeightLevelOffset = Layer.HeightLevelOffset;
 		Parameters->HeightShape = Layer.HeightShape;
-		Parameters->BaseColorBlendMode = static_cast<uint32>(Layer.BaseColorBlendMode);
+		Parameters->BaseColorBlendMode = Layer.bFillPassThrough ? 0u : static_cast<uint32>(Layer.BaseColorBlendMode);
 		Parameters->BaseColorBlendAmount = Layer.BaseColorBlendAmount;
 		Parameters->BaseColorInfluence = Layer.BaseColorInfluence;
 		Parameters->RoughnessInfluence = Layer.RoughnessInfluence;

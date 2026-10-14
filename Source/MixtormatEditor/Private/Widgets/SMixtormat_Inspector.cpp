@@ -595,6 +595,39 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.InitiallyExpanded(true)
 							[
 								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight()
+								.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
+								[
+									SNew(SMixtormatSegmentedControl)
+									.Options(TArray<FText>{LOCTEXT("FillModeFill", "FILL"), LOCTEXT("FillModePassThrough", "PASS THROUGH")})
+									.ToolTips(TArray<FText>{
+										LOCTEXT("FillModeFillHint", "Use authored Fill channels."),
+										LOCTEXT("FillModePassHint", "Use the composite below as this layer's source for masks and effects. Fill settings are preserved.")})
+									.ActiveIndex_Lambda([this]()
+									{
+										return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+											&& WorkingLayers[SelectedLayerIndex].bFillPassThrough ? 1 : 0;
+									})
+									.OnChosen_Lambda([this](int32 Index)
+									{
+										if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
+											|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Fill) { return; }
+										WorkingLayers[SelectedLayerIndex].bFillPassThrough = Index == 1;
+										RefreshLayeredPreview();
+										RebuildLayerList();
+									})
+								]
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									SNew(SBox)
+									.Visibility_Lambda([this]()
+									{
+										return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+											&& !WorkingLayers[SelectedLayerIndex].bFillPassThrough
+											? EVisibility::Visible : EVisibility::Collapsed;
+									})
+									[
+										SNew(SVerticalBox)
 								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[
 								SNew(SHorizontalBox)
@@ -666,6 +699,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										&FMixtormatLayer::ConstantHeight, 0.0, 1.0, 0.5, 0.01)
 								]
 							]
+									]
+								]
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight()
@@ -678,8 +713,9 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Visibility_Lambda([this]()
 							{
 								return WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									? EVisibility::Visible
-									: EVisibility::Collapsed;
+									&& !(WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
+										&& WorkingLayers[SelectedLayerIndex].bFillPassThrough)
+									? EVisibility::Visible : EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("CompositionLabel", "COMPOSITION"))
 							.InitiallyExpanded(true)

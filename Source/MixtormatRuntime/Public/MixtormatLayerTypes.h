@@ -413,6 +413,11 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer")
 	EMixtormatLayerType Type = EMixtormatLayerType::Material;
 
+	// Inherit the composed substrate as the Fill's input; local effects still run on it.
+	// Authoring Fill channels are preserved and become active again when disabled.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fill")
+	bool bFillPassThrough = false;
+
 	// Generator-layer output routing. Color producers remain independent of this destination choice.
 	// On by default: a generator with a Color Ramp is expected to paint it, and the compositor
 	// skips the write entirely when no colour is generated, so the default is safe.

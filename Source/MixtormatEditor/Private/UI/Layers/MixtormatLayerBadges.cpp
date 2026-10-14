@@ -114,6 +114,10 @@ namespace MixtormatLayerBadges
 
 	FText ForLayer(const FMixtormatLayer& Layer)
 	{
+		if (Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough)
+		{
+			return LOCTEXT("FillPassThroughBadge", "PASS");
+		}
 		if (CompositionOf(Layer) == EComposition::Detail)
 		{
 			return LOCTEXT("LayerBadgeDetail", "DTL");

@@ -107,6 +107,7 @@ uint OverrideRoughness;
 uint OverrideMetallic;
 uint CompositionMode;
 uint IsFill;
+uint FillPassThrough;
 uint IsGenerator;
 uint GeneratorAlbedo;
 // A generator layer only writes its albedo when its stack produced a colour (Color Ramp or a
@@ -652,6 +653,10 @@ float SampleIncomingHeight(float2 UV)
 	{
 		return LayerSourceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	}
+	if (FillPassThrough != 0)
+	{
+		return SampleLayerSourceHeight(UV);
+	}
 	float PlacementMask = SamplePlacementHeightMask(UV);
 	float SourceHeight = DirectHeightComparison != 0
 		? (HasPackedHeight != 0
@@ -897,6 +902,17 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const int2 Pixel = int2(DispatchThreadId.xy);
+	// A pass-through Fill starts with the actual composed substrate. Copy it into
+	// private input textures so child effects may transform it without aliasing
+	// the previous ping-pong buffers or applying this layer's UV transform.
+	if (FillPassThrough != 0)
+	{
+		OutputBC[Pixel] = PreviousBC.Load(int3(Pixel, 0));
+		OutputN[Pixel] = PreviousN.Load(int3(Pixel, 0));
+		OutputRAM[Pixel] = PreviousRAM.Load(int3(Pixel, 0));
+		OutputHeight[Pixel] = PreviousHeight.Load(int3(Pixel, 0));
+		return;
+	}
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	float2x2 Orientation;
 	const float2 SourceUV = LayerSourceUVAndOrientation(UV, Orientation);
@@ -1022,7 +1038,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2 || LayerInputResolved != 0)
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(1.0f, 1.0f, 1.0f, 1.0f);
-	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2)
+	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2 || FillPassThrough != 0)
 		? LayerRAM.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.04f);
 	float3 SampledNormal = HasNormal != 0
@@ -1074,9 +1090,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Region variation before the layer grade, not after: the jitter says how this brick
 	// differs from that one, the grade says what the whole layer is. Reversing them makes
 	// the global grade fight per-region offsets it cannot see.
-	float3 LayerBaseColor = ApplyRegionVariation(
-		lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor), DispatchThreadId.xy);
-	if (HasSeparateHeight == 0 || HueShift != 0.0f || Saturation != 1.0f || Value != 1.0f)
+	float3 LayerBaseColor = FillPassThrough != 0
+		? SampledBaseColor.rgb
+		: ApplyRegionVariation(
+			lerp(SampledBaseColor.rgb, FillColor.rgb, OverrideBaseColor), DispatchThreadId.xy);
+	if (FillPassThrough == 0 && (HasSeparateHeight == 0 || HueShift != 0.0f || Saturation != 1.0f || Value != 1.0f))
 	{
 		LayerBaseColor = AdjustHSV(LayerBaseColor);
 	}
@@ -1088,12 +1106,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			LayerBaseColor = MixtormatApplyLayerGrade(LayerBaseColor, UV, GradeIndex);
 		}
 	}
-	float LayerRoughness = lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
-	float LayerAO = lerp(SampledRAM.g, 1.0f, IsFill);
-	float LayerMetallic = lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
+	float LayerRoughness = FillPassThrough != 0 ? SampledRAM.r
+		: lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
+	float LayerAO = FillPassThrough != 0 ? SampledRAM.g : lerp(SampledRAM.g, 1.0f, IsFill);
+	float LayerMetallic = FillPassThrough != 0 ? SampledRAM.b
+		: lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
 	// A fill has no normal map -- unless a generator resolved one from the height it formed.
 	SampledNormal = lerp(SampledNormal, float3(0.0f, 0.0f, 1.0f),
-		IsFill != 0 && LayerInputResolved == 0 ? 1.0f : 0.0f);
+		FillPassThrough != 0 || (IsFill != 0 && LayerInputResolved == 0) ? 1.0f : 0.0f);
 	if (PreparedLayerMode == 2)
 	{
 		// These controls already ran before relief. Do not grade or flatten it twice.
@@ -1229,7 +1249,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// the default safe on every material already saved.
 	float3 BlendedBaseColor = MixtormatBlendColor(
 		BaseColorBlendMode, PreviousBaseColor.rgb, LayerBaseColor);
-	float3 IncomingBaseColor = HasSeparateHeight != 0 && BaseColorBlendMode == 0
+	float3 IncomingBaseColor = FillPassThrough != 0 || (HasSeparateHeight != 0 && BaseColorBlendMode == 0)
 		? LayerBaseColor
 		: saturate(lerp(LayerBaseColor, BlendedBaseColor, saturate(BaseColorBlendAmount)));
 
@@ -1301,7 +1321,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	float ResultHeight = PreviousHeightValue;
-	if (Enabled != 0 && NormalOnly == 0)
+	if (Enabled != 0 && NormalOnly == 0 && FillPassThrough == 0)
 	{
 		float LayerResultHeight = PreviousHeightValue;
 		if (UseHeightBlendMask != 0)
@@ -1361,7 +1381,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Unclipped for every layer, not only live compositions. See Final > Auto Remap Height.
 	OutputHeight[DispatchThreadId.xy] = ResultHeight;
 	// A detail layer contributes only a normal, so it puts nothing on the ground.
-	OutputOccupancy[DispatchThreadId.xy] = IsGenerator != 0
+	OutputOccupancy[DispatchThreadId.xy] = IsGenerator != 0 || FillPassThrough != 0
 		? PreviousOccupancyValue
 		: max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
 }

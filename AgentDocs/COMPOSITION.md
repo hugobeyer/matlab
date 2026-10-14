@@ -25,6 +25,32 @@ These are generator-scope results, not a new cross-layer global Flow channel.
 Pre-generation Warp publishes its composed coordinate map. Existing diagnostic
 render targets are reused; no persistent per-module preview targets are allocated.
 
+## Fill Pass Through
+
+A Fill layer optionally sets `bFillPassThrough` (off by default). This is a
+layer mode, not another layer type or a preset that destructively zeroes
+Channel Influence. Authoring values remain intact when toggling modes.
+
+Pass Through uses the prior ping-pong composite (BC / N / RAM incl. F0 /
+Height) as the Fill's private, untiled source via `AddLayerInputPass`, ahead
+of region producers, masks, and effects. The layer input pass copies previous
+texels into independent output-space textures to avoid aliasing the substrate
+when scoped effects transform the input. Composite explicitly bypasses
+Fill-value overrides, authored HSV / roughness shaping and direct height
+replacement while retaining local masks, Grade, effect normal/AO/height, and
+post-composite Layer Blur. It preserves existing occupancy instead of treating
+the inherited surface as a new covering surface. Existing Fill mode, shader
+parameters, and saved authored values are unaffected when the mode is off.
+
+The Fill Properties inspector shows a Fill / Pass Through segmented control;
+Fill channels and their Channel Influence / Composition controls hide in Pass
+Through. The Layers row displays the short `PASS` badge. Other layer kinds
+cannot enable this behavior; `GatherLayerRenderData` guards it by Fill type.
+
+Surface IDs feature source chips (Primary / Secondary) use full-width rows so
+long options such as Normal Flatness remain readable at the authored Inspector
+width; producer math and feature enumeration are unchanged.
+
 ## Entry points
 
 | Thing | File |

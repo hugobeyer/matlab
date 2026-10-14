@@ -973,6 +973,11 @@ namespace MixtormatGpuCompositor
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatRegionIds, "Mixtormat.RegionIds");
 							AddOutputReferencePasses(Ctx, LayerCtx, Layer);
+						// Give pass-through Fill producers and masks the inherited channels.
+						if (Layer.bFillPassThrough)
+						{
+							AddLayerInputPass(Ctx, LayerCtx, Layer);
+						}
 							// Transitional child producers keep their established early-publication order.
 							AddRegionProducerPasses(Ctx, LayerCtx, Layer);
 							// A referenced colour field needs the resolved layer input to reach the

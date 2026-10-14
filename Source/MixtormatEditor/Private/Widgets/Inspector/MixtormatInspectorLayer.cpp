@@ -326,7 +326,10 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 	return SNew(SBox)
 		.Visibility_Lambda([this]()
 		{
-			return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? EVisibility::Visible : EVisibility::Collapsed;
+			return WorkingLayers.IsValidIndex(SelectedLayerIndex)
+				&& !(WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Fill
+					&& WorkingLayers[SelectedLayerIndex].bFillPassThrough)
+					? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
 			SNew(SMixtormatInspectorGroup)

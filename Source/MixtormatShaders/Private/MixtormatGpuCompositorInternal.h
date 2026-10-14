@@ -1344,6 +1344,7 @@ namespace MixtormatGpuCompositor
 		bool bOverrideMetallic = false;
 		bool bCoat = false;
 		bool bFill = false;
+		bool bFillPassThrough = false;
 		bool bHasSurface = false;
 		bool bHasNormal = false;
 		bool bNormalOnly = false;

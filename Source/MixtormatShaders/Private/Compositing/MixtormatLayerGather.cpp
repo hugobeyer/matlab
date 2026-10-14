@@ -67,6 +67,7 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bGeneratorAlbedo = Data.bGenerator && Layer.bGeneratorAlbedo;
 
 	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
+	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;
 	// Only a layer's combined mask is a usable signal this step. A child mask lives in the
 	// rotating ping-pong pair and is gone by the composite; region IDs are not a scalar at
 	// all. Both are refused here rather than approximated -- a Driver that cannot resolve
@@ -263,6 +264,7 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bOverrideMetallic = Layer.bOverrideMetallic;
 	Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
 	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
+	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;
 	Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 		&& Surface->BaseColor
 		&& Surface->RoughnessAOMetallic);
