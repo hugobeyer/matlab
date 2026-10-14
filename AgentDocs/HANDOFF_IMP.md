@@ -1,5 +1,7 @@
 # Mixtormat — Behavior System Refactor
 
+> **Historical handoff — not a current main-branch readiness report.** This document records the `feature/behavior-system-v2` state at commit `083630c`. On `main` (2026-10-14), `AddBehaviorFlowFieldPasses` is no longer present in `MixtormatGpuGeneratorPasses.cpp`, and `ApplyGeneratorPostBehaviors` is documented in `AgentDocs/GENERATORS.md` as the ordered path. Do not treat unchecked items below as confirmed current defects without tracing current gather and dispatch. Preserve the historical checklist for context.
+
 ## Remaining implementation audit
 
 **Repository:** [hugobeyer/matlab](https://github.com/hugobeyer/matlab)
