@@ -257,6 +257,7 @@ namespace MixtormatGpuCompositor
         Out.FieldOperation = static_cast<int32>(B.FieldOperation);
         Out.FieldWidth = FMath::Max(0.0f, Finite(B.FieldWidth, Defaults.FieldWidth));
         Out.FieldBias = Finite(B.FieldBias, Defaults.FieldBias);
+        Out.FieldSourceScale = Finite(B.FieldSourceScale, Defaults.FieldSourceScale);
         Out.FieldAmount = FMath::Clamp(Finite(B.FieldAmount, Defaults.FieldAmount), 0.0f, 1.0f);
         Out.SourceChildIndex = INDEX_NONE;
         if (B.SourceChildId.IsValid())
@@ -266,7 +267,10 @@ namespace MixtormatGpuCompositor
                 const FMixtormatLayerChild& Candidate = Layer.Children[Index];
                 if (Candidate.ChildId == B.SourceChildId
                     && Candidate.Type == EMixtormatLayerChildType::Generator
-                    && Candidate.Generator.bEnabled)
+                    && Candidate.Generator.bEnabled
+                    && MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) == INDEX_NONE
+                    && (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
+                        || Candidate.Generator.Noise.bNoiseWriteHeight))
                 {
                     Out.SourceChildIndex = Index;
                     break;

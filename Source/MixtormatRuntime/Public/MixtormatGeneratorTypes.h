@@ -1135,6 +1135,10 @@ struct MIXTORMATRUNTIME_API FMixtormatBooleanOps
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "-2.0", UIMax = "2.0"))
     float FieldBias = 0.0f;
 
+    // Signed gain reverses the source relief, enabling cuts from negative fields.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "-4.0", UIMax = "4.0"))
+    float FieldSourceScale = 1.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean Ops|Field", meta = (UIMin = "0.0", UIMax = "1.0"))
     float FieldAmount = 1.0f;
 

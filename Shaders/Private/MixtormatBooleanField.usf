@@ -9,6 +9,7 @@ uint HasSource;
 uint HasScopedMask;
 float FieldWidth;
 float FieldBias;
+float FieldSourceScale;
 float FieldAmount;
 Texture2D<float> RunningHeight;
 Texture2D<float> BelowHeight;
@@ -56,7 +57,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         if (isfinite(source) && isfinite(below))
         {
             // Modules publish signed deltas; reconstruct surfaces over one base.
-            float b = below + source + FieldBias;
+            float shapedSource = source * FieldSourceScale + FieldBias;
+            float b = below + shapedSource;
             float k = max(0.0f, FieldWidth);
             float target = a;
             difference = a - b;
@@ -73,7 +75,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             else
             {
                 // Single-valued relief subtraction, not true 3D solid subtraction.
-                float d = source + FieldBias;
+                float d = shapedSource;
                 float depth = max(0.0f, d);
                 if (Mode == 2 && k > 0.0f)
                     depth = max(0.0f, field_smax(0.0f, d, k) - 0.25f * k);
@@ -85,7 +87,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             float weight = HasScopedMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
             weight = isfinite(weight) ? saturate(weight) : 0.0f;
             delta = (target - a) * saturate(FieldAmount) * weight;
-            boundary = 1.0f - saturate(abs(difference) / max(k, 0.00001f));
+            // Hard joins have a sharp seam; the hidden Round/Bevel width
+            // must never influence a Boolean-mode preview.
+            float effectiveWidth = Mode == 1 ? 0.0f : k;
+            if (effectiveWidth > 0.0f)
+            {
+                boundary = 1.0f - saturate(abs(difference) / effectiveWidth);
+            }
+            else
+            {
+                // Detect sign crossings at adjacent wrapped pixels. Comparing to
+                // a tiny constant misses nearly all hard Boolean boundaries.
+                int2 px = int2((pixel.x + 1) % OutputSize.x, pixel.y);
+                int2 py = int2(pixel.x, (pixel.y + 1) % OutputSize.y);
+                float sx = SourceHeight.Load(int3(px, 0)) * FieldSourceScale + FieldBias;
+                float sy = SourceHeight.Load(int3(py, 0)) * FieldSourceScale + FieldBias;
+                float dx = FieldOperation == 2 ? sx
+                    : RunningHeight.Load(int3(px, 0)) - sx;
+                float dy = FieldOperation == 2 ? sy
+                    : RunningHeight.Load(int3(py, 0)) - sy;
+                boundary = (difference == 0.0f
+                    || (difference < 0.0f && (dx > 0.0f || dy > 0.0f))
+                    || (difference > 0.0f && (dx < 0.0f || dy < 0.0f))) ? 1.0f : 0.0f;
+            }
             area = abs(delta) > 0.000001f ? 1.0f : 0.0f;
             if (!isfinite(delta)) delta = 0.0f;
         }

@@ -435,7 +435,8 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
                 RefreshLayeredPreview();
             }
         }));
-    if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)) { return Menu.Build(); }
+    if (SelectedSourceId.IsValid() || !WorkingLayers.IsValidIndex(SelectedLayerIndex))
+        { return Menu.Build(); }
     const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
     const FMixtormatChildAddress Address = GetSelectedChildAddress();
     const int32 SelectedIndex = Layer.Children.IndexOfByPredicate(
@@ -444,7 +445,11 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
     for (int32 Index = 0; Index < SelectedIndex; ++Index)
     {
         const FMixtormatLayerChild& Child = Layer.Children[Index];
-        if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled) { continue; }
+        if (Child.Type != EMixtormatLayerChildType::Generator
+            || !Child.Generator.bEnabled
+            || MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) != INDEX_NONE
+            || (Child.Generator.Type == EMixtormatGeneratorType::Noise
+                && !Child.Generator.Noise.bNoiseWriteHeight)) { continue; }
         const FGuid ChildId = Child.ChildId;
         Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
             FSimpleDelegate::CreateLambda([this, ChildId]()
@@ -488,25 +493,39 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
                             return LOCTEXT("BooleanFieldSourceNone", "None");
                         if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
                         {
-                            for (const FMixtormatLayerChild& Candidate : WorkingLayers[SelectedLayerIndex].Children)
+                            const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+                            const FMixtormatChildAddress Address = GetSelectedChildAddress();
+                            const int32 CurrentIndex = Layer.Children.IndexOfByPredicate(
+                                [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
+                            for (int32 Index = 0; Index < CurrentIndex; ++Index)
                             {
-                                if (Candidate.ChildId == Selected->SourceChildId)
+                                const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+                                if (Candidate.ChildId == Selected->SourceChildId
+                                    && Candidate.Type == EMixtormatLayerChildType::Generator
+                                    && Candidate.Generator.bEnabled
+                                    && MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) == INDEX_NONE
+                                    && (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
+                                        || Candidate.Generator.Noise.bNoiseWriteHeight))
                                     return GetLayerChildName(Candidate);
                             }
                         }
-                        return LOCTEXT("BooleanFieldSourceMissing", "Missing");
+                        return LOCTEXT("BooleanFieldSourceMissing", "Unavailable");
                     }),
                     FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanOpsSourceMenu)),
                 LOCTEXT("BooleanFieldSourceHint", "An earlier Generator module's signed height; None is identity."))));
         AddSliderRow(Field, MixtormatRow::MakePair(
             MakeMemberSlider<FMixtormatBooleanOps>(
+                LOCTEXT("BooleanFieldSourceScale", "Source Scale"), B, &FMixtormatBooleanOps::FieldSourceScale,
+                -4.0, 4.0, 1.0, 0.01,
+                LOCTEXT("BooleanFieldSourceScaleHint", "Signed source gain. Negative values invert raised and recessed shapes.")),
+            MakeMemberSlider<FMixtormatBooleanOps>(
                 LOCTEXT("BooleanFieldBias", "Height Bias"), B, &FMixtormatBooleanOps::FieldBias,
                 -2.0, 2.0, 0.0, 0.005,
-                LOCTEXT("BooleanFieldBiasHint", "Shift the source vertically in raw signed height units.")),
-            MakeMemberSlider<FMixtormatBooleanOps>(
-                LOCTEXT("BooleanFieldAmount", "Amount"), B, &FMixtormatBooleanOps::FieldAmount,
-                0.0, 1.0, 1.0, 0.01,
-                LOCTEXT("BooleanFieldAmountHint", "Blend the result into the running signed height."))));
+                LOCTEXT("BooleanFieldBiasHint", "Shift the source vertically in raw signed height units."))));
+        AddSliderRow(Field, MakeMemberSlider<FMixtormatBooleanOps>(
+            LOCTEXT("BooleanFieldAmount", "Amount"), B, &FMixtormatBooleanOps::FieldAmount,
+            0.0, 1.0, 1.0, 0.01,
+            LOCTEXT("BooleanFieldAmountHint", "Blend the result into the running signed height.")));
         AddSliderRow(Field,
             SNew(SBox)
             .Visibility_Lambda([B]()
@@ -684,7 +703,7 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 								RebuildLayerList();
 							}
 						}),
-						LOCTEXT("BooleanEnabledHint", "Enable Scatter Carve"))
+						LOCTEXT("BooleanEnabledHint", "Enable Boolean Ops"))
 				])
 			[
 				Cards

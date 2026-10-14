@@ -36,18 +36,23 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 **Bevel**. Scatter Carve preserves its existing finite-volume implementation.
 The other modes combine the current signed height surface with the signed Height
 output of an explicitly chosen **earlier generator module in the same layer**.
-The operand is selected by stable child GUID; missing/disabled/forward references
-are an exact zero-delta identity.
+The operand is selected by stable child GUID; missing, disabled, nested,
+heightless Noise and forward references are an exact zero-delta identity.
+The inspector lists only eligible earlier height-generating modules; an invalid
+selection displays Unavailable instead of a misleading valid source name.
 
 - **Boolean:** hard union (max) and intersection (min) of single-valued vertical
   surfaces; subtract removes positive authored source relief from the running
   height (a *relief cut*, not a general 3D solid difference).
 - **Round:** polynomial rounded variants of those heightfield joins.
 - **Bevel:** analytic chamfered variants of those heightfield joins.
-- Parameters: source chip, operation, raw signed Height Bias, Amount; Round and
-  Bevel additionally use Join Width in signed height units.
+- Parameters: source chip, operation, signed Source Scale (negative inverts
+  source relief), raw signed Height Bias and Amount; Round and Bevel also use
+  Join Width in signed height units.
 - Outputs: Height (signed delta), copyable FieldMask and FieldBoundary,
   signed FieldDifference and FieldContribution. Scoped masks blend the result.
+Hard Boolean joins use pixel-neighbor crossings for a visible boundary
+diagnostic; Round/Bevel show a height-width band.
 - These field modes use one compute dispatch. They do not normalize or clamp
   signed height or presume height is a metric SDF.
 

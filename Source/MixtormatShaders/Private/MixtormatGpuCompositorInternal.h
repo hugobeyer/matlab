@@ -962,6 +962,7 @@ namespace MixtormatGpuCompositor
         int32 FieldOperation = 0;
         float FieldWidth = 0.10f;
         float FieldBias = 0.0f;
+        float FieldSourceScale = 1.0f;
         float FieldAmount = 1.0f;
         int32 Operation = 0, Shape = 1;
 		int32 Seed = 1;

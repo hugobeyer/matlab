@@ -90,6 +90,7 @@ public:
         SHADER_PARAMETER(uint32, HasScopedMask)
         SHADER_PARAMETER(float, FieldWidth)
         SHADER_PARAMETER(float, FieldBias)
+        SHADER_PARAMETER(float, FieldSourceScale)
         SHADER_PARAMETER(float, FieldAmount)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BelowHeight)
@@ -2455,6 +2456,7 @@ namespace
         P->HasScopedMask = bHasMask ? 1u : 0u;
         P->FieldWidth = B.FieldWidth;
         P->FieldBias = B.FieldBias;
+        P->FieldSourceScale = B.FieldSourceScale;
         P->FieldAmount = B.FieldAmount;
         P->RunningHeight = RunningHeight;
         P->BelowHeight = BelowHeight;
