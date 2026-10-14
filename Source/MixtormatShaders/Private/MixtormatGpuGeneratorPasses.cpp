@@ -3675,9 +3675,14 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			{
 				LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
 				Ctx.PublishedFieldOutputs.Add(
-					PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
-					FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
-				for (const auto& Named : Module.NamedMasks)
+                    PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
+                    FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+                if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
+                    FName(TEXT("Height")), LayerCtx.LayerIndex, Child.SourceChildIndex))
+                {
+                    AddDebugPreviewSignedHeightBlitPass(Ctx.GraphBuilder, Module.Height, Debug, Size);
+                }
+                for (const auto& Named : Module.NamedMasks)
 				{
 					Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Named.Key), Named.Value);
 				}

@@ -252,6 +252,12 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
         {
+            // The module's own signed delta is always present, independent of its mode.
+            // It is not the cumulative running surface or a metric distance field.
+            Result.Outputs.Add({FName(TEXT("Height")),
+                NSLOCTEXT("SMixtormat", "PreviewBooleanHeight", "Height Delta"),
+                EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
+                true, EMixtormatPublishedFieldKind::ScalarSigned});
             if (Child.Generator.BooleanOps.Mode != EMixtormatBooleanMode::ScatterCarve)
             {
                 Result.Outputs.Add({FName(TEXT("FieldMask")),

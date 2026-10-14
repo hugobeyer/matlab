@@ -52,8 +52,9 @@ selection displays Unavailable instead of a misleading valid source name.
 - Parameters: source chip, operation, signed Source Scale (negative inverts
   source relief), raw signed Height Bias and Amount; Round and Bevel also use
   Join Width in signed height units.
-- Outputs: Height (signed delta), copyable FieldMask and FieldBoundary,
-  signed FieldDifference and FieldContribution. Scoped masks blend the result.
+- Outputs: copyable/previewable Height (signed module delta), copyable
+  FieldMask and FieldBoundary, signed FieldDifference and FieldContribution.
+  Scoped masks blend the result.
 Hard Boolean joins use pixel-neighbor crossings for a visible boundary
 diagnostic; Round/Bevel show a height-width band.
 - These field modes use one compute dispatch. They do not normalize or clamp
@@ -80,7 +81,7 @@ the finished result.
 The compute pass evaluates `CompositeBelow + RunningHeight` as its raw target,
 outputs `resolved - target`, then uses the standard additive running-height
 chain. No normalization or additional Height Scale is applied to this delta.
-Outputs: Height (signed delta), CutDepth (signed removal), GeometryFront,
+Outputs: copyable/previewable Height (signed delta), CutDepth (signed removal), GeometryFront,
 GeometryBack (unclipped original cutter envelope), and copyable GeometryMask.
 The footprint includes hard cutter intervals and chamfer-only influence, and
 respects the cutter's scoped mask (rather than showing masked-off cutters).
