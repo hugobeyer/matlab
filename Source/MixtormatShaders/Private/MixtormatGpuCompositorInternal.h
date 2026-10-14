@@ -2200,6 +2200,11 @@ namespace MixtormatGpuCompositor
 
 	// A signed distance (negative inside) as two colours with iso-lines. DistanceToPixels takes
 	// the producer's unit to output pixels -- Resolution.X for a field in UV widths.
+    // Signed-height contribution diagnostics; never interprets raw height as UV SDF.
+    void AddDebugPreviewSignedHeightBlitPass(
+        FRDGBuilder& GraphBuilder, FRDGTextureRef SignedHeight,
+        FRDGTextureRef OutputDebug, FIntPoint Resolution);
+
 	void AddDebugPreviewSignedDistanceBlitPass(
 		FRDGBuilder& GraphBuilder,
 		FRDGTextureRef SourceDistance,

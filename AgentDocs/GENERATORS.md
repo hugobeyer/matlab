@@ -62,7 +62,12 @@ The existing Height Blend sublayer remains independent.
 
 Scatter Carve: Finite
 ellipsoid or polygon-prism cutters are seeded periodically in UV; each cutter
-samples the original signed height at its seed to stay rigid. Subtract removes
+samples the original signed height at its seed to stay rigid. Scatter XY uses
+the Generator layer's tile/flip/quarter-turn/offset placement and the existing
+pre-generation UV mapping. Affine placement reconstructs the nearest cutter
+anchor in destination UV space. Nonlinear pre-generation warps affect XY but
+do not currently invert the warp when sampling cutter anchor height.
+Subtract removes
 the union of intersecting depth intervals, revisiting overlaps; Union projects
 the frontmost cutter. `CenterDepth < 0` also selects Union as in the prototype.
 Chamfer uses the root-refined finite-volume distance method, not morphological
@@ -83,7 +88,10 @@ The full seed-count range is available but expensive; default 16, UI range
 Implementation: `FMixtormatBooleanOps` →
 `GatherGeneratorChild` → `AddBooleanCarvePasses` / `AddBooleanFieldPasses` →
 `MixtormatBooleanCarve.usf` / `MixtormatBooleanField.usf` →
-`BuildBooleanOpsControls`. Previews are mode-specific.
+`BuildBooleanOpsControls`. Previews are mode-specific. Boolean field
+diagnostics and Scatter Carve depth/front/back use the signed-height blit
+rather than a UV-metric signed-distance renderer. Boolean Ops does not advertise
+an Accumulated Flow eye, since it publishes no such field.
 Static source review only; no Unreal build or runtime validation performed.
 
 ## Shared native Flow foundation (Stage 1)

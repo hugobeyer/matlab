@@ -3,6 +3,7 @@
 // Adapted from AgentDocs/Prototypes/ScatterCarve/scatter_carve.cl.
 // No private per-pixel seed arrays: hard-cut intervals are revisited analytically.
 #include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 
 #define SCATTER_CARVE_MAX_SEEDS 4096
 #define SCATTER_CARVE_ROOT_STEPS 24
@@ -193,7 +194,7 @@ float carve_chamfer_travel(int shape, float lateral, float radius,
 
 // One rigid cutter, anchored to the source height at its scatter seed.
 // A candidate can contribute a chamfer without intersecting the sharp ray.
-bool carve_seed_geometry(int index, float2 uv, bool bevelEnabled,
+bool carve_seed_geometry(int index, float2 uv, float2 destinationUV, bool bevelEnabled,
     out float lower, out float upper, out float lateral,
     out float r, out float hz, out float width, out float reach, out float z)
 {
@@ -227,7 +228,8 @@ bool carve_seed_geometry(int index, float2 uv, bool bevelEnabled,
         float polygonBound = r * (1.0f + abs(Irregularity)) /
             cos(3.14159265359f / (float)Sides);
         float bound = polygonBound + reach;
-        if (!isfinite(bound)) return false;
+        if (!isfinite(bound) || length(d) > bound) return false;
+        // Most cutters miss the current texel. Cull before polygon clipping.
         int xmin = (int)ceil(-bound - d.x);
         int xmax = (int)floor(bound - d.x);
         int ymin = (int)ceil(-bound - d.y);
@@ -253,8 +255,24 @@ bool carve_seed_geometry(int index, float2 uv, bool bevelEnabled,
     }
     else return false;
 
-    float surface = BelowHeight.SampleLevel(LinearWrapSampler, center, 0) +
-        RunningHeight.SampleLevel(LinearWrapSampler, center, 0);
+    // Resolve the nearest affine replica of the cutter centre into output UV.
+    // A source-space centre cannot directly sample a height texture in output space.
+    float2 anchor = center;
+    if (GeneratorLayer != 0u && all(abs(GeneratorUVScale) > 0.00001f))
+    {
+        float2 oriented = destinationUV;
+        oriented.x = GeneratorUVFlipU != 0u ? 1.0f - oriented.x : oriented.x;
+        oriented.y = GeneratorUVFlipV != 0u ? 1.0f - oriented.y : oriented.y;
+        oriented = MixtormatRotateUV90(oriented, GeneratorUVRotation);
+        float2 phase = oriented * GeneratorUVScale + GeneratorUVOffset;
+        float2 centreReplica = center + floor(phase - center + 0.5f);
+        float2 sourcePosition = (centreReplica - GeneratorUVOffset) / GeneratorUVScale;
+        anchor = 0.5f + mul(sourcePosition - 0.5f,
+            MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV, GeneratorUVRotation));
+    }
+    float2 wrappedAnchor = frac(anchor);
+    float surface = BelowHeight.SampleLevel(LinearWrapSampler, wrappedAnchor, 0)
+        + RunningHeight.SampleLevel(LinearWrapSampler, wrappedAnchor, 0);
     z = surface + ReferenceHeight - CenterDepth +
         (2.0f * carve_random(key, 4u) - 1.0f) * abs(DepthVariation);
     if (!isfinite(z)) return false;
@@ -288,11 +306,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
     if (seedCount > 0 && Radius > 0.0f && DepthScale > 0.0f)
     {
-        float2 uv = (float2(pixel) + 0.5f) / float2(OutputSize);
+        float2 destinationUV = (float2(pixel) + 0.5f) / float2(OutputSize);
+        float2 uv = MixtormatGeneratorUV(destinationUV);
         [loop] for (int i = 0; i < seedCount; ++i)
         {
             float lo, hi, lateral, r, hz, width, reach, z;
-            if (!carve_seed_geometry(i, uv, bevelEnabled,
+            if (!carve_seed_geometry(i, uv, destinationUV, bevelEnabled,
                 lo, hi, lateral, r, hz, width, reach, z)) continue;
             if (hi > lo)
             {
@@ -328,7 +347,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             [loop] for (int i = 0; i < seedCount; ++i)
             {
                 float lo, hi, lateral, r, hz, width, reach, z;
-                if (!carve_seed_geometry(i, uv, bevelEnabled,
+                if (!carve_seed_geometry(i, uv, destinationUV, bevelEnabled,
                     lo, hi, lateral, r, hz, width, reach, z)) continue;
                 if (hi > lo && lo < result && hi >= result)
                 {

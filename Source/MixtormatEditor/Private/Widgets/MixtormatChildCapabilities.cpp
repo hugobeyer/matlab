@@ -523,11 +523,17 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				if (Output.bPreviewable) { Output.bSecondaryPreview = true; }
 			}
 		}
+        // Boolean Ops has no accumulated Flow publication. Do not expose an eye
+        // that cannot resolve a field on that generator.
+        if (Child.Type != EMixtormatLayerChildType::Generator
+            || Child.Generator.Type != EMixtormatGeneratorType::BooleanOps)
+        {
 		// Diagnostic snapshots are not authored field-reference outputs.
 		Result.Outputs.Add({MixtormatDiagnosticOutputs::AccumulatedFlow,
 			NSLOCTEXT("SMixtormat", "PreviewAccumulatedFlow", "Accumulated Flow"),
 			EMixtormatPreviewOutputKind::FlowDirection, false, true, bHasPrimary && !bFlowPrimary, NAME_None,
 			false, EMixtormatPublishedFieldKind::Flow});
+        }
 	}
 	return Result;
 }

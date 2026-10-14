@@ -117,7 +117,15 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatBooleanCarveCS, FGlobalShader);
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(int32, Seed)
+        SHADER_PARAMETER(uint32, GeneratorLayer)
+        SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+        SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+        SHADER_PARAMETER(int32, GeneratorUVRotation)
+        SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+        SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+        SHADER_PARAMETER(uint32, UsePreGenerationUV)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
+        SHADER_PARAMETER(int32, Seed)
 		SHADER_PARAMETER(int32, Count)
 		SHADER_PARAMETER(int32, Operation)
 		SHADER_PARAMETER(int32, Shape)
@@ -2489,7 +2497,7 @@ namespace
                 Output.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
             {
                 FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-                AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Output.Value, (float)Size.X, Debug, Size);
+                AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Output.Value, Debug, Size);
             }
         }
     }
@@ -2521,7 +2529,8 @@ namespace
 			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 			: RunningHeight;
 		auto* P = GraphBuilder.AllocParameters<FMixtormatBooleanCarveCS::FParameters>();
-		P->OutputSize = Size;
+        FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+        P->OutputSize = Size;
 		P->Seed = B.Seed;
 		P->Count = B.Count;
 		P->Operation = B.Operation;
@@ -2570,7 +2579,7 @@ namespace
 				Output.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
 			{
 				FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-				AddDebugPreviewSignedDistanceBlitPass(GraphBuilder, Output.Value, (float)Size.X, Debug, Size);
+				AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Output.Value, Debug, Size);
 			}
 		}
 	}

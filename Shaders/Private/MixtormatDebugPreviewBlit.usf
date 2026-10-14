@@ -20,6 +20,30 @@ int2 OutputSize;
 // the field itself is never clipped. A value at or past the producers' "nothing within reach" sentinel shows as no data.
 Texture2D<float> SourceDistance;
 float DistanceToPixels;
+Texture2D<float> SourceSignedHeight;
+
+// Raw signed relief preview, no SDF units or isolines. Warm = cut,
+// cool = raised, neutral grey = zero. Display-only nonlinear magnitude.
+[numthreads(8, 8, 1)]
+void MainSignedHeightCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const uint2 Pixel = DispatchThreadId.xy;
+    if (any(Pixel >= uint2(OutputSize))) { return; }
+    const float Value = SourceSignedHeight.Load(int3(Pixel, 0));
+    if (!isfinite(Value))
+    {
+        OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(float3(0.22f, 0.20f, 0.24f)), 1.0f);
+        return;
+    }
+    const float Magnitude = abs(Value);
+    const float Contrast = sqrt(saturate(Magnitude / (Magnitude + 0.05f)));
+    const float3 Neutral = float3(0.23f, 0.25f, 0.29f);
+    const float3 Tint = Value < 0.0f
+        ? float3(0.94f, 0.55f, 0.32f)
+        : float3(0.43f, 0.72f, 0.95f);
+    OutputDebug[Pixel] = float4(MixtormatSrgbToLinear(lerp(Neutral, Tint, Contrast)), 1.0f);
+}
+
 
 #define MIXTORMAT_SDF_ISO_LINES_ACROSS 96.0f
 #define MIXTORMAT_SDF_NO_DATA 1.0e8f
