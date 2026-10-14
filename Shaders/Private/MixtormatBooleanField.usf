@@ -97,7 +97,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             }
             float weight = HasScopedMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
             weight = isfinite(weight) ? saturate(weight) : 0.0f;
-            delta = (target - a) * saturate(FieldAmount) * weight;
+            float influence = saturate(FieldAmount) * weight;
+            delta = (target - a) * influence;
             // Hard joins have a sharp seam; the hidden Round/Bevel width
             // must never influence a Boolean-mode preview.
             float effectiveWidth = Mode == 1 ? 0.0f : k;
@@ -121,8 +122,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                     || (difference < 0.0f && (dx > 0.0f || dy > 0.0f))
                     || (difference > 0.0f && (dx < 0.0f || dy < 0.0f))) ? 1.0f : 0.0f;
             }
-            boundary *= weight * saturate(FieldAmount);
-            area = abs(delta) > 0.000001f ? 1.0f : 0.0f;
+            boundary *= influence;
+            area = abs(target - a) > 0.000001f ? influence : 0.0f;
             if (!isfinite(delta)) delta = 0.0f;
         }
     }

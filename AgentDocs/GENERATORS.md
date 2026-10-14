@@ -60,7 +60,9 @@ of a misleading valid source name.
   Join Width in signed height units.
 - Outputs: copyable/previewable Height (signed module delta), copyable
   FieldMask and FieldBoundary, signed FieldDifference and FieldContribution.
-  Scoped masks blend the result.
+  FieldMask carries the effective continuous operation weight, not a binary
+  threshold; the boundary respects the same scope/amount. Scoped masks blend
+  the result.
 Hard Boolean joins use pixel-neighbor crossings for a visible boundary
 diagnostic; Round/Bevel show a height-width band.
 - These field modes use one compute dispatch. They do not normalize or clamp
