@@ -223,6 +223,19 @@ canonical authoring surface for Push/Warp operations.
 `MixtormatInspectorEffects.cpp`, `MixtormatInspectorHeight.cpp`.
 Builders are `SMixtormat::Build*Panel` members.
 
+Generator Color Ramp exposes 0..1 stop coordinates and lookup, while its stored stops remain
+signed-height coordinates through `GetUnitRamp` / `SetUnitRamp`. This preserves authored stop
+placement without migrations. Source/Normalize and Scale/Offset use paired rows; Mirror Repeat
+reflects extended coordinates instead of holding the endpoint colors. Normalize uses the shared
+measured-range GPU utility before lookup scaling; source height and scoped masks stay unchanged.
+Presets map into the consuming editor's domain. Flow remains a typed vector, not an implicit
+height/color source.
+
+Height Remap keeps its signed -1..1 scalar curve, with paired Input Min/Max and Offset/Amount.
+Its Normalize Input uses shared measured max-absolute normalization, preserving zero and signs;
+input-range scaling happens once afterward. Amount blends against untouched running height,
+and Amount zero skips the pass. Balance and Contrast are removed from the complete contract.
+
 Generated Mask uses a paired Blend/Weight row, a compact Signals card, and the shared
 Mask Shaping card (including curve Flip/Invert). Curvature and Direction extraction
 rows appear only for effective nonzero influences; inactive companion controls are disabled.

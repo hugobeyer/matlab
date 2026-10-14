@@ -802,17 +802,15 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Amount)
-		SHADER_PARAMETER(uint32, bNormalizeInput)
 		SHADER_PARAMETER(float, InputMin)
 		SHADER_PARAMETER(float, InputMax)
-		SHADER_PARAMETER(float, Balance)
-		SHADER_PARAMETER(float, Contrast)
 		SHADER_PARAMETER(float, Offset)
 		SHADER_PARAMETER(uint32, bInvert)
 		SHADER_PARAMETER(uint32, CurveCount)
 		SHADER_PARAMETER(uint32, CurveInterpolation)
 		SHADER_PARAMETER_ARRAY(FVector4f, CurvePoints, [FMixtormatScalarRamp::MaxPoints])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -836,6 +834,9 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, StopCount)
 		SHADER_PARAMETER(uint32, Interpolation)
+		SHADER_PARAMETER(float, InputScale)
+		SHADER_PARAMETER(float, InputOffset)
+		SHADER_PARAMETER(uint32, MirrorRepeat)
 		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER(uint32, HasGate)
@@ -1197,6 +1198,10 @@ namespace
 	FRDGTextureRef AddGeneratorHeightCurvePass(FMixtormatComposeContext& Ctx, FRDGTextureRef RunningHeight,
 		const FGeneratorHeightCurveRenderData& Curve)
 	{
+		if (Curve.Amount == 0.0f)
+		{
+			return RunningHeight;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef Out = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -1206,11 +1211,10 @@ namespace
 		auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorHeightCurveCS::FParameters>();
 		P->OutputSize = Size;
 		P->Amount = Curve.Amount;
-		P->bNormalizeInput = Curve.bNormalizeInput;
+
 		P->InputMin = Curve.InputMin;
 		P->InputMax = Curve.InputMax;
-		P->Balance = Curve.Balance;
-		P->Contrast = Curve.Contrast;
+
 		P->Offset = Curve.Offset;
 		P->bInvert = Curve.bInvert;
 		P->CurveCount = Curve.CurveCount;
@@ -1220,6 +1224,10 @@ namespace
 			P->CurvePoints[Index] = Curve.CurvePoints[Index];
 		}
 		P->RunningHeight = RunningHeight;
+		P->SourceHeight = Curve.bNormalizeInput != 0
+			? AddSignedGeneratorHeightPasses(GraphBuilder, RunningHeight, Size, true,
+				1.0f, 0.0f, false, nullptr, TEXT("Mixtormat.Generator.HeightCurve.Normalized"))
+			: RunningHeight;
 		P->OutHeight = GraphBuilder.CreateUAV(Out);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightCurve"), Shader, P,
@@ -1243,6 +1251,9 @@ namespace
 		P->OutputSize = Size;
 		P->StopCount = Ramp.StopCount;
 		P->Interpolation = Ramp.Interpolation;
+		P->InputScale = Ramp.InputScale;
+		P->InputOffset = Ramp.InputOffset;
+		P->MirrorRepeat = Ramp.bMirrorRepeat ? 1u : 0u;
 		for (int32 Index = 0; Index < FMixtormatColorRamp::MaxStops; ++Index)
 		{
 			P->Positions[Index] = FVector4f(Ramp.Positions[Index], 0.0f, 0.0f, 0.0f);

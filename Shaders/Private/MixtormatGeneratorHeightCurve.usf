@@ -1,16 +1,15 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 // Generator-layer Height Curve / Height Remap sublayer: remaps the running signed height through
-// the shared scalar ramp with signed normalization, signed input range, balance, contrast, offset,
-// invert, and an Amount lerp against the original input.
+// the shared scalar ramp with measured zero-preserving normalization, signed input range,
+// offset, invert, and an Amount lerp against the original input.
 //
 // Processing order (locked, shared with CPU/UI):
 //   input
 //   -> optional zero-preserving normalization
 //   -> signed input-range remap
 //   -> curve
-//   -> balance
-//   -> contrast
+
 //   -> offset
 //   -> invert
 //   -> Amount lerp against original input
@@ -20,17 +19,17 @@
 
 int2 OutputSize;
 float Amount;
-uint bNormalizeInput;
+
 float InputMin;
 float InputMax;
-float Balance;
-float Contrast;
+
 float Offset;
 uint bInvert;
 uint CurveCount;
 uint CurveInterpolation;
 float4 CurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
 Texture2D<float> RunningHeight;
+Texture2D<float> SourceHeight;
 RWTexture2D<float> OutHeight;
 
 [numthreads(8, 8, 1)]
@@ -40,15 +39,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(Pixel >= OutputSize)) { return; }
 
 	const float Original = RunningHeight.Load(int3(Pixel, 0));
-	float X = Original;
-
-	// Optional zero-preserving max-absolute normalization to -1..1. A constant/degenerate input
-	// resolves deterministically without producing NaNs.
-	if (bNormalizeInput != 0)
-	{
-		const float MaxAbs = max(abs(InputMin), abs(InputMax));
-		X = MaxAbs > 1.0e-6f ? X / MaxAbs : 0.0f;
-	}
+	// The optional measured normalization is scheduled by C++ using the shared field utility.
+	// Keep the original texture separate so Amount always blends against untouched height.
+	float X = SourceHeight.Load(int3(Pixel, 0));
 
 	// Signed input-range remap. The pivot is zero: positive values divide by InputMax, negative
 	// by abs(InputMin). A degenerate range resolves to zero.
@@ -66,16 +59,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	// Curve: the signed-domain scalar ramp. The ramp is not saturated to 0..1.
-	const float Curved = MixtormatEvalSignedScalarRamp(X, CurveCount, CurveInterpolation, CurvePoints);
-
-	// Balance: sign-preserving power transform. Identity at 1.
-	float Y = sign(Curved) * pow(abs(Curved), Balance);
-
-	// Contrast: multiplicative, pivoted around zero. Identity at 1.
-	Y *= Contrast;
-
-	// Offset: signed addition. Identity at 0.
-	Y += Offset;
+	float Y = MixtormatEvalSignedScalarRamp(X, CurveCount, CurveInterpolation, CurvePoints) + Offset;
 
 	// Invert: -x, not 1-x. Identity when false.
 	if (bInvert != 0) { Y = -Y; }

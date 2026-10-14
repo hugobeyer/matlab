@@ -1,8 +1,8 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 // Generator-layer Height Color Ramp sublayer: maps a resolved signed height through a reusable
-// colour ramp and publishes the result as a colour field. The ramp runs -1..1 with zero at the
-// centre; the signed input is preserved rather than remapped to 0..1. Which height it maps --
+// colour ramp and publishes the result as a colour field. Signed height becomes a 0..1 color
+// coordinate before scale/offset and optional mirrored repetition. Which height it maps --
 // the running chain, an earlier module, the layer input, or the composite below -- is resolved
 // on the C++ side into this one SRV, so this pass stays a pure map. A Mask scoped under the
 // module multiplies the colour where it covers; the stops' authored alpha is left alone.
@@ -13,6 +13,9 @@
 int2 OutputSize;
 uint StopCount;
 uint Interpolation;
+float InputScale;
+float InputOffset;
+uint MirrorRepeat;
 float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 uint HasGate;
@@ -27,7 +30,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (any(Pixel >= OutputSize)) { return; }
 
 	const float H = SourceHeight.Load(int3(Pixel, 0));
-	const float4 RampColor = MixtormatEvalColorRamp(H, StopCount, Interpolation, Positions, Colors);
+	float Coordinate = (H * 0.5f + 0.5f) * InputScale + InputOffset;
+	if (MirrorRepeat != 0u)
+	{
+		// Triangle wave: 0,1,2 map to 0,1,0; frac also handles negative coordinates.
+		Coordinate = 1.0f - abs(frac(Coordinate * 0.5f) * 2.0f - 1.0f);
+	}
+	const float4 RampColor = MixtormatEvalColorRamp(Coordinate, StopCount, Interpolation, Positions, Colors);
 	const float GateValue = HasGate != 0 ? saturate(Gate.Load(int3(Pixel, 0))) : 1.0f;
 	OutColor[Pixel] = float4(RampColor.rgb * GateValue, RampColor.a);
 }

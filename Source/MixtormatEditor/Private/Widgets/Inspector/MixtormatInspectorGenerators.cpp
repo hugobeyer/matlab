@@ -2248,33 +2248,16 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 	const auto Curve = [this]() { return GetSelectedHeightCurve(); };
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
-	// Optional zero-preserving max-absolute normalization to -1..1 before the signed input range.
 	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightCurve>(
 		LOCTEXT("HeightRemapNormalize", "Normalize Input"), Curve, &FMixtormatGeneratorHeightCurve::bNormalizeInput,
-		LOCTEXT("HeightRemapNormalizeHint", "Zero-preserving max-absolute normalization to -1..1.")));
-	// Signed input range. The pivot is zero: positive values divide by InputMax, negative by abs(InputMin).
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapInputMin", "Input Min"), Curve, &FMixtormatGeneratorHeightCurve::InputMin, -2.0, 0.0, -1.0, 0.01,
-		LOCTEXT("HeightRemapInputMinHint", "Signed input range minimum. Negative values divide by abs(InputMin).")));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapInputMax", "Input Max"), Curve, &FMixtormatGeneratorHeightCurve::InputMax, 0.0, 2.0, 1.0, 0.01,
-		LOCTEXT("HeightRemapInputMaxHint", "Signed input range maximum. Positive values divide by InputMax.")));
-	// Sign-preserving power transform: sign(x) * pow(abs(x), exponent). Identity at 1.
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapBalance", "Balance"), Curve, &FMixtormatGeneratorHeightCurve::Balance, 0.25, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightRemapBalanceHint", "Sign-preserving power transform. Identity at 1.")));
-	// Multiplicative contrast pivoted around zero. Identity at 1.
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapContrast", "Contrast"), Curve, &FMixtormatGeneratorHeightCurve::Contrast, 0.0, 4.0, 1.0, 0.01,
-		LOCTEXT("HeightRemapContrastHint", "Multiplicative contrast pivoted around zero. Identity at 1.")));
-	// Signed addition. Identity at 0.
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapOffset", "Offset"), Curve, &FMixtormatGeneratorHeightCurve::Offset, -1.0, 1.0, 0.0, 0.01,
-		LOCTEXT("HeightRemapOffsetHint", "Signed addition. Identity at 0.")));
-
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
-		LOCTEXT("HeightRemapAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("HeightRemapAmountHint", "How much of the remapped result replaces the running height.")));
+		LOCTEXT("HeightRemapNormalizeHint", "Measure the running height and divide by its largest absolute value before input-range remapping. Zero and signs are preserved; an all-zero field stays zero.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+			LOCTEXT("HeightRemapInputMin", "Input Min"), Curve, &FMixtormatGeneratorHeightCurve::InputMin, -2.0, 0.0, -1.0, 0.01,
+			LOCTEXT("HeightRemapInputMinHint", "Negative endpoint mapped to -1 before the curve. Zero maps negative input to the curve center without dividing by zero.")),
+		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+			LOCTEXT("HeightRemapInputMax", "Input Max"), Curve, &FMixtormatGeneratorHeightCurve::InputMax, 0.0, 2.0, 1.0, 0.01,
+			LOCTEXT("HeightRemapInputMaxHint", "Positive endpoint mapped to 1 before the curve. Zero maps positive input to the curve center. The pivot remains zero."))));
 	AddSliderRow(Panel, SNew(SMixtormatScalarRamp)
 		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([Curve]()
 		{
@@ -2302,6 +2285,13 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 				RefreshLayeredPreview();
 			}
 		})));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+			LOCTEXT("HeightRemapOffset", "Offset"), Curve, &FMixtormatGeneratorHeightCurve::Offset, -1.0, 1.0, 0.0, 0.01,
+			LOCTEXT("HeightRemapOffsetHint", "Signed offset applied after the curve and before inversion.")),
+		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
+			LOCTEXT("HeightRemapAmount", "Amount"), Curve, &FMixtormatGeneratorHeightCurve::Amount, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("HeightRemapAmountHint", "Blend the remapped result with the untouched running height. Zero bypasses the remap, including normalization."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightCurve() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightRemapHeading", "HEIGHT REMAP")).InitiallyExpanded(true)
@@ -2379,14 +2369,14 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Ramp]()
 		{
 			const FMixtormatGeneratorHeightColorRamp* R = Ramp();
-			return R ? R->Ramp : FMixtormatColorRamp();
+			return R ? R->GetUnitRamp() : FMixtormatColorRamp();
 		}))
-		.DomainMin(-1.0f).DomainMax(1.0f)
+		.DomainMin(0.0f).DomainMax(1.0f)
 		.OnChanged(FOnMixtormatColorRampChanged::CreateLambda([this, Ramp](const FMixtormatColorRamp& NewRamp)
 		{
 			if (FMixtormatGeneratorHeightColorRamp* R = Ramp())
 			{
-				R->Ramp = NewRamp;
+				R->SetUnitRamp(NewRamp);
 				RefreshLayeredPreview();
 			}
 		})));
@@ -2399,10 +2389,22 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		const FMixtormatGeneratorHeightColorRamp* R = Ramp();
 		return R && R->Source == Source;
 	};
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
-		LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
-		LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
-		FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
+			LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
+			LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
+		MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampNormalize", "Normalize"), Ramp, &FMixtormatGeneratorHeightColorRamp::bNormalizeInput,
+			LOCTEXT("ColorRampNormalizeHint", "Stretch measured source height across 0..1 before Scale and Offset. Constant height maps to 0. Off maps signed height -1..1 to 0..1 without measuring its range."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampInputScale", "Scale"), Ramp, &FMixtormatGeneratorHeightColorRamp::InputScale, -8.0, 8.0, 1.0, 0.01),
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampInputOffset", "Offset"), Ramp, &FMixtormatGeneratorHeightColorRamp::InputOffset, -1.0, 1.0, 0.0, 0.01)));
+	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
+		LOCTEXT("ColorRampMirrorRepeat", "Mirror Repeat"), Ramp, &FMixtormatGeneratorHeightColorRamp::bMirrorRepeat,
+		LOCTEXT("ColorRampMirrorRepeatHint", "Reflect extended lookup coordinates at 0 and 1. Off holds the end colors. Scale 2 traverses the ramp forward then backward; negative offsets also repeat.")));
 	AddSliderRow(Panel,
 		SNew(SBox)
 		.Visibility_Lambda([RampSourceIs]()

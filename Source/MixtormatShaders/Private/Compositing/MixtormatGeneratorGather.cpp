@@ -752,12 +752,11 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.Type = EMixtormatLayerChildType::HeightCurve;
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightCurveRenderData& Out = ChildData.HeightCurve;
-		Out.Amount = FMath::IsFinite(Curve.Amount) ? Curve.Amount : 1.0f;
+		Out.Amount = FMath::IsFinite(Curve.Amount) ? FMath::Clamp(Curve.Amount, 0.0f, 1.0f) : 1.0f;
 		Out.bNormalizeInput = Curve.bNormalizeInput ? 1u : 0u;
-		Out.InputMin = FMath::IsFinite(Curve.InputMin) ? Curve.InputMin : -1.0f;
-		Out.InputMax = FMath::IsFinite(Curve.InputMax) ? Curve.InputMax : 1.0f;
-		Out.Balance = FMath::IsFinite(Curve.Balance) ? Curve.Balance : 1.0f;
-		Out.Contrast = FMath::IsFinite(Curve.Contrast) ? Curve.Contrast : 1.0f;
+		Out.InputMin = FMath::IsFinite(Curve.InputMin) ? FMath::Min(Curve.InputMin, 0.0f) : -1.0f;
+		Out.InputMax = FMath::IsFinite(Curve.InputMax) ? FMath::Max(Curve.InputMax, 0.0f) : 1.0f;
+
 		Out.Offset = FMath::IsFinite(Curve.Offset) ? Curve.Offset : 0.0f;
 		Out.bInvert = Curve.bInvert ? 1u : 0u;
 		const MixtormatScalarRampMath::FGpuPayload Payload =
@@ -776,6 +775,9 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
 		Out.bNormalizeInput = Ramp.bNormalizeInput;
+		Out.bMirrorRepeat = Ramp.bMirrorRepeat;
+		Out.InputScale = FMath::IsFinite(Ramp.InputScale) ? Ramp.InputScale : 1.0f;
+		Out.InputOffset = FMath::IsFinite(Ramp.InputOffset) ? Ramp.InputOffset : 0.0f;
 		Out.OutputName = FName(TEXT("Color"));
 		Out.Source = static_cast<int32>(Ramp.Source);
 		// Resolve the referenced module to this layer's child index, the same rule Height Blend
@@ -794,7 +796,7 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 			}
 		}
 		const MixtormatColorRampMath::FGpuPayload Payload =
-			MixtormatColorRampMath::PrepareGpuPayload(Ramp.Ramp);
+			MixtormatColorRampMath::PrepareGpuPayload(Ramp.GetUnitRamp());
 		Out.StopCount = Payload.StopCount;
 		Out.Interpolation = Payload.Interpolation;
 		Out.Positions = Payload.Positions;

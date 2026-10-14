@@ -339,6 +339,11 @@ void SMixtormatColorRamp::ApplyPreset(const int32 PresetIndex)
 	if (!Presets.IsValidIndex(PresetIndex)) { return; }
 	OnBeginInteractiveEdit.ExecuteIfBound();
 	Ramp.Stops = Presets[PresetIndex].Stops;
+	// Presets are authored in signed coordinates; respect each consumer's editor domain.
+	for (FMixtormatColorRampStop& Stop : Ramp.Stops)
+	{
+		Stop.X = FMath::Lerp(DomainMin, DomainMax, Stop.X * 0.5f + 0.5f);
+	}
 	Ramp.Interpolation = EMixtormatColorRampInterpolation::Linear;
 	Ramp.Sanitize();
 	SelectedPoint = Ramp.Stops.Num() > 0 ? 0 : INDEX_NONE;

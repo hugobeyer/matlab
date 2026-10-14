@@ -1118,8 +1118,6 @@ namespace MixtormatGpuCompositor
 		uint32 bNormalizeInput = 0;
 		float InputMin = -1.0f;
 		float InputMax = 1.0f;
-		float Balance = 1.0f;
-		float Contrast = 1.0f;
 		float Offset = 0.0f;
 		uint32 bInvert = 0;
 		uint32 CurveCount = 0;
@@ -1135,6 +1133,9 @@ namespace MixtormatGpuCompositor
 	{
 		FName OutputName;
 		bool bNormalizeInput = false;
+		bool bMirrorRepeat = false;
+		float InputScale = 1.0f;
+		float InputOffset = 0.0f;
 		int32 Source = 0;
 		int32 SourceChildIndex = INDEX_NONE;
 		uint32 bHasGate = 0;

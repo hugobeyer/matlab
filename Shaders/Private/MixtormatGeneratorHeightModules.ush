@@ -45,8 +45,8 @@ float MixtormatEvalSignedScalarRamp(
 }
 
 // Reusable colour ramp. The domain is whatever the caller feeds in; the generator Height Color
-// Ramp runs -1..1 with zero at the centre. Positions are packed one per float4 (x is the stop
-// position) because a scalar array is not 16-byte aligned in the parameter struct.
+// Color lookup uses the caller's stop domain (0..1 for the generator color ramp).
+// Positions are packed one per float4 because scalar arrays are not 16-byte aligned.
 float4 MixtormatEvalColorRamp(
 	float InputX, uint Count, uint Interpolation,
 	float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS],

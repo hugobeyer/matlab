@@ -707,25 +707,18 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
 	bool bEnabled = true;
 
-	// Optional zero-preserving max-absolute normalization to -1..1 before the signed input range.
+	// Optional measured max-absolute normalization to -1..1 before the input range; zero stays zero.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
 	bool bNormalizeInput = false;
 
 	// Signed input range. The pivot is zero: positive values divide by InputMax, negative by
 	// abs(InputMin). Default -1..1 matches the canonical signed domain.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap", meta = (UIMin = "-2.0", UIMax = "0.0", ClampMax = "0.0", Delta = "0.01"))
 	float InputMin = -1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap", meta = (UIMin = "0.0", UIMax = "2.0", ClampMin = "0.0", Delta = "0.01"))
 	float InputMax = 1.0f;
 
-	// Sign-preserving power transform: sign(x) * pow(abs(x), exponent). Identity at 1.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
-	float Balance = 1.0f;
-
-	// Multiplicative contrast pivoted around zero. Identity at 1.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
-	float Contrast = 1.0f;
 
 	// Signed addition. Identity at 0.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Height Remap")
@@ -782,17 +775,48 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	EMixtormatColorRampSource Source = EMixtormatColorRampSource::GeneratorRunning;
 
-	// Remap the measured source range to the ramp's -1..1 domain without changing source height.
+	// Stretch the measured height range across the color ramp without changing source height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bNormalizeInput = false;
+
+	// Transform the 0..1 color lookup coordinate after optional normalization.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp", meta = (UIMin = "-8.0", UIMax = "8.0", Delta = "0.01"))
+	float InputScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float InputOffset = 0.0f;
+
+	// Reflect extended coordinates at each integer boundary instead of holding the end colors.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
+	bool bMirrorRepeat = false;
 
 	// The module referenced by ModuleRef. Only an earlier module can have produced a height by
 	// the time this sublayer runs, so a later or missing id reads the running height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	FGuid SourceChildId;
 
+	// Stored against signed height; editor and GPU lookup use the unit-coordinate view below.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	FMixtormatColorRamp Ramp;
+
+	FMixtormatColorRamp GetUnitRamp() const
+	{
+		FMixtormatColorRamp UnitRamp = Ramp;
+		for (FMixtormatColorRampStop& Stop : UnitRamp.Stops)
+		{
+			Stop.X = Stop.X * 0.5f + 0.5f;
+		}
+		return UnitRamp;
+	}
+
+	void SetUnitRamp(const FMixtormatColorRamp& UnitRamp)
+	{
+		Ramp = UnitRamp;
+		for (FMixtormatColorRampStop& Stop : Ramp.Stops)
+		{
+			Stop.X = Stop.X * 2.0f - 1.0f;
+		}
+	}
 
 	// Deprecated serialized-only field. The live published output is always the canonical "Color";
 	// this is retained so older assets keep their saved value, but it is never read for identity
