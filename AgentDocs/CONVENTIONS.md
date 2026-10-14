@@ -43,9 +43,8 @@ Never duplicate a default. Never widen a hard bound from the editor.
 ## Serialization
 
 - Enums are serialized **by value**: append new entries, never reorder.
-- Renames go in `Config/DefaultMixtormat.ini` `[CoreRedirects]`
-  (`+EnumRedirects=…`).
-- Deprecated fields stay (with `DeprecatedProperty`) so old assets load.
+- Before shipping, do not add redirects or deprecated compatibility fields solely for historical development assets (see `AGENTS.md`).
+- Preserve current serialized enum values and active field readers; any genuinely required migration must be explicitly approved rather than introduced automatically.
 - `TSoftObjectPtr` for asset references.
 
 ## IDs / GUIDs
@@ -64,7 +63,7 @@ Never duplicate a default. Never widen a hard bound from the editor.
 
 1. Append at the end; keep existing numeric values.
 2. Add a `UMETA(DisplayName = "…")`.
-3. If renaming, add a `CoreRedirects` entry.
+3. If renaming, update current consumers and serialized values consistently; do not add pre-release redirects automatically.
 4. Update `MixtormatChildCapabilities.cpp` if the type publishes outputs.
 
 ## Shader modification checklist
