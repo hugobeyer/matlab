@@ -331,6 +331,7 @@ namespace MixtormatChildScope
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::Effect:
+		case EMixtormatLayerChildType::Boolean:
 		case EMixtormatLayerChildType::Generator:
 		case EMixtormatLayerChildType::Generated:
 		case EMixtormatLayerChildType::Craquelure:
