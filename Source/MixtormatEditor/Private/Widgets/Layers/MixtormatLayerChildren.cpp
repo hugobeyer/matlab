@@ -653,7 +653,8 @@ namespace MixtormatLayersPrivate
 		{
 			return INDEX_NONE;
 		}
-		if (Children[OwnerChildIndex].Type == EMixtormatLayerChildType::Boolean)
+		if (Children[OwnerChildIndex].Type == EMixtormatLayerChildType::Boolean
+			&& Child.Type == EMixtormatLayerChildType::Generator)
 		{
 			const FGuid ParentId = Children[OwnerChildIndex].ChildId;
 			int32 OperandCount = 0;
