@@ -1321,6 +1321,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	float ResultHeight = PreviousHeightValue;
+	// Pass Through normally keeps the underlying height; when a structural effect
+	// prepared its private result, merge that authored relief back under coverage.
+	if (FillPassThrough != 0 && PreparedLayerMode == 2 && Enabled != 0)
+	{
+		ResultHeight = lerp(PreviousHeightValue, IncomingHeight, Alpha);
+	}
 	if (Enabled != 0 && NormalOnly == 0 && FillPassThrough == 0)
 	{
 		float LayerResultHeight = PreviousHeightValue;
