@@ -39,6 +39,11 @@ namespace MixtormatLayersPrivate
 			Specific = Child.Behavior.Type == EMixtormatBehaviorType::Push
 				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural();
 		}
+		else if (Child.Type == EMixtormatLayerChildType::Generator
+			&& Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+		{
+			Specific = MixtormatIcons::BooleanOps();
+		}
 		else if (Child.Type == EMixtormatLayerChildType::Effect)
 		{
 			switch (EffectTypeOf(Child))

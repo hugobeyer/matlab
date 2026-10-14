@@ -7,6 +7,7 @@
 #include "Framework/SlateDelegates.h"
 #include "Widgets/SCompoundWidget.h"
 
+struct FSlateBrush;
 class SMenuAnchor;
 
 // One Sources shelf row: glyph, name, kind. Left click selects; right click opens the row's
@@ -22,6 +23,7 @@ public:
 	SLATE_BEGIN_ARGS(SMixtormatSourceRow) {}
 		SLATE_ATTRIBUTE(FText, Name)
 		SLATE_ATTRIBUTE(FText, Kind)
+		SLATE_ATTRIBUTE(const FSlateBrush*, Icon)
 		SLATE_ATTRIBUTE(bool, bEnabled)
 		SLATE_ATTRIBUTE(bool, bSelected)
 		SLATE_EVENT(FSimpleDelegate, OnSelected)

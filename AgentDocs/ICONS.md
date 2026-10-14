@@ -73,6 +73,7 @@ is authoritative; this note does not claim final-size artwork has been visually 
 - `Mask` · `mask.png`
 - `Effect` · `effect.png` — bolt
 - `Generator` · `generator.png` — mountain
+- `BooleanOps` · `boolean-ops.svg` — temporary exact duplicate of `generator.svg`, registered as `Mixtormat.Icon.BooleanOps`; replace artwork in place. Used by the current Boolean Ops child and creation menus, and reserved for the approved Boolean stack parent after its implementation.
 - `Generated` · `generated.png` — shoot
 - `Ids` · `ids.png` — cluster; distinct from `Generated`
 - `LayerMaterial` · `layer-material.png` — square

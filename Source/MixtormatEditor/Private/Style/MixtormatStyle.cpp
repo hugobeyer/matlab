@@ -979,6 +979,7 @@ void FMixtormatStyle::Refresh()
 	SetSvgIcon(TEXT("Mixtormat.Icon.Filter"), TEXT("Icons/filter"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Effect"), TEXT("Icons/effect"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generator"), TEXT("Icons/generator"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
+	SetSvgIcon(TEXT("Mixtormat.Icon.BooleanOps"), TEXT("Icons/boolean-ops"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.Generated"), TEXT("Icons/generated"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.FlowDirection"), TEXT("Icons/beh-flow"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));
 	SetSvgIcon(TEXT("Mixtormat.Icon.FlowGravity"), TEXT("Icons/beh-gravity"), FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize, FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize));

@@ -81,7 +81,7 @@ void SMixtormatSourceRow::Construct(const FArguments& InArgs)
 						.HeightOverride(GlyphSize)
 						[
 							SNew(SImage)
-							.Image(MixtormatIcons::Generator())
+							.Image(InArgs._Icon)
 							// A disabled source keeps its row so it can be re-enabled from here;
 							// only the weight of the row changes.
 							.ColorAndOpacity_Lambda([this]()

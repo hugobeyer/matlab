@@ -689,6 +689,15 @@ void SMixtormat::RebuildSourcesList()
 		const FGuid SourceId = Entry.SourceId;
 		TSharedPtr<SMixtormatSourceRow> Row;
 		SAssignNew(Row, SMixtormatSourceRow)
+			.Icon_Lambda([this, SourceId]()
+			{
+				// Instances use their producer's glyph, just like their kind label.
+				const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
+					WorkingSources, SourceId);
+				return Producer && Producer->Child.Type == EMixtormatLayerChildType::Generator
+					&& Producer->Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
+					? MixtormatIcons::BooleanOps() : MixtormatIcons::Generator();
+			})
 			.Name_Lambda([this, SourceId]()
 			{
 				const FMixtormatSourceEntry* Source =

@@ -67,6 +67,7 @@ namespace MixtormatIcons
 	const FSlateBrush* Effect();
 	const FSlateBrush* Filter();
 	const FSlateBrush* Generator();
+	const FSlateBrush* BooleanOps();
 	const FSlateBrush* Generated();
 	const FSlateBrush* FlowDirection();
 	const FSlateBrush* FlowGravity();

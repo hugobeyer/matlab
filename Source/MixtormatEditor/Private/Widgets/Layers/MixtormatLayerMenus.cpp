@@ -53,7 +53,8 @@ namespace
 	};
 	for (const auto& Entry : Entries)
 	{
-		Menu.Item(Entry.Key, MixtormatIcons::Generator(),
+		Menu.Item(Entry.Key, Entry.Value == EMixtormatChildCreation::BooleanOps
+			? MixtormatIcons::BooleanOps() : MixtormatIcons::Generator(),
 			FSimpleDelegate::CreateLambda([this, Kind = Entry.Value]() { AddGeneratorLayerCreation(Kind); }));
 	}
 	return Menu.Build();
@@ -1177,7 +1178,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean Ops"), MixtormatIcons::Generator(),
+	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean Ops"), MixtormatIcons::BooleanOps(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::BooleanOps); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
