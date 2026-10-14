@@ -731,7 +731,8 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
 		{
 			const FMixtormatLayerChild& Candidate = Layer.Children[Index];
-			if (Candidate.ScopeOwnerChildId != LayerChild.ChildId) { continue; }
+			if (Candidate.ScopeOwnerChildId != LayerChild.ChildId
+				|| Candidate.Type == EMixtormatLayerChildType::Mask) { continue; }
 			++AuthoredCount;
 			const bool bEligible = Candidate.Type == EMixtormatLayerChildType::Generator
 				&& Candidate.Generator.bEnabled
