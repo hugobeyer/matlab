@@ -1249,7 +1249,11 @@ namespace
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
 		P->HasGate = Ramp.bHasGate;
-		P->SourceHeight = SourceHeight;
+		// Normalize only the ramp input; the source field and scoped mask stay unchanged.
+		P->SourceHeight = Ramp.bNormalizeInput
+			? AddNormalizeFieldPasses(GraphBuilder, SourceHeight, Size, -1.0f, 1.0f,
+				TEXT("Mixtormat.Generator.HeightColorRamp.Normalized"))
+			: SourceHeight;
 		P->Gate = Gate;
 		P->OutColor = GraphBuilder.CreateUAV(Out);
 		ClearUnusedGraphResources(Shader, P);

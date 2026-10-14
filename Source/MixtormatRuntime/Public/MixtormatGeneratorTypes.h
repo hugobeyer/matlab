@@ -782,6 +782,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	EMixtormatColorRampSource Source = EMixtormatColorRampSource::GeneratorRunning;
 
+	// Remap the measured source range to the ramp's -1..1 domain without changing source height.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
+	bool bNormalizeInput = false;
+
 	// The module referenced by ModuleRef. Only an earlier module can have produced a height by
 	// the time this sublayer runs, so a later or missing id reads the running height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")

@@ -210,19 +210,15 @@ public:
 		SHADER_PARAMETER(float, CurvatureStrength)
 		SHADER_PARAMETER(float, CurvaturePower)
 		SHADER_PARAMETER(float, DirectionWeight)
-		SHADER_PARAMETER(float, DirectionAngle)
+		SHADER_PARAMETER(FVector3f, Direction)
 		SHADER_PARAMETER(float, DirectionBroadness)
 		SHADER_PARAMETER(float, AOWeight)
 		SHADER_PARAMETER(float, HeightWeight)
 		SHADER_PARAMETER(float, HeightBias)
 		SHADER_PARAMETER(float, RidgeWeight)
-		SHADER_PARAMETER(uint32, NormalizeWeights)
-		SHADER_PARAMETER(int32, Broadness)
-		SHADER_PARAMETER(int32, Smoothing)
-		SHADER_PARAMETER(float, Bias)
-		SHADER_PARAMETER(float, WarpAmount)
-		SHADER_PARAMETER(float, WarpSource)
-		SHADER_PARAMETER(int32, WarpRadius)
+		SHADER_PARAMETER(float, MixScale)
+		SHADER_PARAMETER(int32, CurvatureRadius)
+		SHADER_PARAMETER(int32, CurvatureSmoothing)
 		SHADER_PARAMETER(uint32, BlendMode)
 		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
@@ -751,6 +747,16 @@ namespace MixtormatGpuCompositor
 		// would leave a different mask behind rather than the same one.
 		if (MaskPassIndex > 0 && Generated.Weight == 0.0f)
 		{
+			// A skipped node still owns its selected preview: snapshot the unchanged stack.
+			if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
+				&& Request.DebugSettings.LayerIndex == LayerIndex
+				&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)
+			{
+				FRDGTextureRef Snapshot = GraphBuilder.CreateTexture(
+					MaskDesc, TEXT("Mixtormat.DebugGeneratedSnapshot"));
+				AddCopyTexturePass(GraphBuilder, CombinedMask, Snapshot);
+				DebugMask = Snapshot;
+			}
 			return;
 		}
 
@@ -767,19 +773,15 @@ namespace MixtormatGpuCompositor
 		GeneratedParameters->CurvatureStrength = Generated.CurvatureStrength;
 		GeneratedParameters->CurvaturePower = Generated.CurvaturePower;
 		GeneratedParameters->DirectionWeight = Generated.DirectionWeight;
-		GeneratedParameters->DirectionAngle = Generated.DirectionAngle;
+		GeneratedParameters->Direction = Generated.Direction;
 		GeneratedParameters->DirectionBroadness = Generated.DirectionBroadness;
 		GeneratedParameters->AOWeight = Generated.AOWeight;
 		GeneratedParameters->HeightWeight = Generated.HeightWeight;
 		GeneratedParameters->HeightBias = Generated.HeightBias;
 		GeneratedParameters->RidgeWeight = Generated.RidgeWeight;
-		GeneratedParameters->NormalizeWeights = Generated.bNormalizeWeights ? 1u : 0u;
-		GeneratedParameters->Broadness = Generated.Broadness;
-		GeneratedParameters->Smoothing = Generated.Smoothing;
-		GeneratedParameters->Bias = Generated.Bias;
-		GeneratedParameters->WarpAmount = Generated.WarpAmount;
-		GeneratedParameters->WarpSource = Generated.WarpSource;
-		GeneratedParameters->WarpRadius = Generated.WarpRadius;
+		GeneratedParameters->MixScale = Generated.MixScale;
+		GeneratedParameters->CurvatureRadius = Generated.CurvatureRadius;
+		GeneratedParameters->CurvatureSmoothing = Generated.CurvatureSmoothing;
 		GeneratedParameters->BlendMode = static_cast<uint32>(Generated.BlendMode);
 
 		GeneratedParameters->Weight = Generated.Weight;
@@ -787,7 +789,13 @@ namespace MixtormatGpuCompositor
 		GeneratedParameters->PreviousMask = MaskTargets[MaskReadIndex];
 		GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
 		GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
-		GeneratedParameters->SurfaceHeight = HeightTargets[LayerReadIndex];
+		// Height can be signed/HDR. Normalize this source before mixing so it cannot
+		// overwhelm AO or curvature. Reuse the canonical field reduction, only when read.
+		GeneratedParameters->SurfaceHeight = LayerIndex > 0 && Generated.Weight != 0.0f
+			&& Generated.HeightWeight != 0.0f
+			? AddNormalizeFieldPasses(GraphBuilder, HeightTargets[LayerReadIndex], Request.Resolution,
+				0.0f, 1.0f, TEXT("Mixtormat.GeneratedMask.Height"))
+			: HeightTargets[LayerReadIndex];
 		GeneratedParameters->SurfaceRidge = RidgeTargets[LayerReadIndex];
 		GeneratedParameters->LinearWrapSampler =
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
@@ -803,7 +811,7 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 				1),
-			LayerIndex == 0);
+			LayerIndex == 0 || Generated.Weight == 0.0f);
 		CombinedMask = MaskTargets[MaskWriteIndex];
 		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask

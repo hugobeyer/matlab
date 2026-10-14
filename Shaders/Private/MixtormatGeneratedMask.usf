@@ -21,24 +21,26 @@ float CurvatureWeight;
 float CurvatureBias;
 float CurvatureStrength;
 float CurvaturePower;
+int CurvatureRadius;
+int CurvatureSmoothing;
 float DirectionWeight;
-float DirectionAngle;
+float3 Direction;
 float DirectionBroadness;
 float AOWeight;
 float HeightWeight;
 float HeightBias;
 float RidgeWeight;
-
-uint NormalizeWeights;
-int Broadness;
-int Smoothing;
-float Bias;
-float WarpAmount;
-float WarpSource;
-int WarpRadius;
+float MixScale;
 
 uint BlendMode;
 float Weight;
+
+// Sign chooses polarity; magnitude chooses influence. Negative height selects valleys,
+// negative AO selects exposed areas, and negative direction selects away-facing slopes.
+float SignalContribution(float Signal, float Influence)
+{
+	return abs(Influence) * (Influence < 0.0f ? 1.0f - Signal : Signal);
+}
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -53,121 +55,56 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	// No accumulated surface beneath this layer: every signal this node produces is derived
-	// from one, so there is nothing to read and the accumulated mask is left untouched.
-	//
-	// A plain test again. It was briefly picked apart into a per-signal guard to accommodate
-	// craquelure, which is generated from a lattice rather than derived and so meant something
-	// on the bottom layer -- that made this node's contract depend on which weights happened
-	// to be non-zero. Craquelure has its own node now and this is a single condition again.
-	if (SurfaceValid == 0)
+	// No surface exists beneath the bottom layer. Do not let normalization, inversion,
+	// or an inverted signal manufacture coverage there. Keep first-pass initialization.
+	if (SurfaceValid == 0 || Weight == 0.0f)
 	{
 		OutputMask[DispatchThreadId.xy] = saturate(Previous);
 		return;
 	}
 
-	// Slope flow warp. Both sources point downhill, so the mask is dragged along the
-	// surface the way settling material would run. WarpAmount 0 must stay bit-identical
-	// to the unwarped path.
-	int2 Pixel = int2(DispatchThreadId.xy);
-	float2 SampleUV = UV;
-	if (WarpAmount > 0.0f)
-	{
-		const int2 MaxPixel = OutputSize - 1;
-		const int R = max(WarpRadius, 1);
-
-		// Tangent-space normal XY is the surface slope at this point, pointing downhill.
-		const float2 NormalFlow = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY).xy;
-
-		// Height gradient points uphill, so negate it to match.
-		const int2 L = int2(clamp(Pixel.x - R, 0, MaxPixel.x), Pixel.y);
-		const int2 Rt = int2(clamp(Pixel.x + R, 0, MaxPixel.x), Pixel.y);
-		const int2 U = int2(Pixel.x, clamp(Pixel.y - R, 0, MaxPixel.y));
-		const int2 D = int2(Pixel.x, clamp(Pixel.y + R, 0, MaxPixel.y));
-		const float InverseDiameter = 1.0f / (2.0f * float(R));
-		float2 HeightGradient;
-		HeightGradient.x = (SurfaceHeight.Load(int3(Rt, 0)) - SurfaceHeight.Load(int3(L, 0))) * InverseDiameter;
-		HeightGradient.y = (SurfaceHeight.Load(int3(D, 0)) - SurfaceHeight.Load(int3(U, 0))) * InverseDiameter;
-		const float2 HeightFlow = -HeightGradient;
-
-		const float2 Flow = lerp(NormalFlow, HeightFlow, WarpSource);
-
-		// Soft magnitude rather than a unit vector. Displacement stays proportional to
-		// slope on gentle ground and rolls off asymptotically on steep ground, so the
-		// warp feathers out across flat regions instead of shoving every pixel the same
-		// distance. Direction is preserved exactly.
-		const float FlowLength = length(Flow);
-		const float2 SoftFlow = Flow / (1.0f + FlowLength);
-
-		SampleUV = UV + SoftFlow * WarpAmount;
-	}
-
-
 	float Raw = 0.0f;
-	float Total = 0.0f;
 
-	if (abs(CurvatureWeight) > 0.0f)
+	[branch] if (CurvatureWeight != 0.0f)
 	{
 		float Curvature;
 		float Cavity;
 		float Convex;
 		MixtormatEvaluateCurvature(
-			SurfaceNormal,
-			LinearWrapSampler,
-			SampleUV,
-			OutputSize,
-			Broadness,
-			Smoothing,
-			CurvatureStrength,
-			max(CurvaturePower, 0.001f),
-			FlipNormalY,
-			Curvature,
-			Cavity,
-			Convex);
-		Raw += CurvatureWeight * lerp(Cavity, Convex, CurvatureBias);
-		Total += abs(CurvatureWeight);
+			SurfaceNormal, LinearWrapSampler, UV, OutputSize,
+			CurvatureRadius, CurvatureSmoothing, CurvatureStrength, CurvaturePower,
+			FlipNormalY, Curvature, Cavity, Convex);
+		Raw += SignalContribution(lerp(Cavity, Convex, CurvatureBias), CurvatureWeight);
 	}
 
-	if (abs(DirectionWeight) > 0.0f)
+	[branch] if (DirectionWeight != 0.0f)
 	{
-		const float3 Normal = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, SampleUV, FlipNormalY);
-		const float Radians = DirectionAngle * (3.14159265f / 180.0f);
-		const float2 Direction = float2(cos(Radians), sin(Radians));
-		const float Slope = dot(Normal.xy, Direction);
-		Raw += DirectionWeight * pow(saturate(Slope), max(DirectionBroadness, 0.001f));
-		Total += abs(DirectionWeight);
+		const float3 Normal = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY);
+		const float Facing = pow(saturate(dot(Normal, Direction)), DirectionBroadness);
+		Raw += SignalContribution(Facing, DirectionWeight);
 	}
 
-	if (abs(AOWeight) > 0.0f)
+	[branch] if (AOWeight != 0.0f)
 	{
-		const float AO = SurfaceRAM.SampleLevel(LinearWrapSampler, SampleUV, 0.0f).g;
-		Raw += AOWeight * saturate(1.0f - AO);
-		Total += abs(AOWeight);
+		const float Occlusion = saturate(1.0f - SurfaceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
+		Raw += SignalContribution(Occlusion, AOWeight);
 	}
 
-	if (abs(HeightWeight) > 0.0f)
+	[branch] if (HeightWeight != 0.0f)
 	{
-		const float Height = SurfaceHeight.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
-		Raw += HeightWeight * saturate(Height + HeightBias);
-		Total += abs(HeightWeight);
+		// The CPU schedules the shared measured-range normalization only for active height.
+		const float Height = saturate(SurfaceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) + HeightBias);
+		Raw += SignalContribution(Height, HeightWeight);
 	}
 
-	// Drainage and crest lines from the erosion filter, accumulated below this layer. Unlike
-	// the other signals this one is not derived here: erosion already computed where its
-	// passes agreed on a crest, and this is the first consumer of that output.
-	//
-	// Zero everywhere when no layer below carries an erosion filter, so a weight on it is
-	// simply inert rather than wrong.
-	if (abs(RidgeWeight) > 0.0f)
+	[branch] if (RidgeWeight != 0.0f)
 	{
-		const float Ridge = SurfaceRidge.SampleLevel(LinearWrapSampler, SampleUV, 0.0f);
-		Raw += RidgeWeight * saturate(Ridge);
-		Total += abs(RidgeWeight);
+		const float Ridge = saturate(SurfaceRidge.SampleLevel(LinearWrapSampler, UV, 0.0f));
+		Raw += SignalContribution(Ridge, RidgeWeight);
 	}
 
-	float Mixed = (NormalizeWeights != 0 && Total > 1.0e-5f) ? Raw / Total : Raw;
-	float Incoming = MixtormatBias01(saturate(Mixed), Bias);
-
-	Incoming = MixtormatShapeMaskInput(Incoming);
+	// Bounded mixing is separate from measured input normalization and artist shaping.
+	// The latter remain entirely owned by the universal mask path, including raw output.
+	const float Incoming = MixtormatShapeMaskInput(Raw * MixScale);
 	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

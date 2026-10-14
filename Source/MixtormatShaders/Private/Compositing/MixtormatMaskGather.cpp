@@ -184,22 +184,28 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
 		GeneratedData.CurvatureWeight = GeneratedMask.CurvatureWeight;
-		GeneratedData.CurvatureBias = GeneratedMask.CurvatureBias;
-		GeneratedData.CurvatureStrength = GeneratedMask.CurvatureStrength;
+		GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
+		GeneratedData.CurvatureStrength = FMath::Max(GeneratedMask.CurvatureStrength, 0.0f);
 		GeneratedData.CurvaturePower = FMath::Max(GeneratedMask.CurvaturePower, 0.001f);
+		GeneratedData.CurvatureRadius = FMath::Clamp(GeneratedMask.CurvatureRadius, 1, 32);
+		GeneratedData.CurvatureSmoothing = FMath::Clamp(GeneratedMask.CurvatureSmoothing, 1, 4);
 		GeneratedData.DirectionWeight = GeneratedMask.DirectionWeight;
-		GeneratedData.DirectionAngle = GeneratedMask.DirectionAngle;
+		const float Azimuth = FMath::DegreesToRadians(GeneratedMask.DirectionAngle);
+		const float Elevation = FMath::DegreesToRadians(FMath::Clamp(GeneratedMask.DirectionElevation, 0.0f, 90.0f));
+		GeneratedData.Direction = FVector3f(
+			FMath::Cos(Azimuth) * FMath::Cos(Elevation),
+			FMath::Sin(Azimuth) * FMath::Cos(Elevation),
+			FMath::Sin(Elevation));
 		GeneratedData.DirectionBroadness = FMath::Max(GeneratedMask.DirectionBroadness, 0.001f);
 		GeneratedData.AOWeight = GeneratedMask.AOWeight;
 		GeneratedData.HeightWeight = GeneratedMask.HeightWeight;
 		GeneratedData.HeightBias = GeneratedMask.HeightBias;
-		GeneratedData.bNormalizeWeights = GeneratedMask.bNormalizeWeights;
-		GeneratedData.Broadness = FMath::Max(GeneratedMask.Broadness, 1);
-		GeneratedData.Smoothing = FMath::Max(GeneratedMask.Smoothing, 1);
-		GeneratedData.Bias = FMath::Max(GeneratedMask.Bias, 0.001f);
-		GeneratedData.WarpAmount = GeneratedMask.WarpAmount;
-		GeneratedData.WarpSource = GeneratedMask.WarpSource;
-		GeneratedData.WarpRadius = FMath::Max(GeneratedMask.WarpRadius, 1);
+		// Uniform mixer work belongs on the CPU. A lone influence below one still fades;
+		// totals above one form a bounded weighted average rather than overexposing.
+		const float TotalInfluence = FMath::Abs(GeneratedMask.CurvatureWeight)
+			+ FMath::Abs(GeneratedMask.DirectionWeight) + FMath::Abs(GeneratedMask.AOWeight)
+			+ FMath::Abs(GeneratedMask.HeightWeight) + FMath::Abs(GeneratedMask.RidgeWeight);
+		GeneratedData.MixScale = 1.0f / FMath::Max(TotalInfluence, 1.0f);
 		GeneratedData.BlendMode = GeneratedMask.BlendMode;
 		GeneratedData.Weight = GeneratedMask.Weight;
 		static_cast<FMixtormatMaskShaping&>(GeneratedData) = GeneratedMask.Shaping;

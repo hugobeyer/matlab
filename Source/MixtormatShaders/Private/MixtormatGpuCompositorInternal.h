@@ -566,25 +566,21 @@ namespace MixtormatGpuCompositor
 
 	struct FGeneratedMaskRenderData : FMixtormatMaskShaping
 	{
-		float CurvatureWeight = 0.0f;
+		float CurvatureWeight = 1.0f;
 		float CurvatureBias = 0.0f;
 		float CurvatureStrength = 4.0f;
 		float CurvaturePower = 1.0f;
+		int32 CurvatureRadius = 2;
+		int32 CurvatureSmoothing = 2;
 		float DirectionWeight = 0.0f;
-		float DirectionAngle = 90.0f;
+		FVector3f Direction = FVector3f(0.0f, 1.0f, 0.0f);
 		float DirectionBroadness = 1.0f;
 		float AOWeight = 0.0f;
 		float HeightWeight = 0.0f;
 		float HeightBias = 0.0f;
 		float RidgeWeight = 0.0f;
-		bool bNormalizeWeights = true;
-		int32 Broadness = 2;
-		int32 Smoothing = 2;
-		float Bias = 0.5f;
-		float WarpAmount = 0.0f;
-		float WarpSource = 0.0f;
-		int32 WarpRadius = 1;
-		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Multiply;
+		float MixScale = 1.0f;
+		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 	};
 
@@ -1138,6 +1134,7 @@ namespace MixtormatGpuCompositor
 	struct FGeneratorHeightColorRampRenderData
 	{
 		FName OutputName;
+		bool bNormalizeInput = false;
 		int32 Source = 0;
 		int32 SourceChildIndex = INDEX_NONE;
 		uint32 bHasGate = 0;

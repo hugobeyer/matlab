@@ -223,6 +223,17 @@ canonical authoring surface for Push/Warp operations.
 `MixtormatInspectorEffects.cpp`, `MixtormatInspectorHeight.cpp`.
 Builders are `SMixtormat::Build*Panel` members.
 
+Generated Mask uses a paired Blend/Weight row, a compact Signals card, and the shared
+Mask Shaping card (including curve Flip/Invert). Curvature and Direction extraction
+rows appear only for effective nonzero influences; inactive companion controls are disabled.
+Positive influence selects a signal, negative selects its inverse, and all-zero signals
+bypass the node. New nodes start with cavity and Replace. Height uses the existing GPU
+measured-range normalization before mixing; Direction elevation enables flat/slope selection,
+not cast-shadow tracing. Mixer scale is computed on the CPU; influence totals above one
+produce a weighted average in the shader.
+Curvature gain/falloff remain signal-local; global Bias and local Warp are retired in favor
+of shared shaping and the canonical flow architecture. No inspector hierarchy actions.
+
 Feather's Width, Iterations and Direction Bias are nested `BehaviorFeatherSettings`
 parameters. Their editor ranges, reset defaults and optional clamps are authored under
 `Feather` in `Config/MixtormatParameterAuthoring.json`; GPU Eikonal/Flow iteration

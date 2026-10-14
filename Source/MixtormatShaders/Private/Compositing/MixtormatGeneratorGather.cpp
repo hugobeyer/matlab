@@ -775,6 +775,7 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		ChildData.Type = EMixtormatLayerChildType::HeightColorRamp;
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
+		Out.bNormalizeInput = Ramp.bNormalizeInput;
 		Out.OutputName = FName(TEXT("Color"));
 		Out.Source = static_cast<int32>(Ramp.Source);
 		// Resolve the referenced module to this layer's child index, the same rule Height Blend
