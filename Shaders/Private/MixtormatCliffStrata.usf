@@ -110,12 +110,12 @@ if(any(D.xy>=OutputSize))return;int2 p=D.xy;int xm=wi(p.x-1,OutputSize.x),xp=wi(
 if(D.x!=0||D.y>=OutputSize.y)return;int y=D.y;float dx=1.0/max((float)OutputSize.x,1.0),base_u=max(abs(UnitDistance),1e-6);
 float val=RawHeight[int2(0,y)];
 [loop]for(int x=0;x<(int)OutputSize.x;++x){int2 p=int2(x,y);float h=RawHeight[p],v=clamp(VoronoiSmooth[p],0.0,1.0),sv=(v*2-1)*max(0.0,1+(v*2-1)*CarveVoronoi),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==0)val=h;else if(Reverse){val-=fall;val=max(val,h);}else{val+=fall;val=min(val,h);}OutSweep[p]=val;}
-val=RawHeight[int2((int)OutputSize.x-1,y)];
-[loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);float h=RawHeight[p],current=OutSweep[p],depth=abs(current-h),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),modulation=clamp(depth/u,0.0,1.0),voronoi=clamp(VoronoiSmooth[p],0.0,1.0),carve_scale=max(0.0,1+(voronoi*2-1)*CarveVoronoi),sv=(modulation*2-1)*carve_scale,fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==(int)OutputSize.x-1)val=h;else if(Reverse){val-=fall;val=max(val,h);val=max(val,current);}else{val+=fall;val=min(val,h);val=min(val,current);}OutSweep[p]=val;}
+val=OutSweep[int2((int)OutputSize.x-1,y)];
+[loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);float h=RawHeight[p],current=OutSweep[p],depth=abs(current-h),u=base_u*ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),modulation=clamp(depth/u,0.0,1.0),voronoi=clamp(VoronoiSmooth[p],0.0,1.0),carve_scale=max(0.0,1+(voronoi*2-1)*CarveVoronoi),sv=(modulation*2-1)*carve_scale,fall=(dx/u)*max(.05,1+sv*CarveDepth);if(x==(int)OutputSize.x-1)val=current;else if(Reverse){val-=fall;val=max(val,h);val=max(val,current);}else{val+=fall;val=min(val,h);val=min(val,current);}OutSweep[p]=val;}
 #elif CLIFF_STAGE==4
 // Prototype Shape iteration 3 - vertical eikonal, direct prototype row order and two sweeps.
 if(D.y!=0||D.x>=OutputSize.x)return;int x=D.x,yr=OutputSize.y;float dy=1.0/max((float)yr,1.0),base_u=max(abs(UnitDistance),1e-6)*YBias;
-float val=SweepIn[int2(x,0)];
+float val=SweepIn[int2(x,0)];OutSweep[int2(x,0)]=val;
 [loop]for(int y=1;y<yr;++y){int2 p=int2(x,y);float h=SweepIn[p],raw=RawHeight[p],depth=abs(h-raw),scale=ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),voronoi=clamp(VoronoiSmooth[p],0.0,1.0),y_pattern=YBiasVoronoiInvert?1-voronoi:voronoi,y_scale=max(1+(y_pattern*2-1)*YBiasVoronoi,1e-6),u=max(base_u*scale*y_scale,1e-6),modulation=clamp(depth/u,0.0,1.0),carve_scale=max(0.0,1+(voronoi*2-1)*CarveVoronoi),fall=(dy/u)*max(.05,1+(modulation*2-1)*CarveDepth*carve_scale);if(Reverse){val-=fall;val=max(val,h);}else{val+=fall;val=min(val,h);}OutSweep[p]=val;}
 val=OutSweep[int2(x,yr-1)];
 [loop]for(int y=yr-2;y>=0;--y){int2 p=int2(x,y);float h=OutSweep[p],raw=RawHeight[p],depth=abs(h-raw),scale=ids(BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p],Seed,UnitDistanceIdLerp),bottom_weight=(float)y/(float)max(yr-1,1),voronoi=clamp(VoronoiSmooth[p],0.0,1.0),y_pattern=YBiasVoronoiInvert?1-voronoi:voronoi,y_scale=max(1+(y_pattern*2-1)*YBiasVoronoi,1e-6),u=max(base_u*scale*y_scale*(1-NegativeYUnitDistanceTaper*bottom_weight),1e-6),modulation=clamp(depth/u,0.0,1.0),carve_scale=max(0.0,1+(voronoi*2-1)*CarveVoronoi),fall=(dy/u)*max(.05,1+(modulation*2-1)*CarveDepth*carve_scale);if(Reverse){val-=fall;val=max(val,h);val=max(val,OutSweep[p]);}else{val+=fall;val=min(val,h);val=min(val,OutSweep[p]);}OutSweep[p]=val;}
@@ -129,12 +129,23 @@ OutIdDistance[p]=dist;OutRowDistance[p]=rdist;
 // Prototype Shape iteration 5 - horizontal distance solve (UV units).
 if(D.x!=0||D.y>=OutputSize.y)return;int y=D.y;float dx=1.0/max((float)OutputSize.x,1.0),di=1e6,dr=1e6;
 [loop]for(int x=0;x<(int)OutputSize.x;++x){int2 p=int2(x,y);di=min(IdDistanceIn[p],di+dx);dr=min(RowDistanceIn[p],dr+dx);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
-di=dr=1e6;[loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dx);dr=min(OutRowDistance[p],dr+dx);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+// Relax both circular directions; the final two sweeps carry the opposite-edge result.
+di=OutIdDistance[int2((int)OutputSize.x-1,y)];dr=OutRowDistance[int2((int)OutputSize.x-1,y)];
+[loop]for(int x=0;x<(int)OutputSize.x;++x){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dx);dr=min(OutRowDistance[p],dr+dx);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+di=OutIdDistance[int2(0,y)];dr=OutRowDistance[int2(0,y)];
+[loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dx);dr=min(OutRowDistance[p],dr+dx);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+di=OutIdDistance[int2(0,y)];dr=OutRowDistance[int2(0,y)];
+[loop]for(int x=(int)OutputSize.x-1;x>=0;--x){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dx);dr=min(OutRowDistance[p],dr+dx);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
 #elif CLIFF_STAGE==7
 // Prototype Shape iteration 6 - vertical distance solve (UV units).
 if(D.y!=0||D.x>=OutputSize.x)return;int x=D.x;float dy=1.0/max((float)OutputSize.y,1.0),di=1e6,dr=1e6;
 [loop]for(int y=0;y<(int)OutputSize.y;++y){int2 p=int2(x,y);di=min(IdDistanceIn[p],di+dy);dr=min(RowDistanceIn[p],dr+dy);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
-di=dr=1e6;[loop]for(int y=(int)OutputSize.y-1;y>=0;--y){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dy);dr=min(OutRowDistance[p],dr+dy);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+di=OutIdDistance[int2(x,(int)OutputSize.y-1)];dr=OutRowDistance[int2(x,(int)OutputSize.y-1)];
+[loop]for(int y=0;y<(int)OutputSize.y;++y){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dy);dr=min(OutRowDistance[p],dr+dy);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+di=OutIdDistance[int2(x,0)];dr=OutRowDistance[int2(x,0)];
+[loop]for(int y=(int)OutputSize.y-1;y>=0;--y){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dy);dr=min(OutRowDistance[p],dr+dy);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
+di=OutIdDistance[int2(x,0)];dr=OutRowDistance[int2(x,0)];
+[loop]for(int y=(int)OutputSize.y-1;y>=0;--y){int2 p=int2(x,y);di=min(OutIdDistance[p],di+dy);dr=min(OutRowDistance[p],dr+dy);OutIdDistance[p]=di;OutRowDistance[p]=dr;}
 #else
 // Prototype Shape iteration 7 - chamfer/cavities. Final native height remains signed.
 if(any(D.xy>=OutputSize))return;int2 p=D.xy;float a=SweepIn[p],b=RawHeight[p],plain=min(a,b),v=VoronoiRaw[p],seam=1-v;
