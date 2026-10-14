@@ -308,9 +308,18 @@ namespace MixtormatLayerGroups
 				RemapOutput(Child.BoundaryId.RegionIdsSource);
 				RemapPair(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
 				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId))
-				{
-					Child.HeightColorRamp.SourceChildId = *Effective;
-				}
+                {
+                    Child.HeightColorRamp.SourceChildId = *Effective;
+                }
+                // Boolean field joins refer directly to earlier generator GUIDs.
+                // Remap both shared clones and member-local links before evaluation.
+                if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+                {
+                    if (const FGuid* Effective = ChildIdRemap.Find(Child.Generator.BooleanOps.SourceChildId))
+                    {
+                        Child.Generator.BooleanOps.SourceChildId = *Effective;
+                    }
+                }
 				// Child parameter bindings and drivers may also name a shared child.
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{

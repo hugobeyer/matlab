@@ -64,9 +64,22 @@ namespace MixtormatLayersPrivate
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
 			RemapPair(Copy.HeightBlend.SourceLayerId, Copy.HeightBlend.SourceChildId);
 			if (const FGuid* Input = ChildIdRemap.Find(Copy.HeightColorRamp.SourceChildId))
-			{
-				Copy.HeightColorRamp.SourceChildId = *Input;
-			}
+            {
+                Copy.HeightColorRamp.SourceChildId = *Input;
+            }
+            if (Copy.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+            {
+                if (const FGuid* Source = ChildIdRemap.Find(Copy.Generator.BooleanOps.SourceChildId))
+                {
+                    Copy.Generator.BooleanOps.SourceChildId = *Source;
+                }
+                else if (OldOwnerId != NewOwnerId)
+                {
+                    // A Boolean field source is same-layer only. A copied subtree
+                    // cannot silently point back to its original owner's generator.
+                    Copy.Generator.BooleanOps.SourceChildId.Invalidate();
+                }
+            }
 			for (FMixtormatParameterBinding& Binding : Copy.ParameterBindings)
 			{
 				RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);

@@ -301,6 +301,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float front = 0.0f;
     float back = 0.0f;
     int hits = 0;
+    float coverage = 0.0f;
     float cutWidth = 0.0f;
     int seedCount = clamp(Count, 0, SCATTER_CARVE_MAX_SEEDS);
 
@@ -317,6 +318,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             {
                 front = hits == 0 ? hi : max(front, hi);
                 back = hits == 0 ? lo : min(back, lo);
+                coverage = 1.0f;
                 ++hits;
             }
             float scaledHz = hz * HeightToUV;
@@ -325,6 +327,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                 !isfinite(zOffset)) continue;
             float distance = carve_volume_distance(Shape, lateral, r, scaledHz, zOffset);
             if (!isfinite(distance) || distance >= reach) continue;
+            // The chamfer may reach this pixel even with no hard XY intersection.
+            coverage = 1.0f;
             float direction = operation == 0 ? -1.0f : 1.0f;
             float travel = carve_chamfer_travel(Shape, lateral, r, scaledHz,
                 zOffset, reach, direction);
@@ -366,5 +370,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     OutCutDepth[pixel] = base - result;
     OutGeometryFront[pixel] = front;
     OutGeometryBack[pixel] = back;
-    OutGeometryMask[pixel] = hits > 0 ? 1.0f : 0.0f;
+    OutGeometryMask[pixel] = coverage * weight;
 }

@@ -36,7 +36,10 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 **Bevel**. Scatter Carve preserves its existing finite-volume implementation.
 The other modes combine the current signed height surface with the signed Height
 output of an explicitly chosen **earlier generator module in the same layer**.
-The operand is selected by stable child GUID; missing, disabled, nested,
+The operand is selected by stable child GUID. Member-specific group expansion
+and multi-child clipboard duplication remap Boolean operand GUIDs along with
+Height Blend and Color Ramp references; moving a lone Boolean to another
+owner clears its now-invalid local source. Missing, disabled, nested,
 heightless Noise and forward references are an exact zero-delta identity.
 The inspector lists only eligible earlier height-generating modules; an invalid
 selection displays Unavailable instead of a misleading valid source name.
@@ -79,6 +82,8 @@ outputs `resolved - target`, then uses the standard additive running-height
 chain. No normalization or additional Height Scale is applied to this delta.
 Outputs: Height (signed delta), CutDepth (signed removal), GeometryFront,
 GeometryBack (unclipped original cutter envelope), and copyable GeometryMask.
+The footprint includes hard cutter intervals and chamfer-only influence, and
+respects the cutter's scoped mask (rather than showing masked-off cutters).
 Normals remain on the standard final-height path. In this first iteration
 Boolean Ops does not publish a combined-surface SDF, IDs, or native Flow.
 The full seed-count range is available but expensive; default 16, UI range
