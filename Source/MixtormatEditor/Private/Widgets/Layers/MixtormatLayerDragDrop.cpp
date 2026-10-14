@@ -727,15 +727,6 @@ FReply SMixtormat::MoveChildToLayer(
 	{
 		return FReply::Unhandled();
 	}
-	if (SourceLayer.Children[ChildIndex].ScopeOwnerChildId.IsValid())
-	{
-		const int32 OwnerIndex = FindChildById(SourceLayer.Children, SourceLayer.Children[ChildIndex].ScopeOwnerChildId);
-		if (OwnerIndex != INDEX_NONE && SourceLayer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Boolean && SourceLayer.Children[OwnerIndex].Boolean.bLocked)
-		{
-			WorkingStatusText = TEXT("Boolean stack is locked; unlock to detach operands.");
-			return FReply::Handled();
-		}
-	}
 	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
 	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
 		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
