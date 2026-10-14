@@ -1096,9 +1096,10 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightBlend
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightCurve
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::HeightColorRamp
-			// A Behavior is stored through SelectedMaskIndex too. Without it here the selected
-			// address is invalid and every GetSelectedBehavior*() reports nothing selected.
-			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Behavior))
+			// A Behavior or Boolean stack container is stored through SelectedMaskIndex too.
+			// Without it here the selected address is invalid and reports nothing selected.
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Behavior
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Boolean))
 	{
 		return SelectedMaskIndex;
 	}
@@ -1632,6 +1633,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 	{
 		return LOCTEXT("HeightColorRampChildName", "Color Ramp");
+	}
+	if (Child.Type == EMixtormatLayerChildType::Boolean)
+	{
+		return LOCTEXT("BooleanStackChildName", "Boolean");
 	}
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
 		? Child.Mask.Mask.ToSoftObjectPath()
