@@ -49,7 +49,9 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
