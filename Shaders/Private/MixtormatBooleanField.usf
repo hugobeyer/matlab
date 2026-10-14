@@ -40,6 +40,22 @@ float field_bmin(float a, float b, float k)
     return min(min(a, b), 0.5f * (a + b - k));
 }
 
+// Positive signed relief is a one-sided subtractive heightfield cutter.
+// Both shaped modes must converge to exact max(d,0) outside the join width.
+float field_cut_depth(float d, float k, int mode)
+{
+    if (d <= 0.0f) return 0.0f;
+    if (k <= 0.0f || d >= k || mode == 1) return d;
+    if (mode == 2)
+    {
+        float t = saturate(d / k);
+        float fade = t * t * (3.0f - 2.0f * t);
+        return d * fade; // C1 shoulder: identity beyond width
+    }
+    // Two straight relief slopes with sharp breakpoints: a heightfield bevel.
+    return max(0.0f, 2.0f * d - k);
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -76,13 +92,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
             {
                 // Single-valued relief subtraction, not true 3D solid subtraction.
                 float d = shapedSource;
-                float depth = max(0.0f, d);
-                if (Mode == 2 && k > 0.0f)
-                    depth = max(0.0f, field_smax(0.0f, d, k) - 0.25f * k);
-                if (Mode == 3 && k > 0.0f)
-                    depth = max(0.0f, field_bmax(0.0f, d, k) - 0.5f * k);
-                target = a - depth;
-                difference = d;
+                target = a - field_cut_depth(d, k, Mode);
+                difference = Mode == 3 && k > 0.0f ? d - 0.5f * k : d;
             }
             float weight = HasScopedMask != 0 ? ScopedMask.Load(int3(pixel, 0)) : 1.0f;
             weight = isfinite(weight) ? saturate(weight) : 0.0f;
@@ -110,6 +121,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
                     || (difference < 0.0f && (dx > 0.0f || dy > 0.0f))
                     || (difference > 0.0f && (dx < 0.0f || dy < 0.0f))) ? 1.0f : 0.0f;
             }
+            boundary *= weight * saturate(FieldAmount);
             area = abs(delta) > 0.000001f ? 1.0f : 0.0f;
             if (!isfinite(delta)) delta = 0.0f;
         }

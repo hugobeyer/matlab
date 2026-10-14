@@ -50,8 +50,11 @@ of a misleading valid source name.
 - **Boolean:** hard union (max) and intersection (min) of single-valued vertical
   surfaces; subtract removes positive authored source relief from the running
   height (a *relief cut*, not a general 3D solid difference).
-- **Round:** polynomial rounded variants of those heightfield joins.
-- **Bevel:** analytic chamfered variants of those heightfield joins.
+- **Round:** polynomial rounded surface joins and a C1 eased one-sided cut
+  shoulder; beyond Join Width it is exactly the original hard cut.
+- **Bevel:** analytic chamfered joins and piecewise-planar cutting shoulders;
+  outside the band it is exactly the original hard cut, with no permanent
+  subtraction depth offset.
 - Parameters: source chip, operation, signed Source Scale (negative inverts
   source relief), raw signed Height Bias and Amount; Round and Bevel also use
   Join Width in signed height units.
