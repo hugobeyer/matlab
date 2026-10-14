@@ -1003,7 +1003,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 				}),
 				LOCTEXT("QuickControlsDisplacementHint", "Preview the composited Height through the protected master's authored displacement path."))),
 		MakeMemberToggle<FMixtormatFinalSettings>(
-			LOCTEXT("QuickControlsAutoRemapHeight", "Auto Remap Height"), Final,
+			LOCTEXT("QuickControlsAutoRemapHeight", "Remap Height"), Final,
 			&FMixtormatFinalSettings::bAutoRemapHeight,
 			LOCTEXT("QuickControlsAutoRemapHeightHint", "Remap the finished height to 0-1 from its own lowest and highest point, before AO and normals."))));
 	TSharedRef<SVerticalBox> LightingRows = SNew(SVerticalBox);
