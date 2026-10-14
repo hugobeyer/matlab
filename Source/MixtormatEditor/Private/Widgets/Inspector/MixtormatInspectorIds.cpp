@@ -120,7 +120,9 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
@@ -1972,7 +1974,9 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
