@@ -32,7 +32,10 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 
 ## Boolean Ops — Scatter Carve and field combining
 
-`BooleanOps` authors four modes: **Scatter Carve**, **Boolean**, **Round** and
+> [!NOTE]
+> The four-mode `BooleanOps` generator authoring is superseded by the dedicated **Boolean stack container** child (`EMixtormatLayerChildType::Boolean`, see `AgentDocs/BOOLEAN_STACK.md`). In the stack architecture, Target and Source operands are authored as scoped children with independent UV and height offsets. The finite-volume **Scatter Carve** compute path is preserved and reserved for separate reclassification.
+
+`BooleanOps` originally authored four modes: **Scatter Carve**, **Boolean**, **Round** and
 **Bevel**. Scatter Carve preserves its existing finite-volume implementation.
 The other modes combine the current signed height surface with the signed Height
 output of an explicitly chosen **earlier generator module in the same layer**.

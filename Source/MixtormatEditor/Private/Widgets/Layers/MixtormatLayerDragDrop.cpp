@@ -477,6 +477,15 @@ FReply SMixtormat::ReorderLayerChild(
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	const FGuid SourceParentId = Layer.Children[SourceChildIndex].ScopeOwnerChildId;
+	if (SourceParentId.IsValid())
+	{
+		const int32 OwnerIndex = FindChildById(Layer.Children, SourceParentId);
+		if (OwnerIndex != INDEX_NONE && Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Boolean && Layer.Children[OwnerIndex].Boolean.bLocked)
+		{
+			WorkingStatusText = TEXT("Boolean stack is locked; unlock to reorder operands.");
+			return FReply::Handled();
+		}
+	}
 	const int32 TargetRootIndex = FindSiblingRoot(Layer.Children, TargetChildIndex, SourceParentId);
 	if (TargetRootIndex == INDEX_NONE || TargetRootIndex == SourceChildIndex)
 	{
@@ -726,6 +735,15 @@ FReply SMixtormat::MoveChildToLayer(
 		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
+	}
+	if (SourceLayer.Children[ChildIndex].ScopeOwnerChildId.IsValid())
+	{
+		const int32 OwnerIndex = FindChildById(SourceLayer.Children, SourceLayer.Children[ChildIndex].ScopeOwnerChildId);
+		if (OwnerIndex != INDEX_NONE && SourceLayer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Boolean && SourceLayer.Children[OwnerIndex].Boolean.bLocked)
+		{
+			WorkingStatusText = TEXT("Boolean stack is locked; unlock to detach operands.");
+			return FReply::Handled();
+		}
 	}
 	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
 	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
