@@ -256,7 +256,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
             // It is not the cumulative running surface or a metric distance field.
             Result.Outputs.Add({FName(TEXT("Height")),
                 NSLOCTEXT("SMixtormat", "PreviewBooleanHeight", "Height Delta"),
-                EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
+                EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
                 true, EMixtormatPublishedFieldKind::ScalarSigned});
             if (Child.Generator.BooleanOps.Mode != EMixtormatBooleanMode::ScatterCarve)
             {
@@ -268,11 +268,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
                     EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
                 Result.Outputs.Add({FName(TEXT("FieldDifference")),
                     NSLOCTEXT("SMixtormat", "PreviewBooleanFieldDiff", "Field Difference"),
-                    EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
-                    true, EMixtormatPublishedFieldKind::ScalarSigned});
-                Result.Outputs.Add({FName(TEXT("FieldContribution")),
-                    NSLOCTEXT("SMixtormat", "PreviewBooleanFieldContribution", "Contribution"),
-                    EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+                    EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
                     true, EMixtormatPublishedFieldKind::ScalarSigned});
             }
             else
@@ -282,15 +278,15 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 			Result.Outputs.Add({FName(TEXT("CutDepth")),
 				NSLOCTEXT("SMixtormat", "PreviewBooleanCutDepth", "Signed Cut Depth"),
-				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+                EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::ScalarSigned});
 			Result.Outputs.Add({FName(TEXT("GeometryFront")),
 				NSLOCTEXT("SMixtormat", "PreviewBooleanFront", "Cutter Front"),
-				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+                EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::ScalarSigned});
 			Result.Outputs.Add({FName(TEXT("GeometryBack")),
 				NSLOCTEXT("SMixtormat", "PreviewBooleanBack", "Cutter Back"),
-                EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+                EMixtormatPreviewOutputKind::SignedDistance, false, true, true, NAME_None,
                 true, EMixtormatPublishedFieldKind::ScalarSigned});
             }
         }

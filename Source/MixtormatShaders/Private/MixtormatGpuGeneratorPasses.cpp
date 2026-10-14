@@ -100,7 +100,6 @@ public:
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldMask)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldBoundary)
         SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldDifference)
-        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldContribution)
     END_SHADER_PARAMETER_STRUCT()
     static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
     {
@@ -2455,7 +2454,6 @@ namespace
         FRDGTextureRef Area = Make(TEXT("Mixtormat.BooleanField.Area"));
         FRDGTextureRef Boundary = Make(TEXT("Mixtormat.BooleanField.Boundary"));
         FRDGTextureRef Difference = Make(TEXT("Mixtormat.BooleanField.Difference"));
-        FRDGTextureRef Contribution = Make(TEXT("Mixtormat.BooleanField.Contribution"));
         auto* P = GraphBuilder.AllocParameters<FMixtormatBooleanFieldCS::FParameters>();
         P->OutputSize = Size;
         P->Mode = B.Mode;
@@ -2476,7 +2474,6 @@ namespace
         P->OutFieldMask = GraphBuilder.CreateUAV(Area);
         P->OutFieldBoundary = GraphBuilder.CreateUAV(Boundary);
         P->OutFieldDifference = GraphBuilder.CreateUAV(Difference);
-        P->OutFieldContribution = GraphBuilder.CreateUAV(Contribution);
         TShaderMapRef<FMixtormatBooleanFieldCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
         ClearUnusedGraphResources(Shader, P);
         FComputeShaderUtils::AddPass(GraphBuilder,
@@ -2487,18 +2484,16 @@ namespace
             FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
         Bundle->RegisterNamedMask(FName(TEXT("FieldBoundary")), Boundary,
             FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
-        for (const TPair<FName, FRDGTextureRef>& Output : {
-            TPair<FName, FRDGTextureRef>{FName(TEXT("FieldDifference")), Difference},
-            TPair<FName, FRDGTextureRef>{FName(TEXT("FieldContribution")), Contribution}})
+        // Difference is a separate authored diagnostic. Contribution is already
+        // exactly Bundle->Height and is published by the common Height path.
+        const FName DifferenceName(TEXT("FieldDifference"));
+        Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, DifferenceName),
+            FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Difference, nullptr, nullptr, false});
+        if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
+            DifferenceName, LayerCtx.LayerIndex, Child.SourceChildIndex))
         {
-            Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Output.Key),
-                FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Output.Value, nullptr, nullptr, false});
-            if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
-                Output.Key, LayerCtx.LayerIndex, Child.SourceChildIndex))
-            {
-                FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-                AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Output.Value, Debug, Size);
-            }
+            FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
+            AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Difference, Debug, Size);
         }
     }
 

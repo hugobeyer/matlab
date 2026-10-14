@@ -59,8 +59,10 @@ of a misleading valid source name.
   source relief), raw signed Height Bias and Amount; Round and Bevel also use
   Join Width in signed height units.
 - Outputs: copyable/previewable Height (signed module delta), copyable
-  FieldMask and FieldBoundary, signed FieldDifference and FieldContribution.
-  FieldMask carries the effective continuous operation weight, not a binary
+  FieldMask and FieldBoundary, and signed FieldDifference. The inspector's
+  primary preview is Height Delta in all four modes; the other outputs remain
+  secondary. No separate Contribution texture is allocated because it would
+  exactly duplicate Height. FieldMask carries the effective continuous operation weight, not a binary
   threshold; the boundary respects the same scope/amount. Scoped masks blend
   the result.
 Hard Boolean joins use pixel-neighbor crossings for a visible boundary

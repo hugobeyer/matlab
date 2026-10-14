@@ -19,7 +19,6 @@ RWTexture2D<float> OutHeightDelta;
 RWTexture2D<float> OutFieldMask;
 RWTexture2D<float> OutFieldBoundary;
 RWTexture2D<float> OutFieldDifference;
-RWTexture2D<float> OutFieldContribution;
 
 float field_smax(float a, float b, float k)
 {
@@ -131,5 +130,4 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     OutFieldMask[pixel] = area;
     OutFieldBoundary[pixel] = boundary;
     OutFieldDifference[pixel] = difference;
-    OutFieldContribution[pixel] = delta;
 }
