@@ -1217,6 +1217,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(LOCTEXT("AddScatterCarveChild", "Scatter Carve"), MixtormatIcons::BooleanOps(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::ScatterCarve); }))
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean"), MixtormatIcons::BooleanOps(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::BooleanOps); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1448,7 +1451,8 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						{EMixtormatChildCreation::Cracks, LOCTEXT("BooleanAddCracks", "Add Cracks")},
 						{EMixtormatChildCreation::Pebbles, LOCTEXT("BooleanAddPebbles", "Add Pebbles")},
 						{EMixtormatChildCreation::CliffStrata, LOCTEXT("BooleanAddCliff", "Add Cliff Strata")},
-						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")}};
+						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")},
+						{EMixtormatChildCreation::ScatterCarve, LOCTEXT("BooleanAddScatterCarve", "Add Scatter Carve")}};
 					for (const FOperandEntry& Entry : Options)
 					{
 						Menu.Item(Entry.Label, MixtormatIcons::Generator(),
@@ -1459,11 +1463,13 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 					}
 				}
 			}
-			if (Target.Type == EMixtormatLayerChildType::Generator)
+			if (Target.Type == EMixtormatLayerChildType::Generator
+				|| Target.Type == EMixtormatLayerChildType::Boolean)
 			{
 				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
 				Destination.ScopeOwnerChildId = TargetChildId;
-				if (CanAddScopedFlowGenerator(Destination))
+				if (Target.Type == EMixtormatLayerChildType::Generator
+					&& CanAddScopedFlowGenerator(Destination))
 				{
 					Menu.Item(LOCTEXT("AddFlowToGenerator", "Flow"), MixtormatIcons::Generator(),
 						FSimpleDelegate::CreateLambda([this, Destination]()
@@ -1471,6 +1477,11 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 							CreateChild(Destination, EMixtormatChildCreation::NoiseFlow);
 						}));
 				}
+				Menu.Item(LOCTEXT("AddColorRampToGenerator", "Color Ramp"), MixtormatIcons::Generator(),
+					FSimpleDelegate::CreateLambda([this, Destination]()
+					{
+						CreateChild(Destination, EMixtormatChildCreation::HeightColorRamp);
+					}));
 			}
 			Menu.Separator();
 			for (const FBehaviorEntry& Entry : Entries)
@@ -1591,6 +1602,18 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 			{
 				GroupSelectedChildrenAsIdGroup();
 			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Group));
+	}
+	if (RowType == EMixtormatLayerChildType::Boolean
+		|| RowType == EMixtormatLayerChildType::IdGroup)
+	{
+		Menu.Item(
+			LOCTEXT("UngroupChildContainerContext", "Ungroup"),
+			MixtormatIcons::Folder(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+			{
+				SelectWorkingChild(LayerIndex, ChildIndex);
+				UngroupSelectedChildContainer();
+			}));
 	}
 	AddIdGroupMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));

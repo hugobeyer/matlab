@@ -517,30 +517,20 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewRenderControls(const bool bMarkingMe
 	{
 		Controls->AddSlot().AutoHeight().Padding(0.0f, RowGap, 0.0f, 0.0f)
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(SMixtormatSegmentedControl)
-				.Options(QualityOptions)
-				.ToolTips(QualityToolTips)
-				.ActiveIndex_Lambda([this]()
-				{
-					return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
-				})
-				.OnChosen_Lambda([this](const int32 Index)
-				{
-					SetPreviewQuality(Index == 1
-						? EMixtormatPreviewQuality::Lumen
-						: EMixtormatPreviewQuality::Default);
-				})
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			.Padding(Layout.ToolbarGap, 0.0f, 0.0f, 0.0f)
-			[
-				MakePreviewFinalButton()
-			]
+			SNew(SMixtormatSegmentedControl)
+			.Options(QualityOptions)
+			.ToolTips(QualityToolTips)
+			.ActiveIndex_Lambda([this]()
+			{
+				return PreviewQuality == EMixtormatPreviewQuality::Lumen ? 1 : 0;
+			})
+			.OnChosen_Lambda([this](const int32 Index)
+			{
+				SetPreviewQuality(Index == 1
+					? EMixtormatPreviewQuality::Lumen
+					: EMixtormatPreviewQuality::Default);
+			})
 		];
-		AddSliderRow(Controls, BuildPreviewDisplacementControls());
 		return Controls;
 	}
 

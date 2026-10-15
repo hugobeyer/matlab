@@ -950,8 +950,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	LayerCompositor->SetFinalSettings(
 		FinalSettings.HeightAOAmount,
 		FinalSettings.HeightAORadius,
-		true,
-		1.0f,
+		FinalSettings.bNormalFromHeight,
+		FinalSettings.HeightNormalStrength,
 		FinalSettings.bAutoRemapHeight);
 	if (!LayerCompositor->RequestCompose(
 		Layers,

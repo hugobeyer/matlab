@@ -811,22 +811,30 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 	case EMixtormatLayerChildType::HeightColorRamp:
 	{
 		const FMixtormatGeneratorHeightColorRamp& Ramp = LayerChild.HeightColorRamp;
-		if (!Ramp.bEnabled) { return; }
+		if (!Ramp.bEnabled || Ramp.Weight <= 0.0f) { return; }
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::HeightColorRamp;
 		ChildData.SourceChildIndex = SourceChildIndex;
+		ChildData.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(
+			Layer.Children, SourceChildIndex);
 		FGeneratorHeightColorRampRenderData& Out = ChildData.HeightColorRamp;
 		Out.bNormalizeInput = Ramp.bNormalizeInput;
 		Out.bMirrorRepeat = Ramp.bMirrorRepeat;
+		Out.Weight = FMath::Clamp(FMath::IsFinite(Ramp.Weight) ? Ramp.Weight : 1.0f, 0.0f, 1.0f);
 		Out.InputScale = FMath::IsFinite(Ramp.InputScale) ? Ramp.InputScale : 1.0f;
 		Out.InputOffset = FMath::IsFinite(Ramp.InputOffset) ? Ramp.InputOffset : 0.0f;
 		Out.OutputName = FName(TEXT("Color"));
 		Out.Source = static_cast<int32>(Ramp.Source);
-		// Resolve the referenced module to this layer's child index, the same rule Height Blend
-		// follows: only an earlier module can have produced a height by the time this sublayer
-		// runs. Anything unresolvable reads the running height, the module's defined neutral.
 		Out.SourceChildIndex = INDEX_NONE;
-		if (Ramp.Source == EMixtormatColorRampSource::ModuleRef && Ramp.SourceChildId.IsValid())
+		if (ChildData.ScopeOwnerSourceChildIndex != INDEX_NONE
+			&& Layer.Children.IsValidIndex(ChildData.ScopeOwnerSourceChildIndex)
+			&& (Layer.Children[ChildData.ScopeOwnerSourceChildIndex].Type == EMixtormatLayerChildType::Generator
+				|| Layer.Children[ChildData.ScopeOwnerSourceChildIndex].Type == EMixtormatLayerChildType::Boolean))
+		{
+			Out.Source = static_cast<int32>(EMixtormatColorRampSource::ModuleRef);
+			Out.SourceChildIndex = ChildData.ScopeOwnerSourceChildIndex;
+		}
+		else if (Ramp.Source == EMixtormatColorRampSource::ModuleRef && Ramp.SourceChildId.IsValid())
 		{
 			for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
 			{

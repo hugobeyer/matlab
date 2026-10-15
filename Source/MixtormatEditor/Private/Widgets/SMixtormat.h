@@ -74,6 +74,7 @@ enum class EMixtormatChildCreation : uint8
 	Pebbles,
 	CliffStrata,
 	Noise,
+	ScatterCarve,
 	BooleanOps,
 	// The Flow creation preset: the same Noise generator with the P0 Flow defaults
 	// (Write Height OFF, Write Flow ON, Curl weight 1). Editor-only, never serialized.
@@ -774,6 +775,8 @@ private:
 	FReply GroupSelectedChildrenAsBoolean();
 	bool CanGroupSelectedChildrenAsIdGroup() const;
 	FReply GroupSelectedChildrenAsIdGroup();
+	bool CanUngroupSelectedChildContainer() const;
+	FReply UngroupSelectedChildContainer();
 	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
 	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
 	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;

@@ -2340,7 +2340,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 
 	TSharedPtr<SMixtormatColorRamp> RampWidget;
-	AddSliderRow(Panel, SAssignNew(RampWidget, SMixtormatColorRamp)
+	const TSharedRef<SVerticalBox> RampCard = AddCard(Panel, LOCTEXT("ColorRampCardRamp", "RAMP"));
+	AddSliderRow(RampCard, SAssignNew(RampWidget, SMixtormatColorRamp)
 		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Ramp]()
 		{
 			const FMixtormatGeneratorHeightColorRamp* R = Ramp();
@@ -2355,32 +2356,48 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 				RefreshLayeredPreview();
 			}
 		})));
+	AddSliderRow(RampCard, MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+		LOCTEXT("ColorRampWeight", "Weight"), Ramp, &FMixtormatGeneratorHeightColorRamp::Weight, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("ColorRampWeightHint", "How strongly this ramp colors the layer's Base Color. Scoped masks under this ramp also gate its coverage.")));
 
-	// Where the ramp's scalar comes from. Generator Height keeps the original chain behaviour;
-	// Module is an earlier generator's published height; Layer Height is this layer's resolved
-	// input; Composite Below is the height accumulated under this layer.
-	const auto RampSourceIs = [Ramp](const EMixtormatColorRampSource Source)
+	// Where the ramp's scalar comes from. When scoped under a Generator or Boolean, it maps that
+	// parent's height automatically; when unscoped, Source selects the input field.
+	const auto IsScopedRamp = [this]()
+	{
+		const FMixtormatLayerChild* Selected = ResolveChildAt(GetSelectedChildAddress());
+		return Selected && Selected->ScopeOwnerChildId.IsValid();
+	};
+	const auto RampSourceIs = [Ramp, IsScopedRamp](const EMixtormatColorRampSource Source)
 	{
 		const FMixtormatGeneratorHeightColorRamp* R = Ramp();
-		return R && R->Source == Source;
+		return R && !IsScopedRamp() && R->Source == Source;
 	};
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
-			LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
-			LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
-			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })),
+	const TSharedRef<SVerticalBox> InputCard = AddCard(Panel, LOCTEXT("ColorRampCardInput", "INPUT"));
+	AddSliderRow(InputCard,
+		SNew(SBox)
+		.Visibility_Lambda([IsScopedRamp]()
+		{
+			return IsScopedRamp() ? EVisibility::Collapsed : EVisibility::Visible;
+		})
+		[
+			MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
+				LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
+				LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
+				FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); }))
+		]);
+	AddSliderRow(InputCard, MixtormatRow::MakePair(
 		MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampNormalize", "Normalize"), Ramp, &FMixtormatGeneratorHeightColorRamp::bNormalizeInput,
-			LOCTEXT("ColorRampNormalizeHint", "Stretch measured source height across 0..1 before Scale and Offset. Constant height maps to 0. Off maps signed height -1..1 to 0..1 without measuring its range."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
+			LOCTEXT("ColorRampNormalizeHint", "Stretch measured source height across 0..1 before Scale and Offset. Constant height maps to 0. Off maps signed height -1..1 to 0..1 without measuring its range.")),
+		MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampMirrorRepeat", "Mirror Repeat"), Ramp, &FMixtormatGeneratorHeightColorRamp::bMirrorRepeat,
+			LOCTEXT("ColorRampMirrorRepeatHint", "Reflect extended lookup coordinates at 0 and 1. Off holds the end colors. Scale 2 traverses the ramp forward then backward; negative offsets also repeat."))));
+	AddSliderRow(InputCard, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampInputScale", "Scale"), Ramp, &FMixtormatGeneratorHeightColorRamp::InputScale, -8.0, 8.0, 1.0, 0.01),
 		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampInputOffset", "Offset"), Ramp, &FMixtormatGeneratorHeightColorRamp::InputOffset, -1.0, 1.0, 0.0, 0.01)));
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
-		LOCTEXT("ColorRampMirrorRepeat", "Mirror Repeat"), Ramp, &FMixtormatGeneratorHeightColorRamp::bMirrorRepeat,
-		LOCTEXT("ColorRampMirrorRepeatHint", "Reflect extended lookup coordinates at 0 and 1. Off holds the end colors. Scale 2 traverses the ramp forward then backward; negative offsets also repeat.")));
-	AddSliderRow(Panel,
+	AddSliderRow(InputCard,
 		SNew(SBox)
 		.Visibility_Lambda([RampSourceIs]()
 		{

@@ -770,6 +770,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bEnabled = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Weight = 1.0f;
+
 	// Where the ramp's scalar comes from. The default preserves the original contract: the
 	// running generator height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")

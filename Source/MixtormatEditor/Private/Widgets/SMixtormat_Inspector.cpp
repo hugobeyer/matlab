@@ -408,6 +408,15 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 				[
 					// The header doubles as the overlay's drag handle. Docked, nothing reads it.
 					SAssignNew(InspectorOverlay.Header, SVerticalBox)
+					.Visibility_Lambda([this]()
+					{
+						return (bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+							|| SelectedGroupId.IsValid()
+							|| SelectedSourceId.IsValid()
+							|| HasSelectedChildInspector()
+							? EVisibility::Visible
+							: EVisibility::Collapsed;
+					})
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						// Thumbnail, name, source, badge -- the same four fields in the same order as

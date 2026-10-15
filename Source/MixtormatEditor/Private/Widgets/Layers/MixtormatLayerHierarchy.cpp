@@ -754,6 +754,42 @@ void SMixtormat::SyncSelectedLayerControls()
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		bHasSelectedLayer = false;
+		if (SelectedGroupId.IsValid())
+		{
+			const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
+			const FMixtormatLayerChild* GroupChild = Group && Group->Children.IsValidIndex(SelectedGroupChildIndex)
+				? &Group->Children[SelectedGroupChildIndex]
+				: nullptr;
+			if (SelectedSurfaceText.IsValid())
+			{
+				SelectedSurfaceText->SetText(GroupChild
+					? GetLayerChildName(*GroupChild)
+					: (Group ? Group->DisplayName : LOCTEXT("NoSelectedSurface", "No selection")));
+			}
+			if (SelectedIdentityText.IsValid())
+			{
+				SelectedIdentityText->SetText(GroupChild
+					? MixtormatLayerBadges::KindForChild(*GroupChild)
+					: LOCTEXT("GroupIdentity", "GROUP"));
+			}
+			if (SelectedThumbnailBox.IsValid())
+			{
+				SelectedThumbnailBox->SetContent(SNullWidget::NullWidget);
+			}
+			return;
+		}
+		if (SelectedSurfaceText.IsValid())
+		{
+			SelectedSurfaceText->SetText(LOCTEXT("NoSelectedSurface", "No selection"));
+		}
+		if (SelectedIdentityText.IsValid())
+		{
+			SelectedIdentityText->SetText(FText::GetEmpty());
+		}
+		if (SelectedThumbnailBox.IsValid())
+		{
+			SelectedThumbnailBox->SetContent(SNullWidget::NullWidget);
+		}
 		return;
 	}
 

@@ -735,15 +735,20 @@ namespace MixtormatLayersPrivate
 		{
 			if (Owner.Type == EMixtormatLayerChildType::Boolean)
 			{
-				return Child.Generator.Type != EMixtormatGeneratorType::BooleanOps
-					&& !(Child.Generator.Type == EMixtormatGeneratorType::Noise
-						&& !Child.Generator.Noise.bNoiseWriteHeight);
+				return !(Child.Generator.Type == EMixtormatGeneratorType::Noise
+					&& !Child.Generator.Noise.bNoiseWriteHeight);
 			}
 			return Owner.Type == EMixtormatLayerChildType::Generator
 				&& !(Owner.Generator.Type == EMixtormatGeneratorType::Noise
 					&& Owner.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)
 				&& Child.Generator.Type == EMixtormatGeneratorType::Noise
 				&& Child.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp
+			|| Child.Type == EMixtormatLayerChildType::HeightCurve)
+		{
+			return Owner.Type == EMixtormatLayerChildType::Generator
+				|| Owner.Type == EMixtormatLayerChildType::Boolean;
 		}
 		if (Child.Type == EMixtormatLayerChildType::Behavior)
 		{
@@ -806,7 +811,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
-		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::BooleanOps;
+		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::ScatterCarve;
 		default:                                      return EMixtormatChildCreation::StrataCarver;
 		}
 	}
@@ -835,6 +840,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::ScatterCarve:    return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::BooleanOps:      return EMixtormatLayerChildType::Boolean;
 		case EMixtormatChildCreation::HeightBlend:     return EMixtormatLayerChildType::HeightBlend;
 		case EMixtormatChildCreation::HeightCurve:     return EMixtormatLayerChildType::HeightCurve;
@@ -910,6 +916,10 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Noise:
 			Child.Generator.Type = EMixtormatGeneratorType::Noise;
+			break;
+		case EMixtormatChildCreation::ScatterCarve:
+			Child.Generator.Type = EMixtormatGeneratorType::BooleanOps;
+			Child.Generator.BooleanOps.Mode = EMixtormatBooleanGeneratorMode::ScatterCarve;
 			break;
 		case EMixtormatChildCreation::BooleanOps:
 			break;
@@ -1568,7 +1578,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
 		case EMixtormatGeneratorType::BooleanOps:
-			return LOCTEXT("BooleanOpsChildName", "Boolean Ops");
+			return LOCTEXT("ScatterCarveChildName", "Scatter Carve");
 		case EMixtormatGeneratorType::Noise:
 			// Preset identity persists independently of the output toggles: a Flow that later
 			// enables Height stays a Flow (FINAL_BEHAVIOR_PLAN section 12).
@@ -1793,8 +1803,9 @@ bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 	if (!Target.ScopeOwnerChildId.IsValid()) { return true; }
 	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
 	const int32 OwnerIndex = FindChildById(Children, Target.ScopeOwnerChildId);
-	if (!Children.IsValidIndex(OwnerIndex)
-		|| Children[OwnerIndex].Type != EMixtormatLayerChildType::Boolean) { return false; }
+	if (!Children.IsValidIndex(OwnerIndex)) { return false; }
+	if (Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator) { return true; }
+	if (Children[OwnerIndex].Type != EMixtormatLayerChildType::Boolean) { return false; }
 	int32 Count = 0;
 	for (const FMixtormatLayerChild& Child : Children)
 	{

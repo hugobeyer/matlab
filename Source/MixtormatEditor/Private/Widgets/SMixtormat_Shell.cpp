@@ -746,9 +746,6 @@ TSharedRef<SWidget> SMixtormat::BuildLeftColumn()
 
 TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 {
-	// One switch per viewport group: the H/Space master flag still hides everything, and these hide
-	// one group each. Session state on the retained workspace, so a theme rebuild keeps them and a
-	// hidden group keeps its hotkeys.
 	const auto AddGroupToggle = [this](const TSharedRef<SVerticalBox>& Panel, const FText& Label,
 		const FText& ToolTip, bool& bFlag)
 	{
@@ -765,13 +762,6 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 				}),
 				ToolTip)));
 	};
-	// The settings are the same builders the viewport overlay uses, so the two views cannot drift:
-	// a control added to a strip appears here, and both write the same state. Cards, because a flat
-	// list of every preview control reads as a wall; each card is one feature, and the icon buttons
-	// run inline inside it rather than as a column of full-width bars.
-	TSharedRef<SVerticalBox> PreviewSection = SNew(SVerticalBox);
-	// Reuse the Inspector's Card builder; page-level gaps remain independent
-	// of preview-overlay button spacing or marking-menu geometry.
 	const auto AddGlobalCard = [this](const TSharedRef<SVerticalBox>& Panel, const FText& Title)
 	{
 		if (Panel->GetChildren()->Num() > 0)
@@ -783,48 +773,84 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 		}
 		return AddCard(Panel, Title);
 	};
+	const auto Final = [this]() -> FMixtormatFinalSettings*
 	{
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewVisibility", "VISIBILITY"));
-		AddGroupToggle(Card, LOCTEXT("PreviewGroupRender", "Render strip"),
-			LOCTEXT("PreviewGroupRenderHint", "Render scale and the Final popup on the viewport."),
-			bPreviewGroupRenderVisible);
-		AddGroupToggle(Card, LOCTEXT("PreviewGroupLighting", "Lighting"),
-			LOCTEXT("PreviewGroupLightingHint", "Studio presets, the camera and lighting reset, and the light and skylight sliders."),
-			bPreviewGroupLightingVisible);
-		AddGroupToggle(Card, LOCTEXT("PreviewGroupGeometry", "Geometry"),
-			LOCTEXT("PreviewGroupGeometryHint", "The preview mesh buttons and the UV 90° toggle."),
-			bPreviewGroupGeometryVisible);
-		AddGroupToggle(Card, LOCTEXT("PreviewGroupCamera", "Camera"),
-			LOCTEXT("PreviewGroupCameraHint", "The preview mode label and the FOV slider."),
-			bPreviewGroupCameraVisible);
-		AddGroupToggle(Card, LOCTEXT("PreviewGroupOutput", "Output"),
-			LOCTEXT("PreviewGroupOutputHint", "Composition resolution and the clear-debug control."),
-			bPreviewGroupOutputVisible);
+		return bHasWorkingMaterial ? &WorkingFinalSettings : nullptr;
+	};
+
+	TSharedRef<SVerticalBox> DocumentSection = SNew(SVerticalBox);
+	{
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(DocumentSection, LOCTEXT("GlobalDocOutputCard", "OUTPUT & RESOLUTION"));
+		AddSliderRow(Card, MixtormatRow::Make(
+			LOCTEXT("GlobalResolutionLabel", "Resolution"),
+			MakeCompositionResolutionControl(),
+			LOCTEXT("GlobalResolutionHint", "Working composition and bake resolution.")));
+		AddSliderRow(Card, MixtormatRow::Make(
+			LOCTEXT("GlobalRotateUV90Label", "Rotate Output 90°"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]()
+				{
+					return bGlobalUVRotation90 ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+				{
+					if (bHasWorkingMaterial)
+					{
+						SetGlobalUVRotation90(State == ECheckBoxState::Checked);
+					}
+				}),
+				LOCTEXT("GlobalRotateUV90Hint", "Rotate the entire composited material 90 degrees (Shortcut: 5)."))));
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewRender", "RENDER"));
-		AddSliderRow(Card, BuildPreviewRenderControls());
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(DocumentSection, LOCTEXT("GlobalFinalReliefCard", "FINAL RELIEF & AO"));
+		AddSliderRow(Card, MakeMemberSlider<FMixtormatFinalSettings>(
+			LOCTEXT("GlobalFinalNormalStrength", "Normal Strength"),
+			Final, &FMixtormatFinalSettings::HeightNormalStrength, 0.0, 4.0, 1.0, 0.01,
+			LOCTEXT("GlobalFinalNormalStrengthHint", "Strength of the final height-derived normal pass across the entire material.")));
+		AddSliderRow(Card, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatFinalSettings>(
+				LOCTEXT("GlobalFinalAOAmount", "AO Amount"),
+				Final, &FMixtormatFinalSettings::HeightAOAmount, 0.0, 1.0, 0.5, 0.01,
+				LOCTEXT("GlobalFinalAOAmountHint", "Ambient occlusion derived from the final composited height.")),
+			MakeMemberSlider<FMixtormatFinalSettings>(
+				LOCTEXT("GlobalFinalAORadius", "AO Radius"),
+				Final, &FMixtormatFinalSettings::HeightAORadius, 1.0, 64.0, 8.0, 0.5,
+				LOCTEXT("GlobalFinalAORadiusHint", "Occlusion reach in pixels at 1024 resolution."))));
+		AddSliderRow(Card, MakeMemberToggle<FMixtormatFinalSettings>(
+			LOCTEXT("GlobalFinalAutoRemapHeight", "Auto Remap Height"),
+			Final, &FMixtormatFinalSettings::bAutoRemapHeight,
+			LOCTEXT("GlobalFinalAutoRemapHeightHint", "Remap the finished height to 0..1 from its measured min/max before final AO and normals.")));
+	}
+
+	TSharedRef<SVerticalBox> PreviewSection = SNew(SVerticalBox);
+	{
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY & DISPLACEMENT"));
+		const TArray<FText> MeshOptions = {
+			LOCTEXT("MeshOptionCube", "CUBE"),
+			LOCTEXT("MeshOptionPlane", "PLANE"),
+			LOCTEXT("MeshOptionSphere", "SPHERE"),
+			LOCTEXT("MeshOptionCylinder", "CYL")};
+		AddSliderRow(Card, SNew(SMixtormatSegmentedControl)
+			.Options(MeshOptions)
+			.ActiveIndex_Lambda([this]() { return static_cast<int32>(PreviewMesh); })
+			.OnChosen_Lambda([this](const int32 Index)
+			{
+				SetPreviewMesh(static_cast<EMixtormatPreviewMesh>(FMath::Clamp(Index, 0, 3)));
+			}));
+		AddSliderRow(Card, BuildPreviewDisplacementControls());
 	}
 	{
-		// Presets and the light sliders are one feature: what the surface is lit by.
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING"));
-		AddGroupToggle(Card, LOCTEXT("PreviewLightGizmo", "Light Gizmo"),
-			LOCTEXT("PreviewLightGizmoHint", "Show the lighting direction gizmo while rotating lighting with RMB."),
-			bPreviewLightGizmoVisible);
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewLighting", "LIGHTING & CAMERA"));
 		AddSliderRow(Card, BuildPreviewLightingControls(EPreviewControlLayout::Inline));
 		AddSliderRow(Card, BuildPreviewSceneControls());
-	}
-	{
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY"));
-		AddSliderRow(Card, BuildPreviewGeometryControls(EPreviewControlLayout::Inline));
-	}
-	{
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewCamera", "CAMERA"));
 		AddSliderRow(Card, BuildPreviewCameraControls());
+		AddGroupToggle(Card, LOCTEXT("PreviewLightGizmo", "Show Light Gizmo on RMB"),
+			LOCTEXT("PreviewLightGizmoHint", "Show the lighting direction gizmo while rotating lighting with RMB."),
+			bPreviewLightGizmoVisible);
 	}
 	{
-		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewOutput", "OUTPUT"));
-		AddSliderRow(Card, BuildPreviewOutputControls());
+		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewRender", "VIEWPORT QUALITY"));
+		AddSliderRow(Card, BuildPreviewRenderControls());
 	}
 
 	return SNew(SScrollBox)
@@ -836,24 +862,20 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("GlobalHeading", "GLOBAL"))
+				.Title(LOCTEXT("GlobalHeading", "FINAL COMPOSITE"))
 				.InitiallyExpanded(true)
 				[
-					SNew(STextBlock)
-					.Text_Lambda([this]()
-					{
-						return bHasWorkingMaterial
-							? LOCTEXT("GlobalEmpty", "No global variables yet.")
-							: LOCTEXT("GlobalNoMaterial", "Create or open a material to add global variables.");
-					})
-					.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(
-						Mixtormat::EMixtormatColorRole::Text).CopyWithNewOpacity(MixtormatTokens::EmptyStateOpacity)))
+					SNew(SBox)
+					.IsEnabled_Lambda([this]() { return bHasWorkingMaterial; })
+					[
+						DocumentSection
+					]
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("GlobalPreviewHeading", "PREVIEW / VIEWPORT"))
+				.Title(LOCTEXT("GlobalPreviewHeading", "VIEWPORT & LIGHTING"))
 				.InitiallyExpanded(true)
 				[PreviewSection]
 			]

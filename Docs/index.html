@@ -273,58 +273,233 @@ pre{
 .image-slot span{max-width:520px;padding:20px}
 
 
-.doc-shot{margin:16px 0 22px;background:#101112;border-radius:3px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.doc-shot{margin:16px 0 22px;background:#101112;border-radius:3px;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
 .doc-shot img{display:block;width:100%;height:auto;max-height:760px;object-fit:contain;background:#101112}
 .doc-shot.wide img{max-height:900px}
 .doc-shot.small img{max-height:520px}
+
+.topbar{justify-content:space-between;border-bottom:1px solid var(--divider)}
+.topbar-left{display:flex;align-items:center;gap:14px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.version-badge{
+  padding:2px 7px;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--accent-bright);
+  background:var(--selection);
+  border:1px solid rgba(108,168,191,.28);
+  border-radius:var(--radius);
+}
+.search-wrap{position:relative;display:flex;align-items:center}
+.search-input{
+  width:240px;
+  height:28px;
+  padding:0 54px 0 10px;
+  background:var(--well);
+  color:var(--text-bright);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  font:12px/1 Inter,Segoe UI,sans-serif;
+  outline:none;
+  transition:border-color .12s,width .15s;
+}
+.search-input:focus{border-color:var(--accent);width:290px}
+.search-kbd{
+  position:absolute;
+  right:7px;
+  padding:2px 5px;
+  font:10px/1 Consolas,monospace;
+  color:var(--text-caption);
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:2px;
+  pointer-events:none;
+}
+.nav-group{
+  margin:12px 0 4px;
+  padding:4px 8px 2px;
+  color:var(--text-caption);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.nav-group:first-child{margin-top:2px}
+.hero{
+  margin-bottom:36px;
+  padding:24px 26px;
+  background:linear-gradient(145deg,rgba(32,34,36,.95),rgba(17,18,19,.95));
+  border:1px solid var(--border);
+  border-radius:4px;
+}
+.hero-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:14px 0 18px;
+}
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:3px 8px;
+  font-size:11px;
+  font-weight:600;
+  color:var(--text-bright);
+  background:var(--well);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+}
+.badge.accent{
+  color:var(--accent-bright);
+  background:var(--selection);
+  border-color:rgba(77,143,168,.35);
+}
+.hero-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.btn{
+  display:inline-flex;
+  align-items:center;
+  height:32px;
+  padding:0 14px;
+  font-size:12px;
+  font-weight:600;
+  text-decoration:none;
+  border-radius:var(--radius);
+  border:1px solid var(--border-strong);
+  background:var(--panel-raised);
+  color:var(--text-bright);
+  transition:background .12s,border-color .12s;
+}
+.btn:hover{background:var(--panel-hover);border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent-bright);color:#fff}
+.btn.primary:hover{background:var(--accent-bright)}
+.grid-3{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.recipe-card{
+  padding:14px 16px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-top:2px solid var(--accent);
+  border-radius:var(--radius);
+}
+.recipe-card h3{margin:0 0 6px;font-size:13px;color:var(--text-bright)}
+.recipe-steps{margin:8px 0 0;padding-left:16px;color:var(--text)}
+.recipe-steps li{margin:4px 0;font-size:12px}
+.pub-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.pub-chip{
+  padding:2px 6px;
+  font:10px/1.3 Consolas,monospace;
+  color:var(--accent-bright);
+  background:#0c0d0e;
+  border:1px solid var(--border);
+  border-radius:2px;
+}
+.kbd-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+.kbd-table th,.kbd-table td{
+  text-align:left;
+  padding:8px 10px;
+  border-bottom:1px solid var(--divider);
+}
+.kbd-table th{
+  color:var(--text-caption);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  background:var(--well);
+}
+.kbd-table tr:hover td{background:rgba(255,255,255,.02)}
+.hidden-by-search{display:none !important}
+@media(max-width:760px){
+  .grid-3{grid-template-columns:1fr}
+  .search-input{width:150px}
+  .search-input:focus{width:180px}
+}
 </style>
 </head>
 <body>
 <header class="topbar">
+<div class="topbar-left">
 <div class="brand"><img alt="Mixtormat" class="brand-logo" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB3aWR0aD0iMjk3LjE0MjU1bW0iCiAgIGhlaWdodD0iNTguMDcyOTI2bW0iCiAgIHZpZXdCb3g9IjAgMCAyOTcuMTQyNTUgNTguMDcyOTI2IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxIgogICB4bWw6c3BhY2U9InByZXNlcnZlIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MSIKICAgICBwYWdlY29sb3I9IiM1MDUwNTAiCiAgICAgYm9yZGVyY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlY2hlY2tlcmJvYXJkPSIxIgogICAgIGlua3NjYXBlOmRlc2tjb2xvcj0iIzUwNTA1MCIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iPjxpbmtzY2FwZTpwYWdlCiAgICAgICB4PSIwIgogICAgICAgeT0iMCIKICAgICAgIHdpZHRoPSIyOTcuMTQyNTUiCiAgICAgICBoZWlnaHQ9IjU4LjA3MjkyNiIKICAgICAgIGlkPSJwYWdlMiIKICAgICAgIG1hcmdpbj0iMCIKICAgICAgIGJsZWVkPSIwIiAvPjwvc29kaXBvZGk6bmFtZWR2aWV3PjxkZWZzCiAgICAgaWQ9ImRlZnMxIiAvPjxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC04Ny4zNDIxOTUsLTEyNS42Nzk3KSI+PHBhdGgKICAgICAgIHN0eWxlPSJmaWxsOiNmOWY5ZjkiCiAgICAgICBkPSJtIDExMy40MDQwOCwxODMuNzUyNjMgYyAtOC42MTM3MywtNS4yNzY1OSAtMTcuMTY4MjQ2LC0xMC42NTAxMSAtMjUuODE4NzQ2LC0xNS44NjYzOSBsIDYuNTQxMzEsLTMuOTU0NjEgMTkuNzA4NTE2LDEyLjMwMjU2IDIwLjM1ODMyLC0xMi4yMjU1MSA2LjE1ODU4LDMuNzA5NDQgeiBtIC0yNS40Nzg3OTYsLTI4LjA4NTE4IDcuODY3NiwtNS4yODQ4MSAtOC40NTA2OSwtNS4yNDI5OSAwLjE0LC0xNS42Mjc3IDYuMDgwNTYsLTMuODMyMjUgMjAuNDg1MTg2LDEyLjkyODk4IDIwLjU0NjkyLC0xMi45MjE0MiA2LjA2ODU3LDMuODI0NjkgMC4xNCwxNS42NDc5OCAtOC41MzM1OSw1LjQ1MTE1IGMgMi42MTE4OSwxLjc2MzAzIDUuMzQ1NjUsMy4zNTY5NSA4LjAyOTMyLDUuMDExOCAtOC43NDg4NSw1LjM3MTE0IC0xNy41MzAxOSwxMC42OTMwMSAtMjYuMjk5MzcsMTYuMDMyMDIgeiBtIDQzLjQ3NzcyNiwtNi4xMTY1NiAwLjE0MzQsLTEwLjQxMzA0IGggLTAuMjY3MjEgbCAtMTcuMTYyMjgsMTEuMTAwNDkgLTE3LjI3MTEzNiwtMTEuMTAwNDkgLTAuMjM1NTUsMTAuMjc5MjEgMTcuMzMwMjA2LDExLjA2NzkgYyA1LjkyMjUyLC0zLjQ1ODI0IDExLjY2Mjk0LC03LjI2NDUzIDE3LjQ2MjU3LC0xMC45MzQwNyB6IgogICAgICAgaWQ9InBhdGgxIgogICAgICAgc29kaXBvZGk6bm9kZXR5cGVzPSJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIgogICAgICAgaW5rc2NhcGU6ZXhwb3J0LWZpbGVuYW1lPSJNaXh0b3JNYXRfSWNvbi5zdmciCiAgICAgICBpbmtzY2FwZTpleHBvcnQteGRwaT0iOTYiCiAgICAgICBpbmtzY2FwZTpleHBvcnQteWRwaT0iOTYiIC8+PHBhdGgKICAgICAgIGQ9Im0gMTU0LjAzMjcxLDE1My43NjkyNCB2IC0xNC44MTY2NyBoIDMuNjczMDQgMy42NzMwMyBsIDMuOTY4MDksNi42ODA3MyBjIDIuMTgyNDUsMy42NzQ0IDQuMjkxMzcsNy4yNDYyOCA0LjY4NjQ4LDcuOTM3NSAwLjM5NTExLDAuNjkxMjMgMC43OTYzNywxLjI1NTczIDAuODkxNjksMS4yNTQ0NiAwLjA5NTMsLTEwZS00IDIuMzE1NDQsLTMuNTczMTUgNC45MzM2MSwtNy45Mzc1IGwgNC43NjAzMywtNy45MzUxOSBoIDMuNjQwMiAzLjY0MDE5IHYgMTQuODE2NjcgMTQuODE2NjcgaCAtMy4zMDM4MiAtMy4zMDM4MSBsIC0wLjA2OTYsLTkuMDYxOTggLTAuMDY5NiwtOS4wNjE5OCAtMS4yMDY4NywxLjg1MjA4IGMgLTAuNjYzNzgsMS4wMTg2NSAtMi42ODA4MSw0LjIwMzU3IC00LjQ4MjI5LDcuMDc3NjEgbCAtMy4yNzU0MSw1LjIyNTUyIGggLTEuMjY5MDkgLTEuMjY5MDggbCAtMC42MTEzNSwtMC45OTIxOSBjIC0wLjMzNjI1LC0wLjU0NTcgLTIuMzMyMDQsLTMuNzgwNDMgLTQuNDM1MDksLTcuMTg4MjkgbCAtMy44MjM3NCwtNi4xOTYxIC0wLjA2OTYsOS4xNzI2NiAtMC4wNjk2LDkuMTcyNjcgaCAtMy4zMDM4NiAtMy4zMDM4NiB6IG0gMzguODkzNzUsMy44NjMzMSBWIDE0Ni42NzkyIGwgMS43ODU5MywtMC4xNTg4OCAxLjc4NTk0LC0wLjE1ODg4IDEuNDU1MjEsMC4xOTgxNyAxLjQ1NTIxLDAuMTk4MTcgMC4wNjkxLDEwLjkxNDA3IDAuMDY5MSwxMC45MTQwNiBoIC0zLjMxMDIzIC0zLjMxMDIyIHogbSAxMC4zMTg3NSwxMC44MDQzNSBjIDAsLTAuMTIwNTQgNS4xODAwNiwtNi40MTczMiA4LjI4MzAxLC0xMC4wNjg2NSBsIDAuNzAxMDUsLTAuODI0OTYgLTQuNDkyMDMsLTUuNDQ3MDUgYyAtMi40NzA2MiwtMi45OTU4OCAtNC40OTIwNSwtNS40ODIxNiAtNC40OTIwNywtNS41MjUwNSAtMmUtNSwtMC4wNDI5IDEuNjM3MDksLTAuMDU3NiAzLjYzODAyLC0wLjAzMjYgbCAzLjYzODA2LDAuMDQ1NCAyLjU5NDQ2LDMuMTI5NTggYyAxLjQyNjk1LDEuNzIxMjggMi42ODc2NiwzLjIyMzQ5IDIuODAxNTgsMy4zMzgyNSBsIDAuMjA3MTEsMC4yMDg2NiAyLjY3MDc1LC0zLjI3OTExIDIuNjcwNzQsLTMuMjc5MTIgMS4yNDUzNCwtMC4xNzA2OSBjIDEuNTY3NTQsLTAuMjE0ODYgMy45MTM3NiwtMC4xOTU0OSA1LjIwOTQ0LDAuMDQzIGwgMC45OTUyNSwwLjE4MzE5IC00LjM2ODY5LDUuMjc3ODIgYyAtMi40MDI3OCwyLjkwMjc5IC00LjM2ODY5LDUuMzcwODcgLTQuMzY4NjksNS40ODQ2MSAwLDAuMTc3OTIgNy4wMjM3NSw4Ljc3ODQ4IDguNTUwNzgsMTAuNDcwMzkgbCAwLjUzNzI5LDAuNTk1MzEgaCAtMy43MzE5OSAtMy43MzE5OSBsIC0yLjg2MjU3LC0zLjQ1MjQ2IC0yLjg2MjU2LC0zLjQ1MjQ2IC0wLjY2MTQ2LDAuNzY1ODcgYyAtMS4yMTQ0LDEuNDA2MTEgLTMuODY2NjUsNC42NzUwMiAtNC4zODM4NSw1LjQwMzEzIGwgLTAuNTEwOTQsMC43MTkyOSAtMy42MzgwMiwwLjAwOCBjIC0yLjAwMDkxLDAuMDA1IC0zLjYzODAyLC0wLjA1ODcgLTMuNjM4MDIsLTAuMTQwNjkgeiBtIDMzLjMzOTM4LC0wLjI3MjQ3IGMgLTEuMjAyMDgsLTAuNTIxMjkgLTIuMDQ5NTEsLTEuMzI3ODUgLTIuNjczNDcsLTIuNTQ0NTQgbCAtMC41MDM0MSwtMC45ODE2NSB2IC0xMi4wNDkwOCAtMTIuMDQ5MDkgaCAzLjA0MjcgMy4wNDI3MSB2IDIuOTEwNDIgMi45MTA0MiBsIDAuNDYzMDIsMC4wNDQ0IGMgMC4yNTQ2NiwwLjAyNDQgMi4xODk0MywwLjA1OTMgNC4yOTk0OCwwLjA3NzQgbCAzLjgzNjQ2LDAuMDMzMSB2IDIuNjM0NTMgMi42MzQ1MyBsIC00LjI5OTQ4LDAuMDcyNyAtNC4yOTk0OCwwLjA3MjcgdiA0Ljk5MTIxIDQuOTkxMjIgbCAwLjQ5OTU2LDAuNjE2OTQgMC40OTk1NywwLjYxNjkzIDMuOTMyMjEsMC4wMDggMy45MzIyLDAuMDA4IDAuMDc1NCwyLjcxMTk4IDAuMDc1NCwyLjcxMTk4IC01LjQ5OTM2LC0wLjAxMDQgLTUuNDk5MzYsLTAuMDEwMyB6IG0gMTkuNDQyNzIsLTAuMDcyIC0xLjA2MDYsLTAuNDgxODMgLTAuODM1NTYsLTAuOTUxNjUgLTAuODM1NTcsLTAuOTUxNjUgLTAuMzExMzksLTEuNDk5OTUgLTAuMzExMzgsLTEuNDk5OTYgMC4xMDc2MywtNS45OTA0NSAwLjEwNzYzLC01Ljk5MDQ1IDAuMzMwODIsLTAuNzkzNzUgYyAwLjQ0NzI1LC0xLjA3MzEzIDEuNTMyMDMsLTIuMTc5MTIgMi44MTA2OSwtMi44NjU2NSBsIDEuMDU4MzMsLTAuNTY4MjQgNi45MjcxOSwtMC4wOTE1IDYuOTI3MTksLTAuMDkxNSAxLjQyMzE3LDAuMjk1NDUgMS40MjMxOCwwLjI5NTQ1IDEuMDEwMzcsMC44MzI4MyAxLjAxMDM3LDAuODMyODMgMC40ODkxOCwxLjA3NzA1IDAuNDg5MTksMS4wNzcwNSB2IDYuODc5MTcgNi44NzkxNyBsIC0wLjQ4ODQ1LDEuMDU4MzMgYyAtMC41OTExNSwxLjI4MDg0IC0xLjQyODc2LDIuMDg2OTMgLTIuNzM2MTksMi42MzMyMSBsIC0wLjk4MDA4LDAuNDA5NSAtNy43NDc1NiwtMC4wMDYgLTcuNzQ3NTYsLTAuMDA2IHogbSAxNC4yNzQ3NywtNS42NTA4NSAwLjQxMTg3LC0wLjU4ODA0IHYgLTQuMTkxODUgLTQuMTkxODYgbCAtMC4zMDQxOSwtMC41Nzc4OCBjIC0wLjE2NzMsLTAuMzE3ODUgLTAuNDM1MTksLTAuNjY1MzkgLTAuNTk1MzEsLTAuNzcyMyBsIC0wLjI5MTEyLC0wLjE5NDM5IC00LjY5NjM1LC0wLjAwNCAtNC42OTYzNiwtMC4wMDQgLTAuNTI5MTcsMC41MjkxNiAtMC41MjkxNiwwLjUyOTE3IHYgNC41NDMyMyA0LjU0MzIzIGwgMC40Mzc4OCwwLjQ4Mzg1IDAuNDM3ODgsMC40ODM4NiBoIDQuOTcxMDggNC45NzEwNyB6IG0gMTAuOTk1MjEsLTMuNTM5MTYgdiAtOS42ODM0NSBsIDAuNDAxMTUsLTAuODQ1MzcgMC40MDExNSwtMC44NDUzNiAwLjg1NTYyLC0wLjUxNzU0IDAuODU1NjIsLTAuNTE3NTQgaCA2LjQ4MjI5IDYuNDgyMjkgbCAwLjA3NTQsMi43MTE5OCAwLjA3NTQsMi43MTE5OCBoIC00LjA2NDE4IC00LjA2NDE4IGwgLTAuNTc1MjksMC42MTIzNiAtMC41NzUyOCwwLjYxMjM3IHYgNy43MjIwMSA3LjcyMjAxIGggLTMuMTc1IC0zLjE3NSB6IG0gMjIuMjI1LC01LjEzMzIyIHYgLTE0LjgxNjY3IGggMy42NjE0OSAzLjY2MTQ5IGwgMS4xNDkzMiwxLjc4NTk0IGMgMS41MjUzMywyLjM3MDIzIDYuNDE0MjcsMTAuMzIxNTkgNy43MjczMiwxMi41Njc3MSAwLjU3NDIyLDAuOTgyMjcgMS4xNDIwMiwxLjc4NTk0IDEuMjYxNzcsMS43ODU5NCAwLjIxMjQ0LDAgMi4xOTI4MSwtMy4wODc1OCA2LjYxODQzLC0xMC4zMTg3NSAxLjIwMjM0LC0xLjk2NDUzIDIuNTMyNzQsLTQuMDc3ODkgMi45NTY0NiwtNC42OTYzNiBsIDAuNzcwMzksLTEuMTI0NDggaCAzLjQyNjg3IDMuNDI2ODcgdiAxNC44MTY2NyAxNC44MTY2NyBoIC0zLjAxOTQ1IC0zLjAxOTQ1IGwgLTAuMTM5ODgsLTAuOTkyMTkgYyAtMC4wNzY5LC0wLjU0NTcgLTAuMTM0OTksLTQuNjAxNzQgLTAuMTI5MDMsLTkuMDEzNDEgMC4wMSwtNy4xMTA2IC0wLjA2MzksLTguNjM3MzkgLTAuMzk2NDQsLTguMjI4NiAtMC4yNTA0MSwwLjMwNzg3IC02LjM0NDU2LDkuNjgwNzUgLTcuNTk0NTksMTEuNjgwNTggbCAtMS40NDM4NywyLjMwOTkyIC0xLjM5MDQzLDAuMDA1IC0xLjM5MDQzLDAuMDA1IC0yLjcyNDU1LC00LjE2NzE5IGMgLTEuNDk4NTEsLTIuMjkxOTYgLTMuNTUxNzIsLTUuNDQxNCAtNC41NjI3LC02Ljk5ODc2IGwgLTEuODM4MTMsLTIuODMxNTcgLTAuMzMwNzMsLTAuMDEyNyAtMC4zMzA3MywtMC4wMTI3IHYgOS4xMjgxMiA5LjEyODEzIGggLTMuMTc1IC0zLjE3NSB6IG0gNDIuNzYzMjEsMTQuNDI3OTcgLTEuMDI1MzIsLTAuMzY1NDggLTAuODk1NDksLTAuODY3OTQgLTAuODk1NDksLTAuODY3OTUgLTAuMjYwNTMsLTAuOTM3NzggLTAuMjYwNTIsLTAuOTM3NzggLTEwZS00LC0yLjU4ODE4IC0wLjAwMSwtMi41ODgxOSAwLjM1NzQ3LC0wLjg1NTUzIDAuMzU3NDYsLTAuODU1NTMgMC45NDQ1OSwtMC44MjkzNiAwLjk0NDYsLTAuODI5MzcgMS4zNTY4LC0wLjI5MDk4IDEuMzU2OCwtMC4yOTA5OCBoIDUuNTQzMjIgNS41NDMyMyB2IC0xLjMwNzkyIC0xLjMwNzkxIGwgLTAuNTg4MDQsLTAuNDExODggLTAuNTg4MDQsLTAuNDExODggaCAtNi40MjM0MiAtNi40MjM0MiB2IC0yLjUzMDc3IC0yLjUzMDc3IGwgOC4xMzU5NCwwLjA4MzQgOC4xMzU5NCwwLjA4MzQgMC43OTkyNSwwLjQzODQ2IGMgMS4xNDI1NiwwLjYyNjc5IDIuMjU3MjMsMS44MDAwMSAyLjY5NTE1LDIuODM2NzMgbCAwLjM3NzYxLDAuODkzOTUgMC4wODY2LDguMTAxODkgYyAwLjA0NzcsNC40NTYwNCAwLjAyNDgsOC40MjkzMSAtMC4wNTA4LDguODI5NDkgbCAtMC4xMzc1LDAuNzI3NjEgLTkuMDI4OTEsLTAuMDExNiAtOS4wMjg5LC0wLjAxMTYgeiBtIDEyLjkxNDg4LC00LjY3MjMzIGMgMC4wNTA1LC0wLjA1NDEgMC4xMzQ0MiwtMC45MzE3OCAwLjE4NjUzLC0xLjk1MDQzIGwgMC4wOTQ3LC0xLjg1MjA4IC00LjY1MzEzLC0wLjA3MjEgLTQuNjUzMTQsLTAuMDcyMSAtMC43MDQ2OCwwLjU1NDMgLTAuNzA0NjcsMC41NTQzIHYgMS4wMTk5MiAxLjAxOTkzIGwgMC42MjkyOCwwLjQ5NDk5IDAuNjI5MjgsMC40OTQ5OSA0LjU0MTk5LC0wLjA0NjcgYyAyLjQ5ODEsLTAuMDI1NyA0LjU4MzMsLTAuMDkxIDQuNjMzNzksLTAuMTQ1MDYgeiBtIDE0Ljk2NTY2LDQuNzUwMTYgYyAtMC41MDkzMywtMC4xNDQ3MyAtMS4zMDA4MSwtMC41NDc0OCAtMS43NTg4NiwtMC44OTQ5OSBsIC0wLjgzMjgxLC0wLjYzMTg0IC0wLjU1NjI1LC0xLjE0OTA2IC0wLjU1NjI1LC0xLjE0OTA2IHYgLTExLjgyMjcyIC0xMS44MjI3MSBoIDMuMDQyNzEgMy4wNDI3MSB2IDIuOTEwNDEgMi45MTA0MiBoIDMuOTY4NzUgMy45Njg3NCB2IDIuNTEzNTQgMi41MTM1NCBoIC0zLjk2ODc0IC0zLjk2ODc1IHYgNS4yOTE2NyA1LjI5MTY3IGwgMC41MjkxNiwwLjUyOTE3IDAuNTI5MTcsMC41MjkxNiBoIDMuNDM5NTggMy40Mzk1OCB2IDIuNjQ1ODQgMi42NDU4MyBsIC00LjY5NjM1LC0wLjAyMzkgLTQuNjk2MzUsLTAuMDIzOSB6IE0gMTkzLjA0MTc4LDE0My42MzM5OCBjIC0wLjA3NjUsLTAuMTk5NCAtMC4xMDQsLTEuMzA0NTMgLTAuMDYxMSwtMi40NTU4MyBsIDAuMDc4MSwtMi4wOTMyOCAzLjA4NjkxLC0wLjA3NDQgMy4wODY5MiwtMC4wNzQzIDAuMTc4MDgsMS42NjI5MiBjIDAuMDk3OSwwLjkxNDYxIDAuMTM3NTksMi4wMTk2MyAwLjA4ODEsMi40NTU2IGwgLTAuMDksMC43OTI2OSAtMy4xMTM5MiwwLjA3NDYgLTMuMTEzOTIsMC4wNzQ2IHoiCiAgICAgICBzdHlsZT0iZmlsbDojZjlmOWY5IgogICAgICAgaWQ9InBhdGgxLTQiIC8+PC9nPjwvc3ZnPgo="/><img alt="" class="brand-icon" src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB3aWR0aD0iNTMuNDYxMjM5bW0iCiAgIGhlaWdodD0iNTguMDcyOTI2bW0iCiAgIHZpZXdCb3g9IjAgMCA1My40NjEyMzkgNTguMDcyOTI2IgogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmcxIgogICB4bWw6c3BhY2U9InByZXNlcnZlIgogICB4bWxuczppbmtzY2FwZT0iaHR0cDovL3d3dy5pbmtzY2FwZS5vcmcvbmFtZXNwYWNlcy9pbmtzY2FwZSIKICAgeG1sbnM6c29kaXBvZGk9Imh0dHA6Ly9zb2RpcG9kaS5zb3VyY2Vmb3JnZS5uZXQvRFREL3NvZGlwb2RpLTAuZHRkIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxzb2RpcG9kaTpuYW1lZHZpZXcKICAgICBpZD0ibmFtZWR2aWV3MSIKICAgICBwYWdlY29sb3I9IiM1MDUwNTAiCiAgICAgYm9yZGVyY29sb3I9IiNmZmZmZmYiCiAgICAgYm9yZGVyb3BhY2l0eT0iMSIKICAgICBpbmtzY2FwZTpzaG93cGFnZXNoYWRvdz0iMCIKICAgICBpbmtzY2FwZTpwYWdlb3BhY2l0eT0iMCIKICAgICBpbmtzY2FwZTpwYWdlY2hlY2tlcmJvYXJkPSIxIgogICAgIGlua3NjYXBlOmRlc2tjb2xvcj0iIzUwNTA1MCIKICAgICBpbmtzY2FwZTpkb2N1bWVudC11bml0cz0ibW0iPjxpbmtzY2FwZTpwYWdlCiAgICAgICB4PSIwIgogICAgICAgeT0iMCIKICAgICAgIHdpZHRoPSI1My40NjEyMzkiCiAgICAgICBoZWlnaHQ9IjU4LjA3MjkyNiIKICAgICAgIGlkPSJwYWdlMiIKICAgICAgIG1hcmdpbj0iMCIKICAgICAgIGJsZWVkPSIwIiAvPjwvc29kaXBvZGk6bmFtZWR2aWV3PjxkZWZzCiAgICAgaWQ9ImRlZnMxIiAvPjxnCiAgICAgaW5rc2NhcGU6bGFiZWw9IkxheWVyIDEiCiAgICAgaW5rc2NhcGU6Z3JvdXBtb2RlPSJsYXllciIKICAgICBpZD0ibGF5ZXIxIgogICAgIHRyYW5zZm9ybT0idHJhbnNsYXRlKC04Ny4zNDIxOTUsLTEyNS42Nzk3KSI+PHBhdGgKICAgICAgIHN0eWxlPSJmaWxsOiNmOWY5ZjkiCiAgICAgICBkPSJtIDExMy40MDQwOCwxODMuNzUyNjMgYyAtOC42MTM3MywtNS4yNzY1OSAtMTcuMTY4MjQ2LC0xMC42NTAxMSAtMjUuODE4NzQ2LC0xNS44NjYzOSBsIDYuNTQxMzEsLTMuOTU0NjEgMTkuNzA4NTE2LDEyLjMwMjU2IDIwLjM1ODMyLC0xMi4yMjU1MSA2LjE1ODU4LDMuNzA5NDQgeiBtIC0yNS40Nzg3OTYsLTI4LjA4NTE4IDcuODY3NiwtNS4yODQ4MSAtOC40NTA2OSwtNS4yNDI5OSAwLjE0LC0xNS42Mjc3IDYuMDgwNTYsLTMuODMyMjUgMjAuNDg1MTg2LDEyLjkyODk4IDIwLjU0NjkyLC0xMi45MjE0MiA2LjA2ODU3LDMuODI0NjkgMC4xNCwxNS42NDc5OCAtOC41MzM1OSw1LjQ1MTE1IGMgMi42MTE4OSwxLjc2MzAzIDUuMzQ1NjUsMy4zNTY5NSA4LjAyOTMyLDUuMDExOCAtOC43NDg4NSw1LjM3MTE0IC0xNy41MzAxOSwxMC42OTMwMSAtMjYuMjk5MzcsMTYuMDMyMDIgeiBtIDQzLjQ3NzcyNiwtNi4xMTY1NiAwLjE0MzQsLTEwLjQxMzA0IGggLTAuMjY3MjEgbCAtMTcuMTYyMjgsMTEuMTAwNDkgLTE3LjI3MTEzNiwtMTEuMTAwNDkgLTAuMjM1NTUsMTAuMjc5MjEgMTcuMzMwMjA2LDExLjA2NzkgYyA1LjkyMjUyLC0zLjQ1ODI0IDExLjY2Mjk0LC03LjI2NDUzIDE3LjQ2MjU3LC0xMC45MzQwNyB6IgogICAgICAgaWQ9InBhdGgxIgogICAgICAgc29kaXBvZGk6bm9kZXR5cGVzPSJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiAvPjwvZz48L3N2Zz4K"/></div>
 <div class="topbar-title">Documentation</div>
+<span class="version-badge">v1.0 · UE 5.8</span>
+</div>
+<div class="topbar-right">
+<div class="search-wrap">
+<input aria-label="Search documentation" class="search-input" id="docSearch" placeholder="Filter sections &amp; hotkeys..." type="search"/>
+<span class="search-kbd">Ctrl+K</span>
+</div>
+</div>
 </header>
 <div class="layout">
 <aside class="sidebar">
-<div class="sidebar-label">Contents</div>
 <nav aria-label="Documentation sections" class="nav">
+<div class="nav-group">Start Here</div>
 <a class="active" href="#overview">Overview</a>
+<a href="#recipes">5-Minute Recipes</a>
 <a href="#requirements">Requirements &amp; Install</a>
 <a href="#quick-start">Quick Start</a>
-<a href="#workspace">Workspace</a>
+<a href="#faq">Why Mixtormat &amp; FAQ</a>
+<div class="nav-group">Workspace &amp; Viewport</div>
+<a href="#workspace">Workspace &amp; Layout</a>
+<a href="#preview">Preview &amp; PostFX</a>
+<a href="#shortcuts">Shortcuts &amp; Cheat Sheet</a>
+<div class="nav-group">Surfaces &amp; Stack</div>
 <a href="#library">Material Library</a>
 <a href="#importing">Importing Surfaces</a>
 <a href="#layer-stack">Layer Stack</a>
-<a href="#layer-types">Layer Types</a>
+<a href="#layer-types">Layer Types &amp; Pass Through</a>
 <a href="#layer-groups">Layer Groups</a>
+<a href="#sources-shelf">Sources Shelf</a>
 <a href="#composition">Composition &amp; Channels</a>
 <a href="#height">Height System</a>
-<a href="#masks">Masks</a>
+<div class="nav-group">Procedural &amp; Generators</div>
+<a href="#generators">Generators &amp; Native Flow</a>
+<a href="#boolean-stack">Boolean Stack &amp; Scatter Carve</a>
+<a href="#behaviors">Behaviors (Sculpt / Warp / Push)</a>
+<a href="#masks">Masks &amp; Shaping</a>
 <a href="#generated-masks">Generated Masks</a>
-<a href="#generators">Generators</a>
 <a href="#ids">Region &amp; ID Tools</a>
-<a href="#effects">Effects</a>
+<div class="nav-group">Weathering &amp; Effects</div>
+<a href="#effects">Effects Overview</a>
 <a href="#peeling">Procedural Peeling</a>
-<a href="#erosion">Erosion</a>
+<a href="#erosion">Erosion &amp; Runoff</a>
 <a href="#stain">Stain</a>
 <a href="#breakup">Breakup &amp; Worn Edges</a>
-<a href="#grade">Grade</a>
+<a href="#grade">Grade &amp; Layer Blur</a>
 <a href="#craquelure">Craquelure</a>
-<a href="#parameters">Parameters</a>
+<div class="nav-group">Finishing &amp; Production</div>
+<a href="#parameters">Parameters &amp; Ramps</a>
 <a href="#references">References &amp; Drivers</a>
-<a href="#instances">Instances &amp; Reuse</a>
-<a href="#preview">Preview</a>
-<a href="#baking">Baking</a>
-<a href="#shortcuts">Shortcuts &amp; Gestures</a>
+<a href="#instances">Instances &amp; Output Copy</a>
+<a href="#baking">Baking to Unreal</a>
 <a href="#troubleshooting">Troubleshooting</a>
 </nav>
 </aside>
 <main class="content">
 <article class="article">
 <div class="hero">
-<div class="eyebrow">Mixtormat / Artist Documentation</div>
-<h1>Layer, mix, weather, and finish materials inside Unreal.</h1>
-<p class="lead">Mixtormat is a GPU-driven material compositor built around an artist-friendly layer stack. It combines complete PBR surfaces, masks, height-aware blending, procedural effects, region IDs, parameter links, and a live Unreal preview while keeping the material editable as a recipe until you bake it.</p>
+<div class="eyebrow">Mixtormat 1.0 · GPU Material Compositor &amp; Procedural Studio for Unreal Engine</div>
+<h1>Author, sculpt, weather, and bake production materials inside Unreal.</h1>
+<p class="lead">Mixtormat combines real-time RDG GPU compositing, height-aware PBR mixing, procedural rock/cliff/crack generators, intrinsic flow fields, Boolean relief stacks, and physical weathering effects in one dockable Unreal workspace — then bakes clean textures and Material Instances with zero runtime game overhead.</p>
+<div class="hero-badges">
+<span class="badge accent">Real-Time RDG Compute</span>
+<span class="badge">65 Shipped Surfaces &amp; 47 Masks</span>
+<span class="badge">6 Procedural Generators + Sources Shelf</span>
+<span class="badge">Boolean Stack &amp; Scatter Carve</span>
+<span class="badge">Native Flow &amp; Behaviors</span>
+<span class="badge">Zero Packaged-Game Overhead</span>
+</div>
+<div class="hero-actions">
+<a class="btn primary" href="#quick-start">5-Minute Quick Start</a>
+<a class="btn" href="#recipes">Explore Hero Recipes</a>
+<a class="btn" href="#shortcuts">Hotkey Cheat Sheet</a>
+<a class="btn" href="#baking">Production Baking</a>
+</div>
 </div>
 <section id="overview">
 <div class="section-head"><h2>Overview</h2></div>
@@ -343,11 +518,56 @@ pre{
         </div>
 <div class="grid">
 <div class="mini"><strong>Ships in Mixtormat 1.0</strong>65 source surfaces across 18 families, 47 reusable masks, and a worked example recipe — all evaluated on the GPU while you edit.</div>
-<div class="mini"><strong>Nine effects</strong>Peeling, Stain, Erosion, Grade, Breakup, Worn Edges, Flow Warp, Layer Blur, and Runoff, plus Craquelure as its own mask child.</div>
-<div class="mini"><strong>Complete ID toolchain</strong>Pattern IDs lays out regions; the From-IDs filters — Random, Ramp, HSV, Color ID, UV From IDs, Relief From IDs — turn them into per-region variation and drive parameter drivers.</div>
-<div class="mini"><strong>Generators &amp; groups</strong>A Generator layer holds an ordered chain of generator modules (Strata, Cracks, Rock Formation, Pebbles), each with its own blend into the layer height; layer groups broadcast one shared child stack across members.</div>
-<div class="mini"><strong>Rock Formation</strong>Shape fractured rocks with normalized tilt, spin, stretch, jagged edges, rim chips and facet chips. Choose Raw, Analytic or Measured height. Copy normalized Height, Slope and Gap gates alongside the existing Top, Chamfer, Wall, ramps and signed boundary distance. Height and Slope gates are independent of Height Mode and Height Scale. Module IDs and masks publish after the module's flow.</div>
-<div class="mini"><strong>Typed output references</strong>Copy IDs, Flow or UVs from published outputs into later layers without reducing them to scalar masks. Scalar outputs remain Copy Gate masks; typed references must follow their source layer.</div>
+<div class="mini"><strong>Nine physical &amp; grading effects</strong>Peeling, Stain, Erosion, Grade, Breakup, Worn Edges, Flow Warp, Layer Blur, and Runoff, plus Craquelure as its own fracture mask/relief child.</div>
+<div class="mini"><strong>Complete ID toolchain</strong>Pattern IDs, Color ID, and generator IDs lay out regions; the From-IDs filters — Random, Ramp, HSV, UV From IDs, Relief From IDs — turn them into per-piece variation.</div>
+<div class="mini"><strong>Generators, Sources Shelf &amp; Groups</strong>Build surfaces from Rock Formation, Cliff Strata, Pebbles, Cracks, and Noise V2, publish reusable fields from the non-compositing Sources Shelf, and broadcast shared children via Layer Groups.</div>
+<div class="mini"><strong>Boolean Stack &amp; Scatter Carve</strong>Combine Target and Source relief operands with Boolean, Round, and Bevel joins, or cut periodic 3D ellipsoid/prism volumes using Scatter Carve.</div>
+<div class="mini"><strong>Native Flow, Behaviors &amp; Typed Outputs</strong>Generators automatically derive downhill/boundary Flow; Sculpt, Deform, Structural Warp, and Height Push reshape height and bundles before downstream masks and IDs consume them.</div>
+</div>
+</section>
+<section id="recipes">
+<div class="section-head"><h2>5-Minute Hero Recipes</h2></div>
+<p>New to Mixtormat? Try any of these three production recipes to experience how layers, procedural generators, flow behaviors, and weathering effects work together.</p>
+<div class="grid-3">
+<div class="recipe-card">
+<h3>1. Weathered Painted Concrete</h3>
+<p>Layered material damage with physical peeling, cracks, and moisture streaks.</p>
+<ol class="recipe-steps">
+<li>Drag a <strong>Concrete</strong> surface from the bottom gallery into Layers.</li>
+<li>Add a <strong>Fill Layer</strong> (or painted surface) above it and set Height Op to <strong>Height Blend</strong>.</li>
+<li>Right-click the paint layer → <strong>Create → Masks → Craquelure</strong> (Propagated mode) to fracture the coating.</li>
+<li>Add <strong>Procedural Peeling</strong> to lift paint flakes near the cracks, then add <strong>Runoff</strong> for gravity streaks.</li>
+</ol>
+</div>
+<div class="recipe-card">
+<h3>2. Procedural Cliff &amp; Talus Pebbles</h3>
+<p>100% procedural rock face carved by flow and settled rubble.</p>
+<ol class="recipe-steps">
+<li>Create a <strong>Generator Layer → Cliff Strata</strong> to establish stepped geological rock beds.</li>
+<li>Right-click Cliff Strata → add <strong>Flow Carve</strong> (Sculpt) to cut downhill erosion channels and deposits.</li>
+<li>Add a <strong>Pebbles</strong> generator module set to <strong>Max</strong> blend, gated by a <strong>Generated Mask</strong> favoring cavities/flat slopes.</li>
+<li>Copy <code>PebbleCoverage</code> or <code>Rock Wall</code> outputs to drive color and roughness grading.</li>
+</ol>
+</div>
+<div class="recipe-card">
+<h3>3. Brick &amp; Mortar with Per-Piece Variation</h3>
+<p>Structured architectural tiling that never looks uniform or computer-generated.</p>
+<ol class="recipe-steps">
+<li>Start with a <strong>Mortar / Plaster</strong> base layer, then add a <strong>Brick / Stone</strong> layer above it.</li>
+<li>On the brick layer, add <strong>Pattern IDs</strong> to define tileable brick regions and mortar gaps.</li>
+<li>Add <strong>HSV From IDs</strong> and <strong>Relief From IDs</strong> (Tilt/Inset) so every brick has unique color and angle.</li>
+<li>Add <strong>Worn Edges</strong> + <strong>Breakup</strong> to chip exposed brick corners.</li>
+</ol>
+</div>
+</div>
+</section>
+<section id="faq">
+<div class="section-head"><h2>Why Mixtormat &amp; FAQ</h2></div>
+<div class="grid">
+<div class="mini"><strong>Does Mixtormat add runtime overhead to my packaged game?</strong>No. Mixtormat is an editor authoring &amp; GPU baking studio. When you click <strong>Bake</strong>, it writes standard Unreal textures (<code>_BC</code>, <code>_N</code>, <code>_RAM</code>, <code>_H</code>) and a clean Material Instance. Your packaged game runs with zero compute overhead.</div>
+<div class="mini"><strong>Can I reopen and edit a material after baking?</strong>Yes. Your <code>UMixtormatMaterial</code> asset stores the complete non-destructive recipe (layers, groups, generators, seeds, ramps, and links). Reopen it anytime, tweak a slider, and re-bake in place.</div>
+<div class="mini"><strong>Where are my imported textures and bakes saved?</strong>All user imports, saved recipes, and baked textures live in your project under <code>/Game/Mixtormat/...</code> — never inside the engine plugin folder — so your work is safe across plugin updates and Git/Perforce commits.</div>
+<div class="mini"><strong>How fast is the viewport while editing?</strong>Mixtormat runs on Unreal's RDG compute pipeline with automatic layer-prefix and generator-node caching. Only the changed layer and downstream dependents recompute when you scrub a slider.</div>
 </div>
 </section>
 <section id="requirements">
@@ -458,23 +678,23 @@ pre{
 <figure class="doc-shot wide"><img alt="" loading="lazy" src="docs-assets/06-layer-stack.png"/></figure>
 </section>
 <section id="layer-types">
-<div class="section-head"><h2>Layer Types</h2></div>
+<div class="section-head"><h2>Layer Types &amp; Fill Pass Through</h2></div>
 <div class="card">
 <h3>Material Layer</h3>
 <p>A complete source surface from the Library. This is the usual choice when combining real PBR materials such as stone + paint, metal + rust, plaster + brick, or clean + damaged variants.</p>
 </div>
 <div class="card">
-<h3>Fill Layer</h3>
-<p>An artist-authored layer for simple material values. Fill layers can override properties such as Base Color, Roughness, Metallic, and IOR without requiring a full source texture set.</p>
+<h3>Fill Layer &amp; Pass Through Mode</h3>
+<p>An artist-authored layer for constant material values (Base Color, Roughness, Metallic, IOR) without requiring a source texture set. Fill layers also preserve accumulated <strong>Region IDs</strong> from the composite below unless new IDs are explicitly authored.</p>
+<p><strong>Pass Through mode (<code>PASS</code> badge):</strong> Toggle between <strong>Fill</strong> and <strong>Pass Through</strong> at the top of the Fill Properties inspector. Pass Through snapshots the composite below (Base Color, Normal, RAM, F0, Height) as an untiled source ahead of masks and effects, bypassing constant channel overrides while letting you apply localized <strong>Grade</strong>, <strong>Erosion</strong>, <strong>Peeling</strong>, <strong>Worn Edges</strong>, or <strong>Layer Blur</strong> across the entire composite built so far. Toggling modes never erases your authored Fill values.</p>
 </div>
 <div class="card">
 <h3>Generator Layer</h3>
-<p>Right-click the layer column and choose <strong>Generator Layer → Strata / Cracks / Rock Formation / Pebbles</strong>. The new layer starts with that module as its first child; add more from the layer's <strong>Add → Generators</strong> menu. Material layers do not offer generators. A Generator layer has Fill-style constant Base Color, Roughness, IOR and Metallic controls and its source label reads <strong>GEN</strong>; the Height Op badge and <strong>H</strong> indicator keep their existing meaning. AO remains derived from the final height, as on Fill layers.</p>
-<p><strong>Generator Drives Coverage</strong> defaults on: the merged coverage of the module chain multiplies the layer's coverage, so gaps reveal the stack below. Off, the layer fills the tile and the modules contribute height only; opacity and masks still apply. The layer's Height Op decides how the finished chain meets the stack below.</p>
+<p>Create a <strong>Generator Layer</strong> starting with <strong>Rock Formation</strong>, <strong>Cliff Strata</strong>, <strong>Pebbles</strong>, <strong>Cracks</strong>, or <strong>Noise</strong>. Add more modules or a <strong>Boolean Stack</strong> from the layer's <strong>Create → Generators</strong> menu. A Generator layer provides Fill-style Base Color, Roughness, IOR, and Metallic controls and displays the <strong>GEN</strong> badge.</p>
+<p><strong>Generator Drives Coverage</strong> defaults on: the merged coverage of the module chain multiplies the layer's coverage so gaps reveal the stack below. When off, the layer fills the tile and modules contribute height only.</p>
 </div>
 <h3>New layer versus child effect</h3>
-<p>Effects are not a layer type — they are children you add to an existing layer. Add a Material, Fill or Generator Layer when introducing a different surface; add a child effect when changing the surface already in the stack.</p>
-</figure>
+<p>Effects are children you add to an existing layer. Add a Material, Fill, or Generator Layer when introducing a surface; add a child effect (or Pass Through Fill) when modifying the surface already in the stack.</p>
 </section>
 <section id="layer-groups">
 <div class="section-head"><h2>Layer Groups</h2></div>
@@ -491,6 +711,15 @@ pre{
 <h3>Enable gating</h3>
 <p>The group's eye toggle gates the whole group for the render without rewriting member visibility — re-enabling the group returns each layer to the enabled state it had. Disabling one member never changes what the other members render.</p>
 </div>
+</section>
+<section id="sources-shelf">
+<div class="section-head"><h2>Sources Shelf</h2></div>
+<p>The <strong>Sources Shelf</strong> sits above the layer creation toolbar in the left column. It holds reusable, non-compositing procedural generators (Rock Formation, Cliff Strata, Pebbles, Cracks, Noise) that publish their fields (<code>Height</code>, <code>Value</code>, <code>FlowDirection</code>, <code>UVMap</code>, masks) for any layer, mask, or behavior to read — without ever drawing directly into the material stack.</p>
+<div class="grid">
+<div class="mini"><strong>On-Demand DAG Evaluation</strong>Only shelf sources that are actively referenced by a layer, mask, or another demanded source are evaluated on the GPU. Unused shelf entries have zero render cost.</div>
+<div class="mini"><strong>Order-Independent</strong>You can reorder rows in the Sources Shelf freely for organization; Mixtormat resolves producer-to-producer dependencies automatically in topological order.</div>
+</div>
+<p>Click the <strong>+</strong> tab on the bottom-right corner of the Sources card to add a generator source, then reference its published outputs in generator <code>HeightSource</code> / <code>WarpSource</code> inputs or mask sources across multiple layers.</p>
 </section>
 <section id="composition">
 <div class="section-head"><h2>Composition &amp; Channels</h2></div>
@@ -573,32 +802,76 @@ pre{
 </figure>
 </section>
 <section id="generators">
-<div class="section-head"><h2>Generators</h2></div>
-<p>A Generator layer produces its own height and coverage before masks and compositing. Its Height Op determines how that surface meets the stack below, through the same Blend row every layer and module has. An effect modifies the finished surface; a generator defines the surface the layer is made of.</p>
-<h3>Generator layer: the module chain</h3>
-<p>A Generator layer holds an ordered chain of modules, its generator children. They run top to bottom: each module builds its own height and coverage, then blends into the layer's running height. The first module replaces the neutral starting height; modules added later default to <strong>Add</strong>.</p>
-<p>Every module panel starts with a <strong>BLEND</strong> row: <strong>Op</strong> (Replace, Add, Subtract, Multiply, Min, Max, Difference), <strong>Softness</strong> for the rounded Min/Max join, and <strong>Amount</strong> (0 to 1). The result is <code>running = lerp(running, op(running, module), Amount &times; module coverage)</code>, and the module's row badge shows its op.</p>
-<p>Coverage merges with the op, with no extra control. Replace, Add and Max extend coverage to wherever either has it; Subtract, Min, Multiply and Difference only change height inside the coverage already built. The merged result is the layer's coverage when <strong>Generator Drives Coverage</strong> is on.</p>
-<p>Every module publishes its IDs and masks under its own name and row, for example Rock IDs or Strata Bed Position, after its own flow. The layer's default IDs are those of the last module that produces any. Modules do not read each other yet.</p>
-<h3>Placement, flow and outputs</h3>
-<p>The layer's UV offset, quarter-turn rotation, integer scale and tiling move the generator's evaluation coordinates, so geometry, height, IDs, masks and boundaries move together. They do not transform published outputs afterwards.</p>
-<p>Add <strong>Shape Deform</strong>, <strong>Generator Flow</strong> or <strong>Flow Carve</strong> from a module's context menu. They are Effect children scoped to that module and deform its bundle before its IDs and named masks publish; ordinary mask children follow, and ordinary effects still act on the composited surface.</p>
-<p>Each module's foldout header has its preview eye and output chevron, and <strong>Copy Output</strong> on a module copies its scalar outputs as live masks, usable in the layer's ordinary child chain or later layers. Region IDs copying is unchanged.</p>
-<div class="note"><div class="kicker">Channel-driving follow-up</div>Named masks such as Rock Top/Chamfer/Wall and Strata Bed Position are available as outputs. Driving the layer's constant material channels directly from those masks is a follow-up, not part of this step.</div>
+<div class="section-head"><h2>Generators &amp; Native Flow</h2></div>
+<p>A Generator rewrites a layer's <strong>input height</strong> and coverage before masks and compositing run, so the layer composites as though the carved 3D relief were authored in the source texture.</p>
+<h3>The module chain &amp; Blend row</h3>
+<p>A Generator layer holds an ordered chain of generator modules evaluated top to bottom. Every module starts with a <strong>BLEND</strong> row: <strong>Op</strong> (Replace, Add, Subtract, Multiply, Min, Max, Difference), <strong>Softness</strong> for rounded Min/Max transitions, and <strong>Amount</strong> (0–1). Coverage merges automatically with the chosen Op.</p>
+<h3>Universal Native Flow</h3>
+<p>Every primary generator automatically derives an intrinsic <strong>Native Flow</strong> field (<code>FlowDirection</code>) from its signed boundary distance or downhill height gradient, with shared controls for <strong>Amount, Angle, Slope Influence, Boundary Influence, Gravity Influence,</strong> and <strong>Gravity Angle</strong>. Scoped Behaviors (Sculpt, Deform, Warp) consume this flow immediately without needing an extra setup child.</p>
 <div class="card">
-<h3>Strata Carver</h3>
-<p>Layered bedding as it weathers on a surface: every bed rises along a ramp and ends in a steeper face where the next bed starts. Verticality sets how steep the faces are, from a symmetric ridge to a sheer wall, and Ramp Shape hollows or bulges the slope. Thickness and Height Variation make thin and thick, tall and low beds sit side by side. Bend sweeps the beds by a set distance in tile widths without stretching them, Breakup roughens the faces, and Height Follow reads the composite below the layer, so faces trace the contours underneath and Strata cannot reuse a cached field independent of that input. Fine laminae fan across each bed. The direction snaps to the nearest angle that tiles.</p>
-<p>Strata publishes bed IDs, Bed Position (0 to 1 up each bed, the natural ramp coordinate) and Bed Random masks. A Strata module publishes after its own flow.</p>
+<h3>Rock Formation</h3>
+<p>Shapes fractured rock blocks with normalized tilt, spin, stretch, jagged edges, rim chips, and facet chips. Choose Raw, Analytic, or Measured height modes. Publishes Region IDs, Native Flow, and named masks:</p>
+<div class="pub-chips">
+<span class="pub-chip">Height</span><span class="pub-chip">Rock IDs</span><span class="pub-chip">FlowDirection</span><span class="pub-chip">Top</span><span class="pub-chip">Chamfer</span><span class="pub-chip">Wall</span><span class="pub-chip">Height Gate</span><span class="pub-chip">Slope Gate</span><span class="pub-chip">Gap</span><span class="pub-chip">Boundary</span>
+</div>
+</div>
+<div class="card">
+<h3>Cliff Strata</h3>
+<p>Builds stepped, anisotropic geological rock ledges and sheer cliff faces with controllable bed spacing, verticality, step profile, overhang/carve sweeps, and seam cavities. Publishes signed height, coverage, Native Flow, and cliff masks:</p>
+<div class="pub-chips">
+<span class="pub-chip">Height</span><span class="pub-chip">CliffCoverage</span><span class="pub-chip">FlowDirection</span><span class="pub-chip">Seam / Cavity</span>
+</div>
+</div>
+<div class="card">
+<h3>Pebbles</h3>
+<p>Scatters non-overlapping, height-resolved stones and talus with size variation, tilt, roundness, and contact embedding. Publishes Region IDs, Native Flow, and masks:</p>
+<div class="pub-chips">
+<span class="pub-chip">Height</span><span class="pub-chip">PebbleCoverage</span><span class="pub-chip">Region IDs</span><span class="pub-chip">FlowDirection</span><span class="pub-chip">Edge Distance</span><span class="pub-chip">Random</span>
+</div>
 </div>
 <div class="card">
 <h3>Cracks</h3>
-<p>Builds a tileable network of Voronoi piece borders. Jag, near-border push and three kinds of width variation shape the cracks; chipped rims, gaps, signed slip and tilt add per-piece relief. An optional noisy-speed chamfer removes material near the borders, gated by masks scoped beneath this generator. Its Amount and Cut Reach are the only chamfer controls: the sharp remap and fine noise follow the crack depth and width automatically.</p>
-<p>Cracks publishes Region IDs and the CrackMask, CrackDistance, PieceRandom and ChamferCut masks. Flow reshapes its bundle before those outputs publish. The crack field is a signed change, so the layer's height is the flat midpoint 0.5 plus the field: Add carves cracks into the height below, and Replace gives flat ground with cracks cut in. Height Scale does not regenerate the cached field.</p>
+<p>Builds a tileable network of Voronoi fracture borders with jag, near-border push, width variation, chipped rims, gaps, signed slip, and tilt, plus an optional noisy-speed border chamfer. Publishes Region IDs, Native Flow, and fracture masks:</p>
+<div class="pub-chips">
+<span class="pub-chip">Height</span><span class="pub-chip">Region IDs</span><span class="pub-chip">FlowDirection</span><span class="pub-chip">CrackMask</span><span class="pub-chip">CrackDistance</span><span class="pub-chip">PieceRandom</span><span class="pub-chip">ChamferCut</span>
+</div>
 </div>
 <div class="card">
-<h3>Rock Formation and Pebbles</h3>
-<p>Rock Formation builds fractured rock surfaces and publishes Top, Chamfer, Wall, their ramps, signed boundary distance, normalized Height, Slope and Gap. Pebbles publishes Coverage, Edge Distance and Random. Both also publish Region IDs and retain their generator-field node cache. Choose either from the Generator Layer submenu or a Generator layer's Add menu.</p>
+<h3>Noise (V2.1 + Generated Flow)</h3>
+<p>Multi-family procedural field producer with optional multi-octave layering, continuous cell-distance modulation, and high-frequency jagged domain warp. Can operate as a height producer, a height-less flow/mask producer, or an inline mask source. Combines weighted Height, Slope, Curl, and Force bases into <code>GeneratedFlow</code>, with half- or full-precision storage.</p>
+<div class="pub-chips">
+<span class="pub-chip">Value (ScalarSigned)</span><span class="pub-chip">Gradient (Vector2)</span><span class="pub-chip">GeneratedFlow</span><span class="pub-chip">FlowDirection</span>
 </div>
+</div>
+</section>
+<section id="boolean-stack">
+<div class="section-head"><h2>Boolean Stack &amp; Scatter Carve</h2></div>
+<p>Mixtormat provides two ways to perform constructive relief combinations and volumetric cuts inside a Generator layer:</p>
+<div class="card">
+<h3>Boolean Stack Container</h3>
+<p>Add a <strong>Boolean</strong> container child to combine <strong>Target</strong> and <strong>Source</strong> generator operands with independent UV placement and height offsets. Supports four modes:</p>
+<div class="grid">
+<div class="mini"><strong>Boolean (Hard)</strong>Exact union (max), intersection (min), or relief subtraction of signed height surfaces.</div>
+<div class="mini"><strong>Round</strong>Polynomial C1 rounded surface joins and eased cut shoulders across an authored Join Width.</div>
+<div class="mini"><strong>Bevel</strong>Analytic chamfered joins and piecewise-planar cutting shoulders with no permanent depth offset outside the band.</div>
+<div class="mini"><strong>Published Diagnostics</strong>Preview or copy <code>Height Delta</code>, continuous <code>FieldMask</code>, <code>FieldBoundary</code>, and <code>FieldDifference</code>.</div>
+</div>
+</div>
+<div class="card">
+<h3>Scatter Carve (Finite-Volume Cutters)</h3>
+<p>Seeds periodic 3D ellipsoid or polygon-prism cutters in UV space that sample the target surface height at their anchor to stay rigid. Supports multi-overlap Subtract and frontmost Union with root-refined finite-volume chamfers. Publishes <code>Height</code> (signed delta), <code>CutDepth</code>, <code>GeometryFront</code>, <code>GeometryBack</code>, and copyable <code>GeometryMask</code>.</p>
+</div>
+</section>
+<section id="behaviors">
+<div class="section-head"><h2>Behaviors (Sculpt, Deform, Warp &amp; Push)</h2></div>
+<p>Behaviors are procedural modifiers that reshape generator height fields, coordinate spaces, and entire output bundles (Height, Coverage, IDs, Boundaries, and companion masks) together so downstream masks never go out of alignment.</p>
+<div class="grid">
+<div class="mini"><strong>Sculpt (Flow Carve) &amp; Gravity Flow</strong>Steer carving and deposition along a generator's Native Flow, signed boundary, or height slope. Extends coverage automatically where material deposits.</div>
+<div class="mini"><strong>Shape Deform &amp; Generator Flow</strong>Deform a generator module's shape and vector field before its IDs and named masks are published.</div>
+<div class="mini"><strong>Structural Warp</strong>Warps a target generator using another producer's <code>Flow</code> (magnitude-preserving RK2 trace) or <code>UVMap</code>, pulling back the target's entire completed bundle (Height, Coverage, IDs, and masks) in lockstep.</div>
+<div class="mini"><strong>Height Push</strong>Pushes or offsets a target generator's relief using another producer's signed scalar field, displayed with compact <code>Source → Target</code> row badges in the Layer Stack.</div>
+</div>
+<p><strong>Height Remap (Curve) &amp; Height Color Ramp:</strong> Shape signed generator relief with a custom curve (including horizontal Flip and Invert) or drive layer color directly from generator height fields.</p>
 </section>
 <section id="ids">
 <div class="section-head"><h2>Region &amp; ID Tools</h2></div>
@@ -790,8 +1063,14 @@ pre{
 <p>Temporarily removes the selected Mask, Generated Mask, or Effect from the preview only. It is useful for A/B checking one operation without changing the saved recipe structure.</p>
 <h3>Debug views</h3>
 <p>Feature-preview controls can show information such as the selected Layer Mask or an ID child's Region IDs directly. Use these when the shaded result does not make it obvious whether a problem comes from region selection or from the effect using that region.</p>
-<h3>Channel preview</h3>
-<p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited output at a time: <strong>Material</strong> (the normal shaded result) → <strong>Base Color</strong> → <strong>Normal</strong> → <strong>Roughness</strong> → <strong>AO</strong> → <strong>Metallic</strong> → <strong>F0</strong> → <strong>Height</strong> → <strong>Fuzz Influence</strong>, then back to Material. This is a diagnostic view with no toolbar control — it shows the channel exactly as it was composited, with no lighting applied, which is the quickest way to tell whether a problem is in the channel data or in how it is being lit.</p>
+<h3>Channel preview &amp; PostFX Diagnostics</h3>
+<p>Press <code>V</code> with the preview focused to cycle a raw, unlit view of one composited PBR output at a time: <strong>Material</strong> → <strong>Base Color</strong> → <strong>Normal</strong> → <strong>Roughness</strong> → <strong>AO</strong> → <strong>Metallic</strong> → <strong>F0</strong> → <strong>Height</strong> → <strong>Fuzz</strong>. Press <code>Shift + V</code> at any time to reset back to the shaded Material view.</p>
+<div class="grid">
+<div class="mini"><strong><code>W</code> — Scalar / Mask PostFX Overlay</strong>Toggles a persistent viewport visualization of the selected eligible mask or scalar output. Survives selection changes and slider edits so you can tune upstream parameters while watching the mask.</div>
+<div class="mini"><strong><code>E</code> — Flow / UV Vector PostFX Overlay</strong>Toggles a persistent vector/coordinate overlay for published <code>FlowDirection</code>, <code>AccumulatedFlow</code>, or <code>UVMap</code> outputs. Press <code>W</code>↔<code>E</code> to switch modes on the fly.</div>
+<div class="mini"><strong><code>R</code> (or <code>I</code>) — Region IDs Preview</strong>Displays per-piece false-color Region IDs for the selected producer or filter.</div>
+<div class="mini"><strong><code>Q</code> — Viewport Quick Controls</strong>Opens the radial/quad quick-controls popup right in the viewport (Render top, Lighting left, Geometry right) for rapid look-dev switching.</div>
+</div>
 <h3>Displacement and UV orientation</h3>
 <p>Enable displacement to judge the composited Height as geometry. Displacement Amount controls how strongly Height moves the preview surface. The global 90° UV toggle rotates every composited output together, including the tangent-space normal direction, so shading stays aligned.</p>
 <h3>Quality</h3>
@@ -844,53 +1123,52 @@ pre{
 <figure class="doc-shot wide"><img alt="" loading="lazy" src="docs-assets/24-baking.png"/></figure>
 </section>
 <section id="shortcuts">
-<div class="section-head"><h2>Shortcuts &amp; Gestures</h2></div>
-<p>Mixtormat uses a combination of keyboard shortcuts and direct mouse gestures. These are worth learning because many of them remove the need to open a menu while tuning a material.</p>
-<h3>Document &amp; stack</h3>
-<div class="grid">
-<div class="mini"><strong><code>Ctrl + Z</code></strong>Undo the last Mixtormat recipe edit.</div>
-<div class="mini"><strong><code>Ctrl + Shift + Z</code></strong>Redo.</div>
-<div class="mini"><strong><code>Ctrl + Y</code></strong>Redo.</div>
-<div class="mini"><strong><code>Right Click</code></strong>Open the context menu for the layer or child under the cursor.</div>
-<div class="mini"><strong><code>G</code></strong>Collapse or restore the bottom Material and Mask galleries.</div>
-</div>
-<h3>Numeric controls</h3>
-<div class="grid">
-<div class="mini"><strong><code>LMB Drag</code></strong>Scrub a numeric value.</div>
-<div class="mini"><strong><code>Shift + Drag</code></strong>Fine adjustment.</div>
-<div class="mini"><strong><code>Ctrl + Drag</code></strong>Snap the value to the control's increment.</div>
-<div class="mini"><strong><code>Click</code></strong>Click without dragging to type an exact value.</div>
-<div class="mini"><strong><code>MMB</code></strong>Reset the numeric control to default.</div>
-<div class="mini"><strong><code>Backspace</code></strong>Reset the numeric control currently under the cursor.</div>
-<div class="mini"><strong><code>Enter</code></strong>Commit typed numeric input.</div>
-<div class="mini"><strong><code>Escape</code></strong>Cancel/revert the active text edit.</div>
-</div>
-<h3>Layer stack gestures</h3>
-<div class="grid">
-<div class="mini"><strong><code>Drag Layer</code></strong>Move a layer to a new position in the stack.</div>
-<div class="mini"><strong><code>Drag Child</code></strong>Reorder a child or move it to a compatible location.</div>
-<div class="mini"><strong><code>Eye Click</code></strong>Show or hide a layer.</div>
-<div class="mini"><strong><code>Ctrl/Alt + Eye</code></strong>Solo that layer in the preview.</div>
-<div class="mini"><strong><code>Status Dot</code></strong>Enable or disable a layer child.</div>
-<div class="mini"><strong><code>Right Click Parameter</code></strong>Open parameter Reference / Driver actions.</div>
-</div>
-<h3>Preview viewport</h3>
-<div class="grid">
-<div class="mini"><strong><code>LMB Drag</code></strong>Orbit the preview camera.</div>
-<div class="mini"><strong><code>RMB Drag</code></strong>Rotate the studio lighting.</div>
-<div class="mini"><strong><code>Mouse Wheel</code></strong>Zoom the preview camera.</div>
-<div class="mini"><strong><code>F</code></strong>Frame / focus the current preview mesh.</div>
-<div class="mini"><strong><code>Space</code></strong>Hide or show the viewport overlay controls.</div>
-<div class="mini"><strong><code>H</code></strong>Also hides or shows the viewport overlay controls.</div>
-<div class="mini"><strong><code>Shift + V</code></strong>Return straight to the Material view. The label above FOV shows the current preview mode.</div>
-<div class="mini"><strong><code>Z</code></strong>Toggle preview displacement, in every preview mode.</div>
-<div class="mini"><strong><code>V</code></strong>Cycle the raw unlit channel preview: Material, Base Color, Normal, Roughness, AO, Metallic, F0, Height.</div>
-</div>
-<h3>Gallery</h3>
-<div class="grid">
-<div class="mini"><strong><code>Ctrl + Mouse Wheel</code></strong>Resize Material or Mask gallery tiles while the cursor is over a tile.</div>
-<div class="mini"><strong><code>Click Tile</code></strong>Select or activate the material/mask represented by the tile.</div>
-</div>
+<div class="section-head"><h2>Shortcuts &amp; Gesture Cheat Sheet</h2></div>
+<p>Mixtormat is designed for rapid, low-friction iteration. Workspace shortcuts only fire when the Mixtormat window is active and yield automatically when typing in text fields.</p>
+<h3>Workspace &amp; Panels</h3>
+<table class="kbd-table">
+<thead><tr><th>Shortcut</th><th>Context</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>L</code></td><td>Workspace</td><td>Cycle Left Layers panel placement: <strong>Docked → Overlay → Hidden</strong></td></tr>
+<tr><td><code>P</code></td><td>Workspace</td><td>Cycle Right Inspector placement: <strong>Docked → Overlay → Hidden</strong></td></tr>
+<tr><td><code>G</code></td><td>Workspace</td><td>Collapse or expand the bottom <strong>Materials / Masks</strong> gallery drawer</td></tr>
+<tr><td><code>F2</code> (or <code>F12</code>)</td><td>Layer Stack</td><td>Rename the selected layer, group, or child</td></tr>
+<tr><td><code>Ctrl + Z</code> / <code>Ctrl + Y</code></td><td>Workspace</td><td>Undo / Redo (<code>Ctrl + Shift + Z</code> also redoes)</td></tr>
+<tr><td><code>Double-Click Row</code></td><td>Layer Stack</td><td>Expand or collapse a layer/group row (never triggers accidental rename)</td></tr>
+<tr><td><code>Ctrl/Alt + Eye Click</code></td><td>Layer Stack</td><td>Solo that layer in the preview</td></tr>
+</tbody>
+</table>
+<h3>3D Preview Viewport</h3>
+<table class="kbd-table">
+<thead><tr><th>Shortcut</th><th>Context</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>Q</code></td><td>Viewport</td><td>Open/close <strong>Viewport Quick Controls</strong> (Render, Lighting, Geometry)</td></tr>
+<tr><td><code>V</code></td><td>Viewport</td><td>Cycle unlit PBR channels: Material → BC → N → Roughness → AO → Metallic → F0 → Height → Fuzz</td></tr>
+<tr><td><code>Shift + V</code></td><td>Viewport / Workspace</td><td>Reset all PostFX, module diagnostics, and channel views back to <strong>Material</strong></td></tr>
+<tr><td><code>W</code></td><td>Viewport</td><td>Toggle persistent <strong>Scalar / Mask PostFX</strong> overlay for selected child</td></tr>
+<tr><td><code>E</code></td><td>Viewport</td><td>Toggle persistent <strong>Flow / UV PostFX</strong> overlay for selected child</td></tr>
+<tr><td><code>R</code> (or <code>I</code>)</td><td>Viewport / Workspace</td><td>Toggle <strong>Region IDs</strong> color preview for selected child</td></tr>
+<tr><td><code>Z</code></td><td>Viewport</td><td>Toggle height <strong>Displacement</strong> on the preview mesh</td></tr>
+<tr><td><code>1</code> / <code>2</code> / <code>3</code> / <code>4</code></td><td>Viewport</td><td>Switch mesh: <strong>Sphere (1)</strong>, <strong>Plane (2 — press again to flip)</strong>, <strong>Cube (3)</strong>, <strong>Cylinder (4)</strong></td></tr>
+<tr><td><code>5</code></td><td>Viewport</td><td>Toggle global <strong>90° UV Rotation</strong> across all channels</td></tr>
+<tr><td><code>F</code></td><td>Viewport / Ramp</td><td>Frame preview mesh in viewport (or frame curve in Ramp Editor)</td></tr>
+<tr><td><code>Space</code> or <code>H</code></td><td>Viewport</td><td>Hide or show viewport UI overlays</td></tr>
+<tr><td><code>LMB / RMB / Wheel</code></td><td>Viewport</td><td>Orbit camera (LMB), rotate studio lighting (RMB), zoom camera (Wheel)</td></tr>
+</tbody>
+</table>
+<h3>Sliders, Ramps &amp; Gallery</h3>
+<table class="kbd-table">
+<thead><tr><th>Gesture / Key</th><th>Surface</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><code>LMB Drag</code></td><td>Slider</td><td>Scrub numeric value horizontally</td></tr>
+<tr><td><code>Shift + Drag</code></td><td>Slider</td><td>Fine adjustment</td></tr>
+<tr><td><code>Ctrl + Shift + Drag</code></td><td>Slider</td><td>Ultra-fine adjustment</td></tr>
+<tr><td><code>Ctrl + Drag</code></td><td>Slider</td><td>Snap value to parameter increment</td></tr>
+<tr><td><code>Click (No Drag)</code></td><td>Slider</td><td>Type exact numeric value (<code>Enter</code>/<code>Tab</code> commit, <code>Esc</code>/<code>RMB</code> cancel)</td></tr>
+<tr><td><code>MMB</code> or <code>Backspace</code></td><td>Slider (Hovered)</td><td>Reset parameter to its authored default</td></tr>
+<tr><td><code>Ctrl + Mouse Wheel</code></td><td>Bottom Gallery</td><td>Resize Material or Mask gallery thumbnails</td></tr>
+</tbody>
+</table>
 <figure class="doc-shot"><img alt="" loading="lazy" src="docs-assets/25-shortcuts.png"/></figure>
 </section>
 <section id="troubleshooting">
@@ -997,6 +1275,32 @@ if("onscrollend" in window){
 }
 
 updateActive();
+
+const searchInput=document.getElementById("docSearch");
+if(searchInput){
+  window.addEventListener("keydown",e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+    }else if(e.key==="Escape"&&document.activeElement===searchInput){
+      searchInput.value="";
+      searchInput.dispatchEvent(new Event("input"));
+      searchInput.blur();
+    }
+  });
+  searchInput.addEventListener("input",()=>{
+    const q=searchInput.value.trim().toLowerCase();
+    for(const section of sections){
+      const match=!q||section.textContent.toLowerCase().includes(q);
+      section.classList.toggle("hidden-by-search",!match);
+    }
+    for(const a of links){
+      const sec=document.querySelector(a.getAttribute("href"));
+      if(sec) a.classList.toggle("hidden-by-search",sec.classList.contains("hidden-by-search"));
+    }
+  });
+}
 </script>
 </body>
 </html>

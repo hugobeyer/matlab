@@ -118,7 +118,6 @@ bool SMixtormat::CanGroupSelectedChildrenAsBoolean() const
 		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 		if (Child.ScopeOwnerChildId.IsValid()
 			|| Child.Type != EMixtormatLayerChildType::Generator
-			|| Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
 			|| (Child.Generator.Type == EMixtormatGeneratorType::Noise
 				&& !Child.Generator.Noise.bNoiseWriteHeight))
 		{
@@ -288,6 +287,74 @@ FReply SMixtormat::GroupSelectedChildrenAsIdGroup()
 	SelectedLayerChildIds.Add(GroupChildId);
 	SelectionAnchorLayerChildId = GroupChildId;
 	bHasSelectedLayer = true;
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
+bool SMixtormat::CanUngroupSelectedChildContainer() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child
+		&& !Child->IsInstance()
+		&& (Child->Type == EMixtormatLayerChildType::Boolean
+			|| Child->Type == EMixtormatLayerChildType::IdGroup);
+}
+
+FReply SMixtormat::UngroupSelectedChildContainer()
+{
+	if (!CanUngroupSelectedChildContainer())
+	{
+		return FReply::Handled();
+	}
+	const FMixtormatChildAddress Address = GetSelectedChildAddress();
+	TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
+	const int32 ContainerIndex = ResolveChildIndexAt(Address);
+	if (!Children || !Children->IsValidIndex(ContainerIndex))
+	{
+		return FReply::Handled();
+	}
+
+	const FGuid ContainerId = (*Children)[ContainerIndex].ChildId;
+	const FGuid OuterOwnerId = (*Children)[ContainerIndex].ScopeOwnerChildId;
+	TArray<FGuid> ReleasedChildIds;
+	for (FMixtormatLayerChild& Candidate : *Children)
+	{
+		if (Candidate.ScopeOwnerChildId == ContainerId)
+		{
+			Candidate.ScopeOwnerChildId = OuterOwnerId;
+			ReleasedChildIds.Add(Candidate.ChildId);
+		}
+	}
+	Children->RemoveAt(ContainerIndex);
+
+	if (Address.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		SelectedGroupChildIds.Reset();
+		for (const FGuid& Id : ReleasedChildIds)
+		{
+			SelectedGroupChildIds.Add(Id);
+		}
+		const int32 FirstReleased = ReleasedChildIds.IsEmpty()
+			? INDEX_NONE
+			: FindChildById(*Children, ReleasedChildIds[0]);
+		FinishGroupChildEdit(Address.OwnerId, FirstReleased);
+		return FReply::Handled();
+	}
+
+	SelectedLayerChildIds.Reset();
+	for (const FGuid& Id : ReleasedChildIds)
+	{
+		SelectedLayerChildIds.Add(Id);
+	}
+	const int32 FirstReleased = ReleasedChildIds.IsEmpty()
+		? INDEX_NONE
+		: FindChildById(*Children, ReleasedChildIds[0]);
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = FirstReleased;
+	SelectionAnchorLayerChildId = ReleasedChildIds.IsEmpty() ? FGuid() : ReleasedChildIds[0];
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
 	RebuildLayerList();

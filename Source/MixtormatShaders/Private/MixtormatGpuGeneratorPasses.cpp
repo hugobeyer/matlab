@@ -77,38 +77,6 @@ namespace
 }
 
 
-class FMixtormatBooleanFieldCS final : public FGlobalShader
-{
-public:
-    DECLARE_GLOBAL_SHADER(FMixtormatBooleanFieldCS);
-    SHADER_USE_PARAMETER_STRUCT(FMixtormatBooleanFieldCS, FGlobalShader);
-    BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-        SHADER_PARAMETER(FIntPoint, OutputSize)
-        SHADER_PARAMETER(int32, Mode)
-        SHADER_PARAMETER(int32, FieldOperation)
-        SHADER_PARAMETER(uint32, HasSource)
-        SHADER_PARAMETER(uint32, HasScopedMask)
-        SHADER_PARAMETER(float, FieldWidth)
-        SHADER_PARAMETER(float, FieldBias)
-        SHADER_PARAMETER(float, FieldSourceScale)
-        SHADER_PARAMETER(float, FieldAmount)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BelowHeight)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScopedMask)
-        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeightDelta)
-        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldMask)
-        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldBoundary)
-        SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFieldDifference)
-    END_SHADER_PARAMETER_STRUCT()
-    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& P)
-    {
-        return IsFeatureLevelSupported(P.Platform, ERHIFeatureLevel::SM5);
-    }
-};
-IMPLEMENT_GLOBAL_SHADER(FMixtormatBooleanFieldCS,
-    "/Plugin/Mixtormat/Private/MixtormatBooleanField.usf", "MainCS", SF_Compute);
-
 class FMixtormatBooleanStackCS final : public FGlobalShader
 {
 public:
@@ -803,14 +771,17 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, StopCount)
 		SHADER_PARAMETER(uint32, Interpolation)
+		SHADER_PARAMETER(float, Weight)
 		SHADER_PARAMETER(float, InputScale)
 		SHADER_PARAMETER(float, InputOffset)
 		SHADER_PARAMETER(uint32, MirrorRepeat)
 		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER(uint32, HasGate)
+		SHADER_PARAMETER(uint32, HasPreviousColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Gate)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousColor)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -1208,7 +1179,7 @@ namespace
 	// resolved source names; Gate is the scoped mask under it, or SourceHeight when there is
 	// none (HasGate 0, the Strata Carver stand-in rule). The pass is a pure map.
 	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef SourceHeight,
-		FRDGTextureRef Gate, const FGeneratorHeightColorRampRenderData& Ramp)
+		FRDGTextureRef Gate, FRDGTextureRef PreviousColor, const FGeneratorHeightColorRampRenderData& Ramp)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -1220,6 +1191,7 @@ namespace
 		P->OutputSize = Size;
 		P->StopCount = Ramp.StopCount;
 		P->Interpolation = Ramp.Interpolation;
+		P->Weight = Ramp.Weight;
 		P->InputScale = Ramp.InputScale;
 		P->InputOffset = Ramp.InputOffset;
 		P->MirrorRepeat = Ramp.bMirrorRepeat ? 1u : 0u;
@@ -1229,12 +1201,13 @@ namespace
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
 		P->HasGate = Ramp.bHasGate;
-		// Normalize only the ramp input; the source field and scoped mask stay unchanged.
+		P->HasPreviousColor = PreviousColor != nullptr ? 1u : 0u;
 		P->SourceHeight = Ramp.bNormalizeInput
-			? AddNormalizeFieldPasses(GraphBuilder, SourceHeight, Size, -1.0f, 1.0f,
-				TEXT("Mixtormat.Generator.HeightColorRamp.Normalized"))
+			? AddSignedGeneratorHeightPasses(GraphBuilder, SourceHeight, Size, true,
+				1.0f, 0.0f, false, nullptr, TEXT("Mixtormat.Generator.HeightColorRamp.Normalized"))
 			: SourceHeight;
 		P->Gate = Gate;
+		P->PreviousColor = PreviousColor ? PreviousColor : Ctx.OutputBC[0];
 		P->OutColor = GraphBuilder.CreateUAV(Out);
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightColorRamp"), Shader, P,
@@ -2416,72 +2389,7 @@ namespace
 	// the ID phase: its bed IDs exist from here on, for the children below it, and UV From IDs
 	// -- which resolves before the layer's source is read -- cannot key off them.
 
-    // Operates on signed height surfaces from earlier generator modules.
-    void AddBooleanFieldPasses(FMixtormatComposeContext& Ctx,
-        FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
-        const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight,
-        FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle)
-    {
-        FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-        const FIntPoint Size = Ctx.Request.Resolution;
-        const FBooleanOpsRenderData& B = Child.Generator.BooleanOps;
-        const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(B.SourceChildIndex);
-        const bool bHasSource = B.SourceChildIndex != INDEX_NONE && Found && *Found;
-        const bool bHasMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
-        const auto Make = [&GraphBuilder, Size](const TCHAR* Name)
-        {
-            return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-                Size, PF_R32_FLOAT, FClearValueBinding::Black,
-                TexCreate_ShaderResource | TexCreate_UAV), Name);
-        };
-        FRDGTextureRef Delta = Make(TEXT("Mixtormat.BooleanField.Delta"));
-        FRDGTextureRef Area = Make(TEXT("Mixtormat.BooleanField.Area"));
-        FRDGTextureRef Boundary = Make(TEXT("Mixtormat.BooleanField.Boundary"));
-        FRDGTextureRef Difference = Make(TEXT("Mixtormat.BooleanField.Difference"));
-        auto* P = GraphBuilder.AllocParameters<FMixtormatBooleanFieldCS::FParameters>();
-        P->OutputSize = Size;
-        P->Mode = B.Mode;
-        P->FieldOperation = B.FieldOperation;
-        P->HasSource = bHasSource ? 1u : 0u;
-        P->HasScopedMask = bHasMask ? 1u : 0u;
-        P->FieldWidth = B.FieldWidth;
-        P->FieldBias = B.FieldBias;
-        P->FieldSourceScale = B.FieldSourceScale;
-        P->FieldAmount = B.FieldAmount;
-        P->RunningHeight = RunningHeight;
-        P->BelowHeight = BelowHeight;
-        P->SourceHeight = bHasSource ? *Found : RunningHeight;
-        P->ScopedMask = bHasMask
-            ? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-            : RunningHeight;
-        P->OutHeightDelta = GraphBuilder.CreateUAV(Delta);
-        P->OutFieldMask = GraphBuilder.CreateUAV(Area);
-        P->OutFieldBoundary = GraphBuilder.CreateUAV(Boundary);
-        P->OutFieldDifference = GraphBuilder.CreateUAV(Difference);
-        TShaderMapRef<FMixtormatBooleanFieldCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-        ClearUnusedGraphResources(Shader, P);
-        FComputeShaderUtils::AddPass(GraphBuilder,
-            RDG_EVENT_NAME("Mixtormat.BooleanField.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
-            Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-        Bundle->Height = Delta;
-        Bundle->RegisterNamedMask(FName(TEXT("FieldMask")), Area,
-            FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
-        Bundle->RegisterNamedMask(FName(TEXT("FieldBoundary")), Boundary,
-            FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
-        // Difference is a separate authored diagnostic. Contribution is already
-        // exactly Bundle->Height and is published by the common Height path.
-        const FName DifferenceName(TEXT("FieldDifference"));
-        Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, DifferenceName),
-            FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Difference, nullptr, nullptr, false});
-        if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::SignedDistance,
-            DifferenceName, LayerCtx.LayerIndex, Child.SourceChildIndex))
-        {
-            FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
-            AddDebugPreviewSignedHeightBlitPass(GraphBuilder, Difference, Debug, Size);
-        }
-    }
-
-	void AddBooleanStackPasses(FMixtormatComposeContext& Ctx,
+	void AddBooleanCarvePasses(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Child, FRDGTextureRef TargetHeight,
 		FRDGTextureRef SourceHeight, FGeneratorBundle* Bundle)
@@ -3601,7 +3509,15 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				: RampSource;
 			FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
 			RampData.bHasGate = bHasGate ? 1u : 0u;
-			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(Ctx, RampSource, RampGate, RampData);
+			FRDGTextureRef BaseColorForRamp = GeneratedColor
+				? GeneratedColor
+				: (LayerCtx.LayerInputBC
+					? LayerCtx.LayerInputBC
+					: (LayerCtx.LayerIndex != INDEX_NONE
+						? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)]
+						: nullptr));
+			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(
+				Ctx, RampSource, RampGate, BaseColorForRamp, RampData);
 			const FPublishedField ColorField{
 				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(
@@ -3639,17 +3555,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		case EMixtormatGeneratorType::BooleanOps:
-                if (Input.Generator.BooleanOps.Mode == 0)
-                {
-                    AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
-                        Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
-                }
-                else
-                {
-                    AddBooleanFieldPasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
-                        Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
-                }
-                break;
+				AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
+					Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
+				break;
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
@@ -3908,7 +3816,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	// Color result becomes this layer's Base Color input. When nothing in the stack produced a
 	// colour, bGeneratorColor stays false and the composite keeps the base colour below instead
 	// of painting the resolved neutral input.
-	if (Layer.bGeneratorAlbedo && GeneratedColor)
+	if (GeneratedColor)
 	{
 		LayerCtx.LayerInputBC = GeneratedColor;
 		LayerCtx.bGeneratorColor = true;

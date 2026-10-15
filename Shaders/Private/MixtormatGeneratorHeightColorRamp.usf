@@ -13,14 +13,17 @@
 int2 OutputSize;
 uint StopCount;
 uint Interpolation;
+float Weight;
 float InputScale;
 float InputOffset;
 uint MirrorRepeat;
 float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 uint HasGate;
+uint HasPreviousColor;
 Texture2D<float> SourceHeight;
 Texture2D<float> Gate;
+Texture2D<float4> PreviousColor;
 RWTexture2D<float4> OutColor;
 
 [numthreads(8, 8, 1)]
@@ -38,5 +41,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	const float4 RampColor = MixtormatEvalColorRamp(Coordinate, StopCount, Interpolation, Positions, Colors);
 	const float GateValue = HasGate != 0 ? saturate(Gate.Load(int3(Pixel, 0))) : 1.0f;
-	OutColor[Pixel] = float4(RampColor.rgb * GateValue, RampColor.a);
+	const float Alpha = saturate(Weight * GateValue * RampColor.a);
+	const float3 BaseColor = HasPreviousColor != 0
+		? PreviousColor.Load(int3(Pixel, 0)).rgb
+		: RampColor.rgb;
+	OutColor[Pixel] = float4(lerp(BaseColor, RampColor.rgb, Alpha), Alpha);
 }
