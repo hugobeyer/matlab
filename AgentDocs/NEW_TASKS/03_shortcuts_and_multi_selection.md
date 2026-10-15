@@ -18,10 +18,13 @@ Remaining before completion:
 - Ctrl-deselect must clear active-row highlighting and must not restore selection via fallback.
 - Plain clicks must collapse selection; right-clicks must preserve it.
 - Shift ranges must follow visible rows, not hidden authored descendants.
-- Duplicate all selected subtrees with one reference-remapping pass; select the copies.
+- Bulk duplication now remaps selected subtrees together and selects their copied roots.
+  Copies remain after their originals; references outside the selection stay unchanged.
+  Source-reviewed only; runtime verification is pending.
 - Bulk Duplicate/Remove now defer preview, Inspector sync and list rebuilds until the batch ends.
   Single-item helpers retain their default refresh behavior. Runtime verification is pending.
-- Bulk edits still need history-boundary review and Boolean lock/operand-capacity validation.
+- Bulk edits still need history-boundary review and Boolean operand-capacity validation.
+  Boolean Lock was removed; operand authoring uses direct dragging instead.
 - Prune selection on document changes, source selection, undo/redo and deletion.
 - Boolean grouping still needs dependency, instance and scope eligibility review.
 

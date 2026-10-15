@@ -189,8 +189,7 @@ struct MIXTORMATRUNTIME_API FMixtormatBooleanStack
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
 	bool bEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
-	bool bLocked = false;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
+
 	EMixtormatBooleanFieldOperation Operation = EMixtormatBooleanFieldOperation::Union;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
 	EMixtormatBooleanEdgeStyle EdgeStyle = EMixtormatBooleanEdgeStyle::Hard;

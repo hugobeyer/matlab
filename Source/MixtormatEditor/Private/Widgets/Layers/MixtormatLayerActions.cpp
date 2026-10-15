@@ -252,23 +252,48 @@ FReply SMixtormat::ExecuteLayerSelectionCommand(const ELayerSelectionCommand Com
 	case ELayerSelectionCommand::Duplicate:
 		if (bHasChildSelection && WorkingLayers.IsValidIndex(SelectedLayerIndex))
 		{
-			TArray<FGuid> RootIds;
-			const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			TArray<FMixtormatLayerChild> Copies;
+			TArray<int32> CopyOffsets;
+			TArray<int32> InsertIndices;
 			for (const int32 ChildIndex : SelectedRoots)
 			{
-				if (Layer.Children.IsValidIndex(ChildIndex))
+				CopyOffsets.Add(Copies.Num());
+				const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, ChildIndex);
+				InsertIndices.Add(SubtreeEnd);
+				for (int32 Index = ChildIndex; Index < SubtreeEnd; ++Index)
 				{
-					RootIds.Add(Layer.Children[ChildIndex].ChildId);
+					Copies.Add(Layer.Children[Index]);
 				}
 			}
-			for (const FGuid& RootId : RootIds)
+			if (Copies.IsEmpty()) { return FReply::Handled(); }
+
+			// One identity map lets references between selected subtrees follow their copies.
+			Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId);
+			SelectedLayerChildIds.Reset();
+			for (const int32 Offset : CopyOffsets)
 			{
-				const int32 CurrentIndex = FindChildById(WorkingLayers[SelectedLayerIndex].Children, RootId);
-				if (CurrentIndex != INDEX_NONE)
+				SelectedLayerChildIds.Add(Copies[Offset].ChildId);
+			}
+			const FGuid ActiveCopyId = Copies[CopyOffsets.Last()].ChildId;
+			// Insert back-to-front so each original subtree's insertion index stays valid.
+			for (int32 RootIndex = SelectedRoots.Num() - 1; RootIndex >= 0; --RootIndex)
+			{
+				const int32 Start = CopyOffsets[RootIndex];
+				const int32 End = CopyOffsets.IsValidIndex(RootIndex + 1)
+					? CopyOffsets[RootIndex + 1] : Copies.Num();
+				for (int32 Index = Start; Index < End; ++Index)
 				{
-					DuplicateLayerChild(SelectedLayerIndex, CurrentIndex, false);
+					Layer.Children.Insert(MoveTemp(Copies[Index]), InsertIndices[RootIndex] + Index - Start);
 				}
 			}
+			const int32 ActiveIndex = FindChildById(Layer.Children, ActiveCopyId);
+			const bool bActiveEffect = Layer.Children[ActiveIndex].Type == EMixtormatLayerChildType::Effect;
+			SelectedEffectIndex = bActiveEffect ? ActiveIndex : INDEX_NONE;
+			SelectedMaskIndex = bActiveEffect ? INDEX_NONE : ActiveIndex;
+			SelectionAnchorLayerChildId = ActiveCopyId;
+			bHasSelectedLayer = true;
+			SetLayerExpanded(SelectedLayerIndex, true);
 			SyncSelectedLayerControls();
 			RefreshLayeredPreview();
 			RebuildLayerList();

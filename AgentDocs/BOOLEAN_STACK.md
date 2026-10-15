@@ -12,8 +12,8 @@ Boundary, and Difference descriptors are connected.
 
 Still pending: selected-pair Group as Boolean, empty-slot drag/drop, Copy as
 Boolean Source/Paste as Boolean Target, clipboard-specific remap UX and full
-source/publication/preview integration. Swap/Lock row actions and locked subtree
-drag enforcement are connected. The retired `BooleanOps` Generator cannot be newly
+source/publication/preview integration. Operand roles follow direct drag
+reordering; no Swap or Lock actions exist. The retired `BooleanOps` Generator cannot be newly
 created through the normal Add Generator menus, but its pre-existing execution and
 inspector remain while finite-volume Scatter Carve is reclassified separately.
 
@@ -41,11 +41,11 @@ and drop-target patterns; **do not use** the Region-ID group evaluator.
 ### Example
 
 ```text
-▾ Boolean                 [Subtract ▾] [Round ▾] [Lock]
+▾ Boolean                 [Subtract ▾] [Round ▾]
   ├ Target   Rock Formation
   └ Source   Cracks
 
-▾ Boolean · Self          [Subtract ▾] [Bevel ▾] [Lock]
+▾ Boolean · Self          [Subtract ▾] [Bevel ▾]
   └ Target   Rock Formation
 ```
 
@@ -99,17 +99,17 @@ SHAPING
 ## Authoring gestures
 
 1. Select two eligible stack items → `Group as Boolean`. The selection's
-   authored order determines Target then Source unless the user swaps them.
+   authored order determines Target then Source; dragging reorders roles.
 2. Drop a compatible item on an empty Target/Source slot; moving a child keeps
    its identity. Copy/paste into either slot clones and remaps child GUIDs.
 3. Context verbs on a compatible child: `Copy as Boolean Source` and
    `Paste as Boolean Target` should use shared clipboard mechanisms, not a
    second clip store.
-4. Parent row's `Swap` exchanges roles atomically without changing textures,
-   ownership or child IDs.
-5. Locked (default): group moves/duplicates as one contiguous subtree.
-   Unlocked: roles can be replaced, reordered or detached using existing
-   stack operations. Lock is an authoring restraint, **not** a shader switch.
+4. Drag Target or Source within the container to change operand order and
+   roles without changing textures, ownership or child IDs.
+5. Moving or duplicating the Boolean parent carries its contiguous subtree;
+   dragging child rows reorders, replaces or detaches operands using existing
+   stack operations. No Lock or Swap control is needed.
 6. Collapse hides the children but does not change their evaluation.
 7. A Boolean with **exactly one eligible enabled child** automatically exposes
    the `Self` state on its stack parent row (informational chip, not a mode
@@ -148,7 +148,7 @@ clone a GUID, run a second generator pass, or add the lone child's uncombined
 height to the running stack. One child with zero offsets produces identity
 for Union/Intersect; Subtract may remove positive relief from itself as an
 intentional unary effect. On 0 eligible children, return exact zero delta.
-The parent can still be moved/locked/collapsed as one ordinary subtree.
+The parent can still be moved or collapsed as one ordinary subtree.
 
 Union/intersect use hard max/min of vertical surfaces. Subtract is one-sided
 relief subtraction; no true 3D undercuts are promised. Round/Bevel apply signed
@@ -169,7 +169,7 @@ silently discard the shader or mutate unrelated generator contracts.
 2. Hierarchy/editor: reuse ID Group child indentation, drop wrappers,
    clipboard remap and context verbs. Add row operation badges using the
    existing blend-mode badge API; implement pair selection/role assignment
-   and locking in the stack only. Display `Self` when exactly one eligible
+   through direct stack dragging. Display `Self` when exactly one eligible
    child is present. Expose Target/Source XY/Height draggers in the inspector,
    not child pickers.
 3. Gather: resolve one or two owned child indices, signed-height-producing
