@@ -10,9 +10,10 @@ double-added to the outer signed-zero generator chain. Parent row operation
 and edge-style picker, offset inspector, signed Height, Affected Area, Join
 Boundary, and Difference descriptors are connected.
 
-Still pending: selected-pair Group as Boolean, empty-slot drag/drop, Copy as
+Still pending: empty-slot drag/drop, Copy as
 Boolean Source/Paste as Boolean Target, clipboard-specific remap UX and full
-source/publication/preview integration. Operand roles follow direct drag
+source/publication/preview integration. Selected-pair `Group as Boolean` (`Ctrl+G`)
+is wired for 1–2 adjacent root height-producing generators. Operand roles follow direct drag
 reordering; no Swap or Lock actions exist. The retired `BooleanOps` Generator cannot be newly
 created through the normal Add Generator menus, but its pre-existing execution and
 inspector remain while finite-volume Scatter Carve is reclassified separately.

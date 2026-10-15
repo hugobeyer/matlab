@@ -6,27 +6,20 @@
 
 ## Current implementation status — source review only
 
-Layer-child selection and bulk menu/keyboard dispatch are wired, but not ready to
-call complete. No Unreal build or runtime validation has been performed.
+Layer-child multi-selection, bulk menu/keyboard dispatch, and `Group as Boolean`
+are wired and reviewed in source. No Unreal build or runtime validation has been
+performed.
 
-Completed safety fixes:
-- Duplicate/Remove normalize selection to topmost roots, avoiding repeated subtree actions.
-- Group as Boolean accepts one root generator or two adjacent generator subtrees;
-  nonadjacent operands are rejected rather than moved across intervening operations.
-
-Remaining before completion:
-- Ctrl-deselect must clear active-row highlighting and must not restore selection via fallback.
-- Plain clicks must collapse selection; right-clicks must preserve it.
-- Shift ranges must follow visible rows, not hidden authored descendants.
-- Bulk duplication now remaps selected subtrees together and selects their copied roots.
-  Copies remain after their originals; references outside the selection stay unchanged.
-  Source-reviewed only; runtime verification is pending.
-- Bulk Duplicate/Remove now defer preview, Inspector sync and list rebuilds until the batch ends.
-  Single-item helpers retain their default refresh behavior. Runtime verification is pending.
-- Bulk edits still need history-boundary review and Boolean operand-capacity validation.
-  Boolean Lock was removed; operand authoring uses direct dragging instead.
-- Prune selection on document changes, source selection, undo/redo and deletion.
-- Boolean grouping still needs dependency, instance and scope eligibility review.
+Completed in source:
+- Ctrl-click toggle transfers/clears active child without fallback restoration.
+- Plain click collapses selection; right-click preserves multi-selection.
+- Shift-click and Ctrl+Shift-click ranges follow visible projected rows.
+- Duplicate/Remove normalize selection to topmost roots and refresh once per batch.
+- Bulk duplication remaps internal references across all selected subtrees together
+  and selects the copied roots.
+- Boolean operand-capacity (max 2 generators) and scope-depth limits are enforced on
+  `Group as Boolean` and `Duplicate`.
+- Stale child selections are cleared on source selection, document reset, and undo/redo.
 
 ## Requested changes
 

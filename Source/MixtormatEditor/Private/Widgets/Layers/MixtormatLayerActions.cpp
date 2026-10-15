@@ -126,6 +126,14 @@ bool SMixtormat::CanGroupSelectedChildrenAsBoolean() const
 		{
 			return false;
 		}
+		const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, ChildIndex);
+		for (int32 Index = ChildIndex; Index < SubtreeEnd; ++Index)
+		{
+			if (GetScopeDepth(Layer.Children, Index) >= MaximumScopeDepth)
+			{
+				return false;
+			}
+		}
 	}
 	return true;
 }
@@ -184,8 +192,6 @@ FReply SMixtormat::GroupSelectedChildrenAsBoolean()
 	SelectedLayerChildIds.Add(BooleanId);
 	SelectionAnchorLayerChildId = BooleanId;
 	bHasSelectedLayer = true;
-	RecordEditHistory();
-	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
 	RebuildLayerList();
@@ -201,6 +207,45 @@ bool SMixtormat::CanExecuteLayerSelectionCommand(const ELayerSelectionCommand Co
 	switch (Command)
 	{
 	case ELayerSelectionCommand::Duplicate:
+		if (bHasChildSelection && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			const TArray<FMixtormatLayerChild>& Children = WorkingLayers[SelectedLayerIndex].Children;
+			TMap<FGuid, int32> AddedBooleanOperands;
+			int32 PreviousSubtreeEnd = INDEX_NONE;
+			for (const int32 ChildIndex : SelectedChildren)
+			{
+				if (!Children.IsValidIndex(ChildIndex) || ChildIndex < PreviousSubtreeEnd)
+				{
+					continue;
+				}
+				PreviousSubtreeEnd = FindSubtreeEnd(Children, ChildIndex);
+				const FMixtormatLayerChild& Child = Children[ChildIndex];
+				if (Child.Type == EMixtormatLayerChildType::Generator && Child.ScopeOwnerChildId.IsValid())
+				{
+					const int32 OwnerIndex = FindChildById(Children, Child.ScopeOwnerChildId);
+					if (Children.IsValidIndex(OwnerIndex)
+						&& Children[OwnerIndex].Type == EMixtormatLayerChildType::Boolean)
+					{
+						int32 ExistingCount = 0;
+						for (const FMixtormatLayerChild& Existing : Children)
+						{
+							if (Existing.ScopeOwnerChildId == Child.ScopeOwnerChildId
+								&& Existing.Type == EMixtormatLayerChildType::Generator)
+							{
+								++ExistingCount;
+							}
+						}
+						const int32 NewCount = ++AddedBooleanOperands.FindOrAdd(Child.ScopeOwnerChildId);
+						if (ExistingCount + NewCount > 2)
+						{
+							return false;
+						}
+					}
+				}
+			}
+			return true;
+		}
+		return !Selected.IsEmpty();
 	case ELayerSelectionCommand::Remove:
 		return bHasChildSelection || !Selected.IsEmpty();
 	case ELayerSelectionCommand::Group:
@@ -965,6 +1010,28 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 	}
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FMixtormatLayerChild& SourceChild = Layer.Children[ChildIndex];
+	if (SourceChild.Type == EMixtormatLayerChildType::Generator && SourceChild.ScopeOwnerChildId.IsValid())
+	{
+		const int32 OwnerIndex = FindChildById(Layer.Children, SourceChild.ScopeOwnerChildId);
+		if (Layer.Children.IsValidIndex(OwnerIndex)
+			&& Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Boolean)
+		{
+			int32 OperandCount = 0;
+			for (const FMixtormatLayerChild& Existing : Layer.Children)
+			{
+				if (Existing.ScopeOwnerChildId == SourceChild.ScopeOwnerChildId
+					&& Existing.Type == EMixtormatLayerChildType::Generator)
+				{
+					++OperandCount;
+				}
+			}
+			if (OperandCount >= 2)
+			{
+				return FReply::Handled();
+			}
+		}
+	}
 	const int32 InsertAt = FindSubtreeEnd(Layer.Children, ChildIndex);
 	TArray<FMixtormatLayerChild> Copies;
 	for (int32 CopyIndex = ChildIndex; CopyIndex < InsertAt; ++CopyIndex)

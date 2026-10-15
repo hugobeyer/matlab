@@ -1578,7 +1578,12 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 			{
 				DuplicateLayerChild(LayerIndex, ChildIndex);
 			}
-		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
+		}))
+		.Enabled(TAttribute<bool>::CreateLambda([this]()
+		{
+			return CanExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+		}))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
 	if (CanGroupSelectedChildrenAsBoolean())
 	{
 		Menu.Item(
