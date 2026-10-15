@@ -189,7 +189,7 @@ struct MIXTORMATRUNTIME_API FMixtormatBooleanStack
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
 	bool bEnabled = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
-	bool bLocked = true;
+	bool bLocked = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
 	EMixtormatBooleanFieldOperation Operation = EMixtormatBooleanFieldOperation::Union;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boolean")
@@ -663,6 +663,30 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Children", meta = (TitleProperty = "Type"))
 	TArray<FMixtormatLayerChild> Children;
+
+	// True when this layer owns anything the generator chain evaluates: a Generator module, a
+	// Boolean group, a height sublayer, or a Behavior. A Generator layer is one by type; a Fill
+	// or Material layer becomes one by owning modules, which is what lets the compositor run the
+	// same chain there without a second path or a separate layer type.
+	bool HasGeneratorModules() const
+	{
+		for (const FMixtormatLayerChild& Child : Children)
+		{
+			switch (Child.Type)
+			{
+			case EMixtormatLayerChildType::Generator:
+			case EMixtormatLayerChildType::Boolean:
+			case EMixtormatLayerChildType::HeightBlend:
+			case EMixtormatLayerChildType::HeightCurve:
+			case EMixtormatLayerChildType::HeightColorRamp:
+			case EMixtormatLayerChildType::Behavior:
+				return true;
+			default:
+				break;
+			}
+		}
+		return false;
+	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FeatureInfluence = 0.0f;

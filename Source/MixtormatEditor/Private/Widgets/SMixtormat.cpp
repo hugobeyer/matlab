@@ -125,6 +125,11 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		if (KeyEvent.IsShiftDown())
 		{
 			const FKey Key = KeyEvent.GetKey();
+			if (Key == EKeys::V)
+			{
+				Self->ResetDiagnosticOverlays();
+				return true;
+			}
 			const EMixtormatStudioLighting Preset =
 				Key == EKeys::One ? EMixtormatStudioLighting::Neutral :
 				Key == EKeys::Two ? EMixtormatStudioLighting::Soft :
@@ -149,6 +154,16 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		if (KeyEvent.GetKey() == EKeys::E)
 		{
 			Self->ToggleFlowOverlayPreview();
+			return true;
+		}
+		if (KeyEvent.GetKey() == EKeys::R || KeyEvent.GetKey() == EKeys::I)
+		{
+			Self->ToggleRegionIdPreview();
+			return true;
+		}
+		if (KeyEvent.GetKey() == EKeys::V)
+		{
+			Self->CycleSelectedModulePreview();
 			return true;
 		}
 		if (KeyEvent.GetKey() == EKeys::L)
@@ -780,34 +795,9 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	}
 	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
 		&& !InKeyEvent.IsRepeat()
-				&& (InKeyEvent.GetKey() == EKeys::R || InKeyEvent.GetKey() == EKeys::I))
+		&& (InKeyEvent.GetKey() == EKeys::R || InKeyEvent.GetKey() == EKeys::I))
 	{
-		if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
-			&& ChildPreviewTarget.Kind == EMixtormatPreviewOutputKind::RegionIds)
-		{
-			return ToggleChildOutputPreview(ChildPreviewTarget);
-		}
-		if (IsSelectedOutputPreviewReady())
-		{
-			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-			const FMixtormatChildPreviewOutputSet Outputs = Child ? GetChildPreviewOutputSet(*Child)
-				: FMixtormatChildPreviewOutputSet();
-			if (Outputs.Primary.IsSet()
-				&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds)
-			{
-				for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-				{
-					if (Viewport.IsValid())
-					{
-						Viewport->ResetChannelPreview();
-					}
-				}
-				const FMixtormatPreviewOutputDesc& Output = Outputs.Primary.GetValue();
-				return ToggleChildOutputPreview(
-					ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.GapMaskName));
-			}
-		}
-		return FReply::Handled();
+		return ToggleRegionIdPreview();
 	}
 	// Rename the selected group or layer. Not double-click: that opens and shuts the row, and one
 	// gesture cannot mean both without the user having to guess which it will be this time.

@@ -1744,7 +1744,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
 			}
 		}
-		const bool bGeneratorLayer = Layer.Type == EMixtormatLayerType::Generator;
+		const bool bGeneratorLayer = Layer.Type == EMixtormatLayerType::Generator
+			|| Layer.HasGeneratorModules();
 		const uint64 PlacementKey = GatherLayerPlacementKey(Layer, bGeneratorLayer);
 		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
 		{

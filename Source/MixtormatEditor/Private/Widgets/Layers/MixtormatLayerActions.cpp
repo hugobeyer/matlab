@@ -1504,7 +1504,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	if (bBehaviorWarp)
 	{
 		if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
-			|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator
+			|| !WorkingLayers[Target.LayerIndex].HasGeneratorModules()
 			|| !Target.ScopeOwnerChildId.IsValid()) { return FReply::Handled(); }
 		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
 		const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(Children, Target.ScopeOwnerChildId);

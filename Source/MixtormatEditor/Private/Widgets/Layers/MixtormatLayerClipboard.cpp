@@ -377,7 +377,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		});
 		if (Dest.OwnerType != EMixtormatChildOwnerType::Layer
 			|| !WorkingLayers.IsValidIndex(DestLayerIndex)
-			|| WorkingLayers[DestLayerIndex].Type != EMixtormatLayerType::Generator
+			|| !WorkingLayers[DestLayerIndex].HasGeneratorModules()
 			|| !DestContainer->IsValidIndex(AnchorChildIndex)
 			|| !CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Clipboard.Payload)
 			|| !CanAddScopedChild(*DestContainer, AnchorChildIndex))

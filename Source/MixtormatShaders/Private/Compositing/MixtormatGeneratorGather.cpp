@@ -18,9 +18,9 @@ namespace MixtormatGpuCompositor
 		const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers,
 		const TArray<FMixtormatSourceEntry>& Sources)
 	{
-		// Modules exist only on Generator layers. A disabled layer must not gather them -- an
-		// enabled module on a hidden layer would build a surface nobody can see and still cost
-		// the whole solve.
+		// Modules exist on any layer that owns them; bGeneratorLayer is the caller's answer to that
+		// question, not a layer-type test. A disabled layer must not gather them -- an enabled
+		// module on a hidden layer would build a surface nobody can see and still cost the solve.
 		const FMixtormatGenerator& Generator = LayerChild.Generator;
 		if (!bGeneratorLayer || !Layer.bEnabled || !Generator.bEnabled)
 		{
@@ -384,7 +384,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 {
 	// A Behavior is owned by its Generator, not run as an Effect at its own row.
 	// The execution kernel is independent of the generator family.
-	if (!Layer.bEnabled || Layer.Type != EMixtormatLayerType::Generator
+	if (!Layer.bEnabled || !Layer.HasGeneratorModules()
 		|| LayerChild.Type != EMixtormatLayerChildType::Behavior) { return; }
 	const FMixtormatBehavior& Behavior = LayerChild.Behavior;
 	const bool bWarp = Behavior.Type == EMixtormatBehaviorType::Warp;
@@ -703,7 +703,8 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex, const bool bGeneratorLayer,
 	const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
 {
-	// Sublayers exist only on Generator layers, and a disabled layer must not gather them.
+	// Sublayers exist on any layer that owns generator modules, and a disabled layer must not
+	// gather them.
 	if (!bGeneratorLayer || !Layer.bEnabled) { return; }
 
 	switch (LayerChild.Type)

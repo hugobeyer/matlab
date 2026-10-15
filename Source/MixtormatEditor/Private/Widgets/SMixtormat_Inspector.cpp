@@ -296,7 +296,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 			FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
 			{
 				if (WorkingLayers.IsValidIndex(SelectedLayerIndex)
-					&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator)
+					&& WorkingLayers[SelectedLayerIndex].HasGeneratorModules())
 				{
 					WorkingLayers[SelectedLayerIndex].bGeneratorAlbedo = State == ECheckBoxState::Checked;
 					RefreshLayeredPreview();
@@ -538,7 +538,8 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Visibility_Lambda([this]()
 							{
 								return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
+									&& (WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
+										|| WorkingLayers[SelectedLayerIndex].HasGeneratorModules())
 									? EVisibility::Visible : EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("GeneratorLayerHeading", "GENERATOR LAYER"))

@@ -268,6 +268,9 @@ private:
 	TSharedRef<SWidget> MakeChildOutputPreviewButton(
 		const FMixtormatChildPreviewOutputSet& OutputSet);
 	FReply ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target);
+	// Bare R / I: toggle the selected child's Region IDs preview. Shared by the workspace
+	// preprocessor and OnKeyDown so the two routes cannot drift.
+	FReply ToggleRegionIdPreview();
 	// Chooses the live Flow output when an enabled Flow producer is selected.
 	// Only automatic previews are cleared when the selection changes.
 	bool UpdateAutomaticFlowPreview();
@@ -583,7 +586,6 @@ private:
 	FMixtormatBooleanOps* GetSelectedBooleanOps();
 	const FMixtormatBooleanOps* GetSelectedBooleanOps() const;
 	TSharedRef<SWidget> BuildBooleanOpsControls();
-    TSharedRef<SWidget> BuildBooleanOpsSourceMenu();
 	TSharedRef<SWidget> BuildNoisePatternPlacementControls(TFunction<FMixtormatNoise*()> Noise, bool bMaskEmbedded = false);
 	bool CanCreateNoiseGate(const FMixtormatChildAddress& Owner) const;
 	bool ResolveGatingMaskPayload(FMixtormatLayerChild& Payload) const;

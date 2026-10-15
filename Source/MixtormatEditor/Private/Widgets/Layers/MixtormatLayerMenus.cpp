@@ -215,7 +215,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 						const FMixtormatLayerChild* Selected = ResolveChildAt(Owner);
 						const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
 						const int32 Index = ResolveChildIndexAt(Owner);
-						Gates.Item(LOCTEXT("QuickNoiseGate", "Noise Gate"), MixtormatIcons::Mask(),
+						Gates.Item(LOCTEXT("QuickNoiseMask", "Noise Mask"), MixtormatIcons::Mask(),
 							FSimpleDelegate::CreateLambda([this, Owner]() { CreateNoiseGate(Owner); }))
 							.Enabled(CanCreateNoiseGate(Owner));
 						Gates.Item(LOCTEXT("QuickGalleryGate", "Gallery Mask"), MixtormatIcons::Mask(),
@@ -412,12 +412,6 @@ void SMixtormat::AddSharedChildMenuItems(
 			{
 				return BuildMaskSourceMenuFor(Address);
 			}));
-	}
-	// Only offered where it can land: a copied mask on a row that can own scoped masks.
-	if (Child && CanOwnScopedMasks(*Child) && CanCreateNoiseGate(Address))
-	{
-		Menu.Item(LOCTEXT("CreateNoiseGateContext", "Noise Gate"), MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda([this, Address]() { CreateNoiseGate(Address); }));
 	}
 	if (CanPasteAsGatingMask(Address))
 	{
@@ -1198,7 +1192,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 	const FText Reason = bCanAdd ? FText::GetEmpty()
 		: Target.IsGroup() ? LOCTEXT("GeneratorModuleGroupUnavailable", "Generator modules cannot be authored in groups")
 		: Target.ScopeOwnerChildId.IsValid() ? LOCTEXT("GeneratorModuleScopedUnavailable", "Generator modules must be unscoped")
-		: !CanAddGeneratorModule(Target) ? LOCTEXT("GeneratorModuleLayerUnavailable", "Requires a Generator layer")
 		: LOCTEXT("GeneratorModuleCreationUnavailable", "Cannot create a child at this location");
 	if (!bCanAdd) { Menu.Caption(Reason); }
 
@@ -1500,8 +1493,19 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 				Menu.Separator();
 				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
 				Destination.ScopeOwnerChildId = TargetChildId;
-				Menu.SubMenu(LOCTEXT("AddBehaviorMasks", "Masks"), MixtormatIcons::Mask(),
-					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
+				const bool bCanCreateScopedMask = CanCreateChild(Destination);
+				Menu.Item(LOCTEXT("AddScopedLayerValuesMask", "Mask"), MixtormatIcons::Mask(),
+					FSimpleDelegate::CreateLambda([this, Destination]()
+					{
+						CreateChild(Destination, EMixtormatChildCreation::LayerValuesMask);
+					}))
+					.Enabled(bCanCreateScopedMask);
+				Menu.Item(LOCTEXT("AddScopedNoiseMask", "Noise Mask"), MixtormatIcons::Mask(),
+					FSimpleDelegate::CreateLambda([this, Destination]()
+					{
+						CreateChild(Destination, EMixtormatChildCreation::NoiseMask);
+					}))
+					.Enabled(bCanCreateScopedMask);
 			}
 		}
 		Menu.Separator();

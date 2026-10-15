@@ -151,7 +151,7 @@ namespace MixtormatGpuCompositor
 		for (const FMixtormatLayer& Layer : EffectiveLayers)
 		{
 			if (!Layer.bEnabled) { continue; }
-			if (Layer.Type == EMixtormatLayerType::Generator)
+			if (Layer.HasGeneratorModules())
 			{
 				for (const FMixtormatLayerChild& Child : Layer.Children)
 				{
@@ -166,7 +166,7 @@ namespace MixtormatGpuCompositor
 			}
 			// V2 Warp, Deform and Push are typed consumers. Demand each connected
 			// shelf producer before GPU evaluation or the field will be absent.
-			if (Layer.Type == EMixtormatLayerType::Generator)
+			if (Layer.HasGeneratorModules())
 			{
 				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 				{

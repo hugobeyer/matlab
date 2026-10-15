@@ -528,7 +528,7 @@ namespace MixtormatLayersPrivate
 		// consulted here. No other ancestor edge is exempt from feedback rejection.
 		if (Child.Type == EMixtormatLayerChildType::Mask && Children && Source
 			&& Scope.GetLayers().ContainsByPredicate([DestOwnerId](const FMixtormatLayer& Layer)
-				{ return Layer.LayerId == DestOwnerId && Layer.Type == EMixtormatLayerType::Generator; })
+				{ return Layer.LayerId == DestOwnerId && Layer.HasGeneratorModules(); })
 			&& Source->Type == EMixtormatLayerChildType::Generator && !Source->IsInstance()
 			&& Child.Mask.HasPublishedSource()
 			&& Child.Mask.PublishedSourceOutput != FName(TEXT("Value"))
@@ -1738,11 +1738,12 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 		&& CanAddScopedChild(*Children, OwnerIndex);
 }
 
-// Modules live only at the root of a Generator layer; groups and material layers never host them.
+// Modules live at the root of any layer that can carry height; groups never host them. A Fill or
+// Material layer hosting a module chain evaluates exactly as a Generator layer's does, so the
+// layer type only decides what the chain is composited onto.
 bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 {
-	if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)
-		|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator) { return false; }
+	if (Target.IsGroup() || !WorkingLayers.IsValidIndex(Target.LayerIndex)) { return false; }
 	if (!Target.ScopeOwnerChildId.IsValid()) { return true; }
 	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[Target.LayerIndex].Children;
 	const int32 OwnerIndex = FindChildById(Children, Target.ScopeOwnerChildId);
@@ -1760,8 +1761,7 @@ bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const
 {
 	if (Target.IsGroup() || !Target.ScopeOwnerChildId.IsValid()
-		|| !WorkingLayers.IsValidIndex(Target.LayerIndex)
-		|| WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator)
+		|| !WorkingLayers.IsValidIndex(Target.LayerIndex))
 	{
 		return false;
 	}

@@ -1876,46 +1876,6 @@ TSharedRef<SWidget> SMixtormat::BuildIdGroupFeatureMenu()
 TSharedRef<SWidget> SMixtormat::BuildIdGroupControls()
 {
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
-		LOCTEXT("IdGroupModeLabel", "Operation"),
-		MixtormatRow::MakeChip(
-			TAttribute<FText>::CreateLambda([this]()
-			{
-				const FMixtormatIdGroup* Group = GetSelectedIdGroup();
-				if (!Group)
-				{
-					return FText::GetEmpty();
-				}
-				switch (Group->Mode)
-				{
-				case EMixtormatIdGroupMode::Pair: return LOCTEXT("IdGroupModePair", "Pair");
-				case EMixtormatIdGroupMode::MaxId: return LOCTEXT("IdGroupModeMaxId", "Max ID");
-				case EMixtormatIdGroupMode::MinId: return LOCTEXT("IdGroupModeMinId", "Min ID");
-				default: return LOCTEXT("IdGroupModeDifference", "Difference");
-				}
-			}),
-			FOnGetContent::CreateSP(this, &SMixtormat::BuildIdGroupFeatureMenu),
-						nullptr, TAttribute<FText>(), 0.0f),
-		TAttribute<FText>::CreateLambda([this]()
-		{
-			const FMixtormatIdGroup* Group = GetSelectedIdGroup();
-			switch (Group ? Group->Mode : EMixtormatIdGroupMode::Difference)
-			{
-			case EMixtormatIdGroupMode::Pair:
-				return LOCTEXT("IdGroupPairHint", "Hash ordered ID pairs to subdivide overlapping regions. Source order matters; the result does not retain recoverable parent assignments.");
-			case EMixtormatIdGroupMode::MaxId:
-				return LOCTEXT("IdGroupMaxIdHint", "Select the numerically largest valid ID per pixel. This is a numeric selector, not pair subdivision.");
-			case EMixtormatIdGroupMode::MinId:
-				return LOCTEXT("IdGroupMinIdHint", "Select the numerically smallest valid ID per pixel. This is a numeric selector, not pair subdivision.");
-			default:
-				return LOCTEXT("IdGroupDifferenceHint", "Fold ordered Region IDs sources, preserving equal IDs and hashing unequal overlaps.");
-			}
-		})));
-	AddSliderRow(Panel, MixtormatRow::MakeDropdown(LOCTEXT("IdGroupSourcesLabel", "Sources"),
-		MixtormatRow::MakeChip(LOCTEXT("IdGroupAddSource", "Add Source"),
-			FOnGetContent::CreateLambda([this]() { return BuildIdGroupSourceMenu(GetSelectedChildAddress()); }),
-						nullptr, TAttribute<FText>(), 0.0f),
-		LOCTEXT("IdGroupSourcesHint", "Add live Region IDs references. Reorder or remove their subordinate rows in the stack; producers stay in place.")));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatIdGroup>(
 		LOCTEXT("IdGroupBoundaryWidth", "Boundary Width"),
 		[this]() { return GetSelectedIdGroup(); }, &FMixtormatIdGroup::BoundaryWidth, 1.0, 16.0, 1,

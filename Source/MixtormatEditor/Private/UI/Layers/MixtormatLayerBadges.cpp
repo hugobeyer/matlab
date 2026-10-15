@@ -217,14 +217,23 @@ namespace MixtormatLayerBadges
 			|| Child.Type == EMixtormatLayerChildType::RampId
 			|| Child.Type == EMixtormatLayerChildType::UvFromIds
 			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
-			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
-			|| Child.Type == EMixtormatLayerChildType::IdGroup)
+			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds)
 		{
 			// Nothing. These have no blend mode -- they emit data and albedo, not coverage -- and
 			// the slot used to say "FILT", which every one of their names already says. A badge
 			// that repeats the row it sits on is a column of noise to scan past; the row collapses
 			// the slot when the text is empty, so this costs no width and no height either.
 			return FText::GetEmpty();
+		}
+		if (Child.Type == EMixtormatLayerChildType::IdGroup)
+		{
+			switch (Child.IdGroup.Mode)
+			{
+			case EMixtormatIdGroupMode::Pair: return LOCTEXT("IdGroupBadgePair", "PAIR");
+			case EMixtormatIdGroupMode::MaxId: return LOCTEXT("IdGroupBadgeMax", "MAX");
+			case EMixtormatIdGroupMode::MinId: return LOCTEXT("IdGroupBadgeMin", "MIN");
+			default: return LOCTEXT("IdGroupBadgeDiff", "DIFF");
+			}
 		}
 		if (Child.Type == EMixtormatLayerChildType::RandomId)
 		{

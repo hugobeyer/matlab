@@ -426,6 +426,82 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanStackControls()
 {
 	const auto B = [this]() { return GetSelectedBooleanStack(); };
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	// Operation and edge style are also on the row badge. A badge is a good place to read a value
+	// and a poor place to discover one, so the same two choices are segmented here as well.
+	TSharedRef<SVerticalBox> Operation = AddCard(Cards, LOCTEXT("BooleanStackOperation", "OPERATION"));
+	AddSliderRow(Operation, MixtormatRow::MakeTrailing(
+		LOCTEXT("BooleanStackOpLabel", "Boolean"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{
+			LOCTEXT("BooleanStackOpUnion", "Union"),
+			LOCTEXT("BooleanStackOpSubtract", "Subtract"),
+			LOCTEXT("BooleanStackOpIntersect", "Intersect")})
+		.ToolTips(TArray<FText>{
+			LOCTEXT("BooleanStackOpUnionHint", "Keeps the higher of the two signed surfaces."),
+			LOCTEXT("BooleanStackOpSubtractHint", "Removes the source's positive relief from the target."),
+			LOCTEXT("BooleanStackOpIntersectHint", "Keeps the lower of the two signed surfaces.")})
+		.ActiveIndex_Lambda([B]() -> int32
+		{
+			const FMixtormatBooleanStack* Selected = B();
+			if (!Selected) { return 0; }
+			switch (Selected->Operation)
+			{
+			case EMixtormatBooleanFieldOperation::Subtract: return 1;
+			case EMixtormatBooleanFieldOperation::Intersect: return 2;
+			default: return 0;
+			}
+		})
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, B](const int32 Index)
+		{
+			FMixtormatBooleanStack* Selected = B();
+			if (!Selected) { return; }
+			const EMixtormatBooleanFieldOperation Op =
+				Index == 1 ? EMixtormatBooleanFieldOperation::Subtract :
+				Index == 2 ? EMixtormatBooleanFieldOperation::Intersect :
+				EMixtormatBooleanFieldOperation::Union;
+			if (Selected->Operation == Op) { return; }
+			Selected->Operation = Op;
+			LastHistoryRecordTime = 0.0;
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}))));
+	AddSliderRow(Operation, MixtormatRow::MakeTrailing(
+		LOCTEXT("BooleanStackEdgeLabel", "Edge"),
+		SNew(SMixtormatSegmentedControl)
+		.Options(TArray<FText>{
+			LOCTEXT("BooleanStackEdgeHard", "Hard"),
+			LOCTEXT("BooleanStackEdgeRound", "Round"),
+			LOCTEXT("BooleanStackEdgeBevel", "Bevel")})
+		.ToolTips(TArray<FText>{
+			LOCTEXT("BooleanStackEdgeHardHint", "Sharp seam. Join Width does not apply."),
+			LOCTEXT("BooleanStackEdgeRoundHint", "Rounded join of the given width."),
+			LOCTEXT("BooleanStackEdgeBevelHint", "Straight-slope join of the given width.")})
+		.ActiveIndex_Lambda([B]() -> int32
+		{
+			const FMixtormatBooleanStack* Selected = B();
+			if (!Selected) { return 0; }
+			switch (Selected->EdgeStyle)
+			{
+			case EMixtormatBooleanEdgeStyle::Round: return 1;
+			case EMixtormatBooleanEdgeStyle::Bevel: return 2;
+			default: return 0;
+			}
+		})
+		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, B](const int32 Index)
+		{
+			FMixtormatBooleanStack* Selected = B();
+			if (!Selected) { return; }
+			const EMixtormatBooleanEdgeStyle Style =
+				Index == 1 ? EMixtormatBooleanEdgeStyle::Round :
+				Index == 2 ? EMixtormatBooleanEdgeStyle::Bevel :
+				EMixtormatBooleanEdgeStyle::Hard;
+			if (Selected->EdgeStyle == Style) { return; }
+			Selected->EdgeStyle = Style;
+			LastHistoryRecordTime = 0.0;
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}))));
+
 	TSharedRef<SVerticalBox> Target = AddCard(Cards, LOCTEXT("BooleanStackTarget", "TARGET"));
 	AddSliderRow(Target, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatBooleanStack>(
@@ -487,145 +563,14 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanStackControls()
 		[Cards];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildBooleanOpsSourceMenu()
-{
-    MixtormatMenu::FBuilder Menu;
-    if (!GetSelectedBooleanOps()) { return Menu.Build(); }
-    Menu.Item(LOCTEXT("BooleanSourceNone", "None"), nullptr,
-        FSimpleDelegate::CreateLambda([this]()
-        {
-            if (FMixtormatBooleanOps* B = GetSelectedBooleanOps())
-            {
-                B->SourceChildId.Invalidate();
-                RefreshLayeredPreview();
-            }
-        }));
-    const FMixtormatChildAddress Address = GetSelectedChildAddress();
-    const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-    if (!Children) { return Menu.Build(); }
-    const int32 SelectedIndex = Children->IndexOfByPredicate(
-        [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
-    if (SelectedIndex == INDEX_NONE) { return Menu.Build(); }
-    for (int32 Index = 0; Index < SelectedIndex; ++Index)
-    {
-        const FMixtormatLayerChild& Child = (*Children)[Index];
-        if (Child.Type != EMixtormatLayerChildType::Generator
-            || !Child.Generator.bEnabled
-            || MixtormatChildScope::ResolveOwnerIndex(*Children, Index) != INDEX_NONE
-            || (Child.Generator.Type == EMixtormatGeneratorType::Noise
-                && !Child.Generator.Noise.bNoiseWriteHeight)) { continue; }
-        const FGuid ChildId = Child.ChildId;
-        Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
-            FSimpleDelegate::CreateLambda([this, ChildId]()
-            {
-                if (FMixtormatBooleanOps* B = GetSelectedBooleanOps())
-                {
-                    B->SourceChildId = ChildId;
-                    RefreshLayeredPreview();
-                }
-            }));
-    }
-    return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 {
 	const auto B = [this]() { return GetSelectedBooleanOps(); };
     TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
     TSharedRef<SVerticalBox> ScatterCards = SNew(SVerticalBox);
-    TSharedRef<SVerticalBox> FieldCards = SNew(SVerticalBox);
-    {
-        TSharedRef<SVerticalBox> Main = AddCard(Cards, LOCTEXT("BooleanModeCard", "OPERATION"));
-        AddSliderRow(Main, MakeMemberEnum<FMixtormatBooleanOps, EMixtormatBooleanMode>(
-            LOCTEXT("BooleanMode", "Mode"), B, &FMixtormatBooleanOps::Mode,
-            LOCTEXT("BooleanModeHint", "Scatter Carve uses finite cutters; Boolean, Round and Bevel combine signed height fields."),
-            FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
-    }
-    {
-        TSharedRef<SVerticalBox> Field = AddCard(FieldCards, LOCTEXT("BooleanFieldCard", "FIELD COMBINE"));
-        AddSliderRow(Field, MixtormatRow::MakePair(
-            MakeMemberEnum<FMixtormatBooleanOps, EMixtormatBooleanFieldOperation>(
-                LOCTEXT("BooleanFieldOp", "Boolean"), B, &FMixtormatBooleanOps::FieldOperation,
-                LOCTEXT("BooleanFieldOpHint", "Union/intersection combine vertical surfaces; subtraction removes positive signed source relief.")),
-            MixtormatRow::MakeTrailing(
-                LOCTEXT("BooleanFieldSource", "Source"),
-                MixtormatRow::MakeChip(
-                    TAttribute<FText>::CreateLambda([this]()
-                    {
-                        const FMixtormatBooleanOps* Selected = GetSelectedBooleanOps();
-                        if (!Selected || !Selected->SourceChildId.IsValid())
-                            return LOCTEXT("BooleanFieldSourceNone", "None");
-                        const FMixtormatChildAddress Address = GetSelectedChildAddress();
-                        if (const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address))
-                        {
-                            const int32 CurrentIndex = Children->IndexOfByPredicate(
-                                [&Address](const FMixtormatLayerChild& Child) { return Child.ChildId == Address.ChildId; });
-                            for (int32 Index = 0; Index < CurrentIndex; ++Index)
-                            {
-                                const FMixtormatLayerChild& Candidate = (*Children)[Index];
-                                if (Candidate.ChildId == Selected->SourceChildId
-                                    && Candidate.Type == EMixtormatLayerChildType::Generator
-                                    && Candidate.Generator.bEnabled
-                                    && MixtormatChildScope::ResolveOwnerIndex(*Children, Index) == INDEX_NONE
-                                    && (Candidate.Generator.Type != EMixtormatGeneratorType::Noise
-                                        || Candidate.Generator.Noise.bNoiseWriteHeight))
-                                    return GetLayerChildName(Candidate);
-                            }
-                        }
-                        return LOCTEXT("BooleanFieldSourceMissing", "Unavailable");
-                    }),
-                    FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanOpsSourceMenu)),
-                LOCTEXT("BooleanFieldSourceHint", "An earlier Generator module's signed height; None is identity."))));
-        AddSliderRow(Field, MixtormatRow::MakePair(
-            MakeMemberSlider<FMixtormatBooleanOps>(
-                LOCTEXT("BooleanFieldSourceScale", "Source Scale"), B, &FMixtormatBooleanOps::FieldSourceScale,
-                -4.0, 4.0, 1.0, 0.01,
-                LOCTEXT("BooleanFieldSourceScaleHint", "Signed source gain. Negative values invert raised and recessed shapes.")),
-            MakeMemberSlider<FMixtormatBooleanOps>(
-                LOCTEXT("BooleanFieldBias", "Height Bias"), B, &FMixtormatBooleanOps::FieldBias,
-                -2.0, 2.0, 0.0, 0.005,
-                LOCTEXT("BooleanFieldBiasHint", "Shift the source vertically in raw signed height units."))));
-        AddSliderRow(Field, MakeMemberSlider<FMixtormatBooleanOps>(
-            LOCTEXT("BooleanFieldAmount", "Amount"), B, &FMixtormatBooleanOps::FieldAmount,
-            0.0, 1.0, 1.0, 0.01,
-            LOCTEXT("BooleanFieldAmountHint", "Blend the result into the running signed height.")));
-        AddSliderRow(Field,
-            SNew(SBox)
-            .Visibility_Lambda([B]()
-            {
-                const FMixtormatBooleanOps* Selected = B();
-                return Selected && (Selected->Mode == EMixtormatBooleanMode::Round
-                    || Selected->Mode == EMixtormatBooleanMode::Bevel)
-                    ? EVisibility::Visible : EVisibility::Collapsed;
-            })
-            [
-                MakeMemberSlider<FMixtormatBooleanOps>(
-                    LOCTEXT("BooleanFieldWidth", "Join Width"), B, &FMixtormatBooleanOps::FieldWidth,
-                    0.0, 1.0, 0.10, 0.005,
-                    LOCTEXT("BooleanFieldWidthHint", "Round or bevel reach in signed height units."))
-            ]);
-    }
     Cards->AddSlot().AutoHeight()
     [
-        SNew(SBox)
-        .Visibility_Lambda([B]()
-        {
-            const FMixtormatBooleanOps* Selected = B();
-            return Selected && Selected->Mode == EMixtormatBooleanMode::ScatterCarve
-                ? EVisibility::Visible : EVisibility::Collapsed;
-        })
-        [ScatterCards]
-    ];
-    Cards->AddSlot().AutoHeight()
-    [
-        SNew(SBox)
-        .Visibility_Lambda([B]()
-        {
-            const FMixtormatBooleanOps* Selected = B();
-            return Selected && Selected->Mode != EMixtormatBooleanMode::ScatterCarve
-                ? EVisibility::Visible : EVisibility::Collapsed;
-        })
-        [FieldCards]
+        ScatterCards
     ];
 	{
 		TSharedRef<SVerticalBox> Scatter = AddCard(ScatterCards, LOCTEXT("BooleanScatter", "SCATTER CARVE"));
@@ -701,53 +646,20 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 		.Visibility_Lambda([this]() { return GetSelectedBooleanOps() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("BooleanOpsHeading", "BOOLEAN OPS"))
+			.Title(LOCTEXT("BooleanOpsHeading", "SCATTER CARVE"))
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 					FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
 				[
-					SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth()
-                    [
-                        SNew(SBox)
-                        .Visibility_Lambda([B]()
-                        {
-                            const FMixtormatBooleanOps* Selected = B();
-                            return Selected && Selected->Mode == EMixtormatBooleanMode::ScatterCarve
-                                ? EVisibility::Visible : EVisibility::Collapsed;
-                        })
-                        [
-                            MakeChildOutputPreviewButton([]()
-                            {
-                                FMixtormatLayerChild Probe;
-                                Probe.Type = EMixtormatLayerChildType::Generator;
-                                Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
-                                return GetChildPreviewOutputSet(Probe);
-                            }())
-                        ]
-                    ]
-                    + SHorizontalBox::Slot().AutoWidth()
-                    [
-                        SNew(SBox)
-                        .Visibility_Lambda([B]()
-                        {
-                            const FMixtormatBooleanOps* Selected = B();
-                            return Selected && Selected->Mode != EMixtormatBooleanMode::ScatterCarve
-                                ? EVisibility::Visible : EVisibility::Collapsed;
-                        })
-                        [
-                            MakeChildOutputPreviewButton([]()
-                            {
-                                FMixtormatLayerChild Probe;
-                                Probe.Type = EMixtormatLayerChildType::Generator;
-                                Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
-                                Probe.Generator.BooleanOps.Mode = EMixtormatBooleanMode::Boolean;
-                                return GetChildPreviewOutputSet(Probe);
-                            }())
-                        ]
-                    ]
+					MakeChildOutputPreviewButton([]()
+					{
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::BooleanOps;
+						return GetChildPreviewOutputSet(Probe);
+					}())
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
@@ -1224,67 +1136,64 @@ void SMixtormat::AddBehaviorFieldCompositionRows(
 			]
 		]);
 	if (!bAllowBlend) { return; }
+	// A discrete choice, so it is a segmented strip rather than a dropdown: the whole set reads at
+	// once and the current fold is visible without opening anything. A kind that cannot fold keeps
+	// the strip but refuses the change, which is the same answer the runtime gives.
 	AddSliderRow(TargetPanel,
 		SNew(SBox).Visibility_Lambda([bVisible]() { return bVisible.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
-			MixtormatRow::MakeDropdown(
+			MixtormatRow::MakeTrailing(
 				LOCTEXT("BehaviorFieldBlend", "Combine"),
-				MixtormatRow::MakeChip(
-					TAttribute<FText>::CreateLambda([ResolveField, Kind]()
+				SNew(SMixtormatSegmentedControl)
+				.Options(TArray<FText>{
+					LOCTEXT("BehaviorFieldBlendDefault", "Default"),
+					LOCTEXT("BehaviorFieldBlendAdd", "Add"),
+					LOCTEXT("BehaviorFieldBlendMultiply", "Multiply"),
+					LOCTEXT("BehaviorFieldBlendMin", "Min"),
+					LOCTEXT("BehaviorFieldBlendMax", "Max")})
+				.ToolTips(TArray<FText>{
+					LOCTEXT("BehaviorFieldBlendDefaultHint", "The operation's own default fold. Push stays additive."),
+					LOCTEXT("BehaviorFieldBlendAddHint", "Adds this field to the current native height."),
+					LOCTEXT("BehaviorFieldBlendMultiplyHint", "Multiplies the current native height by this field."),
+					LOCTEXT("BehaviorFieldBlendMinHint", "Keeps the lower of the two."),
+					LOCTEXT("BehaviorFieldBlendMaxHint", "Keeps the higher of the two.")})
+				.ActiveIndex_Lambda([ResolveField, Kind]() -> int32
+				{
+					const FMixtormatBehaviorFieldInput* Field = ResolveField();
+					// Show the effective combine rather than a stored value the runtime would
+					// refuse: a blend on a kind that cannot fold reads as the operation default.
+					if (!Field || !FMixtormatBehaviorFieldInput::KindSupportsBlend(Kind()))
 					{
-						const FMixtormatBehaviorFieldInput* Field = ResolveField();
-						const EMixtormatBehaviorFieldKind Effective = Kind();
-						// Show the effective combine rather than a stored value the
-						// runtime would refuse: a blend on a kind that cannot fold is
-						// reported as the operation default it will actually run.
-						if (!Field || !FMixtormatBehaviorFieldInput::KindSupportsBlend(Effective))
-						{
-							return LOCTEXT("BehaviorFieldBlendDefault", "Operation Default");
-						}
-						switch (Field->Blend)
-						{
-						case EMixtormatBehaviorFieldBlend::Add: return LOCTEXT("BehaviorFieldBlendAdd", "Add");
-						case EMixtormatBehaviorFieldBlend::Multiply: return LOCTEXT("BehaviorFieldBlendMultiply", "Multiply");
-						case EMixtormatBehaviorFieldBlend::Min: return LOCTEXT("BehaviorFieldBlendMin", "Minimum");
-						case EMixtormatBehaviorFieldBlend::Max: return LOCTEXT("BehaviorFieldBlendMax", "Maximum");
-						default: return LOCTEXT("BehaviorFieldBlendDefault", "Operation Default");
-						}
-					}),
-					FOnGetContent::CreateLambda([this, ResolveField, Kind]() -> TSharedRef<SWidget>
+						return 0;
+					}
+					switch (Field->Blend)
 					{
-						MixtormatMenu::FBuilder Menu;
-						const TAttribute<bool> bUsable = TAttribute<bool>::CreateLambda([Kind]()
-						{
-							return FMixtormatBehaviorFieldInput::KindSupportsBlend(Kind());
-						});
-						const auto Choose = [this, ResolveField](const EMixtormatBehaviorFieldBlend Blend)
-						{
-							if (FMixtormatBehaviorFieldInput* Field = ResolveField())
-							{
-								Field->Blend = Blend;
-								RefreshLayeredPreview();
-								RebuildLayerList();
-							}
-						};
-						Menu.Item(LOCTEXT("BehaviorFieldBlendOperation", "Operation Default"), nullptr,
-							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Operation); }));
-						Menu.Item(LOCTEXT("BehaviorFieldBlendAddItem", "Add"), nullptr,
-							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Add); }))
-							.Enabled(bUsable);
-						Menu.Item(LOCTEXT("BehaviorFieldBlendMultiplyItem", "Multiply"), nullptr,
-							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Multiply); }))
-							.Enabled(bUsable);
-						Menu.Item(LOCTEXT("BehaviorFieldBlendMinItem", "Minimum"), nullptr,
-							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Min); }))
-							.Enabled(bUsable);
-						Menu.Item(LOCTEXT("BehaviorFieldBlendMaxItem", "Maximum"), nullptr,
-							FSimpleDelegate::CreateLambda([Choose]() { Choose(EMixtormatBehaviorFieldBlend::Max); }))
-							.Enabled(bUsable);
-						return Menu.Build();
-					}),
-					nullptr,
-					LOCTEXT("BehaviorFieldBlendHint", "How this signed height field folds into the current native height. Operation Default keeps Push additive; the others are Push-only because a coordinate field and a distance field have no base to fold into.")),
-				LOCTEXT("BehaviorFieldBlendHint", "Signed-scalar combine for this field."))
+					case EMixtormatBehaviorFieldBlend::Add: return 1;
+					case EMixtormatBehaviorFieldBlend::Multiply: return 2;
+					case EMixtormatBehaviorFieldBlend::Min: return 3;
+					case EMixtormatBehaviorFieldBlend::Max: return 4;
+					default: return 0;
+					}
+				})
+				.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, ResolveField, Kind](const int32 Index)
+				{
+					FMixtormatBehaviorFieldInput* Field = ResolveField();
+					if (!Field) { return; }
+					// The others are Push-only: a coordinate field and a distance field have no
+					// base to fold into, so the strip refuses rather than storing a dead value.
+					if (Index != 0 && !FMixtormatBehaviorFieldInput::KindSupportsBlend(Kind())) { return; }
+					const EMixtormatBehaviorFieldBlend Blend =
+						Index == 1 ? EMixtormatBehaviorFieldBlend::Add :
+						Index == 2 ? EMixtormatBehaviorFieldBlend::Multiply :
+						Index == 3 ? EMixtormatBehaviorFieldBlend::Min :
+						Index == 4 ? EMixtormatBehaviorFieldBlend::Max :
+						EMixtormatBehaviorFieldBlend::Operation;
+					if (Field->Blend == Blend) { return; }
+					Field->Blend = Blend;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}))
+			)
 		]);
 }
 
@@ -1551,35 +1460,36 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
-			MixtormatRow::MakeDropdown(
-		LOCTEXT("BehaviorWarpStageLabel", "Sampling Stage"),
-		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Warp]()
-		{
-			const FMixtormatBehavior* B = Warp();
-			return B && B->Stage == EMixtormatBehaviorStage::PreGeneration
-				? LOCTEXT("BehaviorWarpPreStage", "Before Generation")
-				: LOCTEXT("BehaviorWarpPostStage", "After Generation");
-		}), FOnGetContent::CreateLambda([this]() -> TSharedRef<SWidget>
-		{
-			MixtormatMenu::FBuilder Menu;
-			const auto SetStage = [this](EMixtormatBehaviorStage Stage)
-			{
-				FMixtormatBehavior* B = GetSelectedBehaviorWarp();
-				if (!B || (Stage == EMixtormatBehaviorStage::PreGeneration
-					&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput)) { return; }
-				B->Stage = Stage;
-				RefreshLayeredPreview();
-				RebuildLayerList();
-			};
-			Menu.Item(LOCTEXT("BehaviorWarpStagePostChoice", "After Generation"), nullptr,
-				FSimpleDelegate::CreateLambda([SetStage]() { SetStage(EMixtormatBehaviorStage::PostGeneration); }));
-			Menu.Item(LOCTEXT("BehaviorWarpStagePreChoice", "Before Generation"), nullptr,
-				FSimpleDelegate::CreateLambda([SetStage]() { SetStage(EMixtormatBehaviorStage::PreGeneration); }))
-				.Enabled(GetSelectedBehaviorWarp()
-					&& GetSelectedBehaviorWarp()->Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput);
-			return Menu.Build();
-		})),
-		LOCTEXT("BehaviorWarpStageHint", "Before changes generator sampling coordinates; After remaps completed generator outputs. Available only with a published direction source."))]);
+			MixtormatRow::MakeTrailing(
+				LOCTEXT("BehaviorWarpStageLabel", "Sampling Stage"),
+				SNew(SMixtormatSegmentedControl)
+				.Options(TArray<FText>{
+					LOCTEXT("BehaviorWarpPreStage", "Before"),
+					LOCTEXT("BehaviorWarpPostStage", "After")})
+				.ToolTips(TArray<FText>{
+					LOCTEXT("BehaviorWarpPreStageHint", "Changes generator sampling coordinates before generation."),
+					LOCTEXT("BehaviorWarpPostStageHint", "Remaps completed generator outputs after generation.")})
+				.ActiveIndex_Lambda([Warp]() -> int32
+				{
+					const FMixtormatBehavior* B = Warp();
+					return B && B->Stage == EMixtormatBehaviorStage::PreGeneration ? 0 : 1;
+				})
+				.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Warp](const int32 Index)
+				{
+					FMixtormatBehavior* B = Warp();
+					if (!B) { return; }
+					const EMixtormatBehaviorStage Stage = Index == 0
+						? EMixtormatBehaviorStage::PreGeneration : EMixtormatBehaviorStage::PostGeneration;
+					if (B->Stage == Stage) { return; }
+					// Before needs a published direction source; the strip refuses the change
+					// rather than storing a stage the gather would reject.
+					if (Stage == EMixtormatBehaviorStage::PreGeneration
+						&& B->Direction.Origin != EMixtormatBehaviorFieldOrigin::PublishedOutput) { return; }
+					B->Stage = Stage;
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}))
+			)]);
 	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
 		LOCTEXT("BehaviorWarpStrength", "Strength"), Warp, &FMixtormatBehavior::Strength,
 		-4.0, 4.0, 1.0, 0.01,

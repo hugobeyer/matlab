@@ -598,6 +598,8 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 		MaskOverlayOutputName = SelectedTarget.OutputName;
 		MaskOverlayOutputKind = SelectedTarget.Kind;
 		bAutomaticFlowPreview = false;
+		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
+		ChildPreviewTarget = FMixtormatChildPreviewTarget();
 		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 		{
 			if (Viewport.IsValid())
@@ -780,6 +782,37 @@ bool SMixtormat::UpdateAutomaticFlowPreview()
 		}
 	}
 	return false;
+}
+
+FReply SMixtormat::ToggleRegionIdPreview()
+{
+	// Already showing this child's IDs: the same key turns it off.
+	if (DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
+		&& ChildPreviewTarget.Kind == EMixtormatPreviewOutputKind::RegionIds)
+	{
+		return ToggleChildOutputPreview(ChildPreviewTarget);
+	}
+	if (IsSelectedOutputPreviewReady())
+	{
+		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		const FMixtormatChildPreviewOutputSet Outputs = Child ? GetChildPreviewOutputSet(*Child)
+			: FMixtormatChildPreviewOutputSet();
+		if (Outputs.Primary.IsSet()
+			&& Outputs.Primary->Kind == EMixtormatPreviewOutputKind::RegionIds)
+		{
+			for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+			{
+				if (Viewport.IsValid())
+				{
+					Viewport->ResetChannelPreview();
+				}
+			}
+			const FMixtormatPreviewOutputDesc& Output = Outputs.Primary.GetValue();
+			return ToggleChildOutputPreview(
+				ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.GapMaskName));
+		}
+	}
+	return FReply::Handled();
 }
 
 FReply SMixtormat::ToggleChildOutputPreview(const FMixtormatChildPreviewTarget& Target)

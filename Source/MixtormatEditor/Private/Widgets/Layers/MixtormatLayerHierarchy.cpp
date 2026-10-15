@@ -1012,8 +1012,7 @@ FText SMixtormat::GetLayerChildSourceText(
 	}
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesNoise())
 	{
-		return Child.ScopeOwnerChildId.IsValid() ? LOCTEXT("NoiseGateSource", "NOISE · GATE")
-			: LOCTEXT("NoiseMaskSource", "NOISE");
+		return LOCTEXT("NoiseMaskSource", "NOISE");
 	}
 	if (Child.Type == EMixtormatLayerChildType::Boolean)
 	{
@@ -1390,6 +1389,13 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			.Kind(Child.Type == EMixtormatLayerChildType::OutputReference
 				? OutputReferenceKindText(Child) : MixtormatLayerBadges::KindForChild(Child))
 			.Badge(MixtormatLayerBadges::ForChild(Child))
+			.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::IdGroup
+				? FOnGetContent::CreateLambda([this, GroupId, ChildIndex]()
+				{
+					SelectGroupChild(GroupId, ChildIndex);
+					return BuildIdGroupFeatureMenu();
+				})
+				: FOnGetContent())
 			.bActive_Lambda([this, GroupId, ChildIndex]()
 			{
 				const FMixtormatLayerGroup* Current =
@@ -1735,6 +1741,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// masks that emit coverage (not filters, ID nodes or generators).
 				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Boolean
 					? FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanStackRowMenu, LayerIndex, ChildIndex)
+					: Child.Type == EMixtormatLayerChildType::IdGroup
+					? FOnGetContent::CreateLambda([this, LayerIndex, ChildIndex]()
+					{
+						SelectWorkingChild(LayerIndex, ChildIndex);
+						return BuildIdGroupFeatureMenu();
+					})
 					: Child.Type == EMixtormatLayerChildType::Mask
 					? FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskBlendModeMenu, LayerIndex, ChildIndex)
 					: (Child.Type == EMixtormatLayerChildType::Generated
