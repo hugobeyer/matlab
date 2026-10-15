@@ -2380,16 +2380,8 @@ namespace
 		return Lattice;
 	}
 
-	// One Strata Carver child.
-	//
-	// Produces a signed geological relief field. Height Follow samples the upstream composite;
-	// combination and normalization remain owned by the shared generator-layer pipeline.
-	//
-	// The bedding coordinate reads the source height (Height Follow), so this cannot publish in
-	// the ID phase: its bed IDs exist from here on, for the children below it, and UV From IDs
-	// -- which resolves before the layer's source is read -- cannot key off them.
-
-	void AddBooleanCarvePasses(FMixtormatComposeContext& Ctx,
+	// Combine the Boolean container's resolved target and source height fields.
+	void AddBooleanStackPasses(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Child, FRDGTextureRef TargetHeight,
 		FRDGTextureRef SourceHeight, FGeneratorBundle* Bundle)

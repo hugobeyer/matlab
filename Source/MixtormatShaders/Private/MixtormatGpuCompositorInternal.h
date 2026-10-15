@@ -1131,6 +1131,7 @@ namespace MixtormatGpuCompositor
 	// compose-resolved: set when a Mask is scoped under the ramp, the Height Blend copy pattern.
 	struct FGeneratorHeightColorRampRenderData
 	{
+		FName OutputName = NAME_None;
 		bool bNormalizeInput = false;
 		bool bMirrorRepeat = false;
 		float Weight = 1.0f;

@@ -919,7 +919,7 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::ScatterCarve:
 			Child.Generator.Type = EMixtormatGeneratorType::BooleanOps;
-			Child.Generator.BooleanOps.Mode = EMixtormatBooleanGeneratorMode::ScatterCarve;
+			Child.Generator.BooleanOps.Mode = EMixtormatBooleanMode::ScatterCarve;
 			break;
 		case EMixtormatChildCreation::BooleanOps:
 			break;
