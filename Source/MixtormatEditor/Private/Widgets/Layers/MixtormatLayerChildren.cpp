@@ -49,6 +49,42 @@ namespace MixtormatLayersPrivate
 					== EMixtormatEffectClass::Surface);
 	}
 
+	bool CanOwnIdFilters(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::PatternId:
+		case EMixtormatLayerChildType::IdGroup:
+			return true;
+		case EMixtormatLayerChildType::Filter:
+			return Child.Filter.bSurfaceIds;
+		case EMixtormatLayerChildType::OutputReference:
+			return Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
+		case EMixtormatLayerChildType::Generator:
+			return Child.Generator.Type != EMixtormatGeneratorType::Noise
+				&& Child.Generator.Type != EMixtormatGeneratorType::BooleanOps;
+		default:
+			return false;
+		}
+	}
+
+	bool IsIdConsumerFilter(const FMixtormatLayerChild& Child)
+	{
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::HsvFilter:
+		case EMixtormatLayerChildType::RampId:
+		case EMixtormatLayerChildType::UvFromIds:
+		case EMixtormatLayerChildType::ReliefFromIds:
+		case EMixtormatLayerChildType::BoundaryFromIds:
+		case EMixtormatLayerChildType::RandomId:
+		case EMixtormatLayerChildType::ColorId:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	bool IsMaskFilter(const FMixtormatLayerChild& Child)
 	{
 		return Child.Type == EMixtormatLayerChildType::Blur
@@ -624,6 +660,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::RampId:
 		case EMixtormatLayerChildType::UvFromIds:
 		case EMixtormatLayerChildType::ReliefFromIds:
+		case EMixtormatLayerChildType::BoundaryFromIds:
 			return true;
 		case EMixtormatLayerChildType::OutputReference:
 			return Child.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds;
@@ -732,7 +769,15 @@ namespace MixtormatLayersPrivate
 		{
 			return IsIdGroupChild(Child);
 		}
-		if (Child.Type == EMixtormatLayerChildType::Mask)
+		if (IsIdConsumerFilter(Child) && CanOwnIdFilters(Owner))
+		{
+			return true;
+		}
+		if (Child.Type == EMixtormatLayerChildType::Mask
+			|| Child.Type == EMixtormatLayerChildType::Generated
+			|| Child.Type == EMixtormatLayerChildType::Craquelure
+			|| Child.Type == EMixtormatLayerChildType::ColorId
+			|| Child.Type == EMixtormatLayerChildType::RandomId)
 		{
 			return CanOwnScopedMasks(Owner);
 		}
@@ -1734,6 +1779,7 @@ bool SMixtormat::CanCreateChild(const FMixtormatAddTarget& Target) const
 	return Children->IsValidIndex(OwnerIndex)
 		&& ((*Children)[OwnerIndex].Type == EMixtormatLayerChildType::IdGroup
 			|| (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::Boolean
+			|| CanOwnIdFilters((*Children)[OwnerIndex])
 			|| CanOwnScopedMasks((*Children)[OwnerIndex]))
 		&& CanAddScopedChild(*Children, OwnerIndex);
 }

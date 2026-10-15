@@ -89,6 +89,10 @@ namespace MixtormatLayersPrivate
 
 	bool CanOwnFlowWarp(const FMixtormatLayerChild& Child);
 
+	bool CanOwnIdFilters(const FMixtormatLayerChild& Child);
+
+	bool IsIdConsumerFilter(const FMixtormatLayerChild& Child);
+
 	bool IsMaskFilter(const FMixtormatLayerChild& Child);
 
 	// The authored enable flag of any child, whatever payload carries it. One place, so a new

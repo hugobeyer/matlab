@@ -66,6 +66,7 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	// A Generator layer is one by type; a Fill or Material layer becomes one by owning modules.
 	// The chain is identical either way, so the flag follows the content rather than the type.
 	Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator || Layer.HasGeneratorModules();
+	Data.bGeneratorLayerType = Layer.Type == EMixtormatLayerType::Generator;
 	Data.bGeneratorAlbedo = Data.bGenerator && Layer.bGeneratorAlbedo;
 
 	// Fill semantics stay tied to the layer type: a Material layer that gained generators still
@@ -267,7 +268,7 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bOverrideRoughness = Layer.bOverrideRoughness;
 	Data.bOverrideMetallic = Layer.bOverrideMetallic;
 	Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
-	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Data.bGenerator;
+	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Layer.Type == EMixtormatLayerType::Generator;
 	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;
 	Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 		&& Surface->BaseColor

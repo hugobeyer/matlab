@@ -261,6 +261,10 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		RandomData.BlendMode = RandomId.BlendMode;
 		RandomData.Weight = RandomId.Weight;
 		static_cast<FMixtormatMaskShaping&>(RandomData) = RandomId.Shaping;
+		if (!LayerChild.ScopeOwnerChildId.IsValid())
+		{
+			Data.bHasMask = true;
+		}
 		return true;
 	}
 
@@ -512,7 +516,10 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		IdData.bFlipV = ColorIdMask.bFlipV;
 		IdData.Rotation = static_cast<int32>(ColorIdMask.Rotation);
 
-		Data.bHasMask = true;
+		if (!LayerChild.ScopeOwnerChildId.IsValid())
+		{
+			Data.bHasMask = true;
+		}
 		return true;
 	}
 	return true;

@@ -1404,6 +1404,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		[
 			BuildFloatingPanelStack()
 		]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Left)
+		.VAlign(VAlign_Top)
+		.Padding(Resolved.PreviewLayout.OverlayInset)
+		[
+			BuildPreviewOutputStrip()
+		]
 		// The contextual hint strip: its position is authored (CONTEXT tab: corners plus top/bottom
 		// center), hit-test-invisible, its own inset token so it does not move when a toolbar inset
 		// is retuned. Index: 0 TL, 1 TC, 2 TR, 3 BL, 4 BC, 5 BR.

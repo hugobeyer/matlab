@@ -297,8 +297,13 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex)
+		const int32 ChildIndex,
+		const bool bAllowScoped)
 	{
+		if (!bAllowScoped && Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
+		{
+			return;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		const int32 LayerIndex = LayerCtx.LayerIndex;

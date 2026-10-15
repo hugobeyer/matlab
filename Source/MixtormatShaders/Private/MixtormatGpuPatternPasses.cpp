@@ -509,8 +509,20 @@ namespace MixtormatGpuCompositor
 	// how the micro/macro pairing in the design note is meant to be authored. Nothing above means
 	// no map, and the consumer is culled rather than guessing.
 
+	static bool IsRegionIdProducerChild(const FChildRenderData& Candidate)
+	{
+		return Candidate.Type == EMixtormatLayerChildType::Filter
+			|| Candidate.Type == EMixtormatLayerChildType::PatternId
+			|| Candidate.Type == EMixtormatLayerChildType::IdGroup
+			|| Candidate.Type == EMixtormatLayerChildType::Generator
+			|| (Candidate.Type == EMixtormatLayerChildType::OutputReference
+				&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
+			|| (Candidate.Type == EMixtormatLayerChildType::Effect
+				&& Candidate.Effect.Type == EMixtormatEffectType::Breakup);
+	}
+
 	// Keep private producer maps for previews and nested groups, but expose only the
-	// owning group's final output to its consumers.
+	// owning producer/group's output to its scoped consumers.
 	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
 		const FLayerRenderData& Layer,
 		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
@@ -518,15 +530,15 @@ namespace MixtormatGpuCompositor
 	{
 		TArray<TPair<int32, FRDGTextureRef>> View;
 		const int32 ScopeOwner = Child ? Child->ScopeOwnerSourceChildIndex : INDEX_NONE;
-		const bool bGroupConsumer = Child && ScopeOwner != INDEX_NONE
+		const bool bScopedToProducer = Child && ScopeOwner != INDEX_NONE
 			&& Layer.Children.ContainsByPredicate([ScopeOwner](const FChildRenderData& Candidate)
 			{
 				return Candidate.SourceChildIndex == ScopeOwner
-					&& Candidate.Type == EMixtormatLayerChildType::IdGroup;
+					&& IsRegionIdProducerChild(Candidate);
 			});
 		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
 		{
-			if (bGroupConsumer)
+			if (bScopedToProducer)
 			{
 				if (Entry.Key == ScopeOwner)
 				{
@@ -560,15 +572,15 @@ namespace MixtormatGpuCompositor
 	{
 		OutProducerIndex = INDEX_NONE;
 		const int32 ScopeOwner = Child.ScopeOwnerSourceChildIndex;
-		const bool bGroupConsumer = ScopeOwner != INDEX_NONE
+		const bool bScopedToProducer = ScopeOwner != INDEX_NONE
 			&& Layer.Children.ContainsByPredicate([ScopeOwner](const FChildRenderData& Candidate)
 			{
 				return Candidate.SourceChildIndex == ScopeOwner
-					&& Candidate.Type == EMixtormatLayerChildType::IdGroup;
+					&& IsRegionIdProducerChild(Candidate);
 			});
-		if (bGroupConsumer)
+		if (bScopedToProducer)
 		{
-			// Nested consumers read only their immediate owning group's final output.
+			// Scoped consumers read their owning ID producer or group output directly.
 			if (ScopeOwner < Child.SourceChildIndex)
 			{
 				OutProducerIndex = ScopeOwner;
@@ -583,16 +595,7 @@ namespace MixtormatGpuCompositor
 				{
 					continue;
 				}
-				const bool bProducesIds = Candidate.Type == EMixtormatLayerChildType::Filter
-					|| Candidate.Type == EMixtormatLayerChildType::PatternId
-
-					|| Candidate.Type == EMixtormatLayerChildType::IdGroup
-					|| Candidate.Type == EMixtormatLayerChildType::Generator
-					|| (Candidate.Type == EMixtormatLayerChildType::OutputReference
-						&& Candidate.OutputReference.Kind == EMixtormatPublishedFieldKind::RegionIds)
-					|| (Candidate.Type == EMixtormatLayerChildType::Effect
-						&& Candidate.Effect.Type == EMixtormatEffectType::Breakup);
-				if (bProducesIds && Candidate.SourceChildIndex > OutProducerIndex)
+				if (IsRegionIdProducerChild(Candidate) && Candidate.SourceChildIndex > OutProducerIndex)
 				{
 					OutProducerIndex = Candidate.SourceChildIndex;
 				}
@@ -618,8 +621,13 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex)
+		const int32 ChildIndex,
+		const bool bAllowScoped)
 	{
+		if (!bAllowScoped && Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
+		{
+			return;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		const int32 LayerIndex = LayerCtx.LayerIndex;

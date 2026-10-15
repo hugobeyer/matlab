@@ -12,10 +12,15 @@
 
 #include "Widgets/SMixtormat.h"
 #include "Widgets/SMixtormatInternal.h"
+#include "Widgets/MixtormatChildCapabilities.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatRecipes.h"
+#include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -289,6 +294,221 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	// Reconstruct-mode, so editing Strip Opacity rebuilds the workspace and re-reads it.
 	StripWidget->SetRenderOpacity(FMixtormatThemeStore::GetResolved().ContextLayout.HintStripOpacity);
 	return StripWidget;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPreviewOutputStrip()
+{
+	SAssignNew(PreviewOutputStripHost, SBox)
+		.Visibility_Lambda([this]()
+		{
+			if (!bPreviewOverlayUiVisible || bQuickControlsOpen)
+			{
+				return EVisibility::Collapsed;
+			}
+			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+			return Child && !GetChildCapabilities(*Child).Outputs.IsEmpty()
+				? EVisibility::SelfHitTestInvisible
+				: EVisibility::Collapsed;
+		});
+	RebuildPreviewOutputStrip();
+	return PreviewOutputStripHost.ToSharedRef();
+}
+
+void SMixtormat::RebuildPreviewOutputStrip()
+{
+	if (!PreviewOutputStripHost.IsValid())
+	{
+		return;
+	}
+	const FMixtormatChildAddress SelectedAddress = GetSelectedChildAddress();
+	const FMixtormatLayerChild* Child = ResolveChildAt(SelectedAddress);
+	if (!Child)
+	{
+		PreviewOutputStripHost->SetContent(SNullWidget::NullWidget);
+		return;
+	}
+	const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Child);
+	if (Caps.Outputs.IsEmpty())
+	{
+		PreviewOutputStripHost->SetContent(SNullWidget::NullWidget);
+		return;
+	}
+
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle HeaderStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(
+			Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const FTextBlockStyle ItemStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(
+			Resolved.Typography, Mixtormat::EMixtormatTextRole::MenuShortcut),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+
+	TSharedRef<SVerticalBox> Column = SNew(SVerticalBox);
+	Column->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::Format(
+				LOCTEXT("PreviewOutputStripHeader", "OUTPUTS · {0}"),
+				GetLayerChildName(*Child)))
+			.TextStyle(&HeaderStyle)
+		];
+
+	for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+	{
+		const bool bCopyable = Output.bCopyableAsMask || Output.bCopyableAsField;
+		const bool bOverlay = Output.Kind == EMixtormatPreviewOutputKind::Mask
+			|| Output.Kind == EMixtormatPreviewOutputKind::FlowDirection
+			|| Output.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid;
+		const auto IsOutputPreviewActive = [this, SelectedAddress, Output, bOverlay]() -> bool
+		{
+			if (bOverlay)
+			{
+				const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(
+					SelectedAddress, Output.Name, Output.Kind);
+				return bMaskOverlayEnabled
+					&& SelectedAddress.OwnerType == MaskOverlaySource.OwnerType
+					&& SelectedAddress.OwnerId == MaskOverlaySource.OwnerId
+					&& SelectedAddress.ChildId == MaskOverlaySource.ChildId
+					&& Target.IsValid()
+					&& MaskOverlayOutputKind == Target.Kind
+					&& MaskOverlayOutputName == Target.OutputName;
+			}
+			const FMixtormatChildPreviewTarget Target = ResolveChildPreviewTarget(
+				Output.Name, Output.Kind, Output.PreviewGapMaskName);
+			return !bMaskOverlayEnabled
+				&& DebugPreviewMode == EMixtormatDebugPreviewMode::ChildOutput
+				&& Target.IsValid()
+				&& ChildPreviewTarget == Target;
+		};
+
+		TSharedPtr<SButton> PreviewBtn;
+		TSharedPtr<SButton> CopyBtn;
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+
+		Row->AddSlot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SAssignNew(PreviewBtn, SButton)
+				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+				.ContentPadding(FMargin(0.0f))
+				.IsEnabled(Output.bPreviewable)
+				.OnClicked_Lambda([this, Output, bOverlay]()
+				{
+					if (bOverlay)
+					{
+						return ToggleDiagnosticOverlayPreview(Output.Kind, Output.Name);
+					}
+					return ToggleChildOutputPreview(
+						ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.PreviewGapMaskName));
+				})
+				[
+					SNew(SMixtormatSurfaceBox)
+					.Padding(FMargin(Resolved.ContextLayout.HintKeycapPadding))
+					.Recipe_Lambda([PreviewBtn, IsOutputPreviewActive]()
+					{
+						const bool bActive = IsOutputPreviewActive();
+						const bool bHover = PreviewBtn.IsValid() && PreviewBtn->IsHovered();
+						return Mixtormat::MakePreviewPlateRecipe(
+							FMixtormatThemeStore::GetResolved(),
+							bActive ? Mixtormat::EMixtormatPreviewPlateState::Checked
+								: bHover ? Mixtormat::EMixtormatPreviewPlateState::Hover
+									: Mixtormat::EMixtormatPreviewPlateState::Rest);
+					})
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 5.0f, 0.0f)
+						[
+							SNew(SBox)
+							.WidthOverride(12.0f)
+							.HeightOverride(12.0f)
+							[
+								SNew(SImage)
+								.Image_Lambda([IsOutputPreviewActive]()
+								{
+									return IsOutputPreviewActive() ? MixtormatIcons::Eye() : MixtormatIcons::EyeOff();
+								})
+								.ColorAndOpacity(FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text)))
+							]
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text(Output.Label)
+							.TextStyle(&ItemStyle)
+						]
+					]
+				]
+			];
+
+		if (bCopyable)
+		{
+			Row->AddSlot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SAssignNew(CopyBtn, SButton)
+					.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+					.ContentPadding(FMargin(0.0f))
+					.IsEnabled_Lambda([this, SelectedAddress, Output]()
+					{
+						return CanCopyChildOutput(SelectedAddress, Output.Name);
+					})
+					.OnClicked_Lambda([this, SelectedAddress, Output]()
+					{
+						CopyChildOutput(SelectedAddress, Output.Name);
+						WorkingStatusText = FString::Printf(
+							TEXT("Copied output: %s"), *Output.Label.ToString());
+						return FReply::Handled();
+					})
+					[
+						SNew(SMixtormatSurfaceBox)
+						.Padding(FMargin(Resolved.ContextLayout.HintKeycapPadding))
+						.Recipe_Lambda([CopyBtn]()
+						{
+							const bool bHover = CopyBtn.IsValid() && CopyBtn->IsHovered();
+							return Mixtormat::MakePreviewPlateRecipe(
+								FMixtormatThemeStore::GetResolved(),
+								bHover ? Mixtormat::EMixtormatPreviewPlateState::Hover
+									: Mixtormat::EMixtormatPreviewPlateState::Rest);
+						})
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 3.0f, 0.0f)
+							[
+								SNew(SBox)
+								.WidthOverride(11.0f)
+								.HeightOverride(11.0f)
+								[
+									SNew(SImage)
+									.Image(MixtormatIcons::Duplicate())
+									.ColorAndOpacity(FSlateColor(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+								]
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("CopyOutputTagLabel", "Copy"))
+								.TextStyle(&HeaderStyle)
+							]
+						]
+					]
+				];
+		}
+
+		Column->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+			[
+				Row
+			];
+	}
+
+	PreviewOutputStripHost->SetContent(MakePreviewCluster(Column));
 }
 
 #undef LOCTEXT_NAMESPACE

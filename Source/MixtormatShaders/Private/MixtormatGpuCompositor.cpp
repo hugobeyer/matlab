@@ -815,7 +815,7 @@ namespace MixtormatGpuCompositor
 		Parameters->CompositionMode = !Layer.bFillPassThrough && Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
-		Parameters->IsGenerator = Layer.bGenerator ? 1u : 0u;
+		Parameters->IsGenerator = Layer.bGeneratorLayerType ? 1u : 0u;
 		Parameters->GeneratorAlbedo = Layer.bGeneratorAlbedo ? 1u : 0u;
 		// A referenced colour field resolved into LayerInputBC is also a real colour contribution;
 		// only a generator stack with no colour at all keeps the composite below.
@@ -827,7 +827,7 @@ namespace MixtormatGpuCompositor
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
 		Parameters->UseSourceF0 = Layer.bFillPassThrough || Layer.bUseSourceF0 ? 1u : 0u;
-		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
+		Parameters->HasNormal = (Layer.bHasNormal || LayerCtx.bGeneratedHeight) ? 1u : 0u;
 		Parameters->NormalOnly = !Layer.bFillPassThrough && Layer.bNormalOnly ? 1u : 0u;
 		Parameters->OverrideNormal = !Layer.bFillPassThrough && Layer.bOverrideNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;

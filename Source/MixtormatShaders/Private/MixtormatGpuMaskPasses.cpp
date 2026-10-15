@@ -578,10 +578,56 @@ namespace MixtormatGpuCompositor
 		}
 		bool bHasScopedMask = false;
 		int32 ScopedPassIndex = 0;
-		for (const FChildRenderData& ScopedChild : Layer.Children)
+		for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 		{
-			if (ScopedChild.Type != EMixtormatLayerChildType::Mask
-				|| ScopedChild.ScopeOwnerSourceChildIndex != OwnerSourceChildIndex)
+			const FChildRenderData& ScopedChild = Layer.Children[ChildIndex];
+			if (ScopedChild.ScopeOwnerSourceChildIndex != OwnerSourceChildIndex)
+			{
+				continue;
+			}
+			if (ScopedChild.Type == EMixtormatLayerChildType::Generated
+				|| ScopedChild.Type == EMixtormatLayerChildType::ColorId
+				|| ScopedChild.Type == EMixtormatLayerChildType::RandomId
+				|| ScopedChild.Type == EMixtormatLayerChildType::Craquelure)
+			{
+				FRDGTextureRef ScopedOutput = GraphBuilder.CreateTexture(
+					MaskDesc, TEXT("Mixtormat.ScopedFeatureMask"));
+				FRDGTextureRef SavedTargets[2] = {LayerCtx.MaskTargets[0], LayerCtx.MaskTargets[1]};
+				FRDGTextureRef SavedCombined = LayerCtx.CombinedMask;
+				const int32 SavedPassIndex = LayerCtx.MaskPassIndex;
+				LayerCtx.MaskTargets[0] = FeatureMask;
+				LayerCtx.MaskTargets[1] = ScopedOutput;
+				LayerCtx.CombinedMask = FeatureMask;
+				LayerCtx.MaskPassIndex = 1;
+				if (ScopedChild.Type == EMixtormatLayerChildType::Generated)
+				{
+					AddGeneratedMaskPass(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
+				}
+				else if (ScopedChild.Type == EMixtormatLayerChildType::ColorId)
+				{
+					AddColorIdMaskPass(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
+				}
+				else if (ScopedChild.Type == EMixtormatLayerChildType::RandomId)
+				{
+					AddRandomIdMaskPass(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
+				}
+				else
+				{
+					AddCraquelureMaskPasses(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
+				}
+				if (LayerCtx.MaskPassIndex > 1)
+				{
+					FeatureMask = LayerCtx.CombinedMask;
+					bHasScopedMask = true;
+					++ScopedPassIndex;
+				}
+				LayerCtx.MaskTargets[0] = SavedTargets[0];
+				LayerCtx.MaskTargets[1] = SavedTargets[1];
+				LayerCtx.CombinedMask = SavedCombined;
+				LayerCtx.MaskPassIndex = SavedPassIndex;
+				continue;
+			}
+			if (ScopedChild.Type != EMixtormatLayerChildType::Mask)
 			{
 				continue;
 			}
@@ -596,39 +642,97 @@ namespace MixtormatGpuCompositor
 			FRDGTextureRef ScopedPreShaped = AddMaskFilterPasses(
 				Ctx, LayerCtx, Layer, Mask, MaskDesc, FeatureMask, LayerIndex,
 				OwnerSourceChildIndex);
-			FMixtormatMaskCS::FParameters* MP =
-				GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
-			MP->OutputSize = Request.Resolution;
-			MP->UsePreShaped = ScopedPreShaped ? 1u : 0u;
-			MP->Initialize = 0u;
-			MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
-			BindMaskShaping(*MP, Mask);
-			MP->Weight = Mask.Weight;
-			MP->Tiling = Mask.Tiling;
-			MP->UVOffset = Mask.UVOffset;
-			MP->FlipU = Mask.bFlipU ? 1u : 0u;
-			MP->FlipV = Mask.bFlipV ? 1u : 0u;
-			MP->Rotation = Mask.Rotation;
-
-			MP->PreviousMask = FeatureMask;
-			MP->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
-			MP->IncomingMask = ResolveMaskSourceTexture(
+			const FRDGTextureRef IncomingMask = ResolveMaskSourceTexture(
 				Ctx, LayerCtx, Layer, Mask, TEXT("Mixtormat.ScopedIncomingMask"));
-			MP->PreShapedMask = ScopedPreShaped ? ScopedPreShaped : FeatureMask;
-			MP->LinearWrapSampler = TStaticSamplerState<
-				SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-			MP->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME(
-					"Mixtormat.ScopedMask.Layer%d.Owner%d.Pass%d",
-					LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
-				MaskShader,
-				MP,
-				FIntVector(
-					FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-					FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-					1));
+			const FRDGTextureRef FilteredMask = ScopedPreShaped ? ScopedPreShaped : FeatureMask;
+			const FIntVector Groups(
+				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
+				1);
+			if (HasOwnedFlowWarps(Layer, ScopedChild.SourceChildIndex))
+			{
+				FRDGTextureRef LocalMask = GraphBuilder.CreateTexture(
+					MaskDesc, TEXT("Mixtormat.ScopedLocalMask"));
+				FMixtormatMaskResolveCS::FParameters* Resolve =
+					GraphBuilder.AllocParameters<FMixtormatMaskResolveCS::FParameters>();
+				Resolve->OutputSize = Request.Resolution;
+				Resolve->UsePreShaped = ScopedPreShaped ? 1u : 0u;
+				BindMaskShaping(*Resolve, Mask);
+				Resolve->Tiling = Mask.Tiling;
+				Resolve->UVOffset = Mask.UVOffset;
+				Resolve->FlipU = Mask.bFlipU ? 1u : 0u;
+				Resolve->FlipV = Mask.bFlipV ? 1u : 0u;
+				Resolve->Rotation = Mask.Rotation;
+				Resolve->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
+				Resolve->IncomingMask = IncomingMask;
+				Resolve->PreShapedMask = FilteredMask;
+				Resolve->LinearWrapSampler = TStaticSamplerState<
+					SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+				Resolve->OutputMask = GraphBuilder.CreateUAV(LocalMask);
+				TShaderMapRef<FMixtormatMaskResolveCS> ResolveShader(
+					GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.ScopedMask.Resolve.Layer%d.Owner%d.Pass%d",
+						LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
+					ResolveShader,
+					Resolve,
+					Groups);
+				LocalMask = AddOwnedMaskFlowWarpPasses(
+					Ctx, LayerCtx, Layer, ScopedChild.SourceChildIndex, LocalMask);
+				FMixtormatMaskMergeCS::FParameters* Merge =
+					GraphBuilder.AllocParameters<FMixtormatMaskMergeCS::FParameters>();
+				Merge->OutputSize = Request.Resolution;
+				Merge->Initialize = 0u;
+				Merge->BlendMode = static_cast<uint32>(Mask.BlendMode);
+				Merge->Weight = Mask.Weight;
+				Merge->PreviousMask = FeatureMask;
+				Merge->PreShapedMask = LocalMask;
+				Merge->LinearWrapSampler = TStaticSamplerState<
+					SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+				Merge->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
+				TShaderMapRef<FMixtormatMaskMergeCS> MergeShader(
+					GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME("Mixtormat.ScopedMask.Merge.Layer%d.Owner%d.Pass%d",
+						LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
+					MergeShader,
+					Merge,
+					Groups);
+			}
+			else
+			{
+				FMixtormatMaskCS::FParameters* MP =
+					GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
+				MP->OutputSize = Request.Resolution;
+				MP->UsePreShaped = ScopedPreShaped ? 1u : 0u;
+				MP->Initialize = 0u;
+				MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
+				BindMaskShaping(*MP, Mask);
+				MP->Weight = Mask.Weight;
+				MP->Tiling = Mask.Tiling;
+				MP->UVOffset = Mask.UVOffset;
+				MP->FlipU = Mask.bFlipU ? 1u : 0u;
+				MP->FlipV = Mask.bFlipV ? 1u : 0u;
+				MP->Rotation = Mask.Rotation;
+
+				MP->PreviousMask = FeatureMask;
+				MP->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
+				MP->IncomingMask = IncomingMask;
+				MP->PreShapedMask = FilteredMask;
+				MP->LinearWrapSampler = TStaticSamplerState<
+					SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
+				MP->OutputMask = GraphBuilder.CreateUAV(ScopedOutput);
+				FComputeShaderUtils::AddPass(
+					GraphBuilder,
+					RDG_EVENT_NAME(
+						"Mixtormat.ScopedMask.Layer%d.Owner%d.Pass%d",
+						LayerIndex, OwnerSourceChildIndex, ScopedPassIndex),
+					MaskShader,
+					MP,
+					Groups);
+			}
 			FeatureMask = ScopedOutput;
 			if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 				&& Request.DebugSettings.LayerIndex == LayerIndex
@@ -664,9 +768,7 @@ namespace MixtormatGpuCompositor
 		bool bHasGate = false;
 		for (const FChildRenderData& Candidate : Layer.Children)
 		{
-			if (Candidate.Type == EMixtormatLayerChildType::Mask
-				&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
-				&& Candidate.Mask.Weight != 0.0f)
+			if (IsScopedMaskChild(Candidate, Child.SourceChildIndex))
 			{
 				bHasGate = true;
 				break;
@@ -718,8 +820,13 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex)
+		const int32 ChildIndex,
+		const bool bAllowScoped)
 	{
+		if (!bAllowScoped && Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
+		{
+			return;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		FRDGTextureRef* const OutputN = Ctx.OutputN;
@@ -833,8 +940,13 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex)
+		const int32 ChildIndex,
+		const bool bAllowScoped)
 	{
+		if (!bAllowScoped && Child.ScopeOwnerSourceChildIndex != INDEX_NONE)
+		{
+			return;
+		}
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
@@ -862,8 +974,8 @@ namespace MixtormatGpuCompositor
 		// From IDs follows, and for the same reason: a mask with no regions to
 		// select from has nothing to say, and emitting a flat zero would silently
 		// replace whatever the chain had accumulated.
-		FRDGTextureRef RegionIds =
-			FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+		FRDGTextureRef RegionIds = FindRegionIdsAbove(
+			GetRegionIdView(Layer, LayerCtx.RegionIdMaps, &Child), Child.SourceChildIndex);
 		if (bExactId && !RegionIds)
 		{
 			return;
@@ -1097,6 +1209,7 @@ namespace MixtormatGpuCompositor
 				Groups);
 		}
 		CombinedMask = MaskTargets[MaskWriteIndex];
+		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask
 			&& Request.DebugSettings.LayerIndex == LayerIndex
 			&& Request.DebugSettings.ChildIndex == Child.SourceChildIndex)

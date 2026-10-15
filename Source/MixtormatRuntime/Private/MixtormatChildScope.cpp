@@ -330,6 +330,7 @@ namespace MixtormatChildScope
 	{
 		switch (Child.Type)
 		{
+		case EMixtormatLayerChildType::Mask:
 		case EMixtormatLayerChildType::Effect:
 		case EMixtormatLayerChildType::Boolean:
 		case EMixtormatLayerChildType::Generator:

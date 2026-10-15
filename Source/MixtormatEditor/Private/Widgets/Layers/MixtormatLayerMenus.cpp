@@ -154,8 +154,6 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 			Menu.Item(LOCTEXT("QuickAddMaterial", "Material"), MixtormatIcons::LayerMaterial(),
 				FSimpleDelegate::CreateLambda([this]() { AddLayerOrStartMaterial(EMixtormatLayerType::Material); }))
 				.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
-			Menu.SubMenu(LOCTEXT("QuickAddGenerator", "Generator"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorLayerMenu));
 			Menu.SubMenu(LOCTEXT("QuickAddEffects", "Effects"), MixtormatIcons::Effect(),
 				FOnGetContent::CreateLambda([this]() { return BuildAddEffectMenu(SelectedLayerIndex); }))
 				.Enabled(bLayer);
@@ -254,8 +252,6 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 		{
 			AddLayerOrStartMaterial(EMixtormatLayerType::Fill);
 		}));
-	Menu.SubMenu(LOCTEXT("ColumnAddGeneratorLayer", "Generator Layer"), MixtormatIcons::Generator(),
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorLayerMenu));
 	return Menu.Build();
 }
 
@@ -1151,10 +1147,6 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 	};
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
-		// Generator/Behavior ownership accepts scoped Mask producers, not arbitrary ID tools.
-		if (bScopedGateOwner
-			&& Entry.Value != EMixtormatChildCreation::NoiseMask
-			&& Entry.Value != EMixtormatChildCreation::LayerValuesMask) { continue; }
 		// The glyph is the node this creates, not the menu it happens to be filed under: Color ID
 		// and Random From IDs are listed beside the mask producers because that is how they blend,
 		// but both derive from an ID map and so carry the IDs glyph, as their rows will once made.
@@ -1337,18 +1329,16 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 	// now the generic Copy Output section AddSharedChildMenuItems builds below from
 	// GetChildCapabilities, driven by bCopyableAsMask rather than a bWornEdges/bBreakup switch.
 
-	const FSoftObjectPath SelectedEffectMaskPath = SelectedMaskPath;
-	const FText SelectedEffectMaskName = SelectedLibraryMaskName.IsEmpty()
-		? LOCTEXT("NoSelectedEffectMask", "Select Mask from Gallery")
-		: SelectedLibraryMaskName;
-	Menu.Item(
-		FText::Format(LOCTEXT("AddSelectedMaskToEffect", "Add Gating Mask · {0}"), SelectedEffectMaskName),
-		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, SelectedEffectMaskPath]()
-		{
-			AssignScopedMaskToChild(LayerIndex, ChildIndex, SelectedEffectMaskPath);
-		}))
-		.Enabled(TAttribute<bool>(!SelectedEffectMaskPath.IsNull() && bCanNestChild));
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+		Destination.ScopeOwnerChildId = WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+		Menu.SubMenu(
+			LOCTEXT("AddScopedMasksToEffect", "Masks"),
+			MixtormatIcons::Mask(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
+	}
 	Menu.Item(
 		LOCTEXT("AddFlowWarpToEffect", "Add Flow Warp · Targets This Effect"),
 		MixtormatIcons::Effect(),
@@ -1503,51 +1493,49 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						CreateChild(Destination, Entry.Creation);
 					}));
 			}
-			if (CanOwnScopedMasks(Target))
-			{
-				Menu.Separator();
-				FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
-				Destination.ScopeOwnerChildId = TargetChildId;
-				const bool bCanCreateScopedMask = CanCreateChild(Destination);
-				Menu.Item(LOCTEXT("AddScopedLayerValuesMask", "Mask"), MixtormatIcons::Mask(),
-					FSimpleDelegate::CreateLambda([this, Destination]()
-					{
-						CreateChild(Destination, EMixtormatChildCreation::LayerValuesMask);
-					}))
-					.Enabled(bCanCreateScopedMask);
-				Menu.Item(LOCTEXT("AddScopedNoiseMask", "Noise Mask"), MixtormatIcons::Mask(),
-					FSimpleDelegate::CreateLambda([this, Destination]()
-					{
-						CreateChild(Destination, EMixtormatChildCreation::NoiseMask);
-					}))
-					.Enabled(bCanCreateScopedMask);
-			}
 		}
 		Menu.Separator();
 	}
 
-	const bool bCanOwnScopedMask = WorkingLayers.IsValidIndex(LayerIndex)
-		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
-		&& CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[ChildIndex]);
-	if (bCanOwnScopedMask)
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{
-		const bool bCanNestChild = CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
-		const FSoftObjectPath SelectedGeneratorMaskPath = SelectedMaskPath;
-		const FText SelectedGeneratorMaskName = SelectedLibraryMaskName.IsEmpty()
-			? LOCTEXT("NoSelectedGeneratorMask", "Select Mask from Gallery")
-			: SelectedLibraryMaskName;
-		if (!SelectedGeneratorMaskPath.IsNull() && bCanNestChild)
+		const FMixtormatLayerChild& TargetChild = WorkingLayers[LayerIndex].Children[ChildIndex];
+		const bool bCanNestChild = !TargetChild.IsInstance()
+			&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex);
+		const bool bCanMask = CanOwnScopedMasks(TargetChild);
+		const bool bCanFilterIds = TargetChild.Type != EMixtormatLayerChildType::IdGroup
+			&& CanOwnIdFilters(TargetChild);
+		const bool bCanWarp = CanOwnFlowWarp(TargetChild);
+		if (bCanMask || bCanFilterIds || bCanWarp)
 		{
-		Menu.Item(
-			FText::Format(
-				LOCTEXT("AddSelectedMaskToGenerator", "Add Gating Mask · {0}"),
-				SelectedGeneratorMaskName),
-			MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda(
-				[this, LayerIndex, ChildIndex, SelectedGeneratorMaskPath]()
+			FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+			Destination.ScopeOwnerChildId = TargetChild.ChildId;
+			if (bCanFilterIds)
 			{
-				AssignScopedMaskToChild(LayerIndex, ChildIndex, SelectedGeneratorMaskPath);
-			}));
+				Menu.SubMenu(
+					LOCTEXT("AddScopedIdFiltersToChild", "Filter (From IDs)"),
+					MixtormatIcons::Ids(),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddFiltersMenu, Destination));
+			}
+			if (bCanMask)
+			{
+				Menu.SubMenu(
+					LOCTEXT("AddScopedMasksToChild", "Masks"),
+					MixtormatIcons::Mask(),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
+			}
+			if (bCanWarp)
+			{
+				Menu.Item(
+					LOCTEXT("AddFlowWarpToGeneratedChild", "Add Flow Warp"),
+					MixtormatIcons::WarpStructural(),
+					FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+					{
+						AddFlowWarpToLayer(LayerIndex, ChildIndex);
+					}))
+					.Enabled(TAttribute<bool>(bCanNestChild));
+			}
 			Menu.Separator();
 		}
 	}
@@ -1592,6 +1580,16 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 			FSimpleDelegate::CreateLambda([this]()
 			{
 				GroupSelectedChildrenAsBoolean();
+			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Group));
+	}
+	else if (CanGroupSelectedChildrenAsIdGroup())
+	{
+		Menu.Item(
+			LOCTEXT("GroupChildrenAsIdGroupContext", "Group as ID Group"),
+			MixtormatIcons::Ids(),
+			FSimpleDelegate::CreateLambda([this]()
+			{
+				GroupSelectedChildrenAsIdGroup();
 			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Group));
 	}
 	AddIdGroupMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
@@ -1688,6 +1686,16 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 			ReplaceMaskInLayer(LayerIndex, MaskIndex, ReplacementPath);
 		}))
 		.Enabled(TAttribute<bool>(!ReplacementPath.IsNull()));
+	if (WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(MaskIndex))
+	{
+		FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+		Destination.ScopeOwnerChildId = WorkingLayers[LayerIndex].Children[MaskIndex].ChildId;
+		Menu.SubMenu(
+			LOCTEXT("AddScopedMasksToMask", "Masks"),
+			MixtormatIcons::Mask(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination));
+	}
 	Menu.Item(
 		LOCTEXT("AddBlurToMaskContext", "Add Blur"),
 		MixtormatIcons::Mask(),

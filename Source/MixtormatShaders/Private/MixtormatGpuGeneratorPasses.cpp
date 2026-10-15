@@ -4081,6 +4081,16 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	}
 	if (!RunningHeight) { return; }
 	Bundle.Height = RunningHeight;
+	if (!Layer.bGeneratorLayerType && LayerCtx.LayerInputHeight)
+	{
+		FGeneratorBundle DeltaBundle;
+		DeltaBundle.Height = RunningHeight;
+		FChildRenderData DummyChild;
+		FRDGTextureRef CombinedLayerHeight = nullptr;
+		AddGeneratorModuleCombine(
+			Ctx, LayerCtx.LayerInputHeight, DeltaBundle, DummyChild, CombinedLayerHeight);
+		LayerCtx.LayerInputHeight = CombinedLayerHeight;
+	}
 }
 
 }

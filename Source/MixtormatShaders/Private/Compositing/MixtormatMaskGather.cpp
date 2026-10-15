@@ -182,6 +182,20 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::Generated;
 		ChildData.SourceChildIndex = SourceChildIndex;
+		if (LayerChild.ScopeOwnerChildId.IsValid())
+		{
+			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
+			if (OwnerIndex != INDEX_NONE
+				&& MixtormatChildScope::CanOwnScopedMasks(Layer.Children[OwnerIndex]))
+			{
+				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+			}
+			else
+			{
+				Data.Children.RemoveAt(Data.Children.Num() - 1);
+				return true;
+			}
+		}
 		FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
 		GeneratedData.CurvatureWeight = GeneratedMask.CurvatureWeight;
 		GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
@@ -210,7 +224,10 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		GeneratedData.Weight = GeneratedMask.Weight;
 		static_cast<FMixtormatMaskShaping&>(GeneratedData) = GeneratedMask.Shaping;
 		GeneratedData.RidgeWeight = GeneratedMask.RidgeWeight;
-		Data.bHasMask = true;
+		if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
+		{
+			Data.bHasMask = true;
+		}
 		return true;
 	}
 
@@ -228,6 +245,20 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
 		ChildData.Type = EMixtormatLayerChildType::Craquelure;
 		ChildData.SourceChildIndex = SourceChildIndex;
+		if (LayerChild.ScopeOwnerChildId.IsValid())
+		{
+			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
+			if (OwnerIndex != INDEX_NONE
+				&& MixtormatChildScope::CanOwnScopedMasks(Layer.Children[OwnerIndex]))
+			{
+				ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+			}
+			else
+			{
+				Data.Children.RemoveAt(Data.Children.Num() - 1);
+				return true;
+			}
+		}
 		FCraquelureRenderData& CrackData = ChildData.Craquelure;
 
 		// The authored parameters are the ones a user thinks in; the growth kernel wants
@@ -343,7 +374,10 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		// Unconditional now that height and normal are their own weights rather than an
 		// output mode. The node always contributes a mask; Weight 0 is how that half is
 		// muted, exactly as on every other mask child.
-		Data.bHasMask = true;
+		if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
+		{
+			Data.bHasMask = true;
+		}
 		return true;
 	}
 	return true;

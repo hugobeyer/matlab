@@ -772,6 +772,8 @@ private:
 	TArray<int32> GetSelectedLayerChildIndices() const;
 	bool CanGroupSelectedChildrenAsBoolean() const;
 	FReply GroupSelectedChildrenAsBoolean();
+	bool CanGroupSelectedChildrenAsIdGroup() const;
+	FReply GroupSelectedChildrenAsIdGroup();
 	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
 	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
 	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;
@@ -1625,6 +1627,8 @@ private:
 	// key/action pairs at the bottom-left, first matching context wins. Hit-test-invisible;
 	// follows the H/Space master flag.
 	TSharedRef<SWidget> BuildPreviewHintStrip();
+	TSharedRef<SWidget> BuildPreviewOutputStrip();
+	void RebuildPreviewOutputStrip();
 	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /
 	// Viewport section (SMixtormat_PreviewControls.cpp). Each returns the control content; the
 	// caller decides where it goes and how it is wrapped.
@@ -1742,6 +1746,7 @@ private:
 	// The strip mirrors a layer row, so it carries the row's thumbnail too. Swapped on selection
 	// rather than bound, because a thumbnail is a widget from the pool and not a brush.
 	TSharedPtr<SBox> SelectedThumbnailBox;
+	TSharedPtr<SBox> PreviewOutputStripHost;
 	TSharedPtr<STextBlock> WorkingBaseLayerText;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 	FDelegateHandle AssetUpdatedHandle;

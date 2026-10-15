@@ -228,15 +228,6 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 			LOCTEXT("InvertUnderlyingHeightLabel", "Invert"), Layer(),
 			&FMixtormatLayer::bInvertHeightFeature,
 			LOCTEXT("InvertUnderlyingHeightHint", "Favor lower underlying height instead of higher height"))));
-	AddSliderRow(Masks, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayer>(
-			LOCTEXT("UnderlyingAOInfluenceLabel", "AO"), Layer(),
-			&FMixtormatLayer::AOFeatureInfluence, 0.0, 1.0, 0.0, 0.01,
-			LOCTEXT("UnderlyingAOInfluenceHint", "Mask this layer using the accumulated AO underneath it")),
-		MakeMemberToggle<FMixtormatLayer>(
-			LOCTEXT("InvertUnderlyingAOLabel", "Invert"), Layer(),
-			&FMixtormatLayer::bInvertAOFeature,
-			LOCTEXT("InvertUnderlyingAOHint", "Favor occluded areas instead of exposed areas"))));
 }
 
 TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
@@ -253,8 +244,6 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		LOCTEXT("BaseColorInfluenceLabel", "Base Color"), Layer, &FMixtormatLayer::BaseColorInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("RoughnessInfluenceLabel", "Roughness"), Layer, &FMixtormatLayer::RoughnessInfluence, 0.0, 1.0, 1.0, 0.01));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("AOInfluenceLabel", "Ambient Occlusion"), Layer, &FMixtormatLayer::AOInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("MetallicInfluenceLabel", "Metallic"), Layer, &FMixtormatLayer::MetallicInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(

@@ -996,7 +996,10 @@ namespace MixtormatGpuCompositor
 								}
 								if (LayerCtx.GeneratorBundle.Height)
 								{
-									LayerCtx.LayerInputHeight = LayerCtx.GeneratorBundle.Height;
+									if (Layer.bGeneratorLayerType || !LayerCtx.LayerInputHeight)
+									{
+										LayerCtx.LayerInputHeight = LayerCtx.GeneratorBundle.Height;
+									}
 									LayerCtx.bGeneratedHeight = true;
 								}
 							}
@@ -1032,7 +1035,7 @@ namespace MixtormatGpuCompositor
 							AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(ZeroHeight), FLinearColor::Black);
 							FRDGTextureRef FormedNormal = GraphBuilder.CreateTexture(
 								LayerCtx.LayerInputN->Desc, TEXT("Mixtormat.GeneratorLayerNormal"));
-							AddHeightDerivedNormalPass(Ctx, ZeroHeight, LayerCtx.LayerInputHeight,
+							AddHeightDerivedNormalPass(Ctx, ZeroHeight, LayerCtx.GeneratorBundle.Height,
 								LayerCtx.LayerInputN, LayerCtx.LayerInputRAM, FormedNormal, nullptr,
 								Request.Resolution, HeightDerivedNormalStrength, false,
 								TEXT("GeneratorLayer"));
@@ -1105,7 +1108,8 @@ namespace MixtormatGpuCompositor
 								// never had one.
 								continue;
 							}
-							if (Child.Type == EMixtormatLayerChildType::HeightBlend
+							if (Child.Type == EMixtormatLayerChildType::Boolean
+								|| Child.Type == EMixtormatLayerChildType::HeightBlend
 								|| Child.Type == EMixtormatLayerChildType::HeightCurve
 								|| Child.Type == EMixtormatLayerChildType::HeightColorRamp)
 							{
@@ -1120,6 +1124,7 @@ namespace MixtormatGpuCompositor
 								|| Child.Type == EMixtormatLayerChildType::RampId
 								|| Child.Type == EMixtormatLayerChildType::UvFromIds
 								|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+								|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
 								|| Child.Type == EMixtormatLayerChildType::IdGroup
 								|| Child.Type == EMixtormatLayerChildType::OutputReference)
 							{

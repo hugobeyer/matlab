@@ -63,8 +63,7 @@ namespace MixtormatGpuCompositor
 		LayerBlur.bHasScopedMask = Layer.Children.ContainsByPredicate(
 			[&Child](const FChildRenderData& Candidate)
 			{
-				return Candidate.Type == EMixtormatLayerChildType::Mask
-					&& Candidate.ScopeOwnerSourceChildIndex == Child.SourceChildIndex;
+				return IsScopedMaskChild(Candidate, Child.SourceChildIndex);
 			});
 	}
 

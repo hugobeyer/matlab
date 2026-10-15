@@ -384,10 +384,6 @@ FReply SMixtormat::ToggleGeneratorExpanded(const FMixtormatChildAddress Address)
 {
 	int32 OwnerIndex, ChildIndex;
 	if (!ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex)) { return FReply::Unhandled(); }
-	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
-		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
-	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator
-		&& Children[ChildIndex].Type != EMixtormatLayerChildType::Boolean) { return FReply::Unhandled(); }
 	if (!CollapsedGeneratorAddresses.Remove(Address)) { CollapsedGeneratorAddresses.Add(Address); }
 	RebuildLayerList();
 	return FReply::Handled();
@@ -399,10 +395,6 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorDisclosure(const FMixtormatChildAd
 	int32 OwnerIndex, ChildIndex;
 	if (!bHasChildren || !ResolveHierarchyChildAddress(Address, OwnerIndex, ChildIndex))
 	{ return SNullWidget::NullWidget; }
-	const auto& Children = Address.OwnerType == EMixtormatChildOwnerType::Layer
-		? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
-	if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator
-		&& Children[ChildIndex].Type != EMixtormatLayerChildType::Boolean) { return SNullWidget::NullWidget; }
 	return SNew(SMixtormatLayerIcon)
 		.MaxSize(FMixtormatThemeStore::GetResolved().LayerLayout.ChildRowHeight)
 		.ToolTipText(ToolTip.IsEmpty() ? LOCTEXT("GeneratorDisclosure", "Show or hide this generator's displayed children.") : ToolTip)
@@ -740,6 +732,7 @@ FText SMixtormat::GetSelectedBadgeText() const
 
 void SMixtormat::SyncSelectedLayerControls()
 {
+	RebuildPreviewOutputStrip();
 	if (SelectedSourceId.IsValid())
 	{
 		// A source is the inspector's subject; the layer controls below read the layer stack and
@@ -1232,6 +1225,7 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	SelectedLayerChildIds.Reset();
 	SelectionAnchorLayerChildId.Invalidate();
 	UpdateGroupChildMultiSelection(GroupId, ChildIndex);
+	RebuildPreviewOutputStrip();
 	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }
 	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 	return FReply::Handled();

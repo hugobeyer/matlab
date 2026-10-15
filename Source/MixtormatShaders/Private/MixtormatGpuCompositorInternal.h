@@ -1285,6 +1285,7 @@ namespace MixtormatGpuCompositor
 		bool bIsShelfSource = false;
 		FGuid SourceShelfId;
 		bool bGenerator = false;
+		bool bGeneratorLayerType = false;
 		bool bGeneratorAlbedo = false;
 
 		// Hash of the layer without its children: everything a producer reading the layer's own
@@ -1874,6 +1875,11 @@ namespace MixtormatGpuCompositor
 		RegionIdMaps.Insert(TPair<int32, FRDGTextureRef>(SourceChildIndex, RegionIds), InsertIndex);
 	}
 
+	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
+		const FLayerRenderData& Layer,
+		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
+		const FChildRenderData* Child);
+
 	inline FRDGTextureRef FindRegionIdsAbove(
 		const TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps,
 		int32 ChildIndex)
@@ -1892,14 +1898,35 @@ namespace MixtormatGpuCompositor
 
 	// A scoped mask is present when an owned Mask child contributes nonzero weight.
 	// Shared inline with Noise to avoid cross-translation-unit linker dependencies.
+	inline bool IsScopedMaskChild(const FChildRenderData& Child, const int32 OwnerSourceChildIndex)
+	{
+		if (Child.ScopeOwnerSourceChildIndex != OwnerSourceChildIndex)
+		{
+			return false;
+		}
+		switch (Child.Type)
+		{
+		case EMixtormatLayerChildType::Mask:
+			return Child.Mask.Weight != 0.0f;
+		case EMixtormatLayerChildType::Generated:
+			return Child.Generated.Weight != 0.0f;
+		case EMixtormatLayerChildType::ColorId:
+			return Child.ColorId.Weight != 0.0f;
+		case EMixtormatLayerChildType::RandomId:
+			return Child.RandomId.Weight != 0.0f;
+		case EMixtormatLayerChildType::Craquelure:
+			return Child.Craquelure.Weight != 0.0f;
+		default:
+			return false;
+		}
+	}
+
 	// Distinguishes no mask from an authored white mask.
 	inline bool HasScopedGeneratorMasks(const FLayerRenderData& Layer, const int32 OwnerSourceChildIndex)
 	{
 		for (const FChildRenderData& Child : Layer.Children)
 		{
-			if (Child.Type == EMixtormatLayerChildType::Mask
-				&& Child.ScopeOwnerSourceChildIndex == OwnerSourceChildIndex
-				&& Child.Mask.Weight != 0.0f)
+			if (IsScopedMaskChild(Child, OwnerSourceChildIndex))
 			{
 				return true;
 			}
@@ -1926,14 +1953,16 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex);
+		const int32 ChildIndex,
+		const bool bAllowScoped = false);
 
 	void AddColorIdMaskPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex);
+		const int32 ChildIndex,
+		const bool bAllowScoped = false);
 
 	void AddTextureMaskPass(
 		FMixtormatComposeContext& Ctx,
@@ -1963,7 +1992,8 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex);
+		const int32 ChildIndex,
+		const bool bAllowScoped = false);
 
 	FRDGTextureRef AddSurfaceIdPasses(
 		FMixtormatComposeContext& Ctx,
@@ -2015,7 +2045,8 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
-		const int32 ChildIndex);
+		const int32 ChildIndex,
+		const bool bAllowScoped = false);
 
 	void QueuePendingErosion(
 		FMixtormatLayerPassContext& LayerCtx,
