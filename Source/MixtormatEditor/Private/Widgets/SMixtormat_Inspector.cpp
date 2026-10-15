@@ -493,7 +493,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildIdGroupControls()]
 					+ SScrollBox::Slot()[BuildOutputReferenceControls()]
 
-					+ SScrollBox::Slot()[BuildStrataCarverControls()]
 					+ SScrollBox::Slot()[BuildCracksControls()]
 					+ SScrollBox::Slot()[BuildRockFormationControls()]
 					+ SScrollBox::Slot()[BuildPebblesControls()]
@@ -562,7 +561,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 															&& WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator
 															? EVisibility::Visible : EVisibility::Collapsed;
 						})
-						+ SVerticalBox::Slot().AutoHeight()[BuildStrataCarverControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildCracksControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildRockFormationControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildPebblesControls()]
@@ -664,16 +662,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
 									},
 									&FMixtormatLayer::Roughness, 0.0, 1.0, 0.5, 0.01)
-							]
-														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
-							[
-								MakeMemberSlider<FMixtormatLayer>(
-									LOCTEXT("FillIOR", "IOR"),
-									[this]() -> FMixtormatLayer*
-									{
-										return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
-									},
-									&FMixtormatLayer::IOR, 1.0, 3.0, 1.5, 0.01)
 							]
 														+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
 							[

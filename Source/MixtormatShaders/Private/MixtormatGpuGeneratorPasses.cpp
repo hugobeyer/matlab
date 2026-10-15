@@ -193,70 +193,6 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatBooleanCarveCS,
 	"/Plugin/Mixtormat/Private/MixtormatBooleanCarve.usf", "MainCS", SF_Compute);
 
-// Geological beds with shared interfaces, hard shelves and joint-cut slabs. Writes bed IDs,
-// position inside each bed and per-bed random alongside the signed height.
-class FMixtormatStrataCarverResolveCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatStrataCarverResolveCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatStrataCarverResolveCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(uint32, GeneratorLayer)
-		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
-		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
-		SHADER_PARAMETER(int32, GeneratorUVRotation)
-		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
-		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
-		SHADER_PARAMETER(uint32, UsePreGenerationUV)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
-		SHADER_PARAMETER(FIntPoint, BedWave)
-		SHADER_PARAMETER(FIntPoint, BedPerp)
-		SHADER_PARAMETER(int32, BedPeriod)
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Seed)
-		SHADER_PARAMETER(float, ThicknessVariation)
-		SHADER_PARAMETER(float, HeightVariation)
-		SHADER_PARAMETER(float, Verticality)
-		SHADER_PARAMETER(float, LedgeWidth)
-		SHADER_PARAMETER(float, HardnessContrast)
-		SHADER_PARAMETER(float, SoftRecession)
-		SHADER_PARAMETER(float, Bend)
-		SHADER_PARAMETER(int32, BendScale)
-		SHADER_PARAMETER(float, Breakup)
-		SHADER_PARAMETER(int32, JointScale)
-		SHADER_PARAMETER(float, JointWidth)
-		SHADER_PARAMETER(float, HeightFollow)
-		SHADER_PARAMETER(float, Lamination)
-		SHADER_PARAMETER(float, CrossBedding)
-		SHADER_PARAMETER(float, Depth)
-		SHADER_PARAMETER(float, MaskInfluence)
-		SHADER_PARAMETER(float, IDInfluence)
-		SHADER_PARAMETER(uint32, HasScopedMask)
-		SHADER_PARAMETER(uint32, HasRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolveMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, ResolveRegionIds)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutBedIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedPosition)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutBedRandom)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutBoundaryField)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatStrataCarverResolveCS,
-	"/Plugin/Mixtormat/Private/MixtormatStrataCarver.usf",
-	"ResolveCS",
-	SF_Compute);
-
 class FMixtormatRockFormationCS final : public FGlobalShader
 {
 public:
@@ -2687,105 +2623,6 @@ namespace
 		}
 	}
 
-	FRDGTextureRef AddStrataCarverPasses(
-		FMixtormatComposeContext& Ctx,
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer,
-		const FGeneratorPassInput& Child,
-		FRDGTextureRef SourceHeight,
-		FGeneratorBundle* Bundle = nullptr)
-	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FRenderRequest& Request = Ctx.Request;
-		const FStrataCarverRenderData& Carver = Child.Generator.StrataCarver;
-		const int32 LayerIndex = LayerCtx.LayerIndex;
-		const FIntPoint Size = Request.Resolution;
-
-		// No scoped mask and no upstream IDs yet: modules do not read each other until Region
-		// inputs land, so the shader's gated paths stay off and these only satisfy the bindings.
-		const bool bHasScopedMask = false;
-		FRDGTextureRef ScopedMask = SourceHeight;
-		const bool bHasRegionIds = false;
-		FRDGTextureRef RegionIds = Ctx.EmptyRegionIds;
-
-		const FStrataLattice Lattice = MakeStrataLattice(Carver.StrataFrequency, Carver.StrataRotation);
-
-		const auto MakeField = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
-		{
-			return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-				Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-		};
-		FRDGTextureRef CarvedHeight =
-			MakeField(PF_R32_FLOAT, TEXT("Mixtormat.StrataCarvedHeight"));
-		FRDGTextureRef BedIds = MakeField(PF_R32_UINT, TEXT("Mixtormat.StrataBedIds"));
-		FRDGTextureRef BedPosition = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedPosition"));
-		FRDGTextureRef BedRandom = MakeField(PF_R16F, TEXT("Mixtormat.StrataBedRandom"));
-		FRDGTextureRef DirectBoundary = MakeField(PF_G32R32F, TEXT("Mixtormat.Strata.DirectBoundary"));
-
-		{
-			FMixtormatStrataCarverResolveCS::FParameters* P =
-				GraphBuilder.AllocParameters<FMixtormatStrataCarverResolveCS::FParameters>();
-			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
-			P->BedWave = Lattice.Wave;
-			P->BedPerp = Lattice.Perp;
-			P->BedPeriod = Lattice.Period;
-			P->OutputSize = Size;
-			P->Seed = Carver.Seed;
-			P->ThicknessVariation = Carver.ThicknessVariation;
-			P->HeightVariation = Carver.HeightVariation;
-			P->Verticality = Carver.Verticality;
-			P->LedgeWidth = Carver.LedgeWidth;
-			P->HardnessContrast = Carver.HardnessContrast;
-			P->SoftRecession = Carver.SoftRecession;
-			P->Bend = Carver.Bend;
-			P->BendScale = Carver.BendScale;
-			P->Breakup = Carver.Breakup;
-			P->JointScale = Carver.JointScale;
-			P->JointWidth = Carver.JointWidth;
-			P->HeightFollow = Carver.HeightFollow;
-			P->Lamination = Carver.Lamination;
-			P->CrossBedding = Carver.CrossBedding;
-			P->Depth = Carver.Depth;
-			P->MaskInfluence = Carver.MaskInfluence;
-			P->IDInfluence = Carver.IDInfluence;
-P->HasScopedMask = bHasScopedMask ? 1u : 0u;
-		P->HasRegionIds = bHasRegionIds ? 1u : 0u;
-		P->SourceHeight = SourceHeight;
-			P->ResolveMask = ScopedMask;
-			P->ResolveRegionIds = RegionIds;
-			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutHeight = GraphBuilder.CreateUAV(CarvedHeight);
-			P->OutBedIds = GraphBuilder.CreateUAV(BedIds);
-			P->OutBedPosition = GraphBuilder.CreateUAV(BedPosition);
-			P->OutBedRandom = GraphBuilder.CreateUAV(BedRandom);
-			P->OutBoundaryField = GraphBuilder.CreateUAV(DirectBoundary);
-			TShaderMapRef<FMixtormatStrataCarverResolveCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.StrataCarver.L%d.C%d", LayerIndex, Child.SourceChildIndex),
-				Shader, P,
-				FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
-		}
-
-		if (Bundle)
-		{
-			Bundle->Height = CarvedHeight;
-
-			Bundle->RegionIds = BedIds;
-			// The generator's own (distance, validity) boundary, read by a Behavior Carve for
-			// OwnBoundary. Texels whose interface math did not resolve stay invalid rather
-			// than reading as a flat surface, and no remap is needed because there is no
-			// structural displacement to compose with it.
-			Bundle->BoundaryField = DirectBoundary;
-			Bundle->RegisterNamedMask(FName(TEXT("StrataPosition")), BedPosition,
-				FGeneratorBundle::EFieldSemantic::BedCoordinate, FGeneratorBundle::EFieldUnits::BedFraction);
-			Bundle->RegisterNamedMask(FName(TEXT("StrataRandom")), BedRandom,
-				FGeneratorBundle::EFieldSemantic::RegionAttribute);
-		}
-		return CarvedHeight;
-	}
-
 	// One Rock Formation child.
 	//
 	// The field (height, top / chamfer / wall coverage, edge distance, chunk IDs) is a function
@@ -3788,9 +3625,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		switch (Child.Generator.Type)
 		{
 		case EMixtormatGeneratorType::StrataCarver:
-			// Height Follow reads the composite below, never this layer's own height or IDs.
-			AddStrataCarverPasses(Ctx, LayerCtx, Layer, Input,
-				Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
 			break;
 		case EMixtormatGeneratorType::RockFormation:
 			AddRockFormationPasses(Ctx, LayerCtx, Layer, Input, &Module);

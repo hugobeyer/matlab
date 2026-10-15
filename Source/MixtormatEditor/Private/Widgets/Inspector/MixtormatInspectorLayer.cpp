@@ -166,7 +166,6 @@ TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()
 		LOCTEXT("HeightShapeLabel", "Height Shape"), Layer(), &FMixtormatLayer::HeightShape, -1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("HeightShapeHint", "Redistributes this layer's height between its own ends instead of moving or scaling it. Positive bulges the form, raising the midtones toward the peaks; negative pinches it, sinking them toward the pits. Both extremes stay put either way, so the relief changes shape rather than depth -- Height Booster is the one that changes depth. Applied before Booster and Offset.")));
 
-	AddGeneratedFeatureCards(Panel);
 	return Panel;
 }
 
@@ -246,8 +245,6 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 		LOCTEXT("RoughnessInfluenceLabel", "Roughness"), Layer, &FMixtormatLayer::RoughnessInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("MetallicInfluenceLabel", "Metallic"), Layer, &FMixtormatLayer::MetallicInfluence, 0.0, 1.0, 1.0, 0.01));
-	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
-		LOCTEXT("F0InfluenceLabel", "IOR / F0"), Layer, &FMixtormatLayer::F0Influence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(
 		LOCTEXT("LayerNormalInfluenceLabel", "Normal"), Layer, &FMixtormatLayer::NormalInfluence, 0.0, 1.0, 1.0, 0.01));
 	AddSliderRow(Panel, MakeMemberSlider<FMixtormatLayer>(

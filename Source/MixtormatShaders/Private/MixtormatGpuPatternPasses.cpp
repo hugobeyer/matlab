@@ -12,57 +12,6 @@
 
 // Pattern/Region-ID producers, publication, shared ID analysis and random-value masks.
 
-// One entry point and one complete parameter layout for every stage. In particular, do not
-// split this into partial per-entry structs: UE validates all file-scope shader uniforms.
-class FMixtormatClusterIdsCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatClusterIdsCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatClusterIdsCS, FGlobalShader);
-
-	static constexpr uint32 UnionStart = 4;
-	static constexpr uint32 UnionPasses = 12;
-	static constexpr uint32 ResolveStage = UnionStart + UnionPasses;
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER(uint32, Stage)
-		SHADER_PARAMETER(uint32, WriteDebug)
-		SHADER_PARAMETER(uint32, SourceMode)
-		SHADER_PARAMETER(uint32, HasSeparateSourceHeight)
-		SHADER_PARAMETER(FVector2f, SourceTiling)
-		SHADER_PARAMETER(FVector2f, SourceOffset)
-		SHADER_PARAMETER(uint32, FlipU)
-		SHADER_PARAMETER(uint32, FlipV)
-		SHADER_PARAMETER(int32, Rotation)
-		SHADER_PARAMETER(float, Threshold)
-		SHADER_PARAMETER(float, Offset)
-		SHADER_PARAMETER(float, HeightInfluence)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAMH)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Statistics)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float2>, GuideSignal)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Parents)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ClusterIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputIds)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatClusterIdsCS,
-	"/Plugin/Mixtormat/Private/MixtormatClusterIds.usf",
-	"MainCS",
-	SF_Compute);
-
 class FMixtormatIdGroupResolveCS final : public FGlobalShader
 {
 public:
@@ -235,105 +184,6 @@ IMPLEMENT_GLOBAL_SHADER(
 
 namespace MixtormatGpuCompositor
 {
-	// Produces one layer's ID map, and its debug preview alongside it.
-	//
-	// Returns the map rather than only writing the preview, because the two consumers -- the HSV
-	// filter at the composite's albedo sample and the random-value mask in the chain -- both read
-	// it, and both have to read the *same* one. Segmenting twice would cost 17 dispatches twice
-	// and, worse, could disagree: a tint landing on different regions than the stain it is
-	// supposed to share boundaries with is exactly the failure a shared map exists to prevent.
-	static FRDGTextureRef AddClusterIdPasses(
-		FRDGBuilder& GraphBuilder,
-		FRDGTextureRef SourceRAMH,
-		FRDGTextureRef SourceHeight,
-		FRDGTextureRef SurfaceRAM,
-		FRDGTextureRef SurfaceHeight,
-		bool bHasSurfaceBelow,
-		bool bWriteDebug,
-		FRDGTextureRef OutputDebug,
-		FIntPoint OutputSize,
-		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
-		int32 LayerIndex)
-	{
-		// The bottom layer has nothing composited below it -- the substrate is flat, and
-		// segmenting a flat surface returns one region covering everything. Fall back to the
-		// layer's own map rather than hand back a map with no regions in it.
-		const bool bFromComposite =
-			Child.Filter.Source == EMixtormatClusterSource::CompositeBelow && bHasSurfaceBelow;
-		// Deliberately graph-local. An RHI identity (even held strongly) cannot detect in-place
-		// texture edits, reimports or streaming updates. Until the source exposes a content
-		// revision, recompute selected previews each request rather than cache stale regions.
-		// Any future persistent key must include that revision, retained source identity,
-		// resolution, UV placement and these three filter controls -- not material grading.
-		const uint32 PixelCount = static_cast<uint32>(OutputSize.X) * static_cast<uint32>(OutputSize.Y);
-		FRDGBufferRef Statistics = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 4), TEXT("Mixtormat.Cluster.Statistics"));
-		FRDGBufferRef GuideSignal = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(FVector2f), PixelCount), TEXT("Mixtormat.Cluster.GuideSignal"));
-		FRDGBufferRef Parents = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Parents"));
-		// Sparse integer root indices, not colors or a compacted label map. No consumers yet.
-		FRDGBufferRef ClusterIds = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), PixelCount), TEXT("Mixtormat.Cluster.Ids"));
-		const FRDGBufferUAVRef StatisticsUAV = GraphBuilder.CreateUAV(Statistics);
-		const FRDGBufferUAVRef GuideSignalUAV = GraphBuilder.CreateUAV(GuideSignal);
-		const FRDGBufferUAVRef ParentsUAV = GraphBuilder.CreateUAV(Parents);
-		const FRDGBufferUAVRef ClusterIdsUAV = GraphBuilder.CreateUAV(ClusterIds);
-		const FRDGTextureUAVRef DebugUAV = GraphBuilder.CreateUAV(OutputDebug);
-		// R32_UINT and read with Load, never a sampler. Filtering an ID is meaningless -- halfway
-		// between two regions is a third number naming neither -- and every consumer runs at this
-		// resolution, so a pixel lookup is exact.
-		FRDGTextureRef RegionIds = GraphBuilder.CreateTexture(
-			FRDGTextureDesc::Create2D(
-				OutputSize,
-				PF_R32_UINT,
-				FClearValueBinding::None,
-				TexCreate_ShaderResource | TexCreate_UAV),
-			TEXT("Mixtormat.Cluster.RegionIds"));
-		const FRDGTextureUAVRef RegionIdsUAV = GraphBuilder.CreateUAV(RegionIds);
-		TShaderMapRef<FMixtormatClusterIdsCS> ClusterShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		const FIntVector Groups(
-			FMath::DivideAndRoundUp(OutputSize.X, 8), FMath::DivideAndRoundUp(OutputSize.Y, 8), 1);
-		for (uint32 Stage = 0; Stage <= FMixtormatClusterIdsCS::ResolveStage; ++Stage)
-		{
-			FMixtormatClusterIdsCS::FParameters* Parameters =
-				GraphBuilder.AllocParameters<FMixtormatClusterIdsCS::FParameters>();
-			Parameters->OutputSize = OutputSize;
-			Parameters->Stage = Stage;
-			Parameters->WriteDebug = bWriteDebug ? 1u : 0u;
-			Parameters->SourceMode = bFromComposite ? 1u : 0u;
-			Parameters->HasSeparateSourceHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
-			Parameters->SourceTiling = FVector2f(Layer.Tiling * Layer.UVScaleX, Layer.Tiling * Layer.UVScaleY);
-			Parameters->SourceOffset = Layer.UVOffset;
-			Parameters->FlipU = Layer.bFlipU ? 1u : 0u;
-			Parameters->FlipV = Layer.bFlipV ? 1u : 0u;
-			Parameters->Rotation = Layer.Rotation;
-			Parameters->Threshold = Child.Filter.Threshold;
-			Parameters->Offset = Child.Filter.Offset;
-			Parameters->HeightInfluence = Child.Filter.HeightInfluence;
-			Parameters->SourceRAMH = SourceRAMH;
-			Parameters->SourceHeight = SourceHeight;
-			Parameters->SurfaceRAM = SurfaceRAM;
-			Parameters->SurfaceHeight = SurfaceHeight;
-			Parameters->LinearWrapSampler =
-				TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
-			Parameters->Statistics = StatisticsUAV;
-			Parameters->GuideSignal = GuideSignalUAV;
-			Parameters->Parents = ParentsUAV;
-			Parameters->ClusterIds = ClusterIdsUAV;
-			Parameters->OutputIds = RegionIdsUAV;
-			Parameters->OutputDebug = DebugUAV;
-			// Keep the default UAV barriers: each dispatch must finish before the next stage
-			// reads global statistics/parents. A group barrier cannot synchronize this algorithm.
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.ClusterIds.Layer%d.Child%d.Stage%u", LayerIndex, Child.SourceChildIndex, Stage),
-				ClusterShader, Parameters, Stage == 0 ? FIntVector(1, 1, 1) : Groups);
-		}
-		return RegionIds;
-	}
-
 	static FRDGTextureRef AddPatternIdPasses(
 		FRDGBuilder& GraphBuilder,
 		bool bWriteDebug,
@@ -1201,36 +1051,9 @@ namespace MixtormatGpuCompositor
 				{
 					RegionIds = RegisterCached(NodeHit->Outputs[0], TEXT("Mixtormat.NodeCache.RegionIds"));
 				}
-				else if (bClusterProducer && Child.Filter.bSurfaceIds)
-				{
-					RegionIds = AddSurfaceIdPasses(Ctx, Layer, Child, LayerIndex, bIsSelectedPreview);
-					KeepNode({RegionIds});
-				}
 				else if (bClusterProducer)
 				{
-					// The same ping-pong slot the layer composite and generated masks
-					// read: what every layer below this one has accumulated.
-					const int32 SurfaceReadIndex = 1 - (LayerIndex & 1);
-					RegionIds = AddClusterIdPasses(
-						GraphBuilder,
-						RegisterTexture(
-							GraphBuilder,
-							RegisteredTextures,
-							Layer.RAM,
-							TEXT("Mixtormat.Cluster.SourceRAMH")),
-						Layer.Height.IsValid()
-							? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Height,
-								TEXT("Mixtormat.Cluster.SourceHeight"))
-							: HeightTargets[SurfaceReadIndex],
-						OutputRAM[SurfaceReadIndex],
-						HeightTargets[SurfaceReadIndex],
-						LayerIndex > 0,
-						bIsSelectedPreview,
-						OutputDebug[Request.PublishedTargetIndex],
-						Request.Resolution,
-						Layer,
-						Child,
-						LayerIndex);
+					RegionIds = AddSurfaceIdPasses(Ctx, Layer, Child, LayerIndex, bIsSelectedPreview);
 					KeepNode({RegionIds});
 				}
 				else

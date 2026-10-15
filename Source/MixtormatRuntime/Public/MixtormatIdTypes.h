@@ -78,7 +78,7 @@ struct MIXTORMATRUNTIME_API FMixtormatClusterFilter
 	// False on existing assets: keep the serialized Cluster algorithm unchanged.
 	// New Surface IDs use the same producer slot and downstream ID consumers.
 	UPROPERTY()
-	bool bSurfaceIds = false;
+	bool bSurfaceIds = true;
 
 	// Each connected island gets its own ID. Off: every area in the same band shares one ID,
 	// even where the areas do not touch.

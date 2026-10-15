@@ -161,7 +161,6 @@ namespace MixtormatShaderParamScanner
 		// one Layer-owned shader.
 		static const TCHAR* const GeneratorShaders[] =
 		{
-			TEXT("MixtormatStrataCarver.usf"),
 			TEXT("MixtormatCracks.usf"),
 			TEXT("MixtormatRockFormation.usf"),
 			TEXT("MixtormatPebbles.usf"),

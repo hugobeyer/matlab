@@ -200,12 +200,7 @@ TSharedRef<SWidget> SMixtormat::BuildClusterSourceMenu()
 
 TSharedRef<SWidget> SMixtormat::BuildFilterControls()
 {
-	// The inspector is built once, before anything is selected, so the Surface IDs / legacy
-	// Cluster split cannot be decided here. Both panels are built and each shows only while the
-	// selected producer is its kind.
-	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()[BuildRegionFilterPanel(true)]
-		+ SVerticalBox::Slot().AutoHeight()[BuildRegionFilterPanel(false)];
+	return BuildRegionFilterPanel(true);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
