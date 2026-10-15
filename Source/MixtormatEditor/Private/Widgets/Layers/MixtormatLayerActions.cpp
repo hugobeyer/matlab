@@ -97,18 +97,121 @@ FReply SMixtormat::AddWorkingLayer(const EMixtormatLayerType LayerType)
 	return FReply::Handled();
 }
 
+bool SMixtormat::CanGroupSelectedChildrenAsBoolean() const
+{
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		return false;
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	const TArray<int32> Selected = GetSelectedLayerChildIndices();
+	if (Selected.IsEmpty() || Selected.Num() > 2)
+	{
+		return false;
+	}
+	// Group complete adjacent subtrees without moving operands across unrelated operations.
+	if (Selected.Num() == 2 && FindSubtreeEnd(Layer.Children, Selected[0]) != Selected[1])
+	{
+		return false;
+	}
+	for (const int32 ChildIndex : Selected)
+	{
+		if (!Layer.Children.IsValidIndex(ChildIndex)) { return false; }
+		const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
+		if (Child.ScopeOwnerChildId.IsValid()
+			|| Child.Type != EMixtormatLayerChildType::Generator
+			|| Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
+			|| (Child.Generator.Type == EMixtormatGeneratorType::Noise
+				&& !Child.Generator.Noise.bNoiseWriteHeight))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+FReply SMixtormat::GroupSelectedChildrenAsBoolean()
+{
+	if (!CanGroupSelectedChildrenAsBoolean())
+	{
+		return FReply::Handled();
+	}
+	FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	const TArray<int32> Selected = GetSelectedLayerChildIndices();
+	const int32 FirstSelected = Selected[0];
+
+	// Collect each selected generator's full subtree in authored order so its owned
+	// behaviors and masks stay attached to it inside the Boolean container.
+	TArray<FGuid> RootIds;
+	for (const int32 ChildIndex : Selected)
+	{
+		RootIds.Add(Layer.Children[ChildIndex].ChildId);
+	}
+
+	FMixtormatLayerChild BooleanParent;
+	ApplyChildCreationDefaults(BooleanParent, EMixtormatChildCreation::BooleanOps);
+	const FGuid BooleanId = BooleanParent.ChildId;
+
+	TArray<FMixtormatLayerChild> Extracted;
+	for (const FGuid& RootId : RootIds)
+	{
+		const int32 RootIndex = FindChildById(Layer.Children, RootId);
+		if (RootIndex == INDEX_NONE) { continue; }
+		const int32 SubtreeEnd = FindSubtreeEnd(Layer.Children, RootIndex);
+		for (int32 Index = RootIndex; Index < SubtreeEnd; ++Index)
+		{
+			FMixtormatLayerChild Moved = Layer.Children[Index];
+			if (Index == RootIndex)
+			{
+				Moved.ScopeOwnerChildId = BooleanId;
+			}
+			Extracted.Add(MoveTemp(Moved));
+		}
+		Layer.Children.RemoveAt(RootIndex, SubtreeEnd - RootIndex);
+	}
+
+	const int32 InsertAt = FMath::Clamp(FirstSelected, 0, Layer.Children.Num());
+	Layer.Children.Insert(MoveTemp(BooleanParent), InsertAt);
+	for (int32 Offset = 0; Offset < Extracted.Num(); ++Offset)
+	{
+		Layer.Children.Insert(MoveTemp(Extracted[Offset]), InsertAt + 1 + Offset);
+	}
+
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
+	SelectedEffectIndex = INDEX_NONE;
+	SelectedMaskIndex = InsertAt;
+	SelectedLayerChildIds.Add(BooleanId);
+	SelectionAnchorLayerChildId = BooleanId;
+	bHasSelectedLayer = true;
+	RecordEditHistory();
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	SyncSelectedLayerControls();
+	RefreshLayeredPreview();
+	RebuildLayerList();
+	RebuildMaskList();
+	return FReply::Handled();
+}
+
 bool SMixtormat::CanExecuteLayerSelectionCommand(const ELayerSelectionCommand Command) const
 {
+	const TArray<int32> SelectedChildren = GetSelectedLayerChildIndices();
+	const bool bHasChildSelection = GetSelectedChildIndex() != INDEX_NONE && !SelectedChildren.IsEmpty();
 	const TArray<int32> Selected = GetSelectedLayerIndices();
 	switch (Command)
 	{
 	case ELayerSelectionCommand::Duplicate:
 	case ELayerSelectionCommand::Remove:
-		return !Selected.IsEmpty();
+		return bHasChildSelection || !Selected.IsEmpty();
 	case ELayerSelectionCommand::Group:
-		return CanCreateGroup() && !Selected.IsEmpty();
+		return bHasChildSelection ? CanGroupSelectedChildrenAsBoolean()
+			: (CanCreateGroup() && !Selected.IsEmpty());
 	case ELayerSelectionCommand::Rename:
-		return Selected.Num() == 1 || SelectedGroupId.IsValid();
+		return (bHasChildSelection && SelectedChildren.Num() == 1
+			&& WorkingLayers.IsValidIndex(SelectedLayerIndex)
+			&& WorkingLayers[SelectedLayerIndex].Children.IsValidIndex(SelectedChildren[0])
+			&& WorkingLayers[SelectedLayerIndex].Children[SelectedChildren[0]].Type == EMixtormatLayerChildType::Mask)
+			|| Selected.Num() == 1 || SelectedGroupId.IsValid();
 	case ELayerSelectionCommand::CopyAsInstance:
 	{
 		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
@@ -126,18 +229,101 @@ FReply SMixtormat::ExecuteLayerSelectionCommand(const ELayerSelectionCommand Com
 		return FReply::Unhandled();
 	}
 
+	const TArray<int32> SelectedChildren = GetSelectedLayerChildIndices();
+	const bool bHasChildSelection = GetSelectedChildIndex() != INDEX_NONE && !SelectedChildren.IsEmpty();
+	TArray<int32> SelectedRoots;
+	if (bHasChildSelection && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		const TArray<FMixtormatLayerChild>& Children = WorkingLayers[SelectedLayerIndex].Children;
+		int32 PreviousSubtreeEnd = INDEX_NONE;
+		for (const int32 ChildIndex : SelectedChildren)
+		{
+			// The selection is in authored order; a selected parent already includes its descendants.
+			if (Children.IsValidIndex(ChildIndex) && ChildIndex >= PreviousSubtreeEnd)
+			{
+				SelectedRoots.Add(ChildIndex);
+				PreviousSubtreeEnd = FindSubtreeEnd(Children, ChildIndex);
+			}
+		}
+	}
+
 	switch (Command)
 	{
 	case ELayerSelectionCommand::Duplicate:
+		if (bHasChildSelection && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			TArray<FGuid> RootIds;
+			const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			for (const int32 ChildIndex : SelectedRoots)
+			{
+				if (Layer.Children.IsValidIndex(ChildIndex))
+				{
+					RootIds.Add(Layer.Children[ChildIndex].ChildId);
+				}
+			}
+			for (const FGuid& RootId : RootIds)
+			{
+				const int32 CurrentIndex = FindChildById(WorkingLayers[SelectedLayerIndex].Children, RootId);
+				if (CurrentIndex != INDEX_NONE)
+				{
+					DuplicateLayerChild(SelectedLayerIndex, CurrentIndex, false);
+				}
+			}
+			SyncSelectedLayerControls();
+			RefreshLayeredPreview();
+			RebuildLayerList();
+			RebuildMaskList();
+			return FReply::Handled();
+		}
 		return DuplicateSelectedLayer();
 	case ELayerSelectionCommand::CopyAsInstance:
 		CopyChild(GetSelectedChildAddress(), true);
 		return FReply::Handled();
 	case ELayerSelectionCommand::Group:
-		return CreateGroupFromSelection();
+		return bHasChildSelection ? GroupSelectedChildrenAsBoolean() : CreateGroupFromSelection();
 	case ELayerSelectionCommand::Rename:
 		return BeginRenameSelection() ? FReply::Handled() : FReply::Unhandled();
 	case ELayerSelectionCommand::Remove:
+		if (bHasChildSelection && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			TArray<FGuid> RootIds;
+			const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+			for (int32 Index = SelectedRoots.Num() - 1; Index >= 0; --Index)
+			{
+				const int32 ChildIndex = SelectedRoots[Index];
+				if (Layer.Children.IsValidIndex(ChildIndex))
+				{
+					RootIds.Add(Layer.Children[ChildIndex].ChildId);
+				}
+			}
+			SelectedLayerChildIds.Reset();
+			SelectionAnchorLayerChildId.Invalidate();
+			for (const FGuid& RootId : RootIds)
+			{
+				const int32 CurrentIndex = FindChildById(WorkingLayers[SelectedLayerIndex].Children, RootId);
+				if (CurrentIndex == INDEX_NONE) { continue; }
+				const EMixtormatLayerChildType Type = WorkingLayers[SelectedLayerIndex].Children[CurrentIndex].Type;
+				if (Type == EMixtormatLayerChildType::Effect)
+				{
+					RemoveLayerEffect(SelectedLayerIndex, CurrentIndex, false);
+				}
+				else if (Type == EMixtormatLayerChildType::Mask
+					|| Type == EMixtormatLayerChildType::Blur
+					|| Type == EMixtormatLayerChildType::Curvature)
+				{
+					RemoveMaskFromLayer(SelectedLayerIndex, CurrentIndex, false);
+				}
+				else
+				{
+					RemoveGeneratedFromLayer(SelectedLayerIndex, CurrentIndex, false);
+				}
+			}
+			SyncSelectedLayerControls();
+			RefreshLayeredPreview();
+			RebuildLayerList();
+			RebuildMaskList();
+			return FReply::Handled();
+		}
 		return DeleteSelectedLayer();
 	default:
 		return FReply::Unhandled();
@@ -686,7 +872,7 @@ FReply SMixtormat::ClearLayerMask(const int32 LayerIndex)
 // row dispatch cannot tell them apart. Removing a mask takes its filters with it: they name it by
 // ChildId, and a filter left behind would point at a child that no longer exists and be dropped
 // silently by the gather instead of visibly by this.
-FReply SMixtormat::RemoveMaskFromLayer(const int32 LayerIndex, const int32 ChildIndex)
+FReply SMixtormat::RemoveMaskFromLayer(const int32 LayerIndex, const int32 ChildIndex, const bool bRefresh)
 {
 	const bool bRemovable = WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
@@ -735,15 +921,18 @@ FReply SMixtormat::RemoveMaskFromLayer(const int32 LayerIndex, const int32 Child
 			{
 				bBypassSelectedChild = false;
 			}
-			SyncSelectedLayerControls();
+			if (bRefresh) { SyncSelectedLayerControls(); }
 		}
-		RefreshLayeredPreview();
-		RebuildLayerList();
+		if (bRefresh)
+		{
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}
 	}
 	return FReply::Handled();
 }
 
-FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 ChildIndex)
+FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 ChildIndex, const bool bRefresh)
 {
 	if (!ResolveChild(LayerIndex, ChildIndex))
 	{
@@ -774,10 +963,13 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 		: NewChildIndex;
 	bHasSelectedLayer = true;
 	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
-	RebuildMaskList();
+	if (bRefresh)
+	{
+		SyncSelectedLayerControls();
+		RefreshLayeredPreview();
+		RebuildLayerList();
+		RebuildMaskList();
+	}
 	return FReply::Handled();
 }
 
@@ -1005,7 +1197,7 @@ FReply SMixtormat::ToggleLayerEffect(const int32 LayerIndex, const int32 ChildIn
 	return FReply::Handled();
 }
 
-FReply SMixtormat::RemoveLayerEffect(const int32 LayerIndex, const int32 ChildIndex)
+FReply SMixtormat::RemoveLayerEffect(const int32 LayerIndex, const int32 ChildIndex, const bool bRefresh)
 {
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
@@ -1047,10 +1239,13 @@ FReply SMixtormat::RemoveLayerEffect(const int32 LayerIndex, const int32 ChildIn
 			{
 				bBypassSelectedChild = false;
 			}
-			SyncSelectedLayerControls();
+			if (bRefresh) { SyncSelectedLayerControls(); }
 		}
-		RefreshLayeredPreview();
-		RebuildLayerList();
+		if (bRefresh)
+		{
+			RefreshLayeredPreview();
+			RebuildLayerList();
+		}
 	}
 	return FReply::Handled();
 }
@@ -1814,7 +2009,7 @@ FReply SMixtormat::AddGeneratedMaskToLayer(const int32 LayerIndex)
 		EMixtormatChildCreation::GeneratedMask);
 }
 
-FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 ChildIndex)
+FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 ChildIndex, const bool bRefresh)
 {
 	if (!ResolveChild(LayerIndex, ChildIndex))
 	{
@@ -1838,6 +2033,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::IdGroup
 		&& ChildType != EMixtormatLayerChildType::OutputReference
 		&& ChildType != EMixtormatLayerChildType::Generator
+		&& ChildType != EMixtormatLayerChildType::Boolean
 		&& ChildType != EMixtormatLayerChildType::HeightBlend
 		&& ChildType != EMixtormatLayerChildType::HeightCurve
 		&& ChildType != EMixtormatLayerChildType::HeightColorRamp
@@ -1872,9 +2068,12 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 			bBypassSelectedChild = false;
 		}
 	}
-	SyncSelectedLayerControls();
-	RefreshLayeredPreview();
-	RebuildLayerList();
+	if (bRefresh)
+	{
+		SyncSelectedLayerControls();
+		RefreshLayeredPreview();
+		RebuildLayerList();
+	}
 	return FReply::Handled();
 }
 

@@ -359,11 +359,11 @@ private:
 	FReply ReplaceMaskInLayer(int32 LayerIndex, int32 MaskIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
 	FReply ClearLayerMask(int32 LayerIndex);
-	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex);
+	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex, bool bRefresh = true);
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	bool CanReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex) const;
 	FReply ReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex);
-	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex);
+	FReply DuplicateLayerChild(int32 LayerIndex, int32 ChildIndex, bool bRefresh = true);
 	FReply MoveChildToLayer(int32 SourceLayerIndex, int32 ChildIndex, int32 DestLayerIndex, int32 DestChildIndex = INDEX_NONE);
 	// Same move, but the destination is a group's shared stack rather than another layer: the
 	// child leaves its layer and becomes something every member composites, instead of landing in
@@ -518,11 +518,11 @@ private:
 	TSharedRef<SWidget> BuildFlowWarpControls();
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
-	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex);
+	FReply RemoveLayerEffect(int32 LayerIndex, int32 ChildIndex, bool bRefresh = true);
 	FReply AddLayerValuesMaskToLayer(int32 LayerIndex);
 	FReply AddGeneratedMaskToLayer(int32 LayerIndex);
 	FReply AddCraquelureToLayer(int32 LayerIndex);
-	FReply RemoveGeneratedFromLayer(int32 LayerIndex, int32 ChildIndex);
+	FReply RemoveGeneratedFromLayer(int32 LayerIndex, int32 ChildIndex, bool bRefresh = true);
 	void SetGeneratedEnabled(ECheckBoxState CheckState, int32 LayerIndex, int32 ChildIndex);
 	FMixtormatGeneratedMask* GetSelectedGeneratedMask();
 	const FMixtormatGeneratedMask* GetSelectedGeneratedMask() const;
@@ -766,6 +766,12 @@ private:
 	void UpdateGroupChildMultiSelection(FGuid GroupId, int32 ChildIndex);
 	bool IsGroupChildMultiSelected(FGuid GroupId, int32 ChildIndex) const;
 	TArray<int32> GetSelectedGroupChildIndices() const;
+	// Layer-child multi-select within SelectedLayerIndex, using the same modifier rules.
+	void UpdateLayerChildMultiSelection(int32 LayerIndex, int32 ChildIndex);
+	bool IsLayerChildMultiSelected(int32 LayerIndex, int32 ChildIndex) const;
+	TArray<int32> GetSelectedLayerChildIndices() const;
+	bool CanGroupSelectedChildrenAsBoolean() const;
+	FReply GroupSelectedChildrenAsBoolean();
 	// Paste a copied mask (a copied output included) as the gating mask of the row it is pasted
 	// on -- an effect, a flow tool or a generator -- instead of as a layer mask above it.
 	bool CanPasteAsGatingMask(const FMixtormatChildAddress& Address) const;
@@ -1790,6 +1796,9 @@ private:
 	TSet<FGuid> SelectedGroupChildIds;
 	// The group-child anchor for shift-extend, same convention as SelectionAnchorLayerId.
 	FGuid SelectionAnchorGroupChildId;
+	// Layer-child multi-selection within SelectedLayerIndex; cleared when switching layers or groups.
+	TSet<FGuid> SelectedLayerChildIds;
+	FGuid SelectionAnchorLayerChildId;
 	TArray<FMixtormatLayer> WorkingLayers;
 	TArray<FMixtormatLayer> SavedLayers;
 	TArray<FMixtormatLayerGroup> WorkingLayerGroups;

@@ -52,6 +52,8 @@ public:
 		// turns the preview colour for as long as that holds.
 		SLATE_ATTRIBUTE(bool, bPreviewing)
 		SLATE_EVENT(FSimpleDelegate, OnSelected)
+		// Context activation preserves a selected set and does not apply click modifiers.
+		SLATE_EVENT(FSimpleDelegate, OnContextSelected)
 		// The dot is the child's enable toggle -- it already shows the state, so it takes the
 		// click too rather than adding a checkbox the row has no room for.
 		SLATE_EVENT(FSimpleDelegate, OnToggleActive)
@@ -82,6 +84,7 @@ private:
 	TAttribute<bool> bSelected;
 	TAttribute<bool> bInstanceSource;
 	FSimpleDelegate OnSelected;
+	FSimpleDelegate OnContextSelected;
 	FPointerEventHandler OnRowDragDetected;
 	FOnGetContent OnGetContextMenu;
 	FOnGetContent OnGetOutputMenu;

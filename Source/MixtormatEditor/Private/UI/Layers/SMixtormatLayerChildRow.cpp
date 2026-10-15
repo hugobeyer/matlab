@@ -32,6 +32,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 	bSelected = InArgs._bSelected;
 	bInstanceSource = InArgs._bInstanceSource;
 	OnSelected = InArgs._OnSelected;
+	OnContextSelected = InArgs._OnContextSelected;
 	OnRowDragDetected = InArgs._OnDragDetected;
 	OnGetContextMenu = InArgs._OnGetContextMenu;
 	OnGetOutputMenu = InArgs._OnGetOutputMenu;
@@ -222,8 +223,16 @@ FReply SMixtormatLayerChildRow::OnMouseButtonDown(const FGeometry&, const FPoint
 {
 	if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
-		// Select first, so the menu is built against the child it opened on.
-		OnSelected.ExecuteIfBound();
+		// Layer children distinguish context activation from modifier-based selection.
+		// Other row owners retain their existing selection delegate.
+		if (OnContextSelected.IsBound())
+		{
+			OnContextSelected.Execute();
+		}
+		else
+		{
+			OnSelected.ExecuteIfBound();
+		}
 		// Shift is an accelerator onto the published outputs, never the only way to reach them:
 		// the full menu still nests the very same content under "Outputs". A child with nothing
 		// to publish keeps the normal menu rather than opening an empty popup.

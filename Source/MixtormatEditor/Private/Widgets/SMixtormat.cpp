@@ -339,6 +339,8 @@ bool SMixtormat::HaveSameLayerStructure(
 
 void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 {
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	// A fresh history baseline also begins a fresh document-local disclosure session.
 	CollapsedGeneratorAddresses.Reset();
 	UndoHistory.Reset();
@@ -444,6 +446,8 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 		: FMath::Clamp(SelectedLayerIndex, 0, WorkingLayers.Num() - 1);
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	// Undoing past a Group leaves these naming layers and a group the restored state does
 	// not have. Dropping them is the same reasoning as clearing the child selection above: the
 	// state that comes back is not the state they were taken against.
@@ -900,24 +904,6 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 			if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
 			{
 				return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
-			}
-			if (GetSelectedChildIndex() != INDEX_NONE)
-			{
-				const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex());
-				if (Child)
-				{
-					switch (Child->Type)
-					{
-					case EMixtormatLayerChildType::Effect:
-						return RemoveLayerEffect(SelectedLayerIndex, GetSelectedChildIndex());
-					case EMixtormatLayerChildType::Mask:
-					case EMixtormatLayerChildType::Blur:
-					case EMixtormatLayerChildType::Curvature:
-						return RemoveMaskFromLayer(SelectedLayerIndex, GetSelectedChildIndex());
-					default:
-						return RemoveGeneratedFromLayer(SelectedLayerIndex, GetSelectedChildIndex());
-					}
-				}
 			}
 		}
 		return FReply::Unhandled();

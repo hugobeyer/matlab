@@ -931,6 +931,8 @@ void SMixtormat::SelectSource(const FGuid SourceId)
 	SelectedGroupChildIndex = INDEX_NONE;
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	bHasSelectedLayer = false;
 	SyncSelectedLayerControls();
 }

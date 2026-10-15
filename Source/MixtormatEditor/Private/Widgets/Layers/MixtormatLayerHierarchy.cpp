@@ -513,6 +513,8 @@ FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 	return FReply::Handled();
 }
@@ -648,6 +650,8 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 	bHasSelectedLayer = true;
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	UpdateMultiSelection(LayerIndex);
 	SyncSelectedLayerControls();
 	RebuildMaskList();
@@ -664,23 +668,45 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 
 FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildIndex)
 {
-	if (!ResolveChild(LayerIndex, ChildIndex))
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| (ChildIndex != INDEX_NONE && !ResolveChild(LayerIndex, ChildIndex)))
 	{
 		return FReply::Handled();
 	}
 
 	const bool bWasBypassingChild = bBypassSelectedChild;
 	bBypassSelectedChild = false;
+	// Programmatic/context activation never consumes keyboard modifiers. An existing
+	// selection is preserved only when activating one of its members.
+	if (ChildIndex == INDEX_NONE)
+	{
+		SelectedLayerChildIds.Reset();
+	}
+	else if (!IsLayerChildMultiSelected(LayerIndex, ChildIndex))
+	{
+		SelectedLayerChildIds.Reset();
+		SelectionAnchorLayerChildId = WorkingLayers[LayerIndex].Children[ChildIndex].ChildId;
+		SelectedLayerChildIds.Add(SelectionAnchorLayerChildId);
+	}
 	SelectedLayerIndex = LayerIndex;
-	const bool bEffect = ResolveChild(LayerIndex, ChildIndex)->Type
-		== EMixtormatLayerChildType::Effect;
+	const bool bEffect = ChildIndex != INDEX_NONE
+		&& ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Effect;
 	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
 	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
-	// A layer child claim drops a Sources shelf selection; the inspector shows one subject.
+	// A layer child claim drops a Sources shelf or multi-layer selection; the inspector shows one subject.
 	SelectedSourceId.Invalidate();
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedGroupChildIds.Reset();
+	SelectionAnchorGroupChildId.Invalidate();
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
-	if (RevealChildInHierarchy(MakeChildAddress(LayerIndex, ChildIndex))) { RebuildLayerList(); }
+	if (ChildIndex != INDEX_NONE && RevealChildInHierarchy(MakeChildAddress(LayerIndex, ChildIndex)))
+	{
+		RebuildLayerList();
+	}
 	// No unconditional RebuildLayerList() here: every row's selected-tint and state is attribute-bound already,
 	// so nothing needs new widgets. Rebuilding tore down the very row a right-click had just opened
 	// its context menu on, closing it before it could show.
@@ -1170,6 +1196,8 @@ void SMixtormat::ClearLayerSelection()
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
 	SelectedLayerIds.Reset();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	SyncSelectedLayerControls();
 	RebuildMaskList();
 	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
@@ -1201,6 +1229,8 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	UpdateGroupChildMultiSelection(GroupId, ChildIndex);
 	if (Child && RevealChildInHierarchy(MakeGroupChildAddress(GroupId, ChildIndex))) { RebuildLayerList(); }
 	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
@@ -1317,6 +1347,120 @@ TArray<int32> SMixtormat::GetSelectedGroupChildIndices() const
 		{
 			Indices.Add(Index);
 		}
+	}
+	if (Indices.IsEmpty() && Group->Children.IsValidIndex(SelectedGroupChildIndex))
+	{
+		Indices.Add(SelectedGroupChildIndex);
+	}
+	return Indices;
+}
+
+void SMixtormat::UpdateLayerChildMultiSelection(const int32 LayerIndex, const int32 ChildIndex)
+{
+	if (!WorkingLayers.IsValidIndex(LayerIndex)
+		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		return;
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FGuid ClickedId = Layer.Children[ChildIndex].ChildId;
+
+	const FModifierKeysState Modifiers = FSlateApplication::Get().GetModifierKeys();
+	const bool bToggle = Modifiers.IsControlDown() || Modifiers.IsCommandDown();
+	const bool bExtend = Modifiers.IsShiftDown();
+
+	if (SelectedLayerIndex != LayerIndex)
+	{
+		SelectedLayerChildIds.Reset();
+		SelectionAnchorLayerChildId.Invalidate();
+	}
+
+	else if (SelectedLayerChildIds.IsEmpty() && Layer.Children.IsValidIndex(GetSelectedChildIndex()))
+	{
+		// Existing programmatic callers can select through the active indices alone.
+		const FGuid ActiveId = Layer.Children[GetSelectedChildIndex()].ChildId;
+		SelectedLayerChildIds.Add(ActiveId);
+		if (!SelectionAnchorLayerChildId.IsValid())
+		{
+			SelectionAnchorLayerChildId = ActiveId;
+		}
+	}
+
+	if (bExtend && SelectionAnchorLayerChildId.IsValid())
+	{
+		const TArray<FMixtormatProjectedChildRow> Rows =
+			FilterVisibleHierarchyRows(BuildLayerHierarchyRows(Layer.LayerId));
+		const int32 AnchorRow = Rows.IndexOfByPredicate(
+			[&Anchor = SelectionAnchorLayerChildId](const FMixtormatProjectedChildRow& Row)
+			{
+				return Row.Address.ChildId == Anchor;
+			});
+		const int32 ClickedRow = Rows.IndexOfByPredicate(
+			[ChildIndex](const FMixtormatProjectedChildRow& Row)
+			{
+				return Row.AuthoredChildIndex == ChildIndex;
+			});
+		if (AnchorRow != INDEX_NONE && ClickedRow != INDEX_NONE)
+		{
+			if (!bToggle) { SelectedLayerChildIds.Reset(); }
+			const int32 First = FMath::Min(AnchorRow, ClickedRow);
+			const int32 Last = FMath::Max(AnchorRow, ClickedRow);
+			for (int32 Index = First; Index <= Last; ++Index)
+			{
+				SelectedLayerChildIds.Add(Rows[Index].Address.ChildId);
+			}
+			return;
+		}
+	}
+
+	if (bToggle && !bExtend)
+	{
+		if (SelectedLayerChildIds.Contains(ClickedId))
+		{
+			SelectedLayerChildIds.Remove(ClickedId);
+		}
+		else
+		{
+			SelectedLayerChildIds.Add(ClickedId);
+		}
+		SelectionAnchorLayerChildId = ClickedId;
+		return;
+	}
+
+	// A missing/hidden Shift anchor starts at this row; Ctrl+Shift still unions it.
+	if (!bToggle) { SelectedLayerChildIds.Reset(); }
+	SelectedLayerChildIds.Add(ClickedId);
+	SelectionAnchorLayerChildId = ClickedId;
+}
+
+bool SMixtormat::IsLayerChildMultiSelected(const int32 LayerIndex, const int32 ChildIndex) const
+{
+	return SelectedLayerIndex == LayerIndex
+		&& WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+		&& (SelectedLayerChildIds.Contains(WorkingLayers[LayerIndex].Children[ChildIndex].ChildId)
+			|| (SelectedLayerChildIds.IsEmpty() && GetSelectedChildIndex() == ChildIndex));
+}
+
+TArray<int32> SMixtormat::GetSelectedLayerChildIndices() const
+{
+	TArray<int32> Indices;
+	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
+	{
+		return Indices;
+	}
+	const FMixtormatLayer& Layer = WorkingLayers[SelectedLayerIndex];
+	for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
+	{
+		if (SelectedLayerChildIds.Contains(Layer.Children[Index].ChildId))
+		{
+			Indices.Add(Index);
+		}
+	}
+	const int32 Single = GetSelectedChildIndex();
+	if (SelectedLayerChildIds.IsEmpty() && Layer.Children.IsValidIndex(Single))
+	{
+		Indices.Add(Single);
 	}
 	return Indices;
 }
@@ -1759,12 +1903,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				{
 					return IsLayerChildEnabled(LayerIndex, ChildIndex);
 				})
-				.bSelected_Lambda([this, LayerIndex, ChildIndex, bEffect]()
+				.bSelected_Lambda([this, ResolveRow]()
 				{
-					// Effects and masks are selected through separate indices, so which one to
-					// compare against depends on what the child is.
-					return SelectedLayerIndex == LayerIndex
-						&& (bEffect ? SelectedEffectIndex : SelectedMaskIndex) == ChildIndex;
+					int32 LayerIndex, ChildIndex;
+					return ResolveRow(LayerIndex, ChildIndex)
+						&& IsLayerChildMultiSelected(LayerIndex, ChildIndex);
 				})
 				.bPreviewing_Lambda([this, LayerIndex, ChildIndex]()
 				{
@@ -1795,6 +1938,26 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 							WorkingLayers[LayerIndex].Children[ChildIndex].ChildId);
 				})
 				.OnSelected_Lambda([this, ResolveRow]()
+				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex)) { return; }
+					const int32 PreviousActive = SelectedLayerIndex == LayerIndex
+						? GetSelectedChildIndex() : INDEX_NONE;
+					UpdateLayerChildMultiSelection(LayerIndex, ChildIndex);
+					const TArray<FMixtormatLayerChild>& Children = WorkingLayers[LayerIndex].Children;
+					// Never reactivate a Ctrl-deselected row (including the last selected row).
+					if (!SelectedLayerChildIds.Contains(Children[ChildIndex].ChildId))
+					{
+						ChildIndex = Children.IsValidIndex(PreviousActive)
+							&& SelectedLayerChildIds.Contains(Children[PreviousActive].ChildId)
+							? PreviousActive : Children.IndexOfByPredicate([this](const FMixtormatLayerChild& Child)
+							{
+								return SelectedLayerChildIds.Contains(Child.ChildId);
+							});
+					}
+					SelectWorkingChild(LayerIndex, ChildIndex);
+				})
+				.OnContextSelected_Lambda([this, ResolveRow]()
 				{
 					int32 LayerIndex, ChildIndex;
 					if (ResolveRow(LayerIndex, ChildIndex)) { SelectWorkingChild(LayerIndex, ChildIndex); }

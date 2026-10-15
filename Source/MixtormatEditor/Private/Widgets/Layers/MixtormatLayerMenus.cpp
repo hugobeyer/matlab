@@ -1363,8 +1363,15 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 		MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			DuplicateLayerChild(LayerIndex, ChildIndex);
-		}));
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+			}
+			else
+			{
+				DuplicateLayerChild(LayerIndex, ChildIndex);
+			}
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
 	Menu.Item(
@@ -1372,8 +1379,16 @@ TSharedRef<SWidget> SMixtormat::BuildEffectContextMenu(
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			RemoveLayerEffect(LayerIndex, ChildIndex);
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
+			}
+			else
+			{
+				RemoveLayerEffect(LayerIndex, ChildIndex);
+			}
 		}))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 	return Menu.Build();
 }
@@ -1555,8 +1570,25 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 		MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			DuplicateLayerChild(LayerIndex, ChildIndex);
-		}));
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+			}
+			else
+			{
+				DuplicateLayerChild(LayerIndex, ChildIndex);
+			}
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
+	if (CanGroupSelectedChildrenAsBoolean())
+	{
+		Menu.Item(
+			LOCTEXT("GroupChildrenAsBooleanContext", "Group as Boolean"),
+			MixtormatIcons::BooleanOps(),
+			FSimpleDelegate::CreateLambda([this]()
+			{
+				GroupSelectedChildrenAsBoolean();
+			})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Group));
+	}
 	AddIdGroupMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
@@ -1571,8 +1603,16 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
+			}
+			else
+			{
+				RemoveGeneratedFromLayer(LayerIndex, ChildIndex);
+			}
 		}))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 	return Menu.Build();
 }
@@ -1587,8 +1627,15 @@ TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, con
 		MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			DuplicateLayerChild(LayerIndex, ChildIndex);
-		}));
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+			}
+			else
+			{
+				DuplicateLayerChild(LayerIndex, ChildIndex);
+			}
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, ChildIndex));
 	Menu.Separator();
 	Menu.Item(
@@ -1596,8 +1643,16 @@ TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, con
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
 		{
-			RemoveMaskFromLayer(LayerIndex, ChildIndex);
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
+			}
+			else
+			{
+				RemoveMaskFromLayer(LayerIndex, ChildIndex);
+			}
 		}))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 	return Menu.Build();
 }
@@ -1658,8 +1713,15 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		MixtormatIcons::Duplicate(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
 		{
-			DuplicateLayerChild(LayerIndex, MaskIndex);
-		}));
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Duplicate);
+			}
+			else
+			{
+				DuplicateLayerChild(LayerIndex, MaskIndex);
+			}
+		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Duplicate));
 	AddSharedChildMenuItems(Menu, MakeChildAddress(LayerIndex, MaskIndex));
 	Menu.Separator();
 	Menu.Item(
@@ -1667,8 +1729,16 @@ TSharedRef<SWidget> SMixtormat::BuildMaskContextMenu(const int32 LayerIndex, con
 		MixtormatIcons::Trash(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex]()
 		{
-			RemoveMaskFromLayer(LayerIndex, MaskIndex);
+			if (GetSelectedLayerChildIndices().Num() > 1)
+			{
+				ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
+			}
+			else
+			{
+				RemoveMaskFromLayer(LayerIndex, MaskIndex);
+			}
 		}))
+		.Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Remove))
 		.Destructive();
 	return Menu.Build();
 }

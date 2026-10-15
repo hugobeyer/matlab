@@ -116,6 +116,8 @@ FReply SMixtormat::SelectSurface(FText DisplayName, FSoftObjectPath AssetPath)
 	SelectedMaskIndex = INDEX_NONE;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	WorkingLayers.Reset();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
 	WorkingMaterialName = TEXT("No material");
 	if (SelectedSurfaceText.IsValid())
 	{
