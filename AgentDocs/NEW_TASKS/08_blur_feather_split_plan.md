@@ -26,13 +26,22 @@ existing Flow Feather functionality, including its current Flow Blur mode.**
 - Mask Blurs run independently in authored order on completed coverage before
   merge. Curvature-owned Blurs post-filter each completed Curvature result.
   The summed radii path and old Mask Blur shader/class are removed.
-- Step 1 remains partial: Layer/Generator/Flow/effect owners, root-Layer channels
-  and typed source/publication integration still need scheduling and UI work.
-  Step 2 is partial; LayerBlur Effect and Height Feather retain existing paths.
-  Steps 3–6 are not complete. Existing Flow Feather is untouched.
-- User confirmed the shared-Gaussian/internal-smoothing checkpoint compiled.
-  New authored-payload/Mask integration is source-reviewed only; no commands,
-  builds, shader compilation, runtime checks or tests performed by agents.
+- Latest controls supersede the earlier inspector sketch: master Radius × X/Y
+  Scale (defaults 1), separate Amount, and seven Layer channel weights:
+  Base Color, Normal, Roughness, AO, Metallic, F0 and Height. Automatic X/Y linking
+  is removed; masks still gate the finished result. Radius-mask mode is not implemented.
+- Display: Layer header → aligned Blur/mask subtree → modules. The layer disclosure
+  collapses all of them. Cross-layer dragging reuses existing handlers; root Blur
+  stays layer-owned. Disabled layers dim these rows without changing their enable flags.
+- Root Blur accepts scoped masks. New Mask → Mask nesting is blocked; existing
+  scopes are preserved. Copy/duplicate/delete carry the subtree; masked instances
+  do not inherit it yet. User explicitly deferred that instancing work.
+- Layer GPU integration remains unfinished: prepared-surface effect weighting,
+  structural masking and Pass Through normals need resolution. Broader typed owners,
+  FlowWarp retirement and Height Eikonal remain pending. Flow Feather is unchanged.
+- Separately fixed ID producer demand for nested Relief/Ramp/UV consumers.
+- User confirmed earlier Gaussian, Mask and initial footer checkpoints compiled.
+  Latest changes have no compile confirmation; agents ran no builds/tests.
 
 ## Goal
 
