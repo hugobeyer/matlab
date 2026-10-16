@@ -489,7 +489,7 @@ public:
 		{
 			return false;
 		}
-		// V cycles module outputs when a module is selected, or PBR channels otherwise; Shift+V restores Material.
+		// V always cycles the composited PBR channels regardless of selection; Shift+V restores Material.
 		if (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::V
 			&& !IsCtrlPressed() && !IsAltPressed())
 		{
@@ -499,7 +499,7 @@ public:
 			}
 			else
 			{
-				Owner.CycleModulePreview();
+				Owner.CycleChannelPreview();
 			}
 			return true;
 		}
