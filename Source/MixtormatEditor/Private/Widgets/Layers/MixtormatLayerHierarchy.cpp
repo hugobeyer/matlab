@@ -2044,12 +2044,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
-					[this, ResolveRow, ChildName, bLayerOutput,
-										 bCanLeaveLayer = !IsMaskFilter(Child)
-											&& Child.Type != EMixtormatLayerChildType::Behavior]
+					[this, ResolveRow, ChildName,
+										 bCanLeaveLayer = bLayerOutput || (!IsMaskFilter(Child)
+											&& Child.Type != EMixtormatLayerChildType::Behavior)]
 					(const FGeometry&, const FPointerEvent&)
 				{
-					if (bLayerOutput) { return FReply::Unhandled(); }
+
 					int32 LayerIndex, ChildIndex;
 					if (!ResolveRow(LayerIndex, ChildIndex)) { return FReply::Unhandled(); }
 					return FReply::Handled().BeginDragDrop(

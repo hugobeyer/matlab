@@ -817,7 +817,7 @@
 		},
 		"Generator.NoiseDetail:Int":
 		{
-			"default": 4,
+			"default": 5,
 			"uiMin": 1,
 			"uiMax": 8,
 			"snap": 1

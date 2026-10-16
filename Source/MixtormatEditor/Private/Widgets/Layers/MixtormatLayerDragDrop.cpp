@@ -391,6 +391,8 @@ bool SMixtormat::CanReparentLayerChild(
 	if (!Children.IsValidIndex(SourceChildIndex)
 		|| !Children.IsValidIndex(NewParentChildIndex)
 		|| SourceChildIndex == NewParentChildIndex
+		|| (Children[SourceChildIndex].Type == EMixtormatLayerChildType::Blur
+			&& !Children[SourceChildIndex].ScopeOwnerChildId.IsValid())
 		|| IsDescendantOf(Children, NewParentChildIndex, Children[SourceChildIndex].ChildId)
 		|| Children[SourceChildIndex].ScopeOwnerChildId == Children[NewParentChildIndex].ChildId
 		|| !CanKeepScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
@@ -722,8 +724,11 @@ FReply SMixtormat::MoveChildToLayer(
 	}
 
 	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
-		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
+	const FMixtormatLayerChild& SourceChild = SourceLayer.Children[ChildIndex];
+	const bool bLayerBlur = SourceChild.Type == EMixtormatLayerChildType::Blur
+		&& !SourceChild.ScopeOwnerChildId.IsValid();
+	if ((IsMaskFilter(SourceChild) && !bLayerBlur)
+		|| SourceChild.Type == EMixtormatLayerChildType::Behavior)
 	{
 		return FReply::Unhandled();
 	}
