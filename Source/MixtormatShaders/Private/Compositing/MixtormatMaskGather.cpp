@@ -134,6 +134,11 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		MaskData.bFlipU = MaskLayer.bFlipU;
 		MaskData.bFlipV = MaskLayer.bFlipV;
 		MaskData.Rotation = static_cast<int32>(MaskLayer.Rotation);
+		MaskData.HexTile = MaskLayer.Sampling == EMixtormatMaskSampling::HexTile ? 1u : 0u;
+		MaskData.HexScale = static_cast<float>(FMath::Max(1, MaskLayer.HexScale));
+		MaskData.HexRotationStrength = MaskLayer.HexRotationStrength;
+		MaskData.HexContrast = MaskLayer.HexContrast;
+		MaskData.HexSeed = static_cast<float>(MaskLayer.HexSeed);
 		static_cast<FMixtormatMaskShaping&>(MaskData) = MaskLayer.Shaping;
 		// Blur is a node in the recipe -- so it can be driven, published and instanced --
 		// but a pair of numbers by the time the passes see it. Summed rather than maxed:

@@ -3,6 +3,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatUV.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHexTile.ush"
 
 Texture2D<float> PreviousMask;
 Texture2D<float4> IncomingMask;
@@ -31,6 +32,11 @@ float2 UVOffset;
 uint FlipU;
 uint FlipV;
 int Rotation;
+uint HexTile;
+float HexScale;
+float HexRotationStrength;
+float HexContrast;
+float HexSeed;
 
 // One scalar out of a four-channel source.
 //
@@ -69,8 +75,10 @@ float SampleIncomingMask(float2 UV)
 		return PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	}
 	const float2 SourceUV = MixtormatSourceUV(UV, Tiling, UVOffset, FlipU, FlipV, Rotation);
-	const float Incoming =
-		SelectMaskChannel(IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f));
+	const float4 Sampled = HexTile != 0u
+		? MixtormatHexSample(IncomingMask, LinearWrapSampler, SourceUV, HexScale, HexRotationStrength, HexContrast, HexSeed)
+		: IncomingMask.SampleLevel(LinearWrapSampler, SourceUV, 0.0f);
+	const float Incoming = SelectMaskChannel(Sampled);
 	return MixtormatShapeMaskInput(Incoming);
 }
 

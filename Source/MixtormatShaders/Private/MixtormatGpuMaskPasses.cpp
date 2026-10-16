@@ -31,6 +31,11 @@ public:
 		SHADER_PARAMETER(uint32, FlipU)
 		SHADER_PARAMETER(uint32, FlipV)
 		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER(uint32, HexTile)
+		SHADER_PARAMETER(float, HexScale)
+		SHADER_PARAMETER(float, HexRotationStrength)
+		SHADER_PARAMETER(float, HexContrast)
+		SHADER_PARAMETER(float, HexSeed)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
@@ -66,6 +71,11 @@ public:
 		SHADER_PARAMETER(uint32, FlipU)
 		SHADER_PARAMETER(uint32, FlipV)
 		SHADER_PARAMETER(int32, Rotation)
+		SHADER_PARAMETER(uint32, HexTile)
+		SHADER_PARAMETER(float, HexScale)
+		SHADER_PARAMETER(float, HexRotationStrength)
+		SHADER_PARAMETER(float, HexContrast)
+		SHADER_PARAMETER(float, HexSeed)
 		SHADER_PARAMETER(uint32, SourceChannel)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, IncomingMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
@@ -430,6 +440,11 @@ namespace MixtormatGpuCompositor
 		ShapeParameters->FlipU = Mask.bFlipU ? 1u : 0u;
 		ShapeParameters->FlipV = Mask.bFlipV ? 1u : 0u;
 		ShapeParameters->Rotation = Mask.Rotation;
+			ShapeParameters->HexTile = Mask.HexTile;
+			ShapeParameters->HexScale = Mask.HexScale;
+			ShapeParameters->HexRotationStrength = Mask.HexRotationStrength;
+			ShapeParameters->HexContrast = Mask.HexContrast;
+			ShapeParameters->HexSeed = Mask.HexSeed;
 
 		ShapeParameters->PreviousMask = PreviousMask;
 		ShapeParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
@@ -663,6 +678,11 @@ namespace MixtormatGpuCompositor
 				Resolve->FlipU = Mask.bFlipU ? 1u : 0u;
 				Resolve->FlipV = Mask.bFlipV ? 1u : 0u;
 				Resolve->Rotation = Mask.Rotation;
+			Resolve->HexTile = Mask.HexTile;
+			Resolve->HexScale = Mask.HexScale;
+			Resolve->HexRotationStrength = Mask.HexRotationStrength;
+			Resolve->HexContrast = Mask.HexContrast;
+			Resolve->HexSeed = Mask.HexSeed;
 				Resolve->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 				Resolve->IncomingMask = IncomingMask;
 				Resolve->PreShapedMask = FilteredMask;
@@ -716,6 +736,11 @@ namespace MixtormatGpuCompositor
 				MP->FlipU = Mask.bFlipU ? 1u : 0u;
 				MP->FlipV = Mask.bFlipV ? 1u : 0u;
 				MP->Rotation = Mask.Rotation;
+			MP->HexTile = Mask.HexTile;
+			MP->HexScale = Mask.HexScale;
+			MP->HexRotationStrength = Mask.HexRotationStrength;
+			MP->HexContrast = Mask.HexContrast;
+			MP->HexSeed = Mask.HexSeed;
 
 				MP->PreviousMask = FeatureMask;
 				MP->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
@@ -1140,6 +1165,11 @@ namespace MixtormatGpuCompositor
 			Resolve->FlipU = Mask.bFlipU ? 1u : 0u;
 			Resolve->FlipV = Mask.bFlipV ? 1u : 0u;
 			Resolve->Rotation = Mask.Rotation;
+			Resolve->HexTile = Mask.HexTile;
+			Resolve->HexScale = Mask.HexScale;
+			Resolve->HexRotationStrength = Mask.HexRotationStrength;
+			Resolve->HexContrast = Mask.HexContrast;
+			Resolve->HexSeed = Mask.HexSeed;
 
 			Resolve->SourceChannel = static_cast<uint32>(Mask.SourceChannel);
 			Resolve->IncomingMask = IncomingMask;
@@ -1193,6 +1223,11 @@ namespace MixtormatGpuCompositor
 			MaskParameters->FlipU = Mask.bFlipU ? 1u : 0u;
 			MaskParameters->FlipV = Mask.bFlipV ? 1u : 0u;
 			MaskParameters->Rotation = Mask.Rotation;
+			MaskParameters->HexTile = Mask.HexTile;
+			MaskParameters->HexScale = Mask.HexScale;
+			MaskParameters->HexRotationStrength = Mask.HexRotationStrength;
+			MaskParameters->HexContrast = Mask.HexContrast;
+			MaskParameters->HexSeed = Mask.HexSeed;
 
 			MaskParameters->PreviousMask = MaskTargets[MaskReadIndex];
 			MaskParameters->SourceChannel = static_cast<uint32>(Mask.SourceChannel);

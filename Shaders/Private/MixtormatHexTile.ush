@@ -1,0 +1,65 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Hex tiling based on mmikk/hextile-demo (MIT, Copyright (c) 2022 mmikk).
+// See repository LICENSE and retain original attribution when distributing.
+#ifndef MIXTORMAT_HEX_TILE_USH
+#define MIXTORMAT_HEX_TILE_USH
+
+float2 MixtormatHexHash(float2 p, float seed)
+{
+    p += float2(seed * 0.017, seed * 0.031);
+    return frac(sin(mul(float2x2(127.1,311.7,269.5,183.3),p))*43758.5453);
+}
+float2 MixtormatHexCenter(int2 v)
+{
+    return mul(float2x2(1.0,0.5,0.0,0.8660254),float2(v))*0.2886751346;
+}
+float2x2 MixtormatHexRotate(int2 v,float strength)
+{
+    float a = float(abs(v.x*v.y)+abs(v.x+v.y))+3.14159265;
+    a = fmod(a,6.2831853);
+    if(a>3.14159265) a-=6.2831853;
+    a*=strength;
+    float s,c; sincos(a,s,c);
+    return float2x2(c,-s,s,c);
+}
+float4 MixtormatHexCore(Texture2D<float4> tex,SamplerState samp,float2 uv,float rate,float rotation,float contrast,float seed)
+{
+    const float2 st=uv*rate;
+    float2 skew=mul(float2x2(1.0,-0.57735027,0.0,1.15470054),st*3.4641016);
+    int2 base=int2(floor(skew));
+    float2 f=frac(skew);
+    bool upper=f.x+f.y>=1.0;
+    int2 v1=base+(upper?int2(1,1):int2(0,0));
+    int2 v2=base+(upper?int2(1,0):int2(0,1));
+    int2 v3=base+(upper?int2(0,1):int2(1,0));
+    float3 w=upper?float3(f.x+f.y-1.0,1.0-f.y,1.0-f.x):float3(1.0-f.x-f.y,f.y,f.x);
+    float2x2 r1=MixtormatHexRotate(v1,rotation);
+    float2x2 r2=MixtormatHexRotate(v2,rotation);
+    float2x2 r3=MixtormatHexRotate(v3,rotation);
+    float2 c1=MixtormatHexCenter(v1),c2=MixtormatHexCenter(v2),c3=MixtormatHexCenter(v3);
+    float4 a=tex.SampleLevel(samp,mul(st-c1,r1)+c1+MixtormatHexHash(v1,seed),0);
+    float4 b=tex.SampleLevel(samp,mul(st-c2,r2)+c2+MixtormatHexHash(v2,seed),0);
+    float4 c=tex.SampleLevel(samp,mul(st-c3,r3)+c3+MixtormatHexHash(v3,seed),0);
+    float3 dw=lerp(1.0,float3(a.r,b.r,c.r),0.6);
+    w=dw*pow(w,7.0);
+    w/=max(dot(w,1.0),1e-6);
+    float k=log(max(0.00001,1.0-contrast))/log(0.5);
+    float3 side=2.0*step(0.5,w);
+    float3 other=2.0*(1.0-side);
+    float3 gain=0.5*side+0.25*other*pow(max(0.0,side+w*other),k);
+    if(contrast!=0.5) w=gain/max(dot(gain,1.0),1e-6);
+    return a*w.x+b*w.y+c*w.z;
+}
+// Periodic extension: blend shifted evaluations across each UV wrap.
+// At U=0 and U=1 (likewise V), the same two shifted evaluations contribute.
+float4 MixtormatHexSample(Texture2D<float4> tex,SamplerState samp,float2 uv,float rate,float rotation,float contrast,float seed)
+{
+    float2 p=frac(uv);
+    float2 fade=p*p*(3.0-2.0*p);
+    float4 a=MixtormatHexCore(tex,samp,p,rate,rotation,contrast,seed);
+    float4 b=MixtormatHexCore(tex,samp,p-float2(1,0),rate,rotation,contrast,seed);
+    float4 c=MixtormatHexCore(tex,samp,p-float2(0,1),rate,rotation,contrast,seed);
+    float4 d=MixtormatHexCore(tex,samp,p-1.0,rate,rotation,contrast,seed);
+    return lerp(lerp(a,b,fade.x),lerp(c,d,fade.x),fade.y);
+}
+#endif

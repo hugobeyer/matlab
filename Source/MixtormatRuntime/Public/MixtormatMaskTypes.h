@@ -90,6 +90,13 @@ enum class EMixtormatUVRotation : uint8
 	ThreeQuarter UMETA(DisplayName = "270")
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatMaskSampling : uint8
+{
+	Ordinary = 0 UMETA(DisplayName = "Ordinary"),
+	HexTile = 1 UMETA(DisplayName = "HexTile")
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 {
@@ -168,6 +175,21 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	// result. Rotating afterwards would turn each cell instead of the pattern.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")
 	EMixtormatUVRotation Rotation = EMixtormatUVRotation::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Sampling")
+	EMixtormatMaskSampling Sampling = EMixtormatMaskSampling::Ordinary;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Sampling", meta = (UIMin = "1", UIMax = "16"))
+	int32 HexScale = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Sampling", meta = (UIMin = "0", UIMax = "1"))
+	float HexRotationStrength = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Sampling", meta = (UIMin = "0", UIMax = "1"))
+	float HexContrast = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask|Sampling")
+	int32 HexSeed = 1;
 
 	// Appended, and defaulted to the behaviour every saved mask already has: Texture reads the
 	// authored map exactly as before, so a material written before Layer Values existed loads

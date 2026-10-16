@@ -317,6 +317,11 @@ namespace MixtormatGpuCompositor
 		bool bFlipU = false;
 		bool bFlipV = false;
 		int32 Rotation = 0;
+		uint32 HexTile = 0;
+		float HexScale = 4.0f;
+		float HexRotationStrength = 1.0f;
+		float HexContrast = 0.5f;
+		float HexSeed = 1.0f;
 		// Reads the layer's own resolved values instead of an authored texture. Texture stays
 		// unset in that case -- there is nothing to register.
 		bool bLayerValues = false;
