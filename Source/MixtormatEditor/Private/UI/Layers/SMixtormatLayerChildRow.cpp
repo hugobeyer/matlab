@@ -92,7 +92,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 					// Same leading/trailing insets as a layer row, plus the child indent, so both
 					// follow the Leading/Trailing inset tokens together.
 					.Padding(FMargin(
-						Layout.PaddingX + Layout.ChildIndent + InArgs._ExtraIndent,
+						Layout.PaddingX + (InArgs._bLayerAligned ? 0.0f : Layout.ChildIndent) + InArgs._ExtraIndent,
 						0.0f,
 						Layout.PaddingX,
 						0.0f))

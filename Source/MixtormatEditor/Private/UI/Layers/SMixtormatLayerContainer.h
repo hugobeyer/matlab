@@ -25,7 +25,10 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	void AddChild(const TSharedRef<SWidget>& Child);
+	// Layer-output filters remain aligned with the header and visible when collapsed.
+	void AddFooter(const TSharedRef<SWidget>& Filter);
 
 private:
 	TSharedPtr<SVerticalBox> Children;
+	TSharedPtr<SVerticalBox> Footer;
 };

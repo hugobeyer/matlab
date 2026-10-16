@@ -30,6 +30,7 @@ public:
 		, _bContainsDiagnostic(false)
 		, _bInstanceSource(false)
 		, _ExtraIndent(0.0f)
+					, _bLayerAligned(false)
 		, _bPreviewing(false)
 	{}
 		// A glyph saying what kind of child this is. A slot rather than a brush so the row does not
@@ -48,6 +49,8 @@ public:
 		// This child is the source of the selected instance: it glows so the link is visible.
 		SLATE_ATTRIBUTE(bool, bInstanceSource)
 		SLATE_ARGUMENT(float, ExtraIndent)
+		// Compact layer-output footer variant; removes only the child-indent gutter.
+		SLATE_ARGUMENT(bool, bLayerAligned)
 		// The viewport is showing a debug or child-output preview taken from this child: the dot
 		// turns the preview colour for as long as that holds.
 		SLATE_ATTRIBUTE(bool, bPreviewing)

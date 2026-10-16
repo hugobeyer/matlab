@@ -13,11 +13,14 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SNew(SBorder)
-		.Padding(0.0f)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InsetPanel")))
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
 		[
-			SNew(SVerticalBox)
+			SNew(SBorder)
+			.Padding(0.0f)
+			.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.InsetPanel")))
+			[
+				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()[InArgs._Header.Widget]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
@@ -27,6 +30,11 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 						return bExpanded.Get(false) ? EVisibility::Visible : EVisibility::Collapsed;
 					})
 				]
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SAssignNew(Footer, SVerticalBox)
 		]
 	];
 }
@@ -36,5 +44,14 @@ void SMixtormatLayerContainer::AddChild(const TSharedRef<SWidget>& Child)
 	if (Children.IsValid())
 	{
 		Children->AddSlot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.Gap, 0.0f, 0.0f)[Child];
+	}
+}
+
+void SMixtormatLayerContainer::AddFooter(const TSharedRef<SWidget>& Filter)
+{
+	if (Footer.IsValid())
+	{
+		Footer->AddSlot().AutoHeight().Padding(
+			0.0f, FMixtormatThemeStore::GetResolved().LayerLayout.Gap, 0.0f, 0.0f)[Filter];
 	}
 }

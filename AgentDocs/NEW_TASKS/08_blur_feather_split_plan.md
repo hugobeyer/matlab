@@ -203,6 +203,12 @@ BLUR [enable]
 - **Layer:** filters its own finished layer surface BC/Normal/RAM/Height at
   the layer-rail end, **not** the accumulated composite. Appearance groups
   BC/Normal/RAM.
+- **Layer presentation:** root Blur appears below the layer card, aligned with
+  it, without child indentation or hierarchy connectors. Footer filters remain
+  visible while the child tree is collapsed; multiple Blurs keep authored order.
+  They retain canonical child identity, enable, Inspector, copy/instance and removal.
+  Footer drag/reparent-to-module interaction is not implemented in this UI slice.
+  The separate Layer GPU effect-weighting issue remains unfinished.
 - **Generator:** filters only current signed Height chain.
 - **Mask:** filters coverage; **Curvature:** finished Curvature result;
   **Flow:** valid-weighted Flow.

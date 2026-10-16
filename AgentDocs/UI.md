@@ -65,6 +65,19 @@ an inline Invert toggle. Flip reflects authored point X positions across the cur
 own input domain (including signed Height Remap), while Invert uses the existing
 mask shaping / signed-height invert property; color ramps retain their toolbar.
 
+### Layer-output Blur footer
+
+Root Layer Blur is displayed below the layer card as `Blur · Layer Output`, aligned
+with the layer rather than indented as a module. It has no child-tree connector or
+module drop wrapper and remains visible when the layer's ordinary children collapse.
+Multiple root Blurs retain their authored order in the footer. Selection, enable,
+Inspector, copy/instance and removal reuse the canonical child row and identity.
+Footer rows do not start drag operations; scoped Mask/Curvature Blur rows retain
+their existing hierarchy and interactions. This is presentation only: layer-owned
+Blur still executes at the end of its own layer rail. The previously identified
+Layer GPU effect-weighting integration remains unfinished; this footer change does
+not resolve it. No build or runtime validation is claimed for this UI change.
+
 ## Context menu convention
 
 Every right-click menu in the stack reads in one order, so the same muscle memory works on a

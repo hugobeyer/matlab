@@ -171,7 +171,8 @@ namespace
 		{
 			for (int32 Later = Index + 1; Later < Rows.Num(); ++Later)
 			{
-				if (Rows[Later].VisualParentRowIndex == Rows[Index].VisualParentRowIndex) { return true; }
+				if (!Rows[Later].bLayerOutput
+									&& Rows[Later].VisualParentRowIndex == Rows[Index].VisualParentRowIndex) { return true; }
 			}
 			return false;
 		};
@@ -292,6 +293,8 @@ TArray<FMixtormatProjectedChildRow> SMixtormat::BuildLayerHierarchyRows(const FG
 	{
 		FMixtormatProjectedChildRow Row;
 		Row.Address = {EMixtormatChildOwnerType::Layer, LayerId, Layer->Children[Index].ChildId};
+		Row.bLayerOutput = Layer->Children[Index].Type == EMixtormatLayerChildType::Blur
+			&& !Layer->Children[Index].ScopeOwnerChildId.IsValid();
 		Row.AuthoredChildIndex = Index;
 		Row.AuthoredScopeDepth = GetDisplayScopeDepth(Layer->Children, Index);
 		const FGuid ParentId = Layer->Children[Index].ScopeOwnerChildId;
@@ -1762,7 +1765,11 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			})
 			.bHasChildren_Lambda([this, LayerIndex]()
 			{
-				return WorkingLayers.IsValidIndex(LayerIndex) && WorkingLayers[LayerIndex].Children.Num() > 0;
+				return WorkingLayers.IsValidIndex(LayerIndex)
+									&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
+									{
+										return Child.Type != EMixtormatLayerChildType::Blur || Child.ScopeOwnerChildId.IsValid();
+									});
 			})
 			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerHeightOpMenu(LayerIndex); })
 			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
@@ -1810,6 +1817,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		const FMixtormatChildAddress RowAddress = ProjectedRow.Address;
 		const bool bEffect = Child.Type == EMixtormatLayerChildType::Effect;
 		const bool bBlur = Child.Type == EMixtormatLayerChildType::Blur;
+		const bool bLayerOutput = ProjectedRow.bLayerOutput;
 		const bool bCurvature = Child.Type == EMixtormatLayerChildType::Curvature;
 		// Procedural children share row actions, not mask blending semantics.
 		const bool bGenerated = Child.Type == EMixtormatLayerChildType::Generated
@@ -1876,31 +1884,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 		};
 		TSharedPtr<SMixtormatLayerChildRow> ChildRow;
 
-		Container->AddChild(
-			SNew(SMixtormatLayerHierarchy)
-			.Hierarchy(ProjectedHierarchyPaint(ProjectedRows, DisplayIndex))
-			[
-			SNew(SMixtormatChildDropTarget)
-			.LayerIndex(LayerIndex)
-			.ChildIndex(ChildIndex)
-			.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
-			.OnChildCanReparent(this, &SMixtormat::CanReparentLayerChild)
-			.OnChildReparented(this, &SMixtormat::ReparentLayerChild)
-			.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
-			.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
-			[
-				SNew(SMixtormatIdGroupChildDropTarget)
-				.Address(MakeChildAddress(LayerIndex, ChildIndex))
-				.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
-				.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
-				[
-				SAssignNew(ChildRow, SMixtormatLayerChildRow)
+		const TSharedRef<SWidget> RowWidget = SAssignNew(ChildRow, SMixtormatLayerChildRow)
 				.bDiagnosticActive_Lambda([this, RowAddress]() { return IsDiagnosticRowActive(RowAddress); })
 				.bContainsDiagnostic_Lambda([this, RowAddress]() { return IsDiagnosticRowActive(RowAddress, true); })
 				.Disclosure()[BuildGeneratorDisclosure(RowAddress, bHasChildren, FText::GetEmpty())]
-				.ExtraIndent(ProjectedScopeIndent(ProjectedRow))
+				.ExtraIndent(bLayerOutput ? 0.0f : ProjectedScopeIndent(ProjectedRow))
+				.bLayerAligned(bLayerOutput)
 				.ToolTip(RowToolTip)
-				.Name(ChildName)
+				.Name(bLayerOutput ? LOCTEXT("LayerOutputBlurName", "Blur · Layer Output") : ChildName)
 				.bNameEditable(Child.Type == EMixtormatLayerChildType::Mask)
 				.OnNameCommitted_Lambda([this, ResolveRow](const FText& Name, ETextCommit::Type)
 				{
@@ -1913,7 +1904,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 					RebuildLayerList();
 				})
-				.Kind(GetLayerChildSourceText(LayerIndex, ChildIndex))
+				.Kind(bLayerOutput ? FText::GetEmpty() : GetLayerChildSourceText(LayerIndex, ChildIndex))
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.
@@ -2053,20 +2044,46 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
-					[this, ResolveRow, ChildName,
+					[this, ResolveRow, ChildName, bLayerOutput,
 										 bCanLeaveLayer = !IsMaskFilter(Child)
 											&& Child.Type != EMixtormatLayerChildType::Behavior]
 					(const FGeometry&, const FPointerEvent&)
 				{
+					if (bLayerOutput) { return FReply::Unhandled(); }
 					int32 LayerIndex, ChildIndex;
 					if (!ResolveRow(LayerIndex, ChildIndex)) { return FReply::Unhandled(); }
 					return FReply::Handled().BeginDragDrop(
 						FMixtormatChildDragDropOp::New(
 							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
-				})
-				]
-			]
-		]);
+				});
+		if (bLayerOutput)
+		{
+			// End-of-layer filter: no child-indent, branch painter or module drop target.
+			Container->AddFooter(RowWidget);
+		}
+		else
+		{
+			Container->AddChild(
+				SNew(SMixtormatLayerHierarchy)
+				.Hierarchy(ProjectedHierarchyPaint(ProjectedRows, DisplayIndex))
+				[
+					SNew(SMixtormatChildDropTarget)
+					.LayerIndex(LayerIndex)
+					.ChildIndex(ChildIndex)
+					.OnChildReordered(this, &SMixtormat::ReorderLayerChild)
+					.OnChildCanReparent(this, &SMixtormat::CanReparentLayerChild)
+					.OnChildReparented(this, &SMixtormat::ReparentLayerChild)
+					.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+					.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
+					[
+						SNew(SMixtormatIdGroupChildDropTarget)
+						.Address(MakeChildAddress(LayerIndex, ChildIndex))
+						.OnCanDrop(this, &SMixtormat::CanDropChildIntoIdGroup)
+						.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
+						[RowWidget]
+					]
+				]);
+		}
 		RegisterChildRowWidget(RowAddress, ChildRow.ToSharedRef());
 		EditableChildRowWidgets.Add(RowAddress, ChildRow);
 	}
