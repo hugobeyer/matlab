@@ -522,8 +522,8 @@ namespace MixtormatOutputReferences
 		if (!Reference.bEnabled) { return Reject(EStructuralLinkIssue::DisabledReference); }
 		if (!Reference.HasSource()) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 		const FMixtormatLayer& DestinationLayer = Layers[DestinationLayerIndex];
-		if ((!bIgnoreDestinationState && !DestinationLayer.bEnabled) || DestinationLayer.Type != EMixtormatLayerType::Generator
-					|| !DestinationLayer.Children.IsValidIndex(DestinationChildIndex))
+		if ((!bIgnoreDestinationState && !DestinationLayer.bEnabled)
+			|| !DestinationLayer.Children.IsValidIndex(DestinationChildIndex))
 		{
 			return INDEX_NONE;
 		}
@@ -567,7 +567,7 @@ namespace MixtormatOutputReferences
 		if (SourceIndex == INDEX_NONE) { return Reject(EStructuralLinkIssue::MissingChild); }
 		if (SourceLayerIndex > DestinationLayerIndex) { return Reject(EStructuralLinkIssue::ForwardSource); }
 		if (!SourceLayer.bEnabled) { return Reject(EStructuralLinkIssue::DisabledLayer); }
-		if (SourceLayer.Type != EMixtormatLayerType::Generator) { return Reject(EStructuralLinkIssue::WrongOwnerLayer); }
+
 		if (SourceLayerIndex == DestinationLayerIndex && SourceIndex >= DestinationChildIndex)
 		{
 			return Reject(EStructuralLinkIssue::ForwardSource);
@@ -667,8 +667,7 @@ namespace MixtormatOutputReferences
 
 		// Value stays a typed field. Only its use as coverage has this mask-specific ordering.
 		if (!Mask.bEnabled || !Layers[DestinationLayerIndex].bEnabled
-			|| SourceLayerIndex > DestinationLayerIndex || !AuthoredSourceLayer.bEnabled
-			|| AuthoredSourceLayer.Type != EMixtormatLayerType::Generator) { return INDEX_NONE; }
+			|| SourceLayerIndex > DestinationLayerIndex || !AuthoredSourceLayer.bEnabled) { return INDEX_NONE; }
 		FMixtormatLayer SourceLayer = AuthoredSourceLayer;
 		MixtormatParameterBinding::ResolveChildInstances(FMixtormatBindingScope{Layers}, SourceLayer);
 		const FMixtormatLayerChild& Source = SourceLayer.Children[SourceIndex];

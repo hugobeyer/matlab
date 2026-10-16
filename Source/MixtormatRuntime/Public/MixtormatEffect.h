@@ -131,36 +131,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, AssetRegistrySearchable, Category = "Identity")
 	EMixtormatEffectType EffectType = EMixtormatEffectType::Peeling;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Identity")
-	FString SourceTextureBaseName;
-
-	// The authored map set -- peel data, coverage mask, height, SDF, bent normal and the decode
-	// ranges that went with them -- lived here. Peeling is generated now, so an effect asset
-	// names a type and carries defaults; it no longer ships textures.
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float DefaultFront = 0.08f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.000001"))
-	float DefaultWidth = 0.015f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
-	float DefaultMacroWarp = 0.01f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults")
-	float DefaultMicroWarp = 0.003f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float DefaultMicroMorph = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0"))
-	float DefaultThickness = 0.04f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0"))
-	float DefaultLift = 0.04f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defaults", meta = (UIMin = "0.0"))
-	float DefaultDetailStrength = 0.02f;
 
 	// Gather-era stain defaults. Nothing reads any of them: a Stain child runs the transport
 	// solve on its own defaults, and the solve shades nothing, so an authored colour and

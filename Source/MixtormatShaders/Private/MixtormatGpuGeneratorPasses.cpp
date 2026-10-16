@@ -630,7 +630,7 @@ class FMixtormatBehaviorFlowFeatherCS final : public FGlobalShader
 public:
     DECLARE_GLOBAL_SHADER(FMixtormatBehaviorFlowFeatherCS);
     SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorFlowFeatherCS, FGlobalShader);
-    class FStage : SHADER_PERMUTATION_INT("FLOW_FEATHER_STAGE", 4);
+    class FStage : SHADER_PERMUTATION_INT("FLOW_FEATHER_STAGE", 5);
     using FPermutationDomain = TShaderPermutationDomain<FStage>;
     BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
         SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -643,6 +643,7 @@ public:
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal0)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceFlow)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, GaussianFlow)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Validity)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MaskField)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
@@ -663,7 +664,7 @@ class FMixtormatBehaviorFeatherCS final : public FGlobalShader
 public:
     DECLARE_GLOBAL_SHADER(FMixtormatBehaviorFeatherCS);
     SHADER_USE_PARAMETER_STRUCT(FMixtormatBehaviorFeatherCS, FGlobalShader);
-    class FStage : SHADER_PERMUTATION_INT("FEATHER_STAGE", 8);
+    class FStage : SHADER_PERMUTATION_INT("FEATHER_STAGE", 9);
     using FPermutationDomain = TShaderPermutationDomain<FStage>;
     BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
         SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -678,6 +679,7 @@ public:
         SHADER_PARAMETER(uint32, HasBoundary)
         SHADER_PARAMETER(uint32, HasMask)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, GaussianHeight)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, BoundaryField)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MaskField)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Arrival)
@@ -1752,6 +1754,7 @@ namespace
 		};
 		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
 		FRDGTextureRef Arrival[2] = {nullptr, nullptr};
+		FRDGTextureRef GaussianFlow = nullptr;
 		int32 Read = 0;
 		const auto Dispatch = [&](int32 Stage, FRDGTextureRef Out, FRDGTextureRef InArrival)
 		{
@@ -1765,12 +1768,13 @@ namespace
 			P->DirectionBias = Behavior.FeatherDirectionBias;
 			P->HasMask = bHasMask && Mask ? 1u : 0u;
 			P->SourceFlow = Source.Texture;
+			P->GaussianFlow = Stage == 0 ? GaussianFlow : nullptr;
 			P->Validity = Source.Validity;
 			P->MaskField = bHasMask && Mask ? Mask : Ctx.EmptyDriverSignal;
 			P->Arrival = InArrival ? InArrival : Ctx.EmptyDriverSignal;
 			P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 			SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
-			if (Stage == 0 || Stage == 3) { P->OutFlow = Graph.CreateUAV(Out); }
+			if (Stage == 0 || Stage == 3 || Stage == 4) { P->OutFlow = Graph.CreateUAV(Out); }
 			else { P->OutArrival = Graph.CreateUAV(Out); }
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(Graph,
@@ -1788,6 +1792,13 @@ namespace
 				Dispatch(2, Arrival[1 - Read], Arrival[Read]);
 				Read = 1 - Read;
 			}
+		}
+		if (!bEikonal)
+		{
+			GaussianFlow = Graph.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, PF_A32B32G32R32F, FClearValueBinding::Black,
+				TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.FlowFeather.GaussianX"));
+			Dispatch(4, GaussianFlow, nullptr);
 		}
 		FRDGTextureRef OutFlow = Graph.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_FloatRGBA, FClearValueBinding::Black,
@@ -1820,6 +1831,7 @@ namespace
 				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
 		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
+		FRDGTextureRef GaussianHeight = nullptr;
 		const auto Dispatch = [&](const int32 Stage, FRDGTextureRef Output,
 			FRDGTextureRef InputEnvelope, const int32 Jump)
 		{
@@ -1836,6 +1848,7 @@ namespace
 			P->HasBoundary = bBoundary ? 1u : 0u;
 			P->HasMask = bHasMask && Mask ? 1u : 0u;
 			P->SourceHeight = Height;
+			P->GaussianHeight = Stage == 0 ? GaussianHeight : nullptr;
 			P->BoundaryField = bBoundary ? Boundary : Ctx.EmptyPatternUV;
 			P->MaskField = bHasMask && Mask ? Mask : Ctx.EmptyDriverSignal;
 			P->Arrival = Ctx.EmptyDriverSignal;
@@ -1857,6 +1870,8 @@ namespace
 		FRDGTextureRef Out = Make(TEXT("Mixtormat.Feather.NativeHeight"), PF_R32_FLOAT);
 		if (!bEikonal)
 		{
+			GaussianHeight = Make(TEXT("Mixtormat.Feather.GaussianX"), PF_G32R32F);
+			Dispatch(8, GaussianHeight, nullptr, 0);
 			Dispatch(0, Out, nullptr, 0);
 			return Out;
 		}

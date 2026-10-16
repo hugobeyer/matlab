@@ -1414,21 +1414,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 	Child.Type = EMixtormatLayerChildType::Effect;
 	FMixtormatLayerEffect& LayerEffect = Child.Effect;
 	LayerEffect.Effect = TSoftObjectPtr<UMixtormatEffect>(EffectPath);
-	// Compatibility for an older recipe or external caller that still supplies MLFX_Stain: the
-	// child resolves as Stain and runs the transport solve on its own defaults. The asset's stain
-	// colour and roughness are dropped, because the effect resolves a layer mask and shades
-	// nothing.
-	if (Effect->EffectType != EMixtormatEffectType::Stain)
-	{
-		LayerEffect.Front = Effect->DefaultFront;
-		LayerEffect.Width = Effect->DefaultWidth;
-		LayerEffect.MacroWarp = Effect->DefaultMacroWarp;
-		LayerEffect.MicroWarp = Effect->DefaultMicroWarp;
-		LayerEffect.MicroMorph = Effect->DefaultMicroMorph;
-		LayerEffect.Thickness = Effect->DefaultThickness;
-		LayerEffect.Lift = Effect->DefaultLift;
-		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
-	}
+
 	// The database speaks per family; an asset child's family is the asset's type.
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	SelectedLayerIndex = LayerIndex;
@@ -1683,19 +1669,7 @@ FReply SMixtormat::AddEffectToGroup(const FGuid GroupId, const FSoftObjectPath E
 	}
 	FMixtormatLayerEffect& LayerEffect = Child->Effect;
 	LayerEffect.Effect = TSoftObjectPtr<UMixtormatEffect>(EffectPath);
-	// Stain resolves a layer mask on its own defaults and shades nothing, so it takes none of the
-	// asset's shape values -- the same exception AddEffectToLayer makes.
-	if (Effect->EffectType != EMixtormatEffectType::Stain)
-	{
-		LayerEffect.Front = Effect->DefaultFront;
-		LayerEffect.Width = Effect->DefaultWidth;
-		LayerEffect.MacroWarp = Effect->DefaultMacroWarp;
-		LayerEffect.MicroWarp = Effect->DefaultMicroWarp;
-		LayerEffect.MicroMorph = Effect->DefaultMicroMorph;
-		LayerEffect.Thickness = Effect->DefaultThickness;
-		LayerEffect.Lift = Effect->DefaultLift;
-		LayerEffect.DetailStrength = Effect->DefaultDetailStrength;
-	}
+
 	// The database speaks per family; an asset child's family is the asset's type.
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
 	FinishGroupChildEdit(GroupId);

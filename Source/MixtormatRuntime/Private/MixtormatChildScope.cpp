@@ -79,7 +79,7 @@ namespace MixtormatChildScope
 			return Result;
 		}
 		const int32 GeneratorIndex = ResolveBehaviorGeneratorIndex(Layer.Children, BehaviorChildIndex);
-		if (!Layer.Children.IsValidIndex(GeneratorIndex) || Layer.Type != EMixtormatLayerType::Generator)
+		if (!Layer.Children.IsValidIndex(GeneratorIndex))
 		{
 			return Result;
 		}

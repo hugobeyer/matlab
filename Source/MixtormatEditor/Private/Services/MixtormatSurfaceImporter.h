@@ -34,7 +34,7 @@ public:
 	static TArray<FString> EnumerateShippedSourceDirectories();
 	static FMixtormatImportResult ImportShippedMasks();
 	static FMixtormatImportResult ImportShippedNormals();
-	static FMixtormatImportResult ImportShippedEffects();
+
 	static FString GetDefaultSourceDirectory();
 	static FMixtormatImportResult ImportDefaultLibrary();
 	static FMixtormatImportResult ReimportShippedLibrary();

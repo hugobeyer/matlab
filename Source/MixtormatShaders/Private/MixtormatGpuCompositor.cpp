@@ -1484,6 +1484,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (!TargetChildId.IsValid())
 			{
 				if (EffectiveLayers[Index].Type != EMixtormatLayerType::Generator
+					&& !EffectiveLayers[Index].HasGeneratorModules()
 					&& !DebugSettings.bMaskOverlay)
 				{
 					break;

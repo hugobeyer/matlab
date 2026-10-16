@@ -25,6 +25,17 @@ These are generator-scope results, not a new cross-layer global Flow channel.
 Pre-generation Warp publishes its composed coordinate map. Existing diagnostic
 render targets are reused; no persistent per-module preview targets are allocated.
 
+## Feather Blur
+
+Feather's Blur mode uses separable horizontal/vertical Gaussian passes for both
+signed Height and Flow. Width retains the former kernel's sigma of Width / 2;
+unit-texel taps cover three sigma rather than spreading a fixed 5×5 kernel apart.
+Sampling wraps at tile edges. Float32 intermediates carry weighted sums and valid
+weight, with normalization after the vertical pass. Flow excludes invalid samples
+without overweighting sparsely valid rows, keeps the original validity and Z/W
+channels, and applies Strength/drivers/scoped masks only to the final result.
+Existing Eikonal paths and inspector controls are unchanged.
+
 ## Fill Pass Through
 
 A Fill layer optionally sets `bFillPassThrough` (off by default). This is a
@@ -103,6 +114,14 @@ layer-only until their own shelf paths land.
 
 ## Gather
 
+Scoped Behavior validation follows generator ownership, not the enclosing layer
+kind. Fill and Material layers with generator modules support the same Behaviors
+as Generator layers; a Behavior still requires a valid owning generator.
+Layer-owned Height/Flow/UV input references and published Noise Value mask sources
+likewise validate their child producers independently of the enclosing layer kind.
+Whole-layer generator output previews also accept Fill and Material layers with
+generator modules. Input typing, enabled-state, scope and ordering checks remain.
+
 `Shaders/Private/Compositing/`:
 
 | File | Gathers |
@@ -134,6 +153,10 @@ layer-only until their own shelf paths land.
 
 Effect bodies: `Shaders/Private/Effects/Mixtormat{Breakup,Craquelure,Erosion,
 FlowWarp,Grade,LayerBlur,WornEdges}Passes.cpp`, `MixtormatEffectCommon.cpp`.
+
+Peeling is authored procedurally. Effect assets no longer carry peel shape defaults
+or source-texture identity; layer/group asset additions use parameter authoring
+defaults. The obsolete shipped-effect texture importer has been removed.
 
 ## Masks
 

@@ -13,6 +13,7 @@ float4 BehaviorDriverParamsB[2];
 Texture2D<float> BehaviorDriverSignal0;
 Texture2D<float> BehaviorDriverSignal1;
 Texture2D<float4> SourceFlow;
+Texture2D<float4> GaussianFlow;
 Texture2D<float> Validity;
 Texture2D<float> MaskField;
 Texture2D<float> Arrival;
@@ -57,7 +58,26 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     const int2 P = int2(DispatchThreadId.xy);
     if (any(P >= OutputSize)) { return; }
 
-#if FLOW_FEATHER_STAGE == 0 || FLOW_FEATHER_STAGE == 3
+#if FLOW_FEATHER_STAGE == 4
+    // Carry unnormalized vector sums and valid weight through both axes.
+    // Normalizing each row would overweight rows with sparse valid samples.
+    const float Sigma = max(Radius * 0.5f, 1.0e-4f);
+    const int Support = int(ceil(3.0f * Sigma));
+    float3 Sum = 0.0f;
+    [loop]
+    for (int X = -Support; X <= Support; ++X)
+    {
+        const int2 Q = WrapFlowFeather(P + int2(X, 0));
+        const float V = Validity.Load(int3(Q, 0));
+        const float2 F = SourceFlow.Load(int3(Q, 0)).xy;
+        const float W = exp(-0.5f * float(X * X) / (Sigma * Sigma));
+        if (isfinite(V) && V > 0.5f && all(isfinite(F)))
+        {
+            Sum += float3(F * W, W);
+        }
+    }
+    OutFlow[P] = float4(Sum, 0.0f);
+#elif FLOW_FEATHER_STAGE == 0 || FLOW_FEATHER_STAGE == 3
     const float4 Center = SourceFlow.Load(int3(P, 0));
     const float V = Validity.Load(int3(P, 0));
     const float M = HasMask != 0u ? MaskField.Load(int3(P, 0)) : 1.0f;
@@ -75,9 +95,23 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     // Vector fields have validity but no signed inside/outside surface.
     // Eikonal flow feathering uses both sides of a direction discontinuity.
 #endif
+#if FLOW_FEATHER_STAGE == 0
+    const float Sigma = max(Radius * 0.5f, 1.0e-4f);
+    const int Support = int(ceil(3.0f * Sigma));
+    float3 Sum = 0.0f;
+    [loop]
+    for (int Y = -Support; Y <= Support; ++Y)
+    {
+        const float W = exp(-0.5f * float(Y * Y) / (Sigma * Sigma));
+        Sum += W * GaussianFlow.Load(int3(WrapFlowFeather(P + int2(0, Y)), 0)).xyz;
+    }
+    const float2 Blurred = Sum.z > 0.0f ? Sum.xy / Sum.z : Center.xy;
+#else
     const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+    const float2 Blurred = BlurredFlow(UV, Center.xy);
+#endif
     OutFlow[P] = float4(Weight != 0.0f
-        ? lerp(Center.xy, BlurredFlow(UV, Center.xy), Weight) : Center.xy,
+        ? lerp(Center.xy, Blurred, Weight) : Center.xy,
         Center.zw);
 #elif FLOW_FEATHER_STAGE == 1
     const float V = Validity.Load(int3(P, 0));

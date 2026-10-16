@@ -926,38 +926,6 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedNormals()
 	return Result;
 }
 
-FMixtormatImportResult FMixtormatSurfaceImporter::ImportShippedEffects()
-{
-	using namespace MixtormatImporter;
-	FMixtormatImportResult Result;
-	const FString TexturesRoot = GetPluginTexturesRoot();
-	if (TexturesRoot.IsEmpty())
-	{
-		return Result;
-	}
-
-	const FString EffectSourceRoot = TexturesRoot / TEXT("Effects");
-	if (!IFileManager::Get().DirectoryExists(*EffectSourceRoot))
-	{
-		return Result;
-	}
-
-	TArray<FString> EffectFiles;
-	IFileManager::Get().FindFilesRecursive(
-		EffectFiles,
-		*EffectSourceRoot,
-		TEXT("*.png"),
-		true,
-		false);
-
-	// The _PDM / _MSK / _H / _SDF / _BN map sets that used to be scanned and imported here fed
-	// the asset-backed peeling path, which is gone -- peeling generates its field now. Nothing
-	// else consumed them, so the whole effect-texture import went with it.
-
-	// Stains are procedural filters and no longer need a generated placeholder asset.
-
-	return Result;
-}
 
 FString FMixtormatSurfaceImporter::GetDefaultSourceDirectory()
 {
@@ -993,11 +961,7 @@ FMixtormatImportResult FMixtormatSurfaceImporter::ImportDefaultLibrary()
 	Result.ReusedTextureCount += NormalStep.ReusedTextureCount;
 	Result.Errors.Append(NormalStep.Errors);
 
-	const FMixtormatImportResult EffectStep = ImportShippedEffects();
-	Result.ImportedEffectCount += EffectStep.ImportedEffectCount;
-	Result.ReimportedTextureCount += EffectStep.ReimportedTextureCount;
-	Result.ReusedTextureCount += EffectStep.ReusedTextureCount;
-	Result.Errors.Append(EffectStep.Errors);
+
 	if (Result.Errors.IsEmpty() && !Result.bCancelled)
 	{
 		Result.bCancelled = false;
