@@ -52,28 +52,29 @@ Promote the existing `EMixtormatLayerChildType::Blur` from a Mask-only node to t
 `Blur` module. Replace `FMixtormatMaskBlur` with a generic `FMixtormatBlur` payload.
 
 - Existing Mask placement: filters coverage before the Mask merges.
-- Root Layer placement: replaces procedural `LayerBlur`; filters the current composited surface.
-- Generator placement: filters the current signed Height in generator-chain order.
+- Layer placement: replaces procedural `LayerBlur`; filters the owning layer's full surface output
+  (Base Color, Normal, RAM, and Height).
+- Generator placement: filters only the current signed Height in generator-chain order.
+  It never implicitly filters every published Generator output.
 - Flow placement: filters the current Flow in flow-chain order and preserves validity.
 - The source is inferred from the legal owner or a typed connection; there is no target dropdown.
 
-A Blur module with a root Layer owner keeps the existing **Layer Coverage / Whole Composite**
-meaning: both read the accumulated composite; Layer Coverage adds a coverage gate. Neither
-isolates the layer's contribution. Preserve the current post-composite stage during consolidation;
-a broader effect-order change requires a separate scheduling design.
-A Blur owned by another module affects that owner’s output before its consumer continues.
+User decision: Blur's placement and parent define its target and execution point. It can be
+attached to a Layer, Mask, Curvature, Effect, or another eligible module and filters that owner's
+output before downstream consumers continue. Do not expose Layer Coverage / Whole Composite
+scope controls or use that distinction to select the target. The previous proposal to preserve
+accumulated-composite LayerBlur semantics is superseded; scheduling must follow the approved
+ownership contract rather than silently retain the old deferred behavior. Legal owners must
+provide a defined typed output. Generator ownership means Height only; no multi-output routing
+is inferred.
 
-### 2a. Ordered mask filters — separate implementation step
+### 2a. Mask Blur / Curvature ownership
 
-`MixtormatMaskGather.cpp` currently sums all scoped Blur radii and collects Curvature separately.
-`AddMaskFilterPasses` then runs one combined Blur before every Curvature filter, regardless of
-interleaving in the authored stack. Summed radii are not equivalent to sequential Gaussian blurs.
-
-Replace `FMaskRenderData::BlurRadiusX`, `BlurRadiusY`, and `CurvatureFilters` with one ordered
-filter-operation list. Gather in authored order and pass each result to the next operation.
-Retain each child's identity, enabled state, resolved bindings, and diagnostic ownership.
-Update gather, render data, and execution together; do not keep the flattened path as a fallback.
-This intentionally changes reordered/interleaved filter results and must be approved as such.
+Do not add a free-form interleaved Blur/Curvature sibling-operation system. Blur nested under
+Curvature filters Curvature's completed output; it does not pre-filter Curvature's input.
+A Mask-owned Blur independently filters the Mask's coverage before it merges. Remove the current
+summed-mask-Blur implementation as part of the generic Blur migration; do not retain its flattened
+path as a fallback.
 
 ### 3. Feather is Eikonal-only
 
@@ -83,9 +84,9 @@ Replace `FMixtormatBehaviorFeatherSettings` with one Eikonal contract:
 - Strength and scoped mask blend the finished Feather result back into the source.
 - **Side** chooses Both, Inside, or Outside as a final spatial gate where signed boundaries exist.
   It is not propagation direction and is not equivalent to raising lows or lowering highs.
-- **Slope operation** needs approval: High to Low raises surrounding lows; Low to High lowers
-  surrounding highs. Existing Height Feather averages both envelopes; retaining that as a
-  symmetric operation is a separate choice, not the meaning of Side = Both.
+- **Slope operation** is approved as three segmented buttons: High to Low raises surrounding
+  lows; Low to High lowers surrounding highs; Symmetric combines both envelopes, retaining
+  the current two-envelope approach. Operation is separate from Side = Both.
 - Preserve `DirectionBias` and its current controls/bindings until a replacement is approved.
 - Global Speed controls propagation rate.
 - Optional scalar **Availability** is a typed field socket: `0` blocks propagation, `1` leaves
@@ -121,13 +122,14 @@ All binary/mutually-exclusive choices are segmented controls; no dropdowns.
 
 ```
 BLUR [enable]
-  SCOPE       [ Layer Coverage | Whole Composite ]  // root Layer only
+
   FOOTPRINT   Radius X | Radius Y
   AMOUNT      Amount
   CHANNELS    [ Appearance ] [ Height ]   // root Layer only; Appearance is BC/Normal/RAM
 ```
 
-- Mask, Generator, and Flow owners omit `Scope` and `Channels` because their target is inherent.
+- No owner exposes `Scope`; placement and ownership determine the target.
+- Mask, Generator, and Flow owners omit `Channels` because their target is inherent.
 - Generator owner: Height; Flow owner: Flow; Mask owner: Coverage.
 - A Blur with a typed field connection displays a source chip/connection row, never a dropdown.
 - `Radius X` and `Radius Y` remain separately bindable and retain existing anisotropic behavior.
@@ -137,7 +139,7 @@ BLUR [enable]
 ```
 FEATHER [enable]
   SIDE        [ Both | Inside | Outside ]
-  OPERATION   [ High to Low | Low to High | Symmetric ]  // proposed; approval required
+  OPERATION   [ High to Low | Low to High | Symmetric ]  // full-width strip
   WIDTH       Width
   RESPONSE    Strength | Speed
   BIAS        Direction Bias                         // preserve until replacement approved
@@ -151,6 +153,11 @@ FEATHER [enable]
 - Direction Bias remains until its replacement/removal is approved; do not silently discard it.
 - Flow-specific eligibility of Side and Operation remains undecided with the Flow contract.
 - If a geometry/metric choice is needed, use segmented buttons after approval; do not pre-add it.
+- Grouped exclusive choices use a direct, full-width `SMixtormatSegmentedControl`, matching
+  Mask Source and Layer Composition. Do not wrap them in `MixtormatRow::MakeTrailing`.
+  The card title or caption supplies the group label.
+- Apply that full-width rule to all inspector grouped segmented choices: Feather, Boolean,
+  Warp, Deform, Field Combine, and future equivalent groups.
 - Reuse existing group/card/slider styles. These layouts remain proposals, not authorization to edit.
 
 ## Required deletion/update set
@@ -164,6 +171,7 @@ FEATHER [enable]
 | Artist iteration gather/render fields/helpers | `Source/MixtormatShaders/Private/Compositing/MixtormatGeneratorGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp` |
 | Mask-only Blur payload/UI/placement | `Source/MixtormatRuntime/Public/MixtormatMaskBlur.h`; `Source/MixtormatRuntime/Public/MixtormatLayerTypes.h`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorMasks.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerChildren.cpp`; `MixtormatLayerActions.cpp`; `MixtormatLayerMenus.cpp` |
 | Procedural LayerBlur type, fields, UI, gather, queue, dispatch | `Source/MixtormatRuntime/Public/MixtormatEffect.h`; `Source/MixtormatShaders/Private/Compositing/MixtormatEffectGather.cpp`; `Source/MixtormatShaders/Private/Effects/MixtormatLayerBlurPasses.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorEffects.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerActions.cpp` |
+| Procedural Flow Warp Effect; use Flow → Warp instead | `Source/MixtormatRuntime/Public/MixtormatEffect.h`; `Source/MixtormatShaders/Private/Compositing/MixtormatEffectGather.*`; `Source/MixtormatShaders/Private/Effects/MixtormatFlowWarpPasses.cpp`; `Shaders/Private/MixtormatFlowWarp.usf`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorEffects.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerActions.cpp`; `MixtormatLayerMenus.cpp`; `MixtormatLayerChildren.cpp`; layer badges/capabilities and directly related docs |
 | Duplicate Gaussian classes/shaders | `Shaders/Private/MixtormatMaskBlur.usf`; `Shaders/Private/MixtormatLayerBlur.usf`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp`; `Source/MixtormatShaders/Private/Effects/MixtormatLayerBlurPasses.cpp` |
 | Summed Mask Blur radii and separate Curvature list → ordered filter operations | `Source/MixtormatShaders/Private/Compositing/MixtormatMaskGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp` |
 | Internal smoothing callers | `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositor.cpp` |
@@ -186,12 +194,42 @@ the same implementation series.
    Preserve active parameter-owner identities; no duplicate fallback or deprecated-property paths.
 9. Perform shader compilation and visual chain validation only with explicit approval.
 
+## Confirmed decisions
+
+- Blur may be a child of Curvature and filters Curvature's completed output before downstream
+  consumers continue. It uses the shared generic Gaussian implementation; no target dropdown.
+- Layer-owned Blur is shown at the end of the layer rail. Placement and parent determine what
+  Blur filters; no Layer Coverage / Whole Composite selector is wanted. The earlier agreement
+  to retain accumulated-composite execution is superseded by this ownership decision.
+- Module-owned Blur is nested under its owner and filters that owner's completed output before
+  downstream consumers continue. Dragging onto a module reparents Blur; creating inside does
+  the same. Legal module owners still require typed-output eligibility.
+- Remove the procedural `Flow Warp` Effect. Warp is authored through the existing Flow → Warp
+  path; do not retain a parallel curl-warp effect, an alternate Blur owner, or a fallback path.
+- Feather Operation is approved as High to Low / Low to High / Symmetric full-width
+  segmented buttons. Side remains a separate gate.
+- Inspector grouped segmented choices are full-width, using the direct Mask Source / Layer
+  Composition pattern rather than `MixtormatRow::MakeTrailing`. This applies to Feather,
+  Boolean, Warp, Deform, Field Combine, and future equivalent groups.
+- Curvature does not need Blur-before-Curvature support: Blur nested under Curvature applies
+  after extraction. No free-form Mask Blur/Curvature sibling ordering will be implemented.
+- Generator-owned Blur filters only the Height chain, never all Generator outputs. Layer-owned
+  Blur filters the layer surface channels (Base Color, Normal, RAM, Height). Blur remains a normal
+  child: copy, paste, or instance it under another eligible owner when separately desired.
+- Remove the procedural Flow Warp Effect. Author warping as Flow → Warp; delete its complete
+  runtime, gather, pass, shader, inspector, hierarchy/menu, capability, metadata, and docs path.
+- These approvals do not decide remaining inspector controls/layouts, ambiguous Generator output
+  selection, or the remaining Feather solver, Flow, Side, Bias, and Availability decisions.
+
 ## Decisions requested
 
-1. Approve `Scope [Layer Coverage | Whole Composite]`, preserving post-composite semantics?
-2. For ambiguous Generator outputs, prefer owner inference or an explicit typed input connection?
-3. Approve replacing summed Mask blurs with authored-order Blur/Curvature operations?
-4. Approve separate Feather Side and High-to-Low / Low-to-High / Symmetric operation buttons?
+1. Approve the remaining Blur inspector controls (Radius X/Y, Amount, and channel controls)?
+   Scope is resolved: no Layer Coverage / Whole Composite controls; target follows ownership.
+2. Generator Blur target is resolved: only the current Height chain. No all-output behavior or
+   target selector; use a separate copied/instanced Blur under another eligible owner instead.
+3. Confirm replacing summed Mask Blur radii with independent Mask-owned Blur modules, with no
+   free-form Blur/Curvature sibling ordering?
+4. Approve Feather Side controls separately from the approved three Operation buttons?
 5. Retain Direction Bias, or approve a specifically defined replacement?
 6. Finalize Flow Feather semantics before implementation; Height-only v1 is not assumed.
 7. Approve `Availability` as a separate scalar connection, distinct from the final blend mask?

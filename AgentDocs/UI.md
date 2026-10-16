@@ -265,6 +265,14 @@ execution retains a 512-pass safety maximum independently of editor settings.
 
 ## Shared controls
 
+`SMixtormatSegmentedControl` is full-width when it represents a grouped exclusive
+choice in an inspector card. Do not wrap it in `MixtormatRow::MakeTrailing`, which
+adds a left label and constrains the strip to its content width. The card title or
+caption names the group; use the direct strip pattern from Mask Source and Layer
+Composition. Apply this to Feather, Boolean, Warp, Deform, Field Combine, and
+future grouped segmented choices. A trailing row remains appropriate only when a
+label genuinely belongs beside a compact, non-grouped control.
+
 `UI/Controls/`: `SMixtormatSlider.*`, `SMixtormatSegmentedControl.*`,
 `SMixtormatTabStrip.*` (UI STYLE panel), `SMixtormatIconRail.*` (left column navigation),
 `SMixtormatTile.*`, `MixtormatEntryCommit.*`, `SMixtormatGroupAction.h`.
