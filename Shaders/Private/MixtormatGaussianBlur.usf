@@ -1,0 +1,107 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#include "/Engine/Public/Platform.ush"
+
+int2 OutputSize;
+int Axis;
+float Radius;
+float Amount;
+float AngleRadians;
+float Anisotropy;
+uint HasMask;
+uint HasDirectionFlow;
+uint ClampCoverage;
+
+Texture2D<float4> SourceTexture;
+Texture2D<float4> OriginalTexture;
+Texture2D<float> MaskTexture;
+Texture2D<float4> ParentFlowTexture;
+SamplerState WrapSampler;
+RWTexture2D<float4> OutputTexture;
+
+// FIELD_TYPE: 0 scalar, 1 RGBA, 2 encoded normal, 3 valid Flow (xy, validity in z).
+// STAGE: 0,1 = directional Gaussian axes; 2 = final mask/amount/semantic resolve.
+float2 KernelDirection(int2 P)
+{
+	float A = AngleRadians;
+	if (HasDirectionFlow != 0u)
+	{
+		float4 Flow = ParentFlowTexture.Load(int3(P, 0));
+		if (all(isfinite(Flow)) && Flow.z > 0.0f && dot(Flow.xy, Flow.xy) > 1.e-12f)
+		{
+			A += atan2(Flow.y, Flow.x);
+		}
+	}
+	float S, C;
+	sincos(A, S, C);
+	return Axis == 0 ? float2(C, S) : float2(-S, C);
+}
+
+int2 WrapPixel(int2 P)
+{
+	return (P % OutputSize + OutputSize) % OutputSize;
+}
+
+float4 ReadSource(int2 P)
+{
+	return SourceTexture.Load(int3(WrapPixel(P), 0));
+}
+
+[numthreads(8,8,1)]
+void MainCS(uint3 ID : SV_DispatchThreadID)
+{
+	int2 P = int2(ID.xy);
+	if (any(P >= OutputSize)) return;
+#if STAGE == 2
+	float4 Original = OriginalTexture.Load(int3(P, 0));
+	float4 Blurred = SourceTexture.Load(int3(P, 0));
+	float Coverage = HasMask != 0u ? saturate(MaskTexture.Load(int3(P,0))) : 1.0f;
+	float Weight = saturate(Amount) * Coverage;
+#if FIELD_TYPE == 3
+	// No invalid vectors are introduced. Spatial validity itself is not blurred.
+	Weight *= saturate(Original.z);
+	Blurred.z = Original.z;
+	Blurred.w = Original.w;
+#elif FIELD_TYPE == 2
+	float3 Normal = lerp(Original.xyz, Blurred.xyz, Weight) * 2.0f - 1.0f;
+	float NLength = length(Normal);
+	float3 Encoded = NLength > 1.e-6f ? 0.5f * (Normal / NLength + 1.0f) : Original.xyz;
+	OutputTexture[P] = float4(Encoded, lerp(Original.w, Blurred.w, Weight));
+	return;
+#endif
+	float4 Result = lerp(Original, Blurred, Weight);
+#if FIELD_TYPE == 0
+	if (ClampCoverage != 0u) Result.x = saturate(Result.x);
+#endif
+	OutputTexture[P] = Result;
+#else
+	float Sigma = max(Radius * 0.5f, 1.e-4f);
+	float Aspect = clamp(Anisotropy, 0.0f, 0.999f);
+	// Preserve geometric mean of the two footprint scales.
+	float Stretch = rsqrt(max(1.0f - Aspect, 0.001f));
+	float AxisSigma = Sigma * (Axis == 0 ? Stretch : rcp(Stretch));
+	float2 Direction = KernelDirection(P);
+	int Support = min(int(ceil(3.0f * AxisSigma)), 256);
+	float4 Sum = 0;
+	float WeightSum = 0;
+	[loop] for (int I = -Support; I <= Support; ++I)
+	{
+		float W = exp(-0.5f * float(I*I) / (AxisSigma*AxisSigma));
+		float2 UV = (float2(P) + 0.5f + Direction * float(I)) / float2(OutputSize);
+		float4 V = SourceTexture.SampleLevel(WrapSampler, UV, 0);
+#if FIELD_TYPE == 3
+		float Valid = all(isfinite(V)) ? saturate(V.z) : 0.0f;
+		Sum.xy += V.xy * (W * Valid);
+		WeightSum += W * Valid;
+#else
+		if (all(isfinite(V))) { Sum += V * W; WeightSum += W; }
+#endif
+	}
+	float4 Original = ReadSource(P);
+#if FIELD_TYPE == 3
+	float2 V = WeightSum > 1.e-6f ? Sum.xy / WeightSum : Original.xy;
+	OutputTexture[P] = float4(V, Original.zw);
+#else
+	OutputTexture[P] = WeightSum > 1.e-6f ? Sum / WeightSum : Original;
+#endif
+#endif
+}
