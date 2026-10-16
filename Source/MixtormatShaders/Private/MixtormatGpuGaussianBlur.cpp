@@ -14,8 +14,8 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatGaussianBlurCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatGaussianBlurCS, FGlobalShader);
 
-	class FField : SHADER_PERMUTATION_INT("FIELD_TYPE", 4) {};
-	class FStage : SHADER_PERMUTATION_INT("STAGE", 3) {};
+	class FField : SHADER_PERMUTATION_INT("FIELD_TYPE", 4);
+	class FStage : SHADER_PERMUTATION_INT("STAGE", 3);
 	using FPermutationDomain = TShaderPermutationDomain<FField, FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
