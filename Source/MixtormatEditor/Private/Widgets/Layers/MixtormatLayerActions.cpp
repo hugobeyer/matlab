@@ -1940,7 +1940,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		MixtormatLayersPrivate::ApplyChildCreationDefaults(Prototype, Kind);
 		if (!Children.IsValidIndex(OwnerIndex)
 			|| Children[OwnerIndex].IsInstance()
-			|| !MixtormatLayersPrivate::CanKeepScopedPlacement(Children[OwnerIndex], Prototype)
+			|| !MixtormatLayersPrivate::CanAuthorScopedPlacement(Children[OwnerIndex], Prototype)
 			|| !MixtormatLayersPrivate::CanAddScopedChild(Children, OwnerIndex))
 		{
 			return FReply::Handled();

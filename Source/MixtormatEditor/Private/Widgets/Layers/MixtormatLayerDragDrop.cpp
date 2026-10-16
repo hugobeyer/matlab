@@ -395,7 +395,7 @@ bool SMixtormat::CanReparentLayerChild(
 			&& !Children[SourceChildIndex].ScopeOwnerChildId.IsValid())
 		|| IsDescendantOf(Children, NewParentChildIndex, Children[SourceChildIndex].ChildId)
 		|| Children[SourceChildIndex].ScopeOwnerChildId == Children[NewParentChildIndex].ChildId
-		|| !CanKeepScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
+		|| !CanAuthorScopedPlacement(Children[NewParentChildIndex], Children[SourceChildIndex])
 		|| !CanAddScopedChild(Children, NewParentChildIndex))
 	{
 		return false;

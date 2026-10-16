@@ -175,6 +175,11 @@ namespace MixtormatLayersPrivate
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child);
 
+	// New placements obey authoring policy without invalidating existing saved scopes.
+	bool CanAuthorScopedPlacement(
+		const FMixtormatLayerChild& Owner,
+		const FMixtormatLayerChild& Child);
+
 	EMixtormatChildCreation CreationKindForGenerator(const EMixtormatGeneratorType Type);
 
 	EMixtormatLayerChildType ChildTypeForCreation(const EMixtormatChildCreation Kind);

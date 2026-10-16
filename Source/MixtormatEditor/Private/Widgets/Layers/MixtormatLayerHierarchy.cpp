@@ -1775,10 +1775,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
 				return Owner.IsValid() && Owner->IsLayerExpanded(LayerIndex);
 			})
-			.bHasChildren(AllRows.ContainsByPredicate([](const FMixtormatProjectedChildRow& Child)
-			{
-				return !Child.bLayerOutputScope;
-			}))
+			.bHasChildren(!AllRows.IsEmpty())
 			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerHeightOpMenu(LayerIndex); })
 			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
 			.OnGetColorBadgeMenu_Lambda([this, LayerIndex]()
@@ -2082,6 +2079,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			Container->AddFooter(
 				SNew(SMixtormatLayerRowDropTarget)
 				.TargetLayerIndex(LayerIndex)
+				.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
+				.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
 				.OnMaskDropped_Lambda([this, ResolveRow](int32, FSoftObjectPath MaskPath)
 				{
 					int32 LayerIndex, ChildIndex;

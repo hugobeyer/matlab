@@ -296,6 +296,10 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 		}
 		if (bScoped)
 		{
+			if (!CanAuthorScopedPlacement((*DestContainer)[AnchorChildIndex], Payload))
+			{
+				return INDEX_NONE;
+			}
 			Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
 		}
 		else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
@@ -303,7 +307,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			&& Payload.Type != EMixtormatLayerChildType::Behavior
 			&& DestContainer->IsValidIndex(AnchorChildIndex)
 			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
-			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Payload))
+			&& CanAuthorScopedPlacement((*DestContainer)[AnchorChildIndex], Payload))
 		{
 			const int32 ScopedInsert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
 			if (Insert <= ScopedInsert)

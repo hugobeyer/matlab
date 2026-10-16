@@ -33,7 +33,8 @@ namespace MixtormatLayersPrivate
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
-		return MixtormatChildScope::CanOwnScopedMasks(Child);
+		return Child.Type != EMixtormatLayerChildType::Mask
+			&& MixtormatChildScope::CanOwnScopedMasks(Child);
 	}
 
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
@@ -676,7 +677,7 @@ namespace MixtormatLayersPrivate
 	// already gating through it stay one contiguous block -- which is the invariant every walk
 	// here depends on.
 	//
-	// The type-pair rule is CanKeepScopedPlacement's, the same one a drag is validated against, so
+	// The type-pair rule is CanAuthorScopedPlacement's, the same one a drag is validated against, so
 	// what the menus offer and what a drop accepts cannot drift apart.
 
 	int32 InsertScopedChild(
@@ -685,7 +686,7 @@ namespace MixtormatLayersPrivate
 		FMixtormatLayerChild&& Child)
 	{
 		if (!Children.IsValidIndex(OwnerChildIndex)
-			|| !CanKeepScopedPlacement(Children[OwnerChildIndex], Child)
+			|| !CanAuthorScopedPlacement(Children[OwnerChildIndex], Child)
 			|| !CanAddScopedChild(Children, OwnerChildIndex))
 		{
 			return INDEX_NONE;
@@ -725,6 +726,15 @@ namespace MixtormatLayersPrivate
 		Child.Type = EMixtormatLayerChildType::Effect;
 		Child.Effect.ProceduralType = EMixtormatEffectType::FlowWarp;
 		return Child;
+	}
+
+	bool CanAuthorScopedPlacement(
+		const FMixtormatLayerChild& Owner,
+		const FMixtormatLayerChild& Child)
+	{
+		if (Owner.Type == EMixtormatLayerChildType::Mask
+			&& !IsMaskFilter(Child) && !IsFlowWarp(Child)) { return false; }
+		return CanKeepScopedPlacement(Owner, Child);
 	}
 
 	bool CanKeepScopedPlacement(
@@ -784,7 +794,7 @@ namespace MixtormatLayersPrivate
 			|| Child.Type == EMixtormatLayerChildType::ColorId
 			|| Child.Type == EMixtormatLayerChildType::RandomId)
 		{
-			return CanOwnScopedMasks(Owner);
+			return MixtormatChildScope::CanOwnScopedMasks(Owner);
 		}
 		if (Child.Type == EMixtormatLayerChildType::Blur)
 		{

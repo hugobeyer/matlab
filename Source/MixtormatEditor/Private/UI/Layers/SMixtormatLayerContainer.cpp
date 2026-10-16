@@ -25,6 +25,10 @@ void SMixtormatLayerContainer::Construct(const FArguments& InArgs)
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SAssignNew(Footer, SVerticalBox)
+					.Visibility_Lambda([bExpanded]()
+					{
+						return bExpanded.Get(false) ? EVisibility::Visible : EVisibility::Collapsed;
+					})
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
