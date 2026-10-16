@@ -2,6 +2,7 @@
 
 #include "MixtormatGpuCompositorInternal.h"
 #include "MixtormatGpuMaskShaping.h"
+#include "MixtormatGpuGaussianBlur.h"
 #include "MixtormatGpuNoisePasses.h"
 
 #include "GlobalShader.h"
@@ -1271,51 +1272,11 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer)
 	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FRenderRequest& Request = Ctx.Request;
-		FRDGTextureRef* const HeightTargets = Ctx.OutputHeight;
-		const int32 LayerIndex = LayerCtx.LayerIndex;
+		MixtormatGaussianBlur::FSettings Settings;
+		Settings.RadiusX = Settings.RadiusY = Layer.HeightBorderSmoothing;
 		const int32 ReadIndex = 1 - (LayerCtx.LayerIndex & 1);
-		TShaderMapRef<FMixtormatMaskBlurCS> MaskBlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FRDGTextureRef BorderBaseHeight = HeightTargets[ReadIndex];
-		{
-			FRDGTextureRef BorderBlur[2] = {
-				GraphBuilder.CreateTexture(
-					HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurX")),
-				GraphBuilder.CreateTexture(
-					HeightTargets[ReadIndex]->Desc, TEXT("Mixtormat.BorderHeightBlurY"))};
-			const FIntVector BorderGroups(
-				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-				1);
-			for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
-			{
-				FMixtormatMaskBlurCS::FParameters* BorderBlurParameters =
-					GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
-				BorderBlurParameters->OutputSize = Request.Resolution;
-				BorderBlurParameters->Axis = BlurAxis;
-				BorderBlurParameters->Radius = Layer.HeightBorderSmoothing;
-				BorderBlurParameters->ClampOutput = 1u;
-				BorderBlurParameters->SourceMask = BlurAxis == 0
-					? HeightTargets[ReadIndex]
-					: BorderBlur[0];
-				BorderBlurParameters->LinearWrapSampler =
-					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-				BorderBlurParameters->OutputMask =
-					GraphBuilder.CreateUAV(BorderBlur[BlurAxis]);
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME(
-						"Mixtormat.BorderHeightBlur.Layer%d.Axis%d",
-						LayerIndex,
-						BlurAxis),
-					MaskBlurShader,
-					BorderBlurParameters,
-					BorderGroups);
-			}
-			BorderBaseHeight = BorderBlur[1];
-		}
-		return BorderBaseHeight;
+		return MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder, Ctx.OutputHeight[ReadIndex],
+			Settings, MixtormatGaussianBlur::EField::Scalar);
 	}
 
 	// Rounding for the height field. A placement mask is a step, so the layer's height falls
@@ -1329,46 +1290,11 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer)
 	{
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FRenderRequest& Request = Ctx.Request;
-		const int32 LayerIndex = LayerCtx.LayerIndex;
-		const FRDGTextureDesc& MaskDesc = LayerCtx.MaskDesc;
-		const FRDGTextureRef CombinedMask = LayerCtx.CombinedMask;
-		TShaderMapRef<FMixtormatMaskBlurCS> MaskBlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FRDGTextureRef LayerHeightMask = CombinedMask;
-		{
-			FRDGTextureRef BlurTargets[2] = {
-				GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurX")),
-				GraphBuilder.CreateTexture(MaskDesc, TEXT("Mixtormat.HeightMaskBlurY"))};
-			const FIntVector BlurGroups(
-				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-				1);
-			for (int32 BlurAxis = 0; BlurAxis < 2; ++BlurAxis)
-			{
-				FMixtormatMaskBlurCS::FParameters* BlurParameters =
-					GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
-				BlurParameters->OutputSize = Request.Resolution;
-				BlurParameters->Axis = BlurAxis;
-				BlurParameters->Radius = Layer.HeightSmoothRadius;
-				BlurParameters->ClampOutput = 1u;
-				BlurParameters->SourceMask =
-					BlurAxis == 0 ? CombinedMask : BlurTargets[0];
-				BlurParameters->LinearWrapSampler =
-					TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-				BlurParameters->OutputMask =
-					GraphBuilder.CreateUAV(BlurTargets[BlurAxis]);
-				FComputeShaderUtils::AddPass(
-					GraphBuilder,
-					RDG_EVENT_NAME(
-						"Mixtormat.HeightMaskBlur.Layer%d.Axis%d", LayerIndex, BlurAxis),
-					MaskBlurShader,
-					BlurParameters,
-					BlurGroups);
-			}
-			LayerHeightMask = BlurTargets[1];
-		}
-		return LayerHeightMask;
+		MixtormatGaussianBlur::FSettings Settings;
+		Settings.RadiusX = Settings.RadiusY = Layer.HeightSmoothRadius;
+		Settings.bClampCoverage = true;
+		return MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder, LayerCtx.CombinedMask,
+			Settings, MixtormatGaussianBlur::EField::Scalar);
 	}
 
 	void AddLayerHeightSmoothPasses(
@@ -1382,35 +1308,10 @@ namespace MixtormatGpuCompositor
 		}
 
 		AddLayerInputPass(Ctx, LayerCtx, Layer);
-		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		TShaderMapRef<FMixtormatMaskBlurCS> BlurShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		FRDGTextureRef BlurTargets[2] = {
-			GraphBuilder.CreateTexture(LayerCtx.LayerInputHeight->Desc, TEXT("Mixtormat.LayerHeightSmoothX")),
-			GraphBuilder.CreateTexture(LayerCtx.LayerInputHeight->Desc, TEXT("Mixtormat.LayerHeightSmoothY"))};
-		const FIntVector Groups(
-			FMath::DivideAndRoundUp(Ctx.Request.Resolution.X, 8),
-			FMath::DivideAndRoundUp(Ctx.Request.Resolution.Y, 8),
-			1);
-		for (int32 Axis = 0; Axis < 2; ++Axis)
-		{
-			FMixtormatMaskBlurCS::FParameters* P =
-				GraphBuilder.AllocParameters<FMixtormatMaskBlurCS::FParameters>();
-			P->OutputSize = Ctx.Request.Resolution;
-			P->Axis = Axis;
-			P->Radius = Layer.HeightSmooth;
-			P->ClampOutput = 0u;
-			P->SourceMask = Axis == 0 ? LayerCtx.LayerInputHeight : BlurTargets[0];
-			P->LinearWrapSampler =
-				TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-			P->OutputMask = GraphBuilder.CreateUAV(BlurTargets[Axis]);
-			FComputeShaderUtils::AddPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("Mixtormat.LayerHeightSmooth.L%d.Axis%d", LayerCtx.LayerIndex, Axis),
-				BlurShader,
-				P,
-				Groups);
-		}
-		LayerCtx.LayerInputHeight = BlurTargets[1];
+		MixtormatGaussianBlur::FSettings Settings;
+		Settings.RadiusX = Settings.RadiusY = Layer.HeightSmooth;
+		LayerCtx.LayerInputHeight = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
+			LayerCtx.LayerInputHeight, Settings, MixtormatGaussianBlur::EField::Scalar);
 	}
 
 }

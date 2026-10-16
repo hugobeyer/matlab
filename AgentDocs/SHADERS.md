@@ -123,6 +123,27 @@ explicitly filtered; validity is separate. Noise Gradient is not implicitly cano
 a coordinate remap without normalization. Scoped height masks do not gate raw Value/Gradient.
 These contracts are source-reviewed only; no build/shader/runtime checks run.
 
+## Shared Gaussian Blur — consolidation in progress
+
+- `MixtormatGpuGaussianBlur.h/.cpp` owns private typed dispatch;
+  `MixtormatGaussianBlur.usf` owns horizontal, vertical and resolve stages.
+- Radius X/Y are independent output-texel radii: sigma = radius / 2,
+  integer texel taps through ceil(3 * sigma), periodic wrapping, no support cap.
+- Full-precision numerator and mass survive both axes. Non-finite samples are
+  excluded before weighting; no per-row normalization biases the 2D result.
+- Flow uses the compositor's separate validity texture. Only valid samples
+  contribute; invalid destination vectors and the validity texture are preserved.
+  Flow magnitude is not normalized; packed Z/W are not treated as validity.
+- Amount/scoped mask, coverage clamp and encoded-normal renormalization run
+  only in the final resolve. Signed Height stays unclamped. Output retains the
+  source format; scalar sources may be R16F or R32F.
+- Border Height smoothing, Height-mask smoothing and layer-input Height smoothing
+  use this service. Border smoothing no longer clamps signed Height.
+- Authored Mask/Layer Blur and Height Feather have not yet migrated. Flow Feather
+  remains intentionally unchanged. Universal authored `FMixtormatBlur`, ordered
+  owner scheduling and UI/binding integration are still pending.
+- Source review only; no builds, shader compilation, runtime checks or tests run.
+
 ## Erosion carve-depth solve
 
 - `MixtormatErosion.usf` seeds and relaxes nonnegative R32F carve depth, not absolute height.

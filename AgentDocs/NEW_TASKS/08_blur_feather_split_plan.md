@@ -2,15 +2,30 @@
 
 ## Review status
 
-**Approved pre-implementation specification.** The shared owner-typed Gaussian Blur,
-separate Height Eikonal Feather, retention of existing Flow Feather, and full-width
-segmented UI are settled. This is a planning update, not an implementation claim.
+**Approved specification; implementation in progress.** The shared owner-typed
+Gaussian Blur, separate Height Eikonal Feather, retention of existing Flow Feather,
+and full-width segmented UI are settled. See the checkpoint below for actual progress.
 
 Implement **Blur consolidation first**, then **Height Eikonal**. Numerical solver
 choice, solver work bounds and Width/Speed units need engineering definition; these
 do not reopen the architecture. A separate scalar Availability socket is **not
 approved**. Future vector Eikonal/Flow reconstruction is deferred: **preserve
 existing Flow Feather functionality, including its current Flow Blur mode.**
+
+## Implementation checkpoint — shared Gaussian rewrite
+
+- Shared GPU service rewritten to match Radius X/Y, wrapped unit-texel taps
+  and full three-sigma support; removed the unapproved directional contract.
+- Scalar/float4/encoded-normal/Flow variants carry full-precision sums and mass
+  through both axes, then apply Amount/mask and semantic resolve once.
+- Flow consumes separate validity, not packed Z; validity remains caller-owned.
+- Migrated internal border Height, Height-mask and layer-input Height smoothing.
+  Signed border Height is no longer clamped; coverage clamps at final resolve.
+- Step 1 remains pending: no canonical authored `FMixtormatBlur` payload or
+  universal owner scheduling yet. Step 2 is partial; authored Blur and Height
+  Feather callers remain on their existing paths. Steps 3–6 are not complete.
+- Existing Flow Feather is untouched. Source review only; no build, shader
+  compilation, runtime checks or tests performed.
 
 ## Goal
 
@@ -292,5 +307,6 @@ This is unshipped development with no need for historical compatibility scaffold
    vector-Eikonal semantics.
 
 **Begin with Gaussian Blur consolidation, then Height Eikonal.**
-No code changes are included in this documentation update.
+The checkpoint above records implemented work; the remaining specification is not
+an implementation or runtime-validation claim.
 
