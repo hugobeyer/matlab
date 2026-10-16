@@ -2,17 +2,28 @@
 
 ## Review status
 
-Planning only; implementation and inspector layouts require user approval.
-Blur consolidation can proceed independently after approval. Feather's numerical solver,
-Flow semantics, and revised controls are design gates, not settled implementation details.
+**Approved pre-implementation specification.** The shared owner-typed Gaussian Blur,
+separate Height Eikonal Feather, retention of existing Flow Feather, and full-width
+segmented UI are settled. This is a planning update, not an implementation claim.
+
+Implement **Blur consolidation first**, then **Height Eikonal**. Numerical solver
+choice, solver work bounds and Width/Speed units need engineering definition; these
+do not reopen the architecture. A separate scalar Availability socket is **not
+approved**. Future vector Eikonal/Flow reconstruction is deferred: **preserve
+existing Flow Feather functionality, including its current Flow Blur mode.**
 
 ## Goal
 
-- **Blur** is the single authored filtering module and the single GPU Gaussian owner.
-- **Feather** is Eikonal-only slope enforcement; it never averages neighbouring values.
-- No inspector dropdowns: exclusive choices use `SMixtormatSegmentedControl`.
-- Modules process the current field at their authored chain position.
-- Remove replaced types, shader stages, bindings, metadata, and docs together.
+- **Blur:** one authored module and canonical shared typed Gaussian GPU implementation,
+  with target determined by the owner and no Scope/target dropdown.
+- **Height Feather:** separate Eikonal-only behavior; no Height Gaussian Feather mode.
+- **Flow Feather:** keep the current vector behavior, shader, controls and active
+  readers unchanged until a separately approved vector contract exists.
+- Modules filter at their authored chain position; nested Blur post-filters the
+  owner module's completed typed output.
+- Exclusive inspector choices are full-width direct `SMixtormatSegmentedControl`.
+- Remove genuinely superseded data, GPU stages, menus, bindings and docs together;
+  never delete dependencies of preserved Flow Feather or Flow → Warp.
 
 ## Current audit
 
@@ -22,10 +33,10 @@ Flow semantics, and revised controls are design gates, not settled implementatio
 | Layer blur | procedural `LayerBlur` Effect | Separate data, inspector, shader, and deferred scheduling. |
 | Feather Blur | `FMixtormatBehaviorFeatherSettings::Mode` | Incorrectly makes Feather a Gaussian filter. |
 | Height Feather | `MixtormatBehaviorFeather.usf` | Existing Eikonal envelope uses an artist iteration budget. |
-| Flow Feather | `MixtormatBehaviorFlowFeather.usf` | Eikonal seed/relaxation exists, but Blur mode averages Flow. |
+| Flow Feather | `MixtormatBehaviorFlowFeather.usf` | Existing Flow behavior is intentionally preserved until vector Eikonal is specified. |
 | Internal height smoothing | `MixtormatGpuMaskPasses.cpp` | Reuses the mask-only blur shader for signed Height. |
 
-The current code contains four Gaussian implementations/paths:
+Pre-migration code has four Gaussian implementations/paths; the existing Flow Feather path remains a temporary, explicitly preserved exception:
 
 1. `Shaders/Private/MixtormatMaskBlur.usf`
 2. `Shaders/Private/MixtormatLayerBlur.usf`
@@ -38,7 +49,7 @@ The current code contains four Gaussian implementations/paths:
 
 Create one private shared blur dispatch API in `MixtormatShaders`.
 
-- One shader family; typed variants only for scalar, float4, normal, and valid-Flow.
+- One canonical shader family for authored Blur, with scalar, float4, normal, and valid-Flow typed variants. The separately preserved Flow Feather Gaussian is a temporary exception.
 - One radius convention: `sigma = radius / 2`, unit-texel sampling to `3 * sigma`.
 - Wrap at tile edges.
 - Both axes filter first; masking, Strength/Amount, clamping, and normal normalization occur
@@ -72,164 +83,214 @@ is inferred.
 
 Do not add a free-form interleaved Blur/Curvature sibling-operation system. Blur nested under
 Curvature filters Curvature's completed output; it does not pre-filter Curvature's input.
-A Mask-owned Blur independently filters the Mask's coverage before it merges. Remove the current
-summed-mask-Blur implementation as part of the generic Blur migration; do not retain its flattened
-path as a fallback.
+A Mask-owned Blur independently filters coverage before merge. Multiple Mask-owned
+Blur modules apply independently in **authored order**, not by summing radii.
+Remove the flattened summed-mask-Blur path. Curvature-owned Blur applies only
+**after Curvature's completed output**, with no free-form Blur/Curvature sibling ordering.
 
-### 3. Feather is Eikonal-only
+### 3. Height Feather is Eikonal-only; Flow Feather is preserved
 
-Replace `FMixtormatBehaviorFeatherSettings` with one Eikonal contract:
+- **Operation:** full-width `High → Low` (raises lows), `Low → High`
+  (lowers highs), `Symmetric` (both Height envelopes).
+- **Side:** retain `Both / Inside / Outside` as an independent *final spatial gate*
+  wherever a signed boundary exists. Side does not select propagation direction.
+- **Direction Bias:** preserve the existing horizontal/fixed-axis propagation-cost
+  bias and all active bindings; do not remove it.
+- **Flow Influence:** optional signed Height-Feather control. Positive favors
+  propagation with valid Flow; negative against; zero adds no Flow contribution.
+  Missing, zero or invalid Flow adds no directional contribution. Existing
+  Direction Bias still acts when Flow Influence is zero.
+- **Strength and scoped mask:** blend/gate the *finished Height result*, not
+  the travel-cost solve.
+- **Width and Speed:** Width shapes Height slope enforcement footprint, Speed
+  sets base propagation rate. Specify their numerical units and mapping
+  before finalizing the solver.
+- **Iterations:** no Height artist-facing Iterations control or Height
+  Gaussian/Eikonal mode selector in the completed design. Preserve any shared
+  Mode/Iterations fields still actively used by Flow Feather; split the
+  Height/Flow data paths as required rather than removing Flow functionality.
+- **Availability:** a distinct scalar speed-field socket is **not approved**.
+  Do not introduce it for this migration or repurpose the final blend mask.
 
-- Width controls slope distance / rate enforcement footprint.
-- Strength and scoped mask blend the finished Feather result back into the source.
-- **Side** chooses Both, Inside, or Outside as a final spatial gate where signed boundaries exist.
-  It is not propagation direction and is not equivalent to raising lows or lowering highs.
-- **Slope operation** is approved as three segmented buttons: High to Low raises surrounding
-  lows; Low to High lowers surrounding highs; Symmetric combines both envelopes, retaining
-  the current two-envelope approach. Operation is separate from Side = Both.
-- Preserve `DirectionBias` and its current controls/bindings until a replacement is approved.
-- Global Speed controls propagation rate.
-- Optional scalar **Availability** is a typed field socket: `0` blocks propagation, `1` leaves
-  speed unchanged, intermediate values slow travel. It is distinct from the final blend mask.
-- Solver quality is internal. Remove the artist `Iterations` field, inspector control, metadata,
-  render field, and hard-limit helper.
+#### Approved asymmetric directional travel cost
 
-**Solver unresolved:** JFA alone does not solve variable-speed Eikonal propagation or respect
-zero-speed barriers. Select a solver that handles local travel cost and obstacle boundaries;
-fast sweeping is a candidate, not an approved implementation. Define convergence/error tolerance,
-GPU work bounds, wrap handling, and behavior when convergence is not reached. Do not merely hide
-a fixed iteration budget or silently return a partially propagated field. Define how Width and
-Speed interact, including units, before implementing either control.
+For step length `ds` and travel unit direction `d`:
 
-**Flow semantics unresolved:** Eikonal solves a scalar arrival/slope problem. It does not define
-how to feather a vector field. Before replacing active Flow behavior, specify whether the operation
-enforces component slopes, transports vectors using scalar arrival, or uses another defined
-contract. Address direction, magnitude, cancellation, validity, and publication to later consumers.
-Do not call Gaussian vector averaging Eikonal Feather. Height-only v1 requires explicit approval;
-it must not silently disable an existing Flow operation.
+```text
+combinedBias = bound(DirectionBias_fixed_axis + FlowInfluence * normalizedValidFlow)
+stepCost     = ds * (1 - dot(combinedBias, d)) / F_base(x)
+```
 
-Reference distinction: Houdini's [Feather COP](https://www.sidefx.com/docs/houdini/nodes/cop/feather.html)
-enforces a slope and has no Iterations control. Its
-[Eikonal COP](https://www.sidefx.com/docs/houdini/nodes/cop/eikonal.html) does expose Iterations and a
-per-pixel speed field; zero speed forms a barrier. Availability is a proposed input for this project,
-not a claim that Houdini Feather has that socket.
+This is a positive, asymmetric Randers-type metric provided the **magnitude
+of the combined bias vector is strictly below 1**, with a safety margin.
+Bound the *sum*, not just each independent control. `FlowInfluence = 0`
+does **not** imply isotropic propagation while fixed-axis Direction Bias
+is nonzero. Direction alters the propagation cost, not an extra final Height
+offset; the Height envelope still changes as a consequence of the solve.
 
-## Proposed inspector layout — requires approval
+`F_base = 0` means **blocked travel**; do not divide by epsilon or jump
+through barriers. Invalid/zero Flow gives zero vector bias, not a barrier
+unless base speed is independently zero. Respect tile wrapping.
 
-All binary/mutually-exclusive choices are segmented controls; no dropdowns.
+Asymmetric distance is **direction dependent**. Define seed sets and
+source-to-destination propagation orientation independently for High → Low
+and Low → High. Do not reverse directed path distances silently; Symmetric
+combines the correctly oriented Height envelopes.
+
+#### Solver requirements
+
+An isotropic JFA or conventional isotropic fast-marching solver is inadequate
+for this directed variable-cost problem. Use **Ordered Upwind** or a suitable
+anisotropic marching/upwind solver with a GPU strategy. Directed-grid Dijkstra
+is an acceptable explicitly chosen *graph approximation*, exact on that graph
+but not the continuous metric (stencil-direction error). Define barrier-safe
+travel, accuracy/convergence, deterministic execution, GPU work bounds,
+wrap handling and incomplete-solve behavior. Do not hide a fixed iteration
+cap or silently accept partial propagation.
+
+#### Preserve current Flow Feather
+
+Leave the present Flow Feather `.usf` stages, active Mode/Blur path, UI,
+gather/dispatch, bindings and publication functional. Future vector Eikonal
+may reuse scalar arrival-time computation, but vector transport,
+direction/magnitude, cancellation and validity require their own contract.
+Do not call the existing Flow vector Gaussian an Eikonal solution.
+
+Reference: Houdini's [Feather COP](https://www.sidefx.com/docs/houdini/nodes/cop/feather.html)
+enforces slopes; [Eikonal COP](https://www.sidefx.com/docs/houdini/nodes/cop/eikonal.html)
+supports speed fields and zero-speed barriers. Neither approves this
+project's separate Availability socket.
+
+## Approved inspector layout and control semantics
+
+Exclusive grouped selections use a direct, full-width
+`SMixtormatSegmentedControl`, as in Layer Composition and Mask Source.
+**Never** wrap these groups in `MixtormatRow::MakeTrailing`. Apply this to
+Feather, Boolean, Warp, Deform, Field Combine and equivalent future groups.
+Use existing style/card/slider tokens.
 
 ### Blur
 
-```
+```text
 BLUR [enable]
-
-  FOOTPRINT   Radius X | Radius Y
-  AMOUNT      Amount
-  CHANNELS    [ Appearance ] [ Height ]   // root Layer only; Appearance is BC/Normal/RAM
+  FOOTPRINT    Radius X | Radius Y
+  AMOUNT       Amount
+  CHANNELS     [ Appearance ] [ Height ]    // root Layer only
 ```
 
-- No owner exposes `Scope`; placement and ownership determine the target.
-- Mask, Generator, and Flow owners omit `Channels` because their target is inherent.
-- Generator owner: Height; Flow owner: Flow; Mask owner: Coverage.
-- A Blur with a typed field connection displays a source chip/connection row, never a dropdown.
-- `Radius X` and `Radius Y` remain separately bindable and retain existing anisotropic behavior.
+- **Layer:** filters its own finished layer surface BC/Normal/RAM/Height at
+  the layer-rail end, **not** the accumulated composite. Appearance groups
+  BC/Normal/RAM.
+- **Generator:** filters only current signed Height chain.
+- **Mask:** filters coverage; **Curvature:** finished Curvature result;
+  **Flow:** valid-weighted Flow.
+- Owner or typed connection determines target; no Scope, Coverage/Composite
+  or target dropdown. Typed source connections may use a source chip.
+- Radius X/Y remain individually bindable. Both filter axes complete
+  **before** Amount/masking, channel clamps or normal renormalization.
+  Signed Height stays unclamped; coverage masks clamp after filtering.
 
-### Feather
+### Height Feather
 
-```
+```text
 FEATHER [enable]
-  SIDE        [ Both | Inside | Outside ]
-  OPERATION   [ High to Low | Low to High | Symmetric ]  // full-width strip
-  WIDTH       Width
-  RESPONSE    Strength | Speed
-  BIAS        Direction Bias                         // preserve until replacement approved
-  INPUT       Availability  [connected scalar chip / Connect action]
+  OPERATION        [ High → Low | Low → High | Symmetric ]
+  SIDE             [ Both | Inside | Outside ]
+  WIDTH            Width
+  RESPONSE         Strength | Speed
+  DIRECTION        Direction Bias
+  FLOW STEERING    Flow Influence (signed; 0 = off)
+  FLOW INPUT       optional valid Flow connection
 ```
 
-- `Availability` is optional; absent means `1` everywhere.
-- The existing scoped mask remains the final blend gate, not propagation speed.
-- No Blur/Eikonal mode control. No Blur option. No artist Iterations control in the completed design.
-- `SIDE` gates output; `OPERATION` selects slope enforcement. Keep these meanings separate.
-- Direction Bias remains until its replacement/removal is approved; do not silently discard it.
-- Flow-specific eligibility of Side and Operation remains undecided with the Flow contract.
-- If a geometry/metric choice is needed, use segmented buttons after approval; do not pre-add it.
-- Grouped exclusive choices use a direct, full-width `SMixtormatSegmentedControl`, matching
-  Mask Source and Layer Composition. Do not wrap them in `MixtormatRow::MakeTrailing`.
-  The card title or caption supplies the group label.
-- Apply that full-width rule to all inspector grouped segmented choices: Feather, Boolean,
-  Warp, Deform, Field Combine, and future equivalent groups.
-- Reuse existing group/card/slider styles. These layouts remain proposals, not authorization to edit.
+- Operation and Side are independent; final mask gating is unchanged.
+- No Height Blur/Eikonal mode or artist Iterations; no new Availability socket.
+- Preserve `BehaviorFeatherSettings` parameter-owner identity and bindings.
+- Existing Flow Feather UI and its current controls **remain accessible**.
+- No additional solver/geometry mode is approved.
 
 ## Required deletion/update set
 
 | Remove or replace | Required files |
 |---|---|
-| Feather `Mode`, `Iterations`, `EMixtormatBehaviorFeatherMode` after replacement; retain `DirectionBias` pending approval | `Source/MixtormatRuntime/Public/MixtormatBehaviorTypes.h` |
+| Height Feather Gaussian mode and Height artist `Iterations`; preserve DirectionBias and any active Flow Feather data/enum readers | `Source/MixtormatRuntime/Public/MixtormatBehaviorTypes.h` (split Height/Flow settings where necessary; do **not** globally remove active Flow mode/iterations) |
 | Update Feather member metadata/bindings; retain `BehaviorFeatherSettings` parameter-owner identity and active mappings | `Config/MixtormatParameterAuthoring.json`; `Source/MixtormatRuntime/Public/MixtormatParameterTypes.h`; `Source/MixtormatRuntime/Private/MixtormatParameterBinding.cpp`; `Source/MixtormatEditor/Private/Widgets/SMixtormat_Parameters.cpp` |
-| Feather Blur UI and Eikonal-only controls | `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` |
-| Feather Blur shader stages and Gaussian bindings | `Shaders/Private/MixtormatBehaviorFeather.usf`; `Shaders/Private/MixtormatBehaviorFlowFeather.usf`; `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp` |
-| Artist iteration gather/render fields/helpers | `Source/MixtormatShaders/Private/Compositing/MixtormatGeneratorGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp` |
+| Height Feather inspector: Operation, Side, Direction Bias, signed Flow Influence; preserve existing Flow Feather inspector/modes | `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` |
+| Height Gaussian stages replaced by Height Eikonal directed-cost solver; existing Flow Gaussian must remain working | `Shaders/Private/MixtormatBehaviorFeather.usf`; `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp`. **PRESERVE** `Shaders/Private/MixtormatBehaviorFlowFeather.usf` and current Flow dispatch/contract |
+| Height-only iteration gather/render fields/helpers; Flow-specific readers/data retained | `Source/MixtormatShaders/Private/Compositing/MixtormatGeneratorGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp` |
 | Mask-only Blur payload/UI/placement | `Source/MixtormatRuntime/Public/MixtormatMaskBlur.h`; `Source/MixtormatRuntime/Public/MixtormatLayerTypes.h`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorMasks.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerChildren.cpp`; `MixtormatLayerActions.cpp`; `MixtormatLayerMenus.cpp` |
 | Procedural LayerBlur type, fields, UI, gather, queue, dispatch | `Source/MixtormatRuntime/Public/MixtormatEffect.h`; `Source/MixtormatShaders/Private/Compositing/MixtormatEffectGather.cpp`; `Source/MixtormatShaders/Private/Effects/MixtormatLayerBlurPasses.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorEffects.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerActions.cpp` |
 | Procedural Flow Warp Effect; use Flow → Warp instead | `Source/MixtormatRuntime/Public/MixtormatEffect.h`; `Source/MixtormatShaders/Private/Compositing/MixtormatEffectGather.*`; `Source/MixtormatShaders/Private/Effects/MixtormatFlowWarpPasses.cpp`; `Shaders/Private/MixtormatFlowWarp.usf`; `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorEffects.cpp`; `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerActions.cpp`; `MixtormatLayerMenus.cpp`; `MixtormatLayerChildren.cpp`; layer badges/capabilities and directly related docs |
-| Duplicate Gaussian classes/shaders | `Shaders/Private/MixtormatMaskBlur.usf`; `Shaders/Private/MixtormatLayerBlur.usf`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp`; `Source/MixtormatShaders/Private/Effects/MixtormatLayerBlurPasses.cpp` |
-| Summed Mask Blur radii and separate Curvature list → ordered filter operations | `Source/MixtormatShaders/Private/Compositing/MixtormatMaskGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp` |
+| Superseded authored Gaussian classes/shaders; preserve temporary Flow Feather Gaussian exception | `Shaders/Private/MixtormatMaskBlur.usf`; `Shaders/Private/MixtormatLayerBlur.usf`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp`; `Source/MixtormatShaders/Private/Effects/MixtormatLayerBlurPasses.cpp` |
+| Summed Mask Blur radii → independent owner-ordered Mask Blur operations; nested Curvature Blur runs after completed Curvature output, no mixed sibling ordering | `Source/MixtormatShaders/Private/Compositing/MixtormatMaskGather.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`; `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp` |
 | Internal smoothing callers | `Source/MixtormatShaders/Private/MixtormatGpuMaskPasses.cpp`; `Source/MixtormatShaders/Private/MixtormatGpuCompositor.cpp` |
 | Current architecture description | `AgentDocs/COMPOSITION.md`; `AgentDocs/SHADERS.md`; `AgentDocs/UI.md` |
 
-Do not retain forwarding wrappers, fallback shaders, legacy inspector branches, deprecated
-properties, or parallel Blur paths. This is unshipped development: update every current reader in
-the same implementation series.
+Do not retain forwarding wrappers, fallback shaders, legacy inspector branches,
+deprecated properties or parallel **authored Blur** paths. Update every replaced reader;
+**preserve existing Flow Feather**, which remains a deliberate temporary exception.
+This is unshipped development with no need for historical compatibility scaffolding.
 
 ## Implementation order
 
-1. Approve Blur ownership and inspector layout independently of Feather.
-2. Define `FMixtormatBlur` and legal owners; implement shared Gaussian dispatch.
-3. Migrate internal smoothing, Mask, Layer, Generator Height, and Flow Blur; delete replaced paths.
-4. Implement approved ordered Mask filters as a separate behavior-changing step.
-5. Finalize Feather solver, Width/Speed units, scalar Availability input, and vector-field contract.
-6. Obtain approval for Feather's revised Side/Operation/Bias controls before changing its model.
-7. Implement Eikonal-only Feather; remove replaced modes/iteration fields with all their readers.
-8. Update menus, capabilities, binding/member metadata, cache dependencies, and docs per step.
-   Preserve active parameter-owner identities; no duplicate fallback or deprecated-property paths.
-9. Perform shader compilation and visual chain validation only with explicit approval.
+1. Create canonical `FMixtormatBlur`, define eligible typed owners, owner-relative
+   scheduling, copy/paste/instancing and source connection semantics.
+2. Reuse/extract the working **Height Feather Gaussian** for the shared Blur
+   shader family. Migrate Mask, Layer, Generator Height, post-Curvature,
+   validity-aware Flow, and internal smoothing; apply Amount/mask/renormalization
+   only after both Gaussian axes.
+3. Remove procedural LayerBlur and FlowWarp Effects completely; retain
+   Flow → Warp. Replace summed Mask radii with authored-order independent
+   Mask Blur modules. Update all affected menus, dispatches and readers.
+4. Implement **Height** Eikonal with Operation, Side, fixed-axis Direction
+   Bias and optional signed Flow Influence under the approved directed-cost
+   contract. Specify solver accuracy/work, Height envelope orientation,
+   Speed/Width units, wrap and hard barriers during implementation.
+5. Remove Height Feather Gaussian mode and Height artist Iterations with
+   readers; **preserve the existing Flow Feather mode, shader, controls and
+   functionality**, splitting shared data as needed.
+6. Update capabilities, clipboard/instancing, binding metadata, cache
+   dependencies, inspector and related docs alongside each implementation.
+7. Do not run builds, shader compilation or tests without explicit consent
+   under `AGENTS.md`.
 
 ## Confirmed decisions
 
-- Blur may be a child of Curvature and filters Curvature's completed output before downstream
-  consumers continue. It uses the shared generic Gaussian implementation; no target dropdown.
-- Layer-owned Blur is shown at the end of the layer rail. Placement and parent determine what
-  Blur filters; no Layer Coverage / Whole Composite selector is wanted. The earlier agreement
-  to retain accumulated-composite execution is superseded by this ownership decision.
-- Module-owned Blur is nested under its owner and filters that owner's completed output before
-  downstream consumers continue. Dragging onto a module reparents Blur; creating inside does
-  the same. Legal module owners still require typed-output eligibility.
-- Remove the procedural `Flow Warp` Effect. Warp is authored through the existing Flow → Warp
-  path; do not retain a parallel curl-warp effect, an alternate Blur owner, or a fallback path.
-- Feather Operation is approved as High to Low / Low to High / Symmetric full-width
-  segmented buttons. Side remains a separate gate.
-- Inspector grouped segmented choices are full-width, using the direct Mask Source / Layer
-  Composition pattern rather than `MixtormatRow::MakeTrailing`. This applies to Feather,
-  Boolean, Warp, Deform, Field Combine, and future equivalent groups.
-- Curvature does not need Blur-before-Curvature support: Blur nested under Curvature applies
-  after extraction. No free-form Mask Blur/Curvature sibling ordering will be implemented.
-- Generator-owned Blur filters only the Height chain, never all Generator outputs. Layer-owned
-  Blur filters the layer surface channels (Base Color, Normal, RAM, Height). Blur remains a normal
-  child: copy, paste, or instance it under another eligible owner when separately desired.
-- Remove the procedural Flow Warp Effect. Author warping as Flow → Warp; delete its complete
-  runtime, gather, pass, shader, inspector, hierarchy/menu, capability, metadata, and docs path.
-- These approvals do not decide remaining inspector controls/layouts, ambiguous Generator output
-  selection, or the remaining Feather solver, Flow, Side, Bias, and Availability decisions.
+- Universal, owner-typed Gaussian Blur under Layer (BC/Normal/RAM/Height),
+  Mask (coverage), Generator (current Height only), Curvature (completed
+  output), Flow (validity-aware), or another eligible typed owner.
+- Blur as a normal child supports copy, paste and instance; no Scope,
+  Coverage/Composite or target dropdown. Layer applies at end of its own
+  layer rail, not to the accumulated composite.
+- Independently authored Mask Blurs execute in order; Blur under Curvature
+  post-filters Curvature. No interleaved Blur/Curvature sibling ordering.
+- Remove procedural LayerBlur and FlowWarp Effects; preserve Flow → Warp.
+- Height Eikonal Operation = High → Low / Low → High / Symmetric.
+  Side = Both / Inside / Outside is a separate final gate.
+- Preserve fixed-axis Direction Bias; add signed Flow steering via **combined,
+  bounded, asymmetric travel costs**, not final Height addition.
+- `FlowInfluence = 0` disables only Flow steering; zero base speed is a true
+  barrier; invalid Flow contributes no directional bias.
+- Asymmetric directed distances require correctly oriented propagation
+  for each Height envelope and Symmetric composition.
+- Preserve existing **Flow Feather** behavior, Gaussian path, modes and
+  active readers. Vector Eikonal is deferred.
+- Preserve `BehaviorFeatherSettings` parameter-owner identity.
+- Full-width grouped segmented controls for Feather, Boolean, Warp,
+  Deform and Field Combine. No new scalar Availability socket approved.
 
-## Decisions requested
+## Remaining engineering definitions (not blockers to Blur)
 
-1. Approve the remaining Blur inspector controls (Radius X/Y, Amount, and channel controls)?
-   Scope is resolved: no Layer Coverage / Whole Composite controls; target follows ownership.
-2. Generator Blur target is resolved: only the current Height chain. No all-output behavior or
-   target selector; use a separate copied/instanced Blur under another eligible owner instead.
-3. Confirm replacing summed Mask Blur radii with independent Mask-owned Blur modules, with no
-   free-form Blur/Curvature sibling ordering?
-4. Approve Feather Side controls separately from the approved three Operation buttons?
-5. Retain Direction Bias, or approve a specifically defined replacement?
-6. Finalize Flow Feather semantics before implementation; Height-only v1 is not assumed.
-7. Approve `Availability` as a separate scalar connection, distinct from the final blend mask?
+1. Select a suitable GPU anisotropic Eikonal solver and document accuracy,
+   termination/work bounds, barrier and wrapping rules. Ordered Upwind or
+   anisotropic marching are options; directed Dijkstra is only graph-exact.
+2. Define Width/Speed units and seed-to-destination orientation for both
+   Height envelopes; do not hide a silent fixed iteration budget.
+3. Choose how the optional valid Flow input is sourced for Height steering.
+   This is **not** an implementation of vector Flow Feather.
+4. Do not infer approval for Availability, extra inspector modes or new
+   vector-Eikonal semantics.
+
+**Begin with Gaussian Blur consolidation, then Height Eikonal.**
+No code changes are included in this documentation update.
+
