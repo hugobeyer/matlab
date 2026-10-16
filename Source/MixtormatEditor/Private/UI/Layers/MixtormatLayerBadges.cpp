@@ -274,8 +274,8 @@ namespace MixtormatLayerBadges
 		if (Child.Type == EMixtormatLayerChildType::Blur)
 		{
 			// Blur filters its owner's output; the badge names the active axes, not a blend mode.
-			const bool bX = Child.Blur.RadiusX > 0.0f;
-			const bool bY = Child.Blur.RadiusY > 0.0f;
+			const bool bX = Child.Blur.GetRadiusX() > 0.0f;
+			const bool bY = Child.Blur.GetRadiusY() > 0.0f;
 			if (bX && bY)
 			{
 				return LOCTEXT("BlurBadgeXY", "XY");

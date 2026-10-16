@@ -1031,13 +1031,7 @@ namespace MixtormatLayersPrivate
 				GET_MEMBER_NAME_CHECKED(FMixtormatColorIdMask, TilingY),
 				EMixtormatParameterValueType::Int);
 			break;
-		case EMixtormatLayerChildType::Blur:
-			// Equal radii are the ordinary Gaussian; the pair is anisotropic only on purpose.
-			LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Blur,
-				GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusX),
-				GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusY),
-				EMixtormatParameterValueType::Float);
-			break;
+
 
 		default:
 			break;

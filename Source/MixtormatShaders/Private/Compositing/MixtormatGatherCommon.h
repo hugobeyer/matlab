@@ -9,10 +9,12 @@ namespace MixtormatGpuCompositor
 	inline FMixtormatBlur SanitizeBlur(const FMixtormatBlur& Source)
 	{
 		FMixtormatBlur Blur = Source;
-		Blur.RadiusX = MixtormatParameterContracts::SanitizeFloat(
-			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusX), Blur.RadiusX);
-		Blur.RadiusY = MixtormatParameterContracts::SanitizeFloat(
-			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusY), Blur.RadiusY);
+		Blur.Radius = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Radius), Blur.Radius);
+		Blur.ScaleX = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, ScaleX), Blur.ScaleX);
+		Blur.ScaleY = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, ScaleY), Blur.ScaleY);
 		Blur.Amount = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Amount), Blur.Amount);
 		Blur.BaseColorWeight = MixtormatParameterContracts::SanitizeFloat(

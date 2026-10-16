@@ -63,6 +63,8 @@ struct FMixtormatProjectedChildRow
 	int32 AuthoredScopeDepth = 0;
 	// Presentation only: root Layer Blur is a footer, not a branch of the child tree.
 	bool bLayerOutput = false;
+	// Includes the output filter's owned mask subtree, displayed beside that filter.
+	bool bLayerOutputScope = false;
 	// Exclusive authored boundary; INDEX_NONE means no safe contiguous subtree boundary.
 	int32 AuthoredSubtreeEnd = INDEX_NONE;
 };

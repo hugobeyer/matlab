@@ -15,12 +15,15 @@ struct MIXTORMATRUNTIME_API FMixtormatBlur
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur")
 	bool bEnabled = true;
 
-	// Radius in texels at the composition resolution. Zero leaves that axis unchanged.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius X", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
-	float RadiusX = 4.0f;
+	// Master radius in composition texels; each axis multiplies this by its scale.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius", ClampMin = "0.0", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
+	float Radius = 4.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Radius Y", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
-	float RadiusY = 4.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "X Scale", ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float ScaleX = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (DisplayName = "Y Scale", ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))
+	float ScaleY = 1.0f;
 
 	// Blend the completed filter against the original input; zero is the identity.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -54,9 +57,12 @@ struct MIXTORMATRUNTIME_API FMixtormatBlur
 			|| AOWeight > 0.0f || MetallicWeight > 0.0f || F0Weight > 0.0f || HeightWeight > 0.0f;
 	}
 
+	float GetRadiusX() const { return Radius * ScaleX; }
+	float GetRadiusY() const { return Radius * ScaleY; }
+
 	bool BlursAnything() const
 	{
-		return bEnabled && Amount > 0.0f && (RadiusX > 0.0f || RadiusY > 0.0f);
+		return bEnabled && Amount > 0.0f && Radius > 0.0f && (ScaleX > 0.0f || ScaleY > 0.0f);
 	}
 };
 
@@ -67,6 +73,10 @@ namespace MixtormatBlurRange
 	constexpr double RadiusMax = 32.0;
 	constexpr double RadiusDefault = 4.0;
 	constexpr double SnapDelta = 0.1;
+	constexpr double ScaleMin = 0.0;
+	constexpr double ScaleMax = 4.0;
+	constexpr double ScaleDefault = 1.0;
+	constexpr double ScaleSnapDelta = 0.01;
 	constexpr double AmountMin = 0.0;
 	constexpr double AmountMax = 1.0;
 	constexpr double AmountDefault = 1.0;

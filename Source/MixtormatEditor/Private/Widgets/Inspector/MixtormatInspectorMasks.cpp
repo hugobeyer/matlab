@@ -948,15 +948,19 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 		});
 
 	TSharedRef<SVerticalBox> Footprint = AddCard(Panel, LOCTEXT("BlurFootprintCard", "FOOTPRINT"));
+	AddSliderRow(Footprint, MakeMemberSlider<FMixtormatBlur>(
+		LOCTEXT("BlurRadiusLabel", "Radius"), Blur, &FMixtormatBlur::Radius,
+		RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
+		LOCTEXT("BlurRadiusHint", "Master Gaussian radius in composition texels. Affects both axes, multiplied independently by X Scale and Y Scale. Zero leaves the input unchanged.")));
 	AddSliderRow(Footprint, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatBlur>(
-			LOCTEXT("MaskBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatBlur::RadiusX,
-			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
-			LOCTEXT("MaskBlurRadiusXHint", "Horizontal softening of the owner's output, in texels at the composition resolution. Zero skips this axis; X alone softens horizontally.")),
+			LOCTEXT("BlurScaleXLabel", "X Scale"), Blur, &FMixtormatBlur::ScaleX,
+			ScaleMin, ScaleMax, ScaleDefault, ScaleSnapDelta,
+			LOCTEXT("BlurScaleXHint", "Horizontal radius multiplier. One uses the master Radius; zero disables horizontal filtering. No automatic X/Y link is needed.")),
 		MakeMemberSlider<FMixtormatBlur>(
-			LOCTEXT("MaskBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatBlur::RadiusY,
-			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
-			LOCTEXT("MaskBlurRadiusYHint", "Vertical softening in composition texels. Equal radii give an ordinary Gaussian; unequal radii are anisotropic. Both at zero leave the input unchanged."))));
+			LOCTEXT("BlurScaleYLabel", "Y Scale"), Blur, &FMixtormatBlur::ScaleY,
+			ScaleMin, ScaleMax, ScaleDefault, ScaleSnapDelta,
+			LOCTEXT("BlurScaleYHint", "Vertical radius multiplier. One uses the master Radius; zero disables vertical filtering. Each scale remains independently bindable."))));
 
 	TSharedRef<SVerticalBox> AmountPanel = AddCard(Panel, LOCTEXT("BlurAmountCard", "AMOUNT"));
 	AddSliderRow(AmountPanel, MakeMemberSlider<FMixtormatBlur>(

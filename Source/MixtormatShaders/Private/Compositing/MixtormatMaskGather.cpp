@@ -38,7 +38,9 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			const FMixtormatBlur Blur = SanitizeBlur(LayerChild.Blur);
 			if (Blur.BlursAnything() && Blur.HasLayerChannelWeight())
 			{
-				Data.SurfaceBlurs.Add(Blur);
+				FLayerSurfaceBlurRenderData& SurfaceBlur = Data.SurfaceBlurs.AddDefaulted_GetRef();
+				static_cast<FMixtormatBlur&>(SurfaceBlur) = Blur;
+				SurfaceBlur.SourceChildIndex = SourceChildIndex;
 			}
 		}
 		return true;

@@ -96,8 +96,9 @@ namespace
 			// ---- Authored Blur. Zero radius is identity; support has no fixed upper cap.
 			FMixtormatParameterContract BlurRadius;
 			BlurRadius.HardMin = 0.0f;
-			Add(ET::Blur, TEXT("RadiusX"), BlurRadius);
-			Add(ET::Blur, TEXT("RadiusY"), BlurRadius);
+			Add(ET::Blur, TEXT("Radius"), BlurRadius);
+			Add(ET::Blur, TEXT("ScaleX"), BlurRadius);
+			Add(ET::Blur, TEXT("ScaleY"), BlurRadius);
 			FMixtormatParameterContract BlurAmount;
 			BlurAmount.HardMin = 0.0f;
 			BlurAmount.HardMax = 1.0f;

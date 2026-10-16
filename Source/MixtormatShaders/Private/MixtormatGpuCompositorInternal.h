@@ -302,6 +302,11 @@ namespace MixtormatGpuCompositor
 		int32 FlowSteps = 16;
 	};
 
+	struct FLayerSurfaceBlurRenderData : FMixtormatBlur
+	{
+		int32 SourceChildIndex = INDEX_NONE;
+	};
+
 	struct FMaskCurvatureRenderData : FMixtormatMaskCurvature
 	{
 		TArray<FMixtormatBlur, TInlineAllocator<2>> Blurs;
@@ -1304,7 +1309,7 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef Mask;
 		TArray<FChildRenderData> Children;
 		// Root Blur modules post-filter the isolated incoming surface before layer merge.
-		TArray<FMixtormatBlur, TInlineAllocator<2>> SurfaceBlurs;
+		TArray<FLayerSurfaceBlurRenderData, TInlineAllocator<2>> SurfaceBlurs;
 		FVector4f FillColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
 		float Opacity = 1.0f;
 		float Tiling = 1.0f;

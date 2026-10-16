@@ -1,6 +1,30 @@
 {
 	"Blur":
 	{
+		"Blur.Radius":
+		{
+			"default": 4,
+			"uiMin": 0,
+			"uiMax": 32,
+			"snap": 0.1,
+			"clampMin": 0
+		},
+		"Blur.ScaleX":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.01,
+			"clampMin": 0
+		},
+		"Blur.ScaleY":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 4,
+			"snap": 0.01,
+			"clampMin": 0
+		},
 		"Blur.Amount":
 		{
 			"default": 1,

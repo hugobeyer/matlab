@@ -334,6 +334,10 @@ namespace MixtormatChildScope
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::Blur)
+		{
+			return !Child.ScopeOwnerChildId.IsValid();
+		}
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::Mask:

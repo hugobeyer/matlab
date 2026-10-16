@@ -196,6 +196,7 @@ namespace
 		int32 Parent = Rows[RowIndex].VisualParentRowIndex;
 		for (int32 Step = 0; Rows.IsValidIndex(Parent) && Step < Rows.Num(); ++Step)
 		{
+			if (Rows[Parent].bLayerOutput) { break; }
 			const float Indent = BranchIndent(Parent);
 			if (Indent > 0.0f && HasLaterSibling(Parent)) { Paint.AncestorIndents.AddUnique(Indent); }
 			// Carry the first visual child's branch across other displayed rows.
@@ -293,10 +294,19 @@ TArray<FMixtormatProjectedChildRow> SMixtormat::BuildLayerHierarchyRows(const FG
 	{
 		FMixtormatProjectedChildRow Row;
 		Row.Address = {EMixtormatChildOwnerType::Layer, LayerId, Layer->Children[Index].ChildId};
-		Row.bLayerOutput = Layer->Children[Index].Type == EMixtormatLayerChildType::Blur
-			&& !Layer->Children[Index].ScopeOwnerChildId.IsValid();
+		int32 RootIndex = Index;
+		while (Layer->Children[RootIndex].ScopeOwnerChildId.IsValid())
+		{
+			const int32 Parent = FindChildById(Layer->Children, Layer->Children[RootIndex].ScopeOwnerChildId);
+			if (Parent == INDEX_NONE || Parent >= RootIndex) { break; }
+			RootIndex = Parent;
+		}
+		Row.bLayerOutputScope = Layer->Children[RootIndex].Type == EMixtormatLayerChildType::Blur
+			&& !Layer->Children[RootIndex].ScopeOwnerChildId.IsValid();
+		Row.bLayerOutput = Row.bLayerOutputScope && RootIndex == Index;
 		Row.AuthoredChildIndex = Index;
-		Row.AuthoredScopeDepth = GetDisplayScopeDepth(Layer->Children, Index);
+		Row.AuthoredScopeDepth = GetDisplayScopeDepth(Layer->Children, Index)
+			- (Row.bLayerOutputScope && !Row.bLayerOutput ? 1 : 0);
 		const FGuid ParentId = Layer->Children[Index].ScopeOwnerChildId;
 		if (ParentId.IsValid())
 		{
@@ -1704,6 +1714,8 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 	const FGuid LayerId = Layer.LayerId;
 	const FMixtormatChildAddress LayerAddress{ EMixtormatChildOwnerType::Layer, LayerId, FGuid() };
+	const TArray<FMixtormatProjectedChildRow> AllRows = BuildLayerHierarchyRows(LayerId);
+	const TArray<FMixtormatProjectedChildRow> ProjectedRows = FilterVisibleHierarchyRows(AllRows);
 	TSharedPtr<SMixtormatLayerRow> Row;
 	TSharedRef<SMixtormatLayerContainer> Container = SNew(SMixtormatLayerContainer)
 		.bExpanded_Lambda([WeakOwner, LayerIndex]()
@@ -1763,14 +1775,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
 				return Owner.IsValid() && Owner->IsLayerExpanded(LayerIndex);
 			})
-			.bHasChildren_Lambda([this, LayerIndex]()
+			.bHasChildren(AllRows.ContainsByPredicate([](const FMixtormatProjectedChildRow& Child)
 			{
-				return WorkingLayers.IsValidIndex(LayerIndex)
-									&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)
-									{
-										return Child.Type != EMixtormatLayerChildType::Blur || Child.ScopeOwnerChildId.IsValid();
-									});
-			})
+				return !Child.bLayerOutputScope;
+			}))
 			.OnGetBadgeMenu_Lambda([this, LayerIndex]() { return BuildLayerHeightOpMenu(LayerIndex); })
 			// The colour-blend menu edits the selected layer, so the badge selects its layer first.
 			.OnGetColorBadgeMenu_Lambda([this, LayerIndex]()
@@ -1806,8 +1814,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 	LayerRowWidgets.Add(LayerId, Row);
 
-	const TArray<FMixtormatProjectedChildRow> AllRows = BuildLayerHierarchyRows(LayerId);
-	const TArray<FMixtormatProjectedChildRow> ProjectedRows = FilterVisibleHierarchyRows(AllRows);
 	for (int32 DisplayIndex = 0; DisplayIndex < ProjectedRows.Num(); ++DisplayIndex)
 	{
 		const FMixtormatProjectedChildRow& ProjectedRow = ProjectedRows[DisplayIndex];
@@ -1890,6 +1896,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Disclosure()[BuildGeneratorDisclosure(RowAddress, bHasChildren, FText::GetEmpty())]
 				.ExtraIndent(bLayerOutput ? 0.0f : ProjectedScopeIndent(ProjectedRow))
 				.bLayerAligned(bLayerOutput)
+
 				.ToolTip(RowToolTip)
 				.Name(bLayerOutput ? LOCTEXT("LayerOutputBlurName", "Blur · Layer Output") : ChildName)
 				.bNameEditable(Child.Type == EMixtormatLayerChildType::Mask)
@@ -2056,15 +2063,37 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						FMixtormatChildDragDropOp::New(
 							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
 				});
+		if (ProjectedRow.bLayerOutputScope)
+		{
+			ChildRow->SetColorAndOpacity(TAttribute<FLinearColor>::CreateLambda([this, ResolveRow]()
+			{
+				FLinearColor Tint = FLinearColor::White;
+				int32 LayerIndex, ChildIndex;
+				if (ResolveRow(LayerIndex, ChildIndex) && !WorkingLayers[LayerIndex].bEnabled)
+				{
+					Tint.A = FMixtormatThemeStore::GetResolved().ControlLayout.DisabledLabelOpacity;
+				}
+				return Tint;
+			}));
+		}
 		if (bLayerOutput)
 		{
 			// End-of-layer filter: no child-indent, branch painter or module drop target.
-			Container->AddFooter(RowWidget);
+			Container->AddFooter(
+				SNew(SMixtormatLayerRowDropTarget)
+				.TargetLayerIndex(LayerIndex)
+				.OnMaskDropped_Lambda([this, ResolveRow](int32, FSoftObjectPath MaskPath)
+				{
+					int32 LayerIndex, ChildIndex;
+					if (!ResolveRow(LayerIndex, ChildIndex)) { return FReply::Unhandled(); }
+					if (WorkingLayers[LayerIndex].Children[ChildIndex].IsInstance()) { return FReply::Handled(); }
+					return AssignScopedMaskToChild(LayerIndex, ChildIndex, MaskPath);
+				})
+				[RowWidget]);
 		}
 		else
 		{
-			Container->AddChild(
-				SNew(SMixtormatLayerHierarchy)
+			const TSharedRef<SWidget> ScopedRow = SNew(SMixtormatLayerHierarchy)
 				.Hierarchy(ProjectedHierarchyPaint(ProjectedRows, DisplayIndex))
 				[
 					SNew(SMixtormatChildDropTarget)
@@ -2082,7 +2111,9 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 						.OnIdDrop(this, &SMixtormat::DropChildIntoIdGroup)
 						[RowWidget]
 					]
-				]);
+				];
+			if (ProjectedRow.bLayerOutputScope) { Container->AddFooter(ScopedRow); }
+			else { Container->AddChild(ScopedRow); }
 		}
 		RegisterChildRowWidget(RowAddress, ChildRow.ToSharedRef());
 		EditableChildRowWidgets.Add(RowAddress, ChildRow);

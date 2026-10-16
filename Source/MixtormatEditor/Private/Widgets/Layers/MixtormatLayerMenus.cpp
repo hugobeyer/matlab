@@ -1662,6 +1662,15 @@ TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, con
 {
 	MixtormatMenu::FBuilder Menu;
 	const FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex);
+	if (Child && CanOwnScopedMasks(*Child))
+	{
+		FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
+		Destination.ScopeOwnerChildId = Child->ChildId;
+		Menu.SubMenu(LOCTEXT("AddScopedMasksToChild", "Masks"), MixtormatIcons::Mask(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination))
+			.Enabled(!Child->IsInstance()
+				&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex));
+	}
 	if (Child && Child->Type == EMixtormatLayerChildType::Curvature)
 	{
 		Menu.Item(LOCTEXT("AddBlurToCurvatureContext", "Add Blur"), MixtormatIcons::Mask(),

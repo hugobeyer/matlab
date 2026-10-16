@@ -445,8 +445,8 @@ namespace MixtormatGpuCompositor
 			for (const FMixtormatBlur& Blur : Blurs)
 			{
 				MixtormatGaussianBlur::FSettings Settings;
-				Settings.RadiusX = Blur.RadiusX;
-				Settings.RadiusY = Blur.RadiusY;
+				Settings.RadiusX = Blur.GetRadiusX();
+				Settings.RadiusY = Blur.GetRadiusY();
 				Settings.Amount = Blur.Amount;
 				Settings.bClampCoverage = true;
 				Source = MixtormatGaussianBlur::AddPasses(GraphBuilder, Source, Settings,
