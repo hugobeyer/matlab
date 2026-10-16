@@ -4,6 +4,7 @@
 int2 OutputSize;
 float Radius;
 float Amount;
+float4 ChannelWeights;
 uint ClampCoverage;
 Texture2D<float> ScalarSource;
 Texture2D<float4> VectorSource;
@@ -52,6 +53,14 @@ void MainCS(uint3 ID : SV_DispatchThreadID)
 		const float4 Filtered = VectorSource.Load(int3(P, 0)) / Mass;
 #if FIELD_TYPE == 3
 		Result.xy = lerp(Original.xy, Filtered.xy, Weight);
+#elif FIELD_TYPE == 1
+		const float4 Weights = Weight * saturate(ChannelWeights);
+		Result = lerp(Original, Filtered, Weights);
+		// Keep disabled packed components untouched, including their exact source bits.
+		Result = float4(Weights.x > 0.0f ? Result.x : Original.x,
+			Weights.y > 0.0f ? Result.y : Original.y,
+			Weights.z > 0.0f ? Result.z : Original.z,
+			Weights.w > 0.0f ? Result.w : Original.w);
 #else
 		Result = lerp(Original, Filtered, Weight);
 #endif

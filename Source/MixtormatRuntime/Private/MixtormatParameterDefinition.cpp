@@ -102,6 +102,13 @@ namespace
 			BlurAmount.HardMin = 0.0f;
 			BlurAmount.HardMax = 1.0f;
 			Add(ET::Blur, TEXT("Amount"), BlurAmount);
+			Add(ET::Blur, TEXT("BaseColorWeight"), BlurAmount);
+			Add(ET::Blur, TEXT("NormalWeight"), BlurAmount);
+			Add(ET::Blur, TEXT("RoughnessWeight"), BlurAmount);
+			Add(ET::Blur, TEXT("AOWeight"), BlurAmount);
+			Add(ET::Blur, TEXT("MetallicWeight"), BlurAmount);
+			Add(ET::Blur, TEXT("F0Weight"), BlurAmount);
+			Add(ET::Blur, TEXT("HeightWeight"), BlurAmount);
 
 
 			// ---- Flow Warp.

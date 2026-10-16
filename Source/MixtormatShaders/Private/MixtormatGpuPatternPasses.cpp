@@ -371,6 +371,21 @@ namespace MixtormatGpuCompositor
 				&& Candidate.Effect.Type == EMixtormatEffectType::Breakup);
 	}
 
+	static bool IsRegionIdConsumerChild(const FChildRenderData& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::HsvFilter
+			|| (Child.Type == EMixtormatLayerChildType::ColorId
+				&& Child.ColorId.Mode == EMixtormatColorIdMode::ExactId)
+			|| Child.Type == EMixtormatLayerChildType::RandomId
+			|| Child.Type == EMixtormatLayerChildType::RampId
+			|| Child.Type == EMixtormatLayerChildType::UvFromIds
+			|| Child.Type == EMixtormatLayerChildType::ReliefFromIds
+			|| Child.Type == EMixtormatLayerChildType::BoundaryFromIds
+			|| (Child.Type == EMixtormatLayerChildType::Effect
+				&& (Child.Effect.Type == EMixtormatEffectType::WornEdges
+					|| Child.Effect.Type == EMixtormatEffectType::Breakup));
+	}
+
 	// Keep private producer maps for previews and nested groups, but expose only the
 	// owning producer/group's output to its scoped consumers.
 	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
@@ -837,6 +852,17 @@ namespace MixtormatGpuCompositor
 					|| Child.ScopeOwnerSourceChildIndex != INDEX_NONE
 					|| Ctx.PublishedFieldDemand.Contains(
 						FPublishedFieldKey{Layer.LayerId, Child.SourceChildIndex, FName(TEXT("RegionIds"))});
+				// Owned consumers resolve this producer directly, not a preceding sibling.
+				// Count them before the sibling-only demand/shadowing scan below.
+				if (!bWanted)
+				{
+					bWanted = Layer.Children.ContainsByPredicate([&Child](const FChildRenderData& Consumer)
+					{
+						return Consumer.SourceChildIndex > Child.SourceChildIndex
+							&& Consumer.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+							&& IsRegionIdConsumerChild(Consumer);
+					});
+				}
 
 				if (bPatternProducer)
 				{
@@ -956,22 +982,7 @@ namespace MixtormatGpuCompositor
 						{
 							break;
 						}
-						const bool bWornEdgesConsumer =
-							Other.Type == EMixtormatLayerChildType::Effect
-							&& Other.Effect.Type == EMixtormatEffectType::WornEdges;
-						const bool bBreakupConsumer =
-							Other.Type == EMixtormatLayerChildType::Effect
-							&& Other.Effect.Type == EMixtormatEffectType::Breakup;
-						if (Other.Type == EMixtormatLayerChildType::HsvFilter
-							|| (Other.Type == EMixtormatLayerChildType::ColorId
-								&& Other.ColorId.Mode == EMixtormatColorIdMode::ExactId)
-							|| Other.Type == EMixtormatLayerChildType::RandomId
-							|| Other.Type == EMixtormatLayerChildType::RampId
-							|| Other.Type == EMixtormatLayerChildType::UvFromIds
-							|| Other.Type == EMixtormatLayerChildType::ReliefFromIds
-							|| Other.Type == EMixtormatLayerChildType::BoundaryFromIds
-							|| bWornEdgesConsumer
-							|| bBreakupConsumer)
+						if (IsRegionIdConsumerChild(Other))
 						{
 							bWanted = true;
 							break;

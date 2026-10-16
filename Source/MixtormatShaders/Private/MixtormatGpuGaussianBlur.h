@@ -16,6 +16,8 @@ namespace MixtormatGaussianBlur
 		float RadiusX = 0.0f;
 		float RadiusY = 0.0f;
 		float Amount = 1.0f;
+		// Independent component blend weights for packed Vector4 fields (e.g. RAM/F0).
+		FVector4f ChannelWeights = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
 		bool bClampCoverage = false;
 	};
 

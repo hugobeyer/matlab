@@ -18,18 +18,31 @@ namespace MixtormatGpuCompositor
 			MixtormatGaussianBlur::FSettings Settings;
 			Settings.RadiusX = Blur.RadiusX;
 			Settings.RadiusY = Blur.RadiusY;
-			Settings.Amount = Blur.Amount;
-			if (Blur.bAppearance)
+			if (Blur.BaseColorWeight > 0.0f)
 			{
+				Settings.Amount = Blur.Amount * Blur.BaseColorWeight;
+				Settings.ChannelWeights = FVector4f(1.0f, 1.0f, 1.0f, 0.0f);
 				Ctx.OutputBC[WriteIndex] = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
 					Ctx.OutputBC[WriteIndex], Settings, MixtormatGaussianBlur::EField::Vector4);
+			}
+			if (Blur.NormalWeight > 0.0f)
+			{
+				Settings.Amount = Blur.Amount * Blur.NormalWeight;
 				Ctx.OutputN[WriteIndex] = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
 					Ctx.OutputN[WriteIndex], Settings, MixtormatGaussianBlur::EField::EncodedNormal);
+			}
+			if (Blur.RoughnessWeight > 0.0f || Blur.AOWeight > 0.0f
+				|| Blur.MetallicWeight > 0.0f || Blur.F0Weight > 0.0f)
+			{
+				Settings.Amount = Blur.Amount;
+				Settings.ChannelWeights = FVector4f(
+					Blur.RoughnessWeight, Blur.AOWeight, Blur.MetallicWeight, Blur.F0Weight);
 				Ctx.OutputRAM[WriteIndex] = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
 					Ctx.OutputRAM[WriteIndex], Settings, MixtormatGaussianBlur::EField::Vector4);
 			}
-			if (Blur.bHeight)
+			if (Blur.HeightWeight > 0.0f)
 			{
+				Settings.Amount = Blur.Amount * Blur.HeightWeight;
 				Ctx.OutputHeight[WriteIndex] = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
 					Ctx.OutputHeight[WriteIndex], Settings, MixtormatGaussianBlur::EField::Scalar);
 			}

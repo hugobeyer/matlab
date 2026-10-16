@@ -15,6 +15,20 @@ namespace MixtormatGpuCompositor
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusY), Blur.RadiusY);
 		Blur.Amount = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Amount), Blur.Amount);
+		Blur.BaseColorWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, BaseColorWeight), Blur.BaseColorWeight);
+		Blur.NormalWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, NormalWeight), Blur.NormalWeight);
+		Blur.RoughnessWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RoughnessWeight), Blur.RoughnessWeight);
+		Blur.AOWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, AOWeight), Blur.AOWeight);
+		Blur.MetallicWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, MetallicWeight), Blur.MetallicWeight);
+		Blur.F0Weight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, F0Weight), Blur.F0Weight);
+		Blur.HeightWeight = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, HeightWeight), Blur.HeightWeight);
 		return Blur;
 	}
 

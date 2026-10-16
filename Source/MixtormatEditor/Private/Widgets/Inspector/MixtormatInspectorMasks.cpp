@@ -976,13 +976,23 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 		});
 	Panel->AddSlot().AutoHeight()[ChannelsPanel];
 	TSharedRef<SVerticalBox> Channels = AddCard(ChannelsPanel, LOCTEXT("BlurChannelsCard", "CHANNELS"));
+	const auto ChannelSlider = [this, Blur](const FText& Label, float FMixtormatBlur::* Member)
+	{
+		return MakeMemberSlider<FMixtormatBlur>(Label, Blur, Member,
+			AmountMin, AmountMax, AmountDefault, AmountSnapDelta,
+			LOCTEXT("BlurChannelWeightHint", "Blends this channel toward the completed Gaussian result, multiplied by Amount. Zero keeps the original channel; one applies the full Amount."));
+	};
 	AddSliderRow(Channels, MixtormatRow::MakePair(
-		MakeMemberToggle<FMixtormatBlur>(
-			LOCTEXT("BlurAppearanceLabel", "Appearance"), Blur, &FMixtormatBlur::bAppearance,
-			LOCTEXT("BlurAppearanceHint", "Filters this layer's finished Base Color, Normal and RAM at the end of its own rail, before merging with the stack.")),
-		MakeMemberToggle<FMixtormatBlur>(
-			LOCTEXT("BlurHeightLabel", "Height"), Blur, &FMixtormatBlur::bHeight,
-			LOCTEXT("BlurHeightHint", "Filters this layer's finished Height at the end of its own rail. Height affects displacement, layer blending and derived normals."))));
+		ChannelSlider(LOCTEXT("BlurBaseColorLabel", "Base Color"), &FMixtormatBlur::BaseColorWeight),
+		ChannelSlider(LOCTEXT("BlurNormalLabel", "Normal"), &FMixtormatBlur::NormalWeight)));
+	AddSliderRow(Channels, MixtormatRow::MakePair(
+		ChannelSlider(LOCTEXT("BlurRoughnessLabel", "Roughness"), &FMixtormatBlur::RoughnessWeight),
+		ChannelSlider(LOCTEXT("BlurMetallicLabel", "Metallic"), &FMixtormatBlur::MetallicWeight)));
+	AddSliderRow(Channels, MixtormatRow::MakePair(
+		ChannelSlider(LOCTEXT("BlurAOChannelLabel", "AO"), &FMixtormatBlur::AOWeight),
+		ChannelSlider(LOCTEXT("BlurF0Label", "Specular / F0"), &FMixtormatBlur::F0Weight)));
+	AddSliderRow(Channels, ChannelSlider(
+		LOCTEXT("BlurHeightLabel", "Height"), &FMixtormatBlur::HeightWeight));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()

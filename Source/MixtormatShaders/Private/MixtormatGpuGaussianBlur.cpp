@@ -22,6 +22,7 @@ public:
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(float, Radius)
 		SHADER_PARAMETER(float, Amount)
+		SHADER_PARAMETER(FVector4f, ChannelWeights)
 		SHADER_PARAMETER(uint32, ClampCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ScalarSource)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, VectorSource)
@@ -92,6 +93,7 @@ namespace MixtormatGaussianBlur
 			P->OutputSize = Size;
 			P->Radius = FMath::Max(0.0f, Stage == 0 ? Settings.RadiusX : Settings.RadiusY);
 			P->Amount = FMath::Clamp(Settings.Amount, 0.0f, 1.0f);
+			P->ChannelWeights = Settings.ChannelWeights;
 			P->ClampCoverage = Settings.bClampCoverage ? 1u : 0u;
 			P->ScalarSource = Field == EField::Scalar && Stage == 0 ? Source : nullptr;
 			P->VectorSource = Field != EField::Scalar || Stage != 0 ? Current : nullptr;
