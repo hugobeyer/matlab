@@ -1069,8 +1069,7 @@ namespace MixtormatGpuCompositor
 						// ordinary way to use an adjustment layer, and dropping all but the last
 						// would read as a bug rather than as a contract.
 						TArray<FPendingEffect, TInlineAllocator<2>>& PendingGrades = LayerCtx.PendingGrades;
-						TArray<FPendingEffect, TInlineAllocator<2>>& PendingLayerBlurs =
-							LayerCtx.PendingLayerBlurs;
+
 
 						{
 						RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatChildren, "Mixtormat.MasksAndEffects");
@@ -1169,8 +1168,7 @@ namespace MixtormatGpuCompositor
 							FRDGTextureRef FeatureMask =
 								AddScopedFeatureMask(
 									Ctx, LayerCtx, Layer, Child.SourceChildIndex,
-									Effect.Type == EMixtormatEffectType::LayerBlur
-										|| Effect.Type == EMixtormatEffectType::Peeling);
+									Effect.Type == EMixtormatEffectType::Peeling);
 							if (Effect.Type == EMixtormatEffectType::Erosion)
 							{
 								QueuePendingErosion(LayerCtx, Layer, Child, Effect, FeatureMask);
@@ -1195,11 +1193,6 @@ namespace MixtormatGpuCompositor
 								continue;
 							}
 
-							if (Effect.Type == EMixtormatEffectType::LayerBlur)
-							{
-								QueuePendingLayerBlur(LayerCtx, Layer, Child, Effect, FeatureMask);
-								continue;
-							}
 
 							if (Effect.Type == EMixtormatEffectType::Grade)
 							{
@@ -1227,15 +1220,16 @@ namespace MixtormatGpuCompositor
 						// Child-loop ID producers are now available.
 						CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
-						// Structural operators consume local ramp relief, never the already-blended substrate.
-						// Keep preparation stable as Amount crosses zero.
-						const bool bPrepareStructure = !LayerCtx.PendingBreakups.IsEmpty();
+						// Structural operators and root Blur consume the layer's isolated surface,
+						// never the accumulated composite. Merge coverage/opacity exactly once.
+						const bool bPrepareSurface = !LayerCtx.PendingBreakups.IsEmpty()
+							|| !Layer.SurfaceBlurs.IsEmpty();
 						const int32 LocalWriteIndex = LayerIndex & 1;
 						FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
 						FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
 						FRDGTextureRef SavedRAM = Ctx.OutputRAM[LocalWriteIndex];
 						FRDGTextureRef SavedHeight = Ctx.OutputHeight[LocalWriteIndex];
-						if (bPrepareStructure)
+						if (bPrepareSurface)
 						{
 							// Keep the read side intact for placement/height-reference evaluation.
 							// Relief filters write only the isolated incoming material channels.
@@ -1246,7 +1240,7 @@ namespace MixtormatGpuCompositor
 						}
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatComposite, "Mixtormat.Composite");
-							AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareStructure ? 1u : 0u);
+							AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareSurface ? 1u : 0u);
 						}
 
 						{
@@ -1263,8 +1257,12 @@ namespace MixtormatGpuCompositor
 							AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 						}
 
-						if (bPrepareStructure)
+						if (bPrepareSurface)
 						{
+							{
+								RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayerBlur, "Mixtormat.LayerSurfaceBlur");
+								AddLayerSurfaceBlurPasses(Ctx, LayerCtx, Layer);
+							}
 							LayerCtx.LayerInputBC = Ctx.OutputBC[LocalWriteIndex];
 							LayerCtx.LayerInputN = Ctx.OutputN[LocalWriteIndex];
 							LayerCtx.LayerInputRAM = Ctx.OutputRAM[LocalWriteIndex];
@@ -1278,12 +1276,7 @@ namespace MixtormatGpuCompositor
 
 						// Grade is applied to the incoming layer color inside the composite shader.
 
-						// Last of all: the blur softens the finished surface, so a grade or a relief pass
-						// running after it would be sharpening detail the blur was asked to remove.
-						{
-							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayerBlur, "Mixtormat.LayerBlur");
-							AddLayerBlurPasses(Ctx, LayerCtx, Layer);
-						}
+
 
 						// The raw ids behind the Region IDs preview, for the Exact ID picker.
 						//

@@ -1,4 +1,16 @@
 {
+	"Blur":
+	{
+		"Blur.Amount":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 1
+		}
+	},
 	"Breakup":
 	{
 		"Effect.BreakupRelief":
@@ -785,7 +797,7 @@
 	{
 		"Generator.NoiseType:Enum":
 		{
-			"defaultEnum": "Gradient"
+			"defaultEnum": "Value"
 		},
 		"Generator.NoiseSeed:Int":
 		{
@@ -796,10 +808,12 @@
 		},
 		"Generator.NoiseScale":
 		{
-			"default": 8,
+			"default": 16,
 			"uiMin": 1,
-			"uiMax": 64,
-			"snap": 0.10000000149011612
+			"uiMax": 128,
+			"snap": 0.10000000149011612,
+			"clampMin": 1,
+			"clampMax": 2048
 		},
 		"Generator.NoiseDetail:Int":
 		{
@@ -817,17 +831,20 @@
 		},
 		"Generator.NoiseLacunarity":
 		{
-			"default": 2,
+			"default": 2.5,
 			"uiMin": 1,
 			"uiMax": 4,
-			"snap": 0.0099999997764825821
+			"snap": 0.0099999997764825821,
+			"clampMax": 4
 		},
 		"Generator.NoiseLayerMix":
 		{
-			"default": 0,
+			"default": 0.5,
 			"uiMin": 0,
 			"uiMax": 1,
-			"snap": 0.0099999997764825821
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 1
 		},
 		"Generator.NoiseOffsetX":
 		{
@@ -912,10 +929,12 @@
 		},
 		"Generator.NoiseWorleyCellDepth":
 		{
-			"default": 0,
+			"default": 1,
 			"uiMin": 0,
 			"uiMax": 1,
-			"snap": 0.0099999997764825821
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 1
 		},
 		"Generator.NoiseDistortionStrength":
 		{
@@ -929,7 +948,9 @@
 			"default": 0,
 			"uiMin": 0,
 			"uiMax": 2,
-			"snap": 0.0099999997764825821
+			"snap": 0.0099999997764825821,
+			"clampMin": 0,
+			"clampMax": 2
 		},
 		"Generator.NoiseJaggedSharpness":
 		{
@@ -940,7 +961,7 @@
 		},
 		"Generator.NoiseJaggedDetail":
 		{
-			"default": 0,
+			"default": 0.5,
 			"uiMin": 0,
 			"uiMax": 1,
 			"snap": 0.0099999997764825821
@@ -954,10 +975,12 @@
 		},
 		"Generator.NoiseDistortionOctaves:Int":
 		{
-			"default": 2,
+			"default": 3,
 			"uiMin": 1,
 			"uiMax": 8,
-			"snap": 1
+			"snap": 1,
+			"clampMin": 1,
+			"clampMax": 8
 		},
 		"Generator.NoiseDistortionRoughness":
 		{
@@ -968,7 +991,7 @@
 		},
 		"Generator.NoiseDistortionLacunarity":
 		{
-			"default": 2,
+			"default": 2.5,
 			"uiMin": 1,
 			"uiMax": 4,
 			"snap": 0.05000000074505806

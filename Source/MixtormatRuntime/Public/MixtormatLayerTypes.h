@@ -9,7 +9,7 @@
 #include "MixtormatIdTypes.h"
 #include "MixtormatGeneratorTypes.h"
 #include "MixtormatEffect.h"
-#include "MixtormatMaskBlur.h"
+#include "MixtormatBlur.h"
 #include "MixtormatMaskCurvature.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatBehaviorTypes.h"
@@ -281,7 +281,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	FMixtormatPatternFilter PatternId;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Blur"))
-	FMixtormatMaskBlur Blur;
+	FMixtormatBlur Blur;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Curvature"))
 	FMixtormatMaskCurvature Curvature;

@@ -20,7 +20,7 @@ namespace MixtormatGpuCompositor
 	void GatherErosion(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherGrade(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherBreakup(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
-	void GatherLayerBlur(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
+
 	void GatherFlowWarp(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 	void GatherWornEdges(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect);
 

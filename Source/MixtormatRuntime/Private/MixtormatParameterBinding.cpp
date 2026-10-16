@@ -601,7 +601,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::BehaviorFeatherSettings: return { FMixtormatBehaviorFeatherSettings::StaticStruct() };
 		case EMixtormatParameterOwnerType::CombineId: return { FMixtormatCombineIdFilter::StaticStruct() };
 		case EMixtormatParameterOwnerType::IdGroup: return { FMixtormatIdGroup::StaticStruct() };
-		case EMixtormatParameterOwnerType::Blur: return { FMixtormatMaskBlur::StaticStruct() };
+		case EMixtormatParameterOwnerType::Blur: return { FMixtormatBlur::StaticStruct() };
 		case EMixtormatParameterOwnerType::Curvature: return { FMixtormatMaskCurvature::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generator:

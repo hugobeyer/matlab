@@ -247,6 +247,11 @@ produce a weighted average in the shader.
 Curvature gain/falloff remain signal-local; global Bias and local Warp are retired in favor
 of shared shaping and the canonical flow architecture. No inspector hierarchy actions.
 
+Blur uses the generic `FMixtormatBlur` payload with FOOTPRINT (Radius X/Y) and
+AMOUNT cards. Mask and Curvature owners support Add Blur and scoped copy/instance
+paste; Curvature can own Blur, not another Curvature. Broader owners and root-Layer
+channel controls remain unavailable until their render scheduling is implemented.
+
 Feather's Width, Iterations and Direction Bias are nested `BehaviorFeatherSettings`
 parameters. Their editor ranges, reset defaults and optional clamps are authored under
 `Feather` in `Config/MixtormatParameterAuthoring.json`; GPU Eikonal/Flow iteration

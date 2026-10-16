@@ -443,7 +443,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			true, EMixtormatPublishedFieldKind::Color});
 		break;
 	default:
-		// Everything else (Grade, Layer Blur, Flow Warp, Erosion, Blur, Curvature, HSV/Random
+		// Everything else (Grade, Flow Warp, Erosion, Blur, Curvature, HSV/Random
 		// From IDs, Peeling) publishes nothing a preview or Copy Output could use.
 		//
 		// UV From IDs and Relief From IDs belong here too, and deliberately. Neither publishes a
@@ -455,12 +455,9 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 		// preview -- see priorities.md on hardcoded preview tables.
 		break;
 	}
-	// A scoped mask filter (Blur / Curvature under a mask) is the one child with no independent
-	// row identity: it exists to filter the mask it is authored beneath, and the paste path refuses
-	// it as a standalone row for the same reason. Declared here so every Copy as Instance call site
-	// agrees with that instead of offering an entry the paste would reject.
-	if (Child.Type == EMixtormatLayerChildType::Blur
-		|| Child.Type == EMixtormatLayerChildType::Curvature)
+	// Curvature remains copy-only. Blur shares its payload through normal instances;
+	// the paste path requires an executable scoped owner for each destination.
+	if (Child.Type == EMixtormatLayerChildType::Curvature)
 	{
 		Result.bSupportsInstancing = false;
 	}

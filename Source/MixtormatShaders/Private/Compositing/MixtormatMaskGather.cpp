@@ -6,15 +6,44 @@
 
 namespace MixtormatGpuCompositor
 {
+static void GatherOwnedBlurs(const FMixtormatLayer& Layer, const int32 OwnerIndex,
+	TArray<FMixtormatBlur, TInlineAllocator<2>>& OutBlurs)
+{
+	if (!Layer.Children.IsValidIndex(OwnerIndex)
+		|| !MixtormatChildScope::CanOwnScopedBlurs(Layer.Children[OwnerIndex])) { return; }
+	for (int32 Index = OwnerIndex + 1; Index < Layer.Children.Num(); ++Index)
+	{
+		const FMixtormatLayerChild& Child = Layer.Children[Index];
+		if (Child.Type != EMixtormatLayerChildType::Blur || !Child.Blur.bEnabled
+			|| MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) != OwnerIndex)
+		{
+			continue;
+		}
+		const FMixtormatBlur Blur = SanitizeBlur(Child.Blur);
+		if (Blur.BlursAnything()) { OutBlurs.Add(Blur); }
+	}
+}
+
 bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
 	const TArray<FMixtormatLayer>& EffectiveLayers,
 	const TArray<FMixtormatSourceEntry>& Sources)
 {
-	// Consumed by the mask it is scoped to, never a node of its own down here. Skipped
-	// explicitly so it cannot fall through to whatever handles an unrecognised type.
-	if (LayerChild.Type == EMixtormatLayerChildType::Blur
-		|| LayerChild.Type == EMixtormatLayerChildType::Curvature)
+	if (LayerChild.Type == EMixtormatLayerChildType::Blur)
+	{
+		// Scoped Mask/Curvature Blurs are gathered by their owner. Root Blurs
+		// filter only this layer's completed incoming surface at its rail end.
+		if (Layer.bEnabled && !LayerChild.ScopeOwnerChildId.IsValid())
+		{
+			const FMixtormatBlur Blur = SanitizeBlur(LayerChild.Blur);
+			if (Blur.BlursAnything() && (Blur.bAppearance || Blur.bHeight))
+			{
+				Data.SurfaceBlurs.Add(Blur);
+			}
+		}
+		return true;
+	}
+	if (LayerChild.Type == EMixtormatLayerChildType::Curvature)
 	{
 		return true;
 	}
@@ -140,34 +169,23 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		MaskData.HexContrast = MaskLayer.HexContrast;
 		MaskData.HexSeed = static_cast<float>(MaskLayer.HexSeed);
 		static_cast<FMixtormatMaskShaping&>(MaskData) = MaskLayer.Shaping;
-		// Blur is a node in the recipe -- so it can be driven, published and instanced --
-		// but a pair of numbers by the time the passes see it. Summed rather than maxed:
-		// two blurs stacked on one mask should soften more than either alone, which is
-		// what stacking them plainly means. Clamped to the shader's 32-tap unroll.
-		for (const FMixtormatLayerChild& BlurChild : Layer.Children)
+		GatherOwnedBlurs(Layer, SourceChildIndex, MaskData.Blurs);
+		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
 		{
-			if (BlurChild.Type != EMixtormatLayerChildType::Blur
-				|| BlurChild.ScopeOwnerChildId != LayerChild.ChildId
-				|| !BlurChild.Blur.bEnabled)
-			{
-				continue;
-			}
-			MaskData.BlurRadiusX += BlurChild.Blur.RadiusX;
-			MaskData.BlurRadiusY += BlurChild.Blur.RadiusY;
-		}
-		MaskData.BlurRadiusX = FMath::Min(MaskData.BlurRadiusX, 32.0f);
-		MaskData.BlurRadiusY = FMath::Min(MaskData.BlurRadiusY, 32.0f);
-		// Gathered in the order they appear, and kept as a list rather than reduced: each
-		// one narrows what the one before it left, so two of them are not one of anything.
-		for (const FMixtormatLayerChild& CurvatureChild : Layer.Children)
-		{
+			const FMixtormatLayerChild& CurvatureChild = Layer.Children[Index];
 			if (CurvatureChild.Type != EMixtormatLayerChildType::Curvature
-				|| CurvatureChild.ScopeOwnerChildId != LayerChild.ChildId
-				|| !CurvatureChild.Curvature.KeepsAnything())
+				|| MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index) != SourceChildIndex
+				|| !CurvatureChild.Curvature.bEnabled)
 			{
 				continue;
 			}
-			MaskData.CurvatureFilters.Add(CurvatureChild.Curvature);
+			FMaskCurvatureRenderData& Filter = MaskData.CurvatureFilters.AddDefaulted_GetRef();
+			static_cast<FMixtormatMaskCurvature&>(Filter) = CurvatureChild.Curvature;
+			GatherOwnedBlurs(Layer, Index, Filter.Blurs);
+			if (!Filter.KeepsAnything() && Filter.Blurs.IsEmpty())
+			{
+				MaskData.CurvatureFilters.Pop();
+			}
 		}
 		if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
 		{

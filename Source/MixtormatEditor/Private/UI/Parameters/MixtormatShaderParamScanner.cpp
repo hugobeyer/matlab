@@ -159,6 +159,8 @@ namespace MixtormatShaderParamScanner
 		// Generator payload shaders carry Generator-owned parameter names. The Behavior flow
 		// solve shader's parameters live on FMixtormatBehaviorFlowSettings. The composite is the
 		// one Layer-owned shader.
+		// Shared Gaussian Radius/Amount uniforms also serve internal smoothing, so they carry
+		// no authored @param tags and must not be assigned a Blur owner by shader filename.
 		static const TCHAR* const GeneratorShaders[] =
 		{
 			TEXT("MixtormatCracks.usf"),

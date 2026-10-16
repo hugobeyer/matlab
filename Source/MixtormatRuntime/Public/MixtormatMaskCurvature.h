@@ -13,10 +13,9 @@ enum class EMixtormatCurvatureSource : uint8
 	// a mask to the shape of what it is being laid onto: the rim of a rivet already in the
 	// surface, the inside of a panel gap.
 	Height = 0 UMETA(DisplayName = "Surface Height"),
-	// The mask itself, as it stands at this point in the chain: placed, shaped, and blurred if a
-	// Blur precedes this. Keeps a mask to the shape of its own silhouette -- its corners, the
-	// pinches in it, the edges of the blobs it is made of. Pair it with a Blur, which is what
-	// turns a hard painted edge into something that has curvature to measure at all.
+	// The mask's placed/shaped coverage, including completed earlier Curvature filters.
+	// Blur nested under this node filters its finished result, not this input.
+	// Mask-owned Blur runs on the completed coverage before merge.
 	Mask = 1 UMETA(DisplayName = "Mask Itself")
 };
 

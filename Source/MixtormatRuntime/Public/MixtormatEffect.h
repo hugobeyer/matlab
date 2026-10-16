@@ -40,10 +40,7 @@ enum class EMixtormatEffectType : uint8
 	WornEdges = 5 UMETA(DisplayName = "Worn Edges"),
 	// Appended: serialized recipes store this enum by value.
 	FlowWarp = 6 UMETA(DisplayName = "Flow Warp"),
-	// The mask blur turned outward: that one softens a mask, this softens the surface the
-	// stack has built. A Filter, because it wants the composited result rather than the
-	// effect data target -- and being an Effect is what lets a mask be scoped under it.
-	LayerBlur = 7 UMETA(DisplayName = "Layer Blur"),
+
 	// The cheap procedural answer to Wet Stain for vertical runoff: streaks, mineral buildup and
 	// dirt under ledges. Where Stain transports liquid over tens of ping-ponged iterations,
 	// Runoff smears one prepared source field along gravity with a directional Gaussian and
@@ -54,24 +51,6 @@ enum class EMixtormatEffectType : uint8
 	Runoff = 8 UMETA(DisplayName = "Runoff")
 };
 
-UENUM(BlueprintType)
-enum class EMixtormatLayerBlurScope : uint8
-{
-	// Gated by layer coverage multiplied by the independently evaluated scoped mask chain.
-	//
-	// It does not isolate this layer's contribution, and the name used to imply that it did. By
-	// the time a Filter runs there is one surface target holding the whole accumulated stack, so
-	// what gets blurred inside the coverage is that composite -- including whatever of the layers
-	// beneath shows through wherever this layer is not fully opaque. A layer with no mask at all
-	// has full coverage, which is white, so this blurs everything.
-	//
-	// Isolating the layer would mean blurring before the composite merges it, which is a
-	// different insertion point than a Filter has.
-	Layer = 0 UMETA(DisplayName = "Layer Coverage"),
-	// Ungated by layer coverage: softens the whole accumulated surface. A scoped mask child still
-	// gates it, which is how this becomes a lens blur over a chosen region.
-	Composite = 1 UMETA(DisplayName = "Whole Composite")
-};
 
 // How a Breakup family combines with the one coarser than it. The three are the standard CSG
 // set on a signed distance field, so they compose the way an artist expects: union adds fragments,
@@ -106,7 +85,7 @@ inline EMixtormatEffectClass MixtormatEffectClassOf(const EMixtormatEffectType T
 	case EMixtormatEffectType::Breakup:
 	case EMixtormatEffectType::WornEdges:
 	case EMixtormatEffectType::FlowWarp:
-	case EMixtormatEffectType::LayerBlur:
+
 	case EMixtormatEffectType::Runoff:
 		return EMixtormatEffectClass::Filter;
 	default:
@@ -1007,27 +986,4 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerEffect
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flow Warp|Output")
 	EMixtormatFlowWarpBlendMode FlowWarpBlendMode = EMixtormatFlowWarpBlendMode::Replace;
 
-	// ---- Layer Blur ------------------------------------------------------------------
-	// Per axis, like the mask blur, and for the same reasons: the shader runs a dispatch per
-	// direction so a zero radius costs nothing, an unequal pair is anisotropic, and each axis
-	// can be driven on its own where a direction enum could not be driven at all.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius X", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
-	float LayerBlurRadiusX = 4.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Radius Y", UIMin = "0.0", UIMax = "32.0", Delta = "0.1"))
-	float LayerBlurRadiusY = 4.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur")
-	EMixtormatLayerBlurScope LayerBlurScope = EMixtormatLayerBlurScope::Layer;
-
-	// Lerped against the unblurred source, so 0 is the identity and the pass is skipped
-	// outright rather than paying for a dispatch that reproduces its own input.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float LayerBlurAmount = 1.0f;
-
-	// Height last, and optional, because it is the one channel where softening changes what
-	// the surface *is* rather than how it looks: the height feeds displacement, the height
-	// blend between layers, and the normals derived from it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Layer Blur", meta = (DisplayName = "Blur Height"))
-	bool bLayerBlurHeight = true;
 };

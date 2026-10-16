@@ -53,6 +53,9 @@ namespace MixtormatChildScope
 	// any child changed.
 	MIXTORMATRUNTIME_API bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children);
 
+	// Executable typed Blur owners. Broader owners are enabled alongside their dispatch.
+	MIXTORMATRUNTIME_API bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child);
+
 	// Who may have a Mask child scoped underneath. Gather and Editor both call this.
 	MIXTORMATRUNTIME_API bool CanOwnScopedMasks(const FMixtormatLayerChild& Child);
 }

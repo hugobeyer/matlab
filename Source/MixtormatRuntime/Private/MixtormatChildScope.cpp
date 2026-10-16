@@ -326,6 +326,12 @@ namespace MixtormatChildScope
 		return Result;
 	}
 
+	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Mask
+			|| Child.Type == EMixtormatLayerChildType::Curvature;
+	}
+
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		switch (Child.Type)

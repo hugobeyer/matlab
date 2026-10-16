@@ -93,9 +93,16 @@ namespace
 			Add(ET::Effect, TEXT("GradeGamma"), {});
 			Add(ET::Effect, TEXT("GradeTonemapStrength"), {});
 
-			// ---- Layer Blur. Kernel radius is a real tap budget: 32 is the pass allocation.
-			Add(ET::Effect, TEXT("LayerBlurRadiusX"), {});
-			Add(ET::Effect, TEXT("LayerBlurRadiusY"), {});
+			// ---- Authored Blur. Zero radius is identity; support has no fixed upper cap.
+			FMixtormatParameterContract BlurRadius;
+			BlurRadius.HardMin = 0.0f;
+			Add(ET::Blur, TEXT("RadiusX"), BlurRadius);
+			Add(ET::Blur, TEXT("RadiusY"), BlurRadius);
+			FMixtormatParameterContract BlurAmount;
+			BlurAmount.HardMin = 0.0f;
+			BlurAmount.HardMax = 1.0f;
+			Add(ET::Blur, TEXT("Amount"), BlurAmount);
+
 
 			// ---- Flow Warp.
 			Add(ET::Effect, TEXT("FlowWarpScale"), {});
@@ -250,6 +257,16 @@ namespace
 					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
 					Result.bFound = true;
 				}
+			}
+		}
+		else if (Owner == EMixtormatParameterOwnerType::Blur)
+		{
+			static const FMixtormatBlur Defaults;
+			if (const FFloatProperty* Property = FindFProperty<FFloatProperty>(
+				FMixtormatBlur::StaticStruct(), Parameter))
+			{
+				Result.Value = *Property->ContainerPtrToValuePtr<float>(&Defaults);
+				Result.bFound = true;
 			}
 		}
 		else if (Owner == EMixtormatParameterOwnerType::BoundaryId)

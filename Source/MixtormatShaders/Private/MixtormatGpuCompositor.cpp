@@ -1906,10 +1906,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			}
 
 
-			if (ResolvedType == EMixtormatEffectType::LayerBlur)
-			{
-				GatherLayerBlur(EffectData, LayerEffect);
-			}
 
 			if (ResolvedType == EMixtormatEffectType::FlowWarp)
 			{

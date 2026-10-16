@@ -936,9 +936,9 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildMaskBlurControls()
+TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 {
-	using namespace MixtormatMaskBlurRange;
+	using namespace MixtormatBlurRange;
 	const auto Blur = [this]() { return GetSelectedLayerBlur(); };
 
 	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
@@ -947,15 +947,42 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBlurControls()
 			return GetSelectedLayerBlur() ? EVisibility::Visible : EVisibility::Collapsed;
 		});
 
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatMaskBlur>(
-			LOCTEXT("MaskBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatMaskBlur::RadiusX,
+	TSharedRef<SVerticalBox> Footprint = AddCard(Panel, LOCTEXT("BlurFootprintCard", "FOOTPRINT"));
+	AddSliderRow(Footprint, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatBlur>(
+			LOCTEXT("MaskBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatBlur::RadiusX,
 			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
-			LOCTEXT("MaskBlurRadiusXHint", "Horizontal softening of the mask this sits under, in texels at the composition resolution. Zero skips the pass entirely rather than running a one-tap identity, so X alone smears sideways and leaves verticals crisp.")),
-		MakeMemberSlider<FMixtormatMaskBlur>(
-			LOCTEXT("MaskBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatMaskBlur::RadiusY,
+			LOCTEXT("MaskBlurRadiusXHint", "Horizontal softening of the owner's output, in texels at the composition resolution. Zero skips this axis; X alone softens horizontally.")),
+		MakeMemberSlider<FMixtormatBlur>(
+			LOCTEXT("MaskBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatBlur::RadiusY,
 			RadiusMin, RadiusMax, RadiusDefault, SnapDelta,
-			LOCTEXT("MaskBlurRadiusYHint", "Vertical softening, in the same units. Equal to Radius X this is an ordinary Gaussian; unequal it is anisotropic. Both at zero and the node does nothing."))));
+			LOCTEXT("MaskBlurRadiusYHint", "Vertical softening in composition texels. Equal radii give an ordinary Gaussian; unequal radii are anisotropic. Both at zero leave the input unchanged."))));
+
+	TSharedRef<SVerticalBox> AmountPanel = AddCard(Panel, LOCTEXT("BlurAmountCard", "AMOUNT"));
+	AddSliderRow(AmountPanel, MakeMemberSlider<FMixtormatBlur>(
+		LOCTEXT("BlurAmountLabel", "Amount"), Blur, &FMixtormatBlur::Amount,
+		AmountMin, AmountMax, AmountDefault, AmountSnapDelta,
+		LOCTEXT("BlurAmountHint", "How much of the completed two-axis filter replaces the original input. Zero keeps the input unchanged; one uses the fully filtered result.")));
+
+	TSharedRef<SVerticalBox> ChannelsPanel = SNew(SVerticalBox)
+		.Visibility_Lambda([this]()
+		{
+			const FMixtormatChildAddress Address = GetSelectedChildAddress();
+			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+			return Address.OwnerType == EMixtormatChildOwnerType::Layer
+				&& Child && Child->Type == EMixtormatLayerChildType::Blur
+				&& !Child->ScopeOwnerChildId.IsValid()
+				? EVisibility::Visible : EVisibility::Collapsed;
+		});
+	Panel->AddSlot().AutoHeight()[ChannelsPanel];
+	TSharedRef<SVerticalBox> Channels = AddCard(ChannelsPanel, LOCTEXT("BlurChannelsCard", "CHANNELS"));
+	AddSliderRow(Channels, MixtormatRow::MakePair(
+		MakeMemberToggle<FMixtormatBlur>(
+			LOCTEXT("BlurAppearanceLabel", "Appearance"), Blur, &FMixtormatBlur::bAppearance,
+			LOCTEXT("BlurAppearanceHint", "Filters this layer's finished Base Color, Normal and RAM at the end of its own rail, before merging with the stack.")),
+		MakeMemberToggle<FMixtormatBlur>(
+			LOCTEXT("BlurHeightLabel", "Height"), Blur, &FMixtormatBlur::bHeight,
+			LOCTEXT("BlurHeightHint", "Filters this layer's finished Height at the end of its own rail. Height affects displacement, layer blending and derived normals."))));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]()

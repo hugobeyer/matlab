@@ -179,7 +179,7 @@ namespace MixtormatLayerBadges
 		case EMixtormatEffectType::Breakup:   return LOCTEXT("EffectBadgeBreakup", "BREAK");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("EffectBadgeWorn", "WORN");
 		case EMixtormatEffectType::FlowWarp:  return LOCTEXT("EffectBadgeFlowWarp", "WARP");
-		case EMixtormatEffectType::LayerBlur: return LOCTEXT("EffectBadgeLayerBlur", "BLUR");
+
 		case EMixtormatEffectType::Runoff:    return LOCTEXT("EffectBadgeRunoff", "RUNOFF");
 		default:                              return LOCTEXT("EffectBadgePeel", "PEEL");
 		}
@@ -273,8 +273,7 @@ namespace MixtormatLayerBadges
 		}
 		if (Child.Type == EMixtormatLayerChildType::Blur)
 		{
-			// No blend mode: a blur reshapes the mask it is scoped to rather than joining the
-			// chain, so the slot names which axes are running instead.
+			// Blur filters its owner's output; the badge names the active axes, not a blend mode.
 			const bool bX = Child.Blur.RadiusX > 0.0f;
 			const bool bY = Child.Blur.RadiusY > 0.0f;
 			if (bX && bY)

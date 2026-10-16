@@ -583,49 +583,6 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildLayerBlurControls()
-{
-	const auto Blur = [this]() { return GetSelectedLayerBlurEffect(); };
-
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatLayerEffect>(
-		LOCTEXT("LayerBlurScopeLabel", "Scope"), Blur, &FMixtormatLayerEffect::LayerBlurScope,
-		LOCTEXT("LayerBlurScopeHint", "Blurs the accumulated composite. Layer Coverage intersects layer coverage with scoped masks. Whole Composite uses scoped masks only, or affects everything when none are present.")));
-
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayerEffect>(
-			LOCTEXT("LayerBlurRadiusXLabel", "Radius X"), Blur, &FMixtormatLayerEffect::LayerBlurRadiusX,
-			0.0, 32.0, 4.0, 0.1,
-			LOCTEXT("LayerBlurRadiusXHint", "Horizontal softening in texels at the composition resolution. Zero skips the pass for that axis rather than running a one-tap identity, so X alone smears sideways and leaves verticals crisp.")),
-		MakeMemberSlider<FMixtormatLayerEffect>(
-			LOCTEXT("LayerBlurRadiusYLabel", "Radius Y"), Blur, &FMixtormatLayerEffect::LayerBlurRadiusY,
-			0.0, 32.0, 4.0, 0.1,
-			LOCTEXT("LayerBlurRadiusYHint", "Vertical softening, same units. Equal to Radius X this is an ordinary Gaussian; unequal it is anisotropic."))));
-
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatLayerEffect>(
-			LOCTEXT("LayerBlurAmountLabel", "Amount"), Blur, &FMixtormatLayerEffect::LayerBlurAmount,
-			0.0, 1.0, 1.0, 0.01,
-			LOCTEXT("LayerBlurAmountHint", "Lerps against the unblurred surface, so zero returns exactly what it read and the passes are skipped outright.")),
-		MakeMemberToggle<FMixtormatLayerEffect>(
-			LOCTEXT("LayerBlurHeightLabel", "Blur Height"), Blur, &FMixtormatLayerEffect::bLayerBlurHeight,
-			LOCTEXT("LayerBlurHeightHint", "Includes height in the blur. Off by preference when you want the surface to look softer without becoming softer: height feeds displacement, the height blend between layers, and the normals derived from it, so softening it changes what the surface is rather than only how it reads."))));
-
-	return SNew(SBox)
-		.Visibility_Lambda([this]()
-		{
-			return GetSelectedLayerBlurEffect() ? EVisibility::Visible : EVisibility::Collapsed;
-		})
-		[
-			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("LayerBlurHeading", "LAYER BLUR"))
-			.InitiallyExpanded(true)
-			[
-				Panel
-			]
-		];
-}
 
 TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 {

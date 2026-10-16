@@ -1602,6 +1602,7 @@ FReply SMixtormat::AddMaskFilterToGroupChild(
 		return FReply::Handled();
 	}
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Group->Children[InsertAt]);
+	ApplyLinkDefaults(Group->Children[InsertAt], GroupId);
 	// The insert index, not the appended default: a filter lands inside its owner's subtree, which
 	// is nowhere near the end of the stack.
 	FinishGroupChildEdit(GroupId, InsertAt);
@@ -2567,15 +2568,11 @@ FReply SMixtormat::AddLayerBlurToLayer(const int32 LayerIndex)
 
 	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
-	Child.Type = EMixtormatLayerChildType::Effect;
-	Child.Effect.ProceduralType = EMixtormatEffectType::LayerBlur;
+	Child.Type = EMixtormatLayerChildType::Blur;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	ApplyLinkDefaults(Child, Layer.LayerId);
-	SelectedLayerIndex = LayerIndex;
-	SelectedEffectIndex = Layer.Children.Num() - 1;
-	SelectedMaskIndex = INDEX_NONE;
 	SetLayerExpanded(LayerIndex, true);
-	SyncSelectedLayerControls();
+	SelectWorkingChild(LayerIndex, Layer.Children.Num() - 1);
 	RefreshLayeredPreview();
 	RebuildLayerList();
 	return FReply::Handled();

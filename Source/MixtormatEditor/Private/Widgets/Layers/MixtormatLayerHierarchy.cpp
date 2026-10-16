@@ -1088,6 +1088,10 @@ FText SMixtormat::GetLayerChildSourceText(
 	}
 	if (!Child.ScopeOwnerChildId.IsValid())
 	{
+		if (Child.Type == EMixtormatLayerChildType::Blur)
+		{
+			return LOCTEXT("BlurLayerRailEnd", "END · LAYER");
+		}
 		return IsFlowWarp(Child)
 			? LOCTEXT("FlowWarpLayerTarget", "TARGET · LAYER")
 			: MixtormatLayerBadges::KindForChild(Child);
@@ -1137,7 +1141,9 @@ FText SMixtormat::GetLayerChildSourceText(
 	}
 	if (IsMaskFilter(Child))
 	{
-		return LOCTEXT("MaskFilterSource", "FILTER · MASK");
+		return Owner.Type == EMixtormatLayerChildType::Curvature
+			? LOCTEXT("CurvatureFilterSource", "FILTER · CURVATURE")
+			: LOCTEXT("MaskFilterSource", "FILTER · MASK");
 	}
 	return MixtormatLayerBadges::KindForChild(Child);
 }

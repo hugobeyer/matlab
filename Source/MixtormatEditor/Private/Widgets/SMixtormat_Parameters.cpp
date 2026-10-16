@@ -900,7 +900,7 @@ namespace
 
 		case EMixtormatLayerChildType::Behavior: return FMixtormatBehavior::StaticStruct();
 		case EMixtormatLayerChildType::IdGroup: return FMixtormatIdGroup::StaticStruct();
-		case EMixtormatLayerChildType::Blur: return FMixtormatMaskBlur::StaticStruct();
+		case EMixtormatLayerChildType::Blur: return FMixtormatBlur::StaticStruct();
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Struct(Child.Generator);

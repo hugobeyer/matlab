@@ -160,7 +160,7 @@ defaults. The obsolete shipped-effect texture importer has been removed.
 
 ## Masks
 
-- `MixtormatMask.h`, `MixtormatMaskShaping.h`, `MixtormatMaskBlur.h`,
+- `MixtormatMask.h`, `MixtormatMaskShaping.h`, `MixtormatBlur.h`,
   `MixtormatMaskCurvature.h` (Runtime).
 - Shared shaping block `FMixtormatMaskShaping` is embedded by every mask
   producer; shader maths is one `MixtormatShapeMask` in `MixtormatMaskOps.ush`.
@@ -180,6 +180,27 @@ defaults. The obsolete shipped-effect texture importer has been removed.
   The typed conversion takes precedence over legacy scalar aliases in `PublishedMaskOutputs`,
   which must not bypass signed-to-coverage conversion. Mask placement/shaping/blur run
   afterwards in the ordinary mask shader.
+
+### Owner-typed Blur — Mask integration checkpoint
+
+- Canonical `FMixtormatBlur` replaces the mask-only payload. Enabled, Radius X/Y,
+  Amount and future root-Layer channel flags live in `MixtormatBlur.h`.
+- Gather retains each direct Mask-owned Blur independently, in authored order;
+  radii no longer sum or clamp to a shared tap budget. Parameter contracts sanitize
+  non-finite values, nonnegative radii and Amount in [0,1].
+- Mask placement/shaping completes first; Curvature filters then complete in order,
+  each followed by its own nested Blur. Direct Mask Blurs post-filter the completed
+  coverage before merge. Sibling Blur/Curvature ordering does not select an operation rail.
+- Enabled zero-weight Curvature is identity but retains its nested Blur. Disabling
+  Curvature suppresses its subtree. Mask and post-Curvature Blur use the shared
+  typed Gaussian; the superseded Mask Blur shader/class are removed.
+- Blur supports scoped copy/paste and instances under Mask or Curvature; root paste
+  remains unavailable until Layer scheduling lands. Radius links work in layer/group
+  creation; instance resolution and reflected prefix hashing include the new payload.
+- Layer/Generator/Flow/effect-owned Blur scheduling and publication/source connections
+  remain pending. Existing LayerBlur Effect and Flow Feather are not migrated here.
+- Source review only for this checkpoint; the user confirmed the preceding shared
+  Gaussian/internal-smoothing checkpoint compiled. No new compile/runtime results claimed.
 
 ## IDs
 

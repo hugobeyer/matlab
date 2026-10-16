@@ -139,10 +139,15 @@ These contracts are source-reviewed only; no build/shader/runtime checks run.
   source format; scalar sources may be R16F or R32F.
 - Border Height smoothing, Height-mask smoothing and layer-input Height smoothing
   use this service. Border smoothing no longer clamps signed Height.
-- Authored Mask/Layer Blur and Height Feather have not yet migrated. Flow Feather
-  remains intentionally unchanged. Universal authored `FMixtormatBlur`, ordered
-  owner scheduling and UI/binding integration are still pending.
-- Source review only; no builds, shader compilation, runtime checks or tests run.
+- Authored Mask and post-Curvature Blur now use this service, with separate
+  ordered `FMixtormatBlur` payloads and per-module Amount. The old Mask Blur
+  shader and shader class are removed. Mask-owned Blur post-filters completed
+  coverage before merge; nested Curvature Blur never pre-filters its input.
+- Layer Blur and Height Feather have not yet migrated. Flow Feather remains
+  intentionally unchanged. Broader owner scheduling/publication is still pending.
+- User confirmed the preceding shared-Gaussian/internal-smoothing checkpoint
+  compiled. This Mask integration is source-reviewed only; no new build, shader
+  compilation, runtime checks or tests run.
 
 ## Erosion carve-depth solve
 

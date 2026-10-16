@@ -302,6 +302,11 @@ namespace MixtormatGpuCompositor
 		int32 FlowSteps = 16;
 	};
 
+	struct FMaskCurvatureRenderData : FMixtormatMaskCurvature
+	{
+		TArray<FMixtormatBlur, TInlineAllocator<2>> Blurs;
+	};
+
 	struct FMaskRenderData : FMixtormatMaskShaping
 	{
 		FTextureRHIRef Texture;
@@ -331,15 +336,11 @@ namespace MixtormatGpuCompositor
 		// EMixtormatLayerValueChannel by value for a Layer Values source, and 1 -- plain red --
 		// for a texture, which is the channel this shader has always read.
 		int32 SourceChannel = 1;
-		// Summed from every enabled Blur child scoped to this mask. Zero on an axis skips that
-		// dispatch. A node in the recipe, a number by the time it reaches here -- which is what
-		// lets the blur be driven and instanced without the pass code knowing it exists.
-		float BlurRadiusX = 0.0f;
-		float BlurRadiusY = 0.0f;
-		// Flattened from the Curvature children scoped to this mask, in chain order. Unlike the
-		// blur radii these do not sum: two curvature filters are two separate narrowings, applied
-		// one after the other, and collapsing them would change what they mean.
-		TArray<FMixtormatMaskCurvature, TInlineAllocator<2>> CurvatureFilters;
+		// Owner post-filters, independently applied in authored order before mask merge.
+		TArray<FMixtormatBlur, TInlineAllocator<2>> Blurs;
+		// Each Curvature owns its completed result and any nested Blur post-filters.
+		// These are not an interleaved Blur/Curvature sibling-operation rail.
+		TArray<FMaskCurvatureRenderData, TInlineAllocator<2>> CurvatureFilters;
 	};
 
 	struct FColorIdRenderData : FMixtormatMaskShaping
@@ -547,11 +548,7 @@ namespace MixtormatGpuCompositor
 		float EdgeWearIdSlope = 0.3f;
 		float EdgeWearIdStrength = 0.25f;
 		float EdgeWearIdNoise = 1.0f;
-		float LayerBlurRadiusX = 0.0f;
-		float LayerBlurRadiusY = 0.0f;
-		uint32 LayerBlurScope = 0;
-		float LayerBlurAmount = 1.0f;
-		bool bLayerBlurHeight = true;
+
 		float EdgeWearRoughnessWeight = 0.0f;
 		float EdgeWearRoughnessOffset = 0.0f;
 
@@ -1306,6 +1303,8 @@ namespace MixtormatGpuCompositor
 		bool bUseSourceF0 = false;
 		FTextureRHIRef Mask;
 		TArray<FChildRenderData> Children;
+		// Root Blur modules post-filter the isolated incoming surface before layer merge.
+		TArray<FMixtormatBlur, TInlineAllocator<2>> SurfaceBlurs;
 		FVector4f FillColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
 		float Opacity = 1.0f;
 		float Tiling = 1.0f;
@@ -1784,9 +1783,7 @@ namespace MixtormatGpuCompositor
 		TArray<FPendingCraquelureRelief, TInlineAllocator<2>> PendingCraquelureReliefs;
 		TArray<FPendingRampTilt, TInlineAllocator<2>> PendingRampTilts;
 		TArray<FPendingEffect, TInlineAllocator<2>> PendingGrades;
-		// Last of the filters, so it softens the finished surface rather than one a later
-		// filter was about to change.
-		TArray<FPendingEffect, TInlineAllocator<2>> PendingLayerBlurs;
+
 
 		explicit FMixtormatLayerPassContext(FMixtormatComposeContext& InCtx)
 			: Ctx(InCtx)
@@ -1826,7 +1823,7 @@ namespace MixtormatGpuCompositor
 			bGeneratorColor = false;
 			GeneratorFields.Reset();
 			GeneratorModuleHeights.Reset();
-			PendingLayerBlurs.Reset();
+
 		}
 	};
 
@@ -2115,14 +2112,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef EffectData,
 		FRDGTextureRef EffectHeight);
 
-	void QueuePendingLayerBlur(
-		FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer,
-		const FChildRenderData& Child,
-		const FEffectRenderData& Effect,
-		FRDGTextureRef FeatureMask);
-
-	void AddLayerBlurPasses(
+	void AddLayerSurfaceBlurPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer);

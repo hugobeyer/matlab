@@ -513,9 +513,7 @@ private:
 	const FMixtormatLayerEffect* GetSelectedFlowWarp() const;
 	FReply AddFlowWarpToLayer(int32 LayerIndex, int32 OwnerChildIndex = INDEX_NONE);
 	FReply AddLayerBlurToLayer(int32 LayerIndex);
-	FMixtormatLayerEffect* GetSelectedLayerBlurEffect();
-	const FMixtormatLayerEffect* GetSelectedLayerBlurEffect() const;
-	TSharedRef<SWidget> BuildLayerBlurControls();
+
 	TSharedRef<SWidget> BuildFlowWarpControls();
 
 	FReply ToggleLayerEffect(int32 LayerIndex, int32 EffectIndex);
@@ -1598,8 +1596,8 @@ private:
 	TSharedRef<SWidget> BuildLayerHeightOpMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildMaskContextMenu(int32 LayerIndex, int32 MaskIndex);
 	TSharedRef<SWidget> BuildBlurContextMenu(int32 LayerIndex, int32 ChildIndex);
-	FMixtormatMaskBlur* GetSelectedLayerBlur();
-	const FMixtormatMaskBlur* GetSelectedLayerBlur() const;
+	FMixtormatBlur* GetSelectedLayerBlur();
+	const FMixtormatBlur* GetSelectedLayerBlur() const;
 	// The mask picker grid, shared by adding and replacing -- the caller says what a pick means.
 	TSharedRef<SWidget> BuildMaskGallery(TFunction<void(const FSoftObjectPath&)> OnChosen);
 
@@ -1678,7 +1676,7 @@ private:
 	void AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel);
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
-	TSharedRef<SWidget> BuildMaskBlurControls();
+	TSharedRef<SWidget> BuildBlurControls();
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
 	TSharedRef<SWidget> BuildStainControls();
 	TSharedRef<SWidget> BuildRunoffControls();

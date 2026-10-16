@@ -299,6 +299,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			Payload.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
 		}
 		else if (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+			&& Payload.Type != EMixtormatLayerChildType::Blur
 			&& Payload.Type != EMixtormatLayerChildType::Behavior
 			&& DestContainer->IsValidIndex(AnchorChildIndex)
 			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
@@ -367,6 +368,20 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 	};
 
 
+	// A typed child target keeps Blur scoped. A container target creates a Layer-owned
+	// Blur at the end of that layer's rail; groups have no standalone surface to filter.
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Blur)
+	{
+		if (DestContainer->IsValidIndex(AnchorChildIndex)
+			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Clipboard.Payload))
+		{
+			return CanAddScopedChild(*DestContainer, AnchorChildIndex)
+				? ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true) : INDEX_NONE;
+		}
+		return Dest.OwnerType == EMixtormatChildOwnerType::Layer
+			? ValidateInsert(DestContainer->Num(), false) : INDEX_NONE;
+	}
+
 	// Behaviors may only be pasted underneath a Generator module. Do not
 	// allow a copied Behavior to become an invalid root row or a group child.
 	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
@@ -397,8 +412,8 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			return ValidateInsert(FindSubtreeEnd(*DestContainer, AnchorChildIndex), true);
 		}
 		// Ordinary copies are detached from instance identity; live output dependencies are
-		// checked below. A mask filter only ever travels scoped beneath the mask it filters
-		// and can never be pasted as a standalone row.
+		// checked below. Curvature still requires a Mask owner; Blur was handled above.
+		// Neither filter may be pasted as a standalone row.
 		if (IsMaskFilter(Clipboard.Payload))
 		{
 			return INDEX_NONE;
@@ -458,6 +473,14 @@ FText SMixtormat::GetChildPasteReason(
 			? LOCTEXT("PasteIntoIdGroupReady", "Add a live Region IDs source; the producer stays where it is.")
 			: LOCTEXT("PasteIntoIdGroupBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.");
 	}
+	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Blur)
+	{
+		return CanPasteChild(Dest, AnchorChildIndex)
+			? (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
+				? LOCTEXT("PasteBlurInstanceReady", "Place a live Blur instance on this layer or under the selected typed owner.")
+				: LOCTEXT("PasteBlurReady", "Place a Blur copy on this layer or under the selected typed owner."))
+			: LOCTEXT("PasteBlurOwner", "Requires a Layer container or a Mask/Curvature owner, available scope depth and valid source ordering. Group roots cannot own Blur.");
+	}
 	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
 	{
 		return CanPasteChild(Dest, AnchorChildIndex)
@@ -475,7 +498,7 @@ FText SMixtormat::GetChildPasteReason(
 	{
 		if (IsMaskFilter(Clipboard.Payload))
 		{
-			return LOCTEXT("PasteMaskFilterNotStandalone", "A Blur or Curvature only travels with the mask it filters.");
+			return LOCTEXT("PasteMaskFilterNotStandalone", "Curvature requires the mask it filters.");
 		}
 		return LOCTEXT("PasteReady", "Place a copy of what was copied.");
 	}
@@ -622,21 +645,8 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		Instance.ChildId = FGuid::NewGuid();
 		Instance.SourceLayerId = Clipboard.Source.OwnerId;
 		Instance.SourceChildId = Clipboard.Source.ChildId;
-		Instance.ScopeOwnerChildId.Invalidate();
-
-		if (DestContainer->IsValidIndex(AnchorChildIndex)
-			&& CanAddScopedChild(*DestContainer, AnchorChildIndex)
-			&& CanKeepScopedPlacement((*DestContainer)[AnchorChildIndex], Instance))
-		{
-			const int32 ScopedInsert = FindSubtreeEnd(*DestContainer, AnchorChildIndex);
-			// Same-container instances may have to remain below their source. Only attach when
-			// that ordering still permits a contiguous owner subtree.
-			if (FinalInsert <= ScopedInsert)
-			{
-				FinalInsert = ScopedInsert;
-				Instance.ScopeOwnerChildId = (*DestContainer)[AnchorChildIndex].ChildId;
-			}
-		}
+		// Keep the destination scope chosen by validation, never the source's owner.
+		Instance.ScopeOwnerChildId = ScopeOwnerChildId;
 		DestContainer->Insert(MoveTemp(Instance), FinalInsert);
 	}
 	else

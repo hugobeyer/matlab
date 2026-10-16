@@ -168,7 +168,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 				{
 					const FMixtormatChildAddress Address = GetSelectedChildAddress();
 					const FMixtormatLayerChild* Child = ResolveChildAt(Address);
-					if (!Child || Child->Type != EMixtormatLayerChildType::Mask)
+					if (!Child || !CanOwnScopedBlurs(*Child))
 					{
 						return BuildAddMasksMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex));
 					}
@@ -192,7 +192,8 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 									const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
 									AddMaskFilterToLayerChild(LayerIndex, ChildIndex, Type);
 								}
-							})).Enabled(bCanNest);
+							})).Enabled(bCanNest && (Type == EMixtormatLayerChildType::Blur
+								|| Child->Type == EMixtormatLayerChildType::Mask));
 					}
 					return Masks.Build();
 				})).Enabled(bLayer || ResolveChildAt(GetSelectedChildAddress()) != nullptr);
@@ -576,6 +577,16 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 			}))
 			.Enabled(TAttribute<bool>(bCanNestChild));
 		Menu.Separator();
+	}
+	if (Group && Group->Children.IsValidIndex(ChildIndex)
+		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Curvature)
+	{
+		Menu.Item(LOCTEXT("AddBlurToCurvatureContext", "Add Blur"), MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				AddMaskFilterToGroupChild(GroupId, ChildIndex, EMixtormatLayerChildType::Blur);
+			})).Enabled(CanAddScopedChild(Group->Children, ChildIndex)
+				&& !Group->Children[ChildIndex].IsInstance());
 	}
 	// Copy / Copy as Instance / Copy Output / Paste, and (for an instance) Go to Source / Break
 	// Instance / Replace Source / Copy Instance Reference -- the same rows a layer child's menus
@@ -1073,6 +1084,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddFromIdsMenu(const FMixtormatAddTarget Ta
 TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
+	Menu.Item(
+		LOCTEXT("AddRootBlur", "Blur"),
+		MixtormatIcons::Filter(),
+		FSimpleDelegate::CreateLambda([this, Target]() { AddLayerBlurToLayer(Target.LayerIndex); }))
+		.Enabled(!Target.IsGroup() && !Target.ScopeOwnerChildId.IsValid() && CanCreateChild(Target));
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		{ LOCTEXT("AddHsvFilterChild", "HSV From IDs"), EMixtormatChildCreation::HsvFromIds },
 		{ LOCTEXT("AddRampIdChild", "Ramp From IDs"), EMixtormatChildCreation::RampFromIds },
@@ -1299,10 +1315,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 		LOCTEXT("AddFlowWarpEffect", "Flow Warp · Targets Layer"),
 		MixtormatIcons::WarpStructural(),
 		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFlowWarpToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddLayerBlurEffect", "Layer Blur"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddLayerBlurToLayer(LayerIndex); }));
+
 	Menu.Item(
 		LOCTEXT("AddPeelingEffect", "Peeling"),
 		MixtormatIcons::Effect(),
@@ -1648,6 +1661,16 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 TSharedRef<SWidget> SMixtormat::BuildBlurContextMenu(const int32 LayerIndex, const int32 ChildIndex)
 {
 	MixtormatMenu::FBuilder Menu;
+	const FMixtormatLayerChild* Child = ResolveChild(LayerIndex, ChildIndex);
+	if (Child && Child->Type == EMixtormatLayerChildType::Curvature)
+	{
+		Menu.Item(LOCTEXT("AddBlurToCurvatureContext", "Add Blur"), MixtormatIcons::Mask(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex]()
+			{
+				AddBlurToMask(LayerIndex, ChildIndex);
+			})).Enabled(CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex)
+				&& !Child->IsInstance());
+	}
 	Menu.Item(
 		LOCTEXT("DuplicateBlurContext", "Duplicate"),
 		MixtormatIcons::Duplicate(),

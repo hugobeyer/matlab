@@ -21,11 +21,18 @@ existing Flow Feather functionality, including its current Flow Blur mode.**
 - Flow consumes separate validity, not packed Z; validity remains caller-owned.
 - Migrated internal border Height, Height-mask and layer-input Height smoothing.
   Signed border Height is no longer clamped; coverage clamps at final resolve.
-- Step 1 remains pending: no canonical authored `FMixtormatBlur` payload or
-  universal owner scheduling yet. Step 2 is partial; authored Blur and Height
-  Feather callers remain on their existing paths. Steps 3–6 are not complete.
-- Existing Flow Feather is untouched. Source review only; no build, shader
-  compilation, runtime checks or tests performed.
+- Canonical authored `FMixtormatBlur` now replaces the mask-only payload, with
+  Amount, parameter contracts/metadata, inspector and scoped copy/paste/instances.
+- Mask Blurs run independently in authored order on completed coverage before
+  merge. Curvature-owned Blurs post-filter each completed Curvature result.
+  The summed radii path and old Mask Blur shader/class are removed.
+- Step 1 remains partial: Layer/Generator/Flow/effect owners, root-Layer channels
+  and typed source/publication integration still need scheduling and UI work.
+  Step 2 is partial; LayerBlur Effect and Height Feather retain existing paths.
+  Steps 3–6 are not complete. Existing Flow Feather is untouched.
+- User confirmed the shared-Gaussian/internal-smoothing checkpoint compiled.
+  New authored-payload/Mask integration is source-reviewed only; no commands,
+  builds, shader compilation, runtime checks or tests performed by agents.
 
 ## Goal
 

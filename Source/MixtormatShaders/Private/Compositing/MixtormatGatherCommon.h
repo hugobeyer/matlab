@@ -6,6 +6,18 @@
 
 namespace MixtormatGpuCompositor
 {
+	inline FMixtormatBlur SanitizeBlur(const FMixtormatBlur& Source)
+	{
+		FMixtormatBlur Blur = Source;
+		Blur.RadiusX = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusX), Blur.RadiusX);
+		Blur.RadiusY = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusY), Blur.RadiusY);
+		Blur.Amount = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Amount), Blur.Amount);
+		return Blur;
+	}
+
 	inline bool IsIdGatherChild(const EMixtormatLayerChildType Type)
 	{
 		switch (Type)

@@ -38,7 +38,7 @@ namespace MixtormatLayersPrivate
 
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
 	{
-		return Child.Type == EMixtormatLayerChildType::Mask;
+		return MixtormatChildScope::CanOwnScopedBlurs(Child);
 	}
 
 	bool CanOwnFlowWarp(const FMixtormatLayerChild& Child)
@@ -786,9 +786,13 @@ namespace MixtormatLayersPrivate
 		{
 			return CanOwnScopedMasks(Owner);
 		}
-		if (IsMaskFilter(Child))
+		if (Child.Type == EMixtormatLayerChildType::Blur)
 		{
 			return CanOwnScopedBlurs(Owner);
+		}
+		if (Child.Type == EMixtormatLayerChildType::Curvature)
+		{
+			return Owner.Type == EMixtormatLayerChildType::Mask;
 		}
 		return IsFlowWarp(Child) && CanOwnFlowWarp(Owner);
 	}
@@ -1030,19 +1034,11 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::Blur:
 			// Equal radii are the ordinary Gaussian; the pair is anisotropic only on purpose.
 			LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Blur,
-				GET_MEMBER_NAME_CHECKED(FMixtormatMaskBlur, RadiusX),
-				GET_MEMBER_NAME_CHECKED(FMixtormatMaskBlur, RadiusY),
+				GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusX),
+				GET_MEMBER_NAME_CHECKED(FMixtormatBlur, RadiusY),
 				EMixtormatParameterValueType::Float);
 			break;
-		case EMixtormatLayerChildType::Effect:
-			if (Child.Effect.ProceduralType == EMixtormatEffectType::LayerBlur)
-			{
-				LinkChildPair(Child, ContainerId, EMixtormatParameterOwnerType::Effect,
-					GET_MEMBER_NAME_CHECKED(FMixtormatLayerEffect, LayerBlurRadiusX),
-					GET_MEMBER_NAME_CHECKED(FMixtormatLayerEffect, LayerBlurRadiusY),
-					EMixtormatParameterValueType::Float);
-			}
-			break;
+
 		default:
 			break;
 		}
@@ -1517,7 +1513,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 			case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 			case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
-		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 			case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 			default:                            return LOCTEXT("ErosionEffectName", "Erosion");
 			}
@@ -1533,7 +1528,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 		case EMixtormatEffectType::Breakup: return LOCTEXT("BreakupEffectName", "Breakup");
 		case EMixtormatEffectType::WornEdges: return LOCTEXT("WornEdgesEffectName", "Worn Edges");
 		case EMixtormatEffectType::FlowWarp: return LOCTEXT("FlowWarpEffectName", "Flow Warp");
-		case EMixtormatEffectType::LayerBlur: return LOCTEXT("LayerBlurEffectName", "Layer Blur");
 		case EMixtormatEffectType::Runoff:  return LOCTEXT("RunoffEffectName", "Runoff");
 		default:                            return LOCTEXT("ProceduralPeelName", "Peeling");
 		}
@@ -1660,8 +1654,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	}
 	if (Child.Type == EMixtormatLayerChildType::Blur)
 	{
-		// Named for what it does rather than for the mask it is on: the row sits indented under
-		// that mask already, so repeating its name would be the only thing on the line.
+
 		return LOCTEXT("BlurChildName", "Blur");
 	}
 	if (Child.Type == EMixtormatLayerChildType::Curvature)
@@ -1853,7 +1846,7 @@ const FMixtormatMaskCurvature* SMixtormat::GetSelectedLayerCurvature() const
 	return Child.Type == EMixtormatLayerChildType::Curvature ? &Child.Curvature : nullptr;
 }
 
-FMixtormatMaskBlur* SMixtormat::GetSelectedLayerBlur()
+FMixtormatBlur* SMixtormat::GetSelectedLayerBlur()
 {
 	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
 	{
@@ -1863,7 +1856,7 @@ FMixtormatMaskBlur* SMixtormat::GetSelectedLayerBlur()
 	return Child.Type == EMixtormatLayerChildType::Blur ? &Child.Blur : nullptr;
 }
 
-const FMixtormatMaskBlur* SMixtormat::GetSelectedLayerBlur() const
+const FMixtormatBlur* SMixtormat::GetSelectedLayerBlur() const
 {
 	if (!ResolveChild(SelectedLayerIndex, SelectedMaskIndex))
 	{
@@ -2692,23 +2685,6 @@ const FMixtormatLayerEffect* SMixtormat::GetSelectedFlowWarp() const
 		: nullptr;
 }
 
-FMixtormatLayerEffect* SMixtormat::GetSelectedLayerBlurEffect()
-{
-	FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-	return Effect && Effect->Effect.IsNull()
-		&& Effect->ProceduralType == EMixtormatEffectType::LayerBlur
-		? Effect
-		: nullptr;
-}
-
-const FMixtormatLayerEffect* SMixtormat::GetSelectedLayerBlurEffect() const
-{
-	const FMixtormatLayerEffect* Effect = GetSelectedLayerEffect();
-	return Effect && Effect->Effect.IsNull()
-		&& Effect->ProceduralType == EMixtormatEffectType::LayerBlur
-		? Effect
-		: nullptr;
-}
 
 FMixtormatLayerEffect* SMixtormat::GetSelectedProceduralPeel()
 {

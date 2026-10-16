@@ -179,14 +179,7 @@ void GatherBreakup(FEffectRenderData& EffectData, const FMixtormatLayerEffect& L
 		EffectInt(TEXT("BreakupSeed"), LayerEffect.BreakupSeed));
 }
 
-void GatherLayerBlur(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect)
-{
-	EffectData.LayerBlurRadiusX = EffectFloat(TEXT("LayerBlurRadiusX"), LayerEffect.LayerBlurRadiusX);
-	EffectData.LayerBlurRadiusY = EffectFloat(TEXT("LayerBlurRadiusY"), LayerEffect.LayerBlurRadiusY);
-	EffectData.LayerBlurScope = static_cast<uint32>(LayerEffect.LayerBlurScope);
-	EffectData.LayerBlurAmount = EffectFloat(TEXT("LayerBlurAmount"), LayerEffect.LayerBlurAmount);
-	EffectData.bLayerBlurHeight = LayerEffect.bLayerBlurHeight;
-}
+
 
 void GatherFlowWarp(FEffectRenderData& EffectData, const FMixtormatLayerEffect& LayerEffect)
 {
