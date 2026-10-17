@@ -985,6 +985,27 @@ namespace MixtormatGpuCompositor
 		float HeightToUV = 1.0f;
 	};
 
+	struct FRootNetworkRenderData
+	{
+		uint32 Seed = 1;
+		int32 Trunks = 4;
+		int32 Attractors = 512;
+		int32 Iterations = 24;
+		float StepLength = 0.035f;
+		float InfluenceRadius = 0.14f;
+		float KillDistance = 0.025f;
+		float BranchSpread = 0.45f;
+		float DirectionInertia = 0.60f;
+		float CurlStrength = 0.20f;
+		int32 CurlScale = 4;
+		float BaseRadius = 0.022f;
+		float TipTaper = 0.80f;
+		float JunctionSmooth = 0.35f;
+		float ProfileFlatness = 0.20f;
+		float WeaveAmount = 0.30f;
+		uint64 FieldKey = 0;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
@@ -998,6 +1019,7 @@ namespace MixtormatGpuCompositor
 		FPebblesRenderData Pebbles;
 		FCliffStrataRenderData CliffStrata;
 		FBooleanOpsRenderData BooleanOps;
+		FRootNetworkRenderData RootNetwork;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a

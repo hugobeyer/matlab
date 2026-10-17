@@ -301,6 +301,42 @@ namespace MixtormatGpuCompositor
 		Out.HeightToUV = FMath::Max(Out.HeightToUV, 0.00001f);
 		break;
 	}
+	case EMixtormatGeneratorType::RootNetwork:
+	{
+		const FMixtormatRootNetwork& Root = Generator.RootNetwork;
+		const FMixtormatRootNetwork Defaults;
+		FRootNetworkRenderData& Out = ChildData.Generator.RootNetwork;
+		const auto Finite = [](const float Value, const float Fallback)
+		{
+			return FMath::IsFinite(Value) ? Value : Fallback;
+		};
+		ChildData.Generator.bNormalizeHeight = Root.bRootNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(Root.RootHeightScale, Defaults.RootHeightScale);
+		Out.Seed = static_cast<uint32>(FMath::Max(Root.RootSeed, 0));
+		Out.Trunks = FMath::Clamp(Root.RootTrunks, 1, 32);
+		Out.Attractors = FMath::Clamp(Root.RootAttractors, 16, 4096);
+		Out.Iterations = FMath::Clamp(Root.RootIterations, 1, 64);
+		Out.StepLength = FMath::Clamp(Finite(Root.RootStepLength, Defaults.RootStepLength), 0.005f, 0.25f);
+		Out.InfluenceRadius = FMath::Clamp(Finite(Root.RootInfluenceRadius, Defaults.RootInfluenceRadius), 0.01f, 0.50f);
+		Out.KillDistance = FMath::Clamp(Finite(Root.RootKillDistance, Defaults.RootKillDistance), 0.002f, 0.25f);
+		Out.BranchSpread = FMath::Clamp(Finite(Root.RootBranchSpread, Defaults.RootBranchSpread), 0.0f, 1.0f);
+		Out.DirectionInertia = FMath::Clamp(Finite(Root.RootDirectionInertia, Defaults.RootDirectionInertia), 0.0f, 0.98f);
+		Out.CurlStrength = FMath::Clamp(Finite(Root.RootCurlStrength, Defaults.RootCurlStrength), 0.0f, 2.0f);
+		Out.CurlScale = FMath::Clamp(Root.RootCurlScale, 1, 32);
+		Out.BaseRadius = FMath::Clamp(Finite(Root.RootBaseRadius, Defaults.RootBaseRadius), 0.002f, 0.15f);
+		Out.TipTaper = FMath::Clamp(Finite(Root.RootTipTaper, Defaults.RootTipTaper), 0.0f, 1.0f);
+		Out.JunctionSmooth = FMath::Clamp(Finite(Root.RootJunctionSmooth, Defaults.RootJunctionSmooth), 0.0f, 1.0f);
+		Out.ProfileFlatness = FMath::Clamp(Finite(Root.RootProfileFlatness, Defaults.RootProfileFlatness), 0.0f, 1.0f);
+		Out.WeaveAmount = FMath::Clamp(Finite(Root.RootWeaveAmount, Defaults.RootWeaveAmount), 0.0f, 1.0f);
+		if (bCacheLayers)
+		{
+			MixtormatComposeHash::FHasher Hasher;
+			Hasher.SkipTopLevel = {TEXT("RootHeightScale"), TEXT("bRootNormalizeHeight")};
+			Hasher.Struct(FMixtormatRootNetwork::StaticStruct(), &Root);
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x526F6F744E657431ull) | 1ull;
+		}
+		break;
+	}
 	case EMixtormatGeneratorType::Noise:
 	{
 		// A field producer: the gather only resolves the settings and hands them to the pass.
@@ -369,6 +405,13 @@ namespace MixtormatGpuCompositor
 			{
 				ChildData.Generator.CliffStrata.FieldKey = MixtormatComposeHash::Combine(
 					ChildData.Generator.CliffStrata.FieldKey, PlacementKey) | 1ull;
+			}
+			break;
+		case EMixtormatGeneratorType::RootNetwork:
+			if (ChildData.Generator.RootNetwork.FieldKey != 0)
+			{
+				ChildData.Generator.RootNetwork.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.RootNetwork.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		default:
