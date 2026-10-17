@@ -1010,6 +1010,18 @@ namespace MixtormatGpuCompositor
 		float AzimuthStrength = 0.0f;
 		float SwirlStrength = 0.0f;
 		float AxisRatio = 1.0f;
+		bool bUseRadiusCurve = false;
+		uint32 RadiusCurveCount = 0;
+		uint32 RadiusCurveInterpolation = 0;
+		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> RadiusCurvePoints;
+		bool bUseBurialCurve = false;
+		uint32 BurialCurveCount = 0;
+		uint32 BurialCurveInterpolation = 0;
+		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> BurialCurvePoints;
+		float RootUVScaleU = 1.0f;
+		float RootUVScaleV = 1.0f;
+		float RootUVOffsetU = 0.0f;
+		float RootUVOffsetV = 0.0f;
 		uint64 FieldKey = 0;
 	};
 

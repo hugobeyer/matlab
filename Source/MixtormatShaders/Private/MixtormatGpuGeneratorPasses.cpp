@@ -491,6 +491,18 @@ public:
 		SHADER_PARAMETER(float, AzimuthStrength)
 		SHADER_PARAMETER(float, SwirlStrength)
 		SHADER_PARAMETER(float, AxisRatio)
+		SHADER_PARAMETER(uint32, UseRadiusCurve)
+		SHADER_PARAMETER(uint32, RadiusCurveCount)
+		SHADER_PARAMETER(uint32, RadiusCurveInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, RadiusCurvePoints, [FMixtormatScalarRamp::MaxPoints])
+		SHADER_PARAMETER(uint32, UseBurialCurve)
+		SHADER_PARAMETER(uint32, BurialCurveCount)
+		SHADER_PARAMETER(uint32, BurialCurveInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, BurialCurvePoints, [FMixtormatScalarRamp::MaxPoints])
+		SHADER_PARAMETER(float, RootUVScaleU)
+		SHADER_PARAMETER(float, RootUVScaleV)
+		SHADER_PARAMETER(float, RootUVOffsetU)
+		SHADER_PARAMETER(float, RootUVOffsetV)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootNode>, RWNodeBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootSegment>, RWSegmentBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootAttractor>, RWAttractorBuffer)
@@ -2040,9 +2052,29 @@ namespace
 				if (!MixtormatNoiseRenderStore().Find(
 					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)
 					|| (!Noise.bWriteFlow && !Noise.bWriteHeight)) { continue; }
+				FRDGTextureRef ParentUV = nullptr;
+				if (const FPublishedField* RootUVField = Ctx.PublishedFieldOutputs.Find(
+					PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("RootUV")))))
+				{
+					if (RootUVField->IsComplete() && RootUVField->Kind == EMixtormatPublishedFieldKind::UVMap)
+					{
+						ParentUV = RootUVField->Texture;
+					}
+				}
+				if (!ParentUV)
+				{
+					if (const FPublishedField* WarpedField = Ctx.PublishedFieldOutputs.Find(
+						PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("WarpedUV")))))
+					{
+						if (WarpedField->IsComplete() && WarpedField->Kind == EMixtormatPublishedFieldKind::UVMap)
+						{
+							ParentUV = WarpedField->Texture;
+						}
+					}
+				}
 				FGeneratorBundle ScopedBundle;
 				AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &ScopedBundle,
-					nullptr, Module.Height);
+					ParentUV, Module.Height);
 				// Scoped Noise generators are evaluated inside their parent's Behavior
 				// chain, not in the outer generator loop. Apply their own Feather
 				// children here before height composition and Flow consumption.
@@ -2117,7 +2149,7 @@ namespace
 					const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 					FRDGTextureRef HeightMask = bMask
 						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-						: nullptr;
+						: (Owner.Generator.Type == EMixtormatGeneratorType::RootNetwork ? Module.Coverage : nullptr);
 					ScopedBundle.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder,
 						ScopedBundle.Height, Size, Child.Generator.bNormalizeHeight,
 						Child.Generator.HeightScale, Child.Generator.HeightBias, true, HeightMask,
@@ -3471,6 +3503,24 @@ namespace
 			P->AzimuthStrength = Root.AzimuthStrength;
 			P->SwirlStrength = Root.SwirlStrength;
 			P->AxisRatio = Root.AxisRatio;
+			P->UseRadiusCurve = Root.bUseRadiusCurve ? 1u : 0u;
+			P->RadiusCurveCount = Root.RadiusCurveCount;
+			P->RadiusCurveInterpolation = Root.RadiusCurveInterpolation;
+			for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+			{
+				P->RadiusCurvePoints[Index] = Root.RadiusCurvePoints[Index];
+			}
+			P->UseBurialCurve = Root.bUseBurialCurve ? 1u : 0u;
+			P->BurialCurveCount = Root.BurialCurveCount;
+			P->BurialCurveInterpolation = Root.BurialCurveInterpolation;
+			for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+			{
+				P->BurialCurvePoints[Index] = Root.BurialCurvePoints[Index];
+			}
+			P->RootUVScaleU = Root.RootUVScaleU;
+			P->RootUVScaleV = Root.RootUVScaleV;
+			P->RootUVOffsetU = Root.RootUVOffsetU;
+			P->RootUVOffsetV = Root.RootUVOffsetV;
 		};
 
 		constexpr int32 SlotCount = 7;
@@ -3487,7 +3537,7 @@ namespace
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			// RootNet3: invalidate fields built with old sweep or without UV/Across outputs.
 			const uint64 NodeKey = NodeCache && !Child.PreUV && Root.FieldKey != 0
-				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657434ull)
+				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657436ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)

@@ -1235,6 +1235,18 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 {
 	GENERATED_BODY()
 
+	FMixtormatRootNetwork()
+	{
+		RadiusCurve.Points = {
+			FMixtormatScalarRampPoint(0.0f, 1.0f),
+			FMixtormatScalarRampPoint(1.0f, 0.2f)
+		};
+		BurialCurve.Points = {
+			FMixtormatScalarRampPoint(0.0f, 0.0f),
+			FMixtormatScalarRampPoint(1.0f, 1.0f)
+		};
+	}
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Output")
 	bool bRootNormalizeHeight = true;
 
@@ -1309,6 +1321,30 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Steering", meta = (UIMin = "0.2", UIMax = "5.0", Delta = "0.05"))
 	float RootAxisRatio = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile")
+	bool bUseRadiusCurve = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile")
+	FMixtormatScalarRamp RadiusCurve;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile")
+	bool bUseBurialCurve = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile")
+	FMixtormatScalarRamp BurialCurve;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|UV", meta = (UIMin = "0.1", UIMax = "32.0", Delta = "0.1"))
+	float RootUVScaleU = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|UV", meta = (UIMin = "0.1", UIMax = "32.0", Delta = "0.1"))
+	float RootUVScaleV = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|UV", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RootUVOffsetU = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|UV", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RootUVOffsetV = 0.0f;
 };
 
 // One GENERATORS child, whatever kind it is.

@@ -19,6 +19,7 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatScalarRampCapacity.ush"
 
 #ifndef ROOT_STAGE
 #define ROOT_STAGE 0
@@ -96,6 +97,47 @@ float AzimuthStrength;
 float SwirlStrength;
 float AxisRatio;
 
+uint UseRadiusCurve;
+uint RadiusCurveCount;
+uint RadiusCurveInterpolation;
+float4 RadiusCurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+
+uint UseBurialCurve;
+uint BurialCurveCount;
+uint BurialCurveInterpolation;
+float4 BurialCurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+
+float RootUVScaleU;
+float RootUVScaleV;
+float RootUVOffsetU;
+float RootUVOffsetV;
+
+float RootEvalScalarRamp(float InputX, uint Count, uint Interp, float4 Points[MIXTORMAT_SCALAR_RAMP_MAX_POINTS])
+{
+	Count = min(Count, (uint)MIXTORMAT_SCALAR_RAMP_MAX_POINTS);
+	if (Count < 2u) { return Points[0].y; }
+	const float X = saturate(InputX);
+	uint Segment = Count - 2u;
+	[loop] for (uint I = 0u; I + 1u < Count; ++I)
+	{
+		if (X <= Points[I + 1u].x) { Segment = I; break; }
+	}
+	const float4 A = Points[Segment];
+	const float4 B = Points[Segment + 1u];
+	const float H = max(B.x - A.x, 1.0e-6f);
+	const float T = saturate((X - A.x) / H);
+	if (Interp == 0u) { return X >= 1.0f ? B.y : A.y; }
+	if (Interp == 1u) { return lerp(A.y, B.y, T); }
+	if (Interp == 2u)
+	{
+		const float T2 = T * T, T3 = T2 * T;
+		return (2.0f * T3 - 3.0f * T2 + 1.0f) * A.y + (T3 - 2.0f * T2 + T) * H * A.z
+			+ (-2.0f * T3 + 3.0f * T2) * B.y + (T3 - T2) * H * B.z;
+	}
+	const float U = 1.0f - T;
+	return clamp(U * A.y + T * B.y + ((U * U * U - U) * A.w + (T * T * T - T) * B.w) * H * H / 6.0f, -3.0f, 3.0f);
+}
+
 // Growth (stages 0..5)
 RWStructuredBuffer<FRootNode> RWNodeBuffer;
 RWStructuredBuffer<FRootSegment> RWSegmentBuffer;
@@ -162,8 +204,10 @@ float RootSegmentPad(FRootSegment Seg)
 void RootSegmentCells(FRootSegment Seg, out int MinX, out int MaxX, out int MinY, out int MaxY)
 {
 	float pad = RootSegmentPad(Seg);
-	float2 bMin = min(Seg.P0, min(Seg.P1, Seg.P2)) - pad;
-	float2 bMax = max(Seg.P0, max(Seg.P1, Seg.P2)) + pad;
+	float2 chord = Seg.P2 - Seg.P0;
+	float2 endHandle = Seg.P2 - chord / 3.0f;
+	float2 bMin = min(min(Seg.P0, Seg.P1), min(endHandle, Seg.P2)) - pad;
+	float2 bMax = max(max(Seg.P0, Seg.P1), max(endHandle, Seg.P2)) + pad;
 	MinX = (int)floor(bMin.x * (float)ROOT_BIN_RES);
 	MinY = (int)floor(bMin.y * (float)ROOT_BIN_RES);
 	MaxX = min((int)floor(bMax.x * (float)ROOT_BIN_RES), MinX + (int)ROOT_BIN_RES - 1);
@@ -502,7 +546,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float remainingLength = (float)RWNodePullBuffer[n * 4u + 0u] * StepLength;
 		float tipFade = lerp(tipScale, 1.0f,
 			smoothstep(0.0f, max(InfluenceRadius, StepLength), remainingLength));
-		node.Radius = max(rawRadius * depthFade * tipFade, 1e-4f);
+		float radiusMult = 1.0f;
+		if (UseRadiusCurve != 0u)
+		{
+			float totalArc = node.ArcLength + remainingLength;
+			float normArc = saturate(node.ArcLength / max(totalArc, 1e-4f));
+			radiusMult = max(RootEvalScalarRamp(normArc, RadiusCurveCount, RadiusCurveInterpolation, RadiusCurvePoints), 0.0f);
+		}
+		node.Radius = max(rawRadius * depthFade * tipFade * radiusMult, 1e-4f);
 		RWNodeBuffer[n] = node;
 	}
 	AllMemoryBarrierWithGroupSync();
@@ -538,8 +589,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			seg.P2 = p2;
 			seg.R0 = parent.Radius;
 			seg.R1 = child.Radius;
-			seg.Arc0 = parent.ArcLength;
-			seg.Arc1 = child.ArcLength;
+			float parentRemaining = (float)RWNodePullBuffer[child.ParentIndex * 4u + 0u] * StepLength;
+			float childRemaining = (float)RWNodePullBuffer[v * 4u + 0u] * StepLength;
+			seg.Arc0 = saturate(parent.ArcLength / max(parent.ArcLength + parentRemaining, 1e-4f));
+			seg.Arc1 = saturate(child.ArcLength / max(child.ArcLength + childRemaining, 1e-4f));
 			seg.BranchId = child.BranchId;
 			seg.Generation = child.Generation;
 			RWSegmentBuffer[segIdx] = seg;
@@ -734,9 +787,7 @@ void EvaluateTaperedBezierSweep(
 		BFinal = ((a * t + b) * t + c) * t + Seg.P0;
 	}
 	float rFinal = max(lerp(Seg.R0, Seg.R1, t), 1e-4f);
-	float speed = max(length((3.0f * a * t + 2.0f * b) * t + c), 1e-5f);
-	float cosAlpha = sqrt(saturate(1.0f - (dR * dR) / (speed * speed)));
-	float dFinal = (length(BFinal - uLocal) - rFinal) * max(cosAlpha, 0.5f);
+	float dFinal = length(BFinal - uLocal) - rFinal;
 
 	float d0 = length(Seg.P0 - uLocal) - Seg.R0;
 	if (d0 < dFinal)
@@ -744,6 +795,7 @@ void EvaluateTaperedBezierSweep(
 		dFinal = d0;
 		t = 0.0f;
 		rFinal = max(Seg.R0, 1e-4f);
+		BFinal = Seg.P0;
 	}
 	float d1 = length(Seg.P2 - uLocal) - Seg.R1;
 	if (d1 < dFinal)
@@ -751,6 +803,7 @@ void EvaluateTaperedBezierSweep(
 		dFinal = d1;
 		t = 1.0f;
 		rFinal = max(Seg.R1, 1e-4f);
+		BFinal = Seg.P2;
 	}
 
 	OutSignedDist = dFinal;
@@ -765,7 +818,7 @@ void EvaluateTaperedBezierSweep(
 }
 
 // Cross-section: real-unit cylinder cap corrected by thickness, with super-ellipse profile bias and soil burial.
-float RootCrossSectionHeight(float SignedDist, float Radius)
+float RootCrossSectionHeight(float SignedDist, float Radius, float BurialMult)
 {
 	if (SignedDist >= 0.0f)
 	{
@@ -786,7 +839,7 @@ float RootCrossSectionHeight(float SignedDist, float Radius)
 
 	// Physical height proportional to thickness: peak height on axis = Radius.
 	// Soil burial depth sinks thin roots beneath the soil plane while thick roots break through.
-	float burialOffset = BurialDepth * max(BaseRadius, 1e-4f);
+	float burialOffset = BurialDepth * BurialMult * max(BaseRadius, 1e-4f);
 	float rawHeight = profile * Radius;
 	float exposedHeight = max(0.0f, rawHeight - burialOffset);
 
@@ -801,11 +854,18 @@ void RootMergeBranchFields(float BranchDistance, float BranchHeight, float Smoot
 	float h = saturate(0.5f + 0.5f * (Distance - BranchDistance) / SmoothWidth);
 	Distance = lerp(Distance, BranchDistance, h) - SmoothWidth * h * (1.0f - h);
 
-	// Height is normalized by BaseRadius. Limit smoothing to overlapping support so an
-	// absent branch (including one omitted by the spatial bin) contributes exactly zero.
-	float width = min(SmoothWidth / max(BaseRadius, 1e-4f), 2.0f * min(Height, BranchHeight));
-	float blend = saturate(1.0f - abs(Height - BranchHeight) / max(width, 1e-5f));
-	Height = max(Height, BranchHeight) + 0.25f * width * blend * blend;
+	// Polynomial smooth-max for height across overlapping branches:
+	// Guarantees C1 smooth transition across branch junctions without tearing, cliff steps, or creases.
+	float wNorm = SmoothWidth / max(BaseRadius, 1e-4f);
+	if (Height > 0.0f && BranchHeight > 0.0f && wNorm > 1e-5f)
+	{
+		float hBlend = saturate(0.5f + 0.5f * (Height - BranchHeight) / wNorm);
+		Height = lerp(BranchHeight, Height, hBlend) + wNorm * hBlend * (1.0f - hBlend);
+	}
+	else
+	{
+		Height = max(Height, BranchHeight);
+	}
 }
 
 [numthreads(8, 8, 1)]
@@ -830,6 +890,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float sdAcc = ROOT_NO_DISTANCE;
 	float bestRaw = ROOT_NO_DISTANCE;
+	float bestHeight = -1.0e9f;
 	float bestArc = 0.0f;
 	float bestVnorm = 0.0f;
 	uint bestBranchId = 0u;
@@ -861,23 +922,59 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			branchHeight = 0.0f;
 		}
 
-		float arc = lerp(seg.Arc0, seg.Arc1, t);
-		float weave = sin(arc * 25.1327412f + (float)seg.BranchId * 1.6180339f) * WeaveAmount * 0.25f;
-		float segmentHeight = RootCrossSectionHeight(sd, rAtT) * max(1.0f + weave, 0.0f);
+		float arc = saturate(lerp(seg.Arc0, seg.Arc1, t));
+		float burialMult = 1.0f;
+		if (UseBurialCurve != 0u)
+		{
+			burialMult = max(RootEvalScalarRamp(arc, BurialCurveCount, BurialCurveInterpolation, BurialCurvePoints), 0.0f);
+		}
+		// Weave modulation: height undulation along branches.
+		// Respect junctions:
+		// 1. Lateral branches emerge flush from their parent fork at arc = 0.
+		//    Smoothly ramp weave along the branch so forks never suffer height tearing or phase discontinuity.
+		// 2. All branches fade weave in from their base so roots connect seamlessly to their origins.
+		float junctionAtten = (seg.Generation > 0u) ? smoothstep(0.0f, 0.20f, arc) : smoothstep(0.0f, 0.05f, arc);
+		float weavePhase = arc * 25.1327412f + (float)seg.BranchId * 1.6180339f;
+		float weave = sin(weavePhase) * WeaveAmount * 0.25f * junctionAtten;
+		float segmentHeight = RootCrossSectionHeight(sd, rAtT, burialMult) * max(1.0f + weave, 0.0f);
 		branchDistance = min(branchDistance, sd);
 		branchHeight = max(branchHeight, segmentHeight);
 
-		if (sd < bestRaw)
+		// Consistent crossing ownership: the highest surface owns the height, IDs, and UVs!
+		bool bTakesOwnership = false;
+		if (segmentHeight > bestHeight)
+		{
+			bTakesOwnership = true;
+		}
+		else if (segmentHeight == bestHeight && sd < bestRaw)
+		{
+			bTakesOwnership = true;
+		}
+
+		if (bTakesOwnership)
 		{
 			bestRaw = sd;
+			bestHeight = segmentHeight;
 			bestBranchId = seg.BranchId;
-			bestArc = frac(arc);
+			bestArc = arc;
 			bestVnorm = vNorm;
 		}
 	}
 	if (branchId != 0u)
 	{
 		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
+	}
+
+	// Fillet height reconstruction:
+	// If sdAcc < 0, the pixel is inside the merged root volume (including the smoothed junction fillet).
+	// Reconstruct the smooth fillet crest so the junction fillet never drops to zero height.
+	if (sdAcc < 0.0f)
+	{
+		float filletDepth = saturate(-sdAcc / max(BaseRadius, 1e-4f));
+		float filletProfile = 1.0f - (1.0f - filletDepth) * (1.0f - filletDepth);
+		filletProfile = pow(max(filletProfile, 0.0f), max(ProfileFlatness, 0.1f));
+		float filletHeight = max(0.0f, filletProfile - BurialDepth);
+		height = max(height, filletHeight);
 	}
 
 	bool bInside = (height > 0.0f) || (BurialDepth <= 0.001f && sdAcc <= 0.0f);
@@ -899,11 +996,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Normalized across-profile coordinate: 0 at center spine, 1 at outer flank
 	float acrossValue = bInside ? abs(bestVnorm) : 0.0f;
-	// Orthogonal 2D root UVs: U = arc length along branch [0, 1), V = cross profile [0, 1]
-	float across01 = 0.5f + 0.5f * bestVnorm;
-	float2 rootUV = float2(bestArc, across01);
-	// Smoothly blend to raw canvas UV outside roots so downstream noise blankets tile seamlessly
-	float2 finalUV = lerp(rawUV, rootUV, coverage);
+	// Cylinder profile angle across upper 180 degree hemisphere in [0, 1]
+	float angleU = 0.5f + atan2(bestVnorm, max(sqrt(max(1.0f - bestVnorm * bestVnorm, 0.0f)), 1e-4f)) / 3.14159265f;
+	// U = cylinder cross-section arc, V = longitudinal arc length along branch
+	float uCoord = frac(angleU * RootUVScaleU + RootUVOffsetU);
+	float vCoord = frac(bestArc * RootUVScaleV + RootUVOffsetV);
+	float2 rootUV = float2(uCoord, vCoord);
 
 	OutRootHeight[pix] = height;
 	OutRootCoverage[pix] = coverage;
@@ -911,7 +1009,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRootEdgeDistance[pix] = (count > 0u) ? sdAcc : ROOT_NO_DISTANCE;
 	OutRootArcLength[pix] = bInside ? bestArc : 0.0f;
 	OutRootAcross[pix] = acrossValue;
-	OutRootUV[pix] = finalUV;
+	OutRootUV[pix] = rootUV;
 	OutRootIds[pix] = bInside ? bestBranchId : 0u;
 }
 

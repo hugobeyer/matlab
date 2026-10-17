@@ -939,45 +939,6 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				LOCTEXT("RootKinkHint", "Tortuous wandering and sudden sharp obstacle deflection angle.")));
 	}
 
-	// Profile Card
-	{
-		const TSharedRef<SVerticalBox> Profile = AddCard(Cards, LOCTEXT("RootProfileCard", "PROFILE & SWEEP"));
-		AddSliderRow(Profile, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootBaseRadius", "Base Radius"), Root, &FMixtormatRootNetwork::RootBaseRadius,
-				0.002, 0.15, Defaults.RootBaseRadius, 0.001,
-				LOCTEXT("RootBaseRadiusHint", "Maximum trunk radius in UV space.")),
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootTipTaper", "Tip Taper"), Root, &FMixtormatRootNetwork::RootTipTaper,
-				0.0, 1.0, Defaults.RootTipTaper, 0.01,
-				LOCTEXT("RootTipTaperHint", "Taper ratio from trunk base to root tips."))
-		));
-		AddSliderRow(Profile, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootJunctionSmooth", "Junction Smooth"), Root, &FMixtormatRootNetwork::RootJunctionSmooth,
-				0.0, 1.0, Defaults.RootJunctionSmooth, 0.01,
-				LOCTEXT("RootJunctionSmoothHint", "Smooth polynomial union blend at branch junctions.")),
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootProfileFlatness", "Flatness"), Root, &FMixtormatRootNetwork::RootProfileFlatness,
-				0.0, 1.0, Defaults.RootProfileFlatness, 0.01,
-				LOCTEXT("RootProfileFlatnessHint", "Flattening of the root dome profile."))
-		));
-		AddSliderRow(Profile, MixtormatRow::MakePair(
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootProfileBias", "Pinch / Broaden"), Root, &FMixtormatRootNetwork::RootProfileBias,
-				-1.0, 1.0, Defaults.RootProfileBias, 0.01,
-				LOCTEXT("RootProfileBiasHint", "Negative pinches into a crested ridge; positive broadens into steep shoulders.")),
-			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootBurial", "Burial Depth"), Root, &FMixtormatRootNetwork::RootBurial,
-				0.0, 1.0, Defaults.RootBurial, 0.01,
-				LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through."))
-		));
-		AddSliderRow(Profile, MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
-				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
-				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")));
-	}
-
 	// Steering & Tropism Card
 	{
 		const TSharedRef<SVerticalBox> Steering = AddCard(Cards, LOCTEXT("RootSteeringCard", "STEERING & TROPISM"));
@@ -1000,6 +961,339 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				LOCTEXT("RootAxisRatio", "Axis Preference (X/Y)"), Root, &FMixtormatRootNetwork::RootAxisRatio,
 				0.2, 5.0, Defaults.RootAxisRatio, 0.05,
 				LOCTEXT("RootAxisRatioHint", "Anisotropic ratio: >1 favors horizontal spread, <1 favors vertical spread."))
+		));
+	}
+
+	// Profile & Sweep Card
+	{
+		const TSharedRef<SVerticalBox> Profile = AddCard(Cards, LOCTEXT("RootProfileCard", "PROFILE & SWEEP"));
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootBaseRadius", "Base Radius"), Root, &FMixtormatRootNetwork::RootBaseRadius,
+				0.002, 0.15, Defaults.RootBaseRadius, 0.001,
+				LOCTEXT("RootBaseRadiusHint", "Maximum trunk radius in UV space.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootTipTaper", "Tip Taper"), Root, &FMixtormatRootNetwork::RootTipTaper,
+				0.0, 1.0, Defaults.RootTipTaper, 0.01,
+				LOCTEXT("RootTipTaperHint", "Taper ratio from trunk base to root tips."))
+		));
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootProfileFlatness", "Flatness"), Root, &FMixtormatRootNetwork::RootProfileFlatness,
+				0.0, 1.0, Defaults.RootProfileFlatness, 0.01,
+				LOCTEXT("RootProfileFlatnessHint", "Flattening of the root dome profile.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootProfileBias", "Pinch / Broaden"), Root, &FMixtormatRootNetwork::RootProfileBias,
+				-1.0, 1.0, Defaults.RootProfileBias, 0.01,
+				LOCTEXT("RootProfileBiasHint", "Negative pinches into a crested ridge; positive broadens into steep shoulders."))
+		));
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootJunctionSmooth", "Junction Smooth"), Root, &FMixtormatRootNetwork::RootJunctionSmooth,
+				0.0, 1.0, Defaults.RootJunctionSmooth, 0.01,
+				LOCTEXT("RootJunctionSmoothHint", "Smooth polynomial union blend at branch junctions.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
+				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
+				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches."))
+		));
+	}
+
+	// Radius Taper Ramp Card
+	{
+		TArray<TPair<FText, TFunction<void()>>> RadiusPresets;
+		RadiusPresets.Add({LOCTEXT("RadiusLinear", "Linear Taper"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->RadiusCurve.Points = { FMixtormatScalarRampPoint(0.0f, 1.0f), FMixtormatScalarRampPoint(1.0f, 0.1f) };
+				R->RadiusCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+				R->bUseRadiusCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		RadiusPresets.Add({LOCTEXT("RadiusFlared", "Flared Buttress"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->RadiusCurve.Points = { FMixtormatScalarRampPoint(0.0f, 1.8f), FMixtormatScalarRampPoint(0.15f, 1.0f), FMixtormatScalarRampPoint(1.0f, 0.2f) };
+				R->RadiusCurve.Interpolation = EMixtormatScalarRampInterpolation::Spline;
+				R->bUseRadiusCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		RadiusPresets.Add({LOCTEXT("RadiusBulbous", "Bulbous / Knots"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->RadiusCurve.Points = {
+					FMixtormatScalarRampPoint(0.0f, 1.0f),
+					FMixtormatScalarRampPoint(0.25f, 0.65f),
+					FMixtormatScalarRampPoint(0.50f, 1.35f),
+					FMixtormatScalarRampPoint(0.75f, 0.60f),
+					FMixtormatScalarRampPoint(1.0f, 0.25f)
+				};
+				R->RadiusCurve.Interpolation = EMixtormatScalarRampInterpolation::Spline;
+				R->bUseRadiusCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		RadiusPresets.Add({LOCTEXT("RadiusPegs", "Blunt Aerial Pegs"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->RadiusCurve.Points = { FMixtormatScalarRampPoint(0.0f, 1.0f), FMixtormatScalarRampPoint(0.85f, 0.95f), FMixtormatScalarRampPoint(1.0f, 0.8f) };
+				R->RadiusCurve.Interpolation = EMixtormatScalarRampInterpolation::Spline;
+				R->bUseRadiusCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+
+		const auto MakePresetsMenu = [](const FText& Heading, const TArray<TPair<FText, TFunction<void()>>>& Items) -> TSharedRef<SWidget>
+		{
+			return SNew(SComboButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+				.HasDownArrow(false)
+				.ContentPadding(FMargin(0.0f))
+				.OnGetMenuContent_Lambda([Heading, Items]() -> TSharedRef<SWidget>
+				{
+					MixtormatMenu::FBuilder Menu;
+					Menu.Caption(Heading);
+					for (const auto& Item : Items)
+					{
+						Menu.Item(Item.Key, nullptr, FSimpleDelegate::CreateLambda(Item.Value));
+					}
+					return Menu.Build();
+				})
+				.ButtonContent()
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock).Text(LOCTEXT("PresetsDropdownLabel", "Presets"))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 2.0f, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						[
+							SNew(SImage)
+							.Image(MixtormatIcons::ChevronDown())
+							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+						]
+					]
+				];
+		};
+
+		const TSharedRef<SWidget> RadiusHeader = SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+			[
+				MakePresetsMenu(LOCTEXT("RadiusPresetsHeading", "RADIUS PRESETS"), RadiusPresets)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Root]()
+					{
+						const FMixtormatRootNetwork* R = Root();
+						return R && R->bUseRadiusCurve ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this, Root](ECheckBoxState S)
+					{
+						if (FMixtormatRootNetwork* R = Root())
+						{
+							R->bUseRadiusCurve = S == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+						}
+					}),
+					LOCTEXT("RootRadiusCurveEnabledHint", "Enable Radius Curve"))
+			];
+
+		const TSharedRef<SVerticalBox> RadiusCard = AddCard(Cards, LOCTEXT("RootRadiusCard", "RADIUS TAPER RAMP"), RadiusHeader);
+		const TSharedRef<SWidget> RadiusRampWidget = SNew(SMixtormatScalarRamp)
+			.Ramp_Lambda([Root]()
+			{
+				const FMixtormatRootNetwork* R = Root();
+				return R ? R->RadiusCurve : FMixtormatScalarRamp();
+			})
+			.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
+			.CanonicalXMin(0.0f).CanonicalXMax(1.0f)
+			.CanonicalYMin(0.0f).CanonicalYMax(2.0f)
+			.SoftYMin(-0.5f).SoftYMax(2.5f)
+			.ExtendedYMin(-1.0f).ExtendedYMax(3.0f)
+			.OnChanged_Lambda([this, Root](const FMixtormatScalarRamp& NewRamp)
+			{
+				if (FMixtormatRootNetwork* R = Root())
+				{
+					R->RadiusCurve = NewRamp;
+					RefreshLayeredPreview();
+				}
+			})
+			.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
+			.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
+
+		AddSliderRow(RadiusCard, RadiusRampWidget);
+	}
+
+	// Soil Burial Ramp Card
+	{
+		TArray<TPair<FText, TFunction<void()>>> BurialPresets;
+		BurialPresets.Add({LOCTEXT("BurialDefault", "Submerged Tips (Default)"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->BurialCurve.Points = { FMixtormatScalarRampPoint(0.0f, 0.0f), FMixtormatScalarRampPoint(1.0f, 1.0f) };
+				R->BurialCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+				R->bUseBurialCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		BurialPresets.Add({LOCTEXT("BurialArching", "Surface Arching"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->BurialCurve.Points = { FMixtormatScalarRampPoint(0.0f, 0.8f), FMixtormatScalarRampPoint(0.5f, 0.0f), FMixtormatScalarRampPoint(1.0f, 0.9f) };
+				R->BurialCurve.Interpolation = EMixtormatScalarRampInterpolation::Spline;
+				R->bUseBurialCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		BurialPresets.Add({LOCTEXT("BurialDeep", "Deep Trench"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->BurialCurve.Points = { FMixtormatScalarRampPoint(0.0f, 0.2f), FMixtormatScalarRampPoint(1.0f, 1.8f) };
+				R->BurialCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+				R->bUseBurialCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+		BurialPresets.Add({LOCTEXT("BurialUniform", "Uniform Sink"), [this, Root]()
+		{
+			if (FMixtormatRootNetwork* R = Root())
+			{
+				R->BurialCurve.Points = { FMixtormatScalarRampPoint(0.0f, 1.0f), FMixtormatScalarRampPoint(1.0f, 1.0f) };
+				R->BurialCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+				R->bUseBurialCurve = true;
+				RefreshLayeredPreview();
+			}
+		}});
+
+		const auto MakePresetsMenu = [](const FText& Heading, const TArray<TPair<FText, TFunction<void()>>>& Items) -> TSharedRef<SWidget>
+		{
+			return SNew(SComboButton)
+				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+				.HasDownArrow(false)
+				.ContentPadding(FMargin(0.0f))
+				.OnGetMenuContent_Lambda([Heading, Items]() -> TSharedRef<SWidget>
+				{
+					MixtormatMenu::FBuilder Menu;
+					Menu.Caption(Heading);
+					for (const auto& Item : Items)
+					{
+						Menu.Item(Item.Key, nullptr, FSimpleDelegate::CreateLambda(Item.Value));
+					}
+					return Menu.Build();
+				})
+				.ButtonContent()
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock).Text(LOCTEXT("PresetsDropdownLabel", "Presets"))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 2.0f, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						.HeightOverride(FMixtormatThemeStore::GetResolved().MenuLayout.ChevronSize * 0.6f)
+						[
+							SNew(SImage)
+							.Image(MixtormatIcons::ChevronDown())
+							.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+						]
+					]
+				];
+		};
+
+		const TSharedRef<SWidget> BurialHeader = SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+			[
+				MakePresetsMenu(LOCTEXT("BurialPresetsHeading", "BURIAL PRESETS"), BurialPresets)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				MixtormatRow::MakeCheckbox(
+					TAttribute<ECheckBoxState>::CreateLambda([Root]()
+					{
+						const FMixtormatRootNetwork* R = Root();
+						return R && R->bUseBurialCurve ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					}),
+					FOnCheckStateChanged::CreateLambda([this, Root](ECheckBoxState S)
+					{
+						if (FMixtormatRootNetwork* R = Root())
+						{
+							R->bUseBurialCurve = S == ECheckBoxState::Checked;
+							RefreshLayeredPreview();
+						}
+					}),
+					LOCTEXT("RootBurialCurveEnabledHint", "Enable Soil Burial Curve"))
+			];
+
+		const TSharedRef<SVerticalBox> BurialCard = AddCard(Cards, LOCTEXT("RootBurialCard", "SOIL BURIAL RAMP"), BurialHeader);
+		AddSliderRow(BurialCard, MakeMemberSlider<FMixtormatRootNetwork>(
+			LOCTEXT("RootBurial", "Base Burial Depth"), Root, &FMixtormatRootNetwork::RootBurial,
+			0.0, 1.0, Defaults.RootBurial, 0.01,
+			LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through.")));
+
+		const TSharedRef<SWidget> BurialRampWidget = SNew(SMixtormatScalarRamp)
+			.Ramp_Lambda([Root]()
+			{
+				const FMixtormatRootNetwork* R = Root();
+				return R ? R->BurialCurve : FMixtormatScalarRamp();
+			})
+			.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
+			.CanonicalXMin(0.0f).CanonicalXMax(1.0f)
+			.CanonicalYMin(0.0f).CanonicalYMax(2.0f)
+			.SoftYMin(-0.5f).SoftYMax(2.5f)
+			.ExtendedYMin(-1.0f).ExtendedYMax(3.0f)
+			.OnChanged_Lambda([this, Root](const FMixtormatScalarRamp& NewRamp)
+			{
+				if (FMixtormatRootNetwork* R = Root())
+				{
+					R->BurialCurve = NewRamp;
+					RefreshLayeredPreview();
+				}
+			})
+			.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
+			.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
+
+		AddSliderRow(BurialCard, BurialRampWidget);
+	}
+
+	// Root UV & Texturing Card
+	{
+		const TSharedRef<SVerticalBox> UVCard = AddCard(Cards, LOCTEXT("RootUVCard", "ROOT UV & TEXTURING"));
+		AddSliderRow(UVCard, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootUVScaleU", "UV Scale U"), Root, &FMixtormatRootNetwork::RootUVScaleU,
+				0.1, 32.0, Defaults.RootUVScaleU, 0.1,
+				LOCTEXT("RootUVScaleUHint", "Circumferential cross-section cylinder arc tiling multiplier.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootUVScaleV", "UV Scale V"), Root, &FMixtormatRootNetwork::RootUVScaleV,
+				0.1, 32.0, Defaults.RootUVScaleV, 0.1,
+				LOCTEXT("RootUVScaleVHint", "Longitudinal arc length tiling multiplier along root stems."))
+		));
+		AddSliderRow(UVCard, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootUVOffsetU", "UV Offset U"), Root, &FMixtormatRootNetwork::RootUVOffsetU,
+				-1.0, 1.0, Defaults.RootUVOffsetU, 0.01,
+				LOCTEXT("RootUVOffsetUHint", "Circumferential rotational offset around the root cylinder.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootUVOffsetV", "UV Offset V"), Root, &FMixtormatRootNetwork::RootUVOffsetV,
+				-1.0, 1.0, Defaults.RootUVOffsetV, 0.01,
+				LOCTEXT("RootUVOffsetVHint", "Longitudinal translation offset along root length."))
 		));
 	}
 

@@ -335,6 +335,28 @@ namespace MixtormatGpuCompositor
 		Out.AzimuthStrength = Finite(Root.RootAzimuthStrength, Defaults.RootAzimuthStrength);
 		Out.SwirlStrength = Finite(Root.RootSwirlStrength, Defaults.RootSwirlStrength);
 		Out.AxisRatio = FMath::Max(Finite(Root.RootAxisRatio, Defaults.RootAxisRatio), 0.01f);
+		Out.bUseRadiusCurve = Root.bUseRadiusCurve;
+		const MixtormatScalarRampMath::FGpuPayload RadiusPayload =
+			MixtormatScalarRampMath::PrepareGpuPayload(Root.RadiusCurve);
+		Out.RadiusCurveCount = RadiusPayload.PointCount;
+		Out.RadiusCurveInterpolation = RadiusPayload.Interpolation;
+		for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+		{
+			Out.RadiusCurvePoints[Index] = RadiusPayload.Points[Index];
+		}
+		Out.bUseBurialCurve = Root.bUseBurialCurve;
+		const MixtormatScalarRampMath::FGpuPayload BurialPayload =
+			MixtormatScalarRampMath::PrepareGpuPayload(Root.BurialCurve);
+		Out.BurialCurveCount = BurialPayload.PointCount;
+		Out.BurialCurveInterpolation = BurialPayload.Interpolation;
+		for (int32 Index = 0; Index < FMixtormatScalarRamp::MaxPoints; ++Index)
+		{
+			Out.BurialCurvePoints[Index] = BurialPayload.Points[Index];
+		}
+		Out.RootUVScaleU = Finite(Root.RootUVScaleU, Defaults.RootUVScaleU);
+		Out.RootUVScaleV = Finite(Root.RootUVScaleV, Defaults.RootUVScaleV);
+		Out.RootUVOffsetU = Finite(Root.RootUVOffsetU, Defaults.RootUVOffsetU);
+		Out.RootUVOffsetV = Finite(Root.RootUVOffsetV, Defaults.RootUVOffsetV);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
