@@ -27,7 +27,8 @@ enum class EMixtormatGeneratorType : uint8
 	// Appended: a plain field producer. It publishes Value / Gradient / IDs and decides nothing
 	// about what they mean -- height, roughness, mask and the rest are downstream decisions.
 	Noise UMETA(DisplayName = "Noise"),
-	BooleanOps UMETA(DisplayName = "Boolean Ops")
+	BooleanOps UMETA(DisplayName = "Boolean Ops"),
+	RootNetwork UMETA(DisplayName = "Root Network")
 };
 
 // How a pebble's cut planes are oriented.
@@ -42,7 +43,8 @@ inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 		|| Type == EMixtormatGeneratorType::Pebbles
 		|| Type == EMixtormatGeneratorType::Cracks
 		|| Type == EMixtormatGeneratorType::CliffStrata
-		|| Type == EMixtormatGeneratorType::Noise;
+		|| Type == EMixtormatGeneratorType::Noise
+		|| Type == EMixtormatGeneratorType::RootNetwork;
 }
 
 inline bool MixtormatGeneratorHasFlowBoundary(const EMixtormatGeneratorType Type)
@@ -1226,6 +1228,68 @@ struct MIXTORMATRUNTIME_API FMixtormatBooleanOps
 
 };
 
+// Root Network: tileable Space Colonization root/vein network with pipe-model tapering
+// and smooth variable-radius quadratic Bezier sweep SDF evaluation.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Output")
+	bool bRootNormalizeHeight = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float RootHeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0", UIMax = "9999"))
+	int32 RootSeed = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "16", ClampMin = "1", ClampMax = "32"))
+	int32 RootTrunks = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "32", UIMax = "2048", ClampMin = "16", ClampMax = "4096"))
+	int32 RootAttractors = 512;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "64", ClampMin = "1", ClampMax = "64"))
+	int32 RootIterations = 24;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.01", UIMax = "0.10", Delta = "0.002"))
+	float RootStepLength = 0.035f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.03", UIMax = "0.35", Delta = "0.005"))
+	float RootInfluenceRadius = 0.14f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.005", UIMax = "0.10", Delta = "0.002"))
+	float RootKillDistance = 0.025f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootBranchSpread = 0.45f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "0.95", Delta = "0.01"))
+	float RootDirectionInertia = 0.60f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootCurlStrength = 0.20f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "1", UIMax = "16", ClampMin = "1", ClampMax = "32"))
+	int32 RootCurlScale = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.003", UIMax = "0.08", Delta = "0.001"))
+	float RootBaseRadius = 0.022f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootTipTaper = 0.80f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootJunctionSmooth = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootProfileFlatness = 0.20f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootWeaveAmount = 0.30f;
+};
+
 // One GENERATORS child, whatever kind it is.
 //
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
@@ -1324,4 +1388,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::BooleanOps"))
 	FMixtormatBooleanOps BooleanOps;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::RootNetwork"))
+	FMixtormatRootNetwork RootNetwork;
 };

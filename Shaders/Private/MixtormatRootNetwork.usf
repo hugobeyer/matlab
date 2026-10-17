@@ -1,0 +1,792 @@
+#include "/Engine/Public/Platform.ush"
+#include "MixtormatShaderCommon.ush"
+#include "MixtormatGeneratorPlacement.ush"
+
+#ifndef ROOT_STAGE
+#define ROOT_STAGE 0
+#endif
+
+#define ROOT_MAX_NODES 2048u
+#define ROOT_MAX_SEGMENTS 2048u
+#define ROOT_MAX_ATTRACTORS 4096u
+#define ROOT_BIN_RES 64u
+#define ROOT_BIN_COUNT 4096u
+#define ROOT_MAX_BIN_ENTRIES 131072u
+#define ROOT_FIXED_SCALE 65536.0f
+
+struct FRootNode
+{
+	float2 Pos;          // Wrapped canonical UV in [0, 1)^2
+	float2 Dir;          // Unit growth tangent
+	uint ParentIndex;    // 0xFFFFFFFFu for trunk roots
+	uint BranchId;       // 1-based root/branch family ID
+	float Radius;        // Solved pipe-model radius in UV units
+	float ArcLength;     // Cumulative arc length from trunk origin
+	uint Generation;     // Branch order (0 = trunk, 1+ = lateral)
+	uint ChildCount;     // Number of children spawned from this node
+};
+
+struct FRootSegment
+{
+	float2 P0;           // Start point in [0, 1)^2
+	float2 P1;           // Quadratic Bezier control point in P0's local unwrapped chart
+	float2 P2;           // End point in P0's local unwrapped chart
+	float R0;            // Start radius
+	float R1;            // End radius
+	float Arc0;          // Start arc length
+	float Arc1;          // End arc length
+	uint BranchId;       // 1-based ID
+	uint Generation;     // Branch hierarchy depth
+};
+
+struct FRootAttractor
+{
+	float2 Pos;          // Wrapped canonical UV in [0, 1)^2
+	uint Active;         // 1 = active, 0 = killed
+	uint NearestNode;    // Cached nearest node index from prior growth steps
+	float NearestDist;   // Cached toroidal distance to NearestNode
+	uint Pad0;
+	uint Pad1;
+	uint Pad2;
+};
+
+int2 Resolution;
+uint Seed;
+uint Trunks;
+uint Attractors;
+uint Iterations;
+uint StepIndex;
+
+float HeightScale;
+float StepLength;
+float InfluenceRadius;
+float KillDistance;
+float BranchSpread;
+float DirectionInertia;
+float CurlStrength;
+uint CurlScale;
+float BaseRadius;
+float TipTaper;
+float JunctionSmooth;
+float ProfileFlatness;
+float WeaveAmount;
+
+// Stage 0..5 RW buffers
+RWStructuredBuffer<FRootNode> RWNodeBuffer;
+RWStructuredBuffer<FRootSegment> RWSegmentBuffer;
+RWStructuredBuffer<FRootAttractor> RWAttractorBuffer;
+// StateBuffer layout:
+// [0] = NodeCount
+// [1] = PrevFrontierStart
+// [2] = PrevFrontierEnd
+// [3] = SegmentCount
+// [4] = TotalBinEntries
+RWBuffer<uint> RWStateBuffer;
+// NodePullBuffer layout: 4 ints per node: [PullX_Fixed, PullY_Fixed, PullCount, SpawnFlag]
+RWBuffer<int> RWNodePullBuffer;
+RWBuffer<uint> RWBinCounts;
+RWBuffer<uint> RWBinOffsets;
+RWBuffer<uint> RWBinWriteHeads;
+RWBuffer<uint> RWBinEntries;
+
+// Stage 6..7 SRV buffers and textures
+StructuredBuffer<FRootSegment> SegmentBuffer;
+Buffer<uint> StateBuffer;
+Buffer<uint> BinCounts;
+Buffer<uint> BinOffsets;
+Buffer<uint> BinEntries;
+
+Texture2D<float> BaseHeightTex;
+Texture2D<float> RootHeightTex;
+
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutRootHeight;
+RWTexture2D<float> OutRootCoverage;
+RWTexture2D<float> OutRootEdgeDistance;
+RWTexture2D<float> OutRootArcLength;
+RWTexture2D<uint> OutRootIds;
+
+float2 ToroidalDelta(float2 From, float2 To)
+{
+	float2 d = To - From;
+	return d - floor(d + 0.5f);
+}
+
+float2 WrapUV01(float2 P)
+{
+	return frac(P);
+}
+
+float2 SafeNormalize2D(float2 V, float2 Fallback)
+{
+	float lenSq = dot(V, V);
+	return (lenSq > 1e-10f) ? (V * rsqrt(lenSq)) : Fallback;
+}
+
+float2 SamplePeriodicCurl(float2 P, uint Scale, uint InSeed)
+{
+	float s = (float)max(Scale, 1u);
+	float eps = 0.01f;
+	float nX1 = MixtormatPeriodicFbm((P + float2(0.0f, eps)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
+	float nX0 = MixtormatPeriodicFbm((P - float2(0.0f, eps)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
+	float nY1 = MixtormatPeriodicFbm((P + float2(eps, 0.0f)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
+	float nY0 = MixtormatPeriodicFbm((P - float2(eps, 0.0f)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
+	float2 grad = float2(nY1 - nY0, nX1 - nX0) / (2.0f * eps);
+	return float2(grad.y, -grad.x);
+}
+
+#if ROOT_STAGE == 0
+
+[numthreads(64, 1, 1)]
+void InitNetworkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint idx = DispatchThreadId.x;
+	uint trunkCount = clamp(Trunks, 1u, 32u);
+	uint attrCount = clamp(Attractors, 16u, ROOT_MAX_ATTRACTORS);
+
+	if (idx == 0u)
+	{
+		RWStateBuffer[0] = trunkCount;
+		RWStateBuffer[1] = 0u;
+		RWStateBuffer[2] = trunkCount;
+		RWStateBuffer[3] = 0u;
+		RWStateBuffer[4] = 0u;
+	}
+
+	if (idx < ROOT_MAX_NODES)
+	{
+		RWNodePullBuffer[idx * 4u + 0u] = 0;
+		RWNodePullBuffer[idx * 4u + 1u] = 0;
+		RWNodePullBuffer[idx * 4u + 2u] = 0;
+		RWNodePullBuffer[idx * 4u + 3u] = 0;
+
+		FRootNode node;
+		if (idx < trunkCount)
+		{
+			uint gridX = max(1u, (uint)ceil(sqrt((float)trunkCount)));
+			uint gridY = (trunkCount + gridX - 1u) / gridX;
+			uint gx = idx % gridX;
+			uint gy = idx / gridX;
+			float2 jitter = float2(
+				MixtormatHash01(idx, 11u, Seed ^ 0x13579bdfu),
+				MixtormatHash01(idx, 29u, Seed ^ 0x2468ace0u)) * 0.65f + 0.175f;
+			node.Pos = WrapUV01((float2(gx, gy) + jitter) / float2(gridX, max(gridY, 1u)));
+			float angle = MixtormatHash01(idx, 53u, Seed ^ 0x9e3779b9u) * 6.28318530718f;
+			node.Dir = float2(cos(angle), sin(angle));
+			node.ParentIndex = 0xFFFFFFFFu;
+			node.BranchId = idx + 1u;
+			node.Radius = BaseRadius;
+			node.ArcLength = 0.0f;
+			node.Generation = 0u;
+			node.ChildCount = 0u;
+		}
+		else
+		{
+			node.Pos = float2(0.0f, 0.0f);
+			node.Dir = float2(1.0f, 0.0f);
+			node.ParentIndex = 0xFFFFFFFFu;
+			node.BranchId = 0u;
+			node.Radius = 0.0f;
+			node.ArcLength = 0.0f;
+			node.Generation = 0u;
+			node.ChildCount = 0u;
+		}
+		RWNodeBuffer[idx] = node;
+	}
+
+	if (idx < attrCount)
+	{
+		uint gridDim = max(1u, (uint)ceil(sqrt((float)attrCount)));
+		uint gx = idx % gridDim;
+		uint gy = idx / gridDim;
+		float2 jitter = float2(
+			MixtormatHash01(idx, 71u, Seed ^ 0x6c8e9cf5u),
+			MixtormatHash01(idx, 97u, Seed ^ 0xb5297a4du)) * 0.85f + 0.075f;
+
+		FRootAttractor attr;
+		attr.Pos = WrapUV01((float2(gx, gy) + jitter) / (float)gridDim);
+		attr.Active = 1u;
+		attr.NearestNode = 0xFFFFFFFFu;
+		attr.NearestDist = 1e30f;
+		attr.Pad0 = 0u;
+		attr.Pad1 = 0u;
+		attr.Pad2 = 0u;
+		RWAttractorBuffer[idx] = attr;
+	}
+}
+
+#elif ROOT_STAGE == 1
+
+[numthreads(64, 1, 1)]
+void AssignAttractorsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint attrIdx = DispatchThreadId.x;
+	uint attrCount = clamp(Attractors, 16u, ROOT_MAX_ATTRACTORS);
+	if (attrIdx >= attrCount)
+	{
+		return;
+	}
+
+	FRootAttractor attr = RWAttractorBuffer[attrIdx];
+	if (attr.Active == 0u)
+	{
+		return;
+	}
+
+	uint frontierStart = RWStateBuffer[1];
+	uint frontierEnd = min(RWStateBuffer[2], ROOT_MAX_NODES);
+
+	// Incremental frontier search: existing skeleton nodes are stationary, so each attractor
+	// only tests newly added frontier nodes from the previous iteration.
+	uint bestNode = attr.NearestNode;
+	float bestDist = attr.NearestDist;
+
+	for (uint v = frontierStart; v < frontierEnd; ++v)
+	{
+		float2 delta = ToroidalDelta(RWNodeBuffer[v].Pos, attr.Pos);
+		float dist = length(delta);
+		if (dist < bestDist)
+		{
+			bestDist = dist;
+			bestNode = v;
+		}
+	}
+
+	attr.NearestNode = bestNode;
+	attr.NearestDist = bestDist;
+
+	if (bestDist < KillDistance)
+	{
+		attr.Active = 0u;
+		RWAttractorBuffer[attrIdx] = attr;
+		return;
+	}
+
+	RWAttractorBuffer[attrIdx] = attr;
+
+	if (bestNode < ROOT_MAX_NODES && bestDist <= InfluenceRadius)
+	{
+		float2 pullDelta = ToroidalDelta(RWNodeBuffer[bestNode].Pos, attr.Pos);
+		float2 pullDir = SafeNormalize2D(pullDelta, float2(1.0f, 0.0f));
+		int fixedX = (int)round(pullDir.x * ROOT_FIXED_SCALE);
+		int fixedY = (int)round(pullDir.y * ROOT_FIXED_SCALE);
+		InterlockedAdd(RWNodePullBuffer[bestNode * 4u + 0u], fixedX);
+		InterlockedAdd(RWNodePullBuffer[bestNode * 4u + 1u], fixedY);
+		InterlockedAdd(RWNodePullBuffer[bestNode * 4u + 2u], 1);
+	}
+}
+
+#elif ROOT_STAGE == 2
+
+groupshared uint SharedSpawnFlags[64];
+
+[numthreads(64, 1, 1)]
+void ExtendAndCompactCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	// Single-group deterministic scan over active nodes up to ROOT_MAX_NODES (in chunks of 64)
+	uint tid = DispatchThreadId.x;
+	uint oldNodeCount = min(RWStateBuffer[0], ROOT_MAX_NODES);
+	uint newNodeCount = oldNodeCount;
+
+	for (uint baseIdx = 0u; baseIdx < oldNodeCount; baseIdx += 64u)
+	{
+		uint v = baseIdx + tid;
+		uint canSpawn = 0u;
+		float2 spawnDir = float2(1.0f, 0.0f);
+		FRootNode parentNode = (FRootNode)0;
+
+		if (v < oldNodeCount)
+		{
+			int pullX = RWNodePullBuffer[v * 4u + 0u];
+			int pullY = RWNodePullBuffer[v * 4u + 1u];
+			int pullCount = RWNodePullBuffer[v * 4u + 2u];
+
+			// Clear pull accumulators for next iteration
+			RWNodePullBuffer[v * 4u + 0u] = 0;
+			RWNodePullBuffer[v * 4u + 1u] = 0;
+			RWNodePullBuffer[v * 4u + 2u] = 0;
+
+			parentNode = RWNodeBuffer[v];
+			if (pullCount > 0 && parentNode.ChildCount < 3u)
+			{
+				float2 avgPull = SafeNormalize2D(float2((float)pullX, (float)pullY) / ROOT_FIXED_SCALE, parentNode.Dir);
+				float2 curl = SamplePeriodicCurl(parentNode.Pos, CurlScale, Seed + StepIndex * 19u);
+				float2 blended = lerp(avgPull, parentNode.Dir, saturate(DirectionInertia)) + curl * CurlStrength;
+
+				// If parent already has a child, deflect lateral branch by BranchSpread
+				if (parentNode.ChildCount > 0u)
+				{
+					float side = (MixtormatHash01(v, StepIndex + 101u, Seed ^ 0x3c6ef372u) >= 0.5f) ? 1.0f : -1.0f;
+					float spreadAngle = BranchSpread * 1.15f * side;
+					float cs = cos(spreadAngle);
+					float sn = sin(spreadAngle);
+					blended = float2(blended.x * cs - blended.y * sn, blended.x * sn + blended.y * cs);
+				}
+
+				spawnDir = SafeNormalize2D(blended, parentNode.Dir);
+				canSpawn = 1u;
+			}
+		}
+
+		SharedSpawnFlags[tid] = canSpawn;
+		GroupMemoryBarrierWithGroupSync();
+
+		uint prefix = 0u;
+		for (uint i = 0u; i < tid; ++i)
+		{
+			prefix += SharedSpawnFlags[i];
+		}
+		uint chunkTotal = prefix + canSpawn;
+		for (uint j = tid + 1u; j < 64u; ++j)
+		{
+			chunkTotal += SharedSpawnFlags[j];
+		}
+
+		if (canSpawn != 0u)
+		{
+			uint outIdx = newNodeCount + prefix;
+			if (outIdx < ROOT_MAX_NODES)
+			{
+				uint isLateral = (parentNode.ChildCount > 0u) ? 1u : 0u;
+				parentNode.ChildCount += 1u;
+				RWNodeBuffer[v] = parentNode;
+
+				FRootNode child;
+				child.Pos = WrapUV01(parentNode.Pos + spawnDir * StepLength);
+				child.Dir = spawnDir;
+				child.ParentIndex = v;
+				child.BranchId = (isLateral != 0u) ? (outIdx + 1u) : parentNode.BranchId;
+				child.Radius = BaseRadius * (1.0f - saturate(TipTaper));
+				child.ArcLength = parentNode.ArcLength + StepLength;
+				child.Generation = parentNode.Generation + isLateral;
+				child.ChildCount = 0u;
+				RWNodeBuffer[outIdx] = child;
+			}
+		}
+
+		newNodeCount = min(newNodeCount + chunkTotal, ROOT_MAX_NODES);
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	if (tid == 0u)
+	{
+		RWStateBuffer[0] = newNodeCount;
+		RWStateBuffer[1] = oldNodeCount;
+		RWStateBuffer[2] = newNodeCount;
+	}
+}
+
+#elif ROOT_STAGE == 3
+
+[numthreads(64, 1, 1)]
+void SolveRadiiAndSegmentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint idx = DispatchThreadId.x;
+	uint nodeCount = min(RWStateBuffer[0], ROOT_MAX_NODES);
+
+	// Clear bin counts across all 4096 cells
+	for (uint c = idx; c < ROOT_BIN_COUNT; c += 64u)
+	{
+		RWBinCounts[c] = 0u;
+		RWBinWriteHeads[c] = 0u;
+	}
+	AllMemoryBarrierWithGroupSync();
+
+	// Compute basipetal pipe-model radius and build segments for every non-root node
+	// Since parent indices are strictly < child indices, we count descendant tips/pipe area
+	if (idx < nodeCount)
+	{
+		FRootNode node = RWNodeBuffer[idx];
+		float tipRadius = max(BaseRadius * (1.0f - saturate(TipTaper) * 0.88f), 0.001f);
+
+		// Count downstream subtree weight (Leonardo / Murray pipe exponent p = 2.0)
+		float pipeSum = (node.ChildCount == 0u) ? 1.0f : 0.0f;
+		for (uint k = idx + 1u; k < nodeCount; ++k)
+		{
+			FRootNode desc = RWNodeBuffer[k];
+			if (desc.ChildCount == 0u)
+			{
+				// Walk ancestor chain of leaf k to check if idx is an ancestor
+				uint curr = k;
+				[loop]
+				for (uint depth = 0u; depth < 96u && curr > idx && curr != 0xFFFFFFFFu; ++depth)
+				{
+					curr = RWNodeBuffer[curr].ParentIndex;
+				}
+				if (curr == idx)
+				{
+					pipeSum += 1.0f;
+				}
+			}
+		}
+
+		float maxRadius = BaseRadius;
+		float rawRadius = tipRadius * pow(max(pipeSum, 1.0f), 0.42f);
+		float depthFade = exp(-0.08f * (float)node.Generation);
+		node.Radius = clamp(min(rawRadius, maxRadius) * depthFade, tipRadius, maxRadius);
+		RWNodeBuffer[idx] = node;
+	}
+
+	AllMemoryBarrierWithGroupSync();
+
+	uint trunkCount = clamp(Trunks, 1u, 32u);
+	uint segCount = (nodeCount > trunkCount) ? (nodeCount - trunkCount) : 0u;
+	if (idx == 0u)
+	{
+		RWStateBuffer[3] = segCount;
+	}
+
+	if (idx >= trunkCount && idx < nodeCount)
+	{
+		uint segIdx = idx - trunkCount;
+		FRootNode child = RWNodeBuffer[idx];
+		FRootNode parent = RWNodeBuffer[child.ParentIndex];
+
+		float2 p0 = parent.Pos;
+		float2 delta = ToroidalDelta(p0, child.Pos);
+		float2 p2 = p0 + delta;
+		float segLen = length(delta);
+		float2 p1 = p0 + 0.5f * delta + parent.Dir * (0.22f * segLen);
+
+		FRootSegment seg;
+		seg.P0 = p0;
+		seg.P1 = p1;
+		seg.P2 = p2;
+		seg.R0 = parent.Radius;
+		seg.R1 = child.Radius;
+		seg.Arc0 = parent.ArcLength;
+		seg.Arc1 = child.ArcLength;
+		seg.BranchId = child.BranchId;
+		seg.Generation = child.Generation;
+		RWSegmentBuffer[segIdx] = seg;
+
+		// Conservative bounding box in unwrapped chart, padded by max radius + smooth union margin
+		float pad = max(seg.R0, seg.R1) * (1.0f + JunctionSmooth * 0.75f) + 0.015f;
+		float2 bMin = min(p0, min(p1, p2)) - pad;
+		float2 bMax = max(p0, max(p1, p2)) + pad;
+
+		int minX = (int)floor(bMin.x * (float)ROOT_BIN_RES);
+		int maxX = (int)floor(bMax.x * (float)ROOT_BIN_RES);
+		int minY = (int)floor(bMin.y * (float)ROOT_BIN_RES);
+		int maxY = (int)floor(bMax.y * (float)ROOT_BIN_RES);
+
+		minX = max(minX, minX);
+		maxX = min(maxX, minX + (int)ROOT_BIN_RES - 1);
+		maxY = min(maxY, minY + (int)ROOT_BIN_RES - 1);
+
+		for (int cy = minY; cy <= maxY; ++cy)
+		{
+			uint wy = (uint)((cy % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+			for (int cx = minX; cx <= maxX; ++cx)
+			{
+				uint wx = (uint)((cx % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+				uint cellIdx = wy * ROOT_BIN_RES + wx;
+				InterlockedAdd(RWBinCounts[cellIdx], 1u);
+			}
+		}
+	}
+}
+
+#elif ROOT_STAGE == 4
+
+groupshared uint SharedChunkTotals[64];
+
+[numthreads(64, 1, 1)]
+void PrefixSumBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	// 64 threads each scan 64 contiguous cells (64 * 64 = 4096 cells total)
+	uint tid = DispatchThreadId.x;
+	uint baseCell = tid * 64u;
+
+	uint localSum = 0u;
+	for (uint i = 0u; i < 64u; ++i)
+	{
+		uint c = baseCell + i;
+		uint cnt = RWBinCounts[c];
+		RWBinOffsets[c] = localSum;
+		localSum += cnt;
+	}
+
+	SharedChunkTotals[tid] = localSum;
+	GroupMemoryBarrierWithGroupSync();
+
+	uint chunkOffset = 0u;
+	for (uint k = 0u; k < tid; ++k)
+	{
+		chunkOffset += SharedChunkTotals[k];
+	}
+
+	for (uint j = 0u; j < 64u; ++j)
+	{
+		uint c = baseCell + j;
+		uint finalOffset = min(RWBinOffsets[c] + chunkOffset, ROOT_MAX_BIN_ENTRIES);
+		uint maxCount = (finalOffset < ROOT_MAX_BIN_ENTRIES)
+			? min(RWBinCounts[c], ROOT_MAX_BIN_ENTRIES - finalOffset)
+			: 0u;
+		RWBinOffsets[c] = finalOffset;
+		RWBinCounts[c] = maxCount;
+		RWBinWriteHeads[c] = 0u;
+	}
+
+	if (tid == 63u)
+	{
+		RWStateBuffer[4] = min(chunkOffset + localSum, ROOT_MAX_BIN_ENTRIES);
+	}
+}
+
+#elif ROOT_STAGE == 5
+
+[numthreads(64, 1, 1)]
+void ScatterAndSortBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint idx = DispatchThreadId.x;
+	uint segCount = min(RWStateBuffer[3], ROOT_MAX_SEGMENTS);
+
+	if (idx < segCount)
+	{
+		FRootSegment seg = RWSegmentBuffer[idx];
+		float pad = max(seg.R0, seg.R1) * (1.0f + JunctionSmooth * 0.75f) + 0.015f;
+		float2 bMin = min(seg.P0, min(seg.P1, seg.P2)) - pad;
+		float2 bMax = max(seg.P0, max(seg.P1, seg.P2)) + pad;
+
+		int minX = (int)floor(bMin.x * (float)ROOT_BIN_RES);
+		int maxX = min((int)floor(bMax.x * (float)ROOT_BIN_RES), minX + (int)ROOT_BIN_RES - 1);
+		int minY = (int)floor(bMin.y * (float)ROOT_BIN_RES);
+		int maxY = min((int)floor(bMax.y * (float)ROOT_BIN_RES), minY + (int)ROOT_BIN_RES - 1);
+
+		for (int cy = minY; cy <= maxY; ++cy)
+		{
+			uint wy = (uint)((cy % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+			for (int cx = minX; cx <= maxX; ++cx)
+			{
+				uint wx = (uint)((cx % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+				uint cellIdx = wy * ROOT_BIN_RES + wx;
+				uint localSlot = 0u;
+				InterlockedAdd(RWBinWriteHeads[cellIdx], 1u, localSlot);
+				if (localSlot < RWBinCounts[cellIdx])
+				{
+					RWBinEntries[RWBinOffsets[cellIdx] + localSlot] = idx;
+				}
+			}
+		}
+	}
+
+	AllMemoryBarrierWithGroupSync();
+
+	// Deterministic insertion sort per cell so segment evaluation order is 100% invariant
+	for (uint cellIdx = idx; cellIdx < ROOT_BIN_COUNT; cellIdx += 64u)
+	{
+		uint offset = RWBinOffsets[cellIdx];
+		uint count = RWBinCounts[cellIdx];
+		for (uint i = 1u; i < count; ++i)
+		{
+			uint key = RWBinEntries[offset + i];
+			int j = (int)i - 1;
+			while (j >= 0 && RWBinEntries[offset + (uint)j] > key)
+			{
+				RWBinEntries[offset + (uint)(j + 1)] = RWBinEntries[offset + (uint)j];
+				j -= 1;
+			}
+			RWBinEntries[offset + (uint)(j + 1)] = key;
+		}
+	}
+}
+
+#elif ROOT_STAGE == 6
+
+// Exact closest parameter initialization on quadratic Bezier + 2 damped Newton steps for
+// variable-radius sweep objective f(t) = ||B(t) - u|| - r(t), plus endpoint checks & slope cosine correction.
+void EvaluateTaperedBezierSweep(
+	float2 U,
+	FRootSegment Seg,
+	out float OutSignedDist,
+	out float OutParamT,
+	out float OutRadiusAtT)
+{
+	// Express Pixel U in Seg.P0's unwrapped local chart
+	float2 uLocal = Seg.P0 + ToroidalDelta(Seg.P0, U);
+
+	// 5-sample coarse bracket + analytical chord projection seed
+	float2 chord = Seg.P2 - Seg.P0;
+	float chordLenSq = max(dot(chord, chord), 1e-8f);
+	float tBest = saturate(dot(uLocal - Seg.P0, chord) / chordLenSq);
+
+	float2 a = Seg.P0 - 2.0f * Seg.P1 + Seg.P2;
+	float2 b = 2.0f * (Seg.P1 - Seg.P0);
+	float dR = Seg.R1 - Seg.R0;
+
+	// Check 4 uniform seeds to avoid wrong local minimum on high-curvature segments
+	[unroll]
+	for (uint s = 0u; s <= 4u; ++s)
+	{
+		float ts = (float)s * 0.25f;
+		float2 posS = (a * ts + b) * ts + Seg.P0;
+		float radS = lerp(Seg.R0, Seg.R1, ts);
+		float valS = length(posS - uLocal) - radS;
+
+		float2 posB = (a * tBest + b) * tBest + Seg.P0;
+		float radB = lerp(Seg.R0, Seg.R1, tBest);
+		float valB = length(posB - uLocal) - radB;
+		if (valS < valB)
+		{
+			tBest = ts;
+		}
+	}
+
+	// 2 damped Newton-Raphson iterations on g(t) = (B(t) - u) . B'(t) - ||B(t) - u|| * r'(t)
+	float t = tBest;
+	[unroll]
+	for (uint it = 0u; it < 2u; ++it)
+	{
+		float2 Bt = (a * t + b) * t + Seg.P0;
+		float2 dBt = 2.0f * a * t + b;
+		float2 ddBt = 2.0f * a;
+		float2 diff = Bt - uLocal;
+		float dist = max(length(diff), 1e-6f);
+
+		float g = dot(diff, dBt) - dist * dR;
+		float dg = dot(dBt, dBt) + dot(diff, ddBt) - (dot(diff, dBt) / dist) * dR;
+		float step = g / max(abs(dg), 1e-5f) * (dg >= 0.0f ? 1.0f : -1.0f);
+		t = saturate(t - clamp(step, -0.35f, 0.35f));
+	}
+
+	// Compare refined interior t against exact endpoints t = 0 and t = 1
+	float2 BFinal = (a * t + b) * t + Seg.P0;
+	float rFinal = max(lerp(Seg.R0, Seg.R1, t), 1e-4f);
+	float2 dBFinal = 2.0f * a * t + b;
+	float speed = max(length(dBFinal), 1e-5f);
+	float cosAlpha = sqrt(saturate(1.0f - (dR * dR) / (speed * speed)));
+	float dFinal = (length(BFinal - uLocal) - rFinal) * max(cosAlpha, 0.5f);
+
+	float d0 = length(Seg.P0 - uLocal) - Seg.R0;
+	if (d0 < dFinal)
+	{
+		dFinal = d0;
+		t = 0.0f;
+		rFinal = max(Seg.R0, 1e-4f);
+	}
+
+	float d1 = length(Seg.P2 - uLocal) - Seg.R1;
+	if (d1 < dFinal)
+	{
+		dFinal = d1;
+		t = 1.0f;
+		rFinal = max(Seg.R1, 1e-4f);
+	}
+
+	OutSignedDist = dFinal;
+	OutParamT = t;
+	OutRadiusAtT = rFinal;
+}
+
+float ComputeRootCrossSectionHeight(float SignedDist, float Radius, float Flatness, float WeaveBias)
+{
+	if (SignedDist >= 0.0f)
+	{
+		return 0.0f;
+	}
+	float q = saturate(1.0f + SignedDist / max(Radius, 1e-4f)); // 0 at boundary, 1 at centerline
+	float dome = sqrt(saturate(2.0f * q - q * q));              // Circular cross-section
+	float flatTop = smoothstep(0.0f, max(1.0f - Flatness * 0.7f, 0.15f), dome);
+	float profile = lerp(dome, flatTop, saturate(Flatness));
+	float normalizedRadius = saturate(Radius / max(BaseRadius, 1e-4f));
+	return max(0.0f, profile * normalizedRadius * (1.0f + WeaveBias));
+}
+
+[numthreads(8, 8, 1)]
+void EvaluateFieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 pix = int2(DispatchThreadId.xy);
+	if (pix.x >= Resolution.x || pix.y >= Resolution.y)
+	{
+		return;
+	}
+
+	float2 rawUV = (float2(pix) + 0.5f) / float2(Resolution);
+	float2 uv = WrapUV01(MixtormatGeneratorUV(rawUV));
+
+	uint cellX = min((uint)floor(uv.x * (float)ROOT_BIN_RES), ROOT_BIN_RES - 1u);
+	uint cellY = min((uint)floor(uv.y * (float)ROOT_BIN_RES), ROOT_BIN_RES - 1u);
+	uint cellIdx = cellY * ROOT_BIN_RES + cellX;
+
+	uint offset = BinOffsets[cellIdx];
+	uint count = BinCounts[cellIdx];
+
+	float minSignedDist = 1.0f;
+	float blendedHeight = 0.0f;
+	float bestArc = 0.0f;
+	uint bestBranchId = 0u;
+	float bestDistForId = 1e30f;
+
+	float kSmooth = max(JunctionSmooth * BaseRadius * 0.85f, 1e-5f);
+	float kHeightSmooth = max(JunctionSmooth * 0.18f, 1e-4f);
+
+	for (uint i = 0u; i < count; ++i)
+	{
+		uint segIdx = BinEntries[offset + i];
+		FRootSegment seg = SegmentBuffer[segIdx];
+
+		float sd;
+		float t;
+		float rAtT;
+		EvaluateTaperedBezierSweep(uv, seg, sd, t, rAtT);
+
+		float arc = lerp(seg.Arc0, seg.Arc1, t);
+		float weaveWave = sin(arc * 25.1327412f + (float)seg.BranchId * 1.6180339f) * WeaveAmount * 0.25f;
+		float segHeight = ComputeRootCrossSectionHeight(sd, rAtT, ProfileFlatness, weaveWave);
+
+		if (i == 0u)
+		{
+			minSignedDist = sd;
+			blendedHeight = segHeight;
+		}
+		else
+		{
+			// Smooth minimum on signed distance
+			float hSd = saturate(0.5f + 0.5f * (minSignedDist - sd) / kSmooth);
+			minSignedDist = lerp(minSignedDist, sd, hSd) - kSmooth * hSd * (1.0f - hSd);
+
+			// Smooth maximum on height profile for organic root junctions
+			float hHt = saturate(0.5f + 0.5f * (segHeight - blendedHeight) / kHeightSmooth);
+			blendedHeight = lerp(blendedHeight, segHeight, hHt) + kHeightSmooth * hHt * (1.0f - hHt);
+		}
+
+		if (sd < bestDistForId)
+		{
+			bestDistForId = sd;
+			bestArc = frac(arc);
+			bestBranchId = seg.BranchId;
+		}
+	}
+
+	float pixelWidthUV = 1.0f / (float)max(Resolution.x, Resolution.y);
+	float coverage = (count > 0u) ? smoothstep(pixelWidthUV, -pixelWidthUV, minSignedDist) : 0.0f;
+	float finalHeight = (minSignedDist < pixelWidthUV) ? (blendedHeight * HeightScale) : 0.0f;
+	uint finalId = (minSignedDist <= 0.0f) ? bestBranchId : 0u;
+	float finalArc = (minSignedDist <= 0.0f) ? bestArc : 0.0f;
+
+	// Signed height contract: Centered around 0 [-0.5 * HeightScale, +0.5 * HeightScale] inside coverage,
+	// or positive offset relative to surface. Match Pebbles/RockFormation contract where generator height
+	// is non-negative shape height scaled by HeightScale (and normalized if requested).
+	OutRootHeight[pix] = finalHeight;
+	OutRootCoverage[pix] = coverage;
+	OutRootEdgeDistance[pix] = clamp(minSignedDist, -1.0f, 1.0f);
+	OutRootArcLength[pix] = finalArc;
+	OutRootIds[pix] = finalId;
+}
+
+#elif ROOT_STAGE == 7
+
+[numthreads(8, 8, 1)]
+void CombineCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 pix = int2(DispatchThreadId.xy);
+	if (pix.x >= Resolution.x || pix.y >= Resolution.y)
+	{
+		return;
+	}
+
+	OutHeight[pix] = RootHeightTex.Load(int3(pix, 0));
+}
+
+#endif

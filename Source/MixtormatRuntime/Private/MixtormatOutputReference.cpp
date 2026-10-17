@@ -72,7 +72,8 @@ namespace MixtormatOutputReferences
 			if (Generator.Type == EMixtormatGeneratorType::Cracks
 				|| Generator.Type == EMixtormatGeneratorType::RockFormation
 				|| Generator.Type == EMixtormatGeneratorType::Pebbles
-				|| Generator.Type == EMixtormatGeneratorType::CliffStrata)
+				|| Generator.Type == EMixtormatGeneratorType::CliffStrata
+				|| Generator.Type == EMixtormatGeneratorType::RootNetwork)
 			{
 				return OutputName == FName(TEXT("FlowDirection"));
 			}
