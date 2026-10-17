@@ -1004,7 +1004,12 @@ namespace MixtormatGpuCompositor
 		float ProfileFlatness = 0.20f;
 		float WeaveAmount = 0.30f;
 		float Kink = 0.25f;
+		float ProfileBias = 0.0f;
 		float Burial = 0.0f;
+		float AzimuthAngle = 90.0f;
+		float AzimuthStrength = 0.0f;
+		float SwirlStrength = 0.0f;
+		float AxisRatio = 1.0f;
 		uint64 FieldKey = 0;
 	};
 

@@ -89,7 +89,12 @@ float JunctionSmooth;
 float ProfileFlatness;
 float WeaveAmount;
 float KinkStrength;
+float ProfileBias;
 float BurialDepth;
+float AzimuthAngle;
+float AzimuthStrength;
+float SwirlStrength;
+float AxisRatio;
 
 // Growth (stages 0..5)
 RWStructuredBuffer<FRootNode> RWNodeBuffer;
@@ -176,7 +181,7 @@ uint RootWrapCell(int C)
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	uint idx = DispatchThreadId.x;
-	uint trunkCount = clamp(Trunks, 1u, 32u);
+	uint trunkCount = clamp(Trunks, 1u, 128u);
 	uint attrCount = clamp(Attractors, 16u, ROOT_MAX_ATTRACTORS);
 
 	if (idx == 0u)
@@ -265,7 +270,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float bestDist = attr.NearestDist;
 	for (uint v = frontierStart; v < frontierEnd; ++v)
 	{
-		float dist = length(RootToroidalDelta(RWNodeBuffer[v].Pos, attr.Pos));
+		float2 dVec = RootToroidalDelta(RWNodeBuffer[v].Pos, attr.Pos);
+		float2 anisoD = float2(dVec.x / max(AxisRatio, 0.05f), dVec.y);
+		float dist = length(anisoD);
 		if (dist < bestDist)
 		{
 			bestDist = dist;
@@ -344,6 +351,23 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					float cs = cos(spreadAngle);
 					float sn = sin(spreadAngle);
 					blended = float2(blended.x * cs - blended.y * sn, blended.x * sn + blended.y * cs);
+				}
+
+				// Rotational / vortex swirl steering ("Rotate goals") around tile center
+				if (abs(SwirlStrength) > 0.001f)
+				{
+					float2 toCenter = RootToroidalDelta(parentNode.Pos, float2(0.5f, 0.5f));
+					float2 swirl = RootSafeNormalize(float2(-toCenter.y, toCenter.x), float2(0.0f, 0.0f));
+					blended += swirl * SwirlStrength;
+				}
+
+				// Directional Azimuth force (Gravitropism / Rheotropism)
+				if (AzimuthStrength > 0.001f)
+				{
+					float azRad = radians(AzimuthAngle);
+					float2 azDir = float2(cos(azRad), sin(azRad));
+					blended = lerp(blended, azDir * max(length(blended), 1.0f), saturate(AzimuthStrength * 0.75f))
+						+ azDir * (AzimuthStrength * 0.5f);
 				}
 
 				// Biological circumnutation (continuous wandering zigzag) + sharp obstacle deflection (kink)
@@ -483,7 +507,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	AllMemoryBarrierWithGroupSync();
 
-	uint trunkCount = min(clamp(Trunks, 1u, 32u), nodeCount);
+	uint trunkCount = min(clamp(Trunks, 1u, 128u), nodeCount);
 	uint segCount = nodeCount - trunkCount;
 	if (tid == 0u)
 	{
@@ -740,7 +764,7 @@ void EvaluateTaperedBezierSweep(
 	OutLateralCoord = clamp(lateral / max(rFinal, 1e-4f), -1.0f, 1.0f);
 }
 
-// Cross-section: real-unit cylinder cap corrected by thickness, with soil burial depth.
+// Cross-section: real-unit cylinder cap corrected by thickness, with super-ellipse profile bias and soil burial.
 float RootCrossSectionHeight(float SignedDist, float Radius)
 {
 	if (SignedDist >= 0.0f)
@@ -748,7 +772,15 @@ float RootCrossSectionHeight(float SignedDist, float Radius)
 		return 0.0f;
 	}
 	float q = saturate(-SignedDist / max(Radius, 1e-4f)); // 0 at the rim, 1 on the axis
-	float dome = sqrt(saturate(2.0f * q - q * q));
+	float u = saturate(1.0f - q); // 0 on the axis, 1 at the rim
+
+	// Profile bias: super-ellipse exponent p.
+	// Bias = 0 -> p = 2 (standard circle).
+	// Bias < 0 -> p < 2 (pinched crest / keeled gothic spine).
+	// Bias > 0 -> p > 2 (broadened / bulbous steep shoulders).
+	float pExp = exp2(1.0f + clamp(ProfileBias, -1.5f, 2.0f));
+	float dome = pow(max(1.0f - pow(u, pExp), 0.0f), 1.0f / pExp);
+
 	float flatTop = smoothstep(0.0f, max(1.0f - ProfileFlatness * 0.7f, 0.15f), dome);
 	float profile = lerp(dome, flatTop, saturate(ProfileFlatness));
 
@@ -848,9 +880,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
 	}
 
-	bool bInside = sdAcc <= 0.0f;
+	bool bInside = (height > 0.0f) || (BurialDepth <= 0.001f && sdAcc <= 0.0f);
 	float pixelWidthUV = 1.0f / (float)max(OutputSize.x, OutputSize.y);
-	float coverage = (count > 0u) ? smoothstep(pixelWidthUV, -pixelWidthUV, sdAcc) : 0.0f;
+	float coverage = 0.0f;
+	if (count > 0u)
+	{
+		float rawCoverage = smoothstep(pixelWidthUV, -pixelWidthUV, sdAcc);
+		if (BurialDepth > 0.001f)
+		{
+			float heightCoverage = saturate(height / max(pixelWidthUV / max(BaseRadius, 1e-4f), 1e-4f));
+			coverage = rawCoverage * heightCoverage;
+		}
+		else
+		{
+			coverage = rawCoverage;
+		}
+	}
 
 	// Normalized across-profile coordinate: 0 at center spine, 1 at outer flank
 	float acrossValue = bInside ? abs(bestVnorm) : 0.0f;

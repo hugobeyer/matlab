@@ -1244,40 +1244,40 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0", UIMax = "9999"))
 	int32 RootSeed = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "16", ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "128", ClampMin = "1", ClampMax = "128"))
 	int32 RootTrunks = 4;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "32", UIMax = "2048", ClampMin = "16", ClampMax = "4096"))
 	int32 RootAttractors = 512;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "64", ClampMin = "1", ClampMax = "64"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "1", UIMax = "256", ClampMin = "1", ClampMax = "256"))
 	int32 RootIterations = 24;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.01", UIMax = "0.10", Delta = "0.002"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.005", UIMax = "0.25", Delta = "0.002"))
 	float RootStepLength = 0.035f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.03", UIMax = "0.35", Delta = "0.005"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.01", UIMax = "0.50", Delta = "0.005"))
 	float RootInfluenceRadius = 0.14f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.005", UIMax = "0.10", Delta = "0.002"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Growth", meta = (UIMin = "0.002", UIMax = "0.25", Delta = "0.002"))
 	float RootKillDistance = 0.025f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootBranchSpread = 0.45f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "0.95", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootDirectionInertia = 0.60f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
 	float RootCurlStrength = 0.20f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "1", UIMax = "16", ClampMin = "1", ClampMax = "32"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "1", UIMax = "32", ClampMin = "1"))
 	int32 RootCurlScale = 4;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootKink = 0.25f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.003", UIMax = "0.08", Delta = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.002", UIMax = "0.15", Delta = "0.001"))
 	float RootBaseRadius = 0.022f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -1292,8 +1292,23 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootWeaveAmount = 0.30f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float RootProfileBias = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootBurial = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Steering", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float RootAzimuthAngle = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Steering", meta = (UIMin = "0.0", UIMax = "2.0", Delta = "0.01"))
+	float RootAzimuthStrength = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Steering", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
+	float RootSwirlStrength = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Steering", meta = (UIMin = "0.2", UIMax = "5.0", Delta = "0.05"))
+	float RootAxisRatio = 1.0f;
 };
 
 // One GENERATORS child, whatever kind it is.

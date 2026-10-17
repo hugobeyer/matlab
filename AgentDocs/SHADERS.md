@@ -163,20 +163,26 @@ These contracts are source-reviewed only; no build/shader/runtime checks run.
   changing directions for unequal kernel radii or non-square outputs.
 - These changes are source-reviewed only; shader compilation, runtime and GPU timing are unverified.
 
-## Root Network stem shape & UV publication (RootNet3)
+## Root Network stem shape & UV publication (RootNet4)
 
 - Growth samples one spatially stable curl field rather than reseeding it each iteration.
 - Apical persistence enables tip nodes to coast through attractor gaps, improving network longevity.
 - Tortuous growth: RootKink injects biological circumnutation (alternating zigzag wandering)
   and stochastic obstacle deflection (sharp angular kinks).
-- Physical height & burial: cross-section evaluates real-unit dome height proportional to local thickness.
-  RootBurial sinks thin roots beneath the soil plane while thick roots break through.
+- Profile Pinch & Broaden (RootProfileBias): super-ellipse cross-section exponent ($p = 2^{1 + 	ext{Bias}}$).
+  Negative bias pinches into a crested / keeled gothic spine; positive bias broadens into steep-sided shoulders.
+- Physical Soil Embedment (RootBurial): sinks cylinder center into the ground plane; thin roots submerge completely,
+  while thick trunks break through with solid entry flanks and clean zeroed coverage masks underground.
+- Steering & Tropism:
+  - RootAzimuthAngle & RootAzimuthStrength: directional compass tropism (gravitropism / rheotropism).
+  - RootSwirlStrength: toroidal vortex swirl steering curling branches around network center.
+  - RootAxisRatio: anisotropic attractor distance metric favoring horizontal ($> 1$) or vertical ($< 1$) spread.
 - Orthogonal root coordinate frame:
-  - RootUV: continuous 2D UVMap ($ = normalized branch arc length, $ = normalized across-profile $[0, 1]$),
+  - RootUV: continuous 2D UVMap ($U$ = normalized branch arc length, $V$ = normalized across-profile $[0, 1]$),
     blended to raw canvas coordinates outside roots for seamless downstream generator warping (e.g. Noise grain).
-  - RootAcross: scalar mask of normalized distance from spine to flank ($ on axis, $ on edge).
+  - RootAcross: scalar mask of normalized distance from spine to flank ($0$ on axis, $1$ on edge).
   - RootArcLength: scalar mask of normalized cumulative longitudinal coordinate.
-- The RootNet3 field-cache key separates this revision from previous cached fields.
+- The RootNet4 field-cache key separates this revision from previous cached fields.
 
 ## Adding a shader parameter
 

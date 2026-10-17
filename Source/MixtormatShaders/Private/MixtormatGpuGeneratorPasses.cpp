@@ -485,7 +485,12 @@ public:
 		SHADER_PARAMETER(float, ProfileFlatness)
 		SHADER_PARAMETER(float, WeaveAmount)
 		SHADER_PARAMETER(float, KinkStrength)
+		SHADER_PARAMETER(float, ProfileBias)
 		SHADER_PARAMETER(float, BurialDepth)
+		SHADER_PARAMETER(float, AzimuthAngle)
+		SHADER_PARAMETER(float, AzimuthStrength)
+		SHADER_PARAMETER(float, SwirlStrength)
+		SHADER_PARAMETER(float, AxisRatio)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootNode>, RWNodeBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootSegment>, RWSegmentBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootAttractor>, RWAttractorBuffer)
@@ -3437,14 +3442,14 @@ namespace
 		const FIntPoint Size = Request.Resolution;
 		const FIntVector PixelGroups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 		const uint32 AttractorCount = static_cast<uint32>(FMath::Clamp(Root.Attractors, 16, static_cast<int32>(RootMaxAttractors)));
-		const int32 Iterations = FMath::Clamp(Root.Iterations, 1, 64);
+		const int32 Iterations = FMath::Clamp(Root.Iterations, 1, 256);
 
 		const auto FillParameters = [&Root, &Layer, &Child, &Ctx, Size, AttractorCount](FMixtormatRootNetworkCS::FParameters* P)
 		{
 			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 			P->OutputSize = Size;
 			P->Seed = Root.Seed;
-			P->Trunks = static_cast<uint32>(FMath::Clamp(Root.Trunks, 1, 32));
+			P->Trunks = static_cast<uint32>(FMath::Clamp(Root.Trunks, 1, 128));
 			P->Attractors = AttractorCount;
 			P->StepIndex = 0u;
 			P->StepLength = Root.StepLength;
@@ -3453,14 +3458,19 @@ namespace
 			P->BranchSpread = Root.BranchSpread;
 			P->DirectionInertia = Root.DirectionInertia;
 			P->CurlStrength = Root.CurlStrength;
-			P->CurlScale = static_cast<uint32>(FMath::Clamp(Root.CurlScale, 1, 32));
+			P->CurlScale = static_cast<uint32>(FMath::Max(Root.CurlScale, 1));
 			P->BaseRadius = Root.BaseRadius;
 			P->TipTaper = Root.TipTaper;
 			P->JunctionSmooth = Root.JunctionSmooth;
 			P->ProfileFlatness = Root.ProfileFlatness;
 			P->WeaveAmount = Root.WeaveAmount;
 			P->KinkStrength = Root.Kink;
+			P->ProfileBias = Root.ProfileBias;
 			P->BurialDepth = Root.Burial;
+			P->AzimuthAngle = Root.AzimuthAngle;
+			P->AzimuthStrength = Root.AzimuthStrength;
+			P->SwirlStrength = Root.SwirlStrength;
+			P->AxisRatio = Root.AxisRatio;
 		};
 
 		constexpr int32 SlotCount = 7;
@@ -3477,7 +3487,7 @@ namespace
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
 			// RootNet3: invalidate fields built with old sweep or without UV/Across outputs.
 			const uint64 NodeKey = NodeCache && !Child.PreUV && Root.FieldKey != 0
-				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657433ull)
+				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657434ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)

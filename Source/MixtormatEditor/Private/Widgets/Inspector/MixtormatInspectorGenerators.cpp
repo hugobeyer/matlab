@@ -881,7 +881,7 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				LOCTEXT("RootSeedHint", "Deterministic random seed.")),
 			MakeMemberSliderInt<FMixtormatRootNetwork>(
 				LOCTEXT("RootTrunks", "Trunk Roots"), Root, &FMixtormatRootNetwork::RootTrunks,
-				1, 16, Defaults.RootTrunks,
+				1, 128, Defaults.RootTrunks,
 				LOCTEXT("RootTrunksHint", "Number of starting root trunks."))
 		));
 		AddSliderRow(Growth, MixtormatRow::MakePair(
@@ -891,22 +891,22 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				LOCTEXT("RootAttractorsHint", "Attraction points guiding root network expansion.")),
 			MakeMemberSliderInt<FMixtormatRootNetwork>(
 				LOCTEXT("RootIterations", "Iterations"), Root, &FMixtormatRootNetwork::RootIterations,
-				1, 64, Defaults.RootIterations,
+				1, 256, Defaults.RootIterations,
 				LOCTEXT("RootIterationsHint", "Number of colonisation growth iterations."))
 		));
 		AddSliderRow(Growth, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootStepLength", "Step Length"), Root, &FMixtormatRootNetwork::RootStepLength,
-				0.01, 0.10, Defaults.RootStepLength, 0.002,
+				0.005, 0.25, Defaults.RootStepLength, 0.002,
 				LOCTEXT("RootStepLengthHint", "Distance grown per node segment.")),
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootInfluenceRadius", "Influence Radius"), Root, &FMixtormatRootNetwork::RootInfluenceRadius,
-				0.03, 0.35, Defaults.RootInfluenceRadius, 0.005,
+				0.01, 0.50, Defaults.RootInfluenceRadius, 0.005,
 				LOCTEXT("RootInfluenceRadiusHint", "Search radius around nodes for attractors."))
 		));
 		AddSliderRow(Growth, MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootKillDistance", "Kill Distance"), Root, &FMixtormatRootNetwork::RootKillDistance,
-				0.005, 0.10, Defaults.RootKillDistance, 0.002,
+				0.002, 0.25, Defaults.RootKillDistance, 0.002,
 				LOCTEXT("RootKillDistanceHint", "Distance at which an attractor is consumed.")));
 	}
 
@@ -920,17 +920,17 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				LOCTEXT("RootBranchSpreadHint", "Deflection angle for lateral branches.")),
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootDirectionInertia", "Direction Inertia"), Root, &FMixtormatRootNetwork::RootDirectionInertia,
-				0.0, 0.95, Defaults.RootDirectionInertia, 0.01,
+				0.0, 1.0, Defaults.RootDirectionInertia, 0.01,
 				LOCTEXT("RootDirectionInertiaHint", "Inertial persistence along previous segment direction."))
 		));
 		AddSliderRow(Branching, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootCurlStrength", "Curl Strength"), Root, &FMixtormatRootNetwork::RootCurlStrength,
-				0.0, 1.0, Defaults.RootCurlStrength, 0.01,
+				0.0, 2.0, Defaults.RootCurlStrength, 0.01,
 				LOCTEXT("RootCurlStrengthHint", "Periodic curl noise meandering perturbation.")),
 			MakeMemberSliderInt<FMixtormatRootNetwork>(
 				LOCTEXT("RootCurlScale", "Curl Frequency"), Root, &FMixtormatRootNetwork::RootCurlScale,
-				1, 16, Defaults.RootCurlScale,
+				1, 32, Defaults.RootCurlScale,
 				LOCTEXT("RootCurlScaleHint", "Lattice frequency of curl perturbation."))
 		));
 			AddSliderRow(Branching, MakeMemberSlider<FMixtormatRootNetwork>(
@@ -945,7 +945,7 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 		AddSliderRow(Profile, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootBaseRadius", "Base Radius"), Root, &FMixtormatRootNetwork::RootBaseRadius,
-				0.003, 0.08, Defaults.RootBaseRadius, 0.001,
+				0.002, 0.15, Defaults.RootBaseRadius, 0.001,
 				LOCTEXT("RootBaseRadiusHint", "Maximum trunk radius in UV space.")),
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootTipTaper", "Tip Taper"), Root, &FMixtormatRootNetwork::RootTipTaper,
@@ -964,14 +964,43 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 		));
 		AddSliderRow(Profile, MixtormatRow::MakePair(
 			MakeMemberSlider<FMixtormatRootNetwork>(
-				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
-				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
-				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")),
+				LOCTEXT("RootProfileBias", "Pinch / Broaden"), Root, &FMixtormatRootNetwork::RootProfileBias,
+				-1.0, 1.0, Defaults.RootProfileBias, 0.01,
+				LOCTEXT("RootProfileBiasHint", "Negative pinches into a crested ridge; positive broadens into steep shoulders.")),
 			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootBurial", "Burial Depth"), Root, &FMixtormatRootNetwork::RootBurial,
 				0.0, 1.0, Defaults.RootBurial, 0.01,
-				LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through.")))
-		);
+				LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through."))
+		));
+		AddSliderRow(Profile, MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
+				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
+				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")));
+	}
+
+	// Steering & Tropism Card
+	{
+		const TSharedRef<SVerticalBox> Steering = AddCard(Cards, LOCTEXT("RootSteeringCard", "STEERING & TROPISM"));
+		AddSliderRow(Steering, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootAzimuthAngle", "Azimuth Angle"), Root, &FMixtormatRootNetwork::RootAzimuthAngle,
+				0.0, 360.0, Defaults.RootAzimuthAngle, 1.0,
+				LOCTEXT("RootAzimuthAngleHint", "Compass angle of prevailing growth direction.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootAzimuthStrength", "Azimuth Force"), Root, &FMixtormatRootNetwork::RootAzimuthStrength,
+				0.0, 2.0, Defaults.RootAzimuthStrength, 0.01,
+				LOCTEXT("RootAzimuthStrengthHint", "Strength of directional bias steering growth."))
+		));
+		AddSliderRow(Steering, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootSwirlStrength", "Swirl Force"), Root, &FMixtormatRootNetwork::RootSwirlStrength,
+				-2.0, 2.0, Defaults.RootSwirlStrength, 0.01,
+				LOCTEXT("RootSwirlStrengthHint", "Rotational vortex steering curling roots around center.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootAxisRatio", "Axis Preference (X/Y)"), Root, &FMixtormatRootNetwork::RootAxisRatio,
+				0.2, 5.0, Defaults.RootAxisRatio, 0.05,
+				LOCTEXT("RootAxisRatioHint", "Anisotropic ratio: >1 favors horizontal spread, <1 favors vertical spread."))
+		));
 	}
 
 	AddNativeFlowControls(Cards);
