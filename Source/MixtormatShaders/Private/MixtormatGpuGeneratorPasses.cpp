@@ -3469,8 +3469,9 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+			// RootNet2: invalidate fields built with the old sweep and constant-width tip model.
 			const uint64 NodeKey = NodeCache && !Child.PreUV && Root.FieldKey != 0
-				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E6574ull)
+				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657432ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)

@@ -163,6 +163,18 @@ These contracts are source-reviewed only; no build/shader/runtime checks run.
   changing directions for unequal kernel radii or non-square outputs.
 - These changes are source-reviewed only; shader compilation, runtime and GPU timing are unverified.
 
+## Root Network stem shape
+
+- Growth samples one spatially stable curl field rather than reseeding it each iteration.
+- Cubic sweeps share tangent directions at growth nodes. The end handle is derived from
+  the chord, preserving the existing 48-byte segment layout and conservative bin bounds.
+- Pipe radii use subtree-to-trunk tip-count ratios; distance to the furthest downstream tip
+  adds a terminal taper controlled by Tip Taper over the Influence Radius growth scale.
+- Branch-local height envelopes preserve taper/weave before junction blending. Output
+  Normalize and Height Scale remain downstream controls; authored values are unchanged.
+- The RootNet2 field-cache key separates this shape revision from previous cached fields.
+- Source-reviewed only; shader compilation and visual results have not been validated.
+
 ## Adding a shader parameter
 
 Trace the full path: CPU declaration (the struct's owning runtime header, e.g.

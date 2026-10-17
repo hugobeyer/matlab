@@ -1228,8 +1228,8 @@ struct MIXTORMATRUNTIME_API FMixtormatBooleanOps
 
 };
 
-// Root Network: tileable Space Colonization root/vein network with pipe-model tapering
-// and smooth variable-radius quadratic Bezier sweep SDF evaluation.
+// Root Network: tileable Space Colonization root/vein network with pipe-model and tip-distance
+// tapering, evaluated as tangent-continuous variable-radius cubic Bezier sweeps.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 {

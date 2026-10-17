@@ -7,9 +7,9 @@
 //   ROOT_STAGE 1  assign    one thread per attractor; incremental frontier nearest-node search,
 //                           fixed-point atomic pull accumulation (order-independent, deterministic)
 //   ROOT_STAGE 2  extend    one group; ordered prefix-sum compaction of new child nodes
-//   ROOT_STAGE 3  segments  O(N) pipe-model radii, quadratic Bezier segments, toroidal bin counts
+//   ROOT_STAGE 3  segments  O(N) pipe-model radii, tangent-continuous sweeps, toroidal bin counts
 //   ROOT_STAGE 4  scan      4096-cell exclusive prefix sum (CSR offsets)
-//   ROOT_STAGE 5  scatter   CSR scatter + per-cell sort by segment index (deterministic order)
+//   ROOT_STAGE 5  scatter   CSR scatter + per-cell sort by branch/segment (deterministic order)
 //   ROOT_STAGE 6  field     per-pixel swept SDF over the pixel's bin only
 //
 // Stages 2..5 run as a single 64-thread group with strided loops over the bounded arrays.
@@ -49,7 +49,7 @@ struct FRootNode
 struct FRootSegment
 {
 	float2 P0;           // Start point in [0, 1)^2
-	float2 P1;           // Quadratic Bezier control point in P0's local unwrapped chart
+	float2 P1;           // Cubic start handle; end handle is P2 - (P2 - P0) / 3
 	float2 P2;           // End point in P0's local unwrapped chart
 	float R0;            // Start radius
 	float R1;            // End radius
@@ -96,7 +96,8 @@ RWStructuredBuffer<FRootAttractor> RWAttractorBuffer;
 // [0] NodeCount  [1] FrontierStart  [2] FrontierEnd  [3] SegmentCount
 // [4] StoredBinEntries  [5] RequestedBinEntries (> [4] means the CSR capacity was exceeded)
 RWBuffer<uint> RWStateBuffer;
-// 4 ints per node: [PullX_Q16, PullY_Q16, PullCount, PipeTipCount]
+// Growth: [PullX_Q16, PullY_Q16, PullCount, unused].
+// Stage 3 reuses this storage as [StepsToTip, TrunkTipCount, unused, PipeTipCount].
 RWBuffer<int> RWNodePullBuffer;
 RWBuffer<uint> RWBinCounts;
 RWBuffer<uint> RWBinOffsets;
@@ -320,7 +321,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			if (pullCount > 0 && parentNode.ChildCount < 3u)
 			{
 				float2 avgPull = RootSafeNormalize(float2((float)pullX, (float)pullY), parentNode.Dir);
-				float2 curl = RootPeriodicCurl(parentNode.Pos, CurlScale, Seed + StepIndex * 19u);
+				float2 curl = RootPeriodicCurl(parentNode.Pos, CurlScale, Seed);
 				float2 blended = lerp(avgPull, parentNode.Dir, saturate(DirectionInertia)) + curl * CurlStrength;
 
 				// A node that already has a child grows a lateral, deflected by Branch Spread.
@@ -397,9 +398,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		RWBinCounts[c] = 0u;
 		RWBinWriteHeads[c] = 0u;
 	}
-	// Leaf seeds for the pipe model; slot 3 of the pull record is otherwise unused.
+	// Growth is finished; reuse the pull storage for subtree size and tip distance.
 	for (uint l = tid; l < nodeCount; l += 64u)
 	{
+		RWNodePullBuffer[l * 4u + 0u] = 0;
 		RWNodePullBuffer[l * 4u + 3u] = (RWNodeBuffer[l].ChildCount == 0u) ? 1 : 0;
 	}
 	AllMemoryBarrierWithGroupSync();
@@ -415,20 +417,36 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			if (parent < v)
 			{
 				RWNodePullBuffer[parent * 4u + 3u] += RWNodePullBuffer[v * 4u + 3u];
+				RWNodePullBuffer[parent * 4u + 0u] = max(RWNodePullBuffer[parent * 4u + 0u],
+					RWNodePullBuffer[v * 4u + 0u] + 1);
 			}
+		}
+		// Parent-first propagation gives each node its own trunk's reference thickness.
+		for (uint v = 0u; v < nodeCount; ++v)
+		{
+			uint parent = RWNodeBuffer[v].ParentIndex;
+			RWNodePullBuffer[v * 4u + 1u] = (parent < v)
+				? RWNodePullBuffer[parent * 4u + 1u]
+				: RWNodePullBuffer[v * 4u + 3u];
 		}
 	}
 	AllMemoryBarrierWithGroupSync();
 
-	// Leonardo / Murray pipe model: r^2.4 is additive over children, so r ~ tips^(1/2.4).
-	float tipRadius = max(BaseRadius * (1.0f - saturate(TipTaper) * 0.88f), 0.0005f);
+	// Subtree ratios preserve thick parents and fine offshoots. Tip distance adds taper
+	// along unbranched runs, where leaf count alone would produce a constant-width cable.
+	float tipScale = 1.0f - saturate(TipTaper);
+	tipScale *= tipScale;
 	for (uint n = tid; n < nodeCount; n += 64u)
 	{
 		FRootNode node = RWNodeBuffer[n];
 		float tips = (float)max(RWNodePullBuffer[n * 4u + 3u], 1);
-		float rawRadius = tipRadius * pow(tips, 0.42f);
+		float trunkTips = (float)max(RWNodePullBuffer[n * 4u + 1u], 1);
+		float rawRadius = BaseRadius * pow(saturate(tips / trunkTips), 0.42f);
 		float depthFade = exp(-0.08f * (float)node.Generation);
-		node.Radius = clamp(rawRadius * depthFade, tipRadius, BaseRadius);
+		float remainingLength = (float)RWNodePullBuffer[n * 4u + 0u] * StepLength;
+		float tipFade = lerp(tipScale, 1.0f,
+			smoothstep(0.0f, max(InfluenceRadius, StepLength), remainingLength));
+		node.Radius = max(rawRadius * depthFade * tipFade, 1e-4f);
 		RWNodeBuffer[n] = node;
 	}
 	AllMemoryBarrierWithGroupSync();
@@ -454,7 +472,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			float2 delta = RootToroidalDelta(p0, child.Pos);
 			float2 p2 = p0 + delta;
 			float segLen = length(delta);
-			float2 p1 = p0 + 0.5f * delta + parent.Dir * (0.22f * segLen);
+			// The start tangent matches the preceding segment's arrival tangent.
+							// The end tangent is this growth edge, shared by the next segment's start.
+							float2 p1 = p0 + parent.Dir * (segLen / 3.0f);
 
 			FRootSegment seg;
 			seg.P0 = p0;
@@ -564,8 +584,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	AllMemoryBarrierWithGroupSync();
 
-	// Atomic slot order is arbitrary; sorting by segment index makes the smooth union's
-	// evaluation order, and therefore every output bit, invariant.
+	// Sort by branch, then segment index: field evaluation can finish each stem before
+	// blending junctions, without a pixel-dependent choice of hard versus smooth union.
 	for (uint cellIdx = tid; cellIdx < ROOT_BIN_COUNT; cellIdx += 64u)
 	{
 		uint offset = RWBinOffsets[cellIdx];
@@ -573,10 +593,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		for (uint i = 1u; i < count; ++i)
 		{
 			uint key = RWBinEntries[offset + i];
+			uint keyBranch = RWSegmentBuffer[key].BranchId;
 			int j = (int)i - 1;
-			while (j >= 0 && RWBinEntries[offset + (uint)j] > key)
+			while (j >= 0)
 			{
-				RWBinEntries[offset + (uint)(j + 1)] = RWBinEntries[offset + (uint)j];
+				uint previous = RWBinEntries[offset + (uint)j];
+				uint previousBranch = RWSegmentBuffer[previous].BranchId;
+				if (previousBranch < keyBranch || (previousBranch == keyBranch && previous <= key))
+				{
+					break;
+				}
+				RWBinEntries[offset + (uint)(j + 1)] = previous;
 				j -= 1;
 			}
 			RWBinEntries[offset + (uint)(j + 1)] = key;
@@ -586,7 +613,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 #elif ROOT_STAGE == 6
 
-// Signed distance to a quadratic Bezier sweep with linearly varying radius:
+// Signed distance to a cubic Bezier sweep with linearly varying radius:
 // minimise f(t) = |B(t) - u| - r(t). Chord seed + 5-point bracket + 2 damped Newton steps on
 // f'(t), explicit endpoint caps, and a taper-slope cosine correction for the cone flank.
 void EvaluateTaperedBezierSweep(
@@ -603,17 +630,21 @@ void EvaluateTaperedBezierSweep(
 	float chordLenSq = max(dot(chord, chord), 1e-8f);
 	float tBest = saturate(dot(uLocal - Seg.P0, chord) / chordLenSq);
 
-	float2 a = Seg.P0 - 2.0f * Seg.P1 + Seg.P2;
-	float2 b = 2.0f * (Seg.P1 - Seg.P0);
+	// Growth stores the arriving edge direction in each node, so the end handle can be
+	// reconstructed from the chord without changing the shared CPU/GPU segment layout.
+	float2 endHandle = Seg.P2 - chord / 3.0f;
+	float2 a = -Seg.P0 + 3.0f * Seg.P1 - 3.0f * endHandle + Seg.P2;
+	float2 b = 3.0f * (Seg.P0 - 2.0f * Seg.P1 + endHandle);
+	float2 c = 3.0f * (Seg.P1 - Seg.P0);
 	float dR = Seg.R1 - Seg.R0;
 
-	float2 posB = (a * tBest + b) * tBest + Seg.P0;
+	float2 posB = ((a * tBest + b) * tBest + c) * tBest + Seg.P0;
 	float valB = length(posB - uLocal) - lerp(Seg.R0, Seg.R1, tBest);
 	[unroll]
 	for (uint s = 0u; s <= 4u; ++s)
 	{
 		float ts = (float)s * 0.25f;
-		float2 posS = (a * ts + b) * ts + Seg.P0;
+		float2 posS = ((a * ts + b) * ts + c) * ts + Seg.P0;
 		float valS = length(posS - uLocal) - lerp(Seg.R0, Seg.R1, ts);
 		if (valS < valB)
 		{
@@ -626,9 +657,9 @@ void EvaluateTaperedBezierSweep(
 	[unroll]
 	for (uint it = 0u; it < 2u; ++it)
 	{
-		float2 Bt = (a * t + b) * t + Seg.P0;
-		float2 dBt = 2.0f * a * t + b;
-		float2 ddBt = 2.0f * a;
+		float2 Bt = ((a * t + b) * t + c) * t + Seg.P0;
+		float2 dBt = (3.0f * a * t + 2.0f * b) * t + c;
+		float2 ddBt = 6.0f * a * t + 2.0f * b;
 		float2 diff = Bt - uLocal;
 		float dist = max(length(diff), 1e-6f);
 
@@ -638,9 +669,15 @@ void EvaluateTaperedBezierSweep(
 		t = saturate(t - clamp(step, -0.35f, 0.35f));
 	}
 
-	float2 BFinal = (a * t + b) * t + Seg.P0;
+	float2 BFinal = ((a * t + b) * t + c) * t + Seg.P0;
+	// A Newton step can overshoot on a tight bend; retain the best sampled candidate.
+	if (length(BFinal - uLocal) - lerp(Seg.R0, Seg.R1, t) > valB)
+	{
+		t = tBest;
+		BFinal = ((a * t + b) * t + c) * t + Seg.P0;
+	}
 	float rFinal = max(lerp(Seg.R0, Seg.R1, t), 1e-4f);
-	float speed = max(length(2.0f * a * t + b), 1e-5f);
+	float speed = max(length((3.0f * a * t + 2.0f * b) * t + c), 1e-5f);
 	float cosAlpha = sqrt(saturate(1.0f - (dR * dR) / (speed * speed)));
 	float dFinal = (length(BFinal - uLocal) - rFinal) * max(cosAlpha, 0.5f);
 
@@ -678,6 +715,20 @@ float RootCrossSectionHeight(float SignedDist, float Radius)
 	return profile * saturate(Radius / max(BaseRadius, 1e-4f));
 }
 
+// Merge complete branch envelopes, never a union distance with a different stem's radius.
+void RootMergeBranchFields(float BranchDistance, float BranchHeight, float SmoothWidth,
+	inout float Distance, inout float Height)
+{
+	float h = saturate(0.5f + 0.5f * (Distance - BranchDistance) / SmoothWidth);
+	Distance = lerp(Distance, BranchDistance, h) - SmoothWidth * h * (1.0f - h);
+
+	// Height is normalized by BaseRadius. Limit smoothing to overlapping support so an
+	// absent branch (including one omitted by the spatial bin) contributes exactly zero.
+	float width = min(SmoothWidth / max(BaseRadius, 1e-4f), 2.0f * min(Height, BranchHeight));
+	float blend = saturate(1.0f - abs(Height - BranchHeight) / max(width, 1e-5f));
+	Height = max(Height, BranchHeight) + 0.25f * width * blend * blend;
+}
+
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -700,10 +751,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float sdAcc = ROOT_NO_DISTANCE;
 	float bestRaw = ROOT_NO_DISTANCE;
-	float bestRadius = BaseRadius;
 	float bestArc = 0.0f;
-	float bestWeave = 0.0f;
 	uint bestBranchId = 0u;
+	float height = 0.0f;
+	float branchDistance = ROOT_NO_DISTANCE;
+	float branchHeight = 0.0f;
+	uint branchId = 0u;
 
 	for (uint i = 0u; i < count; ++i)
 	{
@@ -714,33 +767,41 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float rAtT;
 		EvaluateTaperedBezierSweep(uv, seg, sd, t, rAtT);
 
-		// Consecutive segments of one branch share an endpoint with equal distance; a smooth
-		// union there would bead every joint. Hard union along a branch, smooth at junctions.
-		if (seg.BranchId == bestBranchId)
+		// Stage 5 groups each branch contiguously. Hard-union its segment envelopes to
+		// avoid beads at every joint, then smooth-union the completed branches.
+		if (seg.BranchId != branchId)
 		{
-			sdAcc = min(sdAcc, sd);
+			if (branchId != 0u)
+			{
+				RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
+			}
+			branchId = seg.BranchId;
+			branchDistance = ROOT_NO_DISTANCE;
+			branchHeight = 0.0f;
 		}
-		else
-		{
-			float h = saturate(0.5f + 0.5f * (sdAcc - sd) / kSmooth);
-			sdAcc = lerp(sdAcc, sd, h) - kSmooth * h * (1.0f - h);
-		}
+
+		float arc = lerp(seg.Arc0, seg.Arc1, t);
+		float weave = sin(arc * 25.1327412f + (float)seg.BranchId * 1.6180339f) * WeaveAmount * 0.25f;
+		float segmentHeight = RootCrossSectionHeight(sd, rAtT) * max(1.0f + weave, 0.0f);
+		branchDistance = min(branchDistance, sd);
+		branchHeight = max(branchHeight, segmentHeight);
 
 		if (sd < bestRaw)
 		{
 			bestRaw = sd;
-			bestRadius = rAtT;
 			bestBranchId = seg.BranchId;
-			float arc = lerp(seg.Arc0, seg.Arc1, t);
 			bestArc = frac(arc);
-			bestWeave = sin(arc * 25.1327412f + (float)seg.BranchId * 1.6180339f) * WeaveAmount * 0.25f;
 		}
+	}
+	if (branchId != 0u)
+	{
+		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
 	}
 
 	bool bInside = sdAcc <= 0.0f;
 	float pixelWidthUV = 1.0f / (float)max(OutputSize.x, OutputSize.y);
 	float coverage = (count > 0u) ? smoothstep(pixelWidthUV, -pixelWidthUV, sdAcc) : 0.0f;
-	float height = (count > 0u) ? RootCrossSectionHeight(sdAcc, bestRadius) * max(1.0f + bestWeave, 0.0f) : 0.0f;
+
 
 	OutRootHeight[pix] = height;
 	OutRootCoverage[pix] = coverage;
