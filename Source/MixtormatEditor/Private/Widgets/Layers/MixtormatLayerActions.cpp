@@ -770,7 +770,7 @@ FReply SMixtormat::CreateGroupFromSelection()
 		// Both losses are consequences of the move, not failures, and neither is visible in the
 		// stack -- so they are said once here rather than left for the user to discover.
 		WorkingStatusText = FString::Printf(
-			TEXT("Grouped %d layers · %d height reference(s) dropped · %d layer(s) left their old group"),
+			TEXT("Grouped %d layers \u00b7 %d height reference(s) dropped \u00b7 %d layer(s) left their old group"),
 			Selected.Num(), DroppedReferences, StrandedCount);
 	}
 	else
@@ -1318,8 +1318,9 @@ FReply SMixtormat::BreakChildInstanceAt(const FMixtormatChildAddress& Address)
 	// resolve reads from.
 	const TArray<FMixtormatLayer> LayerSnapshot = WorkingLayers;
 	const TArray<FMixtormatLayerGroup> GroupSnapshot = WorkingLayerGroups;
+	const TArray<FMixtormatSourceEntry> SourceSnapshot = WorkingSources;
 	if (!MixtormatParameterBinding::BreakChildInstance(
-		FMixtormatBindingScope{LayerSnapshot, GroupSnapshot}, *Child))
+		FMixtormatBindingScope{LayerSnapshot, GroupSnapshot, SourceSnapshot}, *Child))
 	{
 		return FReply::Unhandled();
 	}
@@ -2197,6 +2198,7 @@ FReply SMixtormat::AddColorIdMaskToLayer(const int32 LayerIndex)
 		FMixtormatAddTarget::Layer(LayerIndex),
 		EMixtormatChildCreation::ColorIdMask);
 }
+
 
 FReply SMixtormat::AddFilterToLayer(const int32 LayerIndex)
 {

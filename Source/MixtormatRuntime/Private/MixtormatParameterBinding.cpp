@@ -1270,16 +1270,99 @@ namespace MixtormatParameterBinding
 		{
 			return false;
 		}
+		const FGuid KeptChildId = InOutChild.ChildId;
+		FGuid DestOwnerId;
+		if (KeptChildId.IsValid())
+		{
+			for (const FMixtormatLayer& Layer : Layers)
+			{
+				if (Layer.Children.ContainsByPredicate([&KeptChildId](const FMixtormatLayerChild& Candidate)
+					{ return Candidate.ChildId == KeptChildId; }))
+				{
+					DestOwnerId = Layer.LayerId;
+					break;
+				}
+			}
+			if (!DestOwnerId.IsValid() && Scope.Sources)
+			{
+				for (const FMixtormatSourceEntry& Source : *Scope.Sources)
+				{
+					if (Source.Child.ChildId == KeptChildId
+						|| Source.OwnedChildren.ContainsByPredicate([&KeptChildId](const FMixtormatLayerChild& Candidate)
+							{ return Candidate.ChildId == KeptChildId; }))
+					{
+						DestOwnerId = Source.SourceId;
+						break;
+					}
+				}
+			}
+			if (!DestOwnerId.IsValid() && Scope.Groups)
+			{
+				for (const FMixtormatLayerGroup& Group : *Scope.Groups)
+				{
+					if (Group.Children.ContainsByPredicate([&KeptChildId](const FMixtormatLayerChild& Candidate)
+						{ return Candidate.ChildId == KeptChildId; }))
+					{
+						DestOwnerId = Group.GroupId;
+						break;
+					}
+				}
+			}
+		}
+
+		TSet<FGuid> Visited;
+		Visited.Add(KeptChildId);
+		FGuid SourceOwnerId = InOutChild.SourceLayerId;
+		FGuid SourceChildId = InOutChild.SourceChildId;
+		const FMixtormatLayerChild* Source = FindChild(Scope, SourceOwnerId, SourceChildId);
+		while (Source && Source->IsInstance())
+		{
+			if (Visited.Contains(Source->ChildId))
+			{
+				Source = nullptr;
+				break;
+			}
+			Visited.Add(Source->ChildId);
+			SourceOwnerId = Source->SourceLayerId;
+			SourceChildId = Source->SourceChildId;
+			Source = FindChild(Scope, SourceOwnerId, SourceChildId);
+		}
+		const bool bResolvedTerminalSource = Source && Source->ChildId != KeptChildId;
+
 		// Bake whatever the source says right now, then forget it. Resolving first means a broken
 		// instance breaks into the values it was already showing rather than into empty defaults.
 		FMixtormatLayer Scratch;
 		Scratch.Children.Add(InOutChild);
 		ResolveChildInstances(Scope, Scratch);
-		const FGuid KeptChildId = InOutChild.ChildId;
 		InOutChild = Scratch.Children[0];
 		InOutChild.ChildId = KeptChildId;
 		InOutChild.SourceLayerId = FGuid();
 		InOutChild.SourceChildId = FGuid();
+
+		if (bResolvedTerminalSource)
+		{
+			for (FMixtormatParameterBinding& Binding : InOutChild.ParameterBindings)
+			{
+				if (Binding.Reference.Source.LayerId == SourceOwnerId
+					&& Binding.Reference.Source.ChildId == SourceChildId)
+				{
+					if (DestOwnerId.IsValid())
+					{
+						Binding.Reference.Source.LayerId = DestOwnerId;
+					}
+					Binding.Reference.Source.ChildId = KeptChildId;
+				}
+				if (Binding.Driver.SourceLayerId == SourceOwnerId
+					&& Binding.Driver.SourceChildId == SourceChildId)
+				{
+					if (DestOwnerId.IsValid())
+					{
+						Binding.Driver.SourceLayerId = DestOwnerId;
+					}
+					Binding.Driver.SourceChildId = KeptChildId;
+				}
+			}
+		}
 		return true;
 	}
 
@@ -1597,6 +1680,7 @@ namespace MixtormatParameterBinding
 		}
 		return false;
 	}
+
 
 	bool TryResolveEnum(
 		const FMixtormatBindingScope& Scope,
