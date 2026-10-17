@@ -849,18 +849,31 @@ float RootCrossSectionHeight(float SignedDist, float Radius, float BurialMult)
 
 // Merge complete branch envelopes, never a union distance with a different stem's radius.
 void RootMergeBranchFields(float BranchDistance, float BranchHeight, float SmoothWidth,
-	inout float Distance, inout float Height)
+	inout float Distance, inout float Height, inout float BlendAccum)
 {
-	float h = saturate(0.5f + 0.5f * (Distance - BranchDistance) / SmoothWidth);
-	Distance = lerp(Distance, BranchDistance, h) - SmoothWidth * h * (1.0f - h);
+	if (Distance >= ROOT_NO_DISTANCE * 0.5f)
+	{
+		Distance = BranchDistance;
+		Height = BranchHeight;
+		return;
+	}
 
-	// Polynomial smooth-max for height across overlapping branches:
-	// Guarantees C1 smooth transition across branch junctions without tearing, cliff steps, or creases.
+	float diff = Distance - BranchDistance;
+	float h = saturate(0.5f + 0.5f * diff / SmoothWidth);
+	float blend = h * (1.0f - h);
+	BlendAccum = max(BlendAccum, blend * 4.0f);
+
+	Distance = lerp(Distance, BranchDistance, h) - SmoothWidth * blend;
+
+	// Smooth-max for height across overlapping branches:
+	// Guarantees C1 smooth transition across branch junctions without tearing, cliff steps, or creases,
+	// and without an additive hump that artificially inflates peak height.
 	float wNorm = SmoothWidth / max(BaseRadius, 1e-4f);
 	if (Height > 0.0f && BranchHeight > 0.0f && wNorm > 1e-5f)
 	{
 		float hBlend = saturate(0.5f + 0.5f * (Height - BranchHeight) / wNorm);
-		Height = lerp(BranchHeight, Height, hBlend) + wNorm * hBlend * (1.0f - hBlend);
+		float s = hBlend * hBlend * (3.0f - 2.0f * hBlend);
+		Height = lerp(BranchHeight, Height, s);
 	}
 	else
 	{
@@ -895,6 +908,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float bestVnorm = 0.0f;
 	uint bestBranchId = 0u;
 	float height = 0.0f;
+	float blendAccum = 0.0f;
 	float branchDistance = ROOT_NO_DISTANCE;
 	float branchHeight = 0.0f;
 	uint branchId = 0u;
@@ -915,7 +929,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			if (branchId != 0u)
 			{
-				RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
+				RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height, blendAccum);
 			}
 			branchId = seg.BranchId;
 			branchDistance = ROOT_NO_DISTANCE;
@@ -962,19 +976,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	if (branchId != 0u)
 	{
-		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height);
+		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height, blendAccum);
 	}
 
 	// Fillet height reconstruction:
-	// If sdAcc < 0, the pixel is inside the merged root volume (including the smoothed junction fillet).
-	// Reconstruct the smooth fillet crest so the junction fillet never drops to zero height.
-	if (sdAcc < 0.0f)
+	// Only reconstruct height in the junction fillet webbing between converging branches
+	// where sdAcc < 0 but individual branch envelopes left a height gap.
+	// This preserves genuine branch cross-section height and taper along all stems.
+	if (sdAcc < 0.0f && blendAccum > 0.001f && height <= 0.0f)
 	{
-		float filletDepth = saturate(-sdAcc / max(BaseRadius, 1e-4f));
-		float filletProfile = 1.0f - (1.0f - filletDepth) * (1.0f - filletDepth);
-		filletProfile = pow(max(filletProfile, 0.0f), max(ProfileFlatness, 0.1f));
-		float filletHeight = max(0.0f, filletProfile - BurialDepth);
-		height = max(height, filletHeight);
+		float localReach = max(kSmooth, 1e-4f);
+		float filletDepth = saturate(-sdAcc / localReach);
+		float filletProfile = sqrt(max(2.0f * filletDepth - filletDepth * filletDepth, 0.0f));
+		filletProfile = pow(filletProfile, max(ProfileFlatness, 0.1f));
+		float filletHeight = max(0.0f, (filletProfile - BurialDepth) * saturate(localReach / max(BaseRadius, 1e-4f)));
+		height = max(height, filletHeight * blendAccum);
 	}
 
 	bool bInside = (height > 0.0f) || (BurialDepth <= 0.001f && sdAcc <= 0.0f);
