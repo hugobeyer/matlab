@@ -240,19 +240,55 @@ namespace MixtormatLayerGroups
 			return;
 		}
 
+		// The group's visibility gates the render copy only. The authored bEnabled is what the
+		// eye icon shows and what comes back when the group is switched on again.
 		for (FMixtormatLayer& Layer : OutLayers)
 		{
-			const FMixtormatLayerGroup* Group = FindGroup(Groups, Layer.GroupId);
-			if (!Group)
+			if (const FMixtormatLayerGroup* Group = FindGroup(Groups, Layer.GroupId))
+			{
+				Layer.bEnabled = Layer.bEnabled && Group->bEnabled;
+			}
+		}
+
+		struct FExpandedGroupInfo
+		{
+			FGuid RepLayerId;
+			TSet<FGuid> ChildIds;
+		};
+		TMap<FGuid, FExpandedGroupInfo> ExpandedGroups;
+		for (const FMixtormatLayerGroup& Group : Groups)
+		{
+			if (!Group.GroupId.IsValid() || Group.Children.Num() == 0)
 			{
 				continue;
 			}
+			int32 FirstIndex = INDEX_NONE;
+			int32 LastIndex = INDEX_NONE;
+			if (!GetGroupRange(OutLayers, Group.GroupId, FirstIndex, LastIndex))
+			{
+				continue;
+			}
+			int32 RepIndex = LastIndex;
+			for (int32 Index = LastIndex; Index >= FirstIndex; --Index)
+			{
+				if (OutLayers[Index].bEnabled)
+				{
+					RepIndex = Index;
+					break;
+				}
+			}
+			FExpandedGroupInfo& Info = ExpandedGroups.Add(Group.GroupId);
+			Info.RepLayerId = OutLayers[RepIndex].LayerId;
+			for (const FMixtormatLayerChild& GroupChild : Group.Children)
+			{
+				Info.ChildIds.Add(GroupChild.ChildId);
+			}
+		}
 
-			// The group's visibility gates the render copy only. The authored bEnabled is what the
-			// eye icon shows and what comes back when the group is switched on again.
-			Layer.bEnabled = Layer.bEnabled && Group->bEnabled;
-
-			if (Group->Children.Num() == 0)
+		for (FMixtormatLayer& Layer : OutLayers)
+		{
+			const FMixtormatLayerGroup* Group = FindGroup(Groups, Layer.GroupId);
+			if ((!Group || Group->Children.Num() == 0) && ExpandedGroups.IsEmpty())
 			{
 				continue;
 			}
@@ -260,29 +296,43 @@ namespace MixtormatLayerGroups
 			// Every shared child's identity inside this member, resolved up front: a child may
 			// name a sibling that has not been cloned yet.
 			TMap<FGuid, FGuid> ChildIdRemap;
-			ChildIdRemap.Reserve(Group->Children.Num());
-			for (const FMixtormatLayerChild& GroupChild : Group->Children)
+			if (Group && Group->Children.Num() > 0)
 			{
-				ChildIdRemap.Add(
-					GroupChild.ChildId,
-					MakeEffectiveChildId(Group->GroupId, GroupChild.ChildId, Layer.LayerId));
+				ChildIdRemap.Reserve(Group->Children.Num());
+				for (const FMixtormatLayerChild& GroupChild : Group->Children)
+				{
+					ChildIdRemap.Add(
+						GroupChild.ChildId,
+						MakeEffectiveChildId(Group->GroupId, GroupChild.ChildId, Layer.LayerId));
+				}
 			}
 
 			// A GUID naming a sibling shared child follows the clone into this member; one naming
-			// anything else is an authored address and stays exactly as written.
+			// an external group's shared child resolves to that group's representative member clone.
 			const FGuid MemberLayerId = Layer.LayerId;
-			const FGuid AuthoredGroupId = Group->GroupId;
+			const FGuid AuthoredGroupId = Group ? Group->GroupId : FGuid();
 			const auto RemapPair =
-				[&ChildIdRemap, &MemberLayerId, &AuthoredGroupId](FGuid& OwnerLayerId, FGuid& ChildId)
+				[&ChildIdRemap, &MemberLayerId, &AuthoredGroupId, &ExpandedGroups](FGuid& OwnerLayerId, FGuid& ChildId)
 			{
-				// Only an authored address to this group becomes member-local. A layer address that
-				// happens to name a matching child must stay external to this expansion.
-				if (OwnerLayerId == AuthoredGroupId)
+				if (!OwnerLayerId.IsValid() || !ChildId.IsValid())
+				{
+					return;
+				}
+				if (AuthoredGroupId.IsValid() && OwnerLayerId == AuthoredGroupId)
 				{
 					if (const FGuid* Effective = ChildIdRemap.Find(ChildId))
 					{
 						ChildId = *Effective;
 						OwnerLayerId = MemberLayerId;
+					}
+					return;
+				}
+				if (const FExpandedGroupInfo* ExternalGroup = ExpandedGroups.Find(OwnerLayerId))
+				{
+					if (ExternalGroup->ChildIds.Contains(ChildId))
+					{
+						ChildId = MakeEffectiveChildId(OwnerLayerId, ChildId, ExternalGroup->RepLayerId);
+						OwnerLayerId = ExternalGroup->RepLayerId;
 					}
 				}
 			};
@@ -308,18 +358,18 @@ namespace MixtormatLayerGroups
 				RemapOutput(Child.BoundaryId.RegionIdsSource);
 				RemapPair(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
 				if (const FGuid* Effective = ChildIdRemap.Find(Child.HeightColorRamp.SourceChildId))
-                {
-                    Child.HeightColorRamp.SourceChildId = *Effective;
-                }
-                // Boolean field joins refer directly to earlier generator GUIDs.
-                // Remap both shared clones and member-local links before evaluation.
-                if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
-                {
-                    if (const FGuid* Effective = ChildIdRemap.Find(Child.Generator.BooleanOps.SourceChildId))
-                    {
-                        Child.Generator.BooleanOps.SourceChildId = *Effective;
-                    }
-                }
+				{
+					Child.HeightColorRamp.SourceChildId = *Effective;
+				}
+				// Boolean field joins refer directly to earlier generator GUIDs.
+				// Remap both shared clones and member-local links before evaluation.
+				if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+				{
+					if (const FGuid* Effective = ChildIdRemap.Find(Child.Generator.BooleanOps.SourceChildId))
+					{
+						Child.Generator.BooleanOps.SourceChildId = *Effective;
+					}
+				}
 				// Child parameter bindings and drivers may also name a shared child.
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
 				{
@@ -336,11 +386,17 @@ namespace MixtormatLayerGroups
 				RemapPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
 			}
 
-			// A member's local child may deliberately read an authored group child. The compositor
-			// only sees effective layers, so convert that stable authored address for this member.
+			// A member's local child (or an external layer's child) may deliberately read an
+			// authored group child. The compositor only sees effective layers, so convert that
+			// stable authored address for this layer.
 			for (FMixtormatLayerChild& LocalChild : Layer.Children)
 			{
 				RemapChildReferences(LocalChild);
+			}
+
+			if (!Group || Group->Children.Num() == 0)
+			{
+				continue;
 			}
 
 			Layer.Children.Reserve(Layer.Children.Num() + Group->Children.Num());
@@ -372,8 +428,8 @@ namespace MixtormatLayerGroups
 				}
 				else if (Clone.Type == EMixtormatLayerChildType::Behavior)
 				{
-				Clone.Behavior.bEnabled = false;
-			}
+					Clone.Behavior.bEnabled = false;
+				}
 
 				RemapChildReferences(Clone);
 				// A remapped scope is still invalid if it points forward or to a
