@@ -93,6 +93,9 @@ namespace
 			return Child.Type == EMixtormatLayerChildType::Behavior
 				&& Child.Behavior.Type == EMixtormatBehaviorType::Feather;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
+		case EMixtormatParameterOwnerType::BooleanOps:
+			return Child.Type == EMixtormatLayerChildType::Generator
+				&& Child.Generator.Type == EMixtormatGeneratorType::BooleanOps;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
 				|| Child.Type == EMixtormatLayerChildType::Generated
@@ -135,6 +138,10 @@ namespace
 		case EMixtormatGeneratorType::Noise:
 			View.ConstData = &Generator.Noise;
 			View.Struct = FMixtormatNoise::StaticStruct();
+			break;
+		case EMixtormatGeneratorType::BooleanOps:
+			View.ConstData = &Generator.BooleanOps;
+			View.Struct = FMixtormatBooleanOps::StaticStruct();
 			break;
 		case EMixtormatGeneratorType::RootNetwork:
 			View.ConstData = &Generator.RootNetwork;
@@ -205,6 +212,7 @@ namespace
 		case EMixtormatParameterOwnerType::Blur: View.ConstData = &Child.Blur; break;
 		case EMixtormatParameterOwnerType::Curvature: View.ConstData = &Child.Curvature; break;
 		case EMixtormatParameterOwnerType::Generator:
+		case EMixtormatParameterOwnerType::BooleanOps:
 			return GeneratorOwner(Child.Generator, Child.ParameterBindings);
 		case EMixtormatParameterOwnerType::MaskShaping:
 			if (Child.Type == EMixtormatLayerChildType::Mask) View.ConstData = &Child.Mask.Shaping;
@@ -608,6 +616,8 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Blur: return { FMixtormatBlur::StaticStruct() };
 		case EMixtormatParameterOwnerType::Curvature: return { FMixtormatMaskCurvature::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
+		case EMixtormatParameterOwnerType::BooleanOps:
+			return { FMixtormatBooleanOps::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generator:
 			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatCracks::StaticStruct(),
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),

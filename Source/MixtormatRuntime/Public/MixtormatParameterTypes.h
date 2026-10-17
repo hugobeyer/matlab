@@ -51,7 +51,10 @@ enum class EMixtormatParameterOwnerType : uint8
 	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow Ref"),
 	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow"),
 	// Nested Feather authoring fields are independently addressable without shifting prior enum values.
-	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather")
+	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather"),
+	// Scatter Carve needs a distinct authoring/binding owner: Seed, Sides and Rotation
+	// overlap older generator parameter names. Append-only to preserve saved owner IDs.
+	BooleanOps = 31 UMETA(DisplayName = "Scatter Carve")
 };
 
 UENUM(BlueprintType)

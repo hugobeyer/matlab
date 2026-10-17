@@ -103,7 +103,10 @@ namespace
 		case EMixtormatLayerChildType::Blur: return EMixtormatParameterOwnerType::Blur;
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Behavior: return EMixtormatParameterOwnerType::Behavior;
-		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
+		case EMixtormatLayerChildType::Generator:
+			return Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
+				? EMixtormatParameterOwnerType::BooleanOps
+				: EMixtormatParameterOwnerType::Generator;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
 	}

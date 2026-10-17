@@ -35,6 +35,158 @@
 			"clampMax": 1
 		}
 	},
+	"Boolean Ops":
+	{
+		"BooleanOps.Seed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 9999,
+			"snap": 1
+		},
+		"BooleanOps.Count:Int":
+		{
+			"default": 16,
+			"uiMin": 0,
+			"uiMax": 256,
+			"snap": 1
+		},
+		"BooleanOps.Radius":
+		{
+			"default": 0.06,
+			"uiMin": 0,
+			"uiMax": 0.5,
+			"snap": 0.001
+		},
+		"BooleanOps.RadiusVariation":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"BooleanOps.Sides:Int":
+		{
+			"default": 7,
+			"uiMin": 3,
+			"uiMax": 32,
+			"snap": 1
+		},
+		"BooleanOps.Irregularity":
+		{
+			"default": 0.25,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"BooleanOps.Rotation":
+		{
+			"default": 0,
+			"uiMin": -180,
+			"uiMax": 180,
+			"snap": 1
+		},
+		"BooleanOps.RotationVariation":
+		{
+			"default": 180,
+			"uiMin": 0,
+			"uiMax": 180,
+			"snap": 1
+		},
+		"BooleanOps.CenterDepth":
+		{
+			"default": 0.02,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.005
+		},
+		"BooleanOps.DepthVariation":
+		{
+			"default": 0.08,
+			"uiMin": 0,
+			"uiMax": 0.5,
+			"snap": 0.005
+		},
+		"BooleanOps.ReferenceHeight":
+		{
+			"default": 0,
+			"uiMin": -1,
+			"uiMax": 1,
+			"snap": 0.005
+		},
+		"BooleanOps.DepthScale":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 8,
+			"snap": 0.01
+		},
+		"BooleanOps.ChamferFraction":
+		{
+			"default": 0.2,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.005
+		},
+		"BooleanOps.ChamferVariation":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"BooleanOps.HeightToUV":
+		{
+			"default": 1,
+			"uiMin": 0.01,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"BooleanOps.FieldWidth":
+		{
+			"default": 0.1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"BooleanOps.FieldBias":
+		{
+			"default": 0,
+			"uiMin": -2,
+			"uiMax": 2,
+			"snap": 0.01
+		},
+		"BooleanOps.FieldSourceScale":
+		{
+			"default": 1,
+			"uiMin": -4,
+			"uiMax": 4,
+			"snap": 0.01
+		},
+		"BooleanOps.FieldAmount":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"BooleanOps.Mode:Enum":
+		{
+			"defaultEnum": "ScatterCarve"
+		},
+		"BooleanOps.FieldOperation:Enum":
+		{
+			"defaultEnum": "Union"
+		},
+		"BooleanOps.Operation:Enum":
+		{
+			"defaultEnum": "Subtract"
+		},
+		"BooleanOps.Shape:Enum":
+		{
+			"defaultEnum": "PolygonPrism"
+		}
+	},
 	"Breakup":
 	{
 		"Effect.BreakupRelief":

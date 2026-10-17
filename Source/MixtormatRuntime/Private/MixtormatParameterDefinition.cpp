@@ -304,6 +304,24 @@ namespace
 				}
 			}
 		}
+		else if (Owner == EMixtormatParameterOwnerType::BooleanOps)
+		{
+			static const FMixtormatBooleanOps Defaults;
+			if (const FProperty* Property =
+				FMixtormatBooleanOps::StaticStruct()->FindPropertyByName(Parameter))
+			{
+				if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+				{
+					Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+					Result.bFound = true;
+				}
+				else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+				{
+					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+					Result.bFound = true;
+				}
+			}
+		}
 		else if (Owner == EMixtormatParameterOwnerType::Generator)
 		{
 			// Generator parameter names are unique across payloads. The owner address remains the
