@@ -194,6 +194,7 @@ void SMixtormat::AddNativeFlowControls(const TSharedRef<SVerticalBox>& Cards)
 		return G && (G->Type == EMixtormatGeneratorType::Cracks
 			|| G->Type == EMixtormatGeneratorType::RockFormation
 			|| G->Type == EMixtormatGeneratorType::Pebbles
+			|| G->Type == EMixtormatGeneratorType::RootNetwork
 			|| G->Type == EMixtormatGeneratorType::CliffStrata)
 			? &G->NativeFlow : nullptr;
 	};
@@ -830,6 +831,176 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 							}
 						}),
 						LOCTEXT("PebblesEnabledHint", "Enable these pebbles"))
+				])
+			[
+				Cards
+			]
+		];
+}
+
+
+TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
+{
+	const auto Root = [this]() { return GetSelectedRootNetwork(); };
+	const FMixtormatRootNetwork Defaults;
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+
+	// Output Card
+	{
+		const TSharedRef<SVerticalBox> Output = AddCard(Cards, LOCTEXT("RootOutputCard", "OUTPUT"));
+		AddSliderRow(Output, MixtormatRow::MakeTrailing(
+			LOCTEXT("RootNormalizeHeight", "Normalize Height"),
+			MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([Root]()
+				{
+					const FMixtormatRootNetwork* R = Root();
+					return R && R->bRootNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				}),
+				FOnCheckStateChanged::CreateLambda([this, Root](const ECheckBoxState State)
+				{
+					if (FMixtormatRootNetwork* R = Root())
+					{
+						R->bRootNormalizeHeight = State == ECheckBoxState::Checked;
+						RefreshLayeredPreview();
+					}
+				})),
+			LOCTEXT("RootNormalizeHeightHint", "Preserves zero height while scaling peak to unit bounds.")));
+		AddSliderRow(Output, MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootHeightScale", "Height Scale"), Root, &FMixtormatRootNetwork::RootHeightScale,
+				-4.0, 4.0, Defaults.RootHeightScale, 0.01,
+				LOCTEXT("RootHeightScaleHint", "Height multiplier applied downstream.")));
+	}
+
+	// Growth Card
+	{
+		const TSharedRef<SVerticalBox> Growth = AddCard(Cards, LOCTEXT("RootGrowthCard", "GROWTH"));
+		AddSliderRow(Growth, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatRootNetwork>(
+				LOCTEXT("RootSeed", "Seed"), Root, &FMixtormatRootNetwork::RootSeed,
+				0, 9999, Defaults.RootSeed,
+				LOCTEXT("RootSeedHint", "Deterministic random seed.")),
+			MakeMemberSliderInt<FMixtormatRootNetwork>(
+				LOCTEXT("RootTrunks", "Trunk Roots"), Root, &FMixtormatRootNetwork::RootTrunks,
+				1, 16, Defaults.RootTrunks,
+				LOCTEXT("RootTrunksHint", "Number of starting root trunks."))
+		));
+		AddSliderRow(Growth, MixtormatRow::MakePair(
+			MakeMemberSliderInt<FMixtormatRootNetwork>(
+				LOCTEXT("RootAttractors", "Attractors"), Root, &FMixtormatRootNetwork::RootAttractors,
+				32, 2048, Defaults.RootAttractors,
+				LOCTEXT("RootAttractorsHint", "Attraction points guiding root network expansion.")),
+			MakeMemberSliderInt<FMixtormatRootNetwork>(
+				LOCTEXT("RootIterations", "Iterations"), Root, &FMixtormatRootNetwork::RootIterations,
+				1, 64, Defaults.RootIterations,
+				LOCTEXT("RootIterationsHint", "Number of colonisation growth iterations."))
+		));
+		AddSliderRow(Growth, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootStepLength", "Step Length"), Root, &FMixtormatRootNetwork::RootStepLength,
+				0.01, 0.10, Defaults.RootStepLength, 0.002,
+				LOCTEXT("RootStepLengthHint", "Distance grown per node segment.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootInfluenceRadius", "Influence Radius"), Root, &FMixtormatRootNetwork::RootInfluenceRadius,
+				0.03, 0.35, Defaults.RootInfluenceRadius, 0.005,
+				LOCTEXT("RootInfluenceRadiusHint", "Search radius around nodes for attractors."))
+		));
+		AddSliderRow(Growth, MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootKillDistance", "Kill Distance"), Root, &FMixtormatRootNetwork::RootKillDistance,
+				0.005, 0.10, Defaults.RootKillDistance, 0.002,
+				LOCTEXT("RootKillDistanceHint", "Distance at which an attractor is consumed.")));
+	}
+
+	// Branching Card
+	{
+		const TSharedRef<SVerticalBox> Branching = AddCard(Cards, LOCTEXT("RootBranchingCard", "BRANCHING"));
+		AddSliderRow(Branching, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootBranchSpread", "Branch Spread"), Root, &FMixtormatRootNetwork::RootBranchSpread,
+				0.0, 1.0, Defaults.RootBranchSpread, 0.01,
+				LOCTEXT("RootBranchSpreadHint", "Deflection angle for lateral branches.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootDirectionInertia", "Direction Inertia"), Root, &FMixtormatRootNetwork::RootDirectionInertia,
+				0.0, 0.95, Defaults.RootDirectionInertia, 0.01,
+				LOCTEXT("RootDirectionInertiaHint", "Inertial persistence along previous segment direction."))
+		));
+		AddSliderRow(Branching, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootCurlStrength", "Curl Strength"), Root, &FMixtormatRootNetwork::RootCurlStrength,
+				0.0, 1.0, Defaults.RootCurlStrength, 0.01,
+				LOCTEXT("RootCurlStrengthHint", "Periodic curl noise meandering perturbation.")),
+			MakeMemberSliderInt<FMixtormatRootNetwork>(
+				LOCTEXT("RootCurlScale", "Curl Frequency"), Root, &FMixtormatRootNetwork::RootCurlScale,
+				1, 16, Defaults.RootCurlScale,
+				LOCTEXT("RootCurlScaleHint", "Lattice frequency of curl perturbation."))
+		));
+	}
+
+	// Profile Card
+	{
+		const TSharedRef<SVerticalBox> Profile = AddCard(Cards, LOCTEXT("RootProfileCard", "PROFILE & SWEEP"));
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootBaseRadius", "Base Radius"), Root, &FMixtormatRootNetwork::RootBaseRadius,
+				0.003, 0.08, Defaults.RootBaseRadius, 0.001,
+				LOCTEXT("RootBaseRadiusHint", "Maximum trunk radius in UV space.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootTipTaper", "Tip Taper"), Root, &FMixtormatRootNetwork::RootTipTaper,
+				0.0, 1.0, Defaults.RootTipTaper, 0.01,
+				LOCTEXT("RootTipTaperHint", "Taper ratio from trunk base to root tips."))
+		));
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootJunctionSmooth", "Junction Smooth"), Root, &FMixtormatRootNetwork::RootJunctionSmooth,
+				0.0, 1.0, Defaults.RootJunctionSmooth, 0.01,
+				LOCTEXT("RootJunctionSmoothHint", "Smooth polynomial union blend at branch junctions.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootProfileFlatness", "Flatness"), Root, &FMixtormatRootNetwork::RootProfileFlatness,
+				0.0, 1.0, Defaults.RootProfileFlatness, 0.01,
+				LOCTEXT("RootProfileFlatnessHint", "Flattening of the root dome profile."))
+		));
+		AddSliderRow(Profile, MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
+				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
+				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")));
+	}
+
+	AddNativeFlowControls(Cards);
+
+	return SNew(SBox)
+		.Visibility_Lambda([this]() { return GetSelectedRootNetwork() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("RootNetworkHeading", "ROOT NETWORK"))
+			.InitiallyExpanded(true)
+			.HeaderAction(
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
+				[
+					MakeChildOutputPreviewButton([]()
+					{
+						FMixtormatLayerChild Probe;
+						Probe.Type = EMixtormatLayerChildType::Generator;
+						Probe.Generator.Type = EMixtormatGeneratorType::RootNetwork;
+						return GetChildPreviewOutputSet(Probe);
+					}())
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					MixtormatRow::MakeCheckbox(
+						TAttribute<ECheckBoxState>::CreateLambda([this]()
+						{
+							const FMixtormatGenerator* G = GetSelectedGenerator();
+							return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+						}),
+						FOnCheckStateChanged::CreateLambda([this](const ECheckBoxState State)
+						{
+							if (FMixtormatGenerator* G = GetSelectedGenerator())
+							{
+								G->bEnabled = State == ECheckBoxState::Checked;
+								RefreshLayeredPreview();
+							}
+						}),
+						LOCTEXT("RootNetworkEnabledHint", "Enable Root Network"))
 				])
 			[
 				Cards

@@ -823,6 +823,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::Cracks:        return EMixtormatChildCreation::Cracks;
 		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
+		case EMixtormatGeneratorType::RootNetwork:   return EMixtormatChildCreation::RootNetwork;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
 		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::ScatterCarve;
@@ -851,6 +852,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Cracks:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
+		case EMixtormatChildCreation::RootNetwork:     return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
@@ -924,6 +926,9 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Pebbles:
 			Child.Generator.Type = EMixtormatGeneratorType::Pebbles;
+			break;
+		case EMixtormatChildCreation::RootNetwork:
+			Child.Generator.Type = EMixtormatGeneratorType::RootNetwork;
 			break;
 		case EMixtormatChildCreation::CliffStrata:
 			Child.Generator.Type = EMixtormatGeneratorType::CliffStrata;
@@ -1573,6 +1578,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("RockFormationChildName", "Rock Formation");
 		case EMixtormatGeneratorType::Pebbles:
 			return LOCTEXT("PebblesChildName", "Pebbles");
+		case EMixtormatGeneratorType::RootNetwork:
+			return LOCTEXT("RootNetworkChildName", "Root Network");
 		case EMixtormatGeneratorType::CliffStrata:
 			return LOCTEXT("CliffStrataChildName", "Cliff Strata");
 		case EMixtormatGeneratorType::BooleanOps:
@@ -2220,6 +2227,19 @@ const FMixtormatPebbles* SMixtormat::GetSelectedPebbles() const
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::Pebbles
 		? &Generator->Pebbles : nullptr;
+}
+FMixtormatRootNetwork* SMixtormat::GetSelectedRootNetwork()
+{
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::RootNetwork
+		? &Generator->RootNetwork : nullptr;
+}
+
+const FMixtormatRootNetwork* SMixtormat::GetSelectedRootNetwork() const
+{
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::RootNetwork
+		? &Generator->RootNetwork : nullptr;
 }
 
 FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata()

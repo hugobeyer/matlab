@@ -72,6 +72,7 @@ enum class EMixtormatChildCreation : uint8
 	Cracks,
 	RockFormation,
 	Pebbles,
+	RootNetwork,
 	CliffStrata,
 	Noise,
 	ScatterCarve,
@@ -572,6 +573,9 @@ private:
 	FMixtormatPebbles* GetSelectedPebbles();
 	const FMixtormatPebbles* GetSelectedPebbles() const;
 	TSharedRef<SWidget> BuildPebblesControls();
+	FMixtormatRootNetwork* GetSelectedRootNetwork();
+	const FMixtormatRootNetwork* GetSelectedRootNetwork() const;
+	TSharedRef<SWidget> BuildRootNetworkControls();
 	FMixtormatCliffStrata* GetSelectedCliffStrata();
 	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
 	TSharedRef<SWidget> BuildCliffStrataControls();

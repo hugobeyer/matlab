@@ -235,6 +235,24 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				NSLOCTEXT("SMixtormat", "PreviewOutputStrataRandom", "Bed Random"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
 		}
+				else if (Child.Generator.Type == EMixtormatGeneratorType::RootNetwork)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RootCoverage")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootCoverage", "Coverage"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RootEdgeDistance")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootEdgeDistance", "Edge Distance"),
+				EMixtormatPreviewOutputKind::SignedDistance, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RootArcLength")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootArcLength", "Arc Length"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootNativeFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
+		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
 		{
 			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,

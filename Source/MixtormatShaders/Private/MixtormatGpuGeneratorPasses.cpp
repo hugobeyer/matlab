@@ -446,6 +446,77 @@ public:
 IMPLEMENT_GLOBAL_SHADER(FMixtormatCracksCS,
 	"/Plugin/Mixtormat/Private/MixtormatCracks.usf", "MainCS", SF_Compute);
 
+// Root Network: space-colonization skeleton -> GPU segment buffers -> binned swept SDF.
+// One permutation per stage; see MixtormatRootNetwork.usf for the stage table.
+class FMixtormatRootNetworkCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatRootNetworkCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatRootNetworkCS, FGlobalShader);
+
+	// 0 init, 1 assign, 2 extend, 3 segments, 4 scan, 5 scatter, 6 field (cached).
+	class FStage : SHADER_PERMUTATION_INT("ROOT_STAGE", 7);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(uint32, Trunks)
+		SHADER_PARAMETER(uint32, Attractors)
+		SHADER_PARAMETER(uint32, StepIndex)
+		SHADER_PARAMETER(float, StepLength)
+		SHADER_PARAMETER(float, InfluenceRadius)
+		SHADER_PARAMETER(float, KillDistance)
+		SHADER_PARAMETER(float, BranchSpread)
+		SHADER_PARAMETER(float, DirectionInertia)
+		SHADER_PARAMETER(float, CurlStrength)
+		SHADER_PARAMETER(uint32, CurlScale)
+		SHADER_PARAMETER(float, BaseRadius)
+		SHADER_PARAMETER(float, TipTaper)
+		SHADER_PARAMETER(float, JunctionSmooth)
+		SHADER_PARAMETER(float, ProfileFlatness)
+		SHADER_PARAMETER(float, WeaveAmount)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootNode>, RWNodeBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootSegment>, RWSegmentBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootAttractor>, RWAttractorBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWStateBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<int>, RWNodePullBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBinCounts)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBinOffsets)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBinWriteHeads)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, RWBinEntries)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FRootSegment>, SegmentBuffer)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, BinCounts)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, BinOffsets)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<uint>, BinEntries)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootEdgeDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootArcLength)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRootIds)
+	END_SHADER_PARAMETER_STRUCT()
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(
+	FMixtormatRootNetworkCS,
+	"/Plugin/Mixtormat/Private/MixtormatRootNetwork.usf",
+	"MainCS",
+	SF_Compute);
+
+
 // Measured-range normalization for generator height fields. See MixtormatFieldRange.usf.
 class FMixtormatFieldRangeCS final : public FGlobalShader
 {
@@ -3333,6 +3404,238 @@ namespace
 }
 
 
+namespace
+{
+	constexpr uint32 RootMaxNodes = 2048;
+	constexpr uint32 RootMaxSegments = 2048;
+	constexpr uint32 RootMaxAttractors = 4096;
+	constexpr uint32 RootBinCount = 64 * 64;
+	constexpr uint32 RootMaxBinEntries = 524288;
+	constexpr uint32 RootStateSlots = 8;
+
+	struct FRootNodeStride { float Pos[2]; float Dir[2]; uint32 Parent; uint32 BranchId; float Radius; float Arc; uint32 Generation; uint32 ChildCount; };
+	struct FRootSegmentStride { float P[6]; float R[2]; float Arc[2]; uint32 BranchId; uint32 Generation; };
+	struct FRootAttractorStride { float Pos[2]; uint32 Active; uint32 Nearest; float NearestDist; uint32 Pad[3]; };
+	static_assert(sizeof(FRootNodeStride) == 40, "Root node stride must match FRootNode in HLSL");
+	static_assert(sizeof(FRootSegmentStride) == 48, "Root segment stride must match FRootSegment in HLSL");
+	static_assert(sizeof(FRootAttractorStride) == 32, "Root attractor stride must match FRootAttractor in HLSL");
+
+	FRDGTextureRef AddRootNetworkPasses(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FGeneratorPassInput& Child,
+		FGeneratorBundle* Bundle = nullptr)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FRenderRequest& Request = Ctx.Request;
+		const FRootNetworkRenderData& Root = Child.Generator.RootNetwork;
+		const FIntPoint Size = Request.Resolution;
+		const FIntVector PixelGroups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+		const uint32 AttractorCount = static_cast<uint32>(FMath::Clamp(Root.Attractors, 16, static_cast<int32>(RootMaxAttractors)));
+		const int32 Iterations = FMath::Clamp(Root.Iterations, 1, 64);
+
+		const auto FillParameters = [&Root, &Layer, &Child, &Ctx, Size, AttractorCount](FMixtormatRootNetworkCS::FParameters* P)
+		{
+			FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+			P->OutputSize = Size;
+			P->Seed = Root.Seed;
+			P->Trunks = static_cast<uint32>(FMath::Clamp(Root.Trunks, 1, 32));
+			P->Attractors = AttractorCount;
+			P->StepIndex = 0u;
+			P->StepLength = Root.StepLength;
+			P->InfluenceRadius = Root.InfluenceRadius;
+			P->KillDistance = Root.KillDistance;
+			P->BranchSpread = Root.BranchSpread;
+			P->DirectionInertia = Root.DirectionInertia;
+			P->CurlStrength = Root.CurlStrength;
+			P->CurlScale = static_cast<uint32>(FMath::Clamp(Root.CurlScale, 1, 32));
+			P->BaseRadius = Root.BaseRadius;
+			P->TipTaper = Root.TipTaper;
+			P->JunctionSmooth = Root.JunctionSmooth;
+			P->ProfileFlatness = Root.ProfileFlatness;
+			P->WeaveAmount = Root.WeaveAmount;
+		};
+
+		constexpr int32 SlotCount = 5;
+		FRDGTextureRef Outputs[SlotCount] = {};
+		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+			{
+				Outputs[Slot] = (*Memo)[Slot];
+			}
+		}
+		else
+		{
+			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
+			const uint64 NodeKey = NodeCache && !Child.PreUV && Root.FieldKey != 0
+				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E6574ull)
+				: 0;
+			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
+				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
+					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			static const TCHAR* const Names[SlotCount] = {
+				TEXT("Mixtormat.RootNetwork.Height"), TEXT("Mixtormat.RootNetwork.Coverage"),
+				TEXT("Mixtormat.RootNetwork.EdgeDistance"), TEXT("Mixtormat.RootNetwork.ArcLength"),
+				TEXT("Mixtormat.RootNetwork.Ids")};
+			bool bComplete = Hit.IsValid();
+			for (int32 Slot = 0; bComplete && Slot < SlotCount; ++Slot)
+			{
+				bComplete = Hit->Outputs[Slot].IsValid();
+			}
+			if (bComplete)
+			{
+				for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+				{
+					Outputs[Slot] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[Slot], Names[Slot]);
+				}
+			}
+			else
+			{
+				const auto Make = [&GraphBuilder, Size](const EPixelFormat Format, const TCHAR* Name)
+				{
+					return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+						Size, Format, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+				};
+				Outputs[0] = Make(PF_R32_FLOAT, Names[0]);
+				Outputs[1] = Make(PF_R16F, Names[1]);
+				Outputs[2] = Make(PF_R32_FLOAT, Names[2]);
+				Outputs[3] = Make(PF_R16F, Names[3]);
+				Outputs[4] = Make(PF_R32_UINT, Names[4]);
+
+				FRDGBufferRef NodeBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRootNodeStride), RootMaxNodes),
+					TEXT("Mixtormat.RootNetwork.Nodes"));
+				FRDGBufferRef SegmentBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRootSegmentStride), RootMaxSegments),
+					TEXT("Mixtormat.RootNetwork.Segments"));
+				FRDGBufferRef AttractorBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRootAttractorStride), RootMaxAttractors),
+					TEXT("Mixtormat.RootNetwork.Attractors"));
+				FRDGBufferRef StateBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), RootStateSlots),
+					TEXT("Mixtormat.RootNetwork.State"));
+				FRDGBufferRef PullBuffer = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(int32), RootMaxNodes * 4),
+					TEXT("Mixtormat.RootNetwork.NodePull"));
+				FRDGBufferRef BinCounts = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), RootBinCount),
+					TEXT("Mixtormat.RootNetwork.BinCounts"));
+				FRDGBufferRef BinOffsets = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), RootBinCount),
+					TEXT("Mixtormat.RootNetwork.BinOffsets"));
+				FRDGBufferRef BinWriteHeads = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), RootBinCount),
+					TEXT("Mixtormat.RootNetwork.BinWriteHeads"));
+				FRDGBufferRef BinEntries = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), RootMaxBinEntries),
+					TEXT("Mixtormat.RootNetwork.BinEntries"));
+
+				const FRDGBufferUAVRef NodeUAV = GraphBuilder.CreateUAV(NodeBuffer);
+				const FRDGBufferUAVRef SegmentUAV = GraphBuilder.CreateUAV(SegmentBuffer);
+				const FRDGBufferUAVRef AttractorUAV = GraphBuilder.CreateUAV(AttractorBuffer);
+				const FRDGBufferUAVRef StateUAV = GraphBuilder.CreateUAV(StateBuffer, PF_R32_UINT);
+				const FRDGBufferUAVRef PullUAV = GraphBuilder.CreateUAV(PullBuffer, PF_R32_SINT);
+				const FRDGBufferUAVRef BinCountsUAV = GraphBuilder.CreateUAV(BinCounts, PF_R32_UINT);
+				const FRDGBufferUAVRef BinOffsetsUAV = GraphBuilder.CreateUAV(BinOffsets, PF_R32_UINT);
+				const FRDGBufferUAVRef BinWriteHeadsUAV = GraphBuilder.CreateUAV(BinWriteHeads, PF_R32_UINT);
+				const FRDGBufferUAVRef BinEntriesUAV = GraphBuilder.CreateUAV(BinEntries, PF_R32_UINT);
+
+				const auto AddGrowthPass = [&](const int32 Stage, const uint32 Step, const FIntVector Groups)
+				{
+					FMixtormatRootNetworkCS::FPermutationDomain Permutation;
+					Permutation.Set<FMixtormatRootNetworkCS::FStage>(Stage);
+					TShaderMapRef<FMixtormatRootNetworkCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatRootNetworkCS::FParameters>();
+					FillParameters(P);
+					P->StepIndex = Step;
+					P->RWNodeBuffer = NodeUAV;
+					P->RWSegmentBuffer = SegmentUAV;
+					P->RWAttractorBuffer = AttractorUAV;
+					P->RWStateBuffer = StateUAV;
+					P->RWNodePullBuffer = PullUAV;
+					P->RWBinCounts = BinCountsUAV;
+					P->RWBinOffsets = BinOffsetsUAV;
+					P->RWBinWriteHeads = BinWriteHeadsUAV;
+					P->RWBinEntries = BinEntriesUAV;
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.RootNetwork.Stage%d.Step%u.L%d.C%d",
+							Stage, Step, LayerCtx.LayerIndex, Child.SourceChildIndex),
+						Shader, P, Groups);
+				};
+
+				const FIntVector Single(1, 1, 1);
+				AddGrowthPass(0, 0u, FIntVector(FMath::DivideAndRoundUp(
+					static_cast<int32>(FMath::Max(RootMaxNodes, AttractorCount)), 64), 1, 1));
+				const FIntVector AttractorGroups(FMath::DivideAndRoundUp(static_cast<int32>(AttractorCount), 64), 1, 1);
+				for (int32 Step = 0; Step < Iterations; ++Step)
+				{
+					AddGrowthPass(1, static_cast<uint32>(Step), AttractorGroups);
+					AddGrowthPass(2, static_cast<uint32>(Step), Single);
+				}
+				AddGrowthPass(3, 0u, Single);
+				AddGrowthPass(4, 0u, Single);
+				AddGrowthPass(5, 0u, Single);
+
+				{
+					FMixtormatRootNetworkCS::FPermutationDomain Permutation;
+					Permutation.Set<FMixtormatRootNetworkCS::FStage>(6);
+					TShaderMapRef<FMixtormatRootNetworkCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatRootNetworkCS::FParameters>();
+					FillParameters(P);
+					P->SegmentBuffer = GraphBuilder.CreateSRV(SegmentBuffer);
+					P->BinCounts = GraphBuilder.CreateSRV(BinCounts, PF_R32_UINT);
+					P->BinOffsets = GraphBuilder.CreateSRV(BinOffsets, PF_R32_UINT);
+					P->BinEntries = GraphBuilder.CreateSRV(BinEntries, PF_R32_UINT);
+					P->OutRootHeight = GraphBuilder.CreateUAV(Outputs[0]);
+					P->OutRootCoverage = GraphBuilder.CreateUAV(Outputs[1]);
+					P->OutRootEdgeDistance = GraphBuilder.CreateUAV(Outputs[2]);
+					P->OutRootArcLength = GraphBuilder.CreateUAV(Outputs[3]);
+					P->OutRootIds = GraphBuilder.CreateUAV(Outputs[4]);
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder,
+						RDG_EVENT_NAME("Mixtormat.RootNetwork.Field.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
+						Shader, P, PixelGroups);
+				}
+
+				if (NodeKey != 0)
+				{
+					TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+						MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = NodeKey;
+					Entry->Resolution = Size;
+					for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Slot], &Entry->Outputs[Slot]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+
+			TArray<FRDGTextureRef, TInlineAllocator<7>>& Stored = LayerCtx.GeneratorFields.Add(Child.SourceChildIndex);
+			Stored.Append(Outputs, SlotCount);
+		}
+
+		if (Bundle)
+		{
+			Bundle->Height = Outputs[0];
+			Bundle->Coverage = Outputs[1];
+			Bundle->RegionIds = Outputs[4];
+			Bundle->BoundaryField = PackScalarBoundary(Ctx, Outputs[2]);
+			Bundle->RegisterNamedMask(FName(TEXT("RootCoverage")), Outputs[1],
+				FGeneratorBundle::EFieldSemantic::CoverageAlias);
+			Bundle->RegisterNamedMask(FName(TEXT("RootEdgeDistance")), Outputs[2],
+				FGeneratorBundle::EFieldSemantic::UvDistance, FGeneratorBundle::EFieldUnits::MapUV, 1e9f);
+			Bundle->RegisterNamedMask(FName(TEXT("RootArcLength")), Outputs[3],
+				FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		}
+		return Outputs[0];
+	}
+}
+
+
 void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
 {
@@ -3561,6 +3864,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
+		case EMixtormatGeneratorType::RootNetwork:
+			AddRootNetworkPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			break;
 		case EMixtormatGeneratorType::BooleanOps:
 				AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
 					Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
@@ -3637,7 +3943,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				Child.Generator.Type == EMixtormatGeneratorType::Cracks
 				|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
 				|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
-				|| Child.Generator.Type == EMixtormatGeneratorType::CliffStrata;
+				|| Child.Generator.Type == EMixtormatGeneratorType::CliffStrata
+				|| Child.Generator.Type == EMixtormatGeneratorType::RootNetwork;
 			// Native Flow is an available typed output, not an unconditional GPU job.
 			// Geometry fields can be cached even when they are large; the derived Flow
 			// textures are transient and currently have no node-cache slot. Demand only
@@ -3793,7 +4100,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		{
 			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
 			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
-				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"));
+				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"))
+				|| Mask.Key == FName(TEXT("RootEdgeDistance"));
 			// Preserve legacy mask consumers while publishing the declared signed
 			// UV-distance metric for typed Carve / Deposit consumers.
 			if (bDistance && Mask.Value && Mask.Value->Desc.Format == PF_R32_FLOAT)

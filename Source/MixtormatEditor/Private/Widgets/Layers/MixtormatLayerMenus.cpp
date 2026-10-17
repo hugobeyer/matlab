@@ -101,6 +101,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
 		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatChildCreation::Cracks},
 		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatChildCreation::RockFormation},
 		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
+		{LOCTEXT("AddGeneratorLayerRootNetwork", "Root Network"), EMixtormatChildCreation::RootNetwork},
 		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
 		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
 	};
@@ -1227,6 +1228,14 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			CreateChild(Target, EMixtormatChildCreation::Pebbles);
 		}))
 		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(
+		LOCTEXT("AddRootNetworkChild", "Root Network"),
+		MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target]()
+		{
+			CreateChild(Target, EMixtormatChildCreation::RootNetwork);
+		}))
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1463,6 +1472,7 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						{EMixtormatChildCreation::RockFormation, LOCTEXT("BooleanAddRock", "Add Rock Formation")},
 						{EMixtormatChildCreation::Cracks, LOCTEXT("BooleanAddCracks", "Add Cracks")},
 						{EMixtormatChildCreation::Pebbles, LOCTEXT("BooleanAddPebbles", "Add Pebbles")},
+						{EMixtormatChildCreation::RootNetwork, LOCTEXT("BooleanAddRootNetwork", "Add Root Network")},
 						{EMixtormatChildCreation::CliffStrata, LOCTEXT("BooleanAddCliff", "Add Cliff Strata")},
 						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")},
 						{EMixtormatChildCreation::ScatterCarve, LOCTEXT("BooleanAddScatterCarve", "Add Scatter Carve")}};
