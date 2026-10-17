@@ -822,6 +822,13 @@ namespace MixtormatParameterBinding
 			{
 				Child.HeightColorRamp.SourceChildId = *Mapped;
 			}
+			if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+			{
+				if (const FGuid* Mapped = ChildIdRemap.Find(Child.Generator.BooleanOps.SourceChildId))
+				{
+					Child.Generator.BooleanOps.SourceChildId = *Mapped;
+				}
+			}
 			// V2 typed Behavior sockets are addresses too. Follow duplicated local
 			// producers, but preserve explicit references to external layers/shelf.
 			RemapOutput(Child.Behavior.Direction.Published, true);
@@ -934,6 +941,11 @@ namespace MixtormatParameterBinding
 					if (OwnerChildren->Contains(Child.HeightColorRamp.SourceChildId))
 					{
 						RemapGuid(Child.HeightColorRamp.SourceChildId, ChildIdRemap);
+					}
+					if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
+						&& OwnerChildren->Contains(Child.Generator.BooleanOps.SourceChildId))
+					{
+						RemapGuid(Child.Generator.BooleanOps.SourceChildId, ChildIdRemap);
 					}
 				}
 				for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
@@ -1096,6 +1108,7 @@ namespace MixtormatParameterBinding
 			// of itself fail on the first step instead of copying its own empty payload back.
 			TSet<FGuid> Visited;
 			Visited.Add(Child.ChildId);
+			FGuid ResolvedOwnerId = Child.SourceLayerId;
 			const FMixtormatLayerChild* Source =
 				FindChild(Scope, Child.SourceLayerId, Child.SourceChildId);
 			while (Source && Source->IsInstance())
@@ -1106,6 +1119,7 @@ namespace MixtormatParameterBinding
 					break;
 				}
 				Visited.Add(Source->ChildId);
+				ResolvedOwnerId = Source->SourceLayerId;
 				Source = FindChild(Scope, Source->SourceLayerId, Source->SourceChildId);
 			}
 			if (Source && Source->ChildId != Child.ChildId)
@@ -1132,6 +1146,65 @@ namespace MixtormatParameterBinding
 								&& Binding.DestinationParameter == GET_MEMBER_NAME_CHECKED(
 									FMixtormatMaskShaping, bInvert));
 					});
+				}
+				if (Scope.Groups)
+				{
+					if (const FMixtormatLayerGroup* SourceGroup =
+						MixtormatLayerGroups::FindGroup(*Scope.Groups, ResolvedOwnerId))
+					{
+						int32 FirstMember = INDEX_NONE;
+						int32 LastMember = INDEX_NONE;
+						MixtormatLayerGroups::GetGroupRange(
+							SourceLayers, SourceGroup->GroupId, FirstMember, LastMember);
+						if (SourceLayers.IsValidIndex(LastMember))
+						{
+							const FGuid MemberLayerId = SourceLayers[LastMember].LayerId;
+							TSet<FGuid> GroupChildIds;
+							for (const FMixtormatLayerChild& GroupChild : SourceGroup->Children)
+							{
+								GroupChildIds.Add(GroupChild.ChildId);
+							}
+							const auto RemapGroupPair = [&](FGuid& RefLayerId, FGuid& RefChildId)
+							{
+								if (RefLayerId == SourceGroup->GroupId
+									&& GroupChildIds.Contains(RefChildId))
+								{
+									RefChildId = MixtormatLayerGroups::MakeEffectiveChildId(
+										SourceGroup->GroupId, RefChildId, MemberLayerId);
+									RefLayerId = MemberLayerId;
+								}
+							};
+							const auto RemapGroupOutput = [&](FMixtormatOutputReference& Ref)
+							{
+								if (Ref.IsLayerSource())
+								{
+									RemapGroupPair(Ref.SourceLayerId, Ref.SourceChildId);
+								}
+							};
+							if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer)
+							{
+								RemapGroupPair(
+									Child.Mask.PublishedSourceLayerId,
+									Child.Mask.PublishedSourceChildId);
+							}
+							RemapGroupOutput(Child.OutputReference);
+							RemapGroupOutput(Child.BoundaryId.RegionIdsSource);
+							RemapGroupOutput(Child.Generator.HeightSource);
+							RemapGroupOutput(Child.Generator.WarpSource);
+							RemapGroupOutput(Child.Behavior.Direction.Published);
+							RemapGroupOutput(Child.Behavior.Height.Published);
+							RemapGroupOutput(Child.Behavior.Influence.Published);
+							RemapGroupPair(
+								Child.HeightBlend.SourceLayerId,
+								Child.HeightBlend.SourceChildId);
+							for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)
+							{
+								RemapGroupPair(
+									Binding.Driver.SourceLayerId,
+									Binding.Driver.SourceChildId);
+							}
+						}
+					}
 				}
 			}
 		}
@@ -1299,17 +1372,29 @@ namespace MixtormatParameterBinding
 		// too, or the mask silently goes back to reading nothing.
 		auto RemapPublishedSource = [&](FMixtormatLayerChild& Child)
 		{
-			if (Child.BoundaryId.RegionIdsSource.SourceChildId == ChildId
-				&& Child.BoundaryId.RegionIdsSource.SourceLayerId == OldLayerId)
+			const auto RemapOutput = [&](FMixtormatOutputReference& Reference)
 			{
-				Child.BoundaryId.RegionIdsSource.SourceLayerId = NewLayerId;
-			}
-			if (Child.OutputReference.SourceChildId == ChildId
-				&& Child.OutputReference.SourceLayerId == OldLayerId)
+				if (Reference.IsLayerSource()
+					&& Reference.SourceChildId == ChildId
+					&& Reference.SourceLayerId == OldLayerId)
+				{
+					Reference.SourceLayerId = NewLayerId;
+				}
+			};
+			RemapOutput(Child.BoundaryId.RegionIdsSource);
+			RemapOutput(Child.OutputReference);
+			RemapOutput(Child.Generator.HeightSource);
+			RemapOutput(Child.Generator.WarpSource);
+			RemapOutput(Child.Behavior.Direction.Published);
+			RemapOutput(Child.Behavior.Height.Published);
+			RemapOutput(Child.Behavior.Influence.Published);
+			if (Child.HeightBlend.SourceChildId == ChildId
+				&& Child.HeightBlend.SourceLayerId == OldLayerId)
 			{
-				Child.OutputReference.SourceLayerId = NewLayerId;
+				Child.HeightBlend.SourceLayerId = NewLayerId;
 			}
 			if (Child.Type == EMixtormatLayerChildType::Mask
+				&& Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
 				&& Child.Mask.PublishedSourceChildId == ChildId
 				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{

@@ -1464,7 +1464,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	{
 		MixtormatLayerGroups::BuildEffectiveLayers(Layers, Groups, ExpandedLayers);
 	}
-	const TArray<FMixtormatLayer>& EffectiveLayers = bExpandGroups ? ExpandedLayers : Layers;
+	const TArray<FMixtormatLayer>& ExpandedOrAuthoredLayers = bExpandGroups ? ExpandedLayers : Layers;
+	TArray<FMixtormatLayer> ResolvedLayers = ExpandedOrAuthoredLayers;
+	for (FMixtormatLayer& Layer : ResolvedLayers)
+	{
+		MixtormatParameterBinding::ApplyDirectReferences(
+			FMixtormatBindingScope{ExpandedOrAuthoredLayers, Groups, Sources}, Layer);
+	}
+	const TArray<FMixtormatLayer>& EffectiveLayers = ResolvedLayers;
 
 	// ChildTarget names a child by (LayerId, ChildId); every pass below still addresses a child
 	// by (LayerIndex, ChildIndex) the way LayerMask/ClusterIds always have, so resolve once here
@@ -1635,9 +1642,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
-		FMixtormatLayer Layer = EffectiveLayers[LayerIndex];
-		MixtormatParameterBinding::ApplyDirectReferences(
-			FMixtormatBindingScope{EffectiveLayers, Groups, Sources}, Layer);
+		const FMixtormatLayer& Layer = EffectiveLayers[LayerIndex];
 		FLayerRenderData& Data = Request.Layers.AddDefaulted_GetRef();
 		if (bCacheLayers)
 		{
@@ -2109,7 +2114,7 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRegionIdPickOutput() const
 
 void FMixtormatGpuCompositor::RefreshCompletedDiagnosticOutputs() const
 {
-	if (!IsComposeInFlight())
+	if (!IsInGameThread() ? false : !IsComposeInFlight())
 	{
 		CompletedDiagnosticOutputs = PendingOutputs.IsValid() && PendingOutputs->bSucceeded
 			? PendingOutputs : nullptr;
