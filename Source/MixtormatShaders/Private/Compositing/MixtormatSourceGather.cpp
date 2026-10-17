@@ -13,6 +13,26 @@ namespace MixtormatGpuCompositor
 {
 	namespace
 	{
+		TArray<FMixtormatSourceEntry> ResolveShelfSources(const TArray<FMixtormatSourceEntry>& Sources)
+		{
+			TArray<FMixtormatSourceEntry> Resolved = Sources;
+			const TArray<FMixtormatLayer> NoLayers;
+			const TArray<FMixtormatLayerGroup> NoGroups;
+			for (FMixtormatSourceEntry& Entry : Resolved)
+			{
+				if (Entry.IsInstance()) { continue; }
+				FMixtormatLayer Container;
+				Container.LayerId = Entry.SourceId;
+				Container.Type = EMixtormatLayerType::Generator;
+				Container.bEnabled = true;
+				Container.Children.Add(Entry.Child);
+				MixtormatParameterBinding::ApplyDirectReferences(
+					{NoLayers, NoGroups, Sources}, Container);
+				Entry.Child = Container.Children[0];
+			}
+			return Resolved;
+		}
+
 		// A producer is evaluable only when its root payload is an enabled generator. Anything else
 		// publishes no fields, so it can neither satisfy demand nor carry demand onward. A linked
 		// instance is not a producer at all: it publishes nothing of its own and every reference to
@@ -70,22 +90,24 @@ namespace MixtormatGpuCompositor
 		OutDemandedOrder.Reset();
 		if (Sources.IsEmpty()) { return; }
 
+		const TArray<FMixtormatSourceEntry> ResolvedSources = ResolveShelfSources(Sources);
+
 		TMap<FGuid, int32> IndexById;
-		IndexById.Reserve(Sources.Num());
-		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		IndexById.Reserve(ResolvedSources.Num());
+		for (int32 Index = 0; Index < ResolvedSources.Num(); ++Index)
 		{
-			IndexById.Add(Sources[Index].SourceId, Index);
+			IndexById.Add(ResolvedSources[Index].SourceId, Index);
 		}
 
 		// One edge list per entry, built once. Shelf order is not consulted.
 		TArray<TArray<FGuid>> Dependencies;
-		Dependencies.SetNum(Sources.Num());
-		for (int32 Index = 0; Index < Sources.Num(); ++Index)
+		Dependencies.SetNum(ResolvedSources.Num());
+		for (int32 Index = 0; Index < ResolvedSources.Num(); ++Index)
 		{
-			if (IsEvaluableSource(Sources[Index]))
+			if (IsEvaluableSource(ResolvedSources[Index]))
 			{
-				CollectGeneratorShelfDependencies(Sources[Index].Child.Generator,
-					Sources[Index].SourceId, Sources, Dependencies[Index]);
+				CollectGeneratorShelfDependencies(ResolvedSources[Index].Child.Generator,
+					ResolvedSources[Index].SourceId, ResolvedSources, Dependencies[Index]);
 			}
 		}
 
@@ -116,7 +138,7 @@ namespace MixtormatGpuCompositor
 			return false;
 		};
 		TSet<FGuid> Cyclic;
-		for (const FMixtormatSourceEntry& Source : Sources)
+		for (const FMixtormatSourceEntry& Source : ResolvedSources)
 		{
 			if (Reaches(Source.SourceId, Source.SourceId)) { Cyclic.Add(Source.SourceId); }
 		}
@@ -131,7 +153,7 @@ namespace MixtormatGpuCompositor
 				return;
 			}
 			const int32* Index = IndexById.Find(SourceId);
-			if (!Index || !IsEvaluableSource(Sources[*Index])) { return; }
+			if (!Index || !IsEvaluableSource(ResolvedSources[*Index])) { return; }
 
 			OnStack.Add(SourceId);
 			for (const FGuid& Dependency : Dependencies[*Index])
@@ -146,30 +168,45 @@ namespace MixtormatGpuCompositor
 			OutDemandedOrder.Add(SourceId);
 		};
 
-		// Seed: the stack's own generator inputs. A disabled layer gathers no modules, so it
-		// demands nothing; each well-formed, enabled shelf endpoint is visited once.
+		// Seed: the stack's own generator inputs and masks. A disabled layer gathers no generator
+		// modules, but its mask children still evaluate so other layers and previews can consume them.
 		for (const FMixtormatLayer& Layer : EffectiveLayers)
 		{
-			if (!Layer.bEnabled) { continue; }
-			if (Layer.HasGeneratorModules())
+			TArray<bool> DisabledGroupScopes;
+			DisabledGroupScopes.Init(false, Layer.Children.Num());
+			for (int32 Index = 0; Index < Layer.Children.Num(); ++Index)
 			{
-				for (const FMixtormatLayerChild& Child : Layer.Children)
+				const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, Index);
+				if (OwnerIndex != INDEX_NONE)
 				{
+					const FMixtormatLayerChild& Parent = Layer.Children[OwnerIndex];
+					DisabledGroupScopes[Index] = DisabledGroupScopes[OwnerIndex]
+						|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
+				}
+			}
+
+			if (Layer.bEnabled && Layer.HasGeneratorModules())
+			{
+				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+				{
+					if (DisabledGroupScopes[ChildIndex]) { continue; }
+					const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 					if (Child.Type != EMixtormatLayerChildType::Generator || !Child.Generator.bEnabled)
 					{
 						continue;
 					}
 					TArray<FGuid> Roots;
-					CollectGeneratorShelfDependencies(Child.Generator, FGuid(), Sources, Roots);
+					CollectGeneratorShelfDependencies(Child.Generator, FGuid(), ResolvedSources, Roots);
 					for (const FGuid& Root : Roots) { Visit(Root); }
 				}
 			}
 			// V2 Warp, Deform and Push are typed consumers. Demand each connected
 			// shelf producer before GPU evaluation or the field will be absent.
-			if (Layer.HasGeneratorModules())
+			if (Layer.bEnabled && Layer.HasGeneratorModules())
 			{
 				for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 				{
+					if (DisabledGroupScopes[ChildIndex]) { continue; }
 					const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 					if (Child.Type != EMixtormatLayerChildType::Behavior
 						|| !Child.Behavior.bEnabled
@@ -196,30 +233,41 @@ namespace MixtormatGpuCompositor
 							? Reference.Kind != EMixtormatPublishedFieldKind::ScalarSigned
 							: (Reference.Kind != EMixtormatPublishedFieldKind::Flow
 								&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap))) { continue; }
-					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Reference);
+					const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(ResolvedSources, Reference);
 					if (Status.Issue == MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
 					{
-						Visit(MixtormatOutputReferences::ResolveShelfProducerId(Sources, Reference.SourceShelfId));
+						Visit(MixtormatOutputReferences::ResolveShelfProducerId(ResolvedSources, Reference.SourceShelfId));
 					}
 				}
 			}
 			// The mask pipeline consumes Noise Value as typed scalar coverage, with
 			// the same placement/shaping as layer-published Value. This is a separate
 			// consumer contract from the generator Height/Warp input kinds.
-			for (const FMixtormatLayerChild& Child : Layer.Children)
+			for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
 			{
+				if (DisabledGroupScopes[ChildIndex]) { continue; }
+				const FMixtormatLayerChild& Child = Layer.Children[ChildIndex];
 				if (Child.Type != EMixtormatLayerChildType::Mask || !Child.Mask.bEnabled
 					|| !Child.Mask.HasPublishedSource()
 					|| Child.Mask.PublishedSourceOwnerKind != EMixtormatOutputReferenceOwnerKind::Shelf
 					|| Child.Mask.PublishedSourceOutput != FName(TEXT("Value"))) { continue; }
+				if (Child.ScopeOwnerChildId.IsValid())
+				{
+					const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, ChildIndex);
+					if (OwnerIndex == INDEX_NONE
+						|| !MixtormatChildScope::CanOwnScopedMasks(Layer.Children[OwnerIndex]))
+					{
+						continue;
+					}
+				}
 				// Addressing is checked against the entry the mask names; the producer checks run
 				// against the original a linked instance resolves to. A broken link demands nothing.
-				const FMixtormatSourceEntry* Named = Sources.FindByPredicate([&Child](const FMixtormatSourceEntry& Item)
+				const FMixtormatSourceEntry* Named = ResolvedSources.FindByPredicate([&Child](const FMixtormatSourceEntry& Item)
 					{ return Item.SourceId == Child.Mask.PublishedSourceShelfId; });
 				const int32* Index = IndexById.Find(MixtormatOutputReferences::ResolveShelfProducerId(
-					Sources, Child.Mask.PublishedSourceShelfId));
+					ResolvedSources, Child.Mask.PublishedSourceShelfId));
 				if (!Named || Named->Child.ChildId != Child.Mask.PublishedSourceChildId || !Index) { continue; }
-				const FMixtormatSourceEntry& Source = Sources[*Index];
+				const FMixtormatSourceEntry& Source = ResolvedSources[*Index];
 				if (!IsEvaluableSource(Source) || Source.Child.Generator.Type != EMixtormatGeneratorType::Noise) { continue; }
 				Visit(Source.SourceId);
 			}
@@ -234,9 +282,11 @@ namespace MixtormatGpuCompositor
 		OutProducers.Reset();
 		if (DemandedOrder.IsEmpty()) { return; }
 
+		const TArray<FMixtormatSourceEntry> ResolvedSources = ResolveShelfSources(Sources);
+
 		TMap<FGuid, const FMixtormatSourceEntry*> ById;
-		ById.Reserve(Sources.Num());
-		for (const FMixtormatSourceEntry& Source : Sources)
+		ById.Reserve(ResolvedSources.Num());
+		for (const FMixtormatSourceEntry& Source : ResolvedSources)
 		{
 			ById.Add(Source.SourceId, &Source);
 		}
@@ -262,10 +312,6 @@ namespace MixtormatGpuCompositor
 			Container.Type = EMixtormatLayerType::Generator;
 			Container.bEnabled = true;
 			Container.Children.Add(Entry.Child);
-			// Apply the same Follow/Link resolution as layer generators to a transient
-			// producer copy. The shelf's authored values and bindings stay untouched.
-			MixtormatParameterBinding::ApplyDirectReferences(
-				{NoLayers, NoGroups, Sources}, Container);
 
 			FLayerRenderData& Data = OutProducers.AddDefaulted_GetRef();
 			// Explicit shelf ownership: addressed by the entry's SourceId, never a material layer.
@@ -277,7 +323,7 @@ namespace MixtormatGpuCompositor
 
 			const uint64 PlacementKey = GatherLayerPlacementKey(Container, true);
 			GatherGeneratorChild(Data, Container, Container.Children[0], 0,
-				true, false, PlacementKey, 0, NoLayers, Sources);
+				true, false, PlacementKey, 0, NoLayers, ResolvedSources);
 		}
 	}
 }
