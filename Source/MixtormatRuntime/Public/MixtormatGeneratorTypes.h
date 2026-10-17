@@ -1274,6 +1274,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "1", UIMax = "16", ClampMin = "1", ClampMax = "32"))
 	int32 RootCurlScale = 4;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Branching", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootKink = 0.25f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.003", UIMax = "0.08", Delta = "0.001"))
 	float RootBaseRadius = 0.022f;
 
@@ -1288,6 +1291,9 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float RootWeaveAmount = 0.30f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Root Network|Profile", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RootBurial = 0.0f;
 };
 
 // One GENERATORS child, whatever kind it is.

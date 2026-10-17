@@ -484,6 +484,8 @@ public:
 		SHADER_PARAMETER(float, JunctionSmooth)
 		SHADER_PARAMETER(float, ProfileFlatness)
 		SHADER_PARAMETER(float, WeaveAmount)
+		SHADER_PARAMETER(float, KinkStrength)
+		SHADER_PARAMETER(float, BurialDepth)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootNode>, RWNodeBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootSegment>, RWSegmentBuffer)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FRootAttractor>, RWAttractorBuffer)
@@ -501,6 +503,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootEdgeDistance)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootArcLength)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutRootAcross)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutRootUV)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutRootIds)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -3455,9 +3459,11 @@ namespace
 			P->JunctionSmooth = Root.JunctionSmooth;
 			P->ProfileFlatness = Root.ProfileFlatness;
 			P->WeaveAmount = Root.WeaveAmount;
+			P->KinkStrength = Root.Kink;
+			P->BurialDepth = Root.Burial;
 		};
 
-		constexpr int32 SlotCount = 5;
+		constexpr int32 SlotCount = 7;
 		FRDGTextureRef Outputs[SlotCount] = {};
 		if (const TArray<FRDGTextureRef, TInlineAllocator<7>>* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
@@ -3469,9 +3475,9 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* const NodeCache = Request.NodeCache.Get();
-			// RootNet2: invalidate fields built with the old sweep and constant-width tip model.
+			// RootNet3: invalidate fields built with old sweep or without UV/Across outputs.
 			const uint64 NodeKey = NodeCache && !Child.PreUV && Root.FieldKey != 0
-				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657432ull)
+				? MixtormatComposeHash::Combine(Root.FieldKey, 0x526F6F744E657433ull)
 				: 0;
 			const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit =
 				NodeKey != 0 ? NodeCache->Find(NodeKey, Size)
@@ -3479,7 +3485,8 @@ namespace
 			static const TCHAR* const Names[SlotCount] = {
 				TEXT("Mixtormat.RootNetwork.Height"), TEXT("Mixtormat.RootNetwork.Coverage"),
 				TEXT("Mixtormat.RootNetwork.EdgeDistance"), TEXT("Mixtormat.RootNetwork.ArcLength"),
-				TEXT("Mixtormat.RootNetwork.Ids")};
+				TEXT("Mixtormat.RootNetwork.Ids"), TEXT("Mixtormat.RootNetwork.UV"),
+				TEXT("Mixtormat.RootNetwork.Across")};
 			bool bComplete = Hit.IsValid();
 			for (int32 Slot = 0; bComplete && Slot < SlotCount; ++Slot)
 			{
@@ -3504,6 +3511,8 @@ namespace
 				Outputs[2] = Make(PF_R32_FLOAT, Names[2]);
 				Outputs[3] = Make(PF_R16F, Names[3]);
 				Outputs[4] = Make(PF_R32_UINT, Names[4]);
+				Outputs[5] = Make(PF_G32R32F, Names[5]);
+				Outputs[6] = Make(PF_R16F, Names[6]);
 
 				FRDGBufferRef NodeBuffer = GraphBuilder.CreateBuffer(
 					FRDGBufferDesc::CreateStructuredDesc(sizeof(FRootNodeStride), RootMaxNodes),
@@ -3594,6 +3603,8 @@ namespace
 					P->OutRootCoverage = GraphBuilder.CreateUAV(Outputs[1]);
 					P->OutRootEdgeDistance = GraphBuilder.CreateUAV(Outputs[2]);
 					P->OutRootArcLength = GraphBuilder.CreateUAV(Outputs[3]);
+					P->OutRootAcross = GraphBuilder.CreateUAV(Outputs[6]);
+					P->OutRootUV = GraphBuilder.CreateUAV(Outputs[5]);
 					P->OutRootIds = GraphBuilder.CreateUAV(Outputs[4]);
 					ClearUnusedGraphResources(Shader, P);
 					FComputeShaderUtils::AddPass(GraphBuilder,
@@ -3631,7 +3642,15 @@ namespace
 				FGeneratorBundle::EFieldSemantic::UvDistance, FGeneratorBundle::EFieldUnits::MapUV, 1e9f);
 			Bundle->RegisterNamedMask(FName(TEXT("RootArcLength")), Outputs[3],
 				FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+			Bundle->RegisterNamedMask(FName(TEXT("RootAcross")), Outputs[6],
+				FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
 		}
+		Ctx.PublishedFieldOutputs.Add(
+			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("WarpedUV"))),
+			FPublishedField{EMixtormatPublishedFieldKind::UVMap, Outputs[5], nullptr, nullptr, false});
+		Ctx.PublishedFieldOutputs.Add(
+			PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("RootUV"))),
+			FPublishedField{EMixtormatPublishedFieldKind::UVMap, Outputs[5], nullptr, nullptr, false});
 		return Outputs[0];
 	}
 }

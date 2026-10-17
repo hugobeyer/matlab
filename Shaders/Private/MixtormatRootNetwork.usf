@@ -88,6 +88,8 @@ float TipTaper;
 float JunctionSmooth;
 float ProfileFlatness;
 float WeaveAmount;
+float KinkStrength;
+float BurialDepth;
 
 // Growth (stages 0..5)
 RWStructuredBuffer<FRootNode> RWNodeBuffer;
@@ -114,6 +116,8 @@ RWTexture2D<float> OutRootHeight;
 RWTexture2D<float> OutRootCoverage;
 RWTexture2D<float> OutRootEdgeDistance;
 RWTexture2D<float> OutRootArcLength;
+RWTexture2D<float> OutRootAcross;
+RWTexture2D<float2> OutRootUV;
 RWTexture2D<uint> OutRootIds;
 
 float RootHash01(uint A, uint B, uint InSeed)
@@ -318,9 +322,17 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			RWNodePullBuffer[v * 4u + 2u] = 0;
 
 			parentNode = RWNodeBuffer[v];
-			if (pullCount > 0 && parentNode.ChildCount < 3u)
+			// Apical momentum: tip nodes continue growing by inertia if local attractors are depleted,
+			// exploring voids rather than halting prematurely.
+			bool bHasAttractors = (pullCount > 0);
+			bool bCanCoast = (pullCount == 0 && parentNode.ChildCount == 0u && parentNode.Generation <= 2u
+				&& RootHash01(v, StepIndex + 73u, Seed ^ 0x5a1f9e2bu) < DirectionInertia * 0.75f);
+
+			if ((bHasAttractors || bCanCoast) && parentNode.ChildCount < 3u)
 			{
-				float2 avgPull = RootSafeNormalize(float2((float)pullX, (float)pullY), parentNode.Dir);
+				float2 avgPull = bHasAttractors
+					? RootSafeNormalize(float2((float)pullX, (float)pullY), parentNode.Dir)
+					: parentNode.Dir;
 				float2 curl = RootPeriodicCurl(parentNode.Pos, CurlScale, Seed);
 				float2 blended = lerp(avgPull, parentNode.Dir, saturate(DirectionInertia)) + curl * CurlStrength;
 
@@ -332,6 +344,26 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					float cs = cos(spreadAngle);
 					float sn = sin(spreadAngle);
 					blended = float2(blended.x * cs - blended.y * sn, blended.x * sn + blended.y * cs);
+				}
+
+				// Biological circumnutation (continuous wandering zigzag) + sharp obstacle deflection (kink)
+				if (KinkStrength > 0.001f)
+				{
+					float zigzagPhase = parentNode.ArcLength * (24.0f + 14.0f * (float)(parentNode.BranchId % 4u))
+						+ (float)parentNode.BranchId * 1.6180339f;
+					float kinkAngle = sin(zigzagPhase) * (KinkStrength * 0.65f);
+
+					// Sudden sharp obstacle deflection / dogleg kink
+					float crookHash = RootHash01(v, StepIndex + 333u, Seed ^ 0x85ebca6bu);
+					if (crookHash < KinkStrength * 0.30f)
+					{
+						float crookAngle = (RootHash01(v, StepIndex + 777u, Seed ^ 0xc2b2ae35u) - 0.5f) * 1.6f * KinkStrength;
+						kinkAngle += crookAngle;
+					}
+
+					float ck = cos(kinkAngle);
+					float sk = sin(kinkAngle);
+					blended = float2(blended.x * ck - blended.y * sk, blended.x * sk + blended.y * ck);
 				}
 
 				spawnDir = RootSafeNormalize(blended, parentNode.Dir);
@@ -621,7 +653,8 @@ void EvaluateTaperedBezierSweep(
 	FRootSegment Seg,
 	out float OutSignedDist,
 	out float OutParamT,
-	out float OutRadiusAtT)
+	out float OutRadiusAtT,
+	out float OutLateralCoord)
 {
 	// The pixel expressed in the segment's own unwrapped chart.
 	float2 uLocal = Seg.P0 + RootToroidalDelta(Seg.P0, U);
@@ -699,9 +732,15 @@ void EvaluateTaperedBezierSweep(
 	OutSignedDist = dFinal;
 	OutParamT = t;
 	OutRadiusAtT = rFinal;
+
+	float2 dBt = (3.0f * a * t + 2.0f * b) * t + c;
+	float2 tangent = RootSafeNormalize(dBt, chord);
+	float2 normal = float2(-tangent.y, tangent.x);
+	float lateral = dot(uLocal - BFinal, normal);
+	OutLateralCoord = clamp(lateral / max(rFinal, 1e-4f), -1.0f, 1.0f);
 }
 
-// Cross-section: circular dome blended toward a flattened top, scaled by relative radius.
+// Cross-section: real-unit cylinder cap corrected by thickness, with soil burial depth.
 float RootCrossSectionHeight(float SignedDist, float Radius)
 {
 	if (SignedDist >= 0.0f)
@@ -712,7 +751,15 @@ float RootCrossSectionHeight(float SignedDist, float Radius)
 	float dome = sqrt(saturate(2.0f * q - q * q));
 	float flatTop = smoothstep(0.0f, max(1.0f - ProfileFlatness * 0.7f, 0.15f), dome);
 	float profile = lerp(dome, flatTop, saturate(ProfileFlatness));
-	return profile * saturate(Radius / max(BaseRadius, 1e-4f));
+
+	// Physical height proportional to thickness: peak height on axis = Radius.
+	// Soil burial depth sinks thin roots beneath the soil plane while thick roots break through.
+	float burialOffset = BurialDepth * max(BaseRadius, 1e-4f);
+	float rawHeight = profile * Radius;
+	float exposedHeight = max(0.0f, rawHeight - burialOffset);
+
+	// Normalized by BaseRadius so an unburied trunk peak reaches ~1.0 in generator height space
+	return exposedHeight / max(BaseRadius, 1e-4f);
 }
 
 // Merge complete branch envelopes, never a union distance with a different stem's radius.
@@ -752,6 +799,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float sdAcc = ROOT_NO_DISTANCE;
 	float bestRaw = ROOT_NO_DISTANCE;
 	float bestArc = 0.0f;
+	float bestVnorm = 0.0f;
 	uint bestBranchId = 0u;
 	float height = 0.0f;
 	float branchDistance = ROOT_NO_DISTANCE;
@@ -765,7 +813,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float sd;
 		float t;
 		float rAtT;
-		EvaluateTaperedBezierSweep(uv, seg, sd, t, rAtT);
+		float vNorm;
+		EvaluateTaperedBezierSweep(uv, seg, sd, t, rAtT, vNorm);
 
 		// Stage 5 groups each branch contiguously. Hard-union its segment envelopes to
 		// avoid beads at every joint, then smooth-union the completed branches.
@@ -791,6 +840,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			bestRaw = sd;
 			bestBranchId = seg.BranchId;
 			bestArc = frac(arc);
+			bestVnorm = vNorm;
 		}
 	}
 	if (branchId != 0u)
@@ -802,12 +852,21 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float pixelWidthUV = 1.0f / (float)max(OutputSize.x, OutputSize.y);
 	float coverage = (count > 0u) ? smoothstep(pixelWidthUV, -pixelWidthUV, sdAcc) : 0.0f;
 
+	// Normalized across-profile coordinate: 0 at center spine, 1 at outer flank
+	float acrossValue = bInside ? abs(bestVnorm) : 0.0f;
+	// Orthogonal 2D root UVs: U = arc length along branch [0, 1), V = cross profile [0, 1]
+	float across01 = 0.5f + 0.5f * bestVnorm;
+	float2 rootUV = float2(bestArc, across01);
+	// Smoothly blend to raw canvas UV outside roots so downstream noise blankets tile seamlessly
+	float2 finalUV = lerp(rawUV, rootUV, coverage);
 
 	OutRootHeight[pix] = height;
 	OutRootCoverage[pix] = coverage;
 	// Banded signed distance in UV: exact within each segment's bin footprint, sentinel outside.
 	OutRootEdgeDistance[pix] = (count > 0u) ? sdAcc : ROOT_NO_DISTANCE;
 	OutRootArcLength[pix] = bInside ? bestArc : 0.0f;
+	OutRootAcross[pix] = acrossValue;
+	OutRootUV[pix] = finalUV;
 	OutRootIds[pix] = bInside ? bestBranchId : 0u;
 }
 

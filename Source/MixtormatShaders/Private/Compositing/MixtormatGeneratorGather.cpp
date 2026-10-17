@@ -328,6 +328,8 @@ namespace MixtormatGpuCompositor
 		Out.JunctionSmooth = FMath::Clamp(Finite(Root.RootJunctionSmooth, Defaults.RootJunctionSmooth), 0.0f, 1.0f);
 		Out.ProfileFlatness = FMath::Clamp(Finite(Root.RootProfileFlatness, Defaults.RootProfileFlatness), 0.0f, 1.0f);
 		Out.WeaveAmount = FMath::Clamp(Finite(Root.RootWeaveAmount, Defaults.RootWeaveAmount), 0.0f, 1.0f);
+			Out.Kink = FMath::Clamp(Finite(Root.RootKink, Defaults.RootKink), 0.0f, 1.0f);
+		Out.Burial = FMath::Clamp(Finite(Root.RootBurial, Defaults.RootBurial), 0.0f, 1.0f);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;

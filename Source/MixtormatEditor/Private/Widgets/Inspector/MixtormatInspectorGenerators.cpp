@@ -933,6 +933,10 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				1, 16, Defaults.RootCurlScale,
 				LOCTEXT("RootCurlScaleHint", "Lattice frequency of curl perturbation."))
 		));
+			AddSliderRow(Branching, MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootKink", "Kink & Zigzag"), Root, &FMixtormatRootNetwork::RootKink,
+				0.0, 1.0, Defaults.RootKink, 0.01,
+				LOCTEXT("RootKinkHint", "Tortuous wandering and sudden sharp obstacle deflection angle.")));
 	}
 
 	// Profile Card
@@ -958,10 +962,16 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 				0.0, 1.0, Defaults.RootProfileFlatness, 0.01,
 				LOCTEXT("RootProfileFlatnessHint", "Flattening of the root dome profile."))
 		));
-		AddSliderRow(Profile, MakeMemberSlider<FMixtormatRootNetwork>(
+		AddSliderRow(Profile, MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatRootNetwork>(
 				LOCTEXT("RootWeaveAmount", "Weave Modulation"), Root, &FMixtormatRootNetwork::RootWeaveAmount,
 				0.0, 1.0, Defaults.RootWeaveAmount, 0.01,
-				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")));
+				LOCTEXT("RootWeaveAmountHint", "Height over-under sine wave modulation along branches.")),
+			MakeMemberSlider<FMixtormatRootNetwork>(
+				LOCTEXT("RootBurial", "Burial Depth"), Root, &FMixtormatRootNetwork::RootBurial,
+				0.0, 1.0, Defaults.RootBurial, 0.01,
+				LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through.")))
+		);
 	}
 
 	AddNativeFlowControls(Cards);

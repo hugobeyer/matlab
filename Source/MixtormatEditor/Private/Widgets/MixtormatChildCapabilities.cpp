@@ -248,6 +248,13 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 			Result.Outputs.Add({FName(TEXT("RootArcLength")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRootArcLength", "Arc Length"),
 				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RootAcross")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootAcross", "Across Profile"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("RootUV")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputRootUV", "Root UV"),
+				EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::UVMap});
 			Result.Outputs.Add({FName(TEXT("FlowDirection")),
 				NSLOCTEXT("SMixtormat", "PreviewOutputRootNativeFlow", "Flow"),
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,

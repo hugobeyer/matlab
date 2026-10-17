@@ -82,6 +82,13 @@ namespace MixtormatOutputReferences
 				&& (OutputName == FName(TEXT("FlowDirection"))
 					|| (Generator.Noise.bNoiseWriteFlow
 						&& OutputName == FName(TEXT("GeneratedFlow"))));
+		case EMixtormatPublishedFieldKind::UVMap:
+			if (Generator.Type == EMixtormatGeneratorType::RootNetwork)
+			{
+				return OutputName == FName(TEXT("RootUV"))
+					|| OutputName == FName(TEXT("WarpedUV"));
+			}
+			return false;
 		default:
 			// No bare generator module publishes a UV map; WarpedUV comes from flow tools, which a
 			// zero-child shelf root does not carry.
