@@ -1,6 +1,8 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
 #include "/Engine/Public/Platform.ush"
-#include "MixtormatShaderCommon.ush"
-#include "MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
 
 #ifndef ROOT_STAGE
 #define ROOT_STAGE 0
@@ -50,7 +52,7 @@ struct FRootAttractor
 	uint Pad2;
 };
 
-int2 Resolution;
+int2 OutputSize;
 uint Seed;
 uint Trunks;
 uint Attractors;
@@ -96,7 +98,6 @@ Buffer<uint> BinCounts;
 Buffer<uint> BinOffsets;
 Buffer<uint> BinEntries;
 
-Texture2D<float> BaseHeightTex;
 Texture2D<float> RootHeightTex;
 
 RWTexture2D<float> OutHeight;
@@ -105,6 +106,12 @@ RWTexture2D<float> OutRootCoverage;
 RWTexture2D<float> OutRootEdgeDistance;
 RWTexture2D<float> OutRootArcLength;
 RWTexture2D<uint> OutRootIds;
+
+float RootHash01(uint A, uint B, uint InSeed)
+{
+	uint h = MixtormatHashU(A * 0x27d4eb2du ^ B * 0x165667b1u ^ InSeed * 0x9e3779b9u);
+	return (float)(h & 0x00FFFFFFu) * (1.0f / 16777215.0f);
+}
 
 float2 ToroidalDelta(float2 From, float2 To)
 {
@@ -126,19 +133,16 @@ float2 SafeNormalize2D(float2 V, float2 Fallback)
 float2 SamplePeriodicCurl(float2 P, uint Scale, uint InSeed)
 {
 	float s = (float)max(Scale, 1u);
-	float eps = 0.01f;
-	float nX1 = MixtormatPeriodicFbm((P + float2(0.0f, eps)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
-	float nX0 = MixtormatPeriodicFbm((P - float2(0.0f, eps)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
-	float nY1 = MixtormatPeriodicFbm((P + float2(eps, 0.0f)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
-	float nY0 = MixtormatPeriodicFbm((P - float2(eps, 0.0f)) * s, s, 2, 2.0f, 0.5f, InSeed ^ 0x517cc1b7u);
-	float2 grad = float2(nY1 - nY0, nX1 - nX0) / (2.0f * eps);
-	return float2(grad.y, -grad.x);
+	float val = 0.0f;
+	float2 grad = float2(0.0f, 0.0f);
+	MixtormatNoiseFbm(P, s, 2, 0.5f, 2.0f, InSeed ^ 0x517cc1b7u, val, grad);
+	return SafeNormalize2D(float2(grad.y, -grad.x), float2(0.0f, 0.0f));
 }
 
 #if ROOT_STAGE == 0
 
 [numthreads(64, 1, 1)]
-void InitNetworkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	uint idx = DispatchThreadId.x;
 	uint trunkCount = clamp(Trunks, 1u, 32u);
@@ -168,10 +172,10 @@ void InitNetworkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			uint gx = idx % gridX;
 			uint gy = idx / gridX;
 			float2 jitter = float2(
-				MixtormatHash01(idx, 11u, Seed ^ 0x13579bdfu),
-				MixtormatHash01(idx, 29u, Seed ^ 0x2468ace0u)) * 0.65f + 0.175f;
+				RootHash01(idx, 11u, Seed ^ 0x13579bdfu),
+				RootHash01(idx, 29u, Seed ^ 0x2468ace0u)) * 0.65f + 0.175f;
 			node.Pos = WrapUV01((float2(gx, gy) + jitter) / float2(gridX, max(gridY, 1u)));
-			float angle = MixtormatHash01(idx, 53u, Seed ^ 0x9e3779b9u) * 6.28318530718f;
+			float angle = RootHash01(idx, 53u, Seed ^ 0x9e3779b9u) * 6.28318530718f;
 			node.Dir = float2(cos(angle), sin(angle));
 			node.ParentIndex = 0xFFFFFFFFu;
 			node.BranchId = idx + 1u;
@@ -200,8 +204,8 @@ void InitNetworkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		uint gx = idx % gridDim;
 		uint gy = idx / gridDim;
 		float2 jitter = float2(
-			MixtormatHash01(idx, 71u, Seed ^ 0x6c8e9cf5u),
-			MixtormatHash01(idx, 97u, Seed ^ 0xb5297a4du)) * 0.85f + 0.075f;
+			RootHash01(idx, 71u, Seed ^ 0x6c8e9cf5u),
+			RootHash01(idx, 97u, Seed ^ 0xb5297a4du)) * 0.85f + 0.075f;
 
 		FRootAttractor attr;
 		attr.Pos = WrapUV01((float2(gx, gy) + jitter) / (float)gridDim);
@@ -218,7 +222,7 @@ void InitNetworkCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif ROOT_STAGE == 1
 
 [numthreads(64, 1, 1)]
-void AssignAttractorsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	uint attrIdx = DispatchThreadId.x;
 	uint attrCount = clamp(Attractors, 16u, ROOT_MAX_ATTRACTORS);
@@ -281,7 +285,7 @@ void AssignAttractorsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 groupshared uint SharedSpawnFlags[64];
 
 [numthreads(64, 1, 1)]
-void ExtendAndCompactCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	// Single-group deterministic scan over active nodes up to ROOT_MAX_NODES (in chunks of 64)
 	uint tid = DispatchThreadId.x;
@@ -316,7 +320,7 @@ void ExtendAndCompactCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 				// If parent already has a child, deflect lateral branch by BranchSpread
 				if (parentNode.ChildCount > 0u)
 				{
-					float side = (MixtormatHash01(v, StepIndex + 101u, Seed ^ 0x3c6ef372u) >= 0.5f) ? 1.0f : -1.0f;
+					float side = (RootHash01(v, StepIndex + 101u, Seed ^ 0x3c6ef372u) >= 0.5f) ? 1.0f : -1.0f;
 					float spreadAngle = BranchSpread * 1.15f * side;
 					float cs = cos(spreadAngle);
 					float sn = sin(spreadAngle);
@@ -379,34 +383,34 @@ void ExtendAndCompactCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif ROOT_STAGE == 3
 
 [numthreads(64, 1, 1)]
-void SolveRadiiAndSegmentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	uint idx = DispatchThreadId.x;
+	uint tid = DispatchThreadId.x;
 	uint nodeCount = min(RWStateBuffer[0], ROOT_MAX_NODES);
 
 	// Clear bin counts across all 4096 cells
-	for (uint c = idx; c < ROOT_BIN_COUNT; c += 64u)
+	for (uint c = tid; c < ROOT_BIN_COUNT; c += 64u)
 	{
 		RWBinCounts[c] = 0u;
 		RWBinWriteHeads[c] = 0u;
 	}
 	AllMemoryBarrierWithGroupSync();
 
-	// Compute basipetal pipe-model radius and build segments for every non-root node
-	// Since parent indices are strictly < child indices, we count descendant tips/pipe area
-	if (idx < nodeCount)
+	float tipRadius = max(BaseRadius * (1.0f - saturate(TipTaper) * 0.88f), 0.001f);
+	float maxRadius = BaseRadius;
+
+	// Compute basipetal pipe-model radius for every node in strided loop
+	for (uint idx = tid; idx < nodeCount; idx += 64u)
 	{
 		FRootNode node = RWNodeBuffer[idx];
-		float tipRadius = max(BaseRadius * (1.0f - saturate(TipTaper) * 0.88f), 0.001f);
 
-		// Count downstream subtree weight (Leonardo / Murray pipe exponent p = 2.0)
+		// Count downstream subtree weight (Leonardo / Murray pipe model)
 		float pipeSum = (node.ChildCount == 0u) ? 1.0f : 0.0f;
 		for (uint k = idx + 1u; k < nodeCount; ++k)
 		{
 			FRootNode desc = RWNodeBuffer[k];
 			if (desc.ChildCount == 0u)
 			{
-				// Walk ancestor chain of leaf k to check if idx is an ancestor
 				uint curr = k;
 				[loop]
 				for (uint depth = 0u; depth < 96u && curr > idx && curr != 0xFFFFFFFFu; ++depth)
@@ -420,7 +424,6 @@ void SolveRadiiAndSegmentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 		}
 
-		float maxRadius = BaseRadius;
 		float rawRadius = tipRadius * pow(max(pipeSum, 1.0f), 0.42f);
 		float depthFade = exp(-0.08f * (float)node.Generation);
 		node.Radius = clamp(min(rawRadius, maxRadius) * depthFade, tipRadius, maxRadius);
@@ -431,57 +434,56 @@ void SolveRadiiAndSegmentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	uint trunkCount = clamp(Trunks, 1u, 32u);
 	uint segCount = (nodeCount > trunkCount) ? (nodeCount - trunkCount) : 0u;
-	if (idx == 0u)
+	if (tid == 0u)
 	{
 		RWStateBuffer[3] = segCount;
 	}
 
-	if (idx >= trunkCount && idx < nodeCount)
+	for (uint v = tid; v < nodeCount; v += 64u)
 	{
-		uint segIdx = idx - trunkCount;
-		FRootNode child = RWNodeBuffer[idx];
-		FRootNode parent = RWNodeBuffer[child.ParentIndex];
-
-		float2 p0 = parent.Pos;
-		float2 delta = ToroidalDelta(p0, child.Pos);
-		float2 p2 = p0 + delta;
-		float segLen = length(delta);
-		float2 p1 = p0 + 0.5f * delta + parent.Dir * (0.22f * segLen);
-
-		FRootSegment seg;
-		seg.P0 = p0;
-		seg.P1 = p1;
-		seg.P2 = p2;
-		seg.R0 = parent.Radius;
-		seg.R1 = child.Radius;
-		seg.Arc0 = parent.ArcLength;
-		seg.Arc1 = child.ArcLength;
-		seg.BranchId = child.BranchId;
-		seg.Generation = child.Generation;
-		RWSegmentBuffer[segIdx] = seg;
-
-		// Conservative bounding box in unwrapped chart, padded by max radius + smooth union margin
-		float pad = max(seg.R0, seg.R1) * (1.0f + JunctionSmooth * 0.75f) + 0.015f;
-		float2 bMin = min(p0, min(p1, p2)) - pad;
-		float2 bMax = max(p0, max(p1, p2)) + pad;
-
-		int minX = (int)floor(bMin.x * (float)ROOT_BIN_RES);
-		int maxX = (int)floor(bMax.x * (float)ROOT_BIN_RES);
-		int minY = (int)floor(bMin.y * (float)ROOT_BIN_RES);
-		int maxY = (int)floor(bMax.y * (float)ROOT_BIN_RES);
-
-		minX = max(minX, minX);
-		maxX = min(maxX, minX + (int)ROOT_BIN_RES - 1);
-		maxY = min(maxY, minY + (int)ROOT_BIN_RES - 1);
-
-		for (int cy = minY; cy <= maxY; ++cy)
+		if (v >= trunkCount)
 		{
-			uint wy = (uint)((cy % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
-			for (int cx = minX; cx <= maxX; ++cx)
+			uint segIdx = v - trunkCount;
+			FRootNode child = RWNodeBuffer[v];
+			FRootNode parent = RWNodeBuffer[child.ParentIndex];
+
+			float2 p0 = parent.Pos;
+			float2 delta = ToroidalDelta(p0, child.Pos);
+			float2 p2 = p0 + delta;
+			float segLen = length(delta);
+			float2 p1 = p0 + 0.5f * delta + parent.Dir * (0.22f * segLen);
+
+			FRootSegment seg;
+			seg.P0 = p0;
+			seg.P1 = p1;
+			seg.P2 = p2;
+			seg.R0 = parent.Radius;
+			seg.R1 = child.Radius;
+			seg.Arc0 = parent.ArcLength;
+			seg.Arc1 = child.ArcLength;
+			seg.BranchId = child.BranchId;
+			seg.Generation = child.Generation;
+			RWSegmentBuffer[segIdx] = seg;
+
+			// Conservative bounding box in unwrapped chart, padded by max radius + smooth union margin
+			float pad = max(seg.R0, seg.R1) * (1.0f + JunctionSmooth * 0.75f) + 0.015f;
+			float2 bMin = min(p0, min(p1, p2)) - pad;
+			float2 bMax = max(p0, max(p1, p2)) + pad;
+
+			int minX = (int)floor(bMin.x * (float)ROOT_BIN_RES);
+			int maxX = min((int)floor(bMax.x * (float)ROOT_BIN_RES), minX + (int)ROOT_BIN_RES - 1);
+			int minY = (int)floor(bMin.y * (float)ROOT_BIN_RES);
+			int maxY = min((int)floor(bMax.y * (float)ROOT_BIN_RES), minY + (int)ROOT_BIN_RES - 1);
+
+			for (int cy = minY; cy <= maxY; ++cy)
 			{
-				uint wx = (uint)((cx % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
-				uint cellIdx = wy * ROOT_BIN_RES + wx;
-				InterlockedAdd(RWBinCounts[cellIdx], 1u);
+				uint wy = (uint)((cy % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+				for (int cx = minX; cx <= maxX; ++cx)
+				{
+					uint wx = (uint)((cx % (int)ROOT_BIN_RES + (int)ROOT_BIN_RES) % (int)ROOT_BIN_RES);
+					uint cellIdx = wy * ROOT_BIN_RES + wx;
+					InterlockedAdd(RWBinCounts[cellIdx], 1u);
+				}
 			}
 		}
 	}
@@ -492,7 +494,7 @@ void SolveRadiiAndSegmentsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 groupshared uint SharedChunkTotals[64];
 
 [numthreads(64, 1, 1)]
-void PrefixSumBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	// 64 threads each scan 64 contiguous cells (64 * 64 = 4096 cells total)
 	uint tid = DispatchThreadId.x;
@@ -537,12 +539,12 @@ void PrefixSumBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif ROOT_STAGE == 5
 
 [numthreads(64, 1, 1)]
-void ScatterAndSortBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	uint idx = DispatchThreadId.x;
+	uint tid = DispatchThreadId.x;
 	uint segCount = min(RWStateBuffer[3], ROOT_MAX_SEGMENTS);
 
-	if (idx < segCount)
+	for (uint idx = tid; idx < segCount; idx += 64u)
 	{
 		FRootSegment seg = RWSegmentBuffer[idx];
 		float pad = max(seg.R0, seg.R1) * (1.0f + JunctionSmooth * 0.75f) + 0.015f;
@@ -574,7 +576,7 @@ void ScatterAndSortBinsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	AllMemoryBarrierWithGroupSync();
 
 	// Deterministic insertion sort per cell so segment evaluation order is 100% invariant
-	for (uint cellIdx = idx; cellIdx < ROOT_BIN_COUNT; cellIdx += 64u)
+	for (uint cellIdx = tid; cellIdx < ROOT_BIN_COUNT; cellIdx += 64u)
 	{
 		uint offset = RWBinOffsets[cellIdx];
 		uint count = RWBinCounts[cellIdx];
@@ -694,15 +696,15 @@ float ComputeRootCrossSectionHeight(float SignedDist, float Radius, float Flatne
 }
 
 [numthreads(8, 8, 1)]
-void EvaluateFieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	int2 pix = int2(DispatchThreadId.xy);
-	if (pix.x >= Resolution.x || pix.y >= Resolution.y)
+	if (pix.x >= OutputSize.x || pix.y >= OutputSize.y)
 	{
 		return;
 	}
 
-	float2 rawUV = (float2(pix) + 0.5f) / float2(Resolution);
+	float2 rawUV = (float2(pix) + 0.5f) / float2(OutputSize);
 	float2 uv = WrapUV01(MixtormatGeneratorUV(rawUV));
 
 	uint cellX = min((uint)floor(uv.x * (float)ROOT_BIN_RES), ROOT_BIN_RES - 1u);
@@ -759,15 +761,14 @@ void EvaluateFieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	float pixelWidthUV = 1.0f / (float)max(Resolution.x, Resolution.y);
+	float pixelWidthUV = 1.0f / (float)max(OutputSize.x, OutputSize.y);
 	float coverage = (count > 0u) ? smoothstep(pixelWidthUV, -pixelWidthUV, minSignedDist) : 0.0f;
-	float finalHeight = (minSignedDist < pixelWidthUV) ? (blendedHeight * HeightScale) : 0.0f;
+	float finalHeight = (minSignedDist < pixelWidthUV) ? blendedHeight : 0.0f;
 	uint finalId = (minSignedDist <= 0.0f) ? bestBranchId : 0u;
 	float finalArc = (minSignedDist <= 0.0f) ? bestArc : 0.0f;
 
-	// Signed height contract: Centered around 0 [-0.5 * HeightScale, +0.5 * HeightScale] inside coverage,
-	// or positive offset relative to surface. Match Pebbles/RockFormation contract where generator height
-	// is non-negative shape height scaled by HeightScale (and normalized if requested).
+	// Store unscaled native height [0, 1] in the cached field; AddSignedGeneratorHeightPasses
+	// applies NormalizeHeight and HeightScale downstream without invalidating the node cache.
 	OutRootHeight[pix] = finalHeight;
 	OutRootCoverage[pix] = coverage;
 	OutRootEdgeDistance[pix] = clamp(minSignedDist, -1.0f, 1.0f);
@@ -778,10 +779,10 @@ void EvaluateFieldCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif ROOT_STAGE == 7
 
 [numthreads(8, 8, 1)]
-void CombineCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	int2 pix = int2(DispatchThreadId.xy);
-	if (pix.x >= Resolution.x || pix.y >= Resolution.y)
+	if (pix.x >= OutputSize.x || pix.y >= OutputSize.y)
 	{
 		return;
 	}
