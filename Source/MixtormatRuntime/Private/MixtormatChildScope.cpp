@@ -311,15 +311,13 @@ namespace MixtormatChildScope
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
 	{
 		return Child.Type == EMixtormatLayerChildType::Mask
-			|| Child.Type == EMixtormatLayerChildType::Curvature;
+			|| Child.Type == EMixtormatLayerChildType::Curvature
+			|| Child.Type == EMixtormatLayerChildType::Generator
+			|| Child.Type == EMixtormatLayerChildType::Behavior;
 	}
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
-		if (Child.Type == EMixtormatLayerChildType::Blur)
-		{
-			return !Child.ScopeOwnerChildId.IsValid();
-		}
 		switch (Child.Type)
 		{
 		case EMixtormatLayerChildType::Mask:
@@ -334,6 +332,7 @@ namespace MixtormatChildScope
 		// Weight is the influence; no separate control is needed.
 		case EMixtormatLayerChildType::HeightColorRamp:
 		case EMixtormatLayerChildType::Behavior:
+		case EMixtormatLayerChildType::Blur:
 			return true;
 		default:
 			return false;

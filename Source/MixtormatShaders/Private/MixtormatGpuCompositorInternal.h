@@ -1279,6 +1279,7 @@ namespace MixtormatGpuCompositor
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
 		FOutputReferenceRenderData OutputReference;
+		FMixtormatBlur Blur;
 	};
 
 	struct FGeneratorBundle

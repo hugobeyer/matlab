@@ -1044,16 +1044,16 @@
 		"Generator.NoiseDirectionHeightWeight":
 		{
 			"default": 0,
-			"uiMin": -4,
-			"uiMax": 4,
+			"uiMin": -0.10000000149011612,
+			"uiMax": 0.10000000149011612,
 			"snap": 0.0099999997764825821
 		},
 		"Generator.NoiseDirectionSlopeWeight":
 		{
 			"default": 0,
-			"uiMin": -4,
-			"uiMax": 4,
-			"snap": 0.0099999997764825821
+			"uiMin": -0.10000000149011612,
+			"uiMax": 0.10000000149011612,
+			"snap": 9.9999997473787516e-05
 		},
 		"Generator.NoiseDirectionCurlWeight":
 		{

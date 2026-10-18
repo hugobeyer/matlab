@@ -583,10 +583,10 @@ namespace MixtormatGpuCompositor
 				FRDGTextureRef SavedTargets[2] = {LayerCtx.MaskTargets[0], LayerCtx.MaskTargets[1]};
 				FRDGTextureRef SavedCombined = LayerCtx.CombinedMask;
 				const int32 SavedPassIndex = LayerCtx.MaskPassIndex;
-				LayerCtx.MaskTargets[0] = FeatureMask;
-				LayerCtx.MaskTargets[1] = ScopedOutput;
+				LayerCtx.MaskTargets[0] = ScopedPassIndex == 0 ? ScopedOutput : FeatureMask;
+				LayerCtx.MaskTargets[1] = ScopedPassIndex == 0 ? FeatureMask : ScopedOutput;
 				LayerCtx.CombinedMask = FeatureMask;
-				LayerCtx.MaskPassIndex = 1;
+				LayerCtx.MaskPassIndex = ScopedPassIndex;
 				if (ScopedChild.Type == EMixtormatLayerChildType::Generated)
 				{
 					AddGeneratedMaskPass(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
@@ -603,7 +603,7 @@ namespace MixtormatGpuCompositor
 				{
 					AddCraquelureMaskPasses(Ctx, LayerCtx, Layer, ScopedChild, ChildIndex, true);
 				}
-				if (LayerCtx.MaskPassIndex > 1)
+				if (LayerCtx.MaskPassIndex > ScopedPassIndex)
 				{
 					FeatureMask = LayerCtx.CombinedMask;
 					bHasScopedMask = true;
@@ -676,7 +676,7 @@ namespace MixtormatGpuCompositor
 				FMixtormatMaskMergeCS::FParameters* Merge =
 					GraphBuilder.AllocParameters<FMixtormatMaskMergeCS::FParameters>();
 				Merge->OutputSize = Request.Resolution;
-				Merge->Initialize = 0u;
+				Merge->Initialize = ScopedPassIndex == 0 ? 1u : 0u;
 				Merge->BlendMode = static_cast<uint32>(Mask.BlendMode);
 				Merge->Weight = Mask.Weight;
 				Merge->PreviousMask = FeatureMask;
@@ -700,7 +700,7 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.AllocParameters<FMixtormatMaskCS::FParameters>();
 				MP->OutputSize = Request.Resolution;
 				MP->UsePreShaped = ScopedPreShaped ? 1u : 0u;
-				MP->Initialize = 0u;
+				MP->Initialize = ScopedPassIndex == 0 ? 1u : 0u;
 				MP->BlendMode = static_cast<uint32>(Mask.BlendMode);
 				BindMaskShaping(*MP, Mask);
 				MP->Weight = Mask.Weight;

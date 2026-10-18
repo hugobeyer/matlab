@@ -4,6 +4,7 @@
 #include "Compositing/MixtormatComposeHash.h"
 #include "MixtormatGpuNoisePasses.h"
 #include "MixtormatGpuNativeFlowPasses.h"
+#include "MixtormatGpuGaussianBlur.h"
 #include "MixtormatColorRampMath.h"
 #include "MixtormatScalarRampMath.h"
 
@@ -2030,7 +2031,8 @@ namespace
 			return Graph.CreateTexture(FRDGTextureDesc::Create2D(Size, Format,
 				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 		};
-		const bool bEikonal = Behavior.FeatherMode == EMixtormatBehaviorFeatherMode::Eikonal;
+		// Height Feather is Eikonal-only; Gaussian Blur is handled by the dedicated Blur module.
+		constexpr bool bEikonal = true;
 		FRDGTextureRef GaussianHeight = nullptr;
 		const auto Dispatch = [&](const int32 Stage, FRDGTextureRef Output,
 			FRDGTextureRef InputEnvelope, const int32 Jump)
@@ -2188,6 +2190,25 @@ namespace
 				// children here before height composition and Flow consumption.
 				for (const FChildRenderData& Filter : Layer.Children)
 				{
+					if (Filter.Type == EMixtormatLayerChildType::Blur
+						&& Filter.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+						&& Filter.SourceChildIndex > Child.SourceChildIndex)
+					{
+						if (Filter.Blur.BlursAnything() && ScopedBundle.Height)
+						{
+							const bool bFilterMask = HasScopedGeneratorMasks(Layer, Filter.SourceChildIndex);
+							FRDGTextureRef FilterGate = bFilterMask
+								? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Filter.SourceChildIndex, true)
+								: nullptr;
+							MixtormatGaussianBlur::FSettings Settings;
+							Settings.RadiusX = Filter.Blur.GetRadiusX();
+							Settings.RadiusY = Filter.Blur.GetRadiusY();
+							Settings.Amount = Filter.Blur.Amount;
+							ScopedBundle.Height = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
+								ScopedBundle.Height, Settings, MixtormatGaussianBlur::EField::Scalar, FilterGate);
+						}
+						continue;
+					}
 					if (Filter.Type != EMixtormatLayerChildType::Behavior
 						|| Filter.Behavior.Type != EMixtormatBehaviorType::Feather
 						|| Filter.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
@@ -2279,6 +2300,35 @@ namespace
 
 				continue;
 			}
+
+			if (Child.Type == EMixtormatLayerChildType::Blur)
+			{
+				const bool bDirect = Child.ScopeOwnerSourceChildIndex == Owner.SourceChildIndex;
+				const FChildRenderData* Parent = bDirect ? nullptr
+					: Layer.Children.FindByPredicate([&](const FChildRenderData& Candidate)
+					{
+						return Candidate.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
+							&& Candidate.SourceChildIndex < Child.SourceChildIndex
+							&& (Candidate.Type == EMixtormatLayerChildType::Behavior
+								|| Candidate.Type == EMixtormatLayerChildType::Generator);
+					});
+				if (!bDirect && !Parent) { continue; }
+				if (Child.Blur.BlursAnything() && Module.Height)
+				{
+					const bool bMasked = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
+					FRDGTextureRef Gate = bMasked
+						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
+						: nullptr;
+					MixtormatGaussianBlur::FSettings Settings;
+					Settings.RadiusX = Child.Blur.GetRadiusX();
+					Settings.RadiusY = Child.Blur.GetRadiusY();
+					Settings.Amount = Child.Blur.Amount;
+					Module.Height = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
+						Module.Height, Settings, MixtormatGaussianBlur::EField::Scalar, Gate);
+				}
+				continue;
+			}
+
 			if (Child.Type != EMixtormatLayerChildType::Behavior
 				|| Child.Behavior.GeneratorChildIndex != Owner.SourceChildIndex
 				|| Child.Behavior.Stage != EMixtormatBehaviorStage::PostGeneration) { continue; }

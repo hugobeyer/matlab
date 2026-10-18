@@ -2443,51 +2443,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 		FMixtormatBehavior* B = Get();
 		return B ? &B->Feather : nullptr;
 	};
-	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
-	TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorFeatherOperationCard", "OPERATION"));
-	AddSliderRow(Operation, MixtormatRow::MakeTrailing(LOCTEXT("BehaviorFeatherLabel", "Mode"),
-		SNew(SMixtormatSegmentedControl)
-		.Options(TArray<FText>{LOCTEXT("BehaviorFeatherOption0", "Blur"), LOCTEXT("BehaviorFeatherOption1", "Eikonal")})
-		.ActiveIndex_Lambda([Settings]() { const auto* F = Settings(); return F && F->Mode == EMixtormatBehaviorFeatherMode::Blur ? 0 : F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal ? 1 : 0; })
-		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
-		{
-			if (auto* F = Settings())
-			{
-				if (Index == 0) { F->Mode = EMixtormatBehaviorFeatherMode::Blur; }
-			if (Index == 1) { F->Mode = EMixtormatBehaviorFeatherMode::Eikonal; }
-				RefreshLayeredPreview();
-				RebuildLayerList();
-			}
-		}))));
-	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
-		LOCTEXT("BehaviorFeatherStrength", "Strength"), Get,
-		&FMixtormatBehavior::Strength, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("BehaviorFeatherStrengthHelp", "Feather amount. Zero preserves the native generator output and skips GPU work.")));
-	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
-		LOCTEXT("BehaviorFeatherRadius", "Width (px)"), Settings,
-		&FMixtormatBehaviorFeatherSettings::Radius, 0.0, 32.0, 3.0, 0.1,
-		LOCTEXT("BehaviorFeatherRadiusHelp", "Blur footprint or Eikonal transition width in output texels.")));
-	TSharedRef<SVerticalBox> Eikonal = SNew(SVerticalBox);
-	Panel->AddSlot().AutoHeight()
-	[
-		SNew(SBox).Visibility_Lambda([Settings]()
-		{
-			const FMixtormatBehaviorFeatherSettings* F = Settings();
-			return F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal
-				? EVisibility::Visible : EVisibility::Collapsed;
-		})
-		[
-			SNew(SMixtormatInspectorCard)
-				.Title(LOCTEXT("BehaviorFeatherEikonalCard", "EIKONAL"))
-			[
-				Eikonal
-			]
-		]
-	];
-	AddSliderRow(Eikonal, MakeMemberSliderInt<FMixtormatBehaviorFeatherSettings>(
-		LOCTEXT("BehaviorFeatherIterations", "Iterations"), Settings,
-		&FMixtormatBehaviorFeatherSettings::Iterations, 1, 64, 32,
-		LOCTEXT("BehaviorFeatherIterationsHelp", "Refinement budget for Eikonal feathering. Full-tile slope sweeps establish the base before diagonal refinements.")));
 	const auto IsFlowOwner = [this]()
 	{
 		const FMixtormatChildAddress Address = GetSelectedChildAddress();
@@ -2505,27 +2460,107 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 			&& Owner->Generator.Type == EMixtormatGeneratorType::Noise
 			&& Owner->Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow;
 	};
+
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> Operation = AddCard(Panel, LOCTEXT("BehaviorFeatherOperationCard", "OPERATION"));
+
+	// Mode is preserved solely for legacy Flow Feather; Height Feather is always Eikonal.
+	AddSliderRow(Operation, SNew(SBox)
+		.Visibility_Lambda([IsFlowOwner]()
+		{
+			return IsFlowOwner() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			MixtormatRow::MakeTrailing(LOCTEXT("BehaviorFeatherLabel", "Mode"),
+				SNew(SMixtormatSegmentedControl)
+				.Options(TArray<FText>{LOCTEXT("BehaviorFeatherOption0", "Blur"), LOCTEXT("BehaviorFeatherOption1", "Eikonal")})
+				.ActiveIndex_Lambda([Settings]() { const auto* F = Settings(); return F && F->Mode == EMixtormatBehaviorFeatherMode::Blur ? 0 : F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal ? 1 : 0; })
+				.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
+				{
+					if (auto* F = Settings())
+					{
+						if (Index == 0) { F->Mode = EMixtormatBehaviorFeatherMode::Blur; }
+						if (Index == 1) { F->Mode = EMixtormatBehaviorFeatherMode::Eikonal; }
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				})))
+		]);
+
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehavior>(
+		LOCTEXT("BehaviorFeatherStrength", "Strength"), Get,
+		&FMixtormatBehavior::Strength, 0.0, 1.0, 1.0, 0.01,
+		LOCTEXT("BehaviorFeatherStrengthHelp", "Feather amount. Zero preserves the native generator output and skips GPU work.")));
+	AddSliderRow(Operation, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherRadius", "Width (px)"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Radius, 0.0, 32.0, 3.0, 0.1,
+		LOCTEXT("BehaviorFeatherRadiusHelp", "Eikonal transition width in output texels.")));
+
+	TSharedRef<SVerticalBox> Eikonal = SNew(SVerticalBox);
+	Panel->AddSlot().AutoHeight()
+	[
+		SNew(SBox).Visibility_Lambda([Settings, IsFlowOwner]()
+		{
+			if (!IsFlowOwner()) { return EVisibility::Visible; }
+			const FMixtormatBehaviorFeatherSettings* F = Settings();
+			return F && F->Mode == EMixtormatBehaviorFeatherMode::Eikonal
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatInspectorCard)
+				.Title(LOCTEXT("BehaviorFeatherEikonalCard", "EIKONAL"))
+			[
+				Eikonal
+			]
+		]
+	];
+	AddSliderRow(Eikonal, MakeMemberSliderInt<FMixtormatBehaviorFeatherSettings>(
+		LOCTEXT("BehaviorFeatherIterations", "Iterations"), Settings,
+		&FMixtormatBehaviorFeatherSettings::Iterations, 1, 64, 32,
+		LOCTEXT("BehaviorFeatherIterationsHelp", "Refinement budget for Eikonal feathering. Full-tile slope sweeps establish the base before diagonal refinements.")));
+
 	AddSliderRow(Eikonal, SNew(SBox)
 		.Visibility_Lambda([IsFlowOwner]()
 		{
 			return IsFlowOwner() ? EVisibility::Collapsed : EVisibility::Visible;
 		})
 		[
-			MixtormatRow::MakeTrailing(LOCTEXT("BehaviorFeatherSideLabel", "Feather Side"),
-		SNew(SMixtormatSegmentedControl)
-		.Options(TArray<FText>{LOCTEXT("BehaviorFeatherSideOption0", "Both"), LOCTEXT("BehaviorFeatherSideOption1", "Inside"), LOCTEXT("BehaviorFeatherSideOption2", "Outside")})
-		.ActiveIndex_Lambda([Settings]() { const auto* F = Settings(); return F && F->Side == EMixtormatBehaviorFeatherSide::Both ? 0 : F && F->Side == EMixtormatBehaviorFeatherSide::Inside ? 1 : F && F->Side == EMixtormatBehaviorFeatherSide::Outside ? 2 : 0; })
-		.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
-		{
-			if (auto* F = Settings())
-			{
-				if (Index == 0) { F->Side = EMixtormatBehaviorFeatherSide::Both; }
-			if (Index == 1) { F->Side = EMixtormatBehaviorFeatherSide::Inside; }
-			if (Index == 2) { F->Side = EMixtormatBehaviorFeatherSide::Outside; }
-				RefreshLayeredPreview();
-				RebuildLayerList();
-			}
-		})))
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				MixtormatRow::MakeCaption(LOCTEXT("BehaviorFeatherSideLabel", "FEATHER SIDE"))
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
+			[
+				SNew(SMixtormatSegmentedControl)
+				.Options(TArray<FText>{
+					LOCTEXT("BehaviorFeatherSideOption0", "Both"),
+					LOCTEXT("BehaviorFeatherSideOption1", "Inside"),
+					LOCTEXT("BehaviorFeatherSideOption2", "Outside")})
+				.ToolTips(TArray<FText>{
+					LOCTEXT("BehaviorFeatherSideOption0Hint", "Feather both sides of the boundary."),
+					LOCTEXT("BehaviorFeatherSideOption1Hint", "Feather only the inside of the boundary."),
+					LOCTEXT("BehaviorFeatherSideOption2Hint", "Feather only the outside of the boundary.")})
+				.ActiveIndex_Lambda([Settings]()
+				{
+					const auto* F = Settings();
+					return F && F->Side == EMixtormatBehaviorFeatherSide::Both ? 0 :
+						F && F->Side == EMixtormatBehaviorFeatherSide::Inside ? 1 :
+						F && F->Side == EMixtormatBehaviorFeatherSide::Outside ? 2 : 0;
+				})
+				.OnChosen(FMixtormatOnSegmentChosen::CreateLambda([this, Settings](int32 Index)
+				{
+					if (auto* F = Settings())
+					{
+						if (Index == 0) { F->Side = EMixtormatBehaviorFeatherSide::Both; }
+						if (Index == 1) { F->Side = EMixtormatBehaviorFeatherSide::Inside; }
+						if (Index == 2) { F->Side = EMixtormatBehaviorFeatherSide::Outside; }
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				}))
+			]
 		]);
 	AddSliderRow(Eikonal, MakeMemberSlider<FMixtormatBehaviorFeatherSettings>(
 		LOCTEXT("BehaviorFeatherBias", "Direction Bias"), Settings,

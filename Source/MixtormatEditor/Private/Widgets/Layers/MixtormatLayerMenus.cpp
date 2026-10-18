@@ -148,7 +148,16 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 					if (!Child || !CanOwnScopedBlurs(*Child))
 					{
-						return BuildAddMasksMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex));
+						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(SelectedLayerIndex);
+						if (Child && CanOwnScopedMasks(*Child) && !Child->IsInstance())
+						{
+							Destination = Address.OwnerType == EMixtormatChildOwnerType::Group
+								? FMixtormatAddTarget::Group(Address.OwnerId)
+								: FMixtormatAddTarget::Layer(WorkingLayers.IndexOfByPredicate(
+									[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; }));
+							Destination.ScopeOwnerChildId = Child->ChildId;
+						}
+						return BuildAddMasksMenu(Destination);
 					}
 					MixtormatMenu::FBuilder Masks;
 					const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
@@ -554,6 +563,18 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 				AddFlowWarpToGroupChild(GroupId, ChildIndex);
 			}))
 			.Enabled(TAttribute<bool>(bCanNestChild));
+		Menu.Separator();
+	}
+	if (Group && Group->Children.IsValidIndex(ChildIndex)
+		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Blur
+		&& CanOwnScopedMasks(Group->Children[ChildIndex]))
+	{
+		FMixtormatAddTarget Destination = FMixtormatAddTarget::Group(GroupId);
+		Destination.ScopeOwnerChildId = Group->Children[ChildIndex].ChildId;
+		Menu.SubMenu(LOCTEXT("AddScopedMasksToChild", "Masks"), MixtormatIcons::Mask(),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination))
+			.Enabled(!Group->Children[ChildIndex].IsInstance()
+				&& CanAddScopedChild(Group->Children, ChildIndex));
 		Menu.Separator();
 	}
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
@@ -1506,6 +1527,22 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
 						Destination.ScopeOwnerChildId = TargetChildId;
 						CreateChild(Destination, Entry.Creation);
+					}));
+			}
+
+			FMixtormatLayerChild BlurPrototype;
+			BlurPrototype.Type = EMixtormatLayerChildType::Blur;
+			if (CanKeepScopedPlacement(Target, BlurPrototype))
+			{
+				Menu.Item(LOCTEXT("AddBlurToGenerator", "Blur"), MixtormatIcons::Filter(),
+					FSimpleDelegate::CreateLambda([this, LayerIndex, TargetChildId]()
+					{
+						const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(
+							WorkingLayers[LayerIndex].Children, TargetChildId);
+						if (OwnerIndex != INDEX_NONE)
+						{
+							AddMaskFilterToLayerChild(LayerIndex, OwnerIndex, EMixtormatLayerChildType::Blur);
+						}
 					}));
 			}
 		}

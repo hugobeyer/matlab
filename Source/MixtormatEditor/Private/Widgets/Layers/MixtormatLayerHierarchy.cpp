@@ -37,13 +37,20 @@ namespace MixtormatLayersPrivate
 		if (Child.Type == EMixtormatLayerChildType::Behavior)
 		{
 			Specific = Child.Behavior.Type == EMixtormatBehaviorType::Push
-				? MixtormatIcons::WarpPush() : MixtormatIcons::WarpStructural();
+				? MixtormatIcons::WarpPush()
+				: Child.Behavior.Type == EMixtormatBehaviorType::Feather
+				? MixtormatIcons::Filter()
+				: MixtormatIcons::WarpStructural();
 		}
 		else if (Child.Type == EMixtormatLayerChildType::Boolean
 			|| (Child.Type == EMixtormatLayerChildType::Generator
 				&& Child.Generator.Type == EMixtormatGeneratorType::BooleanOps))
 		{
 			Specific = MixtormatIcons::BooleanOps();
+		}
+		else if (Child.Type == EMixtormatLayerChildType::Blur)
+		{
+			Specific = MixtormatIcons::Filter();
 		}
 		else if (Child.Type == EMixtormatLayerChildType::Effect)
 		{
@@ -1134,6 +1141,8 @@ FText SMixtormat::GetLayerChildSourceText(
 	{
 		return Owner.Type == EMixtormatLayerChildType::Curvature
 			? LOCTEXT("CurvatureFilterSource", "FILTER · CURVATURE")
+			: Owner.Type == EMixtormatLayerChildType::Generator
+			? LOCTEXT("GeneratorFilterSource", "FILTER · HEIGHT")
 			: LOCTEXT("MaskFilterSource", "FILTER · MASK");
 	}
 	return MixtormatLayerBadges::KindForChild(Child);
@@ -2078,6 +2087,14 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 					.OnChildReparented(this, &SMixtormat::ReparentLayerChild)
 					.OnChildMovedToLayer(this, &SMixtormat::MoveChildToLayer)
 					.OnGroupChildMovedToLayer(this, &SMixtormat::MoveGroupChildToLayer)
+					.bAcceptsMaskDrop(WorkingLayers[LayerIndex].Children[ChildIndex].Type == EMixtormatLayerChildType::Blur
+						&& !WorkingLayers[LayerIndex].Children[ChildIndex].IsInstance())
+					.OnMaskDropped_Lambda([this, ResolveRow](int32, FSoftObjectPath MaskPath)
+					{
+						int32 RowLayerIndex, RowChildIndex;
+						if (!ResolveRow(RowLayerIndex, RowChildIndex)) { return FReply::Unhandled(); }
+						return AssignScopedMaskToChild(RowLayerIndex, RowChildIndex, MaskPath);
+					})
 					[
 						SNew(SMixtormatIdGroupChildDropTarget)
 						.Address(MakeChildAddress(LayerIndex, ChildIndex))

@@ -1769,6 +1769,25 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				continue;
 			}
 
+			if (LayerChild.Type == EMixtormatLayerChildType::Blur && LayerChild.ScopeOwnerChildId.IsValid())
+			{
+				const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
+				if (Layer.Children.IsValidIndex(OwnerIndex)
+					&& (Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator
+						|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Behavior))
+				{
+					if (Layer.bEnabled && LayerChild.Blur.bEnabled)
+					{
+						FChildRenderData& ChildData = Data.Children.AddDefaulted_GetRef();
+						ChildData.Type = EMixtormatLayerChildType::Blur;
+						ChildData.SourceChildIndex = SourceChildIndex;
+						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
+						ChildData.Blur = SanitizeBlur(LayerChild.Blur);
+					}
+					continue;
+				}
+			}
+
 			if (IsMaskGatherChild(LayerChild.Type))
 			{
 				if (!GatherMaskChild(Data, Layer, LayerChild, SourceChildIndex, EffectiveLayers))

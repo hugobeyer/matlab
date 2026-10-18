@@ -91,9 +91,9 @@ struct MIXTORMATRUNTIME_API FMixtormatBehaviorFeatherSettings
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather")
-	EMixtormatBehaviorFeatherMode Mode = EMixtormatBehaviorFeatherMode::Blur;
+	EMixtormatBehaviorFeatherMode Mode = EMixtormatBehaviorFeatherMode::Eikonal;
 
-	// Blur footprint and eikonal transition width, expressed in output texels.
+	// Eikonal transition width or legacy Flow Blur footprint, expressed in output texels.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Feather", meta = (UIMin = "0.0", UIMax = "32.0", ClampMin = "0.0", ClampMax = "64.0"))
 	float Radius = 3.0f;
 

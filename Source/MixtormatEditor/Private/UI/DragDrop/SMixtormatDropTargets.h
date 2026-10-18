@@ -749,6 +749,10 @@ public:
 		SLATE_EVENT(FOnMixtormatChildReparented, OnChildReparented)
 		SLATE_EVENT(FOnMixtormatChildMovedToLayer, OnChildMovedToLayer)
 		SLATE_EVENT(FOnMixtormatGroupChildMovedToLayer, OnGroupChildMovedToLayer)
+		// Opt-in: only rows that own scoped masks (a Blur) take a Library mask drop; every other
+		// row leaves the drag to the layer row beneath it.
+		SLATE_ARGUMENT(bool, bAcceptsMaskDrop)
+		SLATE_EVENT(FOnMixtormatMaskDropped, OnMaskDropped)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs)
@@ -760,10 +764,18 @@ public:
 		OnChildReparented = InArgs._OnChildReparented;
 		OnChildMovedToLayer = InArgs._OnChildMovedToLayer;
 		OnGroupChildMovedToLayer = InArgs._OnGroupChildMovedToLayer;
+		bAcceptsMaskDrop = InArgs._bAcceptsMaskDrop;
+		OnMaskDropped = InArgs._OnMaskDropped;
 		ChildSlot
 		[
 			SNew(SOverlay)
 			+ SOverlay::Slot()[InArgs._Content.Widget]
+			+ SOverlay::Slot()
+			[
+				SNew(SBorder)
+				.Visibility_Lambda([this]() { return bMaskDragOver ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.CompactRowValidDrop")))
+			]
 			+ SOverlay::Slot()
 			[
 				MixtormatDropZone::MakeInsertionOverlay([this]() { return Zone; })
@@ -771,9 +783,28 @@ public:
 		];
 	}
 
+	virtual void OnDragEnter(const FGeometry& Geometry, const FDragDropEvent& Event) override
+	{
+		if (bAcceptsMaskDrop)
+		{
+			if (const TSharedPtr<FMixtormatMaskDragDropOp> Operation = Event.GetOperationAs<FMixtormatMaskDragDropOp>())
+			{
+				bMaskDragOver = true;
+				Operation->SetToolTip(
+					LOCTEXT("ReleaseMaskScopedChild", "Release to gate this child with the mask"),
+					MixtormatIcons::Add());
+			}
+		}
+	}
+
 	virtual void OnDragLeave(const FDragDropEvent& Event) override
 	{
+		bMaskDragOver = false;
 		Zone = EMixtormatRowDropZone::None;
+		if (const TSharedPtr<FMixtormatMaskDragDropOp> Operation = Event.GetOperationAs<FMixtormatMaskDragDropOp>())
+		{
+			Operation->ResetToDefaultToolTip();
+		}
 		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>())
 		{
@@ -783,6 +814,10 @@ public:
 
 	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		if (Event.GetOperationAs<FMixtormatMaskDragDropOp>().IsValid())
+		{
+			return bAcceptsMaskDrop ? FReply::Handled() : FReply::Unhandled();
+		}
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		if (!Operation.IsValid())
@@ -831,6 +866,15 @@ public:
 
 	virtual FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		if (const TSharedPtr<FMixtormatMaskDragDropOp> MaskOperation = Event.GetOperationAs<FMixtormatMaskDragDropOp>())
+		{
+			bMaskDragOver = false;
+			MaskOperation->ResetToDefaultToolTip();
+			return bAcceptsMaskDrop && OnMaskDropped.IsBound()
+				? OnMaskDropped.Execute(LayerIndex, MaskOperation->MaskPath)
+				: FReply::Unhandled();
+		}
+
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		const EMixtormatRowDropZone DropZone = Zone;
@@ -872,6 +916,9 @@ private:
 	FOnMixtormatChildReparented OnChildReparented;
 	FOnMixtormatChildMovedToLayer OnChildMovedToLayer;
 	FOnMixtormatGroupChildMovedToLayer OnGroupChildMovedToLayer;
+	FOnMixtormatMaskDropped OnMaskDropped;
+	bool bAcceptsMaskDrop = false;
+	bool bMaskDragOver = false;
 	EMixtormatRowDropZone Zone = EMixtormatRowDropZone::None;
 };
 
