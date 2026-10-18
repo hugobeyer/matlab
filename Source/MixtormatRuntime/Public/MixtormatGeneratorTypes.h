@@ -393,6 +393,13 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 };
 
 
+UENUM(BlueprintType)
+enum class EMixtormatCliffChamferMode : uint8
+{
+	HeightMap = 0 UMETA(DisplayName = "Height Map"),
+	ActualBox = 1 UMETA(DisplayName = "Actual Box")
+};
+
 // Cliff Strata: projected 3D prism blocks shaped by the paired CliffStrata prototype.
 // Raw projected depth, block/row identity and projected flow are internal; the final generator
 // publishes block Region IDs and scalar masks only. No signed BoundaryField is claimed here.
@@ -496,6 +503,11 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Layout")
 	int32 VoronoiCells = 13;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Pattern")
 	float FlowVoronoi = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
+	EMixtormatCliffChamferMode ChamferMode = EMixtormatCliffChamferMode::HeightMap;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01", EditCondition = "ChamferMode == EMixtormatCliffChamferMode::ActualBox"))
+	float BoxChamferWidth = 0.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cliff Strata|Edges")
 	float ChamferWidth = 0.5f;

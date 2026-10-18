@@ -237,6 +237,8 @@ namespace MixtormatGpuCompositor
 		Out.YBias=Finite(Cliff.YBias,Defaults.YBias); Out.YBiasVoronoi=Finite(Cliff.YBiasVoronoi,Defaults.YBiasVoronoi); Out.bYBiasVoronoiInvert=Cliff.bYBiasVoronoiInvert;
 		Out.NegativeYUnitDistanceTaper=Finite(Cliff.NegativeYUnitDistanceTaper,Defaults.NegativeYUnitDistanceTaper); Out.bReverse=Cliff.bReverse;
 		Out.Seed=Cliff.Seed; Out.VoronoiCells=FMath::Max(Cliff.VoronoiCells,1); Out.FlowVoronoi=Finite(Cliff.FlowVoronoi,Defaults.FlowVoronoi);
+		Out.ChamferMode = static_cast<uint32>(Cliff.ChamferMode);
+		Out.BoxChamferWidth = FMath::Clamp(Finite(Cliff.BoxChamferWidth, Defaults.BoxChamferWidth), 0.0f, 1.0f);
 		Out.ChamferWidth=Finite(Cliff.ChamferWidth,Defaults.ChamferWidth); Out.ChamferIntensity=Finite(Cliff.ChamferIntensity,Defaults.ChamferIntensity);
 		Out.ChamferVoronoi=Finite(Cliff.ChamferVoronoi,Defaults.ChamferVoronoi); Out.BlockCavityWidth=Finite(Cliff.BlockCavityWidth,Defaults.BlockCavityWidth);
 		Out.RowCavityWidth=Finite(Cliff.RowCavityWidth,Defaults.RowCavityWidth); Out.CavityIntensity=Finite(Cliff.CavityIntensity,Defaults.CavityIntensity);

@@ -142,8 +142,21 @@ struct FRockLeaf
 	uint VertexCount;
 	uint Id;
 	uint SeamBits;         // bit e set = edge e is a seam (a Fracture split), not the outline
-	uint Pad;
+	uint FacetCount;
 };
+
+// Pixel-independent facet data; keep the original plane order for max/tie behavior.
+struct FRockFacet
+{
+	float2 Direction;
+	float Offset;
+	float Slope;
+	float JagSize;
+	uint JagKey;
+};
+uint FacetSlotsPerLeaf;
+RWStructuredBuffer<FRockFacet> OutFacets;
+StructuredBuffer<FRockFacet> Facets;
 
 int MaxLeaves;
 int CellsV;
@@ -193,6 +206,8 @@ struct FRockPat
 	int build_reach_i, build_reach_j, field_reach_i, field_reach_j;
 	float height_lo, height_hi;
 };
+
+uint RockWriteFacets(FRockPat P, FRockLeaf L, uint slot);
 
 struct FRockPoly
 {
@@ -665,6 +680,11 @@ void RockWriteLeaf(FRockPat P, FRockPoly leaf, uint cid, uint node, float layerR
 	// The chunk's slot: unique per chunk and small. Consumers such as UV From IDs index per-id
 	// buffers sized to the pixel count, so an id must stay below it; preview colours scramble it.
 	L.Id = slot;
+	L.FacetCount = 0u;
+	[branch] if (L.ChipOn != 0u)
+	{
+		L.FacetCount = RockWriteFacets(P, L, slot);
+	}
 	OutLeaves[slot] = L;
 }
 
@@ -682,12 +702,12 @@ float RockFacetDraw(FRockLeaf L, uint salt)
 // rounds break smaller along the edges earlier ones left (or deeper, with a falloff above 1).
 // Facet Random varies per rock how many rounds it gets, how deep it bites and how fast each round
 // shrinks. Facet Align swings the planes toward the low (+) or high (-) side of the chunk's lean.
-float RockFacetCut(FRockPat P, FRockLeaf L, float2 pr)
+uint RockWriteFacets(FRockPat P, FRockLeaf L, uint slot)
 {
 	const float2 c = float2(L.Cx, L.Cy);
 	const float2 lean = float2(L.Sx, L.Sy);
 	const float leanLength = length(lean);
-	float cut = 0.0f;
+	uint count = 0u;
 	float size = 1.0f;
 
 	// Some rocks get fewer rounds, and every piece of one rock the same count, so this draw is
@@ -724,16 +744,32 @@ float RockFacetCut(FRockPat P, FRockLeaf L, float2 pr)
 			// round's so a growing falloff cannot saw the teeth across the chunk's borders.
 			const float grow = size / sqrt(sqrt(1.0f + 0.0625f * size * size * size * size));
 			const float js = grow * L.JagSize;
-			// A zero falloff removes later rounds' jag without dividing by their zero size.
-			float shift = 0.0f;
-			if (js != 0.0f)
-			{
-				const float along = dot(pr, float2(-u.y, u.x)) / js + L.JagOffset;
-				shift = RockJag(P, along, RockHash(L.Pk ^ ((uint)j + salt) * 0x9E3779B9u), 0) * js;
-			}
-			cut = max(cut, k * (dot(u, pr) - R + shift));
+			FRockFacet F;
+			F.Direction = u;
+			F.Offset = R;
+			F.Slope = k;
+			F.JagSize = js;
+			F.JagKey = RockHash(L.Pk ^ ((uint)j + salt) * 0x9E3779B9u);
+			OutFacets[slot * FacetSlotsPerLeaf + count++] = F;
 		}
 		size *= P.facet_falloff * lerp(1.0f, 0.5f + RockFacetDraw(L, (uint)it + 20u), P.facet_random);
+	}
+	return count;
+}
+
+float RockFacetCut(FRockPat P, FRockLeaf L, uint slot, float2 pr)
+{
+	float cut = 0.0f;
+	for (uint i = 0u; i < L.FacetCount; ++i)
+	{
+		const FRockFacet F = Facets[slot * FacetSlotsPerLeaf + i];
+		float shift = 0.0f;
+		if (F.JagSize != 0.0f)
+		{
+			const float along = dot(pr, float2(-F.Direction.y, F.Direction.x)) / F.JagSize + L.JagOffset;
+			shift = RockJag(P, along, F.JagKey, 0) * F.JagSize;
+		}
+		cut = max(cut, F.Slope * (dot(F.Direction, pr) - F.Offset + shift));
 	}
 	return cut;
 }
@@ -755,7 +791,7 @@ float RockLeafHeight(FRockPat P, FRockLeaf L, uint slot, float2 pr, out int cls,
 	if (L.ChipOn != 0u)
 	{
 		// Signed facet chips: positive cuts the facets in (current), negative raises them out.
-		T -= P.chip_sign * RockFacetCut(P, L, pr);
+		T -= P.chip_sign * RockFacetCut(P, L, slot, pr);
 	}
 
 	// A negative chamfer raises the edge into a lip instead of cutting it in: the top is raised by

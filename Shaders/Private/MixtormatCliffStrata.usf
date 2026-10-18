@@ -7,6 +7,27 @@
 #endif
 int2 OutputSize;
 
+#define CLIFF_MAX_SIDES 12
+struct FCliffBlock
+{
+	float2 Center;
+	float2 Extent;
+	float2 Lean;
+	float Height;
+	float2 RotationCS;
+	float2 CenterShift;
+	float2 FlowAxis;
+	uint SideCount;
+	uint Active;
+};
+RWStructuredBuffer<FCliffBlock> OutBlocks;
+RWStructuredBuffer<float4> OutBlockPlanes;
+StructuredBuffer<FCliffBlock> Blocks;
+StructuredBuffer<float4> BlockPlanes;
+uint BlockPlaneStride;
+uint ChamferMode;
+float BoxChamferWidth;
+
 int CountX;
 int CountY;
 int Steps;
@@ -92,14 +113,130 @@ RWTexture2D<float> OutRowSeam;
 RWTexture2D<float> OutCavity;
 RWTexture2D<float> OutCoverage;
 float frac1(float x){return x-floor(x);} float hash11(float x){x=frac1(x*.1031);x*=x+33.33;return frac1(x*(x+x));} float hash21(int2 p,float s){return hash11(p.x*127.1+p.y*311.7+s*74.17);} float rc(int2 p,float s,float q){return hash21(p,s+q);} float rs(int2 p,float s,float q){return rc(p,s,q)*2-1;} float2 r2(float2 p,float a){float c=cos(a),s=sin(a);return float2(c*p.x-s*p.y,s*p.x+c*p.y);} int wi(int x,int n){int r=x%n;return r<0?r+n:r;} float q01(float x,int st){x=clamp(x,0,1);if(st<=1)return x;float n=st-1;return floor(x*n+.5)/n;}
-float rayp(float3 ro,float3 rd,float2 e,int sides,float2 sr,float z0,float z1,float jag,float seed){float2 nro=ro.xy/max(e,float2(1e-8,1e-8)),nrd=rd.xy/max(e,float2(1e-8,1e-8)),n=float2(1,0),cs=0;[loop]for(int k=0;k<sides;++k){float j=1+(hash11(seed+k*12.9898)*2-1)*jag;cs+=(j-1)*n;n=float2(n.x*sr.x-n.y*sr.y,n.x*sr.y+n.y*sr.x);}nro+=cs*(2.0/sides);float te=-1e20,tx=1e20,d=rd.z,num=z1-ro.z;if(abs(d)<1e-8){if(num<0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}num=z0-ro.z;if(abs(d)<1e-8){if(num>0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}n=float2(1,0);[loop]for(int k=0;k<sides;++k){float j=1+(hash11(seed+k*12.9898)*2-1)*jag;d=dot(n,nrd);num=j-dot(n,nro);if(abs(d)<1e-8){if(num<0)return-1;}else{float t=num/d;if(d>0)tx=min(tx,t);else te=max(te,t);}n=float2(n.x*sr.x-n.y*sr.y,n.x*sr.y+n.y*sr.x);}if(te>tx||tx<0)return-1;return te>=0?te:tx;}
+float rayp(float3 ro, float3 rd, FCliffBlock B, uint blockIndex)
+{
+	float2 nro = ro.xy / max(B.Extent, float2(1e-8, 1e-8));
+	float2 nrd = rd.xy / max(B.Extent, float2(1e-8, 1e-8));
+	nro += B.CenterShift;
+	float te = -1e20, tx = 1e20, d = rd.z, num = B.Height * .5 - ro.z;
+	if (abs(d) < 1e-8) { if (num < 0) return -1; }
+	else { float t = num / d; if (d > 0) tx = min(tx, t); else te = max(te, t); }
+	num = -B.Height * .5 - ro.z;
+	if (abs(d) < 1e-8) { if (num > 0) return -1; }
+	else { float t = num / d; if (d > 0) tx = min(tx, t); else te = max(te, t); }
+	[loop] for (uint k = 0u; k < B.SideCount; ++k)
+	{
+		float4 plane = BlockPlanes[blockIndex * BlockPlaneStride + k];
+		d = dot(plane.xy, nrd);
+		num = plane.w - dot(plane.xy, nro);
+		if (abs(d) < 1e-8) { if (num < 0) return -1; }
+		else { float t = num / d; if (d > 0) tx = min(tx, t); else te = max(te, t); }
+	}
+	if (ChamferMode == 1u && BoxChamferWidth > 0.0f && B.Height > 0.0f)
+	{
+		// Bevel planes use physical, unleaned block coordinates, not anisotropic polygon units.
+		float3 bevelOrigin = float3(nro * max(B.Extent, float2(1e-8, 1e-8)), ro.z);
+		[loop] for (uint k = B.SideCount; k < B.SideCount * 4u; ++k)
+		{
+			float4 plane = BlockPlanes[blockIndex * BlockPlaneStride + k];
+			d = dot(plane.xyz, rd);
+			num = plane.w - dot(plane.xyz, bevelOrigin);
+			if (abs(d) < 1e-8) { if (num < 0) return -1; }
+			else { float t = num / d; if (d > 0) tx = min(tx, t); else te = max(te, t); }
+		}
+	}
+	if (te > tx || tx < 0) return -1;
+	return te >= 0 ? te : tx;
+}
 float3 hid(int id,float s){float f=id;return float3(hash11(f*127.1+s*17.13),hash11(f*311.7+s*71.91),hash11(f*191.999+s*143.73));} float2 warp(float2 uv,float h,float2 f,float a){float2 ax=f/max(length(f),1e-6),ac=float2(-ax.y,ax.x);return uv+a*(ax*h+ac*sin(h*6.28318530718)*.35);} float ids(int id,float s,float l){return lerp(1,.5+hash11(id*12.9898+s*78.233),l);} float h31(int3 p,float s){return hash11(p.x*127.1+p.y*311.7+p.z*191.999+s*74.17);} float3 h33(int3 p,float s){return float3(h31(p,s+17.13),h31(p,s+71.91),h31(p,s+143.73));}
 float sdfOpUnionChamfer(float a, float b, float r) { return min(min(a, b), (a + b - r) * 0.5f); }
 void voro(float3 P,int pxy,int pz,float s,out float f1,out float f2){int3 b=(int3)floor(P);float d1=1e20,d2=1e20;[unroll]for(int z=-1;z<=1;++z)[unroll]for(int y=-1;y<=1;++y)[unroll]for(int x=-1;x<=1;++x){int3 c=b+int3(x,y,z),cw=int3(wi(c.x,pxy),wi(c.y,pxy),wi(c.z,pz));float3 fp=(float3)c+.5+(h33(cw,s)-.5)*.85,dv=fp-P;float d=dot(dv,dv);if(d<d1){d2=d1;d1=d;}else if(d<d2)d2=d;}f1=sqrt(d1);f2=sqrt(d2);}
-[numthreads(8,8,1)] void MainCS(uint3 D:SV_DispatchThreadID){
-#if CLIFF_STAGE==0
+#if CLIFF_STAGE == 9
+[numthreads(64,1,1)]
+#else
+[numthreads(8,8,1)]
+#endif
+void MainCS(uint3 D:SV_DispatchThreadID){
+#if CLIFF_STAGE == 9
+	int2 n = int2(max(CountX, 1), max(CountY, 1));
+	int qy = max(QuarterYCount, 1);
+	uint cells = (uint)(n.x * n.y);
+	uint phases = QuarterCopies ? (uint)(16 * qy) : 1u;
+	uint index = D.x;
+	if (index >= cells * phases) return;
+	int ph = (int)(index / cells);
+	int2 c = int2((index % cells) % (uint)n.x, (index % cells) / (uint)n.x);
+	bool sec = ph != 0;
+	float ps = Seed + ph * 971.371;
+	float formation = clamp(FormationAmount, 0, 1);
+	float dens = clamp(Density, 0, 1), qfill = clamp(QuarterFill, 0, 1);
+	float pd = sec ? dens * qfill : dens;
+	int fc = max(FormationCells, 1);
+	float cr = rs(int2(c.x / fc, c.y / fc), ps, 701.37);
+	float ld = clamp(pd + cr * formation * .35, 0, 1);
+	FCliffBlock B = (FCliffBlock)0;
+	if (rc(c, ps, 11.31) > ld) { OutBlocks[index] = B; return; }
+	B.Active = 1u;
+	float jit = max(Jitter, 0), pjx = clamp(jit, 0, .48), pjy = clamp(jit, 0, .48);
+	float sidej = clamp(jit * 1.1, 0, .8), rotjit = jit * 39, leanjit = jit * .55;
+	float sxmin = max(min(SizeMin, SizeMax), .02), sxmax = max(max(SizeMin, SizeMax), sxmin);
+	float sa = max(SizeAspect, .02), symin = max(sxmin * sa, .02), symax = max(sxmax * sa, symin);
+	float2 cell = float2(1.0 / n.x, 1.0 / n.y);
+	float2 pj = float2(rs(c, ps, 17.13) * pjx, rs(c, ps, 31.71) * pjy);
+	B.Center = (float2(c) + .5 + pj) * cell;
+	float cs = 1 + cr * formation * .3, psz = sec ? max(QuarterSize, .01) : 1;
+	float sx = lerp(sxmin, sxmax, rc(c, ps, 47.93)) * cs * psz;
+	float syv = lerp(symin, symax, rc(c, ps, 63.47)) * cs * psz;
+	B.Extent = float2(.5 * cell.x * sx, .5 * cell.y * syv);
+	float hr = q01(clamp(rc(c, ps, 149.71) + cr * formation * .3, 0, 1), max(Steps, 0));
+	B.Height = lerp(min(HeightMin, HeightMax), max(HeightMin, HeightMax), hr);
+	if (sec) { B.Height /= (float)qy; B.Height *= 1 + rs(c, ps, 331.17) * max(QuarterHeight, 0); B.Height = max(B.Height, 1e-4); }
+	float ang = (Rotation * 180 + rs(c, ps, 173.27) * rotjit) * .01745329252;
+	if (Steps > 0) { float st = 6.28318530718 / Steps; ang = floor(ang / st + .5) * st; }
+	B.RotationCS = float2(cos(-ang), sin(-ang));
+	B.Lean = float2(LeanX, LeanY) + float2(rs(c, ps, 197.51), rs(c, ps, 223.73)) * leanjit;
+	int sides = clamp(Sides, 3, CLIFF_MAX_SIDES);
+	float ba = 6.28318530718 / sides;
+	float2 sr = float2(cos(ba), sin(ba));
+	if (ShapeRandom) { float rr = rc(c, ps, 251.17); sides = 4 + 2 * (int)(rr * 3); sr = sides == 4 ? float2(0, 1) : (sides == 6 ? float2(.5, .8660254) : float2(.7071068, .7071068)); }
+	B.SideCount = (uint)sides;
+	float fa = ang + rs(c, ps, 307.11) * clamp(FlowVariation, 0, 3.14159265);
+	B.FlowAxis = r2(float2(1, 0), fa);
+	float shapeSeed = rc(c, ps, 269.83) * 1000;
+	float2 normal = float2(1, 0), shift = 0;
+	float4 physicalPlanes[CLIFF_MAX_SIDES];
+	float bevelWidth = max(B.Height * .5, 0.0f);
+	[loop] for (int k = 0; k < sides; ++k)
+	{
+		float j = 1 + (hash11(shapeSeed + k * 12.9898) * 2 - 1) * sidej;
+		shift += (j - 1) * normal;
+		OutBlockPlanes[index * BlockPlaneStride + k] = float4(normal, 0, j);
+		if (ChamferMode == 1u && BoxChamferWidth > 0.0f && B.Height > 0.0f)
+		{
+			float2 pn = normal / max(B.Extent, float2(1e-8, 1e-8));
+			float len = length(pn);
+			physicalPlanes[k] = float4(pn / len, 0, j / len);
+			bevelWidth = min(bevelWidth, j / len);
+		}
+		normal = float2(normal.x * sr.x - normal.y * sr.y, normal.x * sr.y + normal.y * sr.x);
+	}
+	B.CenterShift = shift * (2.0 / sides);
+	if (ChamferMode == 1u && BoxChamferWidth > 0.0f && B.Height > 0.0f)
+	{
+		bevelWidth *= saturate(BoxChamferWidth);
+		[loop] for (int k = 0; k < sides; ++k)
+		{
+			float4 side = physicalPlanes[k], next = physicalPlanes[(k + 1) % sides];
+			// Clip each vertical edge, plus the top and bottom edges of each polygon side.
+			OutBlockPlanes[index * BlockPlaneStride + sides + k * 3] = float4(side.xyz + next.xyz, side.w + next.w - bevelWidth);
+			OutBlockPlanes[index * BlockPlaneStride + sides + k * 3 + 1] = float4(side.xy, 1, side.w + B.Height * .5 - bevelWidth);
+			OutBlockPlanes[index * BlockPlaneStride + sides + k * 3 + 2] = float4(side.xy, -1, side.w + B.Height * .5 - bevelWidth);
+		}
+	}
+	OutBlocks[index] = B;
+#elif CLIFF_STAGE==0
 if(any(D.xy>=OutputSize))return;const float SafeViewScale=max(ViewScale,1.0f);int2 p=D.xy,res=OutputSize,n=int2(max(CountX,1),max(CountY,1));int qy=max(QuarterYCount,1);float fq=qy;float2 uv=MixtormatGeneratorUV((float2(p)+.5)/res)-.5;uv.x*=res.x/max((float)res.y,1);uv*=SafeViewScale;float yaw=CameraYaw*1.57079632679,pitch=CameraPitch*.78539816339,cp=cos(pitch),sp=sin(pitch),cy=cos(yaw),sy=sin(yaw);float3 rd=normalize(float3(cp*cy,cp*sy,-sp)),up=float3(0,0,1),right=normalize(cross(rd,up)),cup=normalize(cross(right,rd));float hmin=min(HeightMin,HeightMax),hmax=max(HeightMin,HeightMax),formation=clamp(FormationAmount,0,1),qh=max(QuarterHeight,0),gh=max(max(hmax,(hmax/fq)*(1+qh)),1e-4)*1.05,cam=2+gh;float3 ro=float3(.5,.5,0)-rd*cam+right*uv.x+cup*uv.y,tx=right*((res.x/max((float)res.y,1))*SafeViewScale),ty=cup*SafeViewScale;float dens=clamp(Density,0,1),qfill=clamp(QuarterFill,0,1),qsize=max(QuarterSize,.01),qjx=clamp(QuarterJitterX,0,.48),qjy=clamp(QuarterJitterY,0,.48),jit=max(Jitter,0),pjx=clamp(jit,0,.48),pjy=clamp(jit,0,.48),sidej=clamp(jit*1.1,0,.8),rotjit=jit*39,leanjit=jit*.55,sxmin=max(min(SizeMin,SizeMax),.02),sxmax=max(max(SizeMin,SizeMax),sxmin),sa=max(SizeAspect,.02),symin=max(sxmin*sa,.02),symax=max(sxmax*sa,symin);int bs=clamp(Sides,3,12);float ba=6.28318530718/bs;float2 rb=float2(cos(ba),sin(ba)),r4=float2(0,1),r6=float2(.5,.8660254),r8=float2(.7071068,.7071068);int fc=max(FormationCells,1);float2 cell=float2(1.0/n.x,1.0/n.y);float mr=max(.5*cell.x*sxmax*max(1,qsize),.5*cell.y*symax*max(1,qsize))*(1+sidej);int padx=max(1,(int)ceil((mr+(abs(LeanX)+leanjit)*gh*.5)/max(cell.x,1e-8)+pjx+1)),pady=max(1,(int)ceil((mr+(abs(LeanY)+leanjit)*gh*.5)/max(cell.y,1e-8)+pjy+1));float best=1e20;int hit=0,brow=-1,bblock=-1;float2 bf=0;int ysub=4*qy,phases=QuarterCopies?4*ysub:1;
-[loop]for(int ph=0;ph<phases;++ph){int xi=ph&3,yi=ph>>2;float px=xi*.25,py=(float)yi/ysub;int sec=ph!=0;if(sec){px+=(hash11(ph*5.31+Seed*.611)*2-1)*qjx;py+=(hash11(ph*9.73+Seed*.917)*2-1)*qjy;}float pd=sec?dens*qfill:dens,psz=sec?qsize:1,ps=Seed+ph*971.371;[unroll]for(int oy=-1;oy<=1;++oy)[unroll]for(int ox=-1;ox<=1;++ox){float3 cro=ro-(tx*(ox+px)+ty*(oy+py));float rz=abs(rd.z)>1e-6?rd.z:-1e-6,t0=(-gh*.5-cro.z)/rz,t1=(gh*.5-cro.z)/rz;float2 rp0=cro.xy+rd.xy*t0,rp1=cro.xy+rd.xy*t1,g0=min(rp0,rp1),g1=max(rp0,rp1);int minx=max((int)floor(g0.x*n.x)-padx,0),maxx=min((int)floor(g1.x*n.x)+padx,n.x-1),miny=max((int)floor(g0.y*n.y)-pady,0),maxy=min((int)floor(g1.y*n.y)+pady,n.y-1);[loop]for(int y=miny;y<=maxy;++y)[loop]for(int x=minx;x<=maxx;++x){int2 c=int2(x,y),cl=int2(x/fc,y/fc);float cr=rs(cl,ps,701.37),ld=clamp(pd+cr*formation*.35,0,1);if(rc(c,ps,11.31)>ld)continue;float2 pj=float2(rs(c,ps,17.13)*pjx,rs(c,ps,31.71)*pjy),ctr=(float2(c)+.5+pj)*cell;float cs=1+cr*formation*.3,sx=lerp(sxmin,sxmax,rc(c,ps,47.93))*cs*psz,syv=lerp(symin,symax,rc(c,ps,63.47))*cs*psz,hx=.5*cell.x*sx,hy=.5*cell.y*syv,hr=q01(clamp(rc(c,ps,149.71)+cr*formation*.3,0,1),max(Steps,0)),height=lerp(hmin,hmax,hr);if(sec){height/=fq;height*=1+rs(c,ps,331.17)*qh;height=max(height,1e-4);}float ang=(Rotation*180+rs(c,ps,173.27)*rotjit)*.01745329252;if(Steps>0){float st=6.28318530718/Steps;ang=floor(ang/st+.5)*st;}float2 lean=float2(LeanX,LeanY)+float2(rs(c,ps,197.51),rs(c,ps,223.73))*leanjit;float3 rel=cro-float3(ctr,0);float2 lr=r2(rel.xy-lean*rel.z,-ang),ldir=r2(rd.xy-lean*rd.z,-ang);int ss=bs;float2 sr=rb;if(ShapeRandom){float rr=rc(c,ps,251.17);ss=4+2*(int)(rr*3);sr=ss==4?r4:(ss==6?r6:r8);}float t=rayp(float3(lr,rel.z),float3(ldir,rd.z),float2(hx,hy),ss,sr,-height*.5,height*.5,sidej,rc(c,ps,269.83)*1000);if(t>=0&&t<best){best=t;hit=1;brow=y;bblock=ph*(n.x*n.y)+y*n.x+x;float fa=ang+rs(c,ps,307.11)*clamp(FlowVariation,0,3.14159265);float2 ax=r2(float2(1,0),fa);float3 fw=float3(ax,0)+float3(lean,0)*.35;float2 fp=float2(dot(fw,right),dot(fw,cup));bf=fp/max(length(fp),1e-6);}}}}
+[loop]for(int ph=0;ph<phases;++ph){int xi=ph&3,yi=ph>>2;float px=xi*.25,py=(float)yi/ysub;int sec=ph!=0;if(sec){px+=(hash11(ph*5.31+Seed*.611)*2-1)*qjx;py+=(hash11(ph*9.73+Seed*.917)*2-1)*qjy;}float pd=sec?dens*qfill:dens,psz=sec?qsize:1,ps=Seed+ph*971.371;[unroll]for(int oy=-1;oy<=1;++oy)[unroll]for(int ox=-1;ox<=1;++ox){float3 cro=ro-(tx*(ox+px)+ty*(oy+py));float rz=abs(rd.z)>1e-6?rd.z:-1e-6,t0=(-gh*.5-cro.z)/rz,t1=(gh*.5-cro.z)/rz;float2 rp0=cro.xy+rd.xy*t0,rp1=cro.xy+rd.xy*t1,g0=min(rp0,rp1),g1=max(rp0,rp1);int minx=max((int)floor(g0.x*n.x)-padx,0),maxx=min((int)floor(g1.x*n.x)+padx,n.x-1),miny=max((int)floor(g0.y*n.y)-pady,0),maxy=min((int)floor(g1.y*n.y)+pady,n.y-1);[loop]for(int y=miny;y<=maxy;++y)[loop]for(int x=minx;x<=maxx;++x){uint blockIndex=(uint)(ph*(n.x*n.y)+y*n.x+x);FCliffBlock B=Blocks[blockIndex];if(B.Active==0u)continue;float3 rel=cro-float3(B.Center,0);float2 localOrigin=rel.xy-B.Lean*rel.z,localDirection=rd.xy-B.Lean*rd.z;float2 lr=float2(B.RotationCS.x*localOrigin.x-B.RotationCS.y*localOrigin.y,B.RotationCS.y*localOrigin.x+B.RotationCS.x*localOrigin.y),ldir=float2(B.RotationCS.x*localDirection.x-B.RotationCS.y*localDirection.y,B.RotationCS.y*localDirection.x+B.RotationCS.x*localDirection.y);float t=rayp(float3(lr,rel.z),float3(ldir,rd.z),B,blockIndex);if(t>=0&&t<best){best=t;hit=1;brow=y;bblock=(int)blockIndex;float3 fw=float3(B.FlowAxis,0)+float3(B.Lean,0)*.35;float2 fp=float2(dot(fw,right),dot(fw,cup));bf=fp/max(length(fp),1e-6);}}}}
 float outv=0;if(hit){float dn=cam*.5,df=cam*1.5,d01=clamp((best-dn)/max(df-dn,1e-6),0,1);outv=lerp(max(DepthMin,DepthMax),min(DepthMin,DepthMax),d01);}OutRawHeight[p]=outv;OutFlow[p]=hit?bf:0;OutRowIds[p]=hit?(uint)brow:0xffffffffu;OutBlockIds[p]=hit?(uint)bblock:0xffffffffu;OutCoverage[p]=hit?1:0;
 #elif CLIFF_STAGE==1
 if(any(D.xy>=OutputSize))return;int2 p=D.xy;float h=RawHeight[p];float2 uv=warp(MixtormatGeneratorUV((float2(p)+.5)/OutputSize),h,Flow[p],FlowVoronoi);int iid=BlockIds[p]==0xffffffffu?-1:(int)BlockIds[p];float3 P=float3(uv*max(VoronoiCells,1),h*6)+(hid(iid,Seed+913.73)-.5);float f1,f2;voro(P,max(VoronoiCells,1),6,Seed,f1,f2);OutVoronoiRaw[p]=clamp((f2-f1)*2,0,1);
@@ -149,7 +286,7 @@ di=OutIdDistance[int2(x,0)];dr=OutRowDistance[int2(x,0)];
 #else
 // Prototype Shape iteration 7 - chamfer/cavities. Final native height remains signed.
 if(any(D.xy>=OutputSize))return;int2 p=D.xy;float a=SweepIn[p],b=RawHeight[p],plain=min(a,b),v=VoronoiRaw[p],seam=1-v;
-float chamfer_radius=ChamferWidth*max(0.0,1+(seam*2-1)*ChamferVoronoi),beveled=sdfOpUnionChamfer(a,b,chamfer_radius),res=plain+(beveled-plain)*ChamferIntensity,cavity=0.0;
+float chamfer_radius=ChamferWidth*max(0.0,1+(seam*2-1)*ChamferVoronoi),beveled=sdfOpUnionChamfer(a,b,chamfer_radius),res=ChamferMode==1u?plain:plain+(beveled-plain)*ChamferIntensity,cavity=0.0;
 if(((BlockCavityWidth>0)||(RowCavityWidth>0))&&(CavityIntensity!=0)){
 float mask=saturate((seam-CavityVoronoiThreshold)*CavityVoronoiMaskGain),bc=max(BlockCavityWidth*mask-IdDistanceIn[p],0.0),rc=2.0*max(RowCavityWidth*mask-RowDistanceIn[p],0.0);cavity=max(bc,rc);res-=CavityIntensity*cavity;}
 OutHeight[p]=res;OutBlockSeam[p]=1-saturate(IdDistanceIn[p]/max(BlockCavityWidth,1e-6));OutRowSeam[p]=1-saturate(RowDistanceIn[p]/max(RowCavityWidth,1e-6));OutCavity[p]=cavity;OutCoverage[p]=BlockIds[p]==0xffffffffu?0:1;

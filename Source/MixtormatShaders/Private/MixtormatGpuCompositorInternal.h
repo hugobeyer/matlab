@@ -950,6 +950,8 @@ namespace MixtormatGpuCompositor
 		bool bReverse = false;
 		int32 Seed = 1234, VoronoiCells = 13;
 		float FlowVoronoi = 0.0f;
+		uint32 ChamferMode = 0;
+		float BoxChamferWidth = 0.25f;
 		float ChamferWidth = 0.5f, ChamferIntensity = 1.0f, ChamferVoronoi = 0.05f;
 		float BlockCavityWidth = 0.02f, RowCavityWidth = 0.25f, CavityIntensity = 0.25f;
 		float CavityVoronoiThreshold = 0.5f, CavityVoronoiMaskGain = 0.125f;

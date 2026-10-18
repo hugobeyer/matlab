@@ -345,6 +345,19 @@ layer-level creation remains unconnected; no source is inferred or auto-rebound.
 `MixtormatGeneratorStructuralWarp.usf`, `MixtormatGeneratorWarp.ush`,
 `MixtormatGeneratorHeightModules.ush`, `MixtormatGeneratorPlacement.ush`.
 
+- Cliff Strata builds block transforms and polygon planes once in stage 9, before
+  stages 0–8; projection retains its phase/tile/cell traversal and nearest-hit order.
+  `ChamferMode` defaults to Height Map (the existing post-carve chamfer). Actual Box
+  uses precomputed edge bevel planes and `BoxChamferWidth` (0–1 relative to the
+  smallest block half-dimension), bypassing only the height-map chamfer. Carving,
+  cavities and published masks remain active. At zero box width, extra plane tests
+  and their storage are skipped. Inactive mode controls stay visible but disabled.
+- Rock Formation builds ordered facet-plane constants alongside its leaf geometry;
+  the field samples those planes and still evaluates position-dependent jag.
+  These optimizations add transient structured buffers; neither changes output
+  resolution or reduces geometry/detail counts. GPU timing and image parity have
+  not yet been validated.
+
 ## Inspector
 
 `Editor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` —

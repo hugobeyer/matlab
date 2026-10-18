@@ -1383,8 +1383,24 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffYBias","Y Bias"),C,&FMixtormatCliffStrata::YBias,-4,4,.3,.01,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffYBiasVoro","Y Bias Voronoi"),C,&FMixtormatCliffStrata::YBiasVoronoi,-4,4,.9,.01,FText::GetEmpty()));
 	AddSliderRow(Panel,MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffNegYTaper","Negative Y Taper"),C,&FMixtormatCliffStrata::NegativeYUnitDistanceTaper,-4,4,1,.01,FText::GetEmpty()));
 	Panel=AddCard(Cards,LOCTEXT("CliffChamfer","CHAMFER"));
-	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferWidth","Width"),C,&FMixtormatCliffStrata::ChamferWidth,0,2,.5,.01,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferIntensity","Amount"),C,&FMixtormatCliffStrata::ChamferIntensity,-4,4,1,.01,FText::GetEmpty()));
-	AddSliderRow(Panel,MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferVoro","Voronoi"),C,&FMixtormatCliffStrata::ChamferVoronoi,-2,2,.05,.01,FText::GetEmpty()));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatCliffStrata>(
+		LOCTEXT("CliffChamferMode", "Mode"), C, &FMixtormatCliffStrata::ChamferMode,
+		LOCTEXT("CliffChamferModeHint", "Height Map chamfers the carved height. Actual Box bevels the projected blocks, including their silhouettes; it adds ray intersection work.")));
+	const auto IsBoxChamfer = [C]()
+	{
+		const FMixtormatCliffStrata* G = C();
+		return G && G->ChamferMode == EMixtormatCliffChamferMode::ActualBox;
+	};
+	AddSliderRow(Panel, SNew(SBox).IsEnabled_Lambda(IsBoxChamfer)[
+		MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffBoxChamferWidth", "Box Width"),
+			C, &FMixtormatCliffStrata::BoxChamferWidth, 0, 1, FMixtormatCliffStrata().BoxChamferWidth, .01,
+			LOCTEXT("CliffBoxChamferWidthHint", "Bevel width relative to the block's smallest half-dimension. Zero keeps sharp boxes. Does not use the height-map Amount or Voronoi controls."))]);
+	AddSliderRow(Panel, SNew(SBox).IsEnabled_Lambda([IsBoxChamfer]() { return !IsBoxChamfer(); })[
+		MixtormatRow::MakePair(
+			MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferWidth","Width"),C,&FMixtormatCliffStrata::ChamferWidth,0,2,.5,.01,FText::GetEmpty()),
+			MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferIntensity","Amount"),C,&FMixtormatCliffStrata::ChamferIntensity,-4,4,1,.01,FText::GetEmpty()))]);
+	AddSliderRow(Panel, SNew(SBox).IsEnabled_Lambda([IsBoxChamfer]() { return !IsBoxChamfer(); })[
+		MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffChamferVoro","Voronoi"),C,&FMixtormatCliffStrata::ChamferVoronoi,-2,2,.05,.01,FText::GetEmpty())]);
 	Panel=AddCard(Cards,LOCTEXT("CliffCavity","CAVITY"));
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffCavityAmount","Amount"),C,&FMixtormatCliffStrata::CavityIntensity,-4,4,.25,.01,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffBlockCavityWidth","Block"),C,&FMixtormatCliffStrata::BlockCavityWidth,.001,1,.02,.005,FText::GetEmpty()));
 	Pair(MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffRowCavityWidth","Row"),C,&FMixtormatCliffStrata::RowCavityWidth,.001,1,.25,.005,FText::GetEmpty()),MakeMemberSlider<FMixtormatCliffStrata>(LOCTEXT("CliffCavityThreshold","Threshold"),C,&FMixtormatCliffStrata::CavityVoronoiThreshold,0,1,.5,.01,FText::GetEmpty()));
