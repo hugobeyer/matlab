@@ -123,31 +123,31 @@ explicitly filtered; validity is separate. Noise Gradient is not implicitly cano
 a coordinate remap without normalization. Scoped height masks do not gate raw Value/Gradient.
 These contracts are source-reviewed only; no build/shader/runtime checks run.
 
-## Shared Gaussian Blur — consolidation in progress
+## Shared Blur pipeline (Gaussian, Directional, Smear)
 
-- `MixtormatGpuGaussianBlur.h/.cpp` owns private typed dispatch;
-  `MixtormatGaussianBlur.usf` owns horizontal, vertical and resolve stages.
-- Radius X/Y are independent output-texel radii: sigma = radius / 2,
-  integer texel taps through ceil(3 * sigma), periodic wrapping, no support cap.
-- Full-precision numerator and mass survive both axes. Non-finite samples are
-  excluded before weighting; no per-row normalization biases the 2D result.
-- Flow uses the compositor's separate validity texture. Only valid samples
-  contribute; invalid destination vectors and the validity texture are preserved.
-  Flow magnitude is not normalized; packed Z/W are not treated as validity.
-- Amount/scoped mask, coverage clamp and encoded-normal renormalization run
-  only in the final resolve. Signed Height stays unclamped. Output retains the
-  source format; scalar sources may be R16F or R32F.
-- Border Height smoothing, Height-mask smoothing and layer-input Height smoothing
-  use this service. Border smoothing no longer clamps signed Height.
-- Authored Mask and post-Curvature Blur now use this service, with separate
-  ordered `FMixtormatBlur` payloads and per-module Amount. The old Mask Blur
-  shader and shader class are removed. Mask-owned Blur post-filters completed
-  coverage before merge; nested Curvature Blur never pre-filters its input.
-- Layer Blur and Height Feather have not yet migrated. Flow Feather remains
-  intentionally unchanged. Broader owner scheduling/publication is still pending.
-- User confirmed the preceding shared-Gaussian/internal-smoothing checkpoint
-  compiled. This Mask integration is source-reviewed only; no new build, shader
-  compilation, runtime checks or tests run.
+- Dispatch entries:
+  - `MixtormatGaussianBlur::AddPasses` (`MixtormatGpuGaussianBlur.h/.cpp`) → `MixtormatGaussianBlur.usf`
+    (separable X, Y, and resolve stages; `FMixtormatGaussianBlurCS`).
+  - `MixtormatDirectionalBlur::AddPasses` (`MixtormatGpuDirectionalBlur.h/.cpp`) → `MixtormatDirectionalBlur.usf`
+    (single-pass compute; `FMixtormatDirectionalBlurCS`).
+  - Unified dispatcher: `AddOwnedBlurPass` and `AddOwnedFlowBlurPass` in `MixtormatGpuBlurPasses.cpp`.
+- Mode behavior:
+  - `Gaussian`: Separable horizontal and vertical passes, sigma = radius / 2, integer taps through ceil(3 * sigma).
+  - `Directional`: Centered bidirectional filter along authored angle or Flow guidance, length measured as half-extent per side.
+  - `Smear`: Unidirectional trail along velocity/direction vector (trail sign from length sign).
+  - Tracing: Midpoint RK2 in output-texel units with periodic boundary wrapping and trapezoidal box kernel weighting.
+- Five typed fields (`FIELD_TYPE` 0..4):
+  - `0 (Scalar)`: R16F or R32F, optional coverage clamp at resolve (`ClampCoverage`).
+  - `1 (Vector4)`: float4 fields (e.g. RAM, BaseColor without alpha weighting), per-channel weight masking (`ChannelWeights`).
+  - `2 (EncodedNormal)`: [0, 1] encoded normals; decoded, renormalized with `rsqrt(dot(N, N))`, and re-encoded in resolve.
+  - `3 (ValidFlow)`: 2D flow vectors. Preserves caller's validity texture; invalid destinations are identity. Flow magnitude is not normalized; packed Z/W are preserved intact.
+  - `4 (ColorAlpha)`: Accepts and returns straight RGBA. Multiplies to premultiplied space (`rgb * a`) before filtering, mixes in premultiplied space, and unpremultiplies only where alpha > 0. Eliminates transparent RGB halos and color fringing on Color Ramps.
+- Flow guidance (`FLOW_GUIDED`):
+  - Direction source `EMixtormatBlurDirectionSource::Flow` reads `DirectionFlow` + `DirectionValidity`.
+  - Bilinear periodic sampling excludes invalid corners before weighting.
+  - Missing/unavailable flow falls back to identity without dispatch or bridging artifacts.
+- Filter masks, Amount, ChannelWeights, and coverage clamp each apply exactly once at the resolve stage.
+
 
 ## Erosion carve-depth solve
 

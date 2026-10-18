@@ -128,6 +128,13 @@ resolved Height / Flow / UV / IDs and independent scoped mask at its row, before
 later producers change those fields. Color compositing then runs bottom-to-top,
 so visually higher ramps blend over lower ramps without reversing dependencies.
 
+Scoped Blur under a Color Ramp pre-filters the ramp's raw evaluated RGBA (`bMapOnly = true`
+in `AddGeneratorHeightColorRampPass`) using `EField::ColorAlpha` (straight RGBA in/out,
+premultiplied math). This filters the evaluated colors before gate masking and before
+blending over previous ramp layers or Base Color, eliminating transparent RGB halos and
+preventing lower-ramp smearing. The filtered color is then composited bottom-to-top
+in `AddGeneratorColorCompositePass`.
+
 The bottom ramp starts from the layer's authored Base Color override when enabled,
 otherwise its resolved input color. Referenced Color and Fill Pass Through keep
 priority over that override. Higher ramps blend against the accumulated color,
@@ -168,26 +175,34 @@ negative strength); ramp Weight, source selection and upstream Flow are unchange
   which must not bypass signed-to-coverage conversion. Mask placement/shaping/blur run
   afterwards in the ordinary mask shader.
 
-### Owner-typed Blur — Mask integration checkpoint
+### Owner-typed Blur integration
 
-- Canonical `FMixtormatBlur` replaces the mask-only payload. Enabled, Radius X/Y,
-  Amount and future root-Layer channel flags live in `MixtormatBlur.h`.
-- Gather retains each direct Mask-owned Blur independently, in authored order;
-  radii no longer sum or clamp to a shared tap budget. Parameter contracts sanitize
-  non-finite values, nonnegative radii and Amount in [0,1].
-- Mask placement/shaping completes first; Curvature filters then complete in order,
-  each followed by its own nested Blur. Direct Mask Blurs post-filter the completed
-  coverage before merge. Sibling Blur/Curvature ordering does not select an operation rail.
-- Enabled zero-weight Curvature is identity but retains its nested Blur. Disabling
-  Curvature suppresses its subtree. Mask and post-Curvature Blur use the shared
-  typed Gaussian; the superseded Mask Blur shader/class are removed.
-- Blur supports scoped copy/paste and instances under Mask or Curvature; root paste
-  remains unavailable until Layer scheduling lands. Radius links work in layer/group
-  creation; instance resolution and reflected prefix hashing include the new payload.
-- Layer/Generator/Flow/effect-owned Blur scheduling and publication/source connections
-  remain pending. Existing LayerBlur Effect and Flow Feather are not migrated here.
-- Source review only for this checkpoint; the user confirmed the preceding shared
-  Gaussian/internal-smoothing checkpoint compiled. No new compile/runtime results claimed.
+- Canonical `FMixtormatBlur` (`MixtormatBlur.h`) provides the shared parameter contract:
+  - Modes: `Gaussian`, `Directional`, `Smear`.
+  - Targets (`EMixtormatBlurTarget`): `Height`, `Flow`, `HeightAndFlow` (Both).
+  - Direction sources: `Angle` (degrees), `Flow` (guided by an explicit published flow reference).
+  - Radii / Length, Amount, per-channel weights (BaseColor, Normal, Roughness, AO, Metallic, F0, Height).
+- Scheduling and execution:
+  - **Root Blurs:** Gathered as `SurfaceBlurs` on the layer. Dispatched in `AddLayerSurfaceBlurPasses`
+    over isolated layer buffers (`OutputBC`, `OutputN`, `OutputRAM`, `OutputHeight`) before composite merge.
+  - **Masks and Curvature:** Evaluated in `MixtormatGpuMaskPasses.cpp` (`ApplyBlurs`). Mask shaping
+    runs first; Curvature filters run in order with nested blurs; direct mask blurs post-filter coverage before merge.
+  - **Generators and Behaviors:**
+    - Scoped under non-Noise generators: `ApplyGeneratorPostBehaviors` runs direct blurs on native height
+      (if `Target != Flow`) and native Flow (if `Target != Height`). Downstream behaviors (e.g. Sculpt, Warp)
+      receive the filtered `WorkingFlow`.
+    - Scoped under top-level Noise: Height is blurred in `ApplyGeneratorPostBehaviors`. Flow filtering
+      runs after `AddNativeFlowPass` (lines 4833–4865), filtering `GeneratedFlow` and `FlowDirection` without
+      duplicate filtering passes.
+    - Scoped under a PostGeneration Behavior: Filters that behavior's published `FlowDirection`.
+  - **Color Ramps:** Scoped blur pre-filters raw evaluated RGBA in premultiplied space (`ColorAlpha`)
+    before gate masking and bottom-to-top blending, preventing transparent RGB halos and lower-ramp smearing.
+- Guidance and Cache demand:
+  - Flow-guided blurs register demand for `DirectionSourceKey` in `PublishedFieldDemand` ahead of prefix cache lookup.
+  - If a referenced flow field is missing or invalid, the filter defaults safely to identity without dispatching or bridging.
+  - Demanded fields survive cache restore via `FieldDemandCovered` and `RegisterExternalTexture`.
+- Single-point application: Filter masks, Amount, channel weights, and coverage clamp each apply exactly once at the resolve stage.
+- Field preservation: Normals are renormalized in resolve; Flow fields preserve separate validity and untouched Z/W components.
 
 ## IDs
 

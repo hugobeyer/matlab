@@ -58,6 +58,9 @@ the range, not the file.
 | `GetChildCapabilities` | `Editor/Private/Widgets/MixtormatChildCapabilities.cpp` |
 | Mask sources / Noise gate (`CreateNoiseGate`, `SelectMaskNoiseValue`, `BuildMaskNoiseValueMenu`) | `Editor/Private/Widgets/Layers/MixtormatMaskSources.cpp` |
 | `AddNoiseMaskPass`, `AddNoiseCoveragePass` | `Shaders/Private/MixtormatGpuNoisePasses.cpp` |
+| `AddOwnedBlurPass`, `AddOwnedFlowBlurPass`, `AddLayerSurfaceBlurPasses` | `Shaders/Private/MixtormatGpuBlurPasses.cpp` |
+| `MixtormatDirectionalBlur::AddPasses` | `Shaders/Private/MixtormatGpuDirectionalBlur.cpp` |
+| `FMixtormatBlur`, `EMixtormatBlurMode`, `EMixtormatBlurTarget`, `EMixtormatBlurDirectionSource` | `Runtime/Public/MixtormatBlur.h` |
 | `SMixtormat` | `Editor/Private/Widgets/SMixtormat.h` |
 | `MixtormatParameterUi` | `Editor/Private/UI/Parameters/MixtormatParameterUiMeta.h` |
 | `MixtormatParameterAuthoring` | `Editor/Private/UI/Parameters/MixtormatParameterAuthoring.h` |
