@@ -10,14 +10,13 @@ Read with `AgentDocs/ARCHITECTURE.md` (modules) and `AgentDocs/BOOLEAN_OPS_MODUL
 
 ## 1. The problem
 
-Content enters Mixtormat in **four** places, and they share no vocabulary:
+Content enters Mixtormat in **three** places, and they share no vocabulary:
 
 | Entry point | What it brings | Authored where | Consumed by |
 |---|---|---|---|
 | Gallery (bottom drawer) | authored materials | elsewhere, as assets | `Material` layers only |
 | `Fill` layer | channels inline | in the layer | the layer itself |
 | `Generator` layer | a module chain inline | in the layer | the layer itself |
-| Sources shelf | generators, evaluated before layers | in the shelf | any layer, by reference |
 
 The symptom the user hit: **a Generator layer has no compositing channels and no
 substrate lerp.** That is not a missing feature on a layer type — it is a *source* that

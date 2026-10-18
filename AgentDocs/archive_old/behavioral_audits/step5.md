@@ -68,7 +68,7 @@ Key findings that must shape the design:
 | Structural **projected modules** | top-level children `HeightPush`/`StructuralWarp` | `MixtormatLayerTypes.h:159-164`, `:272-276` |
 | Typed field handle | `FMixtormatOutputReference` + `EMixtormatPublishedFieldKind` | `MixtormatOutputReference.h:48-97` |
 | Field values (RG) | `FGeneratorBundle` + `FPublishedField` | `MixtormatGpuCompositorInternal.h:1124-1189,261-284` |
-| Sources shelf | `FMixtormatSourceEntry` (root generator + `OwnedChildren`) | `MixtormatLayerTypes.h:334-356` |
+| Standalone sources | Retired document-level producers | Former `MixtormatLayerTypes.h` |
 | Parameter address / reference / driver | `FMixtormatParameterAddress`, `FMixtormatParameterDriver` | `MixtormatParameterTypes.h:93-221` |
 
 ### GPU execution (render thread)
@@ -106,7 +106,7 @@ Key findings that must shape the design:
 | **Generator flow source inference** | Signed Distance or Height | `MixtormatGeneratorFlow.usf:160-182,197-218` | **CONFIRMED** |
 | **Distance solve grid** | capped at 1024 | `MixtormatGpuGeneratorPasses.cpp:48` `DistanceSolveMaxSize` | **CONFIRMED** — JFA cost ceiling |
 | **Node caching** | settings-hash per generator | `MixtormatComposeHash`, `:149-346` | **CONFIRMED** — reusable, must extend to field/behavior keys |
-| **Sources shelf** | topological demand, DAG, cycle-exclusion | `MixtormatSourceGather.cpp:54-229` | **CONFIRMED** — instance/external-source pattern to reuse for Behavior "Source/Instance" |
+| **Standalone sources** | topological demand, DAG, cycle-exclusion | Retired gather path | **RETIRED** — retired in unified architecture |
 
 ---
 
@@ -122,7 +122,7 @@ Key findings that must shape the design:
 
 **P5 — Generator."Height Blend" is gone but generators were always "plain signed field producers."** `MixtormatGeneratorTypes.h:984-988` (deprecated), `GENERATORS.md:620-635`. Combination lives only in layer sublayers — the model is *almost* ready for typed field composition but never generalized beyond height.
 
-**P6 — Self-reference is only resolvable backward.** `ResolveGeneratorInputSource` requires strictly-decreasing order (`MixtormatOutputReference.h:253-257`); shelf producers exclude self-cycles by exclusion (`MixtormatSourceGather.cpp:81-88`). "Behavior reads Generator-original vs Previous Behavior Output" is not representable yet — both would be a plain backward reference.
+**P6 — Self-reference is only resolvable backward.** `ResolveGeneratorInputSource` requires strictly-decreasing order (`MixtormatOutputReference.h:253-257`); producer DAG excludes self-cycles by exclusion. "Behavior reads Generator-original vs Previous Behavior Output" is not representable yet — both would be a plain backward reference.
 
 ---
 
@@ -201,7 +201,7 @@ Neither prototype is implemented. Reusable math **(texture-space)**:
 2. **Origin semantics:** canonical way to address "Generator-original snapshot" vs "previous Behavior output" vs "own earlier Field" without creating forward edges or ambiguity.
 3. **Iteration budgeting:** which Behaviors get ping-pong solves and their default cost (Wrinkle diffusion, Peeling, Stain already consume it).
 4. **Retirement trigger for the projection engine** (`MixtormatStructuralConnectionProjection.cpp`): exact parity test per generator family before deletion.
-5. **Scope on the Sources shelf:** `OwnedChildren` is persisted-but-unauthored (`MixtormatLayerTypes.h:350-355`) — do V2 Behaviors live on shelf producers too, or layer-only for the slice?
+5. **Scope on standalone sources:** `OwnedChildren` is retired in unified architecture — do V2 Behaviors live on layer-only for the slice?
 6. **Parameter owner for Fields:** append a `BehaviorField` value to `EMixtormatParameterOwnerType` vs reuse the Behavior owner.
 7. **Boundary of Height Blend/Curve/Ramp:** keep as standalone sublayers or fold into the Behavior/Field model (currently they are the only true field-combine).
 

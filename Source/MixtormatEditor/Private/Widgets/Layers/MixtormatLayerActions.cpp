@@ -36,32 +36,7 @@ void SMixtormat::InitializeNewLayer(
 		Layer.NormalBlendMode = EMixtormatNormalBlendMode::Override;
 		Layer.HeightBlend.Op = EMixtormatHeightOp::Add;
 		break;
-	case EMixtormatLayerType::Generator:
-	{
-		Layer.HeightBlend.Op = EMixtormatHeightOp::Add;
-		break;
 	}
-	}
-}
-
-FReply SMixtormat::AddGeneratorLayer(const EMixtormatGeneratorType Type)
-{
-	return AddGeneratorLayerCreation(CreationKindForGenerator(Type));
-}
-
-FReply SMixtormat::AddGeneratorLayerCreation(const EMixtormatChildCreation Kind)
-{
-	// A Flow preset is an owned Generator child, never a standalone material layer.
-	if (Kind == EMixtormatChildCreation::NoiseFlow) { return FReply::Handled(); }
-	AddLayerOrStartMaterial(EMixtormatLayerType::Generator);
-	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		|| WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator)
-	{
-		return FReply::Handled();
-	}
-
-	// The first module is the layer's first child; CreateChild selects it and refreshes the stack.
-	return CreateChild(FMixtormatAddTarget::Layer(SelectedLayerIndex), Kind);
 }
 
 FReply SMixtormat::AddLayerOrStartMaterial(const EMixtormatLayerType LayerType)
@@ -1318,9 +1293,8 @@ FReply SMixtormat::BreakChildInstanceAt(const FMixtormatChildAddress& Address)
 	// resolve reads from.
 	const TArray<FMixtormatLayer> LayerSnapshot = WorkingLayers;
 	const TArray<FMixtormatLayerGroup> GroupSnapshot = WorkingLayerGroups;
-	const TArray<FMixtormatSourceEntry> SourceSnapshot = WorkingSources;
 	if (!MixtormatParameterBinding::BreakChildInstance(
-		FMixtormatBindingScope{LayerSnapshot, GroupSnapshot, SourceSnapshot}, *Child))
+		FMixtormatBindingScope{LayerSnapshot, GroupSnapshot}, *Child))
 	{
 		return FReply::Unhandled();
 	}
@@ -2035,6 +2009,30 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 				&& !MixtormatGeneratorHasFlowBoundary((*Children)[GeneratorIndex].Generator.Type))
 			{
 				Child.Behavior.Flow.FlowSource = EMixtormatBehaviorFlowSource::Height;
+			}
+		}
+		if (Kind == EMixtormatChildCreation::HeightColorRamp)
+		{
+			Child.HeightColorRamp.SourceChildId = EffectiveTarget.ScopeOwnerChildId;
+			const int32 ParentIndex = ResolveChildIndexAt(Owner);
+			if (Children && Children->IsValidIndex(ParentIndex))
+			{
+				const FMixtormatLayerChild& Parent = (*Children)[ParentIndex];
+				if ((Parent.Type == EMixtormatLayerChildType::Generator
+						&& Parent.Generator.Type == EMixtormatGeneratorType::Noise
+						&& !Parent.Generator.Noise.bNoiseWriteHeight
+						&& Parent.Generator.Noise.bNoiseWriteFlow)
+					|| (Parent.Type == EMixtormatLayerChildType::Behavior
+						&& (Parent.Behavior.Type == EMixtormatBehaviorType::FlowField
+							|| Parent.Behavior.Type == EMixtormatBehaviorType::Feather)))
+				{
+					Child.HeightColorRamp.Source = EMixtormatColorRampSource::FlowMagnitude;
+				}
+				else if (Parent.Type == EMixtormatLayerChildType::Generator
+					|| Parent.Type == EMixtormatLayerChildType::Boolean)
+				{
+					Child.HeightColorRamp.Source = EMixtormatColorRampSource::ModuleRef;
+				}
 			}
 		}
 		const int32 CreatedIndex = InsertScopedChild(*Children, ResolveChildIndexAt(Owner), MoveTemp(Child));

@@ -1,7 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/SMixtormat.h"
-#include "UI/Layers/SMixtormatSourceRow.h"
 #include "UI/Layers/MixtormatLayerShortcuts.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Style/MixtormatLocatorOutline.h"
@@ -289,25 +288,6 @@ bool SMixtormat::AreLayerStacksEqual(
 	return true;
 }
 
-bool SMixtormat::AreSourcesEqual(
-	const TArray<FMixtormatSourceEntry>& A,
-	const TArray<FMixtormatSourceEntry>& B)
-{
-	if (A.Num() != B.Num())
-	{
-		return false;
-	}
-
-	const UScriptStruct* SourceStruct = FMixtormatSourceEntry::StaticStruct();
-	for (int32 SourceIndex = 0; SourceIndex < A.Num(); ++SourceIndex)
-	{
-		if (!SourceStruct->CompareScriptStruct(&A[SourceIndex], &B[SourceIndex], 0))
-		{
-			return false;
-		}
-	}
-	return true;
-}
 
 bool SMixtormat::HaveSameLayerStructure(
 	const TArray<FMixtormatLayer>& A,
@@ -347,7 +327,6 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	RedoHistory.Reset();
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
-	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	bHistoryInitialized = true;
@@ -357,7 +336,6 @@ void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 	{
 		SavedLayers = WorkingLayers;
 		SavedLayerGroups = WorkingLayerGroups;
-		SavedSources = WorkingSources;
 		bSavedGlobalUVRotation90 = bGlobalUVRotation90;
 		SavedFinalSettings = WorkingFinalSettings;
 	}
@@ -376,7 +354,6 @@ void SMixtormat::RecordEditHistory()
 	}
 	if (AreLayerStacksEqual(CurrentHistoryState.Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
-		&& AreSourcesEqual(CurrentHistoryState.Sources, WorkingSources)
 		&& CurrentHistoryState.bRotateUV90 == bGlobalUVRotation90
 		&& CurrentHistoryState.FinalSettings == WorkingFinalSettings)
 	{
@@ -390,9 +367,7 @@ void SMixtormat::RecordEditHistory()
 		&& Now - LastHistoryRecordTime <= InteractiveEditWindowSeconds
 		&& HaveSameLayerStructure(CurrentHistoryState.Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(CurrentHistoryState.Groups, WorkingLayerGroups)
-		// A source add/delete/rename is a discrete action like a layer/group structure change:
-		// it breaks coalescing instead of merging into a nearby slider drag.
-		&& AreSourcesEqual(CurrentHistoryState.Sources, WorkingSources);
+;
 	if (!bCoalesceInteractiveEdit)
 	{
 		UndoHistory.Add(CurrentHistoryState);
@@ -404,7 +379,6 @@ void SMixtormat::RecordEditHistory()
 
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
-	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	RedoHistory.Reset();
@@ -416,7 +390,6 @@ bool SMixtormat::IsCurrentStateSaved() const
 	return WorkingMaterialAsset.IsValid()
 		&& AreLayerStacksEqual(WorkingLayers, SavedLayers)
 		&& AreLayerGroupsEqual(WorkingLayerGroups, SavedLayerGroups)
-		&& AreSourcesEqual(WorkingSources, SavedSources)
 		&& bGlobalUVRotation90 == bSavedGlobalUVRotation90
 		&& WorkingFinalSettings == SavedFinalSettings;
 }
@@ -426,7 +399,6 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	bApplyingHistory = true;
 	WorkingLayers = State.Layers;
 	WorkingLayerGroups = State.Groups;
-	WorkingSources = State.Sources;
 	bGlobalUVRotation90 = State.bRotateUV90;
 	WorkingFinalSettings = State.FinalSettings;
 	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
@@ -455,9 +427,6 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	SelectionAnchorLayerId.Invalidate();
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
-	// The restored state is not the state the source selection was taken against, and a source
-	// the undo removed must not stay selected.
-	SelectedSourceId.Invalidate();
 	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
@@ -466,7 +435,6 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	RefreshLayeredPreview(false);
 	RebuildLayerList();
 	RebuildMaskList();
-	RebuildSourcesList();
 	bApplyingHistory = false;
 }
 
@@ -474,13 +442,11 @@ void SMixtormat::SynchronizeHistoryAfterCancelledEdit()
 {
 	CurrentHistoryState.Layers = WorkingLayers;
 	CurrentHistoryState.Groups = WorkingLayerGroups;
-	CurrentHistoryState.Sources = WorkingSources;
 	CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
 	CurrentHistoryState.FinalSettings = WorkingFinalSettings;
 	if (!UndoHistory.IsEmpty()
 		&& AreLayerStacksEqual(UndoHistory.Last().Layers, WorkingLayers)
 		&& AreLayerGroupsEqual(UndoHistory.Last().Groups, WorkingLayerGroups)
-		&& AreSourcesEqual(UndoHistory.Last().Sources, WorkingSources)
 		&& UndoHistory.Last().bRotateUV90 == bGlobalUVRotation90
 		&& UndoHistory.Last().FinalSettings == WorkingFinalSettings)
 	{
@@ -744,10 +710,10 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		return MixtormatLayerShortcuts::Matches(InKeyEvent, Action);
 	};
 	if (HasShortcut(EShortcut::Solo) && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		&& !SelectedGroupId.IsValid() && !SelectedSourceId.IsValid())
+		&& !SelectedGroupId.IsValid())
 		return ToggleLayerSolo(SelectedLayerIndex);
 	if (HasShortcut(EShortcut::ToggleEnabled) && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-		&& !SelectedGroupId.IsValid() && !SelectedSourceId.IsValid())
+		&& !SelectedGroupId.IsValid())
 	{
 		SetWorkingLayerEnabled(WorkingLayers[SelectedLayerIndex].bEnabled
 			? ECheckBoxState::Unchecked : ECheckBoxState::Checked, SelectedLayerIndex);
@@ -755,37 +721,21 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	}
 	if (HasShortcut(EShortcut::Copy))
 	{
-		if (SelectedSourceId.IsValid())
+		const FMixtormatChildAddress Address = GetSelectedChildAddress();
+		if (ResolveChildAt(Address))
 		{
-			if (const FMixtormatSourceEntry* Source = GetSelectedSource())
-			{
-				SourceClipboard = *Source;
-				return FReply::Handled();
-			}
-		}
-		else
-		{
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			if (ResolveChildAt(Address))
-			{
-				CopyChild(Address, false);
-				return FReply::Handled();
-			}
+			CopyChild(Address, false);
+			return FReply::Handled();
 		}
 	}
 	if (HasShortcut(EShortcut::Paste))
 	{
-		if (SelectedSourceId.IsValid() && SourceClipboard.IsSet())
-		{
-			const FGuid NewId = AppendSourceCopy(SourceClipboard.GetValue());
-			if (NewId.IsValid()) { CommitSourcesEdit(NewId); return FReply::Handled(); }
-		}
-		else if (!SelectedSourceId.IsValid() && SelectedGroupId.IsValid())
+		if (SelectedGroupId.IsValid())
 		{
 			const FMixtormatChildAddress Address{EMixtormatChildOwnerType::Group, SelectedGroupId, FGuid()};
 			if (CanPasteChild(Address, INDEX_NONE)) return PasteChild(Address);
 		}
-		else if (!SelectedSourceId.IsValid() && WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		else if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
 		{
 			const FMixtormatChildAddress Address{EMixtormatChildOwnerType::Layer,
 				WorkingLayers[SelectedLayerIndex].LayerId, FGuid()};
@@ -808,18 +758,6 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	// F12 is an alias for F2, not a second gesture: on a laptop whose F-row is media keys by
 	// default, F2 is the one most likely to be stolen by the OS before Slate ever sees it.
 	// F2 stays the shortcut the menus advertise.
-	if (!bModifierDown && SelectedSourceId.IsValid()
-		&& HasShortcut(EShortcut::Rename))
-	{
-		if (const TWeakPtr<SMixtormatSourceRow>* WeakRow = SourceRowWidgets.Find(SelectedSourceId))
-		{
-			if (const TSharedPtr<SMixtormatSourceRow> Row = WeakRow->Pin())
-			{
-				Row->BeginRename();
-				return FReply::Handled();
-			}
-		}
-	}
 	if (!bModifierDown
 		&& (InKeyEvent.GetKey() == EKeys::F2 || InKeyEvent.GetKey() == EKeys::F12))
 	{
@@ -880,31 +818,27 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 	if (!bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
 		&& HasShortcut(EShortcut::Remove))
 	{
-		// A selected source keeps its own context menu; Del is scoped to layers and children.
-		if (!SelectedSourceId.IsValid())
+		if (SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE)
 		{
-			if (SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE)
+			// Multi-select: every selected child of the group, one history entry.
+			const TArray<int32> Selected = GetSelectedGroupChildIndices();
+			if (Selected.Num() > 1)
 			{
-				// Multi-select: every selected child of the group, one history entry.
-				const TArray<int32> Selected = GetSelectedGroupChildIndices();
-				if (Selected.Num() > 1)
+				// Remove highest index first so earlier indices stay valid.
+				for (int32 Index = Selected.Last(); Index >= 0; --Index)
 				{
-					// Remove highest index first so earlier indices stay valid.
-					for (int32 Index = Selected.Last(); Index >= 0; --Index)
+					if (Selected.Contains(Index))
 					{
-						if (Selected.Contains(Index))
-						{
-							RemoveGroupChild(SelectedGroupId, Index);
-						}
+						RemoveGroupChild(SelectedGroupId, Index);
 					}
-					return FReply::Handled();
 				}
-				return RemoveGroupChild(SelectedGroupId, SelectedGroupChildIndex);
+				return FReply::Handled();
 			}
-			if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
-			{
-				return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
-			}
+			return RemoveGroupChild(SelectedGroupId, SelectedGroupChildIndex);
+		}
+		if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+		{
+			return ExecuteLayerSelectionCommand(ELayerSelectionCommand::Remove);
 		}
 		return FReply::Unhandled();
 	}
@@ -1128,11 +1062,9 @@ EActiveTimerReturnType SMixtormat::FlushPendingPreviewRefresh(
 			// at the top of RequestComposeInternal.
 			DebugSettings.ChildTarget = bMaskOverlayReady ? OverlayTarget : ChildPreviewTarget;
 			Viewport->SetFinalSettings(WorkingFinalSettings);
-			// Sources ride every working-document preview: they are document data beside the
-			// layers, unaffected by solo/isolation overrides of the layer array itself.
 			Viewport->SetPreviewLayers(
 				*PreviewLayers, *PreviewGroups, CompositionResolution, DebugSettings,
-				bInteractiveEdit, WorkingSources);
+				bInteractiveEdit);
 		}
 	}
 

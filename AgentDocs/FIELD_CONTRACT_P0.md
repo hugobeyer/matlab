@@ -85,7 +85,7 @@ Exact behavior:
   Noise-specific centring/gate path runs only when height is actually written.
 - `bNoiseWriteFlow = false` → the module does not add Flow to the working field. It
   **keeps** its published `Gradient` and `FlowDirection` outputs for preview and
-  other consumers (published-output system, preview key, Sources shelf).
+  other consumers (published-output system, preview key).
 - Defaults are the Noise preset's identity state, so existing serialized assets load
   unchanged. New properties are appended UPROPERTYs; no enum or field value moved.
 

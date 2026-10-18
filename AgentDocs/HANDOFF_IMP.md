@@ -166,16 +166,15 @@ The current GPU demand check handles `FlowDirection` and `WarpedUV`, but the ful
 **Status: Incomplete**
 
 File:
-`Compositing/MixtormatSourceGather.cpp`
+`Compositing/MixtormatGeneratorGather.cpp`
 
-The existing shelf dependency path explicitly handles Warp, Push, and Deform.
+The layer-based dependency path explicitly handles Warp, Push, and Deform.
 
 Required:
 
 * [ ] Add complete source-demand traversal for applicable Carve inputs.
 * [ ] Include Influence dependencies where supported.
 * [ ] Resolve typed Flow and UV inputs.
-* [ ] Support compatible Sources shelf outputs.
 * [ ] Guarantee producers execute before consumers.
 * [ ] Reject invalid source ordering.
 * [ ] Prevent cyclic dependencies.
@@ -291,7 +290,6 @@ Required supported inputs:
 Required:
 
 * [ ] Correct typed filtering.
-* [ ] Sources shelf compatibility.
 * [ ] Published generator outputs.
 * [ ] Published Behavior outputs.
 * [ ] No invalid type conversions.

@@ -128,7 +128,7 @@ inspection has been performed.
   Height-only Feather beneath other behaviors is not a Flow source and is rejected
   by the resolver. No Flow is synthesized for it. Nested/group-authored placements
   and child instances use the same
-  resolver. Sources shelf rows, unpublished operations and generic Vector2 outputs
+  resolver. Unpublished operations and generic Vector2 outputs
   remain unsupported directly; no placeholder field is created for them.
 - The compositor demands the exact field before prefix-cache restoration, resolves
   it from the final published registry, and exports **`Field.Texture`**, not its
@@ -222,7 +222,7 @@ review only; sampler/material behavior and runtime rebinding need Unreal review.
 
 - Confirm exact matching between capture pixels and the preview viewport's
   actual projection under non-default aspect ratios and temporal upscaling.
-- Sources shelf diagnostic rows remain unsupported directly. Generic Vector2,
+- Generic Vector2,
   colour, ID and SDF data are not exposed by E. Published Flow and absolute UVMap
   data retain their raw binding and now also supply code-rendered filtered color. Signed scalar fields
   use midpoint-normalized coverage, not a two-colour signed-height display.

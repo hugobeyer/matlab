@@ -15,8 +15,7 @@ namespace MixtormatGpuCompositor
 	void GatherGeneratorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		const FMixtormatLayerChild& LayerChild, const int32 SourceChildIndex,
 		const bool bGeneratorLayer, const bool bCacheLayers, const uint64 PlacementKey,
-		const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers,
-		const TArray<FMixtormatSourceEntry>& Sources)
+		const int32 LayerIndex, const TArray<FMixtormatLayer>& EffectiveLayers)
 	{
 		// Modules exist on any layer that owns them; bGeneratorLayer is the caller's answer to that
 		// question, not a layer-type test. A disabled layer must not gather them -- an enabled
@@ -451,8 +450,7 @@ namespace MixtormatGpuCompositor
 
 void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	const FMixtormatLayerChild& LayerChild, const int32 BehaviorChildIndex, const int32 LayerIndex,
-	const TArray<FMixtormatLayer>& EffectiveLayers,
-	const TArray<FMixtormatSourceEntry>& Sources)
+	const TArray<FMixtormatLayer>& EffectiveLayers)
 {
 	// A Behavior is owned by its Generator, not run as an Effect at its own row.
 	// The execution kernel is independent of the generator family.
@@ -485,12 +483,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 
 	const MixtormatChildScope::FBehaviorInputStatus Valid =
 		MixtormatChildScope::ValidateBehaviorInputs(
-			EffectiveLayers, LayerIndex, BehaviorChildIndex, Sources, &Layer);
+			EffectiveLayers, LayerIndex, BehaviorChildIndex, &Layer);
 	if (!Valid.bCanEvaluate || Valid.GeneratorChildIndex == INDEX_NONE) { return; }
 	const bool bPublishedDirection = Behavior.Direction.Origin == EMixtormatBehaviorFieldOrigin::PublishedOutput;
 	const FMixtormatOutputReference& Reference = Behavior.Direction.Published;
 	const int32 SourceIndex = !bPublishedDirection ? INDEX_NONE
-		: Reference.IsShelfSource() ? 0
 		: MixtormatOutputReferences::ResolveGeneratorInputSource(
 			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, Reference);
 	if (bPublishedDirection && SourceIndex == INDEX_NONE) { return; }
@@ -658,12 +655,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		? Behavior.Direction.Amplitude : 0.0f;
 	Out.DirectionComposition.bReversed = Behavior.Direction.bReversed ? 1u : 0u;
 	Out.DirectionComposition.Blend = static_cast<uint32>(Behavior.Direction.Blend);
-	Out.Direction.Source.LayerId = Reference.IsShelfSource()
-		? MixtormatOutputReferences::ResolveShelfProducerId(Sources, Reference.SourceShelfId)
-		: Reference.SourceLayerId;
+	Out.Direction.Source.LayerId = Reference.SourceLayerId;
 	Out.Direction.Source.ChildIndex = SourceIndex;
 	Out.Direction.Source.Output = Reference.OutputName;
-	Out.Direction.Source.OwnerKind = Reference.OwnerKind;
 	Out.Direction.Kind = Reference.Kind;
 	// Flow driver evaluation acts on the authored FlowAmount. Behavior Strength
 	// applies afterward to destination displacement, independent of driver mode.
@@ -682,12 +676,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 	if ((bPush || bCarve) && Out.HeightOrigin == EMixtormatBehaviorFieldOrigin::PublishedOutput)
 	{
 		const FMixtormatOutputReference& HeightRef = Behavior.Height.Published;
-		int32 HeightIndex = HeightRef.IsShelfSource() ? 0
-			: bCarve ? MixtormatOutputReferences::ResolveSource(
+		int32 HeightIndex = bCarve ? MixtormatOutputReferences::ResolveSource(
 				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef)
 			: MixtormatOutputReferences::ResolveGeneratorInputSource(
 				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
-		if (HeightIndex == INDEX_NONE && bPush && !HeightRef.IsShelfSource())
+		if (HeightIndex == INDEX_NONE && bPush)
 		{
 			HeightIndex = MixtormatOutputReferences::ResolveSource(
 				EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, HeightRef);
@@ -698,12 +691,9 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			Data.Children.Pop();
 			return;
 		}
-		Out.Height.Source.LayerId = HeightRef.IsShelfSource()
-			? MixtormatOutputReferences::ResolveShelfProducerId(Sources, HeightRef.SourceShelfId)
-			: HeightRef.SourceLayerId;
+		Out.Height.Source.LayerId = HeightRef.SourceLayerId;
 		Out.Height.Source.ChildIndex = HeightIndex;
 		Out.Height.Source.Output = HeightRef.OutputName;
-		Out.Height.Source.OwnerKind = HeightRef.OwnerKind;
 		Out.Height.Kind = HeightRef.Kind;
 	}
 	if (bPublishedDirection && Reference.Kind == EMixtormatPublishedFieldKind::Flow)
@@ -756,7 +746,7 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		// generator's Height/Warp socket or the Noise Value-to-Coverage coercion.
 		const int32 MaskChildIndex = MixtormatOutputReferences::ResolveSource(
 			EffectiveLayers, LayerIndex, Valid.GeneratorChildIndex, MaskRef);
-		if (MaskChildIndex == INDEX_NONE || MaskRef.IsShelfSource()
+		if (MaskChildIndex == INDEX_NONE
 			|| MaskRef.Kind != EMixtormatPublishedFieldKind::Scalar01)
 		{
 			Data.Children.RemoveAt(Data.Children.Num() - 1);
@@ -766,7 +756,6 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		Out.Influence.Source.LayerId = MaskRef.SourceLayerId;
 		Out.Influence.Source.ChildIndex = MaskChildIndex;
 		Out.Influence.Source.Output = MaskRef.OutputName;
-		Out.Influence.Source.OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
 		Out.Influence.Kind = MaskRef.Kind;
 	}
 }
@@ -898,19 +887,55 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		Out.OutputName = FName(TEXT("Color"));
 		Out.Source = static_cast<int32>(Ramp.Source);
 		Out.SourceChildIndex = INDEX_NONE;
-		if (ChildData.ScopeOwnerSourceChildIndex != INDEX_NONE
-			&& Layer.Children.IsValidIndex(ChildData.ScopeOwnerSourceChildIndex)
-			&& (Layer.Children[ChildData.ScopeOwnerSourceChildIndex].Type == EMixtormatLayerChildType::Generator
-				|| Layer.Children[ChildData.ScopeOwnerSourceChildIndex].Type == EMixtormatLayerChildType::Boolean))
-		{
-			Out.Source = static_cast<int32>(EMixtormatColorRampSource::ModuleRef);
-			Out.SourceChildIndex = ChildData.ScopeOwnerSourceChildIndex;
-		}
-		else if (Ramp.Source == EMixtormatColorRampSource::ModuleRef && Ramp.SourceChildId.IsValid())
+		const bool bUsesModuleChild = Ramp.Source == EMixtormatColorRampSource::ModuleRef
+			|| Ramp.Source == EMixtormatColorRampSource::FlowMagnitude
+			|| Ramp.Source == EMixtormatColorRampSource::FlowAngle
+			|| Ramp.Source == EMixtormatColorRampSource::NoiseValue;
+		if (bUsesModuleChild && Ramp.SourceChildId.IsValid())
 		{
 			for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
 			{
 				if (Layer.Children[Index].ChildId == Ramp.SourceChildId)
+				{
+					Out.SourceChildIndex = Index;
+					break;
+				}
+			}
+		}
+		if (bUsesModuleChild && Out.SourceChildIndex == INDEX_NONE
+			&& ChildData.ScopeOwnerSourceChildIndex != INDEX_NONE
+			&& Layer.Children.IsValidIndex(ChildData.ScopeOwnerSourceChildIndex))
+		{
+			Out.SourceChildIndex = ChildData.ScopeOwnerSourceChildIndex;
+		}
+		if (bUsesModuleChild && Out.SourceChildIndex == INDEX_NONE)
+		{
+			for (int32 Index = FMath::Min(SourceChildIndex, Layer.Children.Num()) - 1; Index >= 0; --Index)
+			{
+				const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+				if (Ramp.Source == EMixtormatColorRampSource::NoiseValue)
+				{
+					if (Candidate.Type == EMixtormatLayerChildType::Generator
+						&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
+					{
+						Out.SourceChildIndex = Index;
+						break;
+					}
+				}
+				else if (Ramp.Source == EMixtormatColorRampSource::FlowMagnitude
+					|| Ramp.Source == EMixtormatColorRampSource::FlowAngle)
+				{
+					if (Candidate.Type == EMixtormatLayerChildType::Generator
+						|| (Candidate.Type == EMixtormatLayerChildType::Behavior
+							&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
+								|| Candidate.Behavior.Type == EMixtormatBehaviorType::Feather)))
+					{
+						Out.SourceChildIndex = Index;
+						break;
+					}
+				}
+				else if (Candidate.Type == EMixtormatLayerChildType::Generator
+					|| Candidate.Type == EMixtormatLayerChildType::Boolean)
 				{
 					Out.SourceChildIndex = Index;
 					break;

@@ -20,7 +20,7 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 	for (FMixtormatLayer& Layer : Layers)
 	{
 		Layer.LayerId = FGuid::NewGuid();
-		Layer.Type = EMixtormatLayerType::Generator;
+		Layer.Type = EMixtormatLayerType::Fill;
 		Layer.bEnabled = true;
 		Layer.Children.SetNum(4);
 		for (FMixtormatLayerChild& Child : Layer.Children)

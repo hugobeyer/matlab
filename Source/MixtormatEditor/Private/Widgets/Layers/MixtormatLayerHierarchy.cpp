@@ -514,8 +514,6 @@ FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 	// than leaving two things looking selected at once.
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	// One subject for the inspector: a group header claim drops a Sources shelf selection too.
-	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
 	SelectedLayerChildIds.Reset();
@@ -651,7 +649,6 @@ FReply SMixtormat::SelectWorkingLayer(const int32 LayerIndex)
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	SelectedSourceId.Invalidate();
 	bHasSelectedLayer = true;
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
@@ -698,8 +695,7 @@ FReply SMixtormat::SelectWorkingChild(const int32 LayerIndex, const int32 ChildI
 		&& ResolveChild(LayerIndex, ChildIndex)->Type == EMixtormatLayerChildType::Effect;
 	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
 	SelectedMaskIndex = bEffect ? INDEX_NONE : ChildIndex;
-	// A layer child claim drops a Sources shelf or multi-layer selection; the inspector shows one subject.
-	SelectedSourceId.Invalidate();
+	// A layer child claim drops a multi-layer selection; the inspector shows one subject.
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
 	SelectedGroupId.Invalidate();
@@ -746,24 +742,6 @@ FText SMixtormat::GetSelectedBadgeText() const
 void SMixtormat::SyncSelectedLayerControls()
 {
 	RebuildPreviewOutputStrip();
-	if (SelectedSourceId.IsValid())
-	{
-		// A source is the inspector's subject; the layer controls below read the layer stack and
-		// have nothing to sync. The header still names what is selected.
-		const FMixtormatSourceEntry* Source = GetSelectedSource();
-		bHasSelectedLayer = false;
-		if (SelectedSurfaceText.IsValid())
-		{
-			SelectedSurfaceText->SetText(Source
-				? Source->DisplayName
-				: LOCTEXT("NoSelectedSource", "No source selected"));
-		}
-		if (SelectedIdentityText.IsValid())
-		{
-			SelectedIdentityText->SetText(LOCTEXT("SourceIdentity", "SOURCE"));
-		}
-		return;
-	}
 	if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))
 	{
 		bHasSelectedLayer = false;
@@ -944,7 +922,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerThumbnail(const int32 LayerIndex)
 
 	// A fill layer has no asset to preview, so its own colour is the thumbnail. Read through a
 	// lambda rather than captured, because the colour picker edits it live.
-	if (Layer.Type == EMixtormatLayerType::Generator)
+	if (Layer.HasGeneratorModules())
 	{
 		return SNew(SBox)
 			.WidthOverride(FMixtormatThemeStore::GetResolved().LayerLayout.ThumbnailSize)
@@ -1043,7 +1021,7 @@ FText SMixtormat::GetLayerSourceText(const int32 LayerIndex) const
 	{
 		return LOCTEXT("FillLayerSource", "FILL");
 	}
-	if (Layer.Type == EMixtormatLayerType::Generator)
+	if (Layer.HasGeneratorModules())
 	{
 		return FText::GetEmpty();
 	}
@@ -1273,8 +1251,6 @@ FReply SMixtormat::SelectGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	const bool bEffect = Child && Child->Type == EMixtormatLayerChildType::Effect;
 	SelectedEffectIndex = bEffect ? ChildIndex : INDEX_NONE;
 	SelectedMaskIndex = (Child && !bEffect) ? ChildIndex : INDEX_NONE;
-	// A shared-child claim drops a Sources shelf selection; the inspector shows one subject.
-	SelectedSourceId.Invalidate();
 	SelectedLayerIds.Reset();
 	SelectionAnchorLayerId.Invalidate();
 	SelectedLayerChildIds.Reset();
@@ -1759,7 +1735,6 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			.ColorBadge_Lambda([this, LayerIndex]()
 			{
 				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Type != EMixtormatLayerType::Generator
 					? MixtormatLayerBadges::ForColorBlendMode(
 						WorkingLayers[LayerIndex].BaseColorBlendMode)
 					: FText::GetEmpty();

@@ -14,7 +14,6 @@ class UMaterialInstanceDynamic;
 class UMixtormatMaterial;
 struct FMixtormatLayer;
 struct FMixtormatLayerGroup;
-struct FMixtormatSourceEntry;
 struct FMixtormatComposeResources;
 
 // Cache of generated networks that survive between composites. Defined in the compositor
@@ -133,15 +132,13 @@ public:
 	bool Initialize(FIntPoint InResolution = FIntPoint(1024, 1024));
 	// False rejects invalid references or a failed gather/initialization; no parent is submitted.
 	// True means queued, not GPU-complete. OnComplete runs on the game thread after successful
-	// render-graph submission. Sources are evaluated at this compositor's resolution.
-	// Pass the document asset path to reject references back into an unsaved edit of that asset.
+	// render-graph submission. Pass the document asset path to reject references back into an unsaved edit of that asset.
 	bool RequestCompose(
 		const TArray<FMixtormatLayer>& Layers,
 		FSimpleDelegate OnComplete = FSimpleDelegate(),
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
 		bool bRotateOutput90 = false,
-		const FSoftObjectPath& OwnerPath = FSoftObjectPath(),
-		const TArray<FMixtormatSourceEntry>& Sources = TArray<FMixtormatSourceEntry>());
+		const FSoftObjectPath& OwnerPath = FSoftObjectPath());
 	// With groups. Each group's shared children are expanded onto its member layers before any of
 	// the above happens, so what this composes is still one flat array of the same length and
 	// order as Layers -- see MixtormatLayerGroups::BuildEffectiveLayers. The overload without
@@ -152,10 +149,7 @@ public:
 		FSimpleDelegate OnComplete = FSimpleDelegate(),
 		FMixtormatDebugPreviewSettings DebugSettings = FMixtormatDebugPreviewSettings(),
 		bool bRotateOutput90 = false,
-		const FSoftObjectPath& OwnerPath = FSoftObjectPath(),
-		// Sources shelf entries. Demanded, enabled generators are evaluated producer-only ahead of
-		// the stack; they never composite and never alter the material by themselves.
-		const TArray<FMixtormatSourceEntry>& Sources = TArray<FMixtormatSourceEntry>());
+		const FSoftObjectPath& OwnerPath = FSoftObjectPath());
 	void BindOutputs(UMaterialInstanceDynamic& MaterialInstance) const;
 
 	bool IsInitialized() const { return bInitialized; }
@@ -211,8 +205,7 @@ private:
 		FSimpleDelegate OnComplete,
 		FMixtormatDebugPreviewSettings DebugSettings,
 		bool bRotateOutput90,
-		TSet<const UMixtormatMaterial*>& ActiveSources,
-		const TArray<FMixtormatSourceEntry>& Sources);
+		TSet<const UMixtormatMaterial*>& ActiveSources);
 
 	// A submission owns its targets independently of this instance and any later resize.
 	TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> PendingOutputs;

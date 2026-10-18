@@ -63,15 +63,13 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		return false;
 	}
 	Data.LayerId = Layer.LayerId;
-	// A Generator layer is one by type; a Fill or Material layer becomes one by owning modules.
-	// The chain is identical either way, so the flag follows the content rather than the type.
-	Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator || Layer.HasGeneratorModules();
-	Data.bGeneratorLayerType = Layer.Type == EMixtormatLayerType::Generator;
+	// A Fill or Material layer becomes a generator host by owning generator modules.
+	Data.bGenerator = Layer.HasGeneratorModules();
 	Data.bGeneratorAlbedo = Data.bGenerator && Layer.bGeneratorAlbedo;
 
 	// Fill semantics stay tied to the layer type: a Material layer that gained generators still
 	// composites as a Material layer, with the module chain supplying its height.
-	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Layer.Type == EMixtormatLayerType::Generator;
+	Data.bFill = Layer.Type == EMixtormatLayerType::Fill;
 	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;
 	// Only a layer's combined mask is a usable signal this step. A child mask lives in the
 	// rotating ping-pong pair and is gone by the composite; region IDs are not a scalar at
@@ -268,7 +266,7 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bOverrideRoughness = Layer.bOverrideRoughness;
 	Data.bOverrideMetallic = Layer.bOverrideMetallic;
 	Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
-	Data.bFill = Layer.Type == EMixtormatLayerType::Fill || Layer.Type == EMixtormatLayerType::Generator;
+	Data.bFill = Layer.Type == EMixtormatLayerType::Fill;
 	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;
 	Data.bHasSurface = Data.SourceOutputs.IsValid() || (Surface
 		&& Surface->BaseColor

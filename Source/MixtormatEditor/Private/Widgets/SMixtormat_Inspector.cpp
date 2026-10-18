@@ -412,7 +412,6 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					{
 						return (bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex))
 							|| SelectedGroupId.IsValid()
-							|| SelectedSourceId.IsValid()
 							|| HasSelectedChildInspector()
 							? EVisibility::Visible
 							: EVisibility::Collapsed;
@@ -547,8 +546,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							.Visibility_Lambda([this]()
 							{
 								return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-									&& (WorkingLayers[SelectedLayerIndex].Type == EMixtormatLayerType::Generator
-										|| WorkingLayers[SelectedLayerIndex].HasGeneratorModules())
+									&& WorkingLayers[SelectedLayerIndex].HasGeneratorModules()
 									? EVisibility::Visible : EVisibility::Collapsed;
 							})
 							.Title(LOCTEXT("GeneratorLayerHeading", "GENERATOR LAYER"))
@@ -568,8 +566,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						.Visibility_Lambda([this]()
 						{
 							return bHasSelectedLayer && WorkingLayers.IsValidIndex(SelectedLayerIndex)
-															&& WorkingLayers[SelectedLayerIndex].Type != EMixtormatLayerType::Generator
-															? EVisibility::Visible : EVisibility::Collapsed;
+								? EVisibility::Visible : EVisibility::Collapsed;
 						})
 						+ SVerticalBox::Slot().AutoHeight()[BuildCracksControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildRockFormationControls()]

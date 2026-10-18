@@ -340,11 +340,7 @@ namespace MixtormatLayerGroups
 			{
 				const auto RemapOutput = [&RemapPair](FMixtormatOutputReference& Reference)
 				{
-					// Shelf references are keyed by SourceShelfId and are not group members.
-					if (Reference.IsLayerSource())
-					{
-						RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
-					}
+					RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
 				};
 				RemapPair(Child.SourceLayerId, Child.SourceChildId);
 				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);

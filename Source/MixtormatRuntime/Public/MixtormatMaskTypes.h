@@ -124,19 +124,9 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskLayer
 	UPROPERTY()
 	FName PublishedSourceOutput;
 
-	// Appended shelf discriminator. Layer is the legacy serialized default; a shelf
-	// mask names the entry's SourceId without aliasing any material LayerId.
-	UPROPERTY()
-	EMixtormatOutputReferenceOwnerKind PublishedSourceOwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
-
-	UPROPERTY()
-	FGuid PublishedSourceShelfId;
-
 	bool HasPublishedSource() const
 	{
-		const FGuid& OwnerId = PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf
-			? PublishedSourceShelfId : PublishedSourceLayerId;
-		return OwnerId.IsValid() && !PublishedSourceOutput.IsNone();
+		return PublishedSourceLayerId.IsValid() && !PublishedSourceOutput.IsNone();
 	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mask")

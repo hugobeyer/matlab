@@ -780,15 +780,11 @@ namespace MixtormatGpuCompositor
 								&& Child.Mask.PublishedSourceChildIndex != INDEX_NONE
 								&& Child.Mask.PublishedSourceOutput == FName(TEXT("Value")))
 							{
-								// Noise.Value masks need the raw typed field and its kind across prefix reuse. The
-								// owner is the mask's own discriminator, and a shelf address is already resolved
-								// past any linked instance by gather, so the key names the one real producer.
+								// Noise.Value masks need the raw typed field and its kind across prefix reuse.
 								Ctx.PublishedFieldDemand.Add(FPublishedFieldKey{
-									Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf
-										? Child.Mask.PublishedSourceShelfId : Child.Mask.PublishedSourceLayerId,
+									Child.Mask.PublishedSourceLayerId,
 									Child.Mask.PublishedSourceChildIndex,
-									Child.Mask.PublishedSourceOutput,
-									Child.Mask.PublishedSourceOwnerKind});
+									Child.Mask.PublishedSourceOutput});
 							}
 							if (Child.Type == EMixtormatLayerChildType::OutputReference
 								&& Child.OutputReference.Source.ChildIndex != INDEX_NONE)
@@ -826,6 +822,27 @@ namespace MixtormatGpuCompositor
 								&& Child.BoundaryId.bExplicitSource)
 							{
 								Ctx.PublishedFieldDemand.Add(Child.BoundaryId.RegionIdsSource.Source);
+							}
+							if (Child.Type == EMixtormatLayerChildType::HeightColorRamp
+								&& Child.HeightColorRamp.SourceChildIndex != INDEX_NONE)
+							{
+								const EMixtormatColorRampSource RampSource =
+									static_cast<EMixtormatColorRampSource>(Child.HeightColorRamp.Source);
+								if (RampSource == EMixtormatColorRampSource::FlowMagnitude
+									|| RampSource == EMixtormatColorRampSource::FlowAngle)
+								{
+									Ctx.PublishedFieldDemand.Add(PublishedKey(
+										Layer, Child.HeightColorRamp.SourceChildIndex, FName(TEXT("FlowDirection"))));
+									Ctx.PublishedFieldDemand.Add(PublishedKey(
+										Layer, Child.HeightColorRamp.SourceChildIndex, FName(TEXT("GeneratedFlow"))));
+									Ctx.PublishedFieldDemand.Add(PublishedKey(
+										Layer, Child.HeightColorRamp.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow));
+								}
+								else if (RampSource == EMixtormatColorRampSource::NoiseValue)
+								{
+									Ctx.PublishedFieldDemand.Add(PublishedKey(
+										Layer, Child.HeightColorRamp.SourceChildIndex, FName(TEXT("Value"))));
+								}
 							}
 						}
 					}
@@ -929,28 +946,7 @@ namespace MixtormatGpuCompositor
 						}
 					}
 
-						// Shelf producers run ahead of the stack, in dependency order, uncached, and never
-						// composite: each one is an explicitly source-owned producer whose module chain
-						// publishes into the shared field registry under the entry's SourceId. The stack's
-						// generator inputs read those keys; nothing here touches the output targets or the
-						// layer ping-pong.
-						for (int32 SourceIndex = 0; SourceIndex < Request.SourceProducers.Num(); ++SourceIndex)
-						{
-							const FLayerRenderData& SourceLayer = Request.SourceProducers[SourceIndex];
-							if (!SourceLayer.bEnabled) { continue; }
-							FMixtormatLayerPassContext SourceCtx(Ctx);
-							// INDEX_NONE, never SourceIndex: a producer is not a layer and must not share the layer-
-							// index space the debug predicates compare against. A ChildOutput selection resolves to a
-							// real layer index, or to INDEX_NONE with ChildIndex INDEX_NONE; a producer always passes
-							// a real child index, so it can never match either and can never write the material's
-							// OutputDebug / RegionIdPick targets.
-							SourceCtx.BeginLayer(INDEX_NONE);
-							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatSourceProducer, "Mixtormat.SourceProducer%d", SourceIndex);
-							AddRegionProducerPasses(Ctx, SourceCtx, SourceLayer);
-							AddGeneratorLayerPasses(Ctx, SourceCtx, SourceLayer);
-						}
-
-						for (int32 LayerIndex = FirstLayer; LayerIndex < Request.Layers.Num(); ++LayerIndex)
+					for (int32 LayerIndex = FirstLayer; LayerIndex < Request.Layers.Num(); ++LayerIndex)
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatLayer, "Mixtormat.Layer%d", LayerIndex);
 							const FLayerRenderData& Layer = Request.Layers[LayerIndex];
@@ -996,7 +992,7 @@ namespace MixtormatGpuCompositor
 								}
 								if (LayerCtx.GeneratorBundle.Height)
 								{
-									if (Layer.bGeneratorLayerType || !LayerCtx.LayerInputHeight)
+									if (!LayerCtx.LayerInputHeight)
 									{
 										LayerCtx.LayerInputHeight = LayerCtx.GeneratorBundle.Height;
 									}

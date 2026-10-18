@@ -118,51 +118,10 @@ replacing instance-source glow. E1 adds explicit target-row actions in
 unscoped module before that target, connects only its target GUID, and leaves its source unset.
 Existing layer-level creation stays unchanged. The shared procedural removal handler accepts
 Push, Warp, Height Blend, Height Remap and Height Color Ramp and removes their owned subtree.
-The Sources shelf is a non-compositing array card above the layer creation toolbar, built by
-`SMixtormat::BuildSourcesShelf` with `UI/Layers/SMixtormatSourcesShelf.*` shell and
-`UI/Layers/SMixtormatSourceRow.*` rows. It reuses the inspector foldout's header anatomy,
-tokens and surface; the body now uses the shared Card recipe, compact Menu-row styling,
-and an always-visible (when expanded) + tab attached at the card's bottom-right edge.
-The tab reuses the shared card surface recipe and opens the existing six-generator menu. Sources has its own UI STYLE tab, with independent card spacing, row dimensions, add-button background width/height, square icon size, lower-corner radius and accent strength. The add glyph is centered and never inherits the background aspect ratio.
-Empty cards show no instructional text, but retain the + tab. The layout is authored by
-`LayerLayout.SourcesBottomGap`, `SourcesEmptyHeight`, `SourcesRowHeight`, `SourcesRowGap`,
-`SourcesAddTabWidth`, and `SourcesAddTabHeight` under UI STYLE > Sources.
-Expansion is session UI state (`bSourcesExpanded`) and never reaches the
-document or the render. Sources are document data (`FMixtormatSourceEntry` on
-`UMixtormatMaterial`, mirrored as `WorkingSources` beside -- never inside -- `WorkingLayers`), so
-the compositor, height references and grouping never see a source as a stack member. Add Source offers the six generator kinds and starts them through the same `ApplyChildCreationDefaults` a
-generator child uses. Rows select on left click and delete from their context menu; selection is
-exclusive — layer, child and group selection clear the source and vice versa. The Inspector
-shows a SOURCE card (name, kind, enabled) above the kind's own generator panel, which resolves
-through the shared `GetSelectedGenerator()` accessor. Sources use `EMixtormatChildOwnerType::Source` (Owner = SourceId) for selection and
-Inspector routing. The canonical Runtime `FMixtormatBindingScope` now also accepts
-Sources: root-generator and owned-child parameter addresses use their real SourceId
-and ChildId; Copy/Paste Reference, Follow/Link, linked writes and Go to Source use
-that same scope, never synthetic layer IDs. A transient producer copy applies
-direct parameter references before GPU gather. Spatial parameter Drivers on the
-shelf remain disabled until a supported signal consumer exists.
-
-Sources are document data: new/open/save/save-as, undo and copy/paste preserve
-source identities and bindings. Copy Source / Paste Copied Source create fresh
-root/owned-child IDs, remap internal structural target GUIDs and shelf output
-references, and retain valid external dependencies. Source IDs, root child IDs and
-owned-child IDs are repaired against document-wide namespaces on load. The root
-is unscoped and owned children are normalized to the root.
-
-Demanded Sources already evaluate and publish signed Height, Flow and UVMap
-fields for generator HeightSource/WarpSource through the producer graph, ahead
-of the ordinary stack (see `COMPOSITION.md`). `ResolveContainer` remains null
-for Source rows: there is no shelf child hierarchy/tool authoring UI, generic
-Copy Output/paste-as-instance authoring, or general mask/ID/colour consumption
-there yet. Existing layer-only published-output resolvers remain gated; the
-future shelf evaluator extensions must use typed owner-kind keys, not fake layers.
-
 Mask sources and the Noise gate live in `Widgets/Layers/MixtormatMaskSources.cpp`. A Mask child
 picks `Texture`, `Layer Values` or the appended inline `Noise` source; a fourth entry,
-`Noise Value from…`, wires the mask either to a completed earlier layer/group Noise
-`Value` or to an enabled Sources-shelf Noise root by SourceId/ChildId. Shelf
-references retain their distinct owner kind, survive source duplication, and
-are demanded ahead of the layer stack. `Paste Copied Noise Value` remains for
+`Noise Value from…`, wires the mask to a completed earlier layer/group Noise
+`Value` by LayerId/ChildId. `Paste Copied Noise Value` remains for
 supported copied mask references. Inline selection
 clears published GUIDs first, because a published source otherwise wins; `UsesNoise()` mirrors
 `UsesLayerValues()` precedence. Source changes preserve blending, shaping, filters and scope, and

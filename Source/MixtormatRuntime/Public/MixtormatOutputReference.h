@@ -7,7 +7,6 @@
 
 struct FMixtormatLayer;
 struct FMixtormatMaskLayer;
-struct FMixtormatSourceEntry;
 struct FMixtormatGenerator;
 enum class EMixtormatNoiseType : uint8;
 
@@ -22,7 +21,7 @@ enum class EMixtormatPublishedFieldKind : uint8
 	RegionIds UMETA(DisplayName = "Region IDs"),
 	Flow UMETA(DisplayName = "Flow"),
 	UVMap UMETA(DisplayName = "UV Map"),
-	// A colour field published by a Generator-layer Height Color Ramp, for later albedo/material use.
+	// A colour field published by a Height Color Ramp, for later albedo/material use.
 	Color UMETA(DisplayName = "Color"),
 	// Nominal 0..1 scalar domain. Generic scalar data; not inherently a mask.
 	Scalar01 UMETA(DisplayName = "Scalar 0..1"),
@@ -33,15 +32,6 @@ enum class EMixtormatPublishedFieldKind : uint8
 	// Generic 2-component vector field. Not a Flow (directional transport) and not a UVMap
 	// (absolute/transformed coordinates).
 	Vector2 UMETA(DisplayName = "Vector 2")
-};
-
-// Where a published output lives. Layer remains zero for serialized compatibility: every existing
-// reference has only SourceLayerId/SourceChildId and therefore retains its established meaning.
-UENUM(BlueprintType)
-enum class EMixtormatOutputReferenceOwnerKind : uint8
-{
-	Layer UMETA(DisplayName = "Layer"),
-	Shelf UMETA(DisplayName = "Sources Shelf")
 };
 
 USTRUCT(BlueprintType)
@@ -75,66 +65,14 @@ struct MIXTORMATRUNTIME_API FMixtormatOutputReference
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference|Flow", meta = (EditCondition = "Kind == EMixtormatPublishedFieldKind::Flow", ClampMin = "1", UIMax = "64"))
 	int32 FlowSteps = 16;
 
-	// Appended owner discriminator. Layer is the legacy default and continues to use
-	// SourceLayerId/SourceChildId; Shelf uses SourceShelfId/SourceChildId instead.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference")
-	EMixtormatOutputReferenceOwnerKind OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
-
-	// Stable Sources shelf entry identity. Ignored for legacy Layer references.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output Reference")
-	FGuid SourceShelfId;
-
-	bool IsShelfSource() const { return OwnerKind == EMixtormatOutputReferenceOwnerKind::Shelf; }
-	bool IsLayerSource() const { return OwnerKind == EMixtormatOutputReferenceOwnerKind::Layer; }
-	bool HasKnownOwnerKind() const { return IsLayerSource() || IsShelfSource(); }
-
 	bool HasSource() const
 	{
-		if (!HasKnownOwnerKind()) { return false; }
-		const FGuid& OwnerId = IsShelfSource() ? SourceShelfId : SourceLayerId;
-		return OwnerId.IsValid() && SourceChildId.IsValid() && !OutputName.IsNone();
+		return SourceLayerId.IsValid() && SourceChildId.IsValid() && !OutputName.IsNone();
 	}
 };
 
 namespace MixtormatOutputReferences
 {
-	// Shelf endpoints are representable before producer evaluation exists. This status intentionally
-	// separates a malformed/missing endpoint from one that is structurally valid but not yet
-	// executable, so callers can offer repair instead of guessing a layer fallback.
-	enum class EShelfSourceReferenceIssue : uint8
-	{
-		None,
-		NotShelfReference,
-		InvalidOwnerKind,
-		Unset,
-		InvalidFieldKind,
-		WrongOutputName,
-		MissingSource,
-		DuplicateSourceIdentity,
-		MissingChild,
-		WrongSourceKind,
-		DisabledSource,
-		Unevaluated,
-		// The reference itself is switched off. Authored and kept, but not a schedulable edge.
-		DisabledReference,
-		// A field kind no Sources shelf producer is consumed with. The only shelf consumers are the
-		// generator Height/Warp sockets, which take ScalarSigned / Flow / UVMap; any other kind is a
-		// repairable authoring error rather than an endpoint to resolve.
-		UnsupportedOutputKind,
-		// Structurally valid, but the named producer does not publish this typed output at all (e.g.
-		// a Flow read from a generator that emits no flow). Distinguished from a missing endpoint so
-		// the editor can say "this source has no such output" rather than "unknown source".
-		UnpublishedOutput
-	};
-
-	struct FShelfSourceReferenceStatus
-	{
-		EShelfSourceReferenceIssue Issue = EShelfSourceReferenceIssue::Unset;
-		int32 SourceIndex = INDEX_NONE;
-		bool bHasResolvedEndpoint = false;
-		bool bCanExecute = false;
-	};
-
 	// Transient reference eligibility only; never serialized or a guarantee of GPU availability.
 	// There is no whole-link status any more: a Behavior names its generator through
 	// ScopeOwnerChildId and its fields through typed sockets, so a link has one editable end
@@ -166,38 +104,15 @@ namespace MixtormatOutputReferences
 	// addressed by whatever name the producer published.
 	MIXTORMATRUNTIME_API FName CanonicalFieldOutputName(EMixtormatPublishedFieldKind Kind);
 
-	// Validates an explicit Sources shelf endpoint without treating it as a layer producer. A linked
-	// instance resolves to its original for the payload checks (enabled, publishes), so a reference
-	// to an instance is exactly a reference to the producer, addressed under the instance's own
-	// identity. A broken link reports MissingSource rather than rebinding.
-	MIXTORMATRUNTIME_API FShelfSourceReferenceStatus ClassifyShelfSourceReference(
-		const TArray<FMixtormatSourceEntry>& Sources,
-		const FMixtormatOutputReference& Reference);
-
-	// The entry that actually owns a shelf entry's producer: follows the linked-instance chain to
-	// its end. Null when the id names no entry, the chain is broken (missing original), or the
-	// chain cycles. Never rebinds -- a broken link stays broken.
-	MIXTORMATRUNTIME_API const FMixtormatSourceEntry* ResolveShelfProducerEntry(
-		const TArray<FMixtormatSourceEntry>& Sources,
-		const FGuid& SourceId);
-
-	// Address form of the above: the producer's SourceId, or an invalid GUID when it cannot be
-	// resolved. The identity a published shelf field is registered under, so every consumer key,
-	// instance or not, resolves to the one producer that is actually evaluated.
-	MIXTORMATRUNTIME_API FGuid ResolveShelfProducerId(
-		const TArray<FMixtormatSourceEntry>& Sources,
-		const FGuid& SourceId);
-
 	// The typed value contract each Noise family publishes. The lattice families and Bars are
 	// zero-centred and signed; Ridged, Billow and the Worley distances are 0..1 magnitudes. Canonical
 	// here so the shader producers and the reference validators agree on one definition.
 	MIXTORMATRUNTIME_API EMixtormatPublishedFieldKind NoiseValueKind(EMixtormatNoiseType Type);
 
-	// The typed outputs a Generator module publishes, and therefore what a Sources shelf root can be
-	// read for. A shelf root is a bare module: every type publishes its completed signed "Height";
-	// Noise additionally publishes "Value" (signed only for the lattice/Bars families) and
-	// "FlowDirection" (and "GeneratedFlow" while Write Flow is enabled). Cracks additionally
-	// publishes its native boundary-derived "FlowDirection". Other outputs cannot resolve here.
+	// The typed outputs a Generator module publishes. Every module publishes its completed signed
+	// "Height"; Noise additionally publishes "Value" (signed only for the lattice/Bars families) and
+	// "FlowDirection" (and "GeneratedFlow" while Write Flow is enabled). Cracks, RockFormation,
+	// Pebbles, CliffStrata and RootNetwork publish their native "FlowDirection".
 	MIXTORMATRUNTIME_API bool GeneratorPublishesField(
 		const FMixtormatGenerator& Generator,
 		EMixtormatPublishedFieldKind Kind,

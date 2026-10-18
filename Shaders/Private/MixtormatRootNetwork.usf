@@ -587,12 +587,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			seg.P0 = p0;
 			seg.P1 = p1;
 			seg.P2 = p2;
-			seg.R0 = parent.Radius;
+			bool bLateralStart = (child.BranchId != parent.BranchId);
+			seg.R0 = bLateralStart ? min(parent.Radius, child.Radius * 1.15f) : parent.Radius;
 			seg.R1 = child.Radius;
-			float parentRemaining = (float)RWNodePullBuffer[child.ParentIndex * 4u + 0u] * StepLength;
 			float childRemaining = (float)RWNodePullBuffer[v * 4u + 0u] * StepLength;
-			seg.Arc0 = saturate(parent.ArcLength / max(parent.ArcLength + parentRemaining, 1e-4f));
-			seg.Arc1 = saturate(child.ArcLength / max(child.ArcLength + childRemaining, 1e-4f));
+			float branchTotalArc = max(child.ArcLength + childRemaining, 1e-4f);
+			seg.Arc0 = saturate(parent.ArcLength / branchTotalArc);
+			seg.Arc1 = saturate(child.ArcLength / branchTotalArc);
 			seg.BranchId = child.BranchId;
 			seg.Generation = child.Generation;
 			RWSegmentBuffer[segIdx] = seg;
@@ -818,13 +819,13 @@ void EvaluateTaperedBezierSweep(
 }
 
 // Cross-section: real-unit cylinder cap corrected by thickness, with super-ellipse profile bias and soil burial.
-float RootCrossSectionHeight(float SignedDist, float Radius, float BurialMult)
+float RootCrossSectionHeight(float SignedDist, float Radius, float RadialSpan, float BurialMult)
 {
 	if (SignedDist >= 0.0f)
 	{
 		return 0.0f;
 	}
-	float q = saturate(-SignedDist / max(Radius, 1e-4f)); // 0 at the rim, 1 on the axis
+	float q = saturate(-SignedDist / max(RadialSpan, 1e-4f)); // 0 at the rim, 1 on the axis
 	float u = saturate(1.0f - q); // 0 on the axis, 1 at the rim
 
 	// Profile bias: super-ellipse exponent p.
@@ -847,38 +848,73 @@ float RootCrossSectionHeight(float SignedDist, float Radius, float BurialMult)
 	return exposedHeight / max(BaseRadius, 1e-4f);
 }
 
-// Merge complete branch envelopes, never a union distance with a different stem's radius.
-void RootMergeBranchFields(float BranchDistance, float BranchHeight, float SmoothWidth,
-	inout float Distance, inout float Height, inout float BlendAccum)
+// Merge complete branch envelopes, evaluating the cross-section continuously across the smooth union.
+void RootMergeBranchFields(
+	float BranchDistance,
+	float BranchHeight,
+	float BranchRadius,
+	float BranchBurial,
+	float BranchWeave,
+	float BranchArc,
+	float MaxSmoothWidth,
+	inout float Distance,
+	inout float Height,
+	inout float Radius,
+	inout float RadialSpan,
+	inout float Burial,
+	inout float Weave,
+	inout float Arc,
+	inout float SpineQ)
 {
+	float branchQ = (BranchDistance < 0.0f) ? saturate(-BranchDistance / max(BranchRadius, 1e-4f)) : 0.0f;
 	if (Distance >= ROOT_NO_DISTANCE * 0.5f)
 	{
 		Distance = BranchDistance;
 		Height = BranchHeight;
+		Radius = BranchRadius;
+		RadialSpan = BranchRadius;
+		Burial = BranchBurial;
+		Weave = BranchWeave;
+		Arc = BranchArc;
+		SpineQ = branchQ;
+		return;
+	}
+
+	float localSmooth = min(MaxSmoothWidth, JunctionSmooth * min(Radius, BranchRadius) * 1.15f);
+	if (localSmooth <= 1e-5f)
+	{
+		if (BranchDistance < Distance)
+		{
+			Distance = BranchDistance;
+			Radius = BranchRadius;
+			RadialSpan = BranchRadius;
+			Burial = BranchBurial;
+			Weave = BranchWeave;
+			Arc = BranchArc;
+		}
+		Height = max(Height, BranchHeight);
+		SpineQ = max(SpineQ, branchQ);
 		return;
 	}
 
 	float diff = Distance - BranchDistance;
-	float h = saturate(0.5f + 0.5f * diff / SmoothWidth);
+	float h = saturate(0.5f + 0.5f * diff / localSmooth);
 	float blend = h * (1.0f - h);
-	BlendAccum = max(BlendAccum, blend * 4.0f);
+	float s = h * h * (3.0f - 2.0f * h);
 
-	Distance = lerp(Distance, BranchDistance, h) - SmoothWidth * blend;
+	Distance = lerp(Distance, BranchDistance, h) - localSmooth * blend;
+	Radius = lerp(Radius, BranchRadius, s);
+	float filletSpan = 4.0f * localSmooth * blend * blend;
+	RadialSpan = lerp(RadialSpan, BranchRadius, s) + filletSpan;
+	Burial = lerp(Burial, BranchBurial, s);
+	Weave = lerp(Weave, BranchWeave, s);
+	Arc = lerp(Arc, BranchArc, s);
 
-	// Smooth-max for height across overlapping branches:
-	// Guarantees C1 smooth transition across branch junctions without tearing, cliff steps, or creases,
-	// and without an additive hump that artificially inflates peak height.
-	float wNorm = SmoothWidth / max(BaseRadius, 1e-4f);
-	if (Height > 0.0f && BranchHeight > 0.0f && wNorm > 1e-5f)
-	{
-		float hBlend = saturate(0.5f + 0.5f * (Height - BranchHeight) / wNorm);
-		float s = hBlend * hBlend * (3.0f - 2.0f * hBlend);
-		Height = lerp(BranchHeight, Height, s);
-	}
-	else
-	{
-		Height = max(Height, BranchHeight);
-	}
+	float mergedHeight = RootCrossSectionHeight(Distance, Radius, RadialSpan, Burial) * Weave;
+	Height = max(max(Height, BranchHeight), mergedHeight);
+
+	float mergedQ = (Distance < 0.0f) ? saturate(-Distance / max(RadialSpan, 1e-4f)) : 0.0f;
+	SpineQ = max(max(SpineQ, branchQ), mergedQ);
 }
 
 [numthreads(8, 8, 1)]
@@ -899,18 +935,28 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	uint offset = BinOffsets[cellIdx];
 	uint count = BinCounts[cellIdx];
 
-	float kSmooth = max(JunctionSmooth * BaseRadius * 0.85f, 1e-5f);
+	float kSmooth = max(JunctionSmooth * BaseRadius * 0.85f, 0.0f);
 
 	float sdAcc = ROOT_NO_DISTANCE;
+	float radiusAcc = BaseRadius;
+	float spanAcc = BaseRadius;
+	float burialAcc = 1.0f;
+	float weaveAcc = 1.0f;
+	float arcAcc = 0.0f;
+	float spineQAcc = 0.0f;
 	float bestRaw = ROOT_NO_DISTANCE;
 	float bestHeight = -1.0e9f;
 	float bestArc = 0.0f;
 	float bestVnorm = 0.0f;
 	uint bestBranchId = 0u;
 	float height = 0.0f;
-	float blendAccum = 0.0f;
+
 	float branchDistance = ROOT_NO_DISTANCE;
 	float branchHeight = 0.0f;
+	float branchRadius = BaseRadius;
+	float branchBurial = 1.0f;
+	float branchWeave = 1.0f;
+	float branchArc = 0.0f;
 	uint branchId = 0u;
 
 	for (uint i = 0u; i < count; ++i)
@@ -929,11 +975,30 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			if (branchId != 0u)
 			{
-				RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height, blendAccum);
+				RootMergeBranchFields(
+					branchDistance,
+					branchHeight,
+					branchRadius,
+					branchBurial,
+					branchWeave,
+					branchArc,
+					kSmooth,
+					sdAcc,
+					height,
+					radiusAcc,
+					spanAcc,
+					burialAcc,
+					weaveAcc,
+					arcAcc,
+					spineQAcc);
 			}
 			branchId = seg.BranchId;
 			branchDistance = ROOT_NO_DISTANCE;
 			branchHeight = 0.0f;
+			branchRadius = rAtT;
+			branchBurial = 1.0f;
+			branchWeave = 1.0f;
+			branchArc = 0.0f;
 		}
 
 		float arc = saturate(lerp(seg.Arc0, seg.Arc1, t));
@@ -950,8 +1015,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float junctionAtten = (seg.Generation > 0u) ? smoothstep(0.0f, 0.20f, arc) : smoothstep(0.0f, 0.05f, arc);
 		float weavePhase = arc * 25.1327412f + (float)seg.BranchId * 1.6180339f;
 		float weave = sin(weavePhase) * WeaveAmount * 0.25f * junctionAtten;
-		float segmentHeight = RootCrossSectionHeight(sd, rAtT, burialMult) * max(1.0f + weave, 0.0f);
-		branchDistance = min(branchDistance, sd);
+		float weaveMult = max(1.0f + weave, 0.0f);
+		float segmentHeight = RootCrossSectionHeight(sd, rAtT, rAtT, burialMult) * weaveMult;
+		if (sd < branchDistance)
+		{
+			branchDistance = sd;
+			branchRadius = rAtT;
+			branchBurial = burialMult;
+			branchWeave = weaveMult;
+			branchArc = arc;
+		}
 		branchHeight = max(branchHeight, segmentHeight);
 
 		// Consistent crossing ownership: the highest surface owns the height, IDs, and UVs!
@@ -976,21 +1049,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	if (branchId != 0u)
 	{
-		RootMergeBranchFields(branchDistance, branchHeight, kSmooth, sdAcc, height, blendAccum);
-	}
-
-	// Fillet height reconstruction:
-	// Only reconstruct height in the junction fillet webbing between converging branches
-	// where sdAcc < 0 but individual branch envelopes left a height gap.
-	// This preserves genuine branch cross-section height and taper along all stems.
-	if (sdAcc < 0.0f && blendAccum > 0.001f && height <= 0.0f)
-	{
-		float localReach = max(kSmooth, 1e-4f);
-		float filletDepth = saturate(-sdAcc / localReach);
-		float filletProfile = sqrt(max(2.0f * filletDepth - filletDepth * filletDepth, 0.0f));
-		filletProfile = pow(filletProfile, max(ProfileFlatness, 0.1f));
-		float filletHeight = max(0.0f, (filletProfile - BurialDepth) * saturate(localReach / max(BaseRadius, 1e-4f)));
-		height = max(height, filletHeight * blendAccum);
+		RootMergeBranchFields(
+			branchDistance,
+			branchHeight,
+			branchRadius,
+			branchBurial,
+			branchWeave,
+			branchArc,
+			kSmooth,
+			sdAcc,
+			height,
+			radiusAcc,
+			spanAcc,
+			burialAcc,
+			weaveAcc,
+			arcAcc,
+			spineQAcc);
 	}
 
 	bool bInside = (height > 0.0f) || (BurialDepth <= 0.001f && sdAcc <= 0.0f);
@@ -1011,7 +1085,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	// Normalized across-profile coordinate: 0 at center spine, 1 at outer flank
-	float acrossValue = bInside ? abs(bestVnorm) : 0.0f;
+	float acrossValue = bInside ? saturate(1.0f - spineQAcc) : 0.0f;
 	// Cylinder profile angle across upper 180 degree hemisphere in [0, 1]
 	float angleU = 0.5f + atan2(bestVnorm, max(sqrt(max(1.0f - bestVnorm * bestVnorm, 0.0f)), 1e-4f)) / 3.14159265f;
 	// U = cylinder cross-section arc, V = longitudinal arc length along branch
@@ -1023,7 +1097,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutRootCoverage[pix] = coverage;
 	// Banded signed distance in UV: exact within each segment's bin footprint, sentinel outside.
 	OutRootEdgeDistance[pix] = (count > 0u) ? sdAcc : ROOT_NO_DISTANCE;
-	OutRootArcLength[pix] = bInside ? bestArc : 0.0f;
+	OutRootArcLength[pix] = bInside ? arcAcc : 0.0f;
 	OutRootAcross[pix] = acrossValue;
 	OutRootUV[pix] = rootUV;
 	OutRootIds[pix] = bInside ? bestBranchId : 0u;

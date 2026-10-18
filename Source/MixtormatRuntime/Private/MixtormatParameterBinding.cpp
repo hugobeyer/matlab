@@ -288,22 +288,6 @@ namespace
 		}
 		// No layer owns that id, so it may be a group's. Groups are checked second and never
 		// shadow a layer: a GroupId colliding with a LayerId is not something PostLoad allows.
-		if (Scope.Sources)
-		{
-			for (const FMixtormatSourceEntry& Source : *Scope.Sources)
-			{
-				if (Source.SourceId != Address.LayerId) { continue; }
-				if (Source.Child.ChildId == Address.ChildId)
-				{
-					return ChildOwner(Source.Child, Address.Owner);
-				}
-				for (const FMixtormatLayerChild& Child : Source.OwnedChildren)
-				{
-					if (Child.ChildId == Address.ChildId) { return ChildOwner(Child, Address.Owner); }
-				}
-				return {};
-			}
-		}
 		return LocateGroupOwner(Scope.Groups, Address);
 	}
 
@@ -358,22 +342,6 @@ namespace
 				}
 			}
 			return {};
-		}
-		if (Scope.Sources)
-		{
-			for (FMixtormatSourceEntry& Source : *Scope.Sources)
-			{
-				if (Source.SourceId != Address.LayerId) { continue; }
-				if (Source.Child.ChildId == Address.ChildId)
-				{
-					return MutableChildOwner(Source.Child, Address.Owner);
-				}
-				for (FMixtormatLayerChild& Child : Source.OwnedChildren)
-				{
-					if (Child.ChildId == Address.ChildId) { return MutableChildOwner(Child, Address.Owner); }
-				}
-				return {};
-			}
 		}
 		return LocateMutableGroupOwner(Scope.Groups, Address);
 	}
@@ -682,55 +650,6 @@ namespace MixtormatParameterBinding
 		}
 	}
 
-	void EnsureStableIds(
-		TArray<FMixtormatLayer>& Layers,
-		TArray<FMixtormatLayerGroup>& Groups,
-		TArray<FMixtormatSourceEntry>& Sources)
-	{
-		// Repair layer/group identities first; their established IDs keep precedence over shelf IDs.
-		EnsureStableIds(Layers, Groups);
-
-		TSet<FGuid> OwnerIds;
-		TSet<FGuid> ChildIds;
-		for (const FMixtormatLayer& Layer : Layers)
-		{
-			OwnerIds.Add(Layer.LayerId);
-			for (const FMixtormatLayerChild& Child : Layer.Children) { ChildIds.Add(Child.ChildId); }
-		}
-		for (const FMixtormatLayerGroup& Group : Groups)
-		{
-			OwnerIds.Add(Group.GroupId);
-			for (const FMixtormatLayerChild& Child : Group.Children) { ChildIds.Add(Child.ChildId); }
-		}
-
-		for (FMixtormatSourceEntry& Source : Sources)
-		{
-			if (!Source.SourceId.IsValid() || OwnerIds.Contains(Source.SourceId))
-			{
-				Source.SourceId = FGuid::NewGuid();
-			}
-			OwnerIds.Add(Source.SourceId);
-
-			FMixtormatLayerChild& Child = Source.Child;
-			if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
-			{
-				Child.ChildId = FGuid::NewGuid();
-			}
-			ChildIds.Add(Child.ChildId);
-			Child.ScopeOwnerChildId.Invalidate();
-
-			for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
-			{
-				if (!OwnedChild.ChildId.IsValid() || ChildIds.Contains(OwnedChild.ChildId))
-				{
-					OwnedChild.ChildId = FGuid::NewGuid();
-				}
-				ChildIds.Add(OwnedChild.ChildId);
-				OwnedChild.ScopeOwnerChildId = Child.ChildId;
-			}
-		}
-	}
-
 	void RegenerateLayerIdentity(FMixtormatLayer& Layer, const bool bRegenerateChildren)
 	{
 		const FGuid OldLayerId = Layer.LayerId;
@@ -781,7 +700,7 @@ namespace MixtormatParameterBinding
 		}
 		const auto RemapOutput = [&](FMixtormatOutputReference& Reference, const bool bRequireOwned)
 		{
-			if (!Reference.IsLayerSource() || Reference.SourceLayerId != OldLayerId
+			if (Reference.SourceLayerId != OldLayerId
 				|| (bRequireOwned && !OriginalChildIds.Contains(Reference.SourceChildId))) { return; }
 			Reference.SourceLayerId = NewLayerId;
 			if (const FGuid* Mapped = ChildIdRemap.Find(Reference.SourceChildId))
@@ -835,12 +754,11 @@ namespace MixtormatParameterBinding
 				}
 			}
 			// V2 typed Behavior sockets are addresses too. Follow duplicated local
-			// producers, but preserve explicit references to external layers/shelf.
+			// producers, but preserve explicit references to external layers.
 			RemapOutput(Child.Behavior.Direction.Published, true);
 			RemapOutput(Child.Behavior.Height.Published, true);
 			RemapOutput(Child.Behavior.Influence.Published, true);
-			if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
-				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
+			if (Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{
 				Child.Mask.PublishedSourceLayerId = NewLayerId;
 				if (const FGuid* NewSourceChildId = ChildIdRemap.Find(Child.Mask.PublishedSourceChildId))
@@ -908,18 +826,12 @@ namespace MixtormatParameterBinding
 				RemapGuid(Child.ScopeOwnerChildId, ChildIdRemap);
 				RemapGuid(Child.SourceLayerId, OwnerIdRemap);
 				RemapGuid(Child.SourceChildId, ChildIdRemap);
-				// Only legacy Layer-owned masks follow regenerated layer/child IDs.
-				// A shelf Value mask has a distinct SourceId/ChildId identity.
-				if (Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer)
-				{
-					RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
-					RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
-				}
+				RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
+				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
 				// Structural sources are owner/child pairs: a coincident child GUID in another
 				// owner must not make an external or dangling address follow this copied set.
 				const auto RemapStructuralSource = [&](FMixtormatOutputReference& Source)
 				{
-					if (!Source.IsLayerSource()) { return; }
 					const TSet<FGuid>* SourceChildren = OriginalOwnerChildIds.Find(Source.SourceLayerId);
 					if (SourceChildren && SourceChildren->Contains(Source.SourceChildId))
 					{
@@ -1064,19 +976,7 @@ namespace MixtormatParameterBinding
 		// Not a layer id -- may be a group's. A group's shared children are addressed by GroupId
 		// in the same slot a layer's are addressed by LayerId (see FMixtormatBindingScope), the
 		// same convention LocateGroupOwner uses for a direct parameter reference.
-		if (Scope.Sources)
-		{
-			for (const FMixtormatSourceEntry& Source : *Scope.Sources)
-			{
-				if (Source.SourceId != LayerId) { continue; }
-				if (Source.Child.ChildId == ChildId) { return &Source.Child; }
-				for (const FMixtormatLayerChild& Child : Source.OwnedChildren)
-				{
-					if (Child.ChildId == ChildId) { return &Child; }
-				}
-				return nullptr;
-			}
-		}
+
 		if (!Scope.Groups)
 		{
 			return nullptr;
@@ -1288,19 +1188,7 @@ namespace MixtormatParameterBinding
 					break;
 				}
 			}
-			if (!DestOwnerId.IsValid() && Scope.Sources)
-			{
-				for (const FMixtormatSourceEntry& Source : *Scope.Sources)
-				{
-					if (Source.Child.ChildId == KeptChildId
-						|| Source.OwnedChildren.ContainsByPredicate([&KeptChildId](const FMixtormatLayerChild& Candidate)
-							{ return Candidate.ChildId == KeptChildId; }))
-					{
-						DestOwnerId = Source.SourceId;
-						break;
-					}
-				}
-			}
+
 			if (!DestOwnerId.IsValid() && Scope.Groups)
 			{
 				for (const FMixtormatLayerGroup& Group : *Scope.Groups)
@@ -1401,8 +1289,7 @@ namespace MixtormatParameterBinding
 		{
 			const auto RemapOutput = [&](FMixtormatOutputReference& Reference)
 			{
-				if (Reference.IsLayerSource()
-					&& Reference.SourceChildId == ChildId
+				if (Reference.SourceChildId == ChildId
 					&& Reference.SourceLayerId == OldLayerId)
 				{
 					Reference.SourceLayerId = NewLayerId;
@@ -1421,7 +1308,6 @@ namespace MixtormatParameterBinding
 				Child.HeightBlend.SourceLayerId = NewLayerId;
 			}
 			if (Child.Type == EMixtormatLayerChildType::Mask
-				&& Child.Mask.PublishedSourceOwnerKind == EMixtormatOutputReferenceOwnerKind::Layer
 				&& Child.Mask.PublishedSourceChildId == ChildId
 				&& Child.Mask.PublishedSourceLayerId == OldLayerId)
 			{

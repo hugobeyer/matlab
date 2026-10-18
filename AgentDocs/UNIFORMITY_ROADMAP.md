@@ -172,14 +172,13 @@ layer with generators still composites as a Material layer. Editor gates relaxed
 `ResolvePasteInsertIndex` and the Inspector's GENERATOR LAYER group.
 
 ### Problem
-Generators, Behaviors, and Booleans are artificially gated to `Layer.Type == EMixtormatLayerType::Generator`, even though `FMixtormatLayer::Children` and `FLayerRenderData` are unified across all layer types.
+Generators, Behaviors, and Booleans belong inside `FMixtormatLayer::Children` on `Material` and `Fill` layers (detected via `FMixtormatLayer::HasGeneratorModules()`), unified across all layer types.
 
 ### Exact Changes
 1. **Editor Eligibility (`Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerChildren.cpp`):**
-   - `CanAddGeneratorModule` (L1742) & `CanAddScopedFlowGenerator` (L1760): Remove `WorkingLayers[Target.LayerIndex].Type != EMixtormatLayerType::Generator` check so `Material` and `Fill` layers can add Generators and Booleans.
+   - `CanAddGeneratorModule` & `CanAddScopedFlowGenerator`: Allow `Material` and `Fill` layers to add Generators and Booleans.
 2. **Gather (`Source/MixtormatShaders/Private/`):**
-   - `Compositing/MixtormatLayerGather.cpp` (L66): Set `Data.bGenerator = Layer.Type == EMixtormatLayerType::Generator || Layer.HasGeneratorModules()` (or check if any enabled `Generator`/`Boolean` child exists on the layer).
-   - `Compositing/MixtormatGeneratorGather.cpp` (L25, L387, L707): Gate on `Data.bGenerator` (whether the layer has generator modules) rather than `Layer.Type == EMixtormatLayerType::Generator`.
-   - `Compositing/MixtormatSourceGather.cpp` (L154, L170): Scan all enabled layers for generator/behavior dependencies, not only `EMixtormatLayerType::Generator`.
+   - `Compositing/MixtormatLayerGather.cpp`: Set `Data.bGenerator = Layer.HasGeneratorModules()`.
+   - `Compositing/MixtormatGeneratorGather.cpp`: Gate on `Data.bGenerator` (whether the layer has generator modules).
 3. **GPU Pipeline (`Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`):**
    - L986–1025: When a `Material` or `Fill` layer runs `AddGeneratorLayerPasses`, combine `LayerCtx.GeneratorBundle.Height` with the layer's base `LayerInputHeight` (or use it directly on a `Fill` layer) while publishing all generator Region IDs, Flow, and Masks to downstream children on that same layer.

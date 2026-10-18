@@ -90,150 +90,14 @@ namespace MixtormatOutputReferences
 			}
 			return false;
 		default:
-			// No bare generator module publishes a UV map; WarpedUV comes from flow tools, which a
-			// zero-child shelf root does not carry.
 			return false;
 		}
-	}
-
-	const FMixtormatSourceEntry* ResolveShelfProducerEntry(
-		const TArray<FMixtormatSourceEntry>& Sources, const FGuid& SourceId)
-	{
-		const FMixtormatSourceEntry* Entry = Sources.FindByPredicate(
-			[&SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; });
-		// Bounded by the entry count: a chain that has not reached a producer by then either
-		// cycles or names entries that no longer exist. Both resolve to nothing rather than to
-		// whichever entry happened to be found last.
-		TSet<FGuid> Visited;
-		for (int32 Hop = 0; Entry && Entry->IsInstance() && Hop <= Sources.Num(); ++Hop)
-		{
-			if (Visited.Contains(Entry->SourceId)) { return nullptr; }
-			Visited.Add(Entry->SourceId);
-			const FGuid Next = Entry->InstanceOfSourceId;
-			Entry = Sources.FindByPredicate(
-				[&Next](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == Next; });
-		}
-		return Entry;
-	}
-
-	FGuid ResolveShelfProducerId(
-		const TArray<FMixtormatSourceEntry>& Sources, const FGuid& SourceId)
-	{
-		const FMixtormatSourceEntry* Producer = ResolveShelfProducerEntry(Sources, SourceId);
-		return Producer ? Producer->SourceId : FGuid();
-	}
-
-	FShelfSourceReferenceStatus ClassifyShelfSourceReference(
-		const TArray<FMixtormatSourceEntry>& Sources,
-		const FMixtormatOutputReference& Reference)
-	{
-		FShelfSourceReferenceStatus Status;
-		if (!Reference.HasKnownOwnerKind())
-		{
-			Status.Issue = EShelfSourceReferenceIssue::InvalidOwnerKind;
-			return Status;
-		}
-		if (!Reference.IsShelfSource())
-		{
-			Status.Issue = EShelfSourceReferenceIssue::NotShelfReference;
-			return Status;
-		}
-		if (!Reference.HasSource())
-		{
-			Status.Issue = EShelfSourceReferenceIssue::Unset;
-			return Status;
-		}
-		// A switched-off reference stays authored but is not a schedulable dependency.
-		if (!Reference.bEnabled)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::DisabledReference;
-			return Status;
-		}
-		if (!IsValidFieldKind(Reference.Kind))
-		{
-			Status.Issue = EShelfSourceReferenceIssue::InvalidFieldKind;
-			return Status;
-		}
-		// Typed-output contract: the shelf consumer sockets read signed scalar height or a flow/UV
-		// field. Any other kind names a field no shelf consumer addresses, so it is rejected here
-		// rather than resolving to an unsupported endpoint.
-		if (Reference.Kind != EMixtormatPublishedFieldKind::ScalarSigned
-			&& Reference.Kind != EMixtormatPublishedFieldKind::Flow
-			&& Reference.Kind != EMixtormatPublishedFieldKind::UVMap)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::UnsupportedOutputKind;
-			return Status;
-		}
-		const FName Expected = CanonicalFieldOutputName(Reference.Kind);
-		if (Expected != NAME_None && Reference.OutputName != Expected)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::WrongOutputName;
-			return Status;
-		}
-
-		int32 SourceMatches = 0;
-		for (int32 Index = 0; Index < Sources.Num(); ++Index)
-		{
-			if (Sources[Index].SourceId == Reference.SourceShelfId)
-			{
-				Status.SourceIndex = Index;
-				++SourceMatches;
-			}
-		}
-		if (SourceMatches == 0)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::MissingSource;
-			return Status;
-		}
-		if (SourceMatches != 1)
-		{
-			Status.SourceIndex = INDEX_NONE;
-			Status.Issue = EShelfSourceReferenceIssue::DuplicateSourceIdentity;
-			return Status;
-		}
-		const FMixtormatSourceEntry& Source = Sources[Status.SourceIndex];
-		if (Source.Child.ChildId != Reference.SourceChildId)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::MissingChild;
-			return Status;
-		}
-		// A linked instance publishes nothing of its own: the endpoint's payload is checked against
-		// the original it resolves to, while addressing stays the referenced entry's own. A link
-		// that no longer resolves is missing -- never rebound to another entry.
-		const FMixtormatSourceEntry* Producer = ResolveShelfProducerEntry(Sources, Reference.SourceShelfId);
-		if (!Producer)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::MissingSource;
-			return Status;
-		}
-		if (Producer->Child.Type != EMixtormatLayerChildType::Generator)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::WrongSourceKind;
-			return Status;
-		}
-		if (!Producer->Child.Generator.bEnabled)
-		{
-			Status.Issue = EShelfSourceReferenceIssue::DisabledSource;
-			return Status;
-		}
-		// Typed-output capability: the endpoint exists, but must actually publish this field.
-		if (!GeneratorPublishesField(Producer->Child.Generator, Reference.Kind, Reference.OutputName))
-		{
-			Status.Issue = EShelfSourceReferenceIssue::UnpublishedOutput;
-			return Status;
-		}
-
-		// The endpoint is stable and eligible, but Phase B has not scheduled or materialized its
-		// fields. Do not return success until that producer contract actually exists.
-		Status.Issue = EShelfSourceReferenceIssue::Unevaluated;
-		Status.bHasResolvedEndpoint = true;
-		return Status;
 	}
 
 	int32 ResolveEarlierSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const FMixtormatOutputReference& Reference)
 	{
-		if (!Reference.bEnabled || Reference.IsShelfSource() || !Reference.HasSource()
+		if (!Reference.bEnabled || !Reference.HasSource()
 			|| !Layers.IsValidIndex(DestinationLayerIndex))
 		{
 			return INDEX_NONE;
@@ -308,7 +172,7 @@ namespace MixtormatOutputReferences
 		const FGuid& DestinationLayerId, const FGuid& DestinationChildId,
 		const FMixtormatOutputReference& Reference)
 	{
-		if (!Reference.bEnabled || Reference.IsShelfSource() || !Reference.HasSource()) { return false; }
+		if (!Reference.bEnabled || !Reference.HasSource()) { return false; }
 		const int32 DestinationLayer = Layers.IndexOfByPredicate([&](const FMixtormatLayer& Layer)
 		{
 			return Layer.LayerId == DestinationLayerId;
@@ -494,9 +358,6 @@ namespace MixtormatOutputReferences
 		// The remaining scope failures are deliberately not described as missing/type errors.
 		Status.Issue = EStructuralLinkIssue::InvalidSourceScope;
 		if (!Layers.IsValidIndex(DestinationLayerIndex)) { return Reject(EStructuralLinkIssue::MissingLayer); }
-		// Shelf endpoints are classified by ClassifyShelfSourceReference and remain unavailable to
-		// structural modules until producer scheduling exists; never reinterpret them as layers.
-		if (Reference.IsShelfSource()) { return Reject(EStructuralLinkIssue::WrongSourceKind); }
 		if (!Reference.SourceLayerId.IsValid() || !Reference.SourceChildId.IsValid())
 		{
 			return Reject(EStructuralLinkIssue::Unset);

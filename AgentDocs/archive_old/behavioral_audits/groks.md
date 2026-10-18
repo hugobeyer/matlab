@@ -69,7 +69,7 @@ UMixtormatMaterial
 
 Gather (game thread) → RDG passes (render thread):
 
-1. Demanded Sources shelf producers → `PublishedFieldOutputs`
+1. Published field producers → `PublishedFieldOutputs`
 2. Per layer: masks, IDs, then if `bGenerator` → `AddGeneratorLayerPasses`
 3. Walk children in order; maintain **signed running height** from zero
 4. StructuralWarp / HeightPush run at authored position; accumulate displacement/shift keyed by **target** child index
@@ -110,7 +110,7 @@ References carry owner kind (Layer / Shelf), GUIDs, output name, and flow-specif
 | **Fold / Bend** | Partial | `GeneratorFlowBend`, Breakup Fold params; no standalone Fold tool | Bend noise on flow; Breakup fold | **Not** a full Fold behavior yet |
 | **Curl / noise deformation** | Partial | Noise gradient publish; FlowWarp noise; no dedicated Curl field | Vector from noise | **New field producer** needed for Curl |
 | **Masks on modules** | Implemented | ScopeOwner under Push/Warp; `HasScopedMasks` | Gate displacement/shift | **Reuse** for field/behavior gates |
-| **Sources shelf** | Implemented | `EMixtormatOutputReferenceOwnerKind::Shelf`; demand-driven gather | Producers publish before layer loop | **Reuse** for external field sources |
+| **Standalone sources** | Retired | Retired in unified architecture | Producers publish before layer loop | **Retired** |
 | **Published output refs** | Implemented | `FMixtormatOutputReference` | Typed, enabled, shelf/layer | **Shared infrastructure** for V2 fields |
 | **Parameter Follow/Link/Driver** | Implemented | `MixtormatParameterBinding`, drivers on flow amount etc. | Bindings on children | **Retain** unchanged |
 | **Group expansion** | Implemented | `BuildEffectiveLayers` | Flat effective list | **Retain**; nesting must expand |
@@ -276,7 +276,7 @@ All must stay compatible with the compact dark dock-only Layers stack (AGENTS.md
 | Flow Warp (layer) | Outside generator Behavior system | **Retain separately** |
 | HeightSource / WarpSource | Field Source / Instance on generator | Unchanged |
 | Scoped masks under modules | Mask on behavior | Unchanged ScopeOwner |
-| Sources shelf | Field Source (Shelf) | Unchanged |
+| Standalone sources | Field Source | Retired |
 | Instances / clipboard / groups | Same GUID rules | **No change** to remapping |
 | Breakup Fold params | Not Wrinkle | Leave until Wrinkle exists |
 | Wrinkle prototypes | Future Behavior Wrinkle | New child type **appended** only when ready |

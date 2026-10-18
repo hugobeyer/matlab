@@ -65,7 +65,6 @@ namespace MixtormatChildScope
 	FBehaviorInputStatus ValidateBehaviorInputs(
 		const TArray<FMixtormatLayer>& EffectiveLayers,
 		const int32 LayerIndex, const int32 BehaviorChildIndex,
-		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatLayer* ResolvedLayer)
 	{
 		FBehaviorInputStatus Result;
@@ -182,23 +181,6 @@ namespace MixtormatChildScope
 						? EMixtormatPublishedFieldKind::SDF
 						: EMixtormatPublishedFieldKind::ScalarSigned);
 			if (!bKindCorrect) { return EBehaviorInputIssue::WrongFieldKind; }
-			if (Ref.IsShelfSource())
-			{
-				// The current Influence gather supports ordered layer fields only.
-				// Report shelf Influence as unavailable rather than validating a source
-				// that the renderer cannot bind.
-				if (bInfluence || Behavior.Type == EMixtormatBehaviorType::Carve)
-				{
-					return EBehaviorInputIssue::InvalidPublishedSource;
-				}
-				const auto ShelfStatus = MixtormatOutputReferences::ClassifyShelfSourceReference(Sources, Ref);
-				if (ShelfStatus.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
-				{
-					return EBehaviorInputIssue::InvalidPublishedSource;
-				}
-				Result.bShelfSource = true;
-				return EBehaviorInputIssue::None;
-			}
 			// Generic Scalar01 is not a generator Height/Warp socket. Validate it
 			// through the normal published-field dependency rules instead.
 			int32 Index = (bInfluence || (!bDirection

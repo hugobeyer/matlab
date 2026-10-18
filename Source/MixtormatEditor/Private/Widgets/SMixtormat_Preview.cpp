@@ -316,7 +316,7 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 {
 	FMixtormatChildPreviewTarget Target;
 	Target.Kind = EMixtormatPreviewOutputKind::Mask;
-	if (!Address.OwnerId.IsValid() || Address.OwnerType == EMixtormatChildOwnerType::Source)
+	if (!Address.OwnerId.IsValid())
 	{
 		return Target;
 	}

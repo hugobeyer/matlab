@@ -227,19 +227,8 @@ void UMixtormatMaterial::PostLoad()
 	Super::PostLoad();
 	// Layer identity first: group validation reconciles group children against the layer child
 	// IDs, so those have to be settled before it looks at them.
-	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups, Sources);
+	MixtormatParameterBinding::EnsureStableIds(Layers, LayerGroups);
 	MixtormatLayerGroups::ValidateGroups(Layers, LayerGroups);
-	// A source is not a layer container. Its root generator is implicit at position zero, and the
-	// additive OwnedChildren array holds only direct children of that root. Normalise the persisted
-	// scopes here so no source tool can accidentally claim a layer/group or sibling as its owner.
-	for (FMixtormatSourceEntry& Source : Sources)
-	{
-		Source.Child.ScopeOwnerChildId.Invalidate();
-		for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
-		{
-			OwnedChild.ScopeOwnerChildId = Source.Child.ChildId;
-		}
-	}
 	const auto SanitizeChild = [](FMixtormatLayerChild& Child)
 	{
 		Child.Mask.Shaping.CurveBias.Sanitize();
@@ -255,14 +244,6 @@ void UMixtormatMaterial::PostLoad()
 	for (FMixtormatLayerGroup& Group : LayerGroups)
 	{
 		for (FMixtormatLayerChild& Child : Group.Children) { SanitizeChild(Child); }
-	}
-	for (FMixtormatSourceEntry& Source : Sources)
-	{
-		SanitizeChild(Source.Child);
-		for (FMixtormatLayerChild& OwnedChild : Source.OwnedChildren)
-		{
-			SanitizeChild(OwnedChild);
-		}
 	}
 }
 

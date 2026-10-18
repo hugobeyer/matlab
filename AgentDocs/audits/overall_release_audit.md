@@ -55,7 +55,7 @@
 - **PERF-01:** ~11 validation-only full-res clears every compose (`MixtormatGpuComposePipeline.cpp` L419–614). *Confirmed presence.*
 - **MAINT-01:** Dead competing preview impl `Services\MixtormatLayerPreview.*` (no external callers). *Confirmed.*
 - **MAINT-02 / COMP-05:** `FILE_MAP.md` line anchors off by 270–516 lines; `ARCHITECTURE.md` compose-order wrong (Grade is in-composite, Runoff pre-composite). *Confirmed.*
-- **UI-05/06/07/08:** hardcoded style literals; inspector placement/tab state not persisted (gallery is); Sources shelf has no reorder; `I` hotkey undiscoverable. *Confirmed.*
+- **UI-05/06/07/08:** hardcoded style literals; inspector placement/tab state not persisted (gallery is); `I` hotkey undiscoverable. *Confirmed.*
 
 ---
 

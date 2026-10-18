@@ -75,48 +75,11 @@ width; producer math and feature enumeration are unchanged.
 `MixtormatLayerGroups::BuildEffectiveLayers` before anything else, so every pass
 sees a flat array of the same length and order.
 
-## Sources shelf producers
-
-`RequestCompose` also takes the document's `Sources`. Only **demanded** sources
-evaluate: `CollectDemandedShelfSources` (`Compositing/MixtormatSourceGather.*`)
-seeds from generator `HeightSource`/`WarpSource` inputs and enabled masks bound to shelf Noise `Value`, then closes the set over
-producer-to-producer references and returns it in **dependency order**
-(a producer always follows the sources it reads). Shelf array order is
-organisational only and never affects scheduling or results.
-
-`GatherSourceProducers` gathers each demanded entry as an explicitly source-owned
-producer (`FLayerRenderData::bIsShelfSource` / `SourceShelfId`, registry address
-`SourceId` tagged `EMixtormatOutputReferenceOwnerKind::Shelf` via `PublishedKey`) --
-never a synthetic material layer. Producers are gathered uncached, with
-Follow/Link values resolved from real SourceId/ChildId parameter addresses in a
-transient producer copy; references to external material-stack layers remain
-ineligible for shelf producers.
-
-On the render thread the producer section runs ahead of the layer loop and only
-publishes: `AddRegionProducerPasses` + `AddGeneratorLayerPasses` fill
-`Ctx.PublishedFieldOutputs` under `{SourceId, 0, OutputName}` (owner Shelf).
-Producers never composite, never touch the output targets, and always run ahead of
-the stack. Consumer input keys resolve through `ClassifyShelfSourceReference`,
-which rejects a switched-off reference (`DisabledReference`), any kind outside the
-shelf consumer contract -- ScalarSigned / Flow / UVMap (`UnsupportedOutputKind`)
--- and any output the named producer does not actually publish
-(`UnpublishedOutput`, via `GeneratorPublishesField`), alongside the existing
-malformed/disabled/missing endpoint checks; those stay unavailable and never fall
-back to a layer.
-
-The graph is a DAG, not a position rule: self references contribute no edge, and a
-producer that can reach itself is excluded (all cycle members dropped from the
-order), so its consumer's input resolves to nothing (a missing field is treated as
-unavailable) and no partial producer is ever emitted. A producer's layer-kind
-inputs resolve against an empty effective-layer array, so a shelf source can never
-read the material stack. Structural modules and OutputReference children remain
-layer-only until their own shelf paths land.
-
 ## Gather
 
 Scoped Behavior validation follows generator ownership, not the enclosing layer
-kind. Fill and Material layers with generator modules support the same Behaviors
-as Generator layers; a Behavior still requires a valid owning generator.
+kind. Layer types are `Material` and `Fill`; generator modules live inside `FMixtormatLayer::Children`
+on either layer type (detected via `FMixtormatLayer::HasGeneratorModules()`). A Behavior requires a valid owning generator.
 Layer-owned Height/Flow/UV input references and published Noise Value mask sources
 likewise validate their child producers independently of the enclosing layer kind.
 Whole-layer generator output previews also accept Fill and Material layers with
@@ -224,12 +187,7 @@ defaults. The obsolete shipped-effect texture importer has been removed.
 parameters that shape them. `ResetCaches()` on resolution change or when final
 normal settings change. `LastPrefixHashes` finds the lowest changed layer.
 
-Sources shelf content is folded into the layer-prefix seed
-(`RequestComposeInternal`), because producers run uncached and are not layers, so
-they never enter the prefix chain themselves. Whenever at least one shelf producer is demanded, all shelf entries contribute
-to that seed: CPU Follow/Link parameter dependencies can reference another entry
-without needing its GPU output, and changing it must still invalidate cached
-composites. Shelf entry order stays irrelevant. Generator module node caches stay
+Generator module node caches stay
 settings-only and are safe: they hold input-independent fields, while input
 combination is never node-cached.
 

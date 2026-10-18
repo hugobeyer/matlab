@@ -20,7 +20,6 @@ struct MIXTORMATRUNTIME_API FMixtormatBindingScope
 {
 	const TArray<FMixtormatLayer>* Layers = nullptr;
 	const TArray<FMixtormatLayerGroup>* Groups = nullptr;
-	const TArray<FMixtormatSourceEntry>* Sources = nullptr;
 
 	FMixtormatBindingScope(const TArray<FMixtormatLayer>& InLayers)
 		: Layers(&InLayers)
@@ -35,14 +34,6 @@ struct MIXTORMATRUNTIME_API FMixtormatBindingScope
 	{
 	}
 
-	FMixtormatBindingScope(
-		const TArray<FMixtormatLayer>& InLayers,
-		const TArray<FMixtormatLayerGroup>& InGroups,
-		const TArray<FMixtormatSourceEntry>& InSources)
-		: Layers(&InLayers), Groups(&InGroups), Sources(&InSources)
-	{
-	}
-
 	const TArray<FMixtormatLayer>& GetLayers() const { return *Layers; }
 };
 
@@ -52,7 +43,6 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 {
 	TArray<FMixtormatLayer>* Layers = nullptr;
 	TArray<FMixtormatLayerGroup>* Groups = nullptr;
-	TArray<FMixtormatSourceEntry>* Sources = nullptr;
 
 	FMixtormatMutableBindingScope(TArray<FMixtormatLayer>& InLayers)
 		: Layers(&InLayers)
@@ -67,17 +57,8 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 	{
 	}
 
-	FMixtormatMutableBindingScope(
-		TArray<FMixtormatLayer>& InLayers,
-		TArray<FMixtormatLayerGroup>& InGroups,
-		TArray<FMixtormatSourceEntry>& InSources)
-		: Layers(&InLayers), Groups(&InGroups), Sources(&InSources)
-	{
-	}
-
 	operator FMixtormatBindingScope() const
 	{
-		if (Groups && Sources) { return FMixtormatBindingScope(*Layers, *Groups, *Sources); }
 		return Groups
 			? FMixtormatBindingScope(*Layers, *Groups)
 			: FMixtormatBindingScope(*Layers);
@@ -104,12 +85,6 @@ namespace MixtormatParameterBinding
 	MIXTORMATRUNTIME_API void EnsureStableIds(
 		TArray<FMixtormatLayer>& Layers,
 		TArray<FMixtormatLayerGroup>& Groups);
-	// Sources extend those same document-wide identity namespaces. Existing layer/group IDs retain
-	// precedence so adding shelf identity repair cannot retarget established material references.
-	MIXTORMATRUNTIME_API void EnsureStableIds(
-		TArray<FMixtormatLayer>& Layers,
-		TArray<FMixtormatLayerGroup>& Groups,
-		TArray<FMixtormatSourceEntry>& Sources);
 
 	// A duplicated layer/child must not share identity with its source. References inside a
 	// duplicated layer are intentionally preserved; only the duplicated objects receive new IDs.

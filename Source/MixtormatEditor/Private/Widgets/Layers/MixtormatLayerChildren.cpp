@@ -1224,27 +1224,8 @@ FMixtormatChildAddress SMixtormat::MakeGroupChildAddress(const FGuid GroupId, co
 	return Address;
 }
 
-FMixtormatChildAddress SMixtormat::MakeSourceChildAddress(const FGuid SourceId) const
-{
-	FMixtormatChildAddress Address;
-	if (const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
-		[SourceId](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == SourceId; }))
-	{
-		Address.OwnerType = EMixtormatChildOwnerType::Source;
-		Address.OwnerId = SourceId;
-		Address.ChildId = Entry->Child.ChildId;
-	}
-	return Address;
-}
-
 FMixtormatChildAddress SMixtormat::GetSelectedChildAddress() const
 {
-	// A selected source claims the address first: its lanes are cleared, so the layer/group
-	// branches below would build an invalid address and every gate would see "nothing selected".
-	if (SelectedSourceId.IsValid())
-	{
-		return MakeSourceChildAddress(SelectedSourceId);
-	}
 	const int32 ChildIndex = GetSelectedChildIndex();
 	return SelectedGroupId.IsValid() && SelectedLayerIndex == INDEX_NONE
 		? MakeGroupChildAddress(SelectedGroupId, ChildIndex)
@@ -1259,13 +1240,6 @@ TArray<FMixtormatLayerChild>* SMixtormat::ResolveContainer(const FMixtormatChild
 
 const TArray<FMixtormatLayerChild>* SMixtormat::ResolveContainer(const FMixtormatChildAddress& Address) const
 {
-	// A source owns its child outright; there is no FMixtormatLayerChild array to return, so
-	// container-mutating actions (insert/reorder/scope-owner searches) see "unavailable" and
-	// ResolveChildAt handles the Source owner itself below.
-	if (Address.OwnerType == EMixtormatChildOwnerType::Source)
-	{
-		return nullptr;
-	}
 	if (Address.OwnerType == EMixtormatChildOwnerType::Group)
 	{
 		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Address.OwnerId);
@@ -1289,22 +1263,6 @@ FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& A
 
 const FMixtormatLayerChild* SMixtormat::ResolveChildAt(const FMixtormatChildAddress& Address) const
 {
-	// A source's single child lives in its entry, not in a container array. The payload address
-	// check is the entry's own; an instance's payload is read from the original it resolves to,
-	// because the instance publishes nothing itself.
-	if (Address.OwnerType == EMixtormatChildOwnerType::Source)
-	{
-		const FMixtormatSourceEntry* Entry = WorkingSources.FindByPredicate(
-			[&Address](const FMixtormatSourceEntry& Candidate) { return Candidate.SourceId == Address.OwnerId; });
-		if (!Entry || Entry->Child.ChildId != Address.ChildId) { return nullptr; }
-		if (Entry->IsInstance())
-		{
-			const FMixtormatSourceEntry* Producer = MixtormatOutputReferences::ResolveShelfProducerEntry(
-				WorkingSources, Entry->SourceId);
-			return Producer ? &Producer->Child : nullptr;
-		}
-		return &Entry->Child;
-	}
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	if (!Container)
 	{
@@ -2399,12 +2357,6 @@ const FMixtormatCracks* SMixtormat::GetSelectedCracks() const
 // sections at the same time, which is what a forgotten one looks like.
 bool SMixtormat::HasSelectedGenerator() const
 {
-	// A selected source claims the inspector through the same category test a layer generator
-	// uses, so its parameter panel opens instead of the layer's sections.
-	if (GetSelectedSource())
-	{
-		return true;
-	}
 	const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
 	return Child && Child->Type == EMixtormatLayerChildType::Generator;
 }
@@ -2416,19 +2368,6 @@ FMixtormatGenerator* SMixtormat::GetSelectedGenerator()
 
 const FMixtormatGenerator* SMixtormat::GetSelectedGenerator() const
 {
-	// A selected Sources shelf entry resolves its own generator payload, so the generator
-	// parameter panels serve sources through this same accessor. An instance shares the
-	// original's producer and parameters, so its panel shows and edits that original -- the
-	// thing the instance actually reads -- and a broken link shows nothing.
-	if (const FMixtormatSourceEntry* Selected = GetSelectedSource())
-	{
-		const FMixtormatSourceEntry* Source = Selected->IsInstance()
-			? MixtormatOutputReferences::ResolveShelfProducerEntry(WorkingSources, Selected->SourceId)
-			: Selected;
-		if (!Source) { return nullptr; }
-		return Source->Child.Type == EMixtormatLayerChildType::Generator
-			? &Source->Child.Generator : nullptr;
-	}
 	if (const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, GetSelectedChildIndex()))
 	{
 		return Child->Type == EMixtormatLayerChildType::Generator ? &Child->Generator : nullptr;

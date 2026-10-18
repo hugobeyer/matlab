@@ -738,7 +738,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 	float Amount = 1.0f;
 };
 
-// Which scalar height a Color Ramp module reads. Serialized by value: append, never reorder.
+// Which scalar field a Color Ramp module reads. Serialized by value: append, never reorder.
 UENUM(BlueprintType)
 enum class EMixtormatColorRampSource : uint8
 {
@@ -746,11 +746,17 @@ enum class EMixtormatColorRampSource : uint8
 	GeneratorRunning UMETA(DisplayName = "Generator Height"),
 	// An earlier module in this layer, by child id. A missing or later reference reads the
 	// running height rather than failing.
-	ModuleRef UMETA(DisplayName = "Module"),
+	ModuleRef UMETA(DisplayName = "Module Height"),
 	// The layer's own input height, resolved before any generator module runs.
 	LayerHeight UMETA(DisplayName = "Layer Height"),
 	// The accumulated height composited below this layer. Empty on the bottom layer.
-	CompositeBelow UMETA(DisplayName = "Composite Below")
+	CompositeBelow UMETA(DisplayName = "Composite Below"),
+	// Flow speed (magnitude of the published 2D flow vector).
+	FlowMagnitude UMETA(DisplayName = "Flow Magnitude"),
+	// Flow direction angle mapped from [-pi, pi] to [0..1].
+	FlowAngle UMETA(DisplayName = "Flow Angle"),
+	// Scalar Value output from an earlier Noise module.
+	NoiseValue UMETA(DisplayName = "Noise Value")
 };
 
 // A Generator-layer sublayer that maps the running signed height through a reusable colour ramp

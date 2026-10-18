@@ -191,9 +191,6 @@ private:
 		// Groups are part of the same edit as the layers they hold -- membership lives on the
 		// layer, so restoring one without the other leaves a layer in a group that is not there.
 		TArray<FMixtormatLayerGroup> Groups;
-		// Sources shelf entries ride the same edit: they are document data, and an undo that
-		// restored layers but not sources would resurrect a deleted source or lose a new one.
-		TArray<FMixtormatSourceEntry> Sources;
 		bool bRotateUV90 = false;
 		FMixtormatFinalSettings FinalSettings;
 	};
@@ -310,11 +307,6 @@ private:
 	// True when the selected child is an instance whose source is (OwnerId, ChildId).
 	bool IsSourceOfSelectedInstance(const FGuid& OwnerId, const FGuid& ChildId) const;
 	void InitializeNewLayer(FMixtormatLayer& Layer, EMixtormatLayerType LayerType, int32 LayerNumber) const;
-	FReply AddGeneratorLayer(EMixtormatGeneratorType Type);
-	// Creation-kind entry so the Flow preset (same Noise generator, different defaults) can
-	// share the Add menu without a second generator type.
-	FReply AddGeneratorLayerCreation(EMixtormatChildCreation Kind);
-	TSharedRef<SWidget> BuildAddGeneratorLayerMenu();
 	FReply NewWorkingMaterial();
 	FReply OpenWorkingMaterial();
 	FReply SaveWorkingMaterial();
@@ -393,8 +385,6 @@ private:
 	// clipboard and instance placement now use.
 	FMixtormatChildAddress MakeChildAddress(int32 LayerIndex, int32 ChildIndex) const;
 	FMixtormatChildAddress MakeGroupChildAddress(FGuid GroupId, int32 ChildIndex) const;
-	// A Sources shelf entry's address: OwnerId is the entry's SourceId, ChildId its child's.
-	FMixtormatChildAddress MakeSourceChildAddress(FGuid SourceId) const;
 	FMixtormatChildAddress GetSelectedChildAddress() const;
 	// The child array an address names -- WorkingLayers[x].Children or a group's shared Children --
 	// so every clipboard/placement operation below reads and writes through one lookup rather than
@@ -647,8 +637,6 @@ private:
 	bool HasSelectedGenerator() const;
 	FMixtormatGenerator* GetSelectedGenerator();
 	const FMixtormatGenerator* GetSelectedGenerator() const;
-	// NOTE: with a Sources shelf entry selected, this resolves the source's generator payload, so
-	// the generator parameter panels serve sources through the same accessors.
 
 	FReply AddRampIdToLayer(int32 LayerIndex);
 
@@ -833,9 +821,6 @@ private:
 	static bool AreLayerStacksEqual(
 		const TArray<FMixtormatLayer>& A,
 		const TArray<FMixtormatLayer>& B);
-	static bool AreSourcesEqual(
-		const TArray<FMixtormatSourceEntry>& A,
-		const TArray<FMixtormatSourceEntry>& B);
 	static bool HaveSameLayerStructure(
 		const TArray<FMixtormatLayer>& A,
 		const TArray<FMixtormatLayer>& B);
@@ -1535,9 +1520,6 @@ private:
 	void PersistGalleryPinState();
 	FReply ToggleLeftPanelCollapsed();
 	FReply ToggleInspectorCollapsed();
-	// Sources shelf expansion. UI only: closing the shelf disables nothing and never reaches the
-	// document.
-	void ToggleSourcesExpanded();
 	// Inspector overlay uses shared geometry and drag/resize helpers.
 	// Layers always remain docked in the left-column page switcher.
 	FVector2D GetPreviewViewportBounds() const;
@@ -1549,38 +1531,6 @@ private:
 	TSharedRef<SWidget> BuildUserLibraryPage();
 	TSharedRef<SWidget> BuildSurfaceList();
 	TSharedRef<SWidget> BuildLayerStackPanel();
-	// The Sources shelf: the collapsible list of reusable outputs below the layer rows.
-	TSharedRef<SWidget> BuildSourcesShelf();
-	// Shelf rows, the Add Source menu and the source actions. Authoring only: sources do not
-	// evaluate or connect yet, so no action here touches the render.
-	void RebuildSourcesList();
-	TSharedRef<SWidget> BuildAddSourcesMenu();
-	TSharedRef<SWidget> BuildSourceContextMenu(const FGuid SourceId);
-	FReply AddSource(const EMixtormatGeneratorType Kind);
-	// A Noise source configured for coverage -- the mask-consumable scalar families -- named as a
-	// Mask rather than a Noise generator, so the reusable mask library starts one click away.
-	FReply AddMaskSource();
-	// Independent copy of a source (fresh identity, owned references remapped) or of the producer
-	// it links to when it is an instance. Returns the new entry's id; no history or UI side effects.
-	FGuid AppendSourceCopy(const FMixtormatSourceEntry& Source);
-	// Linked instance of an existing producer entry. The instance publishes nothing of its own and
-	// resolves to the original for evaluation. Invalid return when the producer cannot resolve.
-	FGuid AppendSourceInstance(const FGuid& ProducerSourceId);
-	// Break Instance on a shelf entry: the entry stops following its original and keeps the values
-	// it is showing as its own. SourceId and root ChildId are preserved, so every reference to the
-	// entry stays valid. False when the entry is not a resolvable instance.
-	bool BreakSourceInstance(const FGuid& SourceId);
-	// Break Instance at one consumer: duplicates the producer a shelf pair resolves to and returns
-	// the copy's addressing so the caller can repoint only its own reference. Other consumers keep
-	// reading the original. False when the pair does not resolve to an enabled producer.
-	bool LocalizeShelfLink(const FGuid& SourceShelfId, FGuid& OutSourceId, FGuid& OutChildId);
-	// The shared tail of every Sources edit: history, dirty flag, status text, list refresh.
-	void CommitSourcesEdit(const FGuid& SelectSourceId);
-	FReply DeleteSource(const FGuid SourceId);
-	FReply RenameSource(const FGuid SourceId, const FText NewName);
-	void SelectSource(const FGuid SourceId);
-	FMixtormatSourceEntry* GetSelectedSource();
-	const FMixtormatSourceEntry* GetSelectedSource() const;
 	TSharedRef<SWidget> BuildLayerRow(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerThumbnail(int32 LayerIndex);
 	TSharedRef<SWidget> BuildLayerChildIcon(int32 LayerIndex, int32 ChildIndex);
@@ -1741,10 +1691,6 @@ private:
 	TSharedPtr<SVerticalBox> UserLibraryListBox;
 	TSharedPtr<SVerticalBox> LayerListBox;
 	TSharedPtr<SScrollBox> LayerScrollBox;
-	TSharedPtr<SVerticalBox> SourcesListBox;
-	// The Add Source menu's anchor, so its button can open it and the menu can close itself after
-	// a successful add.
-	TSharedPtr<SMenuAnchor> AddSourceAnchor;
 	TSharedPtr<SWrapBox> MaskListBox;
 	TSharedPtr<STextBlock> SelectedSurfaceText;
 	TSharedPtr<STextBlock> SelectedIdentityText;
@@ -1770,16 +1716,7 @@ private:
 	// The live rows, so F2 can reach the one the selection names. Weak: RebuildLayerList throws
 	// the widgets away and builds new ones on every change.
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerRow>> LayerRowWidgets;
-	TMap<FGuid, TWeakPtr<class SMixtormatSourceRow>> SourceRowWidgets;
 	TMap<FGuid, TWeakPtr<class SMixtormatLayerGroupRow>> GroupRowWidgets;
-	// The selected Sources shelf entry, by identity like every other selection. Selecting a
-	// source clears the layer and group selection, so the inspector has one subject.
-	FGuid SelectedSourceId;
-	TOptional<FMixtormatSourceEntry> SourceClipboard;
-	// Copy as Instance: the resolved producer an instance paste will link to. Separate from the
-	// payload clipboard because the two pastes mean different things -- a copy is independent, a
-	// link shares the original's producer.
-	TOptional<FGuid> SourceInstanceClipboard;
 	TSet<FGuid> ExpandedLayerIds;
 	TSet<FMixtormatChildAddress> CollapsedGeneratorAddresses;
 	TMap<FMixtormatChildAddress, TWeakPtr<SWidget>> ChildRowWidgets;
@@ -1787,9 +1724,6 @@ private:
 	TSet<FMixtormatChildAddress> AmbiguousChildRowAddresses;
 	// Collapsed groups hide their members. UI only -- it never reaches the asset or the render.
 	TSet<FGuid> CollapsedGroupIds;
-	// Sources shelf expansion. UI only, like the group collapse set: closing the shelf disables
-	// nothing and never reaches the asset.
-	bool bSourcesExpanded = false;
 	// Selecting a group clears the layer selection and the other way round, so the inspector
 	// always has exactly one subject.
 	FGuid SelectedGroupId;
@@ -1802,7 +1736,7 @@ private:
 	FGuid SelectionAnchorLayerId;
 	// Group-child multi-select, the same pattern as SelectedLayerIds but for a group's shared
 	// stack. Only meaningful while SelectedGroupId is valid; cleared whenever the selection
-	// moves to a layer, another group, or a source.
+	// moves to a layer or another group.
 	TSet<FGuid> SelectedGroupChildIds;
 	// The group-child anchor for shift-extend, same convention as SelectionAnchorLayerId.
 	FGuid SelectionAnchorGroupChildId;
@@ -1813,10 +1747,6 @@ private:
 	TArray<FMixtormatLayer> SavedLayers;
 	TArray<FMixtormatLayerGroup> WorkingLayerGroups;
 	TArray<FMixtormatLayerGroup> SavedLayerGroups;
-	// The Sources shelf's document mirror, kept apart from the compositing stack on purpose:
-	// nothing that walks WorkingLayers may see a source as a layer.
-	TArray<FMixtormatSourceEntry> WorkingSources;
-	TArray<FMixtormatSourceEntry> SavedSources;
 	TArray<FEditHistoryState> UndoHistory;
 	TArray<FEditHistoryState> RedoHistory;
 	TArray<FNumericResetBinding> NumericResetBindings;

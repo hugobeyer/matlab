@@ -1484,32 +1484,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpSourceMenu()
 		}
 	}
 
-	// Sources shelf producers are separately addressed and evaluated before layers.
-	for (const FMixtormatSourceEntry& Shelf : WorkingSources)
-	{
-		if (Shelf.Child.Type != EMixtormatLayerChildType::Generator) { continue; }
-		for (const EMixtormatPublishedFieldKind Kind : {
-			EMixtormatPublishedFieldKind::Flow, EMixtormatPublishedFieldKind::UVMap})
-		{
-			FMixtormatOutputReference Ref;
-			Ref.OwnerKind = EMixtormatOutputReferenceOwnerKind::Shelf;
-			Ref.SourceShelfId = Shelf.SourceId;
-			Ref.SourceChildId = Shelf.Child.ChildId;
-			Ref.Kind = Kind;
-			Ref.OutputName = Kind == EMixtormatPublishedFieldKind::Flow
-				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV"));
-			const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(
-				WorkingSources, Ref);
-			if (Status.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
-			{
-				continue;
-			}
-			Menu.Item(FText::Format(LOCTEXT("BehaviorWarpShelfSource", "Sources / {0} / {1}"),
-				Shelf.DisplayName, FText::FromName(Ref.OutputName)),
-				MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }));
-		}
-	}
 	return Menu.Build();
 }
 
@@ -1733,13 +1707,10 @@ void SMixtormat::AddBehaviorFieldCompositionRows(
 				const bool bAvailable = Ref.HasSource()
 					&& Ref.Kind == EMixtormatPublishedFieldKind::ScalarSigned
 					&& OwnerIndex != INDEX_NONE
-					&& (Ref.IsShelfSource()
-						? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
-							== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
-						: (MixtormatOutputReferences::ResolveGeneratorInputSource(
-							WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE
-							|| MixtormatOutputReferences::ResolveSource(
-								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE));
+					&& (MixtormatOutputReferences::ResolveGeneratorInputSource(
+						WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE
+						|| MixtormatOutputReferences::ResolveSource(
+							WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
 				return bAvailable ? FText::FromName(Ref.OutputName)
 					: LOCTEXT("BehaviorPushMissingSource", "Source unavailable");
 			}
@@ -1939,19 +1910,16 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 						const int32 OwnerIndex = ChildIndex != INDEX_NONE
 							? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
 								WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
-						const bool bAvailable = OwnerIndex != INDEX_NONE && (Ref.IsShelfSource()
-							? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
-								== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
-							: MixtormatOutputReferences::ResolveGeneratorInputSource(
-								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
+						const bool bAvailable = OwnerIndex != INDEX_NONE
+							&& MixtormatOutputReferences::ResolveGeneratorInputSource(
+								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 						if (!bAvailable)
 						{
 							return FText::Format(LOCTEXT("BehaviorWarpUnavailableSource", "Unavailable / {0}"),
 								FText::FromName(Ref.OutputName));
 						}
 						return FText::Format(LOCTEXT("BehaviorWarpSourceChip", "{0} / {1}"),
-							Ref.IsShelfSource() ? LOCTEXT("BehaviorWarpShelfChip", "Sources")
-								: LOCTEXT("BehaviorWarpLayerChip", "Layer"),
+							LOCTEXT("BehaviorWarpLayerChip", "Layer"),
 							FText::FromName(Ref.OutputName));
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorWarpSourceMenu)),
 					LOCTEXT("BehaviorWarpDirectionHint", "Completed Flow or lifted UV Map from an earlier source."))
@@ -2176,32 +2144,6 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 		}
 	}
 
-	// Sources shelf producers are separately addressed and evaluated before layers.
-	for (const FMixtormatSourceEntry& Shelf : WorkingSources)
-	{
-		if (Shelf.Child.Type != EMixtormatLayerChildType::Generator) { continue; }
-		for (const EMixtormatPublishedFieldKind Kind : {
-			EMixtormatPublishedFieldKind::Flow, EMixtormatPublishedFieldKind::UVMap})
-		{
-			FMixtormatOutputReference Ref;
-			Ref.OwnerKind = EMixtormatOutputReferenceOwnerKind::Shelf;
-			Ref.SourceShelfId = Shelf.SourceId;
-			Ref.SourceChildId = Shelf.Child.ChildId;
-			Ref.Kind = Kind;
-			Ref.OutputName = Kind == EMixtormatPublishedFieldKind::Flow
-				? FName(TEXT("FlowDirection")) : FName(TEXT("WarpedUV"));
-			const auto Status = MixtormatOutputReferences::ClassifyShelfSourceReference(
-				WorkingSources, Ref);
-			if (Status.Issue != MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated)
-			{
-				continue;
-			}
-			Menu.Item(FText::Format(LOCTEXT("BehaviorDeformShelfSource", "Sources / {0} / {1}"),
-				Shelf.DisplayName, FText::FromName(Ref.OutputName)),
-				MixtormatIcons::Generator(),
-				FSimpleDelegate::CreateLambda([Assign, Ref]() { Assign(&Ref); }));
-		}
-	}
 	return Menu.Build();
 }
 
@@ -2293,19 +2235,16 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 						const int32 OwnerIndex = ChildIndex != INDEX_NONE
 							? MixtormatChildScope::ResolveBehaviorGeneratorIndex(
 								WorkingLayers[LayerIndex].Children, ChildIndex) : INDEX_NONE;
-						const bool bAvailable = OwnerIndex != INDEX_NONE && (Ref.IsShelfSource()
-							? MixtormatOutputReferences::ClassifyShelfSourceReference(WorkingSources, Ref).Issue
-								== MixtormatOutputReferences::EShelfSourceReferenceIssue::Unevaluated
-							: MixtormatOutputReferences::ResolveGeneratorInputSource(
-								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE);
+						const bool bAvailable = OwnerIndex != INDEX_NONE
+							&& MixtormatOutputReferences::ResolveGeneratorInputSource(
+								WorkingLayers, LayerIndex, OwnerIndex, Ref) != INDEX_NONE;
 						if (!bAvailable)
 						{
 							return FText::Format(LOCTEXT("BehaviorDeformUnavailableSource", "Unavailable / {0}"),
 								FText::FromName(Ref.OutputName));
 						}
 						return FText::Format(LOCTEXT("BehaviorDeformSourceChip", "{0} / {1}"),
-							Ref.IsShelfSource() ? LOCTEXT("BehaviorDeformShelfChip", "Sources")
-								: LOCTEXT("BehaviorDeformLayerChip", "Layer"),
+							LOCTEXT("BehaviorDeformLayerChip", "Layer"),
 							FText::FromName(Ref.OutputName));
 					}), FOnGetContent::CreateSP(this, &SMixtormat::BuildBehaviorDeformSourceMenu)),
 					LOCTEXT("BehaviorDeformDirectionHint", "Completed Flow or lifted UV Map from an earlier source. Deform resamples native height only, leaving IDs and coverage fixed."))
@@ -2820,7 +2759,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
 		{
 			if (bFilterByOrder && Index >= SelfIndex) { break; }
 			const FMixtormatLayerChild& Child = Children[Index];
-			if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+			const bool bIsGeneratorOrBoolean = Child.Type == EMixtormatLayerChildType::Generator
+				|| Child.Type == EMixtormatLayerChildType::Boolean;
+			const bool bIsFlowBehavior = Child.Type == EMixtormatLayerChildType::Behavior
+				&& (Child.Behavior.Type == EMixtormatBehaviorType::FlowField
+					|| Child.Behavior.Type == EMixtormatBehaviorType::Feather);
+			if (!bIsGeneratorOrBoolean && !bIsFlowBehavior) { continue; }
 			const FGuid ChildId = Child.ChildId;
 			Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
 				FSimpleDelegate::CreateLambda([this, ChildId]()
@@ -2828,7 +2772,13 @@ TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
 					if (FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp())
 					{
 						R->SourceChildId = ChildId;
-						R->Source = EMixtormatColorRampSource::ModuleRef;
+						if (R->Source != EMixtormatColorRampSource::ModuleRef
+							&& R->Source != EMixtormatColorRampSource::FlowMagnitude
+							&& R->Source != EMixtormatColorRampSource::FlowAngle
+							&& R->Source != EMixtormatColorRampSource::NoiseValue)
+						{
+							R->Source = EMixtormatColorRampSource::ModuleRef;
+						}
 						RefreshLayeredPreview();
 						RebuildLayerList();
 					}
@@ -2864,31 +2814,22 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		LOCTEXT("ColorRampWeight", "Weight"), Ramp, &FMixtormatGeneratorHeightColorRamp::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("ColorRampWeightHint", "How strongly this ramp colors the layer's Base Color. Scoped masks under this ramp also gate its coverage.")));
 
-	// Where the ramp's scalar comes from. When scoped under a Generator or Boolean, it maps that
-	// parent's height automatically; when unscoped, Source selects the input field.
-	const auto IsScopedRamp = [this]()
-	{
-		const FMixtormatLayerChild* Selected = ResolveChildAt(GetSelectedChildAddress());
-		return Selected && Selected->ScopeOwnerChildId.IsValid();
-	};
-	const auto RampSourceIs = [Ramp, IsScopedRamp](const EMixtormatColorRampSource Source)
+	// Where the ramp's scalar comes from. Source is always selectable even when scoped under a
+	// parent module, and Module chip is shown whenever Source reads a specific module.
+	const auto RampUsesModuleTarget = [Ramp]()
 	{
 		const FMixtormatGeneratorHeightColorRamp* R = Ramp();
-		return R && !IsScopedRamp() && R->Source == Source;
+		return R && (R->Source == EMixtormatColorRampSource::ModuleRef
+			|| R->Source == EMixtormatColorRampSource::FlowMagnitude
+			|| R->Source == EMixtormatColorRampSource::FlowAngle
+			|| R->Source == EMixtormatColorRampSource::NoiseValue);
 	};
 	const TSharedRef<SVerticalBox> InputCard = AddCard(Panel, LOCTEXT("ColorRampCardInput", "INPUT"));
 	AddSliderRow(InputCard,
-		SNew(SBox)
-		.Visibility_Lambda([IsScopedRamp]()
-		{
-			return IsScopedRamp() ? EVisibility::Collapsed : EVisibility::Visible;
-		})
-		[
-			MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
-				LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
-				LOCTEXT("ColorRampSourceHint", "Which height feeds the ramp: the running generator chain, an earlier module, this layer's input, or the height composited below this layer."),
-				FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); }))
-		]);
+		MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorRampSource>(
+			LOCTEXT("ColorRampSource", "Source"), Ramp, &FMixtormatGeneratorHeightColorRamp::Source,
+			LOCTEXT("ColorRampSourceHint", "Which scalar feeds the ramp: running height, an earlier module's height, layer input height, composite below, flow magnitude/angle, or noise value."),
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); RebuildLayerList(); })));
 	AddSliderRow(InputCard, MixtormatRow::MakePair(
 		MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampNormalize", "Normalize"), Ramp, &FMixtormatGeneratorHeightColorRamp::bNormalizeInput,
@@ -2903,9 +2844,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 			LOCTEXT("ColorRampInputOffset", "Offset"), Ramp, &FMixtormatGeneratorHeightColorRamp::InputOffset, -1.0, 1.0, 0.0, 0.01)));
 	AddSliderRow(InputCard,
 		SNew(SBox)
-		.Visibility_Lambda([RampSourceIs]()
+		.Visibility_Lambda([RampUsesModuleTarget]()
 		{
-			return RampSourceIs(EMixtormatColorRampSource::ModuleRef)
+			return RampUsesModuleTarget()
 				? EVisibility::Visible : EVisibility::Collapsed;
 		})
 		[
@@ -2915,15 +2856,27 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 					TAttribute<FText>::CreateLambda([this]()
 					{
 						const FMixtormatGeneratorHeightColorRamp* R = GetSelectedHeightColorRamp();
-						if (!R || !R->SourceChildId.IsValid())
+						if (!R)
 						{
 							return LOCTEXT("ColorRampSourceModuleNone", "None");
+						}
+						FGuid TargetId = R->SourceChildId;
+						if (!TargetId.IsValid())
+						{
+							if (const FMixtormatLayerChild* Selected = ResolveChildAt(GetSelectedChildAddress()))
+							{
+								TargetId = Selected->ScopeOwnerChildId;
+							}
+						}
+						if (!TargetId.IsValid())
+						{
+							return LOCTEXT("ColorRampSourceModuleAuto", "Auto");
 						}
 						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
 						{
 							for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
 							{
-								if (Child.ChildId == R->SourceChildId)
+								if (Child.ChildId == TargetId)
 								{
 									return GetLayerChildName(Child);
 								}
@@ -2932,7 +2885,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 						return LOCTEXT("ColorRampSourceModuleMissing", "Missing");
 					}),
 					FOnGetContent::CreateSP(this, &SMixtormat::BuildColorRampSourceMenu)),
-				LOCTEXT("ColorRampSourceModuleHint", "The earlier module whose signed height this ramp maps. Picking one switches Source to Module; a missing reference reads the running height."))
+				LOCTEXT("ColorRampSourceModuleHint", "The earlier module whose scalar field this ramp maps. When None/Auto, uses the parent module if scoped or the nearest compatible module above."))
 		]);
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[

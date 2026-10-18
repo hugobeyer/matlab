@@ -91,29 +91,6 @@ namespace
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildAddGeneratorLayerMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	// Noise and Flow are two creation presets of one generator (FINAL_BEHAVIOR_PLAN section 12);
-	// the entries name creation kinds, so Flow carries its own defaults without a second type.
-	const TPair<FText, EMixtormatChildCreation> Entries[] = {
-
-		{LOCTEXT("AddGeneratorLayerCracks", "Cracks"), EMixtormatChildCreation::Cracks},
-		{LOCTEXT("AddGeneratorLayerRock", "Rock Formation"), EMixtormatChildCreation::RockFormation},
-		{LOCTEXT("AddGeneratorLayerPebbles", "Pebbles"), EMixtormatChildCreation::Pebbles},
-		{LOCTEXT("AddGeneratorLayerRootNetwork", "Root Network"), EMixtormatChildCreation::RootNetwork},
-		{LOCTEXT("AddGeneratorLayerCliffStrata", "Cliff Strata"), EMixtormatChildCreation::CliffStrata},
-		{LOCTEXT("AddGeneratorLayerNoise", "Noise"), EMixtormatChildCreation::Noise},
-	};
-	for (const auto& Entry : Entries)
-	{
-		Menu.Item(Entry.Key, Entry.Value == EMixtormatChildCreation::BooleanOps
-			? MixtormatIcons::BooleanOps() : MixtormatIcons::Generator(),
-			FSimpleDelegate::CreateLambda([this, Kind = Entry.Value]() { AddGeneratorLayerCreation(Kind); }));
-	}
-	return Menu.Build();
-}
-
 TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 {
 	MixtormatMenu::FBuilder Menu;

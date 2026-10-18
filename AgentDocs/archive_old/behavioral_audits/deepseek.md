@@ -40,7 +40,7 @@ Both are appended child types in `EMixtormatLayerChildType`. Their payloads are 
 
 The compositor publishes typed fields — **Flow**, **UVMap**, **ScalarSigned** — through an output‑reference system. StructuralWarp, for example, requires a source of type Flow or UVMap; it never accepts a generic Vector2. Noise publishes an explicit **FlowDirection** from its completed signed Height (unit downhill direction in destination tile UV), and does not reinterpret the heterogeneous raw Gradient.
 
-A **Sources shelf** allows generators to publish fields for other operations. Only demanded sources are evaluated; demand is seeded from generator HeightSource/WarpSource inputs and enabled masks bound to shelf Noise Value. Shelf producers run ahead of the layer loop and publish into `Ctx.PublishedFieldOutputs`. Consumer input keys resolve through `ClassifyShelfSourceReference`, which rejects unsupported output kinds.
+Generators publish completed typed fields into `Ctx.PublishedFieldOutputs` for other operations within the layer architecture.
 
 ---
 

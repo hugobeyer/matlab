@@ -6,7 +6,7 @@
 
 ## Requested changes
 
-Allow compatible **Mask** Sources to be dragged from the Sources shelf into target ownership areas in the layer tree, including compatible Behaviors, Generators, and scoped children.
+Allow compatible **Mask** Sources to be dragged into target ownership areas in the layer tree, including compatible Behaviors, Generators, and scoped children.
 
 - A **Mask** is an influence/coverage field; **Noise** is a procedural field generator that *can feed* a Mask. They are not equivalent types.
 - Drop creates a linked/reference or instance-style mask child where supported, leaving the original Source intact.
@@ -16,4 +16,4 @@ Allow compatible **Mask** Sources to be dragged from the Sources shelf into targ
 - Make compatible drop targets clear using existing hierarchy visuals; reject incompatible target types without implicit conversion to Noise.
 - Maintain source IDs, child IDs, dependency order and typed published fields; preserve updates when the Source changes.
 
-Relevant areas: `UI/Layers/SMixtormatSourcesShelf.*`, `SMixtormatSourceRow.*`, `Widgets/Layers/MixtormatLayerDragDrop.cpp`, `MixtormatMaskSources.cpp`, `MixtormatLayerChildren.cpp`, and source/reference handling in Runtime and gather. Follow `AgentDocs/UI.md` and `AgentDocs/COMPOSITION.md` for the existing Source/Mask distinction.
+Relevant areas: `Widgets/Layers/MixtormatLayerDragDrop.cpp`, `MixtormatMaskSources.cpp`, `MixtormatLayerChildren.cpp`, and source/reference handling in Runtime and gather. Follow `AgentDocs/UI.md` and `AgentDocs/COMPOSITION.md` for the existing Source/Mask distinction.

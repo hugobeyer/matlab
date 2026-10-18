@@ -39,12 +39,7 @@ namespace MixtormatLayersPrivate
 		};
 		const auto RemapOutput = [&RemapPair](FMixtormatOutputReference& Reference)
 		{
-			// A Shelf owner is external to a layer/group subtree even when its
-			// legacy unused SourceLayerId happens to match the copied owner.
-			if (Reference.IsLayerSource())
-			{
-				RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
-			}
+			RemapPair(Reference.SourceLayerId, Reference.SourceChildId);
 		};
 		for (FMixtormatLayerChild& Copy : Copies)
 		{

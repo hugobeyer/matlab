@@ -8,7 +8,6 @@
 #include "Compositing/MixtormatMaskGather.h"
 #include "Compositing/MixtormatIdGather.h"
 #include "Compositing/MixtormatGeneratorGather.h"
-#include "Compositing/MixtormatSourceGather.h"
 #include "MixtormatGpuCompositorInternal.h"
 
 #include "Async/Async.h"
@@ -105,11 +104,6 @@ public:
 		SHADER_PARAMETER(uint32, CompositionMode)
 		SHADER_PARAMETER(uint32, IsFill)
 		SHADER_PARAMETER(uint32, FillPassThrough)
-		SHADER_PARAMETER(uint32, IsGenerator)
-		SHADER_PARAMETER(uint32, GeneratorAlbedo)
-		// A generator layer only writes its albedo when the stack actually produced a colour;
-		// otherwise the composite below is kept.
-		SHADER_PARAMETER(uint32, HasGeneratorColor)
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, PreparedLayerMode)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
@@ -733,7 +727,10 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatLayerValuesCS::FParameters>();
 		Parameters->OutputSize = Request.Resolution;
 
-		Parameters->OverrideBaseColor = !Layer.bFillPassThrough && Layer.bOverrideBaseColor ? 1u : 0u;
+		const bool bHasProceduralAlbedo =
+			(Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
+		Parameters->OverrideBaseColor =
+			(!Layer.bFillPassThrough && Layer.bOverrideBaseColor && !bHasProceduralAlbedo) ? 1u : 0u;
 		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
 		Parameters->FillColor = Layer.FillColor;
 		Parameters->FillRoughness = Layer.FillRoughness;
@@ -809,17 +806,15 @@ namespace MixtormatGpuCompositor
 		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
 
 		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
-		Parameters->OverrideBaseColor = !Layer.bFillPassThrough && Layer.bOverrideBaseColor ? 1u : 0u;
+		const bool bHasProceduralAlbedo =
+			(Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
+		Parameters->OverrideBaseColor =
+			(!Layer.bFillPassThrough && Layer.bOverrideBaseColor && !bHasProceduralAlbedo) ? 1u : 0u;
 		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
 		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
 		Parameters->CompositionMode = !Layer.bFillPassThrough && Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
-		Parameters->IsGenerator = Layer.bGeneratorLayerType ? 1u : 0u;
-		Parameters->GeneratorAlbedo = Layer.bGeneratorAlbedo ? 1u : 0u;
-		// A referenced colour field resolved into LayerInputBC is also a real colour contribution;
-		// only a generator stack with no colour at all keeps the composite below.
-		Parameters->HasGeneratorColor = (LayerCtx.bGeneratorColor || LayerCtx.ReferencedColor) ? 1u : 0u;
 		Parameters->HasSurface = Layer.bHasSurface ? 1u : 0u;
 		Parameters->PreparedLayerMode = PreparedLayerMode;
 		// A generator wrote this layer's height, so it has one even with no RAMH (a fill).
@@ -1398,11 +1393,10 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	const FSoftObjectPath& OwnerPath,
-	const TArray<FMixtormatSourceEntry>& Sources)
+	const FSoftObjectPath& OwnerPath)
 {
 	return RequestCompose(Layers, TArray<FMixtormatLayerGroup>(), MoveTemp(OnComplete),
-		DebugSettings, bRotateOutput90, OwnerPath, Sources);
+		DebugSettings, bRotateOutput90, OwnerPath);
 }
 
 bool FMixtormatGpuCompositor::RequestCompose(
@@ -1411,8 +1405,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	const FSoftObjectPath& OwnerPath,
-	const TArray<FMixtormatSourceEntry>& Sources)
+	const FSoftObjectPath& OwnerPath)
 {
 	check(IsInGameThread());
 	FText ReferenceError;
@@ -1427,7 +1420,7 @@ bool FMixtormatGpuCompositor::RequestCompose(
 	}
 	TSet<const UMixtormatMaterial*> ActiveSources;
 	return RequestComposeInternal(Layers, Groups, MoveTemp(OnComplete), DebugSettings,
-		bRotateOutput90, ActiveSources, Sources);
+		bRotateOutput90, ActiveSources);
 }
 
 bool FMixtormatGpuCompositor::RequestComposeInternal(
@@ -1436,8 +1429,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	FSimpleDelegate OnComplete,
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bRotateOutput90,
-	TSet<const UMixtormatMaterial*>& ActiveSources,
-	const TArray<FMixtormatSourceEntry>& Sources)
+	TSet<const UMixtormatMaterial*>& ActiveSources)
 {
 	using namespace MixtormatGpuCompositor;
 	check(IsInGameThread());
@@ -1469,7 +1461,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	for (FMixtormatLayer& Layer : ResolvedLayers)
 	{
 		MixtormatParameterBinding::ApplyDirectReferences(
-			FMixtormatBindingScope{ExpandedOrAuthoredLayers, Groups, Sources}, Layer);
+			FMixtormatBindingScope{ExpandedOrAuthoredLayers, Groups}, Layer);
 	}
 	const TArray<FMixtormatLayer>& EffectiveLayers = ResolvedLayers;
 
@@ -1490,8 +1482,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			const FGuid TargetChildId = DebugSettings.ChildTarget.ChildId;
 			if (!TargetChildId.IsValid())
 			{
-				if (EffectiveLayers[Index].Type != EMixtormatLayerType::Generator
-					&& !EffectiveLayers[Index].HasGeneratorModules()
+				if (!EffectiveLayers[Index].HasGeneratorModules()
 					&& !DebugSettings.bMaskOverlay)
 				{
 					break;
@@ -1616,30 +1607,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	// Scheduler readiness, Pair/Min shader modes and configurable boundaries change cached results.
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
 
-	// Sources shelf producers run uncached and are not layers, so they never enter the layer prefix
-	// chain. Fold every demanded producer's content into the seed instead: editing a source then
-	// invalidates every cached layer above it, so a resumed prefix can never serve a composite that
-	// sampled a stale shelf field. The demand is collected once here and reused by the gather below.
-	TArray<FGuid> DemandedShelfSources;
-	CollectDemandedShelfSources(EffectiveLayers, Sources, DemandedShelfSources);
-	if (!DemandedShelfSources.IsEmpty())
-	{
-		// Follow/Link parameter values can come from another shelf entry even when
-		// that entry does not publish a GPU field. Hash all shelf entries whenever
-		// a producer is demanded so changing such a parameter invalidates the stack.
-		uint64 ShelfContentHash = 0;
-		for (const FMixtormatSourceEntry& Source : Sources)
-		{
-			MixtormatComposeHash::FHasher ShelfHasher;
-			ShelfHasher.Struct(FMixtormatSourceEntry::StaticStruct(), &Source);
-			// XOR: shelf arrangement is organisational only, so a reorder with identical content
-			// must not invalidate the cache, while any content change must.
-			ShelfContentHash ^= MixtormatComposeHash::Combine(
-				ShelfHasher.Get(), static_cast<uint64>(GetTypeHash(Source.SourceId)));
-		}
-		PrefixHash = MixtormatComposeHash::Combine(PrefixHash, ShelfContentHash);
-	}
-
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
 		const FMixtormatLayer& Layer = EffectiveLayers[LayerIndex];
@@ -1701,7 +1668,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					const bool bComposed = Entry->Compositor->InitializeTargets(Resolution, false)
 						&& Entry->Compositor->RequestComposeInternal(Source->Layers, Source->LayerGroups,
 							FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
-							ActiveSources, Source->Sources);
+							ActiveSources);
 					ActiveSources.Remove(Source.Get());
 					if (!bComposed)
 					{
@@ -1719,7 +1686,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				const bool bComposed = SourceCompositor.InitializeTargets(Resolution, false)
 					&& SourceCompositor.RequestComposeInternal(Source->Layers, Source->LayerGroups,
 						FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
-						ActiveSources, Source->Sources);
+						ActiveSources);
 				ActiveSources.Remove(Source.Get());
 				if (!bComposed)
 				{
@@ -1750,8 +1717,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					|| (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled);
 			}
 		}
-		const bool bGeneratorLayer = Layer.Type == EMixtormatLayerType::Generator
-			|| Layer.HasGeneratorModules();
+		const bool bGeneratorLayer = Layer.HasGeneratorModules();
 		const uint64 PlacementKey = GatherLayerPlacementKey(Layer, bGeneratorLayer);
 		for (int32 SourceChildIndex = 0; SourceChildIndex < Layer.Children.Num(); ++SourceChildIndex)
 		{
@@ -1782,14 +1748,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 			if (LayerChild.Type == EMixtormatLayerChildType::Generator)
 			{
 				GatherGeneratorChild(Data, Layer, LayerChild, SourceChildIndex,
-					bGeneratorLayer, bCacheLayers, PlacementKey, LayerIndex, EffectiveLayers, Sources);
+					bGeneratorLayer, bCacheLayers, PlacementKey, LayerIndex, EffectiveLayers);
 				continue;
 			}
 
 			if (LayerChild.Type == EMixtormatLayerChildType::Behavior)
 			{
 				GatherGeneratorBehaviorChild(Data, Layer, LayerChild, SourceChildIndex,
-					LayerIndex, EffectiveLayers, Sources);
+					LayerIndex, EffectiveLayers);
 				continue;
 			}
 
@@ -1805,7 +1771,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 			if (IsMaskGatherChild(LayerChild.Type))
 			{
-				if (!GatherMaskChild(Data, Layer, LayerChild, SourceChildIndex, EffectiveLayers, Sources))
+				if (!GatherMaskChild(Data, Layer, LayerChild, SourceChildIndex, EffectiveLayers))
 				{
 					return false;
 				}
@@ -1964,12 +1930,6 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 
 		GatherLayerFields(Data, Layer, LayerIndex, Surface, LayerNormal);
 	}
-
-	// Shelf producers gather after the stack: the stack's gather resolved its shelf input keys
-	// against the authored Sources, and this pass now materializes exactly the producers those keys
-	// demand, transitively, in dependency order -- the same set folded into the prefix seed above.
-	// Shelf order is never used and uncached by design -- see GatherSourceProducers.
-	GatherSourceProducers(Sources, DemandedShelfSources, Request.SourceProducers);
 
 	const int32 CompositedTargetIndex = Request.Layers.IsEmpty()
 		? 0

@@ -216,24 +216,18 @@ namespace MixtormatGpuCompositor
 		FGuid LayerId;
 		int32 ChildIndex = INDEX_NONE;
 		FName Output;
-		// Registry owner discriminator. Both a material layer and a Sources shelf producer are
-		// addressed by a GUID, so this makes the owner explicit rather than inferring it: a shelf
-		// field can never be mistaken for, or collide with, a layer field.
-		EMixtormatOutputReferenceOwnerKind OwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
 
 		friend bool operator==(const FPublishedMaskKey& A, const FPublishedMaskKey& B)
 		{
 			return A.LayerId == B.LayerId && A.ChildIndex == B.ChildIndex
-				&& A.Output == B.Output && A.OwnerKind == B.OwnerKind;
+				&& A.Output == B.Output;
 		}
 
 		friend uint32 GetTypeHash(const FPublishedMaskKey& Key)
 		{
 			return HashCombine(
-				HashCombine(
-					HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
-					GetTypeHash(Key.Output)),
-				GetTypeHash(static_cast<uint32>(Key.OwnerKind)));
+				HashCombine(GetTypeHash(Key.LayerId), GetTypeHash(Key.ChildIndex)),
+				GetTypeHash(Key.Output));
 		}
 	};
 
@@ -318,8 +312,6 @@ namespace MixtormatGpuCompositor
 		FGuid PublishedSourceLayerId;
 		int32 PublishedSourceChildIndex = INDEX_NONE;
 		FName PublishedSourceOutput;
-		EMixtormatOutputReferenceOwnerKind PublishedSourceOwnerKind = EMixtormatOutputReferenceOwnerKind::Layer;
-		FGuid PublishedSourceShelfId;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 		float Weight = 1.0f;
 		FVector2f Tiling = FVector2f(1.0f, 1.0f);
@@ -1327,14 +1319,7 @@ namespace MixtormatGpuCompositor
 	struct FLayerRenderData
 	{
 		FGuid LayerId;
-		// Explicit shelf ownership. Set only on the SourceProducers array: the entry is a Sources
-		// shelf producer rather than a material layer -- it is never composited, snapshotted or
-		// indexed as a layer. LayerId mirrors SourceShelfId purely as the published-field registry
-		// address, so shelf identity is never conflated with a layer when the stack is walked.
-		bool bIsShelfSource = false;
-		FGuid SourceShelfId;
 		bool bGenerator = false;
-		bool bGeneratorLayerType = false;
 		bool bGeneratorAlbedo = false;
 
 		// Hash of the layer without its children: everything a producer reading the layer's own
@@ -1429,9 +1414,7 @@ namespace MixtormatGpuCompositor
 		int32 HeightReferenceLayerIndex = INDEX_NONE;
 	};
 
-	// Builds the registry address a render layer publishes under. A material layer is tagged Layer;
-	// a Sources shelf producer tags Shelf, so a shelf field is explicitly owned and can never be
-	// read as, or matched against, a layer field. Every producer publish/lookup uses this.
+	// Builds the registry address a render layer publishes under. Every producer publish/lookup uses this.
 	inline FPublishedMaskKey PublishedKey(const FLayerRenderData& Layer,
 		const int32 ChildIndex, const FName Output)
 	{
@@ -1439,9 +1422,6 @@ namespace MixtormatGpuCompositor
 		Key.LayerId = Layer.LayerId;
 		Key.ChildIndex = ChildIndex;
 		Key.Output = Output;
-		Key.OwnerKind = Layer.bIsShelfSource
-			? EMixtormatOutputReferenceOwnerKind::Shelf
-			: EMixtormatOutputReferenceOwnerKind::Layer;
 		return Key;
 	}
 
@@ -1449,11 +1429,6 @@ namespace MixtormatGpuCompositor
 	{
 		FIntPoint Resolution = FIntPoint::ZeroValue;
 		TArray<FLayerRenderData> Layers;
-		// Explicitly source-owned producers for the demanded Sources shelf entries, run ahead of the
-		// stack in dependency order. They publish into the shared field registry keyed by the entry's
-		// SourceId and are never composited, snapshotted or cached; the stack reads them by key like
-		// any other published field.
-		TArray<FLayerRenderData> SourceProducers;
 		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> Targets;
 		FTextureRHIRef OutputBC[2];
 		FTextureRHIRef OutputN[2];

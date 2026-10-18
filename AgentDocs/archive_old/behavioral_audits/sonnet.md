@@ -41,7 +41,7 @@ The direction is right, but I'd change two assumptions.
 - `RemapCompletedGeneratorBundle` with its field-semantic descriptors (`FGeneratorBundle`, `MixtormatGpuCompositorInternal.h:1124-1190`)
 - The flow solve stages
 - Scoped masks via `AddScopedFeatureMask`
-- Output references and the Sources shelf
+- Output references
 - The slope-to-normal transform in Flow Warp (L140-152)
 - The Jacobian-fold visualizer (`MixtormatGeneratorFlow.usf:641-675`)
 

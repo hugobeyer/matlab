@@ -25,8 +25,7 @@ namespace MixtormatChildScope
 		int32 BehaviorChildIndex);
 
 	// Static V2 input validation on effective layers. No GPU dispatch or asset mutation.
-	// A published source is accepted only when the current producer resolver can
-	// address it; a shelf endpoint must pass its separate typed eligibility rules.
+	// A published source is accepted only when the current producer resolver can address it.
 	enum class EBehaviorInputIssue : uint8
 	{
 		None, InvalidOwner, Disabled, InvalidStrength, MissingInput,
@@ -39,14 +38,12 @@ namespace MixtormatChildScope
 		EBehaviorInputIssue Issue = EBehaviorInputIssue::InvalidOwner;
 		int32 GeneratorChildIndex = INDEX_NONE;
 		int32 SourceChildIndex = INDEX_NONE;
-		bool bShelfSource = false;
 		bool bCanEvaluate = false;
 	};
 
 	MIXTORMATRUNTIME_API FBehaviorInputStatus ValidateBehaviorInputs(
 		const TArray<FMixtormatLayer>& EffectiveLayers,
 		int32 LayerIndex, int32 BehaviorChildIndex,
-		const TArray<FMixtormatSourceEntry>& Sources,
 		const FMixtormatLayer* ResolvedLayer = nullptr);
 
 	// Clears ScopeOwnerChildId when ResolveOwnerIndex would return INDEX_NONE. Returns true if

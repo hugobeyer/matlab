@@ -24,8 +24,7 @@ UENUM(BlueprintType)
 enum class EMixtormatLayerType : uint8
 {
 	Material UMETA(DisplayName = "Material Layer"),
-	Fill UMETA(DisplayName = "Fill Layer"),
-	Generator UMETA(DisplayName = "Generator Layer")
+	Fill UMETA(DisplayName = "Fill Layer")
 };
 
 UENUM(BlueprintType)
@@ -381,48 +380,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerGroup
 	TArray<FMixtormatLayerChild> Children;
 };
 
-// A Sources shelf entry: one generator that publishes fields for other operations to consume.
-// It is not a layer -- it never composites into the material, and its position in the shelf is
-// organisation only, so it carries none of FMixtormatLayer's blend or surface state.
-//
-// The payload is a standard unscoped generator child rather than a bare FMixtormatGenerator, so
-// the addressing, clipboard and instance machinery that already speaks FMixtormatLayerChild keeps
-// one shape to resolve. Tools and masks owned by the source are future children scoped to that
-// child's ChildId; they are not authored yet.
-USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatSourceEntry
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	FGuid SourceId = FGuid::NewGuid();
-
-	// Shelf label. Sources are addressed by SourceId; the name is presentation.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
-	FText DisplayName;
-
-	// The source's root generator. It stays a standalone field for serialized compatibility; it is
-	// the implicit first child and never has a scope owner.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
-	FMixtormatLayerChild Child;
-
-	// Additive source-owned subtree. Entries are scoped directly to Child (the root generator),
-	// never to each other or to a layer/group child. The shelf remains non-compositing: these are
-	// persisted ownership data only until the source evaluator consumes supported tools and masks.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Source")
-	TArray<FMixtormatLayerChild> OwnedChildren;
-
-	// Linked-instance link, appended for serialized compatibility. When valid, this entry is a
-	// linked instance of that Sources entry: it shares the original's producer and parameters and
-	// publishes nothing of its own, and its Child is an addressing shell (a fresh ChildId, a
-	// default payload) rather than a snapshot that could drift from the original. A broken link
-	// (deleted original) stays broken -- nothing ever silently rebinds it.
-	UPROPERTY()
-	FGuid InstanceOfSourceId;
-
-	bool IsInstance() const { return InstanceOfSourceId.IsValid(); }
-};
-
 namespace MixtormatHue
 {
 	// Degrees of hue rotation per unit of a normalised -1..1 editor slider.
@@ -462,8 +419,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Fill")
 	bool bFillPassThrough = false;
 
-	// Generator-layer output routing. Color producers remain independent of this destination choice.
-	// On by default: a generator with a Color Ramp is expected to paint it, and the compositor
+	// Generator module colour output routing. Color producers remain independent of this destination choice.
+	// On by default: a layer with a Color Ramp is expected to paint it, and the compositor
 	// skips the write entirely when no colour is generated, so the default is safe.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator Output", meta = (DisplayName = "Albedo"))
 	bool bGeneratorAlbedo = true;
@@ -664,9 +621,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	TArray<FMixtormatLayerChild> Children;
 
 	// True when this layer owns anything the generator chain evaluates: a Generator module, a
-	// Boolean group, a height sublayer, or a Behavior. A Generator layer is one by type; a Fill
-	// or Material layer becomes one by owning modules, which is what lets the compositor run the
-	// same chain there without a second path or a separate layer type.
+	// Boolean group, a height sublayer, or a Behavior.
 	bool HasGeneratorModules() const
 	{
 		for (const FMixtormatLayerChild& Child : Children)

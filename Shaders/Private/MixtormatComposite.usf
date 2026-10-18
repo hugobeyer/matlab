@@ -68,8 +68,7 @@ float RegionValMax;
 uint ReferencedUVEnabled;
 Texture2D<float2> ReferencedUVField;
 // A referenced colour field becomes the destination layer's Base Color input when no material
-// surface is available, so Fill / Generator layers still resolve a referenced colour into their
-// Base Color.
+// surface is available, so Fill layers still resolve a referenced colour into their Base Color.
 uint ReferencedColorEnabled;
 Texture2D<float4> ReferencedColorField;
 Texture2D<uint> RegionUVIds;
@@ -108,11 +107,6 @@ uint OverrideMetallic;
 uint CompositionMode;
 uint IsFill;
 uint FillPassThrough;
-uint IsGenerator;
-uint GeneratorAlbedo;
-// A generator layer only writes its albedo when its stack produced a colour (Color Ramp or a
-// referenced colour field); without one the composite below is kept.
-uint HasGeneratorColor;
 uint HasSurface;
 // 0: direct composite, 1: prepare incoming channels, 2: composite prepared channels.
 uint PreparedLayerMode;
@@ -665,10 +659,6 @@ float SampleIncomingHeight(float2 UV)
 		: (HeightSource == 0
 			? SampleLayerSourceHeight(UV)
 			: (HeightSource == 1 ? PlacementMask : ConstantHeight));
-	if (IsGenerator != 0)
-	{
-		return SourceHeight;
-	}
 	if (DirectHeightComparison == 0 && InvertHeight != 0)
 	{
 		SourceHeight = 1.0f - SourceHeight;
@@ -711,11 +701,6 @@ float SampleIncomingHeight(float2 UV)
 
 float ApplyHeightOp(float Below, float Layer, float Occupancy)
 {
-	if (IsGenerator != 0)
-	{
-		if (HeightOp == MIXTORMAT_HEIGHT_OP_ADD) { return Below + Layer; }
-		if (HeightOp == MIXTORMAT_HEIGHT_OP_SUBTRACT) { return Below - Layer; }
-	}
 	return MixtormatApplyHeightOp(Below, Layer, Occupancy, HeightOp, HeightSoftness);
 }
 
@@ -1366,16 +1351,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			MixtormatDebugModeColor(DebugMode, DebugInputs), 1.0f);
 	}
 
-	OutputBC[DispatchThreadId.xy] = IsGenerator != 0
-			&& (GeneratorAlbedo == 0 || HasGeneratorColor == 0)
-		? PreviousBaseColor
-		: float4(ResultBaseColor, 1.0f);
-	OutputN[DispatchThreadId.xy] = IsGenerator != 0
-		? PreviousNormalEncoded
-		: float4(EncodeNormal(ResultNormal), 1.0f);
-	OutputRAM[DispatchThreadId.xy] = IsGenerator != 0
-		? PreviousPacked
-		: float4(ResultRoughness, ResultAO, ResultMetallic, ResultF0);
+	OutputBC[DispatchThreadId.xy] = float4(ResultBaseColor, 1.0f);
+	OutputN[DispatchThreadId.xy] = float4(EncodeNormal(ResultNormal), 1.0f);
+	OutputRAM[DispatchThreadId.xy] = float4(ResultRoughness, ResultAO, ResultMetallic, ResultF0);
 	// Peel relief rides on top of the layer's own height so the lip and the coverage
 	// boundary are derived from the same field, rather than the peel changing coverage
 	// while the height silently reverted to whatever sat underneath.
@@ -1387,7 +1365,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Unclipped for every layer, not only live compositions. See Final > Auto Remap Height.
 	OutputHeight[DispatchThreadId.xy] = ResultHeight;
 	// A detail layer contributes only a normal, so it puts nothing on the ground.
-	OutputOccupancy[DispatchThreadId.xy] = IsGenerator != 0 || FillPassThrough != 0
+	OutputOccupancy[DispatchThreadId.xy] = FillPassThrough != 0
 		? PreviousOccupancyValue
 		: max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
 }

@@ -15,4 +15,4 @@ Keep Sources as non-compositing document data, separate from layer stack members
 - Make Sources usable as compatible typed inputs through source-reference and mask drag/drop workflows, without turning Sources into layer children by default.
 - Retain persisted IDs, binding scopes, copy/paste remapping, and existing source dependency behavior.
 
-Relevant code: `Widgets/SMixtormat_Layers.cpp`, `UI/Layers/SMixtormatSourcesShelf.*`, `SMixtormatSourceRow.*`, `Widgets/Layers/MixtormatLayerClipboard.cpp`, and Runtime's Source entry/binding types.
+Relevant code: `Widgets/SMixtormat_Layers.cpp`, `Widgets/Layers/MixtormatLayerClipboard.cpp`, and Runtime's layer entry/binding types.

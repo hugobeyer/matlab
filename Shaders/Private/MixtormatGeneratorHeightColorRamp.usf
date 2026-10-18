@@ -21,7 +21,9 @@ float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 uint HasGate;
 uint HasPreviousColor;
+uint SourceMode;
 Texture2D<float> SourceHeight;
+Texture2D<float4> SourceFlow;
 Texture2D<float> Gate;
 Texture2D<float4> PreviousColor;
 RWTexture2D<float4> OutColor;
@@ -32,8 +34,29 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Pixel = int2(DispatchThreadId.xy);
 	if (any(Pixel >= OutputSize)) { return; }
 
-	const float H = SourceHeight.Load(int3(Pixel, 0));
-	float Coordinate = (H * 0.5f + 0.5f) * InputScale + InputOffset;
+	float UnitScalar = 0.5f;
+	if (SourceMode == 2u)
+	{
+		const float2 FlowVec = SourceFlow.Load(int3(Pixel, 0)).xy;
+		UnitScalar = length(FlowVec);
+	}
+	else if (SourceMode == 3u)
+	{
+		const float2 FlowVec = SourceFlow.Load(int3(Pixel, 0)).xy;
+		UnitScalar = any(abs(FlowVec) > 1.0e-6f)
+			? (atan2(FlowVec.y, FlowVec.x) * (0.5f / 3.14159265f) + 0.5f)
+			: 0.5f;
+	}
+	else if (SourceMode == 1u)
+	{
+		UnitScalar = SourceHeight.Load(int3(Pixel, 0));
+	}
+	else
+	{
+		const float H = SourceHeight.Load(int3(Pixel, 0));
+		UnitScalar = H * 0.5f + 0.5f;
+	}
+	float Coordinate = UnitScalar * InputScale + InputOffset;
 	if (MirrorRepeat != 0u)
 	{
 		// Triangle wave: 0,1,2 map to 0,1,0; frac also handles negative coordinates.

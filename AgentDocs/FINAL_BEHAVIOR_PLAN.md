@@ -951,7 +951,7 @@ Automatic physical erosion.
 A new generic Vector2 routing framework.
 Maintaining old and new Flow implementations in parallel indefinitely.
 
-Existing typed outputs, Instances, Sources shelf and published-output infrastructure should remain available for their other established purposes. We are removing the need to manually wire these Generator/Behavior operations, not deleting unrelated functionality.
+Existing typed outputs, Instances and published-output infrastructure should remain available for their other established purposes. We are removing the need to manually wire these Generator/Behavior operations, not deleting unrelated functionality.
 
 17. Final User Experience
 

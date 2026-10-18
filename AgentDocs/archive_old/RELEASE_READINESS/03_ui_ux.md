@@ -44,7 +44,7 @@
 - Extend the established persistence path for missing states without replacing layout behavior or resetting compiled defaults.
 - Keep UI Style reset/load semantics separate from session layout persistence.
 
-## UI-07 — Sources shelf reorder not available (P2, confirmed source)
+## UI-07 — Standalone shelf reorder (P2, retired)
 
 - Determine whether shelf order is purely organizational as specified in `AgentDocs/COMPOSITION.md`; preserve the dependency-ordered evaluation independently.
 - Reuse existing shelf row drag/reorder conventions if this remains a product priority.

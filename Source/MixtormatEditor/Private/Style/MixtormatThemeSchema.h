@@ -62,8 +62,6 @@ namespace Mixtormat
 		// one the artist is actually tuning.
 		Splitter,
 		ScrollArea,
-		SourcesShelf,
-		SourcesAddButton,
 		// The viewport hint strip: its own identity so the eye can outline it precisely
 		// instead of falling back to the whole preview.
 		HintStrip,

@@ -1,4 +1,4 @@
-﻿# Architecture Plan: Unified Layer & Module Composition Contract (V2)
+# Architecture Plan: Unified Layer & Module Composition Contract (V2)
 
 > **Goal:** Eliminate the legacy GeneratorLayer distinction, establish explicit per-channel validity/ownership across all layers, and provide typed scalar source resolution for Color Ramps without visual regressions or data loss.
 
@@ -58,10 +58,10 @@ Establish precise rules for when each channel updates OutputBC, OutputN, OutputR
 Protect all existing projects before touching shader evaluation:
 
 * **Preserve Serialized Enum:**
-  * Keep EMixtormatLayerType::Generator in C++ for deserialization.
+  * Layer types are `Material` and `Fill`; generator modules live inside `FMixtormatLayer::Children` (detected via `FMixtormatLayer::HasGeneratorModules()`).
   * Hide it from creation menus (UMETA(Hidden)).
 * **Automated Load-Time Migration (MixtormatMaterial.cpp / PostLoad):**
-  * Convert legacy EMixtormatLayerType::Generator layers to Fill or Material base containers with neutral defaults.
+  * Convert legacy generator layers to Fill or Material base containers with neutral defaults.
   * Explicitly copy existing flags: preserve GeneratorAlbedo, HeightBlend.Op, softness, and child hierarchies identically.
   * Do **not** automatically enable FillPassThrough (which alters how layers sample the substrate below).
 
@@ -86,7 +86,7 @@ Remove all type-dependent branches in C++ and shaders:
     `
 * **Compositor Parameter Binding (MixtormatGpuCompositor.cpp):**
   * Bind ContributeBaseColor, ContributeNormal, ContributeRAM, and ContributeOccupancy using the Phase 1 validity rules.
-  * Remove Parameters->IsGenerator = Layer.bGeneratorLayerType ? 1u : 0u;.
+  * Remove `Parameters->IsGenerator` and legacy generator layer type flags.
 
 ---
 

@@ -12,7 +12,7 @@
 
 | Area | Confirmed at d38dfaf | Not implemented / not established |
 |---|---|---|
-| Sources shelf | Document-backed `UMixtormatMaterial::Sources`, source rows, generator Add/Delete/Rename, inspector, save/load and undo | Field evaluation/publication, source-owned tools/masks, cross-source links, Paste as Instance, Influence Only; verify all paths at runtime |
+| Standalone sources | Retired in favor of unified layer architecture | Generators live inside Material or Fill layers |
 | Structural authoring | Target-first Warp/Height Push pickers and `Choose source later`; Advanced/Add unconnected removed | Proposed source-first Ctrl/Cmd pair workflow |
 | Color Ramp | `FMixtormatColorRamp` 8 stops, Constant/Linear/Smooth, CPU `Evaluate` + GPU `MixtormatEvalColorRamp`, 8-bit-sRGB presets converted to linear | Named shared ramp objects, links/invalid-ref repair, HDR stops, spline or OKLab |
 | Generator Height Color Ramp | Height -> published Color; optional last valid Color to `LayerInputBC` when `bGeneratorAlbedo` | No explicit blending among old generator Color results; preserve as legacy |
@@ -42,7 +42,7 @@
 
 **References:** `{OwnerKind: Layer|Shelf, OwnerGuid, ChildGuid (where applicable), OutputName, PublishedFieldKind}`. Preserve legacy Layer references with append-only serialized fields / well-defined defaults, and maintain producer completion, owner and scope checks. Invalid links have explicit unresolved/repair state, not a guessed fallback. Source/target placement and instance identity must stay separate from shared authored parameter payload.
 
-**Suggested minimal shelf data extension:** Keep `FMixtormatSourceEntry.Child` as the current root generator, append `OwnedChildren[]` containing scoped tools/masks by child GUID. Do not replace old serialized `Child` or create fake stack layers. On load and copy/paste repair both source and child IDs and check owner scopes. Evaluate producer-only generator passes without changing layer normals/albedo/composites; add placement-specific `Influence Only` for generators *inside material layers* separately.
+**Unified layer architecture:** Generators live inside `Material` or `Fill` layers (`FMixtormatLayer::Children`) rather than in a standalone shelf. Evaluate generator passes without changing layer normals/albedo/composites unless authored.
 
 **Colorize:** one *layer-owned* operation available on material/fill/generator layers and able to consume completed local or shelf fields. Shared/embedded ramp resolve to the same evaluator; source refs, normalization, range, projection, scope masks, gates, strength, blend mode, target are **consumer-local**.
 
