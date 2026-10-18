@@ -49,6 +49,7 @@ namespace MixtormatLayersPrivate
 			}
 			// Only addresses inside the copied subtree follow it; arbitrary producers stay external.
 			RemapOutput(Copy.OutputReference);
+			RemapOutput(Copy.Blur.FlowSource);
 			RemapOutput(Copy.Generator.HeightSource);
 			RemapOutput(Copy.Generator.WarpSource);
 			// Copy typed Behavior sources with the subtree rather than retaining stale child IDs.
@@ -478,7 +479,7 @@ FText SMixtormat::GetChildPasteReason(
 			? (Clipboard.Mode == EMixtormatChildClipboardMode::Instance
 				? LOCTEXT("PasteBlurInstanceReady", "Place a live Blur instance on this layer or under the selected typed owner.")
 				: LOCTEXT("PasteBlurReady", "Place a Blur copy on this layer or under the selected typed owner."))
-			: LOCTEXT("PasteBlurOwner", "Requires a Layer container or a Mask/Curvature owner, available scope depth and valid source ordering. Group roots cannot own Blur.");
+			: LOCTEXT("PasteBlurOwner", "Requires a Layer container or a Mask/Curvature/Generator/Behavior/Color Ramp owner, available scope depth and valid source ordering. Group roots cannot own Blur.");
 	}
 	if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior)
 	{

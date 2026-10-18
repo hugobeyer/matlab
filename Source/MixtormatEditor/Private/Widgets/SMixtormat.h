@@ -1636,6 +1636,9 @@ private:
 	TSharedRef<SWidget> BuildHeightBlendControls();
 	TSharedRef<SWidget> BuildLayerMaskControls();
 	TSharedRef<SWidget> BuildBlurControls();
+	TSharedRef<SWidget> BuildBlurFlowSourceMenu();
+	bool CanSelectBlurFlowSource(const FMixtormatChildAddress& Destination,
+		const FMixtormatOutputReference& Reference) const;
 	TSharedRef<SWidget> BuildGeneratedMaskControls();
 	TSharedRef<SWidget> BuildStainControls();
 	TSharedRef<SWidget> BuildRunoffControls();

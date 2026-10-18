@@ -308,12 +308,140 @@ namespace MixtormatChildScope
 		return Result;
 	}
 
+	int32 ResolveBlurFlowSource(const TArray<FMixtormatLayer>& EffectiveLayers,
+		const int32 LayerIndex, const int32 BlurChildIndex,
+		const FMixtormatOutputReference& Reference)
+	{
+		if (!Reference.bEnabled || !Reference.HasSource()
+			|| Reference.Kind != EMixtormatPublishedFieldKind::Flow
+			|| !EffectiveLayers.IsValidIndex(LayerIndex)) { return INDEX_NONE; }
+		const FMixtormatLayer& Destination = EffectiveLayers[LayerIndex];
+		if (!Destination.bEnabled || !Destination.Children.IsValidIndex(BlurChildIndex)
+			|| Destination.Children[BlurChildIndex].Type != EMixtormatLayerChildType::Blur
+			|| !Destination.Children[BlurChildIndex].Blur.bEnabled) { return INDEX_NONE; }
+
+		int32 SourceLayerIndex = INDEX_NONE;
+		TSet<FGuid> LayerIds;
+		for (int32 Index = 0; Index < EffectiveLayers.Num(); ++Index)
+		{
+			const FGuid Id = EffectiveLayers[Index].LayerId;
+			if (!Id.IsValid() || LayerIds.Contains(Id)) { return INDEX_NONE; }
+			LayerIds.Add(Id);
+			if (Id == Reference.SourceLayerId) { SourceLayerIndex = Index; }
+		}
+		if (SourceLayerIndex == INDEX_NONE || SourceLayerIndex > LayerIndex) { return INDEX_NONE; }
+		const FMixtormatLayer& SourceLayer = EffectiveLayers[SourceLayerIndex];
+		if (!SourceLayer.bEnabled) { return INDEX_NONE; }
+
+		const auto IsEnabled = [](const FMixtormatLayerChild& Child)
+		{
+			switch (Child.Type)
+			{
+			case EMixtormatLayerChildType::Generator: return Child.Generator.bEnabled;
+			case EMixtormatLayerChildType::Boolean: return Child.Boolean.bEnabled;
+			case EMixtormatLayerChildType::Behavior: return Child.Behavior.bEnabled;
+			case EMixtormatLayerChildType::Mask: return Child.Mask.bEnabled;
+			case EMixtormatLayerChildType::Effect: return Child.Effect.bEnabled;
+			case EMixtormatLayerChildType::Generated: return Child.Generated.bEnabled;
+			case EMixtormatLayerChildType::Craquelure: return Child.Craquelure.bEnabled;
+			case EMixtormatLayerChildType::ColorId: return Child.ColorId.bEnabled;
+			case EMixtormatLayerChildType::RandomId: return Child.RandomId.bEnabled;
+			case EMixtormatLayerChildType::Curvature: return Child.Curvature.bEnabled;
+			case EMixtormatLayerChildType::HeightColorRamp: return Child.HeightColorRamp.bEnabled;
+			case EMixtormatLayerChildType::Blur: return Child.Blur.bEnabled;
+			case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
+			default: return false;
+			}
+		};
+		// Reject ambiguous/malformed scopes before walking any ancestry.
+		const auto HasValidScopes = [](const TArray<FMixtormatLayerChild>& Children)
+		{
+			TSet<FGuid> Seen;
+			for (const FMixtormatLayerChild& Child : Children)
+			{
+				if (!Child.ChildId.IsValid() || Seen.Contains(Child.ChildId)
+					|| (Child.ScopeOwnerChildId.IsValid() && !Seen.Contains(Child.ScopeOwnerChildId))) { return false; }
+				Seen.Add(Child.ChildId);
+			}
+			return true;
+		};
+		if (!HasValidScopes(Destination.Children) || !HasValidScopes(SourceLayer.Children)) { return INDEX_NONE; }
+		int32 ConsumerStart = BlurChildIndex;
+		for (int32 Index = BlurChildIndex; Index != INDEX_NONE;
+			Index = ResolveOwnerIndex(Destination.Children, Index))
+		{
+			if (!IsEnabled(Destination.Children[Index])) { return INDEX_NONE; }
+			ConsumerStart = Index;
+		}
+		const int32 SourceIndex = FindIndexById(SourceLayer.Children, Reference.SourceChildId);
+		if (SourceIndex == INDEX_NONE) { return INDEX_NONE; }
+		int32 SourceRoot = SourceIndex;
+		for (int32 Index = SourceIndex; Index != INDEX_NONE;
+			Index = ResolveOwnerIndex(SourceLayer.Children, Index))
+		{
+			if (!IsEnabled(SourceLayer.Children[Index])) { return INDEX_NONE; }
+			SourceRoot = Index;
+		}
+		if (SourceLayerIndex == LayerIndex)
+		{
+			// Published producer outputs are captured only after their entire scope finishes.
+			if (SourceRoot >= ConsumerStart) { return INDEX_NONE; }
+			for (int32 Index = ConsumerStart; Index < SourceLayer.Children.Num(); ++Index)
+			{
+				for (int32 Parent = Index; Parent != INDEX_NONE;
+					Parent = ResolveOwnerIndex(SourceLayer.Children, Parent))
+				{
+					if (Parent == SourceRoot) { return INDEX_NONE; }
+				}
+			}
+		}
+		const FMixtormatLayerChild& Source = SourceLayer.Children[SourceIndex];
+		if (Source.Type == EMixtormatLayerChildType::Generator)
+		{
+			return MixtormatOutputReferences::GeneratorPublishesField(
+				Source.Generator, Reference.Kind, Reference.OutputName) ? SourceIndex : INDEX_NONE;
+		}
+		if (Source.Type == EMixtormatLayerChildType::Behavior)
+		{
+			if (Reference.OutputName != MixtormatOutputReferences::CanonicalFieldOutputName(Reference.Kind)
+				|| !ValidateBehaviorInputs(EffectiveLayers, SourceLayerIndex, SourceIndex).bCanEvaluate) { return INDEX_NONE; }
+			const FMixtormatBehavior& Behavior = Source.Behavior;
+			if (Behavior.Type == EMixtormatBehaviorType::FlowField
+				|| ((Behavior.Type == EMixtormatBehaviorType::Push
+					|| Behavior.Type == EMixtormatBehaviorType::Carve
+					|| Behavior.Type == EMixtormatBehaviorType::Deform) && Behavior.Flow.bUseTracedFlow))
+			{
+				return SourceIndex;
+			}
+			if (Behavior.Type == EMixtormatBehaviorType::Feather)
+			{
+				// Feather publishes Flow only under a Flow-primary ancestor, not Height.
+				for (int32 Index = ResolveOwnerIndex(SourceLayer.Children, SourceIndex); Index != INDEX_NONE;
+					Index = ResolveOwnerIndex(SourceLayer.Children, Index))
+				{
+					const FMixtormatLayerChild& Ancestor = SourceLayer.Children[Index];
+					if ((Ancestor.Type == EMixtormatLayerChildType::Behavior
+						&& Ancestor.Behavior.Type == EMixtormatBehaviorType::FlowField)
+						|| (Ancestor.Type == EMixtormatLayerChildType::Generator
+							&& Ancestor.Generator.Type == EMixtormatGeneratorType::Noise
+							&& Ancestor.Generator.Noise.NoisePreset == EMixtormatNoisePreset::Flow)) { return SourceIndex; }
+				}
+			}
+			return INDEX_NONE;
+		}
+		// Published copies retain the existing earlier-layer-only reference contract.
+		return SourceLayerIndex < LayerIndex
+			? MixtormatOutputReferences::ResolveSource(EffectiveLayers, LayerIndex, BlurChildIndex, Reference)
+			: INDEX_NONE;
+	}
+
 	bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child)
 	{
 		return Child.Type == EMixtormatLayerChildType::Mask
 			|| Child.Type == EMixtormatLayerChildType::Curvature
 			|| Child.Type == EMixtormatLayerChildType::Generator
-			|| Child.Type == EMixtormatLayerChildType::Behavior;
+			|| Child.Type == EMixtormatLayerChildType::Behavior
+			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp;
 	}
 
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)

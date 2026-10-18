@@ -27,11 +27,15 @@ float InputOffset;
 uint MirrorRepeat;
 float4 Positions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 Colors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+uint MapOnly;
 uint HasGate;
 uint HasPreviousColor;
+uint OverrideBaseColor;
+float4 FillColor;
 uint SourceMode;
 uint BlendMode;
 float FlowModulation;
+uint SignedFlowModulation;
 float2 FlowModulationDir;
 float UVModulation;
 float2 UVModulationDir;
@@ -46,7 +50,26 @@ Texture2D<float2> SourceUV;
 Texture2D<uint> SourceIds;
 Texture2D<float> Gate;
 Texture2D<float4> PreviousColor;
+Texture2D<float4> MappedColor;
 RWTexture2D<float4> OutColor;
+
+void CompositeRampColor(int2 Pixel, float4 RampColor)
+{
+	const float GateValue = HasGate != 0 ? saturate(Gate.Load(int3(Pixel, 0))) : 1.0f;
+	const float Alpha = saturate(Weight * GateValue * RampColor.a);
+	const float3 BaseColor = OverrideBaseColor != 0
+		? FillColor.rgb
+		: (HasPreviousColor != 0
+			? PreviousColor.Load(int3(Pixel, 0)).rgb
+			: RampColor.rgb);
+	const float3 BlendedRgb = HasPreviousColor != 0
+		? MixtormatBlendColor(BlendMode, BaseColor, RampColor.rgb)
+		: RampColor.rgb;
+	const float3 OutRgb = HasPreviousColor != 0
+		? lerp(BaseColor, BlendedRgb, Alpha)
+		: RampColor.rgb;
+	OutColor[Pixel] = float4(OutRgb, Alpha);
+}
 
 [numthreads(8, 8, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
@@ -89,7 +112,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (HasModFlow != 0u && abs(FlowModulation) > 1.0e-5f)
 	{
 		const float2 FV = SourceFlow.Load(int3(Pixel, 0)).xy;
-		const float FlowTerm = length(FV) * (0.5f + 0.5f * dot(normalize(FV + 1.0e-6f), FlowModulationDir));
+		const float FlowTerm = SignedFlowModulation != 0u
+			? dot(FV, FlowModulationDir)
+			: length(FV) * (0.5f + 0.5f * dot(normalize(FV + 1.0e-6f), FlowModulationDir));
 		Coordinate += FlowTerm * FlowModulation;
 	}
 	if (HasModUV != 0u && abs(UVModulation) > 1.0e-5f)
@@ -113,16 +138,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	const float4 RampColor = MixtormatEvalColorRamp(Coordinate, StopCount, Interpolation, Positions, Colors);
-	const float GateValue = HasGate != 0 ? saturate(Gate.Load(int3(Pixel, 0))) : 1.0f;
-	const float Alpha = saturate(Weight * GateValue * RampColor.a);
-	const float3 BaseColor = HasPreviousColor != 0
-		? PreviousColor.Load(int3(Pixel, 0)).rgb
-		: RampColor.rgb;
-	const float3 BlendedRgb = HasPreviousColor != 0
-		? MixtormatBlendColor(BlendMode, BaseColor, RampColor.rgb)
-		: RampColor.rgb;
-	const float3 OutRgb = HasPreviousColor != 0
-		? lerp(BaseColor, BlendedRgb, Alpha)
-		: RampColor.rgb;
-	OutColor[Pixel] = float4(OutRgb, Alpha);
+	if (MapOnly != 0u)
+	{
+		OutColor[Pixel] = RampColor;
+		return;
+	}
+	CompositeRampColor(Pixel, RampColor);
+}
+
+[numthreads(8, 8, 1)]
+void BlendCS(uint3 ID : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(ID.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	CompositeRampColor(Pixel, MappedColor.Load(int3(Pixel, 0)));
 }

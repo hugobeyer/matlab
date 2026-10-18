@@ -8,7 +8,7 @@
 namespace MixtormatGpuCompositor
 {
 static void GatherOwnedBlurs(const FMixtormatLayer& Layer, const int32 OwnerIndex,
-	TArray<FMixtormatBlur, TInlineAllocator<2>>& OutBlurs)
+	const TArray<FMixtormatLayer>& EffectiveLayers, TArray<FBlurRenderData, TInlineAllocator<2>>& OutBlurs)
 {
 	if (!Layer.Children.IsValidIndex(OwnerIndex)
 		|| !MixtormatChildScope::CanOwnScopedBlurs(Layer.Children[OwnerIndex])) { return; }
@@ -20,7 +20,7 @@ static void GatherOwnedBlurs(const FMixtormatLayer& Layer, const int32 OwnerInde
 		{
 			continue;
 		}
-		const FMixtormatBlur Blur = SanitizeBlur(Child.Blur);
+		const FBlurRenderData Blur = GatherBlur(Child.Blur, Index, Layer, EffectiveLayers);
 		if (Blur.BlursAnything()) { OutBlurs.Add(Blur); }
 	}
 }
@@ -35,12 +35,10 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		// filter only this layer's completed incoming surface at its rail end.
 		if (Layer.bEnabled && !LayerChild.ScopeOwnerChildId.IsValid())
 		{
-			const FMixtormatBlur Blur = SanitizeBlur(LayerChild.Blur);
+			const FBlurRenderData Blur = GatherBlur(LayerChild.Blur, SourceChildIndex, Layer, EffectiveLayers);
 			if (Blur.BlursAnything() && Blur.HasLayerChannelWeight())
 			{
-				FLayerSurfaceBlurRenderData& SurfaceBlur = Data.SurfaceBlurs.AddDefaulted_GetRef();
-				static_cast<FMixtormatBlur&>(SurfaceBlur) = Blur;
-				SurfaceBlur.SourceChildIndex = SourceChildIndex;
+				Data.SurfaceBlurs.Add(Blur);
 			}
 		}
 		return true;
@@ -154,7 +152,7 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		MaskData.HexContrast = MaskLayer.HexContrast;
 		MaskData.HexSeed = static_cast<float>(MaskLayer.HexSeed);
 		static_cast<FMixtormatMaskShaping&>(MaskData) = MaskLayer.Shaping;
-		GatherOwnedBlurs(Layer, SourceChildIndex, MaskData.Blurs);
+		GatherOwnedBlurs(Layer, SourceChildIndex, EffectiveLayers, MaskData.Blurs);
 		for (int32 Index = SourceChildIndex + 1; Index < Layer.Children.Num(); ++Index)
 		{
 			const FMixtormatLayerChild& CurvatureChild = Layer.Children[Index];
@@ -166,7 +164,7 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			}
 			FMaskCurvatureRenderData& Filter = MaskData.CurvatureFilters.AddDefaulted_GetRef();
 			static_cast<FMixtormatMaskCurvature&>(Filter) = CurvatureChild.Curvature;
-			GatherOwnedBlurs(Layer, Index, Filter.Blurs);
+			GatherOwnedBlurs(Layer, Index, EffectiveLayers, Filter.Blurs);
 			if (!Filter.KeepsAnything() && Filter.Blurs.IsEmpty())
 			{
 				MaskData.CurvatureFilters.Pop();

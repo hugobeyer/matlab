@@ -3,12 +3,37 @@
 #pragma once
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatChildScope.h"
 
 namespace MixtormatGpuCompositor
 {
 	inline FMixtormatBlur SanitizeBlur(const FMixtormatBlur& Source)
 	{
 		FMixtormatBlur Blur = Source;
+		if (Blur.Mode != EMixtormatBlurMode::Gaussian
+			&& Blur.Mode != EMixtormatBlurMode::Directional && Blur.Mode != EMixtormatBlurMode::Smear)
+		{
+			Blur.bEnabled = false;
+			Blur.Mode = EMixtormatBlurMode::Gaussian;
+		}
+		if (Blur.DirectionSource != EMixtormatBlurDirectionSource::Angle
+			&& Blur.DirectionSource != EMixtormatBlurDirectionSource::Flow)
+		{
+			if (Blur.Mode != EMixtormatBlurMode::Gaussian) { Blur.bEnabled = false; }
+			Blur.DirectionSource = EMixtormatBlurDirectionSource::Angle;
+		}
+		if (Blur.Target != EMixtormatBlurTarget::Height && Blur.Target != EMixtormatBlurTarget::Flow
+			&& Blur.Target != EMixtormatBlurTarget::HeightAndFlow)
+		{
+			Blur.bEnabled = false;
+		}
+		Blur.Length = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Length), Blur.Length);
+		if (Blur.Mode == EMixtormatBlurMode::Directional) { Blur.Length = FMath::Abs(Blur.Length); }
+		Blur.Angle = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Angle), Blur.Angle);
+		Blur.FlowInfluence = MixtormatParameterContracts::SanitizeFloat(
+			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, FlowInfluence), Blur.FlowInfluence);
 		Blur.Radius = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, Radius), Blur.Radius);
 		Blur.ScaleX = MixtormatParameterContracts::SanitizeFloat(
@@ -31,6 +56,28 @@ namespace MixtormatGpuCompositor
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, F0Weight), Blur.F0Weight);
 		Blur.HeightWeight = MixtormatParameterContracts::SanitizeFloat(
 			EMixtormatParameterOwnerType::Blur, GET_MEMBER_NAME_CHECKED(FMixtormatBlur, HeightWeight), Blur.HeightWeight);
+		return Blur;
+	}
+
+	inline FBlurRenderData GatherBlur(const FMixtormatBlur& Source, const int32 SourceChildIndex,
+		const FMixtormatLayer& Layer, const TArray<FMixtormatLayer>& EffectiveLayers)
+	{
+		FBlurRenderData Blur;
+		static_cast<FMixtormatBlur&>(Blur) = SanitizeBlur(Source);
+		Blur.SourceChildIndex = SourceChildIndex;
+		if (Blur.Mode != EMixtormatBlurMode::Gaussian
+			&& Blur.DirectionSource == EMixtormatBlurDirectionSource::Flow)
+		{
+			const int32 LayerIndex = EffectiveLayers.IndexOfByPredicate(
+				[&Layer](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Layer.LayerId; });
+			const FMixtormatOutputReference& Reference = Blur.FlowSource;
+			const int32 SourceIndex = MixtormatChildScope::ResolveBlurFlowSource(
+				EffectiveLayers, LayerIndex, SourceChildIndex, Reference);
+			if (SourceIndex != INDEX_NONE)
+			{
+				Blur.DirectionSourceKey = {Reference.SourceLayerId, SourceIndex, Reference.OutputName};
+			}
+		}
 		return Blur;
 	}
 

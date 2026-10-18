@@ -1774,7 +1774,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 				if (Layer.Children.IsValidIndex(OwnerIndex)
 					&& (Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Generator
-						|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Behavior))
+						|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::Behavior
+												|| Layer.Children[OwnerIndex].Type == EMixtormatLayerChildType::HeightColorRamp))
 				{
 					if (Layer.bEnabled && LayerChild.Blur.bEnabled)
 					{
@@ -1782,7 +1783,7 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						ChildData.Type = EMixtormatLayerChildType::Blur;
 						ChildData.SourceChildIndex = SourceChildIndex;
 						ChildData.ScopeOwnerSourceChildIndex = OwnerIndex;
-						ChildData.Blur = SanitizeBlur(LayerChild.Blur);
+						ChildData.Blur = GatherBlur(LayerChild.Blur, SourceChildIndex, Layer, EffectiveLayers);
 					}
 					continue;
 				}

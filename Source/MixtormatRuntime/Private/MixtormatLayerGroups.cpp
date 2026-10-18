@@ -345,6 +345,7 @@ namespace MixtormatLayerGroups
 				RemapPair(Child.SourceLayerId, Child.SourceChildId);
 				RemapPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
 				RemapOutput(Child.OutputReference);
+				RemapOutput(Child.Blur.FlowSource);
 				RemapOutput(Child.Generator.HeightSource);
 				RemapOutput(Child.Generator.WarpSource);
 				// Behavior sockets follow member-local producers when groups expand.

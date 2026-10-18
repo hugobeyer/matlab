@@ -938,11 +938,15 @@ public:
 		SHADER_PARAMETER(uint32, MirrorRepeat)
 		SHADER_PARAMETER_ARRAY(FVector4f, Positions, [FMixtormatColorRamp::MaxStops])
 		SHADER_PARAMETER_ARRAY(FVector4f, Colors, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER(uint32, MapOnly)
 		SHADER_PARAMETER(uint32, HasGate)
 		SHADER_PARAMETER(uint32, HasPreviousColor)
+		SHADER_PARAMETER(uint32, OverrideBaseColor)
+		SHADER_PARAMETER(FVector4f, FillColor)
 		SHADER_PARAMETER(uint32, SourceMode)
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, FlowModulation)
+		SHADER_PARAMETER(uint32, SignedFlowModulation)
 		SHADER_PARAMETER(FVector2f, FlowModulationDir)
 		SHADER_PARAMETER(float, UVModulation)
 		SHADER_PARAMETER(FVector2f, UVModulationDir)
@@ -968,6 +972,33 @@ public:
 
 IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorHeightColorRampCS,
 	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightColorRamp.usf", "MainCS", SF_Compute);
+
+class FMixtormatGeneratorColorCompositeCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatGeneratorColorCompositeCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatGeneratorColorCompositeCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(uint32, HasGate)
+		SHADER_PARAMETER(uint32, HasPreviousColor)
+		SHADER_PARAMETER(uint32, OverrideBaseColor)
+		SHADER_PARAMETER(FVector4f, FillColor)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Gate)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, MappedColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+
+IMPLEMENT_GLOBAL_SHADER(FMixtormatGeneratorColorCompositeCS,
+	"/Plugin/Mixtormat/Private/MixtormatGeneratorHeightColorRamp.usf", "BlendCS", SF_Compute);
 
 
 class FMixtormatBehaviorUvBlendCS final : public FGlobalShader
@@ -1356,7 +1387,8 @@ namespace
 	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef SourceHeight,
 		FRDGTextureRef SourceFlow, FRDGTextureRef SourceUV, FRDGTextureRef SourceIds,
 		const uint32 SourceMode, FRDGTextureRef Gate, FRDGTextureRef PreviousColor,
-		const FGeneratorHeightColorRampRenderData& Ramp)
+		const FGeneratorHeightColorRampRenderData& Ramp,
+		const bool bOverrideBaseColor, const FVector4f& FillColor, const bool bMapOnly = false)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -1377,11 +1409,15 @@ namespace
 			P->Positions[Index] = FVector4f(Ramp.Positions[Index], 0.0f, 0.0f, 0.0f);
 			P->Colors[Index] = Ramp.Colors[Index];
 		}
+		P->MapOnly = bMapOnly ? 1u : 0u;
 		P->HasGate = Ramp.bHasGate;
-		P->HasPreviousColor = PreviousColor != nullptr ? 1u : 0u;
+		P->HasPreviousColor = PreviousColor != nullptr || bOverrideBaseColor ? 1u : 0u;
+		P->OverrideBaseColor = bOverrideBaseColor ? 1u : 0u;
+		P->FillColor = FillColor;
 		P->SourceMode = SourceMode;
 		P->BlendMode = static_cast<uint32>(Ramp.BlendMode);
 		P->FlowModulation = Ramp.FlowModulation;
+		P->SignedFlowModulation = Ramp.bSignedFlowModulation ? 1u : 0u;
 		P->FlowModulationDir = Ramp.FlowModulationDir;
 		P->UVModulation = Ramp.UVModulation;
 		P->UVModulationDir = Ramp.UVModulationDir;
@@ -1415,6 +1451,33 @@ namespace
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.HeightColorRamp"), Shader, P,
 			FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+		return Out;
+	}
+
+	FRDGTextureRef AddGeneratorColorCompositePass(FMixtormatComposeContext& Ctx,
+		FRDGTextureRef MappedColor, FRDGTextureRef Gate, FRDGTextureRef PreviousColor,
+		const FGeneratorHeightColorRampRenderData& Ramp,
+		const bool bOverrideBaseColor, const FVector4f& FillColor)
+	{
+		const FIntPoint Size = Ctx.Request.Resolution;
+		FRDGTextureRef Out = Ctx.GraphBuilder.CreateTexture(MappedColor->Desc,
+			TEXT("Mixtormat.Generator.ColorComposite"));
+		TShaderMapRef<FMixtormatGeneratorColorCompositeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatGeneratorColorCompositeCS::FParameters>();
+		P->OutputSize = Size;
+		P->Weight = Ramp.Weight;
+		P->HasGate = Ramp.bHasGate;
+		P->HasPreviousColor = PreviousColor != nullptr || bOverrideBaseColor ? 1u : 0u;
+		P->OverrideBaseColor = bOverrideBaseColor ? 1u : 0u;
+		P->FillColor = FillColor;
+		P->BlendMode = static_cast<uint32>(Ramp.BlendMode);
+		P->Gate = Gate;
+		P->PreviousColor = PreviousColor ? PreviousColor : Ctx.OutputBC[0];
+		P->MappedColor = MappedColor;
+		P->OutColor = Ctx.GraphBuilder.CreateUAV(Out);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Generator.ColorComposite"),
+			Shader, P, FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 		return Out;
 	}
 
@@ -2194,7 +2257,7 @@ namespace
 						&& Filter.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
 						&& Filter.SourceChildIndex > Child.SourceChildIndex)
 					{
-						if (Filter.Blur.BlursAnything() && ScopedBundle.Height)
+						if (Filter.Blur.BlursAnything() && Filter.Blur.Target != EMixtormatBlurTarget::Flow && ScopedBundle.Height)
 						{
 							const bool bFilterMask = HasScopedGeneratorMasks(Layer, Filter.SourceChildIndex);
 							FRDGTextureRef FilterGate = bFilterMask
@@ -2204,8 +2267,20 @@ namespace
 							Settings.RadiusX = Filter.Blur.GetRadiusX();
 							Settings.RadiusY = Filter.Blur.GetRadiusY();
 							Settings.Amount = Filter.Blur.Amount;
-							ScopedBundle.Height = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
+							ScopedBundle.Height = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Filter.Blur,
 								ScopedBundle.Height, Settings, MixtormatGaussianBlur::EField::Scalar, FilterGate);
+						}
+						if (Filter.Blur.BlursAnything() && Filter.Blur.Target != EMixtormatBlurTarget::Height)
+						{
+							for (const FName Name : {FName(TEXT("GeneratedFlow")), FName(TEXT("FlowDirection"))})
+							{
+								const FPublishedFieldKey Key = PublishedKey(Layer, Child.SourceChildIndex, Name);
+								const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+								if (!Field || !Field->IsComplete() || Field->Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
+								const FPublishedField Source = *Field;
+								const FPublishedField Filtered = AddOwnedFlowBlurPass(Ctx, LayerCtx, Layer, Filter.Blur, Source);
+								Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+							}
 						}
 						continue;
 					}
@@ -2309,11 +2384,38 @@ namespace
 					{
 						return Candidate.SourceChildIndex == Child.ScopeOwnerSourceChildIndex
 							&& Candidate.SourceChildIndex < Child.SourceChildIndex
-							&& (Candidate.Type == EMixtormatLayerChildType::Behavior
-								|| Candidate.Type == EMixtormatLayerChildType::Generator);
+							&& Candidate.Type == EMixtormatLayerChildType::Behavior
+							&& Candidate.Behavior.GeneratorChildIndex == Owner.SourceChildIndex
+							&& Candidate.Behavior.Stage == EMixtormatBehaviorStage::PostGeneration;
 					});
 				if (!bDirect && !Parent) { continue; }
-				if (Child.Blur.BlursAnything() && Module.Height)
+				if (Child.Blur.BlursAnything() && Child.Blur.Target != EMixtormatBlurTarget::Height)
+				{
+					const int32 FlowOwnerIndex = bDirect ? Owner.SourceChildIndex : Parent->SourceChildIndex;
+					const FPublishedFieldKey FlowKey = PublishedKey(Layer, FlowOwnerIndex, FName(TEXT("FlowDirection")));
+					const FPublishedField* Published = bDirect ? nullptr : Ctx.PublishedFieldOutputs.Find(FlowKey);
+					const FPublishedField Source = Published ? *Published
+						: FPublishedField{EMixtormatPublishedFieldKind::Flow, WorkingFlow,
+							WorkingFlow, WorkingFlowValidity, false};
+					if (bDirect || Published)
+					{
+						const FPublishedField Filtered = AddOwnedFlowBlurPass(Ctx, LayerCtx, Layer, Child.Blur, Source);
+						if (Filtered.IsComplete())
+						{
+							if (bDirect)
+							{
+								WorkingFlow = Filtered.Texture;
+								WorkingFlowValidity = Filtered.Validity;
+							}
+							Ctx.PublishedFieldOutputs.Add(FlowKey, Filtered);
+							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex,
+								FName(TEXT("FlowDirection"))), Filtered);
+							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex,
+								MixtormatDiagnosticOutputs::AccumulatedFlow), Filtered);
+						}
+					}
+				}
+				if (Child.Blur.BlursAnything() && Child.Blur.Target != EMixtormatBlurTarget::Flow && Module.Height)
 				{
 					const bool bMasked = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 					FRDGTextureRef Gate = bMasked
@@ -2323,7 +2425,7 @@ namespace
 					Settings.RadiusX = Child.Blur.GetRadiusX();
 					Settings.RadiusY = Child.Blur.GetRadiusY();
 					Settings.Amount = Child.Blur.Amount;
-					Module.Height = MixtormatGaussianBlur::AddPasses(Ctx.GraphBuilder,
+					Module.Height = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Child.Blur,
 						Module.Height, Settings, MixtormatGaussianBlur::EField::Scalar, Gate);
 				}
 				continue;
@@ -4062,7 +4164,19 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
 	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
 	Bundle = FGeneratorBundle();
-	FRDGTextureRef GeneratedColor = nullptr;
+	struct FPendingColorRamp
+	{
+		const FChildRenderData* Child = nullptr;
+		FRDGTextureRef SourceHeight = nullptr;
+		FRDGTextureRef SourceFlow = nullptr;
+		FRDGTextureRef SourceUV = nullptr;
+		FRDGTextureRef SourceIds = nullptr;
+		FRDGTextureRef Gate = nullptr;
+		FRDGTextureRef FilteredColor = nullptr;
+		uint32 SourceMode = 0u;
+		bool bHasGate = false;
+	};
+	TArray<FPendingColorRamp> PendingColorRamps;
 	const FIntPoint Size = Ctx.Request.Resolution;
 	FRDGTextureRef Debug = Ctx.OutputDebug[Ctx.Request.PublishedTargetIndex];
 	FRDGTextureRef RunningHeight = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
@@ -4502,33 +4616,41 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			FRDGTextureRef RampGate = bHasGate
 				? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 				: RampSource;
-			FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
-			RampData.bHasGate = bHasGate ? 1u : 0u;
-
-			if (!GeneratedColor && !LayerCtx.LayerInputBC)
+			if (!LayerCtx.LayerInputBC)
 			{
 				AddLayerInputPass(Ctx, LayerCtx, Layer);
 			}
 
-			FRDGTextureRef BaseColorForRamp = GeneratedColor
-				? GeneratedColor
-				: (LayerCtx.LayerInputBC
-					? LayerCtx.LayerInputBC
-					: (LayerCtx.LayerIndex != INDEX_NONE
-						? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)]
-						: nullptr));
-			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(
-				Ctx, RampSource, RampFlow, RampUV, RampIds, SourceMode, RampGate, BaseColorForRamp, RampData);
-			const FPublishedField ColorField{
-				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
-			Ctx.PublishedFieldOutputs.Add(
-				PublishedKey(Layer, Child.SourceChildIndex, Child.HeightColorRamp.OutputName),
-				ColorField);
-			if (ColorField.IsComplete()) { GeneratedColor = Color; }
-			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
-				Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
+			// Capture this row's inputs before later generators change the running fields.
+			// Only colour compositing is deferred; dependency and mask evaluation stay ordered.
+			FPendingColorRamp& Pending = PendingColorRamps.AddDefaulted_GetRef();
+			Pending.Child = &Child;
+			Pending.SourceHeight = RampSource;
+			Pending.SourceFlow = RampFlow;
+			Pending.SourceUV = RampUV;
+			Pending.SourceIds = RampIds;
+			Pending.Gate = RampGate;
+			Pending.SourceMode = SourceMode;
+			Pending.bHasGate = bHasGate;
+			for (const FChildRenderData& Filter : Layer.Children)
 			{
-				AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Color, Debug, Size);
+				if (Filter.Type != EMixtormatLayerChildType::Blur
+					|| Filter.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
+					|| !Filter.Blur.BlursAnything()) { continue; }
+				if (!Pending.FilteredColor)
+				{
+					FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
+					RampData.bHasGate = 0u;
+					Pending.FilteredColor = AddGeneratorHeightColorRampPass(Ctx, RampSource, RampFlow,
+						RampUV, RampIds, SourceMode, RampGate, LayerCtx.LayerInputBC, RampData,
+						false, Layer.FillColor, true);
+				}
+				MixtormatGaussianBlur::FSettings Settings;
+				Settings.RadiusX = Filter.Blur.GetRadiusX();
+				Settings.RadiusY = Filter.Blur.GetRadiusY();
+				Settings.Amount = Filter.Blur.Amount;
+				Pending.FilteredColor = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Filter.Blur,
+					Pending.FilteredColor, Settings, MixtormatGaussianBlur::EField::ColorAlpha);
 			}
 			continue;
 		}
@@ -4716,6 +4838,31 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// Flow preview and consumers bypass the child's filter silently.
 			for (const FChildRenderData& Filter : Layer.Children)
 			{
+				if (Filter.Type == EMixtormatLayerChildType::Blur
+					&& Filter.ScopeOwnerSourceChildIndex == Child.SourceChildIndex
+					&& Filter.Blur.BlursAnything() && Filter.Blur.Target != EMixtormatBlurTarget::Height)
+				{
+					for (const FName Name : {FName(TEXT("GeneratedFlow")), FName(TEXT("FlowDirection"))})
+					{
+						const FPublishedFieldKey Key = PublishedKey(Layer, Child.SourceChildIndex, Name);
+						const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key);
+						if (!Field || !Field->IsComplete() || Field->Kind != EMixtormatPublishedFieldKind::Flow) { continue; }
+						const FPublishedField Source = *Field;
+						const FPublishedField Filtered = AddOwnedFlowBlurPass(Ctx, LayerCtx, Layer, Filter.Blur, Source);
+						Ctx.PublishedFieldOutputs.Add(Key, Filtered);
+						if (Name == FName(TEXT("GeneratedFlow"))
+							|| !Ctx.PublishedFieldOutputs.Contains(PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GeneratedFlow")))))
+						{
+							Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Filter.SourceChildIndex, FName(TEXT("FlowDirection"))), Filtered);
+							if (bNoiseHeightless)
+							{
+								Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Filter.SourceChildIndex,
+									MixtormatDiagnosticOutputs::AccumulatedFlow), Filtered);
+							}
+						}
+					}
+					continue;
+				}
 				if (Filter.Type != EMixtormatLayerChildType::Behavior
 					|| Filter.Behavior.Type != EMixtormatBehaviorType::Feather
 					|| Filter.ScopeOwnerSourceChildIndex != Child.SourceChildIndex
@@ -4838,8 +4985,45 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 	}
 	FinishBoolean();
-	// Color Ramp only publishes Color. The layer owns whether the last valid ordered
-	// Color result becomes this layer's Base Color input.
+
+	// Visually higher ramps blend over lower ramps, independently of generator dependency order.
+	FRDGTextureRef GeneratedColor = nullptr;
+	for (int32 RampIndex = PendingColorRamps.Num() - 1; RampIndex >= 0; --RampIndex)
+	{
+		const FPendingColorRamp& Pending = PendingColorRamps[RampIndex];
+		const FChildRenderData& Child = *Pending.Child;
+		FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
+		RampData.bHasGate = Pending.bHasGate ? 1u : 0u;
+		FRDGTextureRef BaseColorForRamp = GeneratedColor
+			? GeneratedColor
+			: (LayerCtx.LayerInputBC
+				? LayerCtx.LayerInputBC
+				: (LayerCtx.LayerIndex != INDEX_NONE
+					? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)]
+					: nullptr));
+		// The raw layer input has not received its authored Base Color override yet.
+		// Seed only the bottom ramp; higher ramps retain the accumulated colour.
+		const bool bOverrideRampBaseColor = !GeneratedColor && !Layer.bFillPassThrough
+			&& Layer.bOverrideBaseColor && !LayerCtx.ReferencedColor;
+		FRDGTextureRef Color = Pending.FilteredColor
+			? AddGeneratorColorCompositePass(Ctx, Pending.FilteredColor, Pending.Gate,
+				BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor)
+			: AddGeneratorHeightColorRampPass(Ctx, Pending.SourceHeight, Pending.SourceFlow,
+				Pending.SourceUV, Pending.SourceIds, Pending.SourceMode, Pending.Gate,
+				BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor);
+		const FPublishedField ColorField{
+			EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
+		Ctx.PublishedFieldOutputs.Add(
+			PublishedKey(Layer, Child.SourceChildIndex, Child.HeightColorRamp.OutputName), ColorField);
+		if (ColorField.IsComplete()) { GeneratedColor = Color; }
+		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
+			Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
+		{
+			AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Color, Debug, Size);
+		}
+	}
+	// Color Ramp only publishes Color. The layer owns whether the completed bottom-to-top
+	// Color stack becomes this layer's Base Color input.
 	if (GeneratedColor && Layer.bGeneratorAlbedo)
 	{
 		LayerCtx.LayerInputBC = GeneratedColor;

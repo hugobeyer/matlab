@@ -734,6 +734,7 @@ namespace MixtormatParameterBinding
 				}
 			}
 			RemapOutput(Child.OutputReference, false);
+			RemapOutput(Child.Blur.FlowSource, true);
 			RemapOutput(Child.BoundaryId.RegionIdsSource, false);
 			RemapOutput(Child.Generator.HeightSource, true);
 			RemapOutput(Child.Generator.WarpSource, true);
@@ -844,6 +845,7 @@ namespace MixtormatParameterBinding
 					}
 				};
 				RemapStructuralSource(Child.OutputReference);
+				RemapStructuralSource(Child.Blur.FlowSource);
 				RemapStructuralSource(Child.BoundaryId.RegionIdsSource);
 				RemapStructuralSource(Child.Generator.HeightSource);
 				RemapStructuralSource(Child.Generator.WarpSource);
@@ -1301,6 +1303,7 @@ namespace MixtormatParameterBinding
 			};
 			RemapOutput(Child.BoundaryId.RegionIdsSource);
 			RemapOutput(Child.OutputReference);
+			RemapOutput(Child.Blur.FlowSource);
 			RemapOutput(Child.Generator.HeightSource);
 			RemapOutput(Child.Generator.WarpSource);
 			RemapOutput(Child.Behavior.Direction.Published);

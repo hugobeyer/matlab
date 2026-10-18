@@ -466,16 +466,16 @@ namespace MixtormatGpuCompositor
 				1));
 
 		const auto ApplyBlurs = [&](FRDGTextureRef Source,
-			const TArray<FMixtormatBlur, TInlineAllocator<2>>& Blurs)
+			const TArray<FBlurRenderData, TInlineAllocator<2>>& Blurs)
 		{
-			for (const FMixtormatBlur& Blur : Blurs)
+			for (const FBlurRenderData& Blur : Blurs)
 			{
 				MixtormatGaussianBlur::FSettings Settings;
 				Settings.RadiusX = Blur.GetRadiusX();
 				Settings.RadiusY = Blur.GetRadiusY();
 				Settings.Amount = Blur.Amount;
 				Settings.bClampCoverage = true;
-				Source = MixtormatGaussianBlur::AddPasses(GraphBuilder, Source, Settings,
+				Source = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Blur, Source, Settings,
 					MixtormatGaussianBlur::EField::Scalar);
 			}
 			return Source;

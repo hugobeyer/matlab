@@ -578,9 +578,10 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 		Menu.Separator();
 	}
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
-		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Curvature)
+		&& Group->Children[ChildIndex].Type != EMixtormatLayerChildType::Mask
+		&& CanOwnScopedBlurs(Group->Children[ChildIndex]))
 	{
-		Menu.Item(LOCTEXT("AddBlurToCurvatureContext", "Add Blur"), MixtormatIcons::Mask(),
+		Menu.Item(LOCTEXT("AddBlurToScopedOwnerContext", "Add Blur"), MixtormatIcons::Filter(),
 			FSimpleDelegate::CreateLambda([this, GroupId, ChildIndex]()
 			{
 				AddMaskFilterToGroupChild(GroupId, ChildIndex, EMixtormatLayerChildType::Blur);
@@ -1439,7 +1440,20 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
-if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
+	if (RowType == EMixtormatLayerChildType::HeightColorRamp
+		&& WorkingLayers.IsValidIndex(LayerIndex)
+		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
+	{
+		const FMixtormatLayerChild& Owner = WorkingLayers[LayerIndex].Children[ChildIndex];
+		Menu.Item(LOCTEXT("AddBlurToColorRamp", "Blur"), MixtormatIcons::Filter(),
+			FSimpleDelegate::CreateLambda([this, LayerIndex, OwnerId = Owner.ChildId]()
+			{
+				const int32 OwnerIndex = MixtormatLayersPrivate::FindChildById(WorkingLayers[LayerIndex].Children, OwnerId);
+				if (OwnerIndex != INDEX_NONE) { AddMaskFilterToLayerChild(LayerIndex, OwnerIndex, EMixtormatLayerChildType::Blur); }
+			})).Enabled(CanOwnScopedBlurs(Owner) && !Owner.IsInstance()
+				&& CanAddScopedChild(WorkingLayers[LayerIndex].Children, ChildIndex));
+	}
+	if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 		&& WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.IsValidIndex(ChildIndex))
 	{

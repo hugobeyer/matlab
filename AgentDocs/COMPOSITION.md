@@ -121,6 +121,30 @@ Peeling is authored procedurally. Effect assets no longer carry peel shape defau
 or source-texture identity; layer/group asset additions use parameter authoring
 defaults. The obsolete shipped-effect texture importer has been removed.
 
+## Color Ramp Base Color
+
+Generators evaluate top-to-bottom in child order. Each Color Ramp captures its
+resolved Height / Flow / UV / IDs and independent scoped mask at its row, before
+later producers change those fields. Color compositing then runs bottom-to-top,
+so visually higher ramps blend over lower ramps without reversing dependencies.
+
+The bottom ramp starts from the layer's authored Base Color override when enabled,
+otherwise its resolved input color. Referenced Color and Fill Pass Through keep
+priority over that override. Higher ramps blend against the accumulated color,
+using their own blend mode and Weight × stop alpha × ramp-scoped mask. Each ramp
+publishes and previews its accumulated result over the ramps below it. Color
+references read earlier layers, after those layers complete their ramp stacks.
+
+The override is applied only when seeding the ramp chain; layer grading, layer
+masks, opacity and Base Color blend with the composite below remain in the layer
+compositor.
+
+Color Ramp's Signed Flow toggle defaults off, preserving one-sided magnitude plus
+directional bias. When enabled, Flow modulation uses the signed projection of
+Flow onto Flow Angle: aligned Flow shifts positively, opposite Flow negatively,
+and perpendicular Flow contributes zero. Flow Shift scales either mode (including
+negative strength); ramp Weight, source selection and upstream Flow are unchanged.
+
 ## Masks
 
 - `MixtormatMask.h`, `MixtormatMaskShaping.h`, `MixtormatBlur.h`,

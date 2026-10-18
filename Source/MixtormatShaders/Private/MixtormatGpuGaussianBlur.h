@@ -8,7 +8,7 @@ class FRDGBuilder;
 
 namespace MixtormatGaussianBlur
 {
-	enum class EField : uint8 { Scalar, Vector4, EncodedNormal, ValidFlow };
+	enum class EField : uint8 { Scalar, Vector4, EncodedNormal, ValidFlow, ColorAlpha };
 
 	struct FSettings
 	{
@@ -25,6 +25,7 @@ namespace MixtormatGaussianBlur
 	// the compositor's separate validity texture, which is preserved, not filtered.
 	// Scalar input/output is R16F or R32F; other fields use float4-compatible textures.
 	// Intermediates use full precision; the resolved output retains the source format.
+		// ColorAlpha accepts/returns straight RGBA, filtering and mixing in premultiplied space.
 	FRDGTextureRef AddPasses(
 		FRDGBuilder& Graph,
 		FRDGTextureRef Source,

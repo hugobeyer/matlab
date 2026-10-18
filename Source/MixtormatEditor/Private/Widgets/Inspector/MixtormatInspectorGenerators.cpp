@@ -3025,10 +3025,13 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 	AddSliderRow(ModCard, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampFlowModulation", "Flow Shift"), Ramp, &FMixtormatGeneratorHeightColorRamp::FlowModulation, -2.0, 2.0, 0.0, 0.01,
-			LOCTEXT("ColorRampFlowModulationHint", "Modulate the ramp lookup coordinate using the module's Flow field (magnitude + directional bias).")),
+			LOCTEXT("ColorRampFlowModulationHint", "Scale the Flow-driven lookup offset. Negative values flip the influence; zero disables it. Signed Flow lets opposite directions shift the lookup in opposite ways. Does not change color blend Weight.")),
 		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampFlowModulationAngle", "Flow Angle"), Ramp, &FMixtormatGeneratorHeightColorRamp::FlowModulationAngle, 0.0, 360.0, 90.0, 1.0,
-			LOCTEXT("ColorRampFlowModulationAngleHint", "Directional angle in degrees for flow modulation bias."))));
+			LOCTEXT("ColorRampFlowModulationAngleHint", "Direction in degrees for Flow modulation. With Signed Flow, aligned Flow gives a positive offset, opposite Flow a negative offset, and perpendicular Flow no offset, before Flow Shift is applied."))));
+	AddSliderRow(ModCard, MakeMemberToggle<FMixtormatGeneratorHeightColorRamp>(
+		LOCTEXT("ColorRampSignedFlow", "Signed Flow"), Ramp, &FMixtormatGeneratorHeightColorRamp::bSignedFlowModulation,
+		LOCTEXT("ColorRampSignedFlowHint", "Off preserves one-sided magnitude and directional bias. On uses a signed projection along Flow Angle, so opposite Flow directions shift the lookup both ways. Flow Shift scales either mode.")));
 	AddSliderRow(ModCard, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
 			LOCTEXT("ColorRampUVModulation", "UV Shift"), Ramp, &FMixtormatGeneratorHeightColorRamp::UVModulation, -2.0, 2.0, 0.0, 0.01,

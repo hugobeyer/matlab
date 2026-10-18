@@ -774,6 +774,42 @@ namespace MixtormatGpuCompositor
 					{
 						const FLayerRenderData& Layer = Request.Layers[LayerIndex];
 						LayerIndexById.Add(Layer.LayerId, LayerIndex);
+						const auto DemandBlurGuidance = [&Ctx](const FBlurRenderData& Blur)
+						{
+							if (Blur.BlursAnything() && Blur.DirectionSourceKey.LayerId.IsValid()
+								&& Blur.DirectionSourceKey.ChildIndex != INDEX_NONE)
+							{
+								Ctx.PublishedFieldDemand.Add(Blur.DirectionSourceKey);
+							}
+						};
+						for (const FBlurRenderData& Blur : Layer.SurfaceBlurs) { DemandBlurGuidance(Blur); }
+						for (const FChildRenderData& FilterOwner : Layer.Children)
+						{
+							if (FilterOwner.Type == EMixtormatLayerChildType::Blur)
+							{
+								DemandBlurGuidance(FilterOwner.Blur);
+								if (FilterOwner.Blur.BlursAnything() && FilterOwner.Blur.Target != EMixtormatBlurTarget::Height)
+								{
+									const FChildRenderData* Parent = Layer.Children.FindByPredicate([&FilterOwner](const FChildRenderData& Candidate)
+									{
+										return Candidate.SourceChildIndex == FilterOwner.ScopeOwnerSourceChildIndex;
+									});
+									if (Parent && (Parent->Type == EMixtormatLayerChildType::Generator
+										|| Parent->Type == EMixtormatLayerChildType::Behavior))
+									{
+										const int32 GeneratorIndex = Parent->Type == EMixtormatLayerChildType::Generator
+											? Parent->SourceChildIndex : Parent->Behavior.GeneratorChildIndex;
+										Ctx.PublishedFieldDemand.Add(PublishedKey(Layer, GeneratorIndex, FName(TEXT("FlowDirection"))));
+										Ctx.PublishedFieldDemand.Add(PublishedKey(Layer, GeneratorIndex, MixtormatDiagnosticOutputs::AccumulatedFlow));
+									}
+								}
+							}
+							for (const FBlurRenderData& Blur : FilterOwner.Mask.Blurs) { DemandBlurGuidance(Blur); }
+							for (const FMaskCurvatureRenderData& Curvature : FilterOwner.Mask.CurvatureFilters)
+							{
+								for (const FBlurRenderData& Blur : Curvature.Blurs) { DemandBlurGuidance(Blur); }
+							}
+						}
 						for (const FChildRenderData& Child : Layer.Children)
 						{
 							if (Child.Type == EMixtormatLayerChildType::Mask

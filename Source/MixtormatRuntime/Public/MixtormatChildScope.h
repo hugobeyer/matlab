@@ -50,7 +50,15 @@ namespace MixtormatChildScope
 	// any child changed.
 	MIXTORMATRUNTIME_API bool SanitizeStaleOwners(TArray<FMixtormatLayerChild>& Children);
 
-	// Executable typed Blur owners. Broader owners are enabled alongside their dispatch.
+	// Blur-local guidance socket on effective, instance-resolved layers. Only completed
+	// earlier producer scopes are readable; never the owner's output being filtered.
+	// Returns the authored child index in Reference.SourceLayerId, or INDEX_NONE.
+	MIXTORMATRUNTIME_API int32 ResolveBlurFlowSource(
+		const TArray<FMixtormatLayer>& EffectiveLayers,
+		int32 LayerIndex, int32 BlurChildIndex,
+		const FMixtormatOutputReference& Reference);
+
+	// Typed Blur owners; GPU integration supplies each owner's output contract.
 	MIXTORMATRUNTIME_API bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child);
 
 	// Who may have a Mask child scoped underneath. Gather and Editor both call this.

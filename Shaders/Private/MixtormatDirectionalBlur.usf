@@ -1,0 +1,223 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#include "/Engine/Public/Platform.ush"
+
+// FIELD_TYPE matches MixtormatGaussianBlur::EField (existing values remain 0..3).
+int2 OutputSize;
+float2 AngleDirection;
+float FlowInfluence;
+float StepLength;
+int StepCount;
+uint Centered;
+float Amount;
+float4 ChannelWeights;
+uint ClampCoverage;
+Texture2D<float> ScalarSource;
+Texture2D<float4> VectorSource;
+Texture2D<float> MaskTexture;
+Texture2D<float4> DirectionFlow;
+Texture2D<float> DirectionValidity;
+Texture2D<float> SourceValidity;
+RWTexture2D<float> ScalarOutput;
+RWTexture2D<float4> VectorOutput;
+
+int2 WrapPixel(int2 P)
+{
+	return (P % OutputSize + OutputSize) % OutputSize;
+}
+
+float ValidWeight(float V)
+{
+	return isfinite(V) ? saturate(V) : 0.0f;
+}
+
+float4 LoadSource(int2 P)
+{
+#if FIELD_TYPE == 0
+	return float4(ScalarSource.Load(int3(P, 0)), 0, 0, 0);
+#else
+	return VectorSource.Load(int3(P, 0));
+#endif
+}
+
+void StoreResult(int2 P, float4 V)
+{
+#if FIELD_TYPE == 0
+	ScalarOutput[P] = V.x;
+#else
+	VectorOutput[P] = V;
+#endif
+}
+
+// Manual periodic bilinear interpolation excludes invalid corners BEFORE weighting.
+// Carry numerator and mass into the kernel; empty samples never become zero-valued taps.
+void GatherSource(float2 UV, float KernelWeight, inout float4 Sum, inout float Mass)
+{
+	const float2 Texel = frac(UV) * float2(OutputSize) - 0.5f;
+	const int2 Base = int2(floor(Texel));
+	const float2 F = frac(Texel);
+	[unroll]
+	for (int Y = 0; Y < 2; ++Y)
+	{
+		[unroll]
+		for (int X = 0; X < 2; ++X)
+		{
+			const float W = KernelWeight * (X == 0 ? 1.0f - F.x : F.x)
+				* (Y == 0 ? 1.0f - F.y : F.y);
+			if (W <= 0.0f) { continue; }
+			const int2 Q = WrapPixel(Base + int2(X, Y));
+			float4 V = LoadSource(Q);
+#if FIELD_TYPE == 3
+			const float Valid = ValidWeight(SourceValidity.Load(int3(Q, 0)));
+			if (Valid <= 0.0f || !all(isfinite(V.xy))) { continue; }
+			// Packed Z/W are not validity or filterable Flow components.
+			V.zw = 0.0f;
+#else
+			if (!all(isfinite(V))) { continue; }
+			const float Valid = 1.0f;
+#endif
+#if FIELD_TYPE == 4
+			V.rgb *= V.a;
+#endif
+			Sum += V * (W * Valid);
+			Mass += W * Valid;
+		}
+	}
+}
+
+bool ReadDirection(float2 UV, out float2 Direction)
+{
+	Direction = AngleDirection;
+#if FLOW_GUIDED
+	const float2 Texel = frac(UV) * float2(OutputSize) - 0.5f;
+	const int2 Base = int2(floor(Texel));
+	const float2 F = frac(Texel);
+	float2 Sum = 0.0f;
+	float Mass = 0.0f;
+	[unroll]
+	for (int Y = 0; Y < 2; ++Y)
+	{
+		[unroll]
+		for (int X = 0; X < 2; ++X)
+		{
+			const int2 Q = WrapPixel(Base + int2(X, Y));
+			const float2 V = DirectionFlow.Load(int3(Q, 0)).xy;
+			const float Valid = ValidWeight(DirectionValidity.Load(int3(Q, 0)));
+			if (Valid <= 0.0f || !all(isfinite(V))) { continue; }
+			const float W = (X == 0 ? 1.0f - F.x : F.x)
+				* (Y == 0 ? 1.0f - F.y : F.y) * Valid;
+			Sum += V * W;
+			Mass += W;
+		}
+	}
+	if (Mass <= 0.0f || !all(isfinite(Sum))) { return false; }
+	const float2 Flow = Sum / Mass;
+	const float FlowLengthSquared = dot(Flow, Flow);
+	if (!isfinite(FlowLengthSquared) || FlowLengthSquared <= BLUR_DIRECTION_EPSILON_SQUARED)
+	{
+		return false;
+	}
+	Direction = lerp(AngleDirection, Flow * rsqrt(FlowLengthSquared), FlowInfluence);
+#endif
+	const float LengthSquared = dot(Direction, Direction);
+	if (!isfinite(LengthSquared) || LengthSquared <= BLUR_DIRECTION_EPSILON_SQUARED)
+	{
+		return false;
+	}
+	Direction *= rsqrt(LengthSquared);
+	return true;
+}
+
+void GatherTrail(float2 Start, float SignedStep, inout float4 Sum, inout float Mass)
+{
+	float2 P = Start;
+	// Same midpoint RK2 as FlowTrace, but unit-speed and measured in output texels.
+	// Convert each component separately: non-square textures retain texel distances.
+	const float2 Dt = SignedStep / float2(OutputSize);
+	[loop]
+	for (int I = 0; I < min(StepCount, BLUR_MAX_STEPS); ++I)
+	{
+		float2 K1, K2, EndpointDirection;
+		if (!ReadDirection(P, K1)) { break; }
+		const float2 Mid = frac(P + 0.5f * Dt * K1);
+		if (!ReadDirection(Mid, K2)) { break; }
+		const float2 Next = frac(P + Dt * K2);
+		if (!all(isfinite(Next)) || !ReadDirection(Next, EndpointDirection)) { break; }
+		// Trapezoidal box kernel: shared centre has unit weight for two-sided paths.
+		const float W = I == StepCount - 1 ? 0.5f : 1.0f;
+		GatherSource(Next, W, Sum, Mass);
+		P = Next;
+	}
+}
+
+float4 Resolve(float4 Original, float4 Filtered, float Weight)
+{
+#if FIELD_TYPE == 3
+	Original.xy = lerp(Original.xy, Filtered.xy, Weight);
+	return Original;
+#elif FIELD_TYPE == 1 || FIELD_TYPE == 4
+	const float4 Weights = Weight * saturate(ChannelWeights);
+#if FIELD_TYPE == 4
+	const float4 PremultOriginal = float4(Original.rgb * Original.a, Original.a);
+	const float4 PremultResult = lerp(PremultOriginal, Filtered, Weights);
+	float4 Result = float4(PremultResult.a > 0.0f
+		? PremultResult.rgb / PremultResult.a : float3(0, 0, 0), PremultResult.a);
+#else
+	float4 Result = lerp(Original, Filtered, Weights);
+#endif
+	return float4(Weights.x > 0.0f ? Result.x : Original.x,
+		Weights.y > 0.0f ? Result.y : Original.y,
+		Weights.z > 0.0f ? Result.z : Original.z,
+		Weights.w > 0.0f ? Result.w : Original.w);
+#else
+	float4 Result = lerp(Original, Filtered, Weight);
+#if FIELD_TYPE == 2
+	const float3 N = Result.xyz * 2.0f - 1.0f;
+	const float LengthSquared = dot(N, N);
+	Result.xyz = LengthSquared > 0.0f
+		? (N * rsqrt(LengthSquared)) * 0.5f + 0.5f : Original.xyz;
+#elif FIELD_TYPE == 0
+	if (ClampCoverage != 0u) { Result.x = saturate(Result.x); }
+#endif
+	return Result;
+#endif
+}
+
+[numthreads(BLUR_GROUP_SIZE, BLUR_GROUP_SIZE, 1)]
+void MainCS(uint3 ID : SV_DispatchThreadID)
+{
+	const int2 P = int2(ID.xy);
+	if (any(P >= OutputSize)) { return; }
+	const float4 Original = LoadSource(P);
+	float Weight = Amount;
+#if HAS_MASK
+	Weight *= ValidWeight(MaskTexture.Load(int3(P, 0)));
+#endif
+#if FLOW_GUIDED
+	// Do not bridge an invalid destination using neighbouring valid guidance.
+	if (ValidWeight(DirectionValidity.Load(int3(P, 0))) <= 0.0f) { Weight = 0.0f; }
+#endif
+#if FIELD_TYPE == 3
+	const bool OriginalFinite = all(isfinite(Original.xy));
+	if (ValidWeight(SourceValidity.Load(int3(P, 0))) <= 0.0f) { Weight = 0.0f; }
+#else
+	const bool OriginalFinite = all(isfinite(Original));
+#endif
+	const float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	float2 InitialDirection;
+	if (Weight <= 0.0f || !OriginalFinite || !ReadDirection(UV, InitialDirection))
+	{
+		StoreResult(P, Original);
+		return;
+	}
+	float4 Sum = 0.0f;
+	float Mass = 0.0f;
+	GatherSource(UV, Centered != 0u ? 1.0f : 0.5f, Sum, Mass);
+	GatherTrail(UV, StepLength, Sum, Mass);
+	if (Centered != 0u) { GatherTrail(UV, -StepLength, Sum, Mass); }
+	float4 Result = Original;
+	if (Mass > 0.0f && isfinite(Mass) && all(isfinite(Sum)))
+	{
+		Result = Resolve(Original, Sum / Mass, Weight);
+	}
+	StoreResult(P, Result);
+}

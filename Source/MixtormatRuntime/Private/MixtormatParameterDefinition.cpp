@@ -99,10 +99,15 @@ namespace
 			Add(ET::Blur, TEXT("Radius"), BlurRadius);
 			Add(ET::Blur, TEXT("ScaleX"), BlurRadius);
 			Add(ET::Blur, TEXT("ScaleY"), BlurRadius);
+			// Signed Smear length and angles have no unconditional hard bound.
+			// Directional extent is sanitized by the mode-aware Blur consumer.
+			Add(ET::Blur, TEXT("Length"), {});
+			Add(ET::Blur, TEXT("Angle"), {});
 			FMixtormatParameterContract BlurAmount;
 			BlurAmount.HardMin = 0.0f;
 			BlurAmount.HardMax = 1.0f;
 			Add(ET::Blur, TEXT("Amount"), BlurAmount);
+			Add(ET::Blur, TEXT("FlowInfluence"), BlurAmount);
 			Add(ET::Blur, TEXT("BaseColorWeight"), BlurAmount);
 			Add(ET::Blur, TEXT("NormalWeight"), BlurAmount);
 			Add(ET::Blur, TEXT("RoughnessWeight"), BlurAmount);

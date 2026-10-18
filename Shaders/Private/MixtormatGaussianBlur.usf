@@ -22,7 +22,7 @@ int2 WrapPixel(int2 P)
 	return (P % OutputSize + OutputSize) % OutputSize;
 }
 
-// FIELD_TYPE: scalar, float4, encoded normal, Flow with separate validity.
+// FIELD_TYPE: scalar, float4, encoded normal, Flow with separate validity, straight RGBA.
 // The axis passes carry unnormalized sums AND mass, so invalid samples are
 // excluded from the complete 2D kernel rather than renormalized per row.
 [numthreads(8, 8, 1)]
@@ -53,6 +53,16 @@ void MainCS(uint3 ID : SV_DispatchThreadID)
 		const float4 Filtered = VectorSource.Load(int3(P, 0)) / Mass;
 #if FIELD_TYPE == 3
 		Result.xy = lerp(Original.xy, Filtered.xy, Weight);
+#elif FIELD_TYPE == 4
+		const float4 Weights = Weight * saturate(ChannelWeights);
+		const float4 PremultOriginal = float4(Original.rgb * Original.a, Original.a);
+		const float4 PremultResult = lerp(PremultOriginal, Filtered, Weights);
+		Result = float4(PremultResult.a > 0.0f
+			? PremultResult.rgb / PremultResult.a : float3(0, 0, 0), PremultResult.a);
+		Result = float4(Weights.x > 0.0f ? Result.x : Original.x,
+			Weights.y > 0.0f ? Result.y : Original.y,
+			Weights.z > 0.0f ? Result.z : Original.z,
+			Weights.w > 0.0f ? Result.w : Original.w);
 #elif FIELD_TYPE == 1
 		const float4 Weights = Weight * saturate(ChannelWeights);
 		Result = lerp(Original, Filtered, Weights);
@@ -92,9 +102,13 @@ void MainCS(uint3 ID : SV_DispatchThreadID)
 #if FIELD_TYPE == 0
 		const float4 V = float4(ScalarSource.Load(int3(Q, 0)), 0, 0, 0);
 #else
-		const float4 V = VectorSource.Load(int3(Q, 0));
+		float4 V = VectorSource.Load(int3(Q, 0));
 #endif
 		if (!all(isfinite(V))) { continue; }
+#if FIELD_TYPE == 4
+		// Premultiply only on raw input, never again between separable axes.
+		V.rgb *= V.a;
+#endif
 		float Valid = 1.0f;
 #if FIELD_TYPE == 3
 		const float SampleValidity = FlowValidity.Load(int3(Q, 0));

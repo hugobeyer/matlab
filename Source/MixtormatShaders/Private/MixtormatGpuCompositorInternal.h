@@ -7,6 +7,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "MixtormatEffect.h"
 #include "MixtormatGpuCompositor.h"
+#include "MixtormatGpuGaussianBlur.h"
 #include "MixtormatMask.h"
 #include "MixtormatMaskShaping.h"
 #include "MixtormatLayerTypes.h"
@@ -296,14 +297,17 @@ namespace MixtormatGpuCompositor
 		int32 FlowSteps = 16;
 	};
 
-	struct FLayerSurfaceBlurRenderData : FMixtormatBlur
+	struct FBlurRenderData : FMixtormatBlur
 	{
 		int32 SourceChildIndex = INDEX_NONE;
+		FPublishedFieldKey DirectionSourceKey;
 	};
+
+	using FLayerSurfaceBlurRenderData = FBlurRenderData;
 
 	struct FMaskCurvatureRenderData : FMixtormatMaskCurvature
 	{
-		TArray<FMixtormatBlur, TInlineAllocator<2>> Blurs;
+		TArray<FBlurRenderData, TInlineAllocator<2>> Blurs;
 	};
 
 	struct FMaskRenderData : FMixtormatMaskShaping
@@ -333,8 +337,8 @@ namespace MixtormatGpuCompositor
 		// EMixtormatLayerValueChannel by value for a Layer Values source, and 1 -- plain red --
 		// for a texture, which is the channel this shader has always read.
 		int32 SourceChannel = 1;
-		// Owner post-filters, independently applied in authored order before mask merge.
-		TArray<FMixtormatBlur, TInlineAllocator<2>> Blurs;
+		// Owner post-filters retain their identity for guidance and independent scoped masks.
+		TArray<FBlurRenderData, TInlineAllocator<2>> Blurs;
 		// Each Curvature owns its completed result and any nested Blur post-filters.
 		// These are not an interleaved Blur/Curvature sibling-operation rail.
 		TArray<FMaskCurvatureRenderData, TInlineAllocator<2>> CurvatureFilters;
@@ -1206,6 +1210,7 @@ namespace MixtormatGpuCompositor
 		int32 SourceChildIndex = INDEX_NONE;
 		int32 BlendMode = 0;
 		float FlowModulation = 0.0f;
+		bool bSignedFlowModulation = false;
 		FVector2f FlowModulationDir = FVector2f(0.0f, 1.0f);
 		float UVModulation = 0.0f;
 		FVector2f UVModulationDir = FVector2f(0.7071f, 0.7071f);
@@ -1279,7 +1284,7 @@ namespace MixtormatGpuCompositor
 		FReliefIdRenderData ReliefId;
 		FBoundaryIdRenderData BoundaryId;
 		FOutputReferenceRenderData OutputReference;
-		FMixtormatBlur Blur;
+		FBlurRenderData Blur;
 	};
 
 	struct FGeneratorBundle
@@ -1787,7 +1792,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef LayerInputN = nullptr;
 		FRDGTextureRef LayerInputRAM = nullptr;
 		// True when the generator stack produced a real colour this layer may paint as albedo
-		// (the last valid ordered Color Ramp result). Without it a GeneratorAlbedo layer must keep
+		// (the completed bottom-to-top Color Ramp stack). Without it a GeneratorAlbedo layer must keep
 		// the composite below rather than writing the resolved neutral input.
 		bool bGeneratorColor = false;
 		// Albedo in RGB, roughness in alpha, resolved once per layer by AddLayerValuesPass and
@@ -2165,6 +2170,25 @@ namespace MixtormatGpuCompositor
 		const int32 OwnerSourceChildIndex,
 		FRDGTextureRef EffectData,
 		FRDGTextureRef EffectHeight);
+
+	FRDGTextureRef AddOwnedBlurPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FBlurRenderData& Blur,
+		FRDGTextureRef Source,
+		const MixtormatGaussianBlur::FSettings& Settings,
+		MixtormatGaussianBlur::EField Field,
+		FRDGTextureRef Mask = nullptr,
+		FRDGTextureRef SourceValidity = nullptr);
+
+	FPublishedField AddOwnedFlowBlurPass(
+		FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
+		const FBlurRenderData& Blur,
+		const FPublishedField& Source,
+		FRDGTextureRef Mask = nullptr);
 
 	void AddLayerSurfaceBlurPasses(
 		FMixtormatComposeContext& Ctx,

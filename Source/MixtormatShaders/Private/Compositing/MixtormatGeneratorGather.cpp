@@ -976,6 +976,7 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		Out.SourceChildIndex = INDEX_NONE;
 		Out.BlendMode = static_cast<int32>(Ramp.BlendMode);
 		Out.FlowModulation = FMath::IsFinite(Ramp.FlowModulation) ? Ramp.FlowModulation : 0.0f;
+		Out.bSignedFlowModulation = Ramp.bSignedFlowModulation;
 		const float FlowRad = FMath::DegreesToRadians(Ramp.FlowModulationAngle);
 		Out.FlowModulationDir = FVector2f(FMath::Cos(FlowRad), FMath::Sin(FlowRad));
 		Out.UVModulation = FMath::IsFinite(Ramp.UVModulation) ? Ramp.UVModulation : 0.0f;

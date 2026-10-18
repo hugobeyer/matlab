@@ -13,7 +13,7 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatGaussianBlurCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatGaussianBlurCS, FGlobalShader);
 
-	class FField : SHADER_PERMUTATION_INT("FIELD_TYPE", 4);
+	class FField : SHADER_PERMUTATION_INT("FIELD_TYPE", 5);
 	class FStage : SHADER_PERMUTATION_INT("STAGE", 3);
 	class FMasked : SHADER_PERMUTATION_BOOL("HAS_MASK");
 	using FPermutationDomain = TShaderPermutationDomain<FField, FStage, FMasked>;

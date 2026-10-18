@@ -920,11 +920,15 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bMirrorRepeat = false;
 
-	// Modulate the ramp lookup coordinate using the module's Flow field (magnitude + directional bias).
+	// Scale the Flow-driven lookup offset; independent of the ramp's color blend Weight.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
 	float FlowModulation = 0.0f;
 
-	// Directional angle (degrees) for flow modulation bias.
+	// Use a signed directional projection instead of one-sided magnitude + directional bias.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation")
+	bool bSignedFlowModulation = false;
+
+	// Directional angle (degrees) for flow modulation bias or signed projection.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
 	float FlowModulationAngle = 90.0f;
 
