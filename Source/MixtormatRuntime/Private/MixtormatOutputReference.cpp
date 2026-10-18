@@ -73,7 +73,8 @@ namespace MixtormatOutputReferences
 				|| Generator.Type == EMixtormatGeneratorType::RockFormation
 				|| Generator.Type == EMixtormatGeneratorType::Pebbles
 				|| Generator.Type == EMixtormatGeneratorType::CliffStrata
-				|| Generator.Type == EMixtormatGeneratorType::RootNetwork)
+				|| Generator.Type == EMixtormatGeneratorType::RootNetwork
+				|| Generator.Type == EMixtormatGeneratorType::Scales)
 			{
 				return OutputName == FName(TEXT("FlowDirection"));
 			}
@@ -83,6 +84,10 @@ namespace MixtormatOutputReferences
 					|| (Generator.Noise.bNoiseWriteFlow
 						&& OutputName == FName(TEXT("GeneratedFlow"))));
 		case EMixtormatPublishedFieldKind::UVMap:
+			if (Generator.Type == EMixtormatGeneratorType::Scales)
+			{
+				return OutputName == FName(TEXT("ScaleUV"));
+			}
 			if (Generator.Type == EMixtormatGeneratorType::RootNetwork)
 			{
 				return OutputName == FName(TEXT("RootUV"))

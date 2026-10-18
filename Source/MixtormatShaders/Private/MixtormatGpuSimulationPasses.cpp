@@ -642,7 +642,9 @@ namespace MixtormatGpuCompositor
 							: (Candidate.Generator.Type == EMixtormatGeneratorType::Pebbles
 								? Candidate.Generator.Pebbles.FieldKey
 								: (Candidate.Generator.Type == EMixtormatGeneratorType::RootNetwork
-									? Candidate.Generator.RootNetwork.FieldKey : 0));
+									? Candidate.Generator.RootNetwork.FieldKey
+																		: (Candidate.Generator.Type == EMixtormatGeneratorType::Scales
+																			? Candidate.Generator.Scales.FieldKey : 0)));
 					}
 					break;
 				}

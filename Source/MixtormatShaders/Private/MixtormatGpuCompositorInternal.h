@@ -1035,6 +1035,12 @@ namespace MixtormatGpuCompositor
 		uint64 FieldKey = 0;
 	};
 
+	struct FScalesRenderData
+	{
+		FMixtormatScales Settings;
+		uint64 FieldKey = 0;
+	};
+
 	struct FGeneratorRenderData
 	{
 		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
@@ -1049,6 +1055,7 @@ namespace MixtormatGpuCompositor
 		FCliffStrataRenderData CliffStrata;
 		FBooleanOpsRenderData BooleanOps;
 		FRootNetworkRenderData RootNetwork;
+		FScalesRenderData Scales;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a

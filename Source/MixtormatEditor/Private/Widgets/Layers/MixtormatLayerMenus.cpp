@@ -1213,6 +1213,9 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			CreateChild(Target, EMixtormatChildCreation::RootNetwork);
 		}))
 		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(LOCTEXT("AddScalesChild", "Scales"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Scales); }))
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1450,6 +1453,7 @@ if ((bGenerator || RowType == EMixtormatLayerChildType::Behavior)
 						{EMixtormatChildCreation::Cracks, LOCTEXT("BooleanAddCracks", "Add Cracks")},
 						{EMixtormatChildCreation::Pebbles, LOCTEXT("BooleanAddPebbles", "Add Pebbles")},
 						{EMixtormatChildCreation::RootNetwork, LOCTEXT("BooleanAddRootNetwork", "Add Root Network")},
+												{EMixtormatChildCreation::Scales, LOCTEXT("BooleanAddScales", "Add Scales")},
 						{EMixtormatChildCreation::CliffStrata, LOCTEXT("BooleanAddCliff", "Add Cliff Strata")},
 						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")},
 						{EMixtormatChildCreation::ScatterCarve, LOCTEXT("BooleanAddScatterCarve", "Add Scatter Carve")}};

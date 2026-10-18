@@ -19,6 +19,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Noise: return &Generator.Noise;
 		case EMixtormatGeneratorType::BooleanOps: return &Generator.BooleanOps;
 		case EMixtormatGeneratorType::RootNetwork: return &Generator.RootNetwork;
+					case EMixtormatGeneratorType::Scales: return &Generator.Scales;
 		}
 		return nullptr;
 	}
@@ -36,6 +37,7 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Noise: return FMixtormatNoise::StaticStruct();
 		case EMixtormatGeneratorType::BooleanOps: return FMixtormatBooleanOps::StaticStruct();
 		case EMixtormatGeneratorType::RootNetwork: return FMixtormatRootNetwork::StaticStruct();
+					case EMixtormatGeneratorType::Scales: return FMixtormatScales::StaticStruct();
 		}
 		return nullptr;
 	}

@@ -260,6 +260,25 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Scales)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("ScaleCoverage")),
+				NSLOCTEXT("SMixtormat", "PreviewScaleCoverage", "Coverage"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("ScaleEdgeDistance")),
+				NSLOCTEXT("SMixtormat", "PreviewScaleEdge", "Local Edge Distance"),
+				EMixtormatPreviewOutputKind::SignedDistance, true, true, true, NAME_None});
+			Result.Outputs.Add({FName(TEXT("ScaleUV")),
+				NSLOCTEXT("SMixtormat", "PreviewScaleUV", "Scale UV"),
+				EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::UVMap});
+			Result.Outputs.Add({FName(TEXT("FlowDirection")),
+				NSLOCTEXT("SMixtormat", "PreviewScaleFlow", "Flow"),
+				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Flow});
+		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Pebbles)
 		{
 			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,

@@ -319,6 +319,62 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
+class FMixtormatScalesCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatScalesCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatScalesCS, FGlobalShader);
+	class FStage : SHADER_PERMUTATION_INT("SCALES_STAGE", 2);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
+		SHADER_PARAMETER(FIntPoint, ScaleCount)
+		SHADER_PARAMETER(FIntPoint, SearchReach)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(uint32, Shape)
+		SHADER_PARAMETER(float, Stagger)
+		SHADER_PARAMETER(float, Direction)
+		SHADER_PARAMETER(float, Width)
+		SHADER_PARAMETER(float, Length)
+		SHADER_PARAMETER(float, TipRoundness)
+		SHADER_PARAMETER(float, Taper)
+		SHADER_PARAMETER(float, Overlap)
+		SHADER_PARAMETER(float, TipLift)
+		SHADER_PARAMETER(float, RootTuck)
+		SHADER_PARAMETER(float, Thickness)
+		SHADER_PARAMETER(float, Dome)
+		SHADER_PARAMETER(float, Ridge)
+		SHADER_PARAMETER(float, Bevel)
+		SHADER_PARAMETER(float, SizeRandom)
+		SHADER_PARAMETER(float, RotationRandom)
+		SHADER_PARAMETER(float, HeightRandom)
+		SHADER_PARAMETER(float, RowJitter)
+		SHADER_PARAMETER(float, GrooveAmount)
+		SHADER_PARAMETER(float, GrooveCount)
+		SHADER_PARAMETER(float, GrooveDirection)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FScalePlate>, OutPlates)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<FScalePlate>, Plates)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScaleHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScaleCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutScaleEdge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutScaleIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutScaleUV)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatScalesCS, "/Plugin/Mixtormat/Private/MixtormatScales.usf", "MainCS", SF_Compute);
+
 class FMixtormatCliffStrataCS final : public FGlobalShader
 {
 public:
@@ -2201,7 +2257,7 @@ namespace
 					const bool bMask = HasScopedGeneratorMasks(Layer, Child.SourceChildIndex);
 					FRDGTextureRef HeightMask = bMask
 						? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
-						: (Owner.Generator.Type == EMixtormatGeneratorType::RootNetwork ? Module.Coverage : nullptr);
+						: ((Owner.Generator.Type == EMixtormatGeneratorType::RootNetwork || Owner.Generator.Type == EMixtormatGeneratorType::Scales) ? Module.Coverage : nullptr);
 					ScopedBundle.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder,
 						ScopedBundle.Height, Size, Child.Generator.bNormalizeHeight,
 						Child.Generator.HeightScale, Child.Generator.HeightBias, true, HeightMask,
@@ -3477,6 +3533,101 @@ namespace
 		return Combined;
 	}
 
+	FRDGTextureRef AddScalesPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FScalesRenderData& Data = Child.Generator.Scales;
+		const FMixtormatScales& S = Data.Settings;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		constexpr int32 SlotCount = 5;
+		FRDGTextureRef O[SlotCount] = {};
+		static const TCHAR* Names[SlotCount] = {TEXT("Mixtormat.Scales.Height"), TEXT("Mixtormat.Scales.Coverage"),
+			TEXT("Mixtormat.Scales.EdgeDistance"), TEXT("Mixtormat.Scales.Ids"), TEXT("Mixtormat.Scales.UV")};
+		if (const auto* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 I = 0; I < SlotCount; ++I) O[I] = (*Memo)[I];
+		}
+		else
+		{
+			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
+			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
+				? MixtormatComposeHash::Combine(Data.FieldKey, 0x5363616C657331ull) : 0;
+			auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			bool bComplete = Hit.IsValid();
+			for (int32 I = 0; bComplete && I < SlotCount; ++I) bComplete = Hit->Outputs[I].IsValid();
+			if (bComplete)
+			{
+				for (int32 I = 0; I < SlotCount; ++I) O[I] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[I], Names[I]);
+			}
+			else
+			{
+				const EPixelFormat Formats[SlotCount] = {PF_R32_FLOAT, PF_R16F, PF_R32_FLOAT, PF_R32_UINT, PF_G32R32F};
+				for (int32 I = 0; I < SlotCount; ++I)
+				{
+					O[I] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size, Formats[I],
+						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[I]);
+				}
+				struct FScalePlateStride { float Anchor[2], Size[2], RotationCS[2], HeightOffset; };
+				static_assert(sizeof(FScalePlateStride) == 28, "Scale plate stride must match HLSL");
+				const uint32 PlateCount = static_cast<uint32>(S.CountX) * static_cast<uint32>(S.CountY);
+				FRDGBufferRef Plates = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FScalePlateStride), PlateCount), TEXT("Mixtormat.Scales.Plates"));
+				// Rotation-independent root-to-tip bound. Deliberately not a fixed neighbourhood:
+				// typed oversize, negative taper, stagger and jitter must not clip distant plates.
+				const float HalfWidth = .5f * S.Width / S.CountX * FMath::Max(1.0f, 1.0f - S.Taper);
+				const float Length = FMath::Max(S.Length * (1.0f + S.Overlap), .001f) / S.CountY;
+				const float Radius = FMath::Sqrt(HalfWidth * HalfWidth + Length * Length) * (1.0f + FMath::Abs(S.SizeRandom));
+				const FIntPoint Reach(FMath::CeilToInt(Radius * S.CountX + FMath::Abs(S.Stagger) + FMath::Abs(S.RowJitter)) + 1,
+					FMath::CeilToInt(Radius * S.CountY + FMath::Abs(S.RowJitter)) + 1);
+				for (int32 Stage = 0; Stage < 2; ++Stage)
+				{
+					FMixtormatScalesCS::FPermutationDomain Permutation;
+					Permutation.Set<FMixtormatScalesCS::FStage>(Stage);
+					TShaderMapRef<FMixtormatScalesCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatScalesCS::FParameters>();
+					FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+					P->OutputSize = Size; P->ScaleCount = FIntPoint(S.CountX, S.CountY); P->SearchReach = Reach;
+					P->Seed = static_cast<uint32>(S.Seed); P->Shape = static_cast<uint32>(S.Shape);
+					P->Stagger = S.Stagger; P->Direction = S.Direction; P->Width = S.Width; P->Length = S.Length;
+					P->TipRoundness = S.TipRoundness; P->Taper = S.Taper; P->Overlap = S.Overlap;
+					P->TipLift = S.TipLift; P->RootTuck = S.RootTuck; P->Thickness = S.Thickness;
+					P->Dome = S.Dome; P->Ridge = S.Ridge; P->Bevel = S.Bevel;
+					P->SizeRandom = S.SizeRandom; P->RotationRandom = S.RotationRandom;
+					P->HeightRandom = S.HeightRandom; P->RowJitter = S.RowJitter;
+					P->GrooveAmount = S.GrooveAmount; P->GrooveCount = S.GrooveCount; P->GrooveDirection = S.GrooveDirection;
+					P->OutPlates = GraphBuilder.CreateUAV(Plates); P->Plates = GraphBuilder.CreateSRV(Plates);
+					P->OutScaleHeight = GraphBuilder.CreateUAV(O[0]); P->OutScaleCoverage = GraphBuilder.CreateUAV(O[1]);
+					P->OutScaleEdge = GraphBuilder.CreateUAV(O[2]); P->OutScaleIds = GraphBuilder.CreateUAV(O[3]);
+					P->OutScaleUV = GraphBuilder.CreateUAV(O[4]);
+					ClearUnusedGraphResources(Shader, P);
+					const FIntVector Groups = Stage == 0 ? FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(PlateCount), 64), 1, 1)
+						: FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Scales.S%d.L%d.C%d",
+						Stage, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P, Groups);
+				}
+				if (Key)
+				{
+					auto Entry = MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = Key; Entry->Resolution = Size;
+					for (int32 I = 0; I < SlotCount; ++I) GraphBuilder.QueueTextureExtraction(O[I], &Entry->Outputs[I]);
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+			LayerCtx.GeneratorFields.Add(Child.SourceChildIndex).Append(O, SlotCount);
+		}
+		if (Bundle)
+		{
+			Bundle->Height = O[0]; Bundle->Coverage = O[1]; Bundle->RegionIds = O[3];
+			Bundle->RegisterNamedMask(FName(TEXT("ScaleCoverage")), O[1], FGeneratorBundle::EFieldSemantic::CoverageAlias);
+			// Local owner-edge measure only: never advertise it as a global signed boundary.
+			Bundle->RegisterNamedMask(FName(TEXT("ScaleEdgeDistance")), O[2], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		}
+		Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("ScaleUV"))),
+			FPublishedField{EMixtormatPublishedFieldKind::UVMap, O[4], nullptr, nullptr, false});
+		return O[0];
+	}
+
 	struct FCliffBlockStride
 	{
 		float Center[2], Extent[2], Lean[2], Height, RotationCS[2], CenterShift[2], FlowAxis[2];
@@ -4354,6 +4505,9 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
+		case EMixtormatGeneratorType::Scales:
+			AddScalesPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			break;
 		case EMixtormatGeneratorType::RootNetwork:
 			AddRootNetworkPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
@@ -4435,7 +4589,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				|| Child.Generator.Type == EMixtormatGeneratorType::RockFormation
 				|| Child.Generator.Type == EMixtormatGeneratorType::Pebbles
 				|| Child.Generator.Type == EMixtormatGeneratorType::CliffStrata
-				|| Child.Generator.Type == EMixtormatGeneratorType::RootNetwork;
+				|| Child.Generator.Type == EMixtormatGeneratorType::RootNetwork
+								|| Child.Generator.Type == EMixtormatGeneratorType::Scales;
 			// Native Flow is an available typed output, not an unconditional GPU job.
 			// Geometry fields can be cached even when they are large; the derived Flow
 			// textures are transient and currently have no node-cache slot. Demand only

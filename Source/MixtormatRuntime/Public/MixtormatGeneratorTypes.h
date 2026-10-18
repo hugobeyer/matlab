@@ -28,7 +28,8 @@ enum class EMixtormatGeneratorType : uint8
 	// about what they mean -- height, roughness, mask and the rest are downstream decisions.
 	Noise UMETA(DisplayName = "Noise"),
 	BooleanOps UMETA(DisplayName = "Boolean Ops"),
-	RootNetwork UMETA(DisplayName = "Root Network")
+	RootNetwork UMETA(DisplayName = "Root Network"),
+		Scales UMETA(DisplayName = "Scales")
 };
 
 // How a pebble's cut planes are oriented.
@@ -44,14 +45,16 @@ inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 		|| Type == EMixtormatGeneratorType::Cracks
 		|| Type == EMixtormatGeneratorType::CliffStrata
 		|| Type == EMixtormatGeneratorType::Noise
-		|| Type == EMixtormatGeneratorType::RootNetwork;
+		|| Type == EMixtormatGeneratorType::RootNetwork
+				|| Type == EMixtormatGeneratorType::Scales;
 }
 
 inline bool MixtormatGeneratorHasFlowBoundary(const EMixtormatGeneratorType Type)
 {
 	return MixtormatCanOwnGeneratorFlow(Type)
 		&& Type != EMixtormatGeneratorType::Noise
-		&& Type != EMixtormatGeneratorType::CliffStrata;
+		&& Type != EMixtormatGeneratorType::CliffStrata
+				&& Type != EMixtormatGeneratorType::Scales;
 }
 
 UENUM(BlueprintType)
@@ -392,6 +395,74 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	float PebbleHeightScale = 1.0f;
 };
 
+
+UENUM(BlueprintType)
+enum class EMixtormatScaleShape : uint8
+{
+	Rounded = 0 UMETA(DisplayName = "Rounded"),
+	Diamond = 1 UMETA(DisplayName = "Diamond"),
+	Pointed = 2 UMETA(DisplayName = "Pointed")
+};
+
+// Slider bounds are artistic suggestions; only positive dimensions/counts are required.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatScales
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Output")
+	bool bNormalizeHeight = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Output", meta = (UIMin = "-4", UIMax = "4"))
+	float HeightScale = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Shape")
+	EMixtormatScaleShape Shape = EMixtormatScaleShape::Rounded;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Layout", meta = (ClampMin = "1", UIMin = "1", UIMax = "64"))
+	int32 CountX = 12;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Layout", meta = (ClampMin = "1", UIMin = "1", UIMax = "64"))
+	int32 CountY = 12;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Layout")
+	int32 Seed = 1234;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Layout", meta = (UIMin = "0", UIMax = "1"))
+	float Stagger = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Layout", meta = (UIMin = "-180", UIMax = "180"))
+	float Direction = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Shape", meta = (ClampMin = "0.001", UIMin = "0.25", UIMax = "2"))
+	float Width = 1.1f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Shape", meta = (ClampMin = "0.001", UIMin = "0.25", UIMax = "2"))
+	float Length = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Shape", meta = (UIMin = "0", UIMax = "1"))
+	float TipRoundness = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Shape", meta = (UIMin = "0", UIMax = "0.75"))
+	float Taper = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Overlap", meta = (UIMin = "0", UIMax = "1"))
+	float Overlap = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Overlap", meta = (UIMin = "0", UIMax = "1"))
+	float TipLift = 0.15f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Overlap", meta = (UIMin = "0", UIMax = "1"))
+	float RootTuck = 0.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Profile", meta = (UIMin = "0", UIMax = "1"))
+	float Thickness = 0.25f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Profile", meta = (UIMin = "0", UIMax = "1"))
+	float Dome = 0.15f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Profile", meta = (UIMin = "0", UIMax = "1"))
+	float Ridge = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Profile", meta = (UIMin = "0", UIMax = "0.25"))
+	float Bevel = 0.05f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Variation", meta = (UIMin = "0", UIMax = "0.25"))
+	float SizeRandom = 0.05f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Variation", meta = (UIMin = "0", UIMax = "15"))
+	float RotationRandom = 3.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Variation", meta = (UIMin = "0", UIMax = "0.25"))
+	float HeightRandom = 0.03f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Variation", meta = (UIMin = "0", UIMax = "0.25"))
+	float RowJitter = 0.02f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Surface", meta = (UIMin = "0", UIMax = "0.1"))
+	float GrooveAmount = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Surface", meta = (UIMin = "1", UIMax = "32"))
+	float GrooveCount = 8.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scales|Surface", meta = (UIMin = "-180", UIMax = "180"))
+	float GrooveDirection = 0.0f;
+};
 
 UENUM(BlueprintType)
 enum class EMixtormatCliffChamferMode : uint8
@@ -1526,4 +1597,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::RootNetwork"))
 	FMixtormatRootNetwork RootNetwork;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Scales"))
+	FMixtormatScales Scales;
 };

@@ -302,6 +302,47 @@ namespace MixtormatGpuCompositor
 		Out.HeightToUV = FMath::Max(Out.HeightToUV, 0.00001f);
 		break;
 	}
+	case EMixtormatGeneratorType::Scales:
+	{
+		FScalesRenderData& Out = ChildData.Generator.Scales;
+		Out.Settings = Generator.Scales;
+		FMixtormatScales& S = Out.Settings;
+		const FMixtormatScales Defaults;
+		// Sanitize non-finite inputs without imposing the inspector's artistic ranges.
+		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
+		S.CountX = FMath::Max(S.CountX, 1);
+		S.CountY = FMath::Max(S.CountY, 1);
+		S.Width = FMath::Max(Finite(S.Width, Defaults.Width), 0.001f);
+		S.Length = FMath::Max(Finite(S.Length, Defaults.Length), 0.001f);
+		S.Stagger = Finite(S.Stagger, Defaults.Stagger);
+		S.Direction = Finite(S.Direction, Defaults.Direction);
+		S.TipRoundness = Finite(S.TipRoundness, Defaults.TipRoundness);
+		S.Taper = Finite(S.Taper, Defaults.Taper);
+		S.Overlap = Finite(S.Overlap, Defaults.Overlap);
+		S.TipLift = Finite(S.TipLift, Defaults.TipLift);
+		S.RootTuck = Finite(S.RootTuck, Defaults.RootTuck);
+		S.Thickness = Finite(S.Thickness, Defaults.Thickness);
+		S.Dome = Finite(S.Dome, Defaults.Dome);
+		S.Ridge = Finite(S.Ridge, Defaults.Ridge);
+		S.Bevel = Finite(S.Bevel, Defaults.Bevel);
+		S.SizeRandom = Finite(S.SizeRandom, Defaults.SizeRandom);
+		S.RotationRandom = Finite(S.RotationRandom, Defaults.RotationRandom);
+		S.HeightRandom = Finite(S.HeightRandom, Defaults.HeightRandom);
+		S.RowJitter = Finite(S.RowJitter, Defaults.RowJitter);
+		S.GrooveAmount = Finite(S.GrooveAmount, Defaults.GrooveAmount);
+		S.GrooveCount = Finite(S.GrooveCount, Defaults.GrooveCount);
+		S.GrooveDirection = Finite(S.GrooveDirection, Defaults.GrooveDirection);
+		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
+		if (bCacheLayers)
+		{
+			MixtormatComposeHash::FHasher Hasher;
+			Hasher.SkipTopLevel = {TEXT("HeightScale"), TEXT("bNormalizeHeight")};
+			Hasher.Struct(FMixtormatScales::StaticStruct(), &S);
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x5363616C657331ull) | 1ull;
+		}
+		break;
+	}
 	case EMixtormatGeneratorType::RootNetwork:
 	{
 		const FMixtormatRootNetwork& Root = Generator.RootNetwork;
@@ -435,6 +476,13 @@ namespace MixtormatGpuCompositor
 			{
 				ChildData.Generator.CliffStrata.FieldKey = MixtormatComposeHash::Combine(
 					ChildData.Generator.CliffStrata.FieldKey, PlacementKey) | 1ull;
+			}
+			break;
+		case EMixtormatGeneratorType::Scales:
+			if (ChildData.Generator.Scales.FieldKey != 0)
+			{
+				ChildData.Generator.Scales.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.Scales.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		case EMixtormatGeneratorType::RootNetwork:

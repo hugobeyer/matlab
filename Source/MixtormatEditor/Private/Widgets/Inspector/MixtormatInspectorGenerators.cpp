@@ -195,6 +195,7 @@ void SMixtormat::AddNativeFlowControls(const TSharedRef<SVerticalBox>& Cards)
 			|| G->Type == EMixtormatGeneratorType::RockFormation
 			|| G->Type == EMixtormatGeneratorType::Pebbles
 			|| G->Type == EMixtormatGeneratorType::RootNetwork
+			|| G->Type == EMixtormatGeneratorType::Scales
 			|| G->Type == EMixtormatGeneratorType::CliffStrata)
 			? &G->NativeFlow : nullptr;
 	};
@@ -208,7 +209,7 @@ void SMixtormat::AddNativeFlowControls(const TSharedRef<SVerticalBox>& Cards)
 			LOCTEXT("NativeFlowAngle", "Tilt"), Settings, &FMixtormatNativeFlowSettings::Angle,
 			-180.0, 180.0, Defaults.Angle, 0.5, LOCTEXT("NativeFlowAngleHint", "Rotate the final directional field in degrees."))));
 	const FMixtormatGenerator* Selected = GetSelectedGenerator();
-	if (Selected && Selected->Type == EMixtormatGeneratorType::CliffStrata)
+	if (Selected && !MixtormatGeneratorHasFlowBoundary(Selected->Type))
 	{
 		AddSliderRow(Card, MakeMemberSlider<FMixtormatNativeFlowSettings>(
 			LOCTEXT("NativeFlowSurface", "Surface"), Settings, &FMixtormatNativeFlowSettings::BoundaryInfluence,
@@ -1341,6 +1342,72 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 		];
 }
 
+
+TSharedRef<SWidget> SMixtormat::BuildScalesControls()
+{
+	const auto Scale = [this]() { return GetSelectedScales(); };
+	const FMixtormatScales Defaults;
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("ScalesOutput", "OUTPUT"));
+	const auto Slider = [this, Scale, Defaults](const FText& Label, float FMixtormatScales::* Member,
+		double Min, double Max, const FText& Hint = FText::GetEmpty())
+	{
+		return MakeMemberSlider<FMixtormatScales>(Label, Scale, Member, Min, Max, Defaults.*Member, .01, Hint);
+	};
+	const auto Pair = [this, &Panel](TSharedRef<SWidget> A, TSharedRef<SWidget> B)
+	{
+		AddSliderRow(Panel, MixtormatRow::MakePair(A, B));
+	};
+	Pair(Slider(LOCTEXT("ScalesHeightScale", "Height Scale"), &FMixtormatScales::HeightScale, -4, 4),
+		MixtormatRow::MakeTrailing(LOCTEXT("ScalesNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([Scale]() { const auto* S = Scale(); return S && S->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+			FOnCheckStateChanged::CreateLambda([this, Scale](ECheckBoxState State) { if (auto* S = Scale()) { S->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
+			LOCTEXT("ScalesNormalizeHint", "Zero-preserving normalization of the visible scale height.")));
+	Panel = AddCard(Cards, LOCTEXT("ScalesLayout", "LAYOUT"));
+	Pair(MakeMemberSliderInt<FMixtormatScales>(LOCTEXT("ScalesCountX", "Count X"), Scale, &FMixtormatScales::CountX, 1, 64, Defaults.CountX),
+		MakeMemberSliderInt<FMixtormatScales>(LOCTEXT("ScalesCountY", "Count Y"), Scale, &FMixtormatScales::CountY, 1, 64, Defaults.CountY));
+	Pair(Slider(LOCTEXT("ScalesStagger", "Row Stagger"), &FMixtormatScales::Stagger, 0, 1),
+		Slider(LOCTEXT("ScalesDirection", "Direction"), &FMixtormatScales::Direction, -180, 180,
+			LOCTEXT("ScalesDirectionHint", "Rotate plates around their tucked roots, in degrees. The periodic row lattice stays fixed.")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatScales>(LOCTEXT("ScalesSeed", "Seed"), Scale, &FMixtormatScales::Seed, 0, 99999, Defaults.Seed));
+	Panel = AddCard(Cards, LOCTEXT("ScalesShape", "SHAPE"));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatScales>(LOCTEXT("ScalesShapeMode", "Shape"), Scale, &FMixtormatScales::Shape));
+	Pair(Slider(LOCTEXT("ScalesWidth", "Width"), &FMixtormatScales::Width, .25, 2),
+		Slider(LOCTEXT("ScalesLength", "Length"), &FMixtormatScales::Length, .25, 2));
+	Pair(Slider(LOCTEXT("ScalesRoundness", "Tip Roundness"), &FMixtormatScales::TipRoundness, 0, 1),
+		Slider(LOCTEXT("ScalesTaper", "Taper"), &FMixtormatScales::Taper, 0, .75));
+	Panel = AddCard(Cards, LOCTEXT("ScalesOverlap", "OVERLAP"));
+	AddSliderRow(Panel, Slider(LOCTEXT("ScalesOverlapAmount", "Overlap"), &FMixtormatScales::Overlap, 0, 1,
+		LOCTEXT("ScalesOverlapHint", "Extends plates from their fixed roots. Type outside the slider range to create gaps or larger overlaps; large footprints cost more.")));
+	Pair(Slider(LOCTEXT("ScalesTipLift", "Tip Lift"), &FMixtormatScales::TipLift, 0, 1),
+		Slider(LOCTEXT("ScalesRootTuck", "Root Tuck"), &FMixtormatScales::RootTuck, 0, 1));
+	Panel = AddCard(Cards, LOCTEXT("ScalesProfile", "PROFILE"));
+	Pair(Slider(LOCTEXT("ScalesThickness", "Thickness"), &FMixtormatScales::Thickness, 0, 1),
+		Slider(LOCTEXT("ScalesDome", "Dome"), &FMixtormatScales::Dome, 0, 1));
+	Pair(Slider(LOCTEXT("ScalesRidge", "Center Ridge"), &FMixtormatScales::Ridge, 0, 1),
+		Slider(LOCTEXT("ScalesBevel", "Edge Bevel"), &FMixtormatScales::Bevel, 0, .25));
+	Panel = AddCard(Cards, LOCTEXT("ScalesVariation", "VARIATION"));
+	Pair(Slider(LOCTEXT("ScalesSizeRandom", "Size"), &FMixtormatScales::SizeRandom, 0, .25),
+		Slider(LOCTEXT("ScalesRotationRandom", "Rotation"), &FMixtormatScales::RotationRandom, 0, 15,
+			LOCTEXT("ScalesRotationHint", "Random rotation in degrees. Typed values may exceed the safe drag range; crossings use the highest surface.")));
+	Pair(Slider(LOCTEXT("ScalesHeightRandom", "Height"), &FMixtormatScales::HeightRandom, 0, .25),
+		Slider(LOCTEXT("ScalesRowJitter", "Row Jitter"), &FMixtormatScales::RowJitter, 0, .25));
+	Panel = AddCard(Cards, LOCTEXT("ScalesSurface", "SURFACE"));
+	Pair(Slider(LOCTEXT("ScalesGrooveAmount", "Grooves"), &FMixtormatScales::GrooveAmount, 0, .1),
+		Slider(LOCTEXT("ScalesGrooveCount", "Groove Count"), &FMixtormatScales::GrooveCount, 1, 32));
+	AddSliderRow(Panel, Slider(LOCTEXT("ScalesGrooveDirection", "Groove Direction"), &FMixtormatScales::GrooveDirection, -180, 180));
+	AddNativeFlowControls(Cards);
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedScales() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ScalesHeading", "SCALES")).InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
+				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
+					Probe.Generator.Type = EMixtormatGeneratorType::Scales; return GetChildPreviewOutputSet(Probe); }())]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* G = GetSelectedGenerator(); return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* G = GetSelectedGenerator()) { G->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])
+		[Cards]];
+}
 
 TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 {

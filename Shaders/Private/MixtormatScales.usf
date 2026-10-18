@@ -1,0 +1,149 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGully.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+int2 OutputSize;
+int2 ScaleCount;
+int2 SearchReach;
+uint Seed;
+uint Shape;
+float Stagger;
+float Direction;
+float Width;
+float Length;
+float TipRoundness;
+float Taper;
+float Overlap;
+float TipLift;
+float RootTuck;
+float Thickness;
+float Dome;
+float Ridge;
+float Bevel;
+float SizeRandom;
+float RotationRandom;
+float HeightRandom;
+float RowJitter;
+float GrooveAmount;
+float GrooveCount;
+float GrooveDirection;
+
+// Root anchor, half-width/length, rotation, height variation. CPU stride: 28 bytes.
+struct FScalePlate
+{
+	float2 Anchor;
+	float2 Size;
+	float2 RotationCS;
+	float HeightOffset;
+};
+RWStructuredBuffer<FScalePlate> OutPlates;
+StructuredBuffer<FScalePlate> Plates;
+RWTexture2D<float> OutScaleHeight;
+RWTexture2D<float> OutScaleCoverage;
+RWTexture2D<float> OutScaleEdge;
+RWTexture2D<uint> OutScaleIds;
+RWTexture2D<float2> OutScaleUV;
+
+float ScaleRandom(uint Key, uint Salt)
+{
+	return (float)(MixtormatHashU(Key ^ Salt) >> 8u) * (2.0f / 16777216.0f) - 1.0f;
+}
+
+#if SCALES_STAGE == 0
+[numthreads(64, 1, 1)]
+void MainCS(uint3 D : SV_DispatchThreadID)
+{
+	uint index = D.x;
+	if (index >= (uint)(ScaleCount.x * ScaleCount.y)) return;
+	uint row = index / (uint)ScaleCount.x;
+	uint column = index % (uint)ScaleCount.x;
+	uint key = MixtormatHashU(index ^ Seed);
+	uint rowKey = MixtormatHashU(row ^ Seed);
+	FScalePlate P;
+	P.Anchor = (float2(column, row) + float2(.5f + (row & 1u) * Stagger, .5f)
+		+ float2(ScaleRandom(rowKey, 1u), ScaleRandom(rowKey, 2u)) * RowJitter) / float2(ScaleCount);
+	float size = max(abs(1.0f + ScaleRandom(key, 3u) * SizeRandom), .001f);
+	P.Size = float2(.5f * Width / ScaleCount.x, max(Length * (1.0f + Overlap), .001f) / ScaleCount.y) * size;
+	float angle = radians(Direction + ScaleRandom(key, 4u) * RotationRandom);
+	P.RotationCS = float2(cos(angle), sin(angle));
+	P.HeightOffset = ScaleRandom(key, 5u) * HeightRandom;
+	OutPlates[index] = P;
+}
+#else
+// Outline width at root-to-tip coordinate T. Roundness changes the exponent, not tessellation.
+float ScaleOutline(float T)
+{
+	float exponent = exp2(clamp(-TipRoundness, -16.0f, 16.0f));
+	float span;
+	if (Shape == 1u) span = pow(max(1.0f - abs(2.0f * T - 1.0f), 0.0f), exponent);
+	else if (Shape == 2u) span = pow(max(1.0f - T, 0.0f), exponent);
+	else span = pow(max(1.0f - pow(saturate(2.0f * T - 1.0f), 2.0f), 0.0f), .5f * exponent);
+	return span * max(1.0f - Taper * T, 0.0f);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 D : SV_DispatchThreadID)
+{
+	int2 pixel = int2(D.xy);
+	if (any(pixel >= OutputSize)) return;
+	float2 uv = frac(MixtormatGeneratorUV((float2(pixel) + .5f) / float2(OutputSize)));
+	int2 cell = int2(floor(uv * float2(ScaleCount)));
+	float bestHeight = -1e20f;
+	uint bestId = MIXTORMAT_INVALID_REGION;
+	float2 bestUV = 0;
+	float bestEdge = 0;
+	float bestCoverage = 0;
+	float grooveAngle = radians(GrooveDirection);
+	float2 grooveAxis = float2(cos(grooveAngle), sin(grooveAngle));
+	float pixelWidth = 1.0f / max(OutputSize.x, OutputSize.y);
+	[loop] for (int y = cell.y - SearchReach.y; y <= cell.y + SearchReach.y; ++y)
+	{
+		[loop] for (int x = cell.x - SearchReach.x; x <= cell.x + SearchReach.x; ++x)
+		{
+			int2 wrapped = int2(MixtormatWrapI(x, ScaleCount.x), MixtormatWrapI(y, ScaleCount.y));
+			uint index = (uint)(wrapped.x + wrapped.y * ScaleCount.x);
+			FScalePlate P = Plates[index];
+			float2 delta = uv - (P.Anchor + float2(int2(x, y) - wrapped) / float2(ScaleCount));
+			float2 local = float2(P.RotationCS.x * delta.x + P.RotationCS.y * delta.y,
+				-P.RotationCS.y * delta.x + P.RotationCS.x * delta.y);
+			float t = local.y / P.Size.y;
+			if (t < 0.0f || t > 1.0f) continue;
+			float span = ScaleOutline(t) * P.Size.x;
+			if (span <= 0.0f || abs(local.x) > span) continue;
+			float across = local.x / span;
+			// Local edge-distance approximation, not a global signed-distance solve.
+			float edge = min(span - abs(local.x), min(local.y, P.Size.y - local.y));
+			float crossProfile = max(1.0f - across * across, 0.0f);
+			float alongProfile = sin(t * 3.14159265359f);
+			float height = Thickness + P.HeightOffset + TipLift * t - RootTuck * (1.0f - t)
+				+ Dome * crossProfile * alongProfile + Ridge * (1.0f - abs(across)) * alongProfile;
+			float bevelWidth = abs(Bevel) * min(P.Size.x, P.Size.y);
+			if (bevelWidth > 0.0f) height -= Bevel * (1.0f - saturate(edge / bevelWidth));
+			float2 plateUV = float2(local.x / (2.0f * P.Size.x) + .5f, t);
+			if (GrooveAmount != 0.0f)
+			{
+				float phase = dot(plateUV, grooveAxis) * GrooveCount * 6.28318530718f;
+				height -= GrooveAmount * (.5f + .5f * cos(phase)) * crossProfile * alongProfile;
+			}
+			// All visible attributes belong to the same winning surface, even for negative heights.
+			if (bestId == MIXTORMAT_INVALID_REGION || height > bestHeight || (height == bestHeight && index < bestId))
+			{
+				bestHeight = height;
+				bestId = index;
+				bestUV = plateUV;
+				bestEdge = -edge;
+				bestCoverage = saturate(.5f + edge / max(pixelWidth, 1e-8f));
+			}
+		}
+	}
+	bool hit = bestId != MIXTORMAT_INVALID_REGION;
+	OutScaleHeight[pixel] = hit ? bestHeight : 0.0f;
+	OutScaleCoverage[pixel] = bestCoverage;
+	OutScaleEdge[pixel] = bestEdge;
+	OutScaleIds[pixel] = bestId;
+	OutScaleUV[pixel] = bestUV;
+}
+#endif

@@ -167,6 +167,7 @@ namespace MixtormatShaderParamScanner
 			TEXT("MixtormatRockFormation.usf"),
 			TEXT("MixtormatPebbles.usf"),
 			TEXT("MixtormatCliffStrata.usf"),
+						TEXT("MixtormatScales.usf"),
 			TEXT("MixtormatNoise.usf"),
 		};
 		static const TCHAR* const BehaviorFlowSettingsShaders[] =

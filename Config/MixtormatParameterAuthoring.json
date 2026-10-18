@@ -6,7 +6,7 @@
 			"default": 4,
 			"uiMin": 0,
 			"uiMax": 32,
-			"snap": 0.1,
+			"snap": 0.10000000149011612,
 			"clampMin": 0
 		},
 		"Blur.ScaleX":
@@ -14,7 +14,7 @@
 			"default": 1,
 			"uiMin": 0,
 			"uiMax": 4,
-			"snap": 0.01,
+			"snap": 0.0099999997764825821,
 			"clampMin": 0
 		},
 		"Blur.ScaleY":
@@ -22,7 +22,7 @@
 			"default": 1,
 			"uiMin": 0,
 			"uiMax": 4,
-			"snap": 0.01,
+			"snap": 0.0099999997764825821,
 			"clampMin": 0
 		},
 		"Blur.Amount":
@@ -1338,10 +1338,10 @@
 		{
 			"default": 3,
 			"uiMin": 0,
-			"uiMax": 32,
+			"uiMax": 128,
 			"snap": 0.10000000149011612,
 			"clampMin": 0,
-			"clampMax": 64
+			"clampMax": 256
 		},
 		"BehaviorFeatherSettings.Iterations:Int":
 		{
@@ -1544,6 +1544,16 @@
 			"default": 32,
 			"uiMin": 1,
 			"uiMax": 256,
+			"snap": 0
+		}
+	},
+	"Scales":
+	{
+		"Generator.TipRoundness":
+		{
+			"default": 0.20000000298023224,
+			"uiMin": 0,
+			"uiMax": 10,
 			"snap": 0
 		}
 	}
