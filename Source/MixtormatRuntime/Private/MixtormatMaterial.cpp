@@ -233,6 +233,8 @@ void UMixtormatMaterial::PostLoad()
 	{
 		Child.Mask.Shaping.CurveBias.Sanitize();
 		Child.Generated.Shaping.CurveBias.Sanitize();
+		Child.Generated.CurvatureCurve.Sanitize();
+		Child.Generated.HeightCurve.Sanitize();
 		Child.Craquelure.Shaping.CurveBias.Sanitize();
 		Child.ColorId.Shaping.CurveBias.Sanitize();
 		Child.RandomId.Shaping.CurveBias.Sanitize();

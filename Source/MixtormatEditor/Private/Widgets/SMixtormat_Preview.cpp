@@ -617,131 +617,21 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 	return FReply::Handled();
 }
 
-FReply SMixtormat::CycleSelectedModulePreview()
+FReply SMixtormat::CycleChannelPreview()
 {
 	if (!bHasWorkingMaterial) { return FReply::Handled(); }
-	const FMixtormatChildAddress SelectedSource = GetSelectedChildAddress();
-	const FMixtormatLayerChild* Child = ResolveChildAt(SelectedSource);
-	if (!Child)
-	{
-		// With no module selected, retain the material-channel cycle (Normal, AO, etc.).
-		bMaskOverlayEnabled = false;
-		MaskOverlaySource = FMixtormatChildAddress();
-		MaskOverlayOutputName = NAME_None;
-		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
-		bAutomaticFlowPreview = false;
-		DebugPreviewMode = EMixtormatDebugPreviewMode::None;
-		ChildPreviewTarget = FMixtormatChildPreviewTarget();
-		for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-		{
-			if (Viewport.IsValid()) { Viewport->CycleChannelPreview(); }
-		}
-		RefreshLayeredPreview(false);
-		return FReply::Handled();
-	}
-	if (!IsGroupChildEnabled(*Child)) { return FReply::Handled(); }
-
-	struct FCandidate
-	{
-		EMixtormatDebugPreviewMode Mode;
-		FMixtormatChildPreviewTarget Target;
-		bool bOverlay = false;
-	};
-	TArray<FCandidate> Candidates;
-	const bool bMaskProducer = Child->Type == EMixtormatLayerChildType::Mask
-		|| Child->Type == EMixtormatLayerChildType::Generated
-		|| Child->Type == EMixtormatLayerChildType::Craquelure
-		|| Child->Type == EMixtormatLayerChildType::ColorId
-		|| Child->Type == EMixtormatLayerChildType::RandomId;
-	if (bMaskProducer)
-	{
-		const FMixtormatChildPreviewTarget Target = ResolveMaskOverlayTarget(
-			SelectedSource, NAME_None, EMixtormatPreviewOutputKind::Mask);
-		if (Target.IsValid())
-		{
-			Candidates.Add({EMixtormatDebugPreviewMode::LayerMask, Target, true});
-		}
-	}
-	Candidates.Add({EMixtormatDebugPreviewMode::LayerUV, FMixtormatChildPreviewTarget()});
-
-	const FMixtormatChildPreviewOutputSet Outputs = GetChildPreviewOutputSet(*Child);
-	if (IsChildOutputPreviewReady(*Child))
-	{
-		TArray<FMixtormatPreviewOutputDesc> Descriptors;
-		if (Outputs.Primary.IsSet())
-		{
-			Descriptors.Add(Outputs.Primary.GetValue());
-		}
-		Descriptors.Append(Outputs.Secondary);
-		for (const FMixtormatPreviewOutputDesc& Output : Descriptors)
-		{
-			const bool bOverlay = Output.Kind == EMixtormatPreviewOutputKind::Mask
-				|| Output.Kind == EMixtormatPreviewOutputKind::FlowDirection
-				|| Output.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid;
-			const FMixtormatChildPreviewTarget Target = bOverlay
-				? ResolveMaskOverlayTarget(SelectedSource, Output.Name, Output.Kind)
-				: ResolveChildPreviewTarget(Output.Name, Output.Kind, Output.GapMaskName);
-			if (Target.IsValid() && !Candidates.ContainsByPredicate(
-				[&Target, bOverlay](const FCandidate& Candidate)
-				{
-					return Candidate.bOverlay == bOverlay && Candidate.Target == Target;
-				}))
-			{
-				Candidates.Add({bOverlay ? EMixtormatDebugPreviewMode::LayerMask
-					: EMixtormatDebugPreviewMode::ChildOutput, Target, bOverlay});
-			}
-		}
-	}
-	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
-	{
-		if (Viewport.IsValid()) { Viewport->ResetChannelPreview(); }
-	}
-
-	const bool bSelectedIsOwner = bMaskOverlayEnabled
-		&& SelectedSource.OwnerType == MaskOverlaySource.OwnerType
-		&& SelectedSource.OwnerId == MaskOverlaySource.OwnerId
-		&& SelectedSource.ChildId == MaskOverlaySource.ChildId;
-	const FMixtormatChildPreviewTarget ActiveOverlay = bSelectedIsOwner
-		? ResolveMaskOverlayTarget(MaskOverlaySource, MaskOverlayOutputName, MaskOverlayOutputKind)
-		: FMixtormatChildPreviewTarget();
-	int32 CurrentIndex = INDEX_NONE;
-	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
-	{
-		const FCandidate& Candidate = Candidates[Index];
-		const bool bMatches = Candidate.bOverlay
-			? bSelectedIsOwner && Candidate.Target == ActiveOverlay
-			: !bMaskOverlayEnabled && Candidate.Mode == DebugPreviewMode
-				&& (Candidate.Mode != EMixtormatDebugPreviewMode::ChildOutput
-					|| Candidate.Target == ChildPreviewTarget);
-		if (bMatches)
-		{
-			CurrentIndex = Index;
-			break;
-		}
-	}
-	const int32 NextIndex = CurrentIndex + 1;
-	bAutomaticFlowPreview = false;
+	// V is the composited PBR channel cycle only, independent of the stack selection.
+	// Per-module outputs (masks, flow, UVs, IDs) belong to the inspector eye/chevron and W/E/R.
 	bMaskOverlayEnabled = false;
 	MaskOverlaySource = FMixtormatChildAddress();
 	MaskOverlayOutputName = NAME_None;
 	MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
+	bAutomaticFlowPreview = false;
 	DebugPreviewMode = EMixtormatDebugPreviewMode::None;
 	ChildPreviewTarget = FMixtormatChildPreviewTarget();
-	if (Candidates.IsValidIndex(NextIndex))
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
 	{
-		const FCandidate& Candidate = Candidates[NextIndex];
-		if (Candidate.bOverlay)
-		{
-			bMaskOverlayEnabled = true;
-			MaskOverlaySource = SelectedSource;
-			MaskOverlayOutputName = Candidate.Target.OutputName;
-			MaskOverlayOutputKind = Candidate.Target.Kind;
-		}
-		else
-		{
-			DebugPreviewMode = Candidate.Mode;
-			ChildPreviewTarget = Candidate.Target;
-		}
+		if (Viewport.IsValid()) { Viewport->CycleChannelPreview(); }
 	}
 	RefreshLayeredPreview(false);
 	return FReply::Handled();
@@ -1342,10 +1232,6 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 						TEXT("Preview: %s"),
 						*PreviewViewports[0]->GetChannelPreviewLabel());
 				}
-			}))
-			.OnCycleModulePreview(FSimpleDelegate::CreateLambda([this]()
-			{
-				CycleSelectedModulePreview();
 			}))
 			// Bare 1-4 in the viewport: same path as the geometry rail buttons.
 			.OnSetPreviewMesh(FMixtormatSetPreviewMesh::CreateLambda([this](const EMixtormatPreviewMesh MeshType)

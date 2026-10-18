@@ -214,30 +214,59 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(uint32, Initialize)
-		SHADER_PARAMETER(uint32, SurfaceValid)
+		SHADER_PARAMETER(uint32, HasBelowSurface)
+		SHADER_PARAMETER(uint32, HasCurrentSurface)
 		SHADER_PARAMETER(uint32, FlipNormalY)
-		SHADER_PARAMETER(float, CurvatureWeight)
-		SHADER_PARAMETER(float, CurvatureBias)
+		SHADER_PARAMETER(float, LayerMix)
+
+		SHADER_PARAMETER(float, ConvexWeight)
+		SHADER_PARAMETER(float, CavityWeight)
 		SHADER_PARAMETER(float, CurvatureStrength)
-		SHADER_PARAMETER(float, CurvaturePower)
+		SHADER_PARAMETER(float, CurvatureMacroMix)
+		SHADER_PARAMETER(int32, CurvatureRadius)
+		SHADER_PARAMETER(int32, CurvatureSmoothing)
+		SHADER_PARAMETER(uint32, CurvatureCurveCount)
+		SHADER_PARAMETER(uint32, CurvatureCurveInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, CurvatureCurvePoints, [FMixtormatScalarRamp::MaxPoints])
+
+		SHADER_PARAMETER(float, AOWeight)
+		SHADER_PARAMETER(float, AORadius)
+		SHADER_PARAMETER(float, AOPower)
+		SHADER_PARAMETER(uint32, AOInvert)
+
+		SHADER_PARAMETER(float, SlopeWeight)
+		SHADER_PARAMETER(float, SlopeMin)
+		SHADER_PARAMETER(float, SlopeMax)
+		SHADER_PARAMETER(float, SlopeSoftness)
+		SHADER_PARAMETER(uint32, SlopeInvert)
+
 		SHADER_PARAMETER(float, DirectionWeight)
 		SHADER_PARAMETER(FVector3f, Direction)
 		SHADER_PARAMETER(float, DirectionBroadness)
-		SHADER_PARAMETER(float, AOWeight)
+		SHADER_PARAMETER(uint32, DirectionInvert)
+
 		SHADER_PARAMETER(float, HeightWeight)
 		SHADER_PARAMETER(float, HeightBias)
+		SHADER_PARAMETER(uint32, HeightCurveCount)
+		SHADER_PARAMETER(uint32, HeightCurveInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, HeightCurvePoints, [FMixtormatScalarRamp::MaxPoints])
+
 		SHADER_PARAMETER(float, RidgeWeight)
 		SHADER_PARAMETER(float, MixScale)
-		SHADER_PARAMETER(int32, CurvatureRadius)
-		SHADER_PARAMETER(int32, CurvatureSmoothing)
 		SHADER_PARAMETER(uint32, BlendMode)
 		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER(float, Weight)
+
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceNormal)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SurfaceRAM)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BelowNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, BelowRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BelowHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SurfaceRidge)
+
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CurrentNormal)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CurrentRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, CurrentHeight)
+
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputMask)
 	END_SHADER_PARAMETER_STRUCT()
@@ -836,43 +865,105 @@ namespace MixtormatGpuCompositor
 			return;
 		}
 
+		const bool bLayerHasOwnData = Layer.bHasSurface || Layer.bHasNormal || Layer.bHasPackedHeight
+			|| Layer.Height.IsValid() || Layer.bGenerator || LayerCtx.bGeneratedHeight
+			|| LayerCtx.GeneratorBundle.Height != nullptr;
+		if (bLayerHasOwnData && !LayerCtx.LayerInputN)
+		{
+			AddLayerInputPass(Ctx, LayerCtx, Layer);
+		}
+
+		const bool bHasBelow = LayerIndex > 0;
+		const bool bHasCurrent = bLayerHasOwnData && (LayerCtx.LayerInputN != nullptr || LayerCtx.LayerInputHeight != nullptr || LayerCtx.GeneratorBundle.Height != nullptr);
+
+		const bool bNeedsHeightNorm = Generated.ConvexWeight > 0.0f
+			|| Generated.CavityWeight > 0.0f
+			|| Generated.AOWeight > 0.0f
+			|| Generated.SlopeWeight > 0.0f
+			|| Generated.DirectionWeight > 0.0f
+			|| Generated.HeightWeight > 0.0f;
+
+		FRDGTextureRef BelowHeight = HeightTargets[LayerReadIndex];
+		if (bHasBelow && bNeedsHeightNorm && Generated.Weight != 0.0f)
+		{
+			BelowHeight = AddNormalizeFieldPasses(GraphBuilder, BelowHeight, Request.Resolution,
+				0.0f, 1.0f, TEXT("Mixtormat.GeneratedMask.BelowHeight"));
+		}
+
+		FRDGTextureRef RawCurrentHeight = LayerCtx.LayerInputHeight
+			? LayerCtx.LayerInputHeight
+			: (LayerCtx.GeneratorBundle.Height ? LayerCtx.GeneratorBundle.Height : HeightTargets[LayerReadIndex]);
+		FRDGTextureRef CurrentHeight = RawCurrentHeight;
+		if (bHasCurrent && bNeedsHeightNorm && Generated.Weight != 0.0f)
+		{
+			CurrentHeight = AddNormalizeFieldPasses(GraphBuilder, CurrentHeight, Request.Resolution,
+				0.0f, 1.0f, TEXT("Mixtormat.GeneratedMask.CurrentHeight"));
+		}
+
 		const int32 MaskWriteIndex = MaskPassIndex & 1;
 		const int32 MaskReadIndex = 1 - MaskWriteIndex;
 		FMixtormatGeneratedMaskCS::FParameters* GeneratedParameters =
 			GraphBuilder.AllocParameters<FMixtormatGeneratedMaskCS::FParameters>();
 		GeneratedParameters->OutputSize = Request.Resolution;
 		GeneratedParameters->Initialize = MaskPassIndex == 0 ? 1u : 0u;
-		GeneratedParameters->SurfaceValid = LayerIndex > 0 ? 1u : 0u;
+		GeneratedParameters->HasBelowSurface = bHasBelow ? 1u : 0u;
+		GeneratedParameters->HasCurrentSurface = bHasCurrent ? 1u : 0u;
 		GeneratedParameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
-		GeneratedParameters->CurvatureWeight = Generated.CurvatureWeight;
-		GeneratedParameters->CurvatureBias = Generated.CurvatureBias;
+		GeneratedParameters->LayerMix = Generated.LayerMix;
+
+		GeneratedParameters->ConvexWeight = Generated.ConvexWeight;
+		GeneratedParameters->CavityWeight = Generated.CavityWeight;
 		GeneratedParameters->CurvatureStrength = Generated.CurvatureStrength;
-		GeneratedParameters->CurvaturePower = Generated.CurvaturePower;
+		GeneratedParameters->CurvatureMacroMix = Generated.CurvatureMacroMix;
+		GeneratedParameters->CurvatureRadius = Generated.CurvatureRadius;
+		GeneratedParameters->CurvatureSmoothing = Generated.CurvatureSmoothing;
+		GeneratedParameters->CurvatureCurveCount = Generated.CurvatureCurveCount;
+		GeneratedParameters->CurvatureCurveInterpolation = Generated.CurvatureCurveInterpolation;
+		for (int32 I = 0; I < FMixtormatScalarRamp::MaxPoints; ++I)
+		{
+			GeneratedParameters->CurvatureCurvePoints[I] = Generated.CurvatureCurvePoints[I];
+		}
+
+		GeneratedParameters->AOWeight = Generated.AOWeight;
+		GeneratedParameters->AORadius = Generated.AORadius;
+		GeneratedParameters->AOPower = Generated.AOPower;
+		GeneratedParameters->AOInvert = Generated.bAOInvert ? 1u : 0u;
+
+		GeneratedParameters->SlopeWeight = Generated.SlopeWeight;
+		GeneratedParameters->SlopeMin = Generated.SlopeMin;
+		GeneratedParameters->SlopeMax = Generated.SlopeMax;
+		GeneratedParameters->SlopeSoftness = Generated.SlopeSoftness;
+		GeneratedParameters->SlopeInvert = Generated.bSlopeInvert ? 1u : 0u;
+
 		GeneratedParameters->DirectionWeight = Generated.DirectionWeight;
 		GeneratedParameters->Direction = Generated.Direction;
 		GeneratedParameters->DirectionBroadness = Generated.DirectionBroadness;
-		GeneratedParameters->AOWeight = Generated.AOWeight;
+		GeneratedParameters->DirectionInvert = Generated.bDirectionInvert ? 1u : 0u;
+
 		GeneratedParameters->HeightWeight = Generated.HeightWeight;
 		GeneratedParameters->HeightBias = Generated.HeightBias;
+		GeneratedParameters->HeightCurveCount = Generated.HeightCurveCount;
+		GeneratedParameters->HeightCurveInterpolation = Generated.HeightCurveInterpolation;
+		for (int32 I = 0; I < FMixtormatScalarRamp::MaxPoints; ++I)
+		{
+			GeneratedParameters->HeightCurvePoints[I] = Generated.HeightCurvePoints[I];
+		}
+
 		GeneratedParameters->RidgeWeight = Generated.RidgeWeight;
 		GeneratedParameters->MixScale = Generated.MixScale;
-		GeneratedParameters->CurvatureRadius = Generated.CurvatureRadius;
-		GeneratedParameters->CurvatureSmoothing = Generated.CurvatureSmoothing;
 		GeneratedParameters->BlendMode = static_cast<uint32>(Generated.BlendMode);
-
 		GeneratedParameters->Weight = Generated.Weight;
 
 		GeneratedParameters->PreviousMask = MaskTargets[MaskReadIndex];
-		GeneratedParameters->SurfaceNormal = OutputN[LayerReadIndex];
-		GeneratedParameters->SurfaceRAM = OutputRAM[LayerReadIndex];
-		// Height can be signed/HDR. Normalize this source before mixing so it cannot
-		// overwhelm AO or curvature. Reuse the canonical field reduction, only when read.
-		GeneratedParameters->SurfaceHeight = LayerIndex > 0 && Generated.Weight != 0.0f
-			&& Generated.HeightWeight != 0.0f
-			? AddNormalizeFieldPasses(GraphBuilder, HeightTargets[LayerReadIndex], Request.Resolution,
-				0.0f, 1.0f, TEXT("Mixtormat.GeneratedMask.Height"))
-			: HeightTargets[LayerReadIndex];
+		GeneratedParameters->BelowNormal = OutputN[LayerReadIndex];
+		GeneratedParameters->BelowRAM = OutputRAM[LayerReadIndex];
+		GeneratedParameters->BelowHeight = BelowHeight;
 		GeneratedParameters->SurfaceRidge = RidgeTargets[LayerReadIndex];
+
+		GeneratedParameters->CurrentNormal = LayerCtx.LayerInputN ? LayerCtx.LayerInputN : OutputN[LayerReadIndex];
+		GeneratedParameters->CurrentRAM = LayerCtx.LayerInputRAM ? LayerCtx.LayerInputRAM : OutputRAM[LayerReadIndex];
+		GeneratedParameters->CurrentHeight = CurrentHeight;
+
 		GeneratedParameters->LinearWrapSampler =
 			TStaticSamplerState<SF_AnisotropicLinear, AM_Wrap, AM_Wrap, AM_Wrap, 0, 4>::GetRHI();
 		GeneratedParameters->OutputMask = GraphBuilder.CreateUAV(MaskTargets[MaskWriteIndex]);
@@ -887,7 +978,7 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 				1),
-			LayerIndex == 0 || Generated.Weight == 0.0f);
+			(!bHasBelow && !bHasCurrent) || Generated.Weight == 0.0f);
 		CombinedMask = MaskTargets[MaskWriteIndex];
 		ApplyScopedMaskGate(Ctx, LayerCtx, Layer, Child);
 		if (Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::LayerMask

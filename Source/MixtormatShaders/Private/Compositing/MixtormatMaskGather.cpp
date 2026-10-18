@@ -3,6 +3,7 @@
 #include "Compositing/MixtormatMaskGather.h"
 #include "MixtormatChildScope.h"
 #include "MixtormatOutputReference.h"
+#include "MixtormatScalarRampMath.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -204,33 +205,61 @@ bool GatherMaskChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			}
 		}
 		FGeneratedMaskRenderData& GeneratedData = ChildData.Generated;
-		GeneratedData.CurvatureWeight = GeneratedMask.CurvatureWeight;
-		GeneratedData.CurvatureBias = FMath::Clamp(GeneratedMask.CurvatureBias, 0.0f, 1.0f);
+		GeneratedData.LayerMix = FMath::Clamp(GeneratedMask.LayerMix, 0.0f, 1.0f);
+		GeneratedData.ConvexWeight = FMath::Max(GeneratedMask.ConvexWeight, 0.0f);
+		GeneratedData.CavityWeight = FMath::Max(GeneratedMask.CavityWeight, 0.0f);
 		GeneratedData.CurvatureStrength = FMath::Max(GeneratedMask.CurvatureStrength, 0.0f);
-		GeneratedData.CurvaturePower = FMath::Max(GeneratedMask.CurvaturePower, 0.001f);
+		GeneratedData.CurvatureMacroMix = FMath::Clamp(GeneratedMask.CurvatureMacroMix, 0.0f, 1.0f);
 		GeneratedData.CurvatureRadius = FMath::Clamp(GeneratedMask.CurvatureRadius, 1, 32);
 		GeneratedData.CurvatureSmoothing = FMath::Clamp(GeneratedMask.CurvatureSmoothing, 1, 4);
-		GeneratedData.DirectionWeight = GeneratedMask.DirectionWeight;
+
+		const MixtormatScalarRampMath::FGpuPayload CurvPayload =
+			MixtormatScalarRampMath::PrepareGpuPayload(GeneratedMask.CurvatureCurve);
+		GeneratedData.CurvatureCurveCount = CurvPayload.PointCount;
+		GeneratedData.CurvatureCurveInterpolation = CurvPayload.Interpolation;
+		GeneratedData.CurvatureCurvePoints = CurvPayload.Points;
+
+		GeneratedData.AOWeight = FMath::Max(GeneratedMask.AOWeight, 0.0f);
+		GeneratedData.AORadius = FMath::Clamp(GeneratedMask.AORadius, 1.0f, 64.0f);
+		GeneratedData.AOPower = FMath::Max(GeneratedMask.AOPower, 0.1f);
+		GeneratedData.bAOInvert = GeneratedMask.bAOInvert;
+
+		GeneratedData.SlopeWeight = FMath::Max(GeneratedMask.SlopeWeight, 0.0f);
+		GeneratedData.SlopeMin = FMath::Clamp(GeneratedMask.SlopeMin, 0.0f, 90.0f) / 90.0f;
+		GeneratedData.SlopeMax = FMath::Clamp(GeneratedMask.SlopeMax, 0.0f, 90.0f) / 90.0f;
+		GeneratedData.SlopeSoftness = FMath::Clamp(GeneratedMask.SlopeSoftness, 0.005f, 1.0f);
+		GeneratedData.bSlopeInvert = GeneratedMask.bSlopeInvert;
+
+		GeneratedData.DirectionWeight = FMath::Max(GeneratedMask.DirectionWeight, 0.0f);
 		const float Azimuth = FMath::DegreesToRadians(GeneratedMask.DirectionAngle);
 		const float Elevation = FMath::DegreesToRadians(FMath::Clamp(GeneratedMask.DirectionElevation, 0.0f, 90.0f));
 		GeneratedData.Direction = FVector3f(
 			FMath::Cos(Azimuth) * FMath::Cos(Elevation),
 			FMath::Sin(Azimuth) * FMath::Cos(Elevation),
 			FMath::Sin(Elevation));
-		GeneratedData.DirectionBroadness = FMath::Max(GeneratedMask.DirectionBroadness, 0.001f);
-		GeneratedData.AOWeight = GeneratedMask.AOWeight;
-		GeneratedData.HeightWeight = GeneratedMask.HeightWeight;
+		GeneratedData.DirectionBroadness = FMath::Max(GeneratedMask.DirectionBroadness, 0.05f);
+		GeneratedData.bDirectionInvert = GeneratedMask.bDirectionInvert;
+
+		GeneratedData.HeightWeight = FMath::Max(GeneratedMask.HeightWeight, 0.0f);
 		GeneratedData.HeightBias = GeneratedMask.HeightBias;
-		// Uniform mixer work belongs on the CPU. A lone influence below one still fades;
-		// totals above one form a bounded weighted average rather than overexposing.
-		const float TotalInfluence = FMath::Abs(GeneratedMask.CurvatureWeight)
-			+ FMath::Abs(GeneratedMask.DirectionWeight) + FMath::Abs(GeneratedMask.AOWeight)
-			+ FMath::Abs(GeneratedMask.HeightWeight) + FMath::Abs(GeneratedMask.RidgeWeight);
+
+		const MixtormatScalarRampMath::FGpuPayload HeightPayload =
+			MixtormatScalarRampMath::PrepareGpuPayload(GeneratedMask.HeightCurve);
+		GeneratedData.HeightCurveCount = HeightPayload.PointCount;
+		GeneratedData.HeightCurveInterpolation = HeightPayload.Interpolation;
+		GeneratedData.HeightCurvePoints = HeightPayload.Points;
+
+		GeneratedData.RidgeWeight = FMath::Max(GeneratedMask.RidgeWeight, 0.0f);
+
+		const float TotalInfluence = FMath::Max(GeneratedData.ConvexWeight, GeneratedData.CavityWeight)
+			+ GeneratedData.AOWeight + GeneratedData.SlopeWeight + GeneratedData.DirectionWeight
+			+ GeneratedData.HeightWeight + GeneratedData.RidgeWeight;
 		GeneratedData.MixScale = 1.0f / FMath::Max(TotalInfluence, 1.0f);
+
 		GeneratedData.BlendMode = GeneratedMask.BlendMode;
 		GeneratedData.Weight = GeneratedMask.Weight;
 		static_cast<FMixtormatMaskShaping&>(GeneratedData) = GeneratedMask.Shaping;
-		GeneratedData.RidgeWeight = GeneratedMask.RidgeWeight;
+
 		if (ChildData.ScopeOwnerSourceChildIndex == INDEX_NONE)
 		{
 			Data.bHasMask = true;

@@ -2484,7 +2484,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
 {
 	MixtormatMenu::FBuilder Menu;
 	if (!GetSelectedHeightBlend()) { return Menu.Build(); }
-	Menu.Item(LOCTEXT("HeightBlendSourceNone", "None"), nullptr,
+	Menu.Item(LOCTEXT("HeightBlendSourceAuto", "Auto (Previous)"), nullptr,
 		FSimpleDelegate::CreateLambda([this]()
 		{
 			if (FMixtormatGeneratorHeightBlend* Blend = GetSelectedHeightBlend())
@@ -2499,7 +2499,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendSourceMenu()
 		const FGuid LayerId = WorkingLayers[SelectedLayerIndex].LayerId;
 		for (const FMixtormatLayerChild& Child : WorkingLayers[SelectedLayerIndex].Children)
 		{
-			if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
+			if (Child.Type != EMixtormatLayerChildType::Generator && Child.Type != EMixtormatLayerChildType::Boolean) { continue; }
 			const FGuid ChildId = Child.ChildId;
 			Menu.Item(GetLayerChildName(Child), MixtormatIcons::Generator(),
 				FSimpleDelegate::CreateLambda([this, LayerId, ChildId]()
@@ -2540,7 +2540,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
                     const FMixtormatGeneratorHeightBlend* B = GetSelectedHeightBlend();
                     if (!B || !B->SourceChildId.IsValid())
                     {
-                        return LOCTEXT("HeightBlendSourceNoneLabel", "None");
+                        return LOCTEXT("HeightBlendSourceAutoLabel", "Auto (Previous)");
                     }
                     if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
                     {
@@ -2775,7 +2775,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
 						if (R->Source != EMixtormatColorRampSource::ModuleRef
 							&& R->Source != EMixtormatColorRampSource::FlowMagnitude
 							&& R->Source != EMixtormatColorRampSource::FlowAngle
-							&& R->Source != EMixtormatColorRampSource::NoiseValue)
+							&& R->Source != EMixtormatColorRampSource::NoiseValue
+							&& R->Source != EMixtormatColorRampSource::ModuleCoverage
+							&& R->Source != EMixtormatColorRampSource::ModuleEdgeDistance
+							&& R->Source != EMixtormatColorRampSource::RootArcLength
+							&& R->Source != EMixtormatColorRampSource::RootAcross
+							&& R->Source != EMixtormatColorRampSource::RegionRandom)
 						{
 							R->Source = EMixtormatColorRampSource::ModuleRef;
 						}
@@ -2810,9 +2815,14 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 				RefreshLayeredPreview();
 			}
 		})));
-	AddSliderRow(RampCard, MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
-		LOCTEXT("ColorRampWeight", "Weight"), Ramp, &FMixtormatGeneratorHeightColorRamp::Weight, 0.0, 1.0, 1.0, 0.01,
-		LOCTEXT("ColorRampWeightHint", "How strongly this ramp colors the layer's Base Color. Scoped masks under this ramp also gate its coverage.")));
+	AddSliderRow(RampCard, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorBlendMode>(
+			LOCTEXT("ColorRampBlendMode", "Blend Mode"), Ramp, &FMixtormatGeneratorHeightColorRamp::BlendMode,
+			LOCTEXT("ColorRampBlendModeHint", "How this ramp's color blends with the previous ramp or the layer's base/fill color."),
+			FSimpleDelegate::CreateLambda([this]() { RefreshLayeredPreview(); })),
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampWeight", "Weight"), Ramp, &FMixtormatGeneratorHeightColorRamp::Weight, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("ColorRampWeightHint", "How strongly this ramp colors the layer's Base Color. Scoped masks under this ramp also gate its coverage."))));
 
 	// Where the ramp's scalar comes from. Source is always selectable even when scoped under a
 	// parent module, and Module chip is shown whenever Source reads a specific module.
@@ -2822,7 +2832,12 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		return R && (R->Source == EMixtormatColorRampSource::ModuleRef
 			|| R->Source == EMixtormatColorRampSource::FlowMagnitude
 			|| R->Source == EMixtormatColorRampSource::FlowAngle
-			|| R->Source == EMixtormatColorRampSource::NoiseValue);
+			|| R->Source == EMixtormatColorRampSource::NoiseValue
+			|| R->Source == EMixtormatColorRampSource::ModuleCoverage
+			|| R->Source == EMixtormatColorRampSource::ModuleEdgeDistance
+			|| R->Source == EMixtormatColorRampSource::RootArcLength
+			|| R->Source == EMixtormatColorRampSource::RootAcross
+			|| R->Source == EMixtormatColorRampSource::RegionRandom);
 	};
 	const TSharedRef<SVerticalBox> InputCard = AddCard(Panel, LOCTEXT("ColorRampCardInput", "INPUT"));
 	AddSliderRow(InputCard,
@@ -2887,6 +2902,29 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 					FOnGetContent::CreateSP(this, &SMixtormat::BuildColorRampSourceMenu)),
 				LOCTEXT("ColorRampSourceModuleHint", "The earlier module whose scalar field this ramp maps. When None/Auto, uses the parent module if scoped or the nearest compatible module above."))
 		]);
+
+	const TSharedRef<SVerticalBox> ModCard = AddCard(Panel, LOCTEXT("ColorRampCardModulation", "MODULATION"));
+	AddSliderRow(ModCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampFlowModulation", "Flow Shift"), Ramp, &FMixtormatGeneratorHeightColorRamp::FlowModulation, -2.0, 2.0, 0.0, 0.01,
+			LOCTEXT("ColorRampFlowModulationHint", "Modulate the ramp lookup coordinate using the module's Flow field (magnitude + directional bias).")),
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampFlowModulationAngle", "Flow Angle"), Ramp, &FMixtormatGeneratorHeightColorRamp::FlowModulationAngle, 0.0, 360.0, 90.0, 1.0,
+			LOCTEXT("ColorRampFlowModulationAngleHint", "Directional angle in degrees for flow modulation bias."))));
+	AddSliderRow(ModCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampUVModulation", "UV Shift"), Ramp, &FMixtormatGeneratorHeightColorRamp::UVModulation, -2.0, 2.0, 0.0, 0.01,
+			LOCTEXT("ColorRampUVModulationHint", "Modulate the ramp lookup coordinate using the module's UV coordinates.")),
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampUVModulationAngle", "UV Angle"), Ramp, &FMixtormatGeneratorHeightColorRamp::UVModulationAngle, 0.0, 360.0, 45.0, 1.0,
+			LOCTEXT("ColorRampUVModulationAngleHint", "Angle in degrees of the UV gradient axis used for coordinate modulation."))));
+	AddSliderRow(ModCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampIdVariation", "ID Variation"), Ramp, &FMixtormatGeneratorHeightColorRamp::IdVariation, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("ColorRampIdVariationHint", "Per-Region ID random offset applied to the ramp lookup coordinate.")),
+		MakeMemberSliderInt<FMixtormatGeneratorHeightColorRamp>(
+			LOCTEXT("ColorRampIdSeed", "ID Seed"), Ramp, &FMixtormatGeneratorHeightColorRamp::IdVariationSeed, 0.0, 100.0, 1,
+			LOCTEXT("ColorRampIdSeedHint", "Seed for per-region ID random variation."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ColorRampHeading", "COLOR RAMP")).InitiallyExpanded(true)

@@ -874,8 +874,20 @@ public:
 		SHADER_PARAMETER(uint32, HasGate)
 		SHADER_PARAMETER(uint32, HasPreviousColor)
 		SHADER_PARAMETER(uint32, SourceMode)
+		SHADER_PARAMETER(uint32, BlendMode)
+		SHADER_PARAMETER(float, FlowModulation)
+		SHADER_PARAMETER(FVector2f, FlowModulationDir)
+		SHADER_PARAMETER(float, UVModulation)
+		SHADER_PARAMETER(FVector2f, UVModulationDir)
+		SHADER_PARAMETER(float, IdVariation)
+		SHADER_PARAMETER(uint32, IdVariationSeed)
+		SHADER_PARAMETER(uint32, HasModFlow)
+		SHADER_PARAMETER(uint32, HasModUV)
+		SHADER_PARAMETER(uint32, HasModIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceFlow)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, SourceUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, SourceIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Gate)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousColor)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutColor)
@@ -1275,7 +1287,8 @@ namespace
 	// resolved source names; Gate is the scoped mask under it, or SourceHeight when there is
 	// none (HasGate 0, the Strata Carver stand-in rule). The pass is a pure map.
 	FRDGTextureRef AddGeneratorHeightColorRampPass(FMixtormatComposeContext& Ctx, FRDGTextureRef SourceHeight,
-		FRDGTextureRef SourceFlow, const uint32 SourceMode, FRDGTextureRef Gate, FRDGTextureRef PreviousColor,
+		FRDGTextureRef SourceFlow, FRDGTextureRef SourceUV, FRDGTextureRef SourceIds,
+		const uint32 SourceMode, FRDGTextureRef Gate, FRDGTextureRef PreviousColor,
 		const FGeneratorHeightColorRampRenderData& Ramp)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
@@ -1300,11 +1313,35 @@ namespace
 		P->HasGate = Ramp.bHasGate;
 		P->HasPreviousColor = PreviousColor != nullptr ? 1u : 0u;
 		P->SourceMode = SourceMode;
-		P->SourceHeight = (Ramp.bNormalizeInput && SourceMode == 0u)
-			? AddSignedGeneratorHeightPasses(GraphBuilder, SourceHeight, Size, true,
-				1.0f, 0.0f, false, nullptr, TEXT("Mixtormat.Generator.HeightColorRamp.Normalized"))
-			: SourceHeight;
+		P->BlendMode = static_cast<uint32>(Ramp.BlendMode);
+		P->FlowModulation = Ramp.FlowModulation;
+		P->FlowModulationDir = Ramp.FlowModulationDir;
+		P->UVModulation = Ramp.UVModulation;
+		P->UVModulationDir = Ramp.UVModulationDir;
+		P->IdVariation = Ramp.IdVariation;
+		P->IdVariationSeed = Ramp.IdVariationSeed;
+		P->HasModFlow = (SourceFlow != nullptr && FMath::Abs(Ramp.FlowModulation) > 1.0e-5f) ? 1u : 0u;
+		P->HasModUV = (SourceUV != nullptr && FMath::Abs(Ramp.UVModulation) > 1.0e-5f) ? 1u : 0u;
+		P->HasModIds = (SourceIds != nullptr && Ramp.IdVariation > 1.0e-5f) ? 1u : 0u;
+
+		FRDGTextureRef NormalizedSource = SourceHeight;
+		if (Ramp.bNormalizeInput && SourceHeight)
+		{
+			if (SourceMode == 0u)
+			{
+				NormalizedSource = AddSignedGeneratorHeightPasses(GraphBuilder, SourceHeight, Size, true,
+					1.0f, 0.0f, false, nullptr, TEXT("Mixtormat.Generator.HeightColorRamp.Normalized"));
+			}
+			else if (SourceMode == 1u)
+			{
+				NormalizedSource = AddNormalizeFieldPasses(GraphBuilder, SourceHeight, Size, 0.0f, 1.0f,
+					TEXT("Mixtormat.Generator.HeightColorRamp.Normalized01"));
+			}
+		}
+		P->SourceHeight = NormalizedSource ? NormalizedSource : Gate;
 		P->SourceFlow = SourceFlow ? SourceFlow : (PreviousColor ? PreviousColor : Ctx.OutputBC[0]);
+		P->SourceUV = SourceUV ? SourceUV : Ctx.EmptyPatternUV;
+		P->SourceIds = SourceIds ? SourceIds : Ctx.EmptyRegionIds;
 		P->Gate = Gate;
 		P->PreviousColor = PreviousColor ? PreviousColor : Ctx.OutputBC[0];
 		P->OutColor = GraphBuilder.CreateUAV(Out);
@@ -3826,6 +3863,34 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		PendingBoolean = nullptr;
 	};
 
+	TSet<int32> HeightBlendOperandIndices;
+	for (int32 I = 0; I < Layer.Children.Num(); ++I)
+	{
+		const FChildRenderData& Child = Layer.Children[I];
+		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
+		{
+			const int32 OperandIdx = Child.HeightBlend.SourceChildIndex;
+			if (OperandIdx != INDEX_NONE && OperandIdx < Child.SourceChildIndex)
+			{
+				bool bHasOtherHeightProducer = false;
+				for (int32 J = 0; J < I; ++J)
+				{
+					const FChildRenderData& Prior = Layer.Children[J];
+					if (Prior.SourceChildIndex != OperandIdx
+						&& (Prior.Type == EMixtormatLayerChildType::Generator || Prior.Type == EMixtormatLayerChildType::Boolean))
+					{
+						bHasOtherHeightProducer = true;
+						break;
+					}
+				}
+				if (bHasOtherHeightProducer)
+				{
+					HeightBlendOperandIndices.Add(OperandIdx);
+				}
+			}
+		}
+	}
+
 	// Modules compose in child order from signed zero; zero is the neutral generator height.
 	for (const FChildRenderData& Child : Layer.Children)
 	{
@@ -3880,26 +3945,199 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		{
 			FRDGTextureRef RampSource = RunningHeight;
 			FRDGTextureRef RampFlow = nullptr;
+			FRDGTextureRef RampUV = nullptr;
+			FRDGTextureRef RampIds = nullptr;
 			uint32 SourceMode = 0u;
-			switch (static_cast<EMixtormatColorRampSource>(Child.HeightColorRamp.Source))
+
+			const int32 TargetChild = Child.HeightColorRamp.SourceChildIndex;
+			const EMixtormatColorRampSource RampSourceEnum = static_cast<EMixtormatColorRampSource>(Child.HeightColorRamp.Source);
+			switch (RampSourceEnum)
 			{
+			case EMixtormatColorRampSource::GeneratorRunning:
+				RampSource = RunningHeight;
+				SourceMode = 0u;
+				break;
 			case EMixtormatColorRampSource::ModuleRef:
-				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(
-					Child.HeightColorRamp.SourceChildIndex))
+				if (TargetChild != INDEX_NONE)
 				{
-					RampSource = *Found;
+					if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(TargetChild))
+					{
+						RampSource = *Found;
+					}
 				}
+				SourceMode = 0u;
 				break;
 			case EMixtormatColorRampSource::LayerHeight:
 				RampSource = LayerCtx.LayerInputHeight ? LayerCtx.LayerInputHeight : RunningHeight;
+				SourceMode = 0u;
 				break;
 			case EMixtormatColorRampSource::CompositeBelow:
 				RampSource = Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)];
+				SourceMode = 0u;
 				break;
 			case EMixtormatColorRampSource::FlowMagnitude:
 			case EMixtormatColorRampSource::FlowAngle:
+				SourceMode = (RampSourceEnum == EMixtormatColorRampSource::FlowMagnitude) ? 2u : 3u;
+				break;
+			case EMixtormatColorRampSource::NoiseValue:
+				if (TargetChild != INDEX_NONE)
+				{
+					const FPublishedMaskKey Key = PublishedKey(Layer, TargetChild, FName(TEXT("Value")));
+					if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key))
+					{
+						if (Field->Texture)
+						{
+							RampSource = Field->Texture;
+						}
+					}
+					else if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(Key))
+					{
+						if (*MaskTex)
+						{
+							RampSource = *MaskTex;
+						}
+					}
+				}
+				SourceMode = 1u;
+				break;
+			case EMixtormatColorRampSource::ModuleCoverage:
 			{
-				const int32 TargetChild = Child.HeightColorRamp.SourceChildIndex;
+				SourceMode = 1u;
+				if (TargetChild != INDEX_NONE)
+				{
+					static const FName CoverageNames[] = {
+						FName(TEXT("RootCoverage")),
+						FName(TEXT("PebbleCoverage")),
+						FName(TEXT("RockTop")),
+						FName(TEXT("CrackMask")),
+						FName(TEXT("GeometryMask")),
+						FName(TEXT("FieldMask"))
+					};
+					for (const FName& Name : CoverageNames)
+					{
+						if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(PublishedKey(Layer, TargetChild, Name)))
+						{
+							if (*MaskTex)
+							{
+								RampSource = *MaskTex;
+								break;
+							}
+						}
+						if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(PublishedKey(Layer, TargetChild, Name)))
+						{
+							if (Field->Texture)
+							{
+								RampSource = Field->Texture;
+								break;
+							}
+						}
+					}
+				}
+				if (RampSource == RunningHeight && LayerCtx.GeneratorBundle.Coverage)
+				{
+					RampSource = LayerCtx.GeneratorBundle.Coverage;
+				}
+				break;
+			}
+			case EMixtormatColorRampSource::ModuleEdgeDistance:
+			{
+				SourceMode = 0u;
+				if (TargetChild != INDEX_NONE)
+				{
+					static const FName DistanceNames[] = {
+						FName(TEXT("RootEdgeDistance")),
+						FName(TEXT("PebbleEdgeDistance")),
+						FName(TEXT("RockEdgeDistance")),
+						FName(TEXT("FieldBoundary"))
+					};
+					for (const FName& Name : DistanceNames)
+					{
+						if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(PublishedKey(Layer, TargetChild, Name)))
+						{
+							if (Field->Texture)
+							{
+								RampSource = Field->Texture;
+								break;
+							}
+						}
+						if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(PublishedKey(Layer, TargetChild, Name)))
+						{
+							if (*MaskTex)
+							{
+								RampSource = *MaskTex;
+								break;
+							}
+						}
+					}
+				}
+				if (Child.HeightColorRamp.bNormalizeInput && RampSource)
+				{
+					RampSource = AddNormalizeFieldPasses(
+						Ctx.GraphBuilder, RampSource, Size, 0.0f, 1.0f,
+						TEXT("Mixtormat.Generator.HeightColorRamp.EdgeDistNormalized"));
+					SourceMode = 1u;
+				}
+				break;
+			}
+			case EMixtormatColorRampSource::RootArcLength:
+			{
+				SourceMode = 1u;
+				if (TargetChild != INDEX_NONE)
+				{
+					if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(
+						PublishedKey(Layer, TargetChild, FName(TEXT("RootArcLength")))))
+					{
+						if (*MaskTex)
+						{
+							RampSource = *MaskTex;
+						}
+					}
+				}
+				break;
+			}
+			case EMixtormatColorRampSource::RootAcross:
+			{
+				SourceMode = 1u;
+				if (TargetChild != INDEX_NONE)
+				{
+					if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(
+						PublishedKey(Layer, TargetChild, FName(TEXT("RootAcross")))))
+					{
+						if (*MaskTex)
+						{
+							RampSource = *MaskTex;
+						}
+					}
+				}
+				break;
+			}
+			case EMixtormatColorRampSource::RegionRandom:
+			{
+				SourceMode = 4u;
+				if (TargetChild != INDEX_NONE)
+				{
+					for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+					{
+						if (Entry.Key == TargetChild && Entry.Value)
+						{
+							RampIds = Entry.Value;
+							break;
+						}
+					}
+				}
+				if (!RampIds)
+				{
+					RampIds = FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+				}
+				break;
+			}
+			default:
+				break;
+			}
+
+			// Flow resolution for Flow sources or inline Flow modulation:
+			if (SourceMode == 2u || SourceMode == 3u || FMath::Abs(Child.HeightColorRamp.FlowModulation) > 1.0e-5f)
+			{
 				if (TargetChild != INDEX_NONE)
 				{
 					static const FName FlowNames[] = {
@@ -3915,43 +4153,104 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 							if (Field->Texture)
 							{
 								RampFlow = Field->Texture;
-								SourceMode = static_cast<EMixtormatColorRampSource>(Child.HeightColorRamp.Source)
-									== EMixtormatColorRampSource::FlowMagnitude ? 2u : 3u;
 								break;
 							}
 						}
 					}
 				}
-				break;
+				if (!RampFlow)
+				{
+					for (int32 SearchIdx = Child.SourceChildIndex - 1; SearchIdx >= 0; --SearchIdx)
+					{
+						static const FName FlowNames[] = {
+							MixtormatDiagnosticOutputs::AccumulatedFlow,
+							FName(TEXT("GeneratedFlow")),
+							FName(TEXT("FlowDirection"))
+						};
+						for (const FName& Name : FlowNames)
+						{
+							if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
+								PublishedKey(Layer, SearchIdx, Name)))
+							{
+								if (Field->Texture)
+								{
+									RampFlow = Field->Texture;
+									break;
+								}
+							}
+						}
+						if (RampFlow) { break; }
+					}
+				}
 			}
-			case EMixtormatColorRampSource::NoiseValue:
+
+			// UV resolution for inline UV modulation:
+			if (FMath::Abs(Child.HeightColorRamp.UVModulation) > 1.0e-5f)
 			{
-				const int32 TargetChild = Child.HeightColorRamp.SourceChildIndex;
 				if (TargetChild != INDEX_NONE)
 				{
-					const FPublishedMaskKey Key = PublishedKey(Layer, TargetChild, FName(TEXT("Value")));
-					if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(Key))
+					static const FName UVNames[] = {
+						FName(TEXT("RootUV")),
+						FName(TEXT("WarpedUV"))
+					};
+					for (const FName& Name : UVNames)
 					{
-						if (Field->Texture)
+						if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
+							PublishedKey(Layer, TargetChild, Name)))
 						{
-							RampSource = Field->Texture;
-							SourceMode = 1u;
-						}
-					}
-					else if (const FRDGTextureRef* MaskTex = Ctx.PublishedMaskOutputs.Find(Key))
-					{
-						if (*MaskTex)
-						{
-							RampSource = *MaskTex;
-							SourceMode = 1u;
+							if (Field->Texture)
+							{
+								RampUV = Field->Texture;
+								break;
+							}
 						}
 					}
 				}
-				break;
+				if (!RampUV)
+				{
+					for (int32 SearchIdx = Child.SourceChildIndex - 1; SearchIdx >= 0; --SearchIdx)
+					{
+						static const FName UVNames[] = {
+							FName(TEXT("RootUV")),
+							FName(TEXT("WarpedUV"))
+						};
+						for (const FName& Name : UVNames)
+						{
+							if (const FPublishedField* Field = Ctx.PublishedFieldOutputs.Find(
+								PublishedKey(Layer, SearchIdx, Name)))
+							{
+								if (Field->Texture)
+								{
+									RampUV = Field->Texture;
+									break;
+								}
+							}
+						}
+						if (RampUV) { break; }
+					}
+				}
 			}
-			default:
-				break;
+
+			// IDs resolution for inline ID modulation:
+			if (Child.HeightColorRamp.IdVariation > 1.0e-5f && !RampIds)
+			{
+				if (TargetChild != INDEX_NONE)
+				{
+					for (const TPair<int32, FRDGTextureRef>& Entry : LayerCtx.RegionIdMaps)
+					{
+						if (Entry.Key == TargetChild && Entry.Value)
+						{
+							RampIds = Entry.Value;
+							break;
+						}
+					}
+				}
+				if (!RampIds)
+				{
+					RampIds = FindRegionIdsAbove(LayerCtx.RegionIdMaps, Child.SourceChildIndex);
+				}
 			}
+
 			// A Mask scoped under this ramp gates where its colour shows, using the same independent
 			// scope the generator flow tools use: the mask says where this module acts, not where
 			// the layer is. The mask's own Weight dials how strongly it gates.
@@ -3961,6 +4260,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				: RampSource;
 			FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
 			RampData.bHasGate = bHasGate ? 1u : 0u;
+
+			if (!GeneratedColor && !LayerCtx.LayerInputBC)
+			{
+				AddLayerInputPass(Ctx, LayerCtx, Layer);
+			}
+
 			FRDGTextureRef BaseColorForRamp = GeneratedColor
 				? GeneratedColor
 				: (LayerCtx.LayerInputBC
@@ -3969,7 +4274,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 						? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)]
 						: nullptr));
 			FRDGTextureRef Color = AddGeneratorHeightColorRampPass(
-				Ctx, RampSource, RampFlow, SourceMode, RampGate, BaseColorForRamp, RampData);
+				Ctx, RampSource, RampFlow, RampUV, RampIds, SourceMode, RampGate, BaseColorForRamp, RampData);
 			const FPublishedField ColorField{
 				EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
 			Ctx.PublishedFieldOutputs.Add(
@@ -4094,7 +4399,24 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// when a consumer, explicit output reference, or selected preview needs them.
 			const bool bFlowSnapshotDemanded = Ctx.PublishedFieldDemand.Contains(PublishedKey(
 				Layer, Child.SourceChildIndex, MixtormatDiagnosticOutputs::AccumulatedFlow));
-			const bool bNativeFlowDemanded = bNeedsWorkingFlow || bFlowSnapshotDemanded
+			bool bColorRampNeedsFlow = false;
+			for (const FChildRenderData& OtherChild : Layer.Children)
+			{
+				if (OtherChild.Type == EMixtormatLayerChildType::HeightColorRamp)
+				{
+					const FGeneratorHeightColorRampRenderData& Ramp = OtherChild.HeightColorRamp;
+					const bool bTargetMatch = (Ramp.SourceChildIndex == Child.SourceChildIndex) || (Ramp.SourceChildIndex == INDEX_NONE);
+					const bool bUsesFlow = (Ramp.Source == static_cast<int32>(EMixtormatColorRampSource::FlowMagnitude))
+						|| (Ramp.Source == static_cast<int32>(EMixtormatColorRampSource::FlowAngle))
+						|| (FMath::Abs(Ramp.FlowModulation) > 1.0e-5f);
+					if (bTargetMatch && bUsesFlow)
+					{
+						bColorRampNeedsFlow = true;
+						break;
+					}
+				}
+			}
+			const bool bNativeFlowDemanded = bNeedsWorkingFlow || bFlowSnapshotDemanded || bColorRampNeedsFlow
 				|| Ctx.PublishedFieldDemand.Contains(PublishedKey(
 					Layer, Child.SourceChildIndex, FName(TEXT("FlowDirection"))))
 				|| IsChildOutputPreviewTarget(Ctx.Request,
@@ -4112,7 +4434,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 					bHasBoundary ? Module.RegionIds : nullptr, &Child.Generator.NativeFlow, Module.Height);
 
 			}
-			else if (bNeedsWorkingFlow || bFlowSnapshotDemanded)
+			else if (bNeedsWorkingFlow || bFlowSnapshotDemanded || bColorRampNeedsFlow)
 			{
 				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
@@ -4260,7 +4582,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// Height-less Noise contributes nothing to the running height.
 		if (Module.Height)
 		{
-			if (!bBooleanOperand)
+			if (!bBooleanOperand && !HeightBlendOperandIndices.Contains(Child.SourceChildIndex))
 			{
 				AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
 				bActualHeightAuthored = true;

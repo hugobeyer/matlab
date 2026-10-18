@@ -208,16 +208,16 @@ Its Normalize Input uses shared measured max-absolute normalization, preserving 
 input-range scaling happens once afterward. Amount blends against untouched running height,
 and Amount zero skips the pass. Balance and Contrast are removed from the complete contract.
 
-Generated Mask uses a paired Blend/Weight row, a compact Signals card, and the shared
-Mask Shaping card (including curve Flip/Invert). Curvature and Direction extraction
-rows appear only for effective nonzero influences; inactive companion controls are disabled.
-Positive influence selects a signal, negative selects its inverse, and all-zero signals
-bypass the node. New nodes start with cavity and Replace. Height uses the existing GPU
-measured-range normalization before mixing; Direction elevation enables flat/slope selection,
-not cast-shadow tracing. Mixer scale is computed on the CPU; influence totals above one
-produce a weighted average in the shader.
-Curvature gain/falloff remain signal-local; global Bias and local Warp are retired in favor
-of shared shaping and the canonical flow architecture. No inspector hierarchy actions.
+Generated Mask uses intuitive cards without dropdowns: SURFACE (`LayerMix`), CURVATURE
+(paired `CavityWeight`/`ConvexWeight`, multi-scale radius/gain/rings/macro mix, and scalar
+`CurvatureCurve`), OCCLUSION (AO) (`AOWeight` paired with `bAOInvert`, radius and contrast),
+SLOPE & DIRECTION (`SlopeWeight` paired with `bSlopeInvert`, angle range/softness, `DirectionWeight`
+paired with `bDirectionInvert`, azimuth/elevation/focus), HEIGHT & DRAINAGE (`HeightWeight`
+paired with `RidgeWeight`, height offset, and scalar `HeightCurve`), the shared Mask Shaping card,
+and a BLENDING card (`BlendMode` chip and `Weight`). Details collapse automatically when signals
+are inactive. Curvature combines multi-scale normal Sobel and height Laplacian; Occlusion blends
+baked AO and height horizon occlusion; Slope and Direction support full 3D normals combined from
+normal maps and height gradients. Mixer scale is bounded on the CPU with `max(Convex, Cavity)`.
 
 Blur uses the generic `FMixtormatBlur` payload with FOOTPRINT (Radius X/Y) and
 AMOUNT cards. Mask and Curvature owners support Add Blur and scoped copy/instance

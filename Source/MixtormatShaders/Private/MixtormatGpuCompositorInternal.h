@@ -565,18 +565,34 @@ namespace MixtormatGpuCompositor
 
 	struct FGeneratedMaskRenderData : FMixtormatMaskShaping
 	{
-		float CurvatureWeight = 1.0f;
-		float CurvatureBias = 0.0f;
+		float LayerMix = 0.5f;
+		float ConvexWeight = 0.0f;
+		float CavityWeight = 1.0f;
 		float CurvatureStrength = 4.0f;
-		float CurvaturePower = 1.0f;
+		float CurvatureMacroMix = 0.5f;
 		int32 CurvatureRadius = 2;
 		int32 CurvatureSmoothing = 2;
+		uint32 CurvatureCurveCount = 0;
+		uint32 CurvatureCurveInterpolation = 0;
+		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> CurvatureCurvePoints;
+		float AOWeight = 0.0f;
+		float AORadius = 12.0f;
+		float AOPower = 1.5f;
+		bool bAOInvert = false;
+		float SlopeWeight = 0.0f;
+		float SlopeMin = 0.0f;
+		float SlopeMax = 1.0f;
+		float SlopeSoftness = 0.2f;
+		bool bSlopeInvert = false;
 		float DirectionWeight = 0.0f;
 		FVector3f Direction = FVector3f(0.0f, 1.0f, 0.0f);
-		float DirectionBroadness = 1.0f;
-		float AOWeight = 0.0f;
+		float DirectionBroadness = 1.5f;
+		bool bDirectionInvert = false;
 		float HeightWeight = 0.0f;
 		float HeightBias = 0.0f;
+		uint32 HeightCurveCount = 0;
+		uint32 HeightCurveInterpolation = 0;
+		TStaticArray<FVector4f, FMixtormatScalarRamp::MaxPoints> HeightCurvePoints;
 		float RidgeWeight = 0.0f;
 		float MixScale = 1.0f;
 		EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
@@ -1179,6 +1195,13 @@ namespace MixtormatGpuCompositor
 		float InputOffset = 0.0f;
 		int32 Source = 0;
 		int32 SourceChildIndex = INDEX_NONE;
+		int32 BlendMode = 0;
+		float FlowModulation = 0.0f;
+		FVector2f FlowModulationDir = FVector2f(0.0f, 1.0f);
+		float UVModulation = 0.0f;
+		FVector2f UVModulationDir = FVector2f(0.7071f, 0.7071f);
+		float IdVariation = 0.0f;
+		uint32 IdVariationSeed = 1u;
 		uint32 bHasGate = 0;
 		uint32 StopCount = 0;
 		uint32 Interpolation = 0;

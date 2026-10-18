@@ -697,7 +697,6 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnToggleFlowOverlay = InArgs._OnToggleFlowOverlay;
 	OnResetDiagnosticOverlays = InArgs._OnResetDiagnosticOverlays;
 	OnChannelPreviewChanged = InArgs._OnChannelPreviewChanged;
-	OnCycleModulePreview = InArgs._OnCycleModulePreview;
 	OnSetPreviewMesh = InArgs._OnSetPreviewMesh;
 	OnToggleGlobalUVRotation90 = InArgs._OnToggleGlobalUVRotation90;
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
@@ -1538,11 +1537,6 @@ void SMixtormatPreviewViewport::ToggleDisplacement()
 	{
 		SetChannelPreview(EMixtormatChannelPreview::Material);
 	}
-
-void SMixtormatPreviewViewport::CycleModulePreview()
-{
-	OnCycleModulePreview.ExecuteIfBound();
-}
 
 void SMixtormatPreviewViewport::RequestQuickControls()
 {

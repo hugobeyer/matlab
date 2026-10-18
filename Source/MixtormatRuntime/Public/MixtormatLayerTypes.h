@@ -65,41 +65,6 @@ enum class EMixtormatHeightSource : uint8
 	LayerHeight = 4 UMETA(DisplayName = "Layer Height")
 };
 
-// How a layer's base colour combines with what is composited below it.
-//
-// Separate from EMixtormatMaskBlendMode, and it has to be. That one operates on 0..1 coverage in
-// the mask chain; this operates on colour at the composite. Half of what is here -- Screen, Soft
-// Light, the dodge/burn pair, the four non-separable HSL transfers -- means nothing on coverage,
-// and the two lists have different orders. Sharing one enum would put "Multiply" at two indices
-// and invite exactly the mix-up that costs an afternoon.
-//
-// Grouped by what they do: arithmetic, then the contrast pairs, then the comparative ones, then
-// the four that work on the colour as a whole. Serialised by value, so this order is fixed --
-// anything new goes on the end.
-UENUM(BlueprintType)
-enum class EMixtormatColorBlendMode : uint8
-{
-	Normal UMETA(DisplayName = "Normal"),
-	Add UMETA(DisplayName = "Add"),
-	Subtract UMETA(DisplayName = "Subtract"),
-	Multiply UMETA(DisplayName = "Multiply"),
-	Divide UMETA(DisplayName = "Divide"),
-	Screen UMETA(DisplayName = "Screen"),
-	Overlay UMETA(DisplayName = "Overlay"),
-	HardLight UMETA(DisplayName = "Hard Light"),
-	SoftLight UMETA(DisplayName = "Soft Light"),
-	ColorDodge UMETA(DisplayName = "Color Dodge"),
-	ColorBurn UMETA(DisplayName = "Color Burn"),
-	AddSub UMETA(DisplayName = "Add/Sub"),
-	Difference UMETA(DisplayName = "Difference"),
-	Exclusion UMETA(DisplayName = "Exclusion"),
-	Min UMETA(DisplayName = "Min"),
-	Max UMETA(DisplayName = "Max"),
-	Hue UMETA(DisplayName = "Hue"),
-	Saturation UMETA(DisplayName = "Saturation"),
-	Color UMETA(DisplayName = "Color"),
-	Luminosity UMETA(DisplayName = "Luminosity")
-};
 
 UENUM(BlueprintType)
 enum class EMixtormatLayerChildType : uint8

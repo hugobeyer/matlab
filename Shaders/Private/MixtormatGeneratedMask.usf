@@ -5,41 +5,132 @@
 #include "/Plugin/Mixtormat/Private/MixtormatMaskShaping.ush"
 
 Texture2D<float> PreviousMask;
-Texture2D<float4> SurfaceNormal;
-Texture2D<float4> SurfaceRAM;
-Texture2D<float> SurfaceHeight;
+Texture2D<float4> BelowNormal;
+Texture2D<float4> BelowRAM;
+Texture2D<float> BelowHeight;
 Texture2D<float> SurfaceRidge;
+
+Texture2D<float4> CurrentNormal;
+Texture2D<float4> CurrentRAM;
+Texture2D<float> CurrentHeight;
+
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutputMask;
 
 int2 OutputSize;
 uint Initialize;
-uint SurfaceValid;
+uint HasBelowSurface;
+uint HasCurrentSurface;
 uint FlipNormalY;
+float LayerMix;
 
-float CurvatureWeight;
-float CurvatureBias;
+float ConvexWeight;
+float CavityWeight;
 float CurvatureStrength;
-float CurvaturePower;
+float CurvatureMacroMix;
 int CurvatureRadius;
 int CurvatureSmoothing;
+uint CurvatureCurveCount;
+uint CurvatureCurveInterpolation;
+float4 CurvatureCurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+
+float AOWeight;
+float AORadius;
+float AOPower;
+uint AOInvert;
+
+float SlopeWeight;
+float SlopeMin;
+float SlopeMax;
+float SlopeSoftness;
+uint SlopeInvert;
+
 float DirectionWeight;
 float3 Direction;
 float DirectionBroadness;
-float AOWeight;
+uint DirectionInvert;
+
 float HeightWeight;
 float HeightBias;
+uint HeightCurveCount;
+uint HeightCurveInterpolation;
+float4 HeightCurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+
 float RidgeWeight;
 float MixScale;
-
 uint BlendMode;
 float Weight;
 
-// Sign chooses polarity; magnitude chooses influence. Negative height selects valleys,
-// negative AO selects exposed areas, and negative direction selects away-facing slopes.
-float SignalContribution(float Signal, float Influence)
+float EvalUnitCurve(float InputX, uint Count, uint Interpolation, float4 Points[MIXTORMAT_SCALAR_RAMP_MAX_POINTS])
 {
-	return abs(Influence) * (Influence < 0.0f ? 1.0f - Signal : Signal);
+	const uint ClampedCount = min(Count, (uint)MIXTORMAT_SCALAR_RAMP_MAX_POINTS);
+	if (ClampedCount < 2u)
+	{
+		return saturate(InputX);
+	}
+	if (ClampedCount == 2u && Interpolation == 1u
+		&& abs(Points[0].x) < 1.0e-6f && abs(Points[0].y) < 1.0e-6f
+		&& abs(Points[1].x - 1.0f) < 1.0e-6f && abs(Points[1].y - 1.0f) < 1.0e-6f)
+	{
+		return saturate(InputX);
+	}
+	const float X = saturate(InputX);
+	uint Segment = ClampedCount - 2u;
+	[loop]
+	for (uint I = 0u; I + 1u < ClampedCount; ++I)
+	{
+		if (X <= Points[I + 1u].x)
+		{
+			Segment = I;
+			break;
+		}
+	}
+	const float4 A = Points[Segment];
+	const float4 B = Points[Segment + 1u];
+	const float H = max(B.x - A.x, 1.0e-6f);
+	const float T = saturate((X - A.x) / H);
+	if (Interpolation == 0u)
+	{
+		return X >= 1.0f ? B.y : A.y;
+	}
+	if (Interpolation == 1u)
+	{
+		return lerp(A.y, B.y, T);
+	}
+	if (Interpolation == 2u)
+	{
+		const float T2 = T * T;
+		const float T3 = T2 * T;
+		return (2.0f * T3 - 3.0f * T2 + 1.0f) * A.y + (T3 - 2.0f * T2 + T) * H * A.z
+			+ (-2.0f * T3 + 3.0f * T2) * B.y + (T3 - T2) * H * B.z;
+	}
+	const float U = 1.0f - T;
+	return clamp(U * A.y + T * B.y + ((U * U * U - U) * A.w + (T * T * T - T) * B.w) * H * H / 6.0f, -3.0f, 3.0f);
+}
+
+float SampleCombinedHeight(float2 InUV, float Mix)
+{
+	const float HB = BelowHeight.SampleLevel(LinearWrapSampler, InUV, 0.0f);
+	const float HC = CurrentHeight.SampleLevel(LinearWrapSampler, InUV, 0.0f);
+	return lerp(HB, HC, Mix);
+}
+
+float3 SampleCombinedNormal(float2 InUV, float InMix)
+{
+	const float3 NB = MixtormatSampleNormal(BelowNormal, LinearWrapSampler, InUV, 0u);
+	const float3 NC = MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, InUV, 0u);
+	const float3 BaseNorm = normalize(lerp(NB, NC, InMix));
+
+	const float2 TexelSize = 1.0f / max(float2(OutputSize), 1.0f);
+	const float H_R = SampleCombinedHeight(InUV + float2(TexelSize.x, 0.0f), InMix);
+	const float H_L = SampleCombinedHeight(InUV - float2(TexelSize.x, 0.0f), InMix);
+	const float H_B = SampleCombinedHeight(InUV + float2(0.0f, TexelSize.y), InMix);
+	const float H_T = SampleCombinedHeight(InUV - float2(0.0f, TexelSize.y), InMix);
+
+	const float2 HeightGrad = float2(H_R - H_L, H_B - H_T) * 0.5f * (float(OutputSize.x) / 128.0f);
+	const float2 NormXY = BaseNorm.xy - HeightGrad;
+	const float NormZ = sqrt(saturate(1.0f - dot(NormXY, NormXY)));
+	return normalize(float3(NormXY, max(NormZ, 0.001f)));
 }
 
 [numthreads(8, 8, 1)]
@@ -55,56 +146,173 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 
-	// No surface exists beneath the bottom layer. Do not let normalization, inversion,
-	// or an inverted signal manufacture coverage there. Keep first-pass initialization.
-	if (SurfaceValid == 0 || Weight == 0.0f)
+	if ((HasBelowSurface == 0u && HasCurrentSurface == 0u) || Weight == 0.0f)
 	{
 		OutputMask[DispatchThreadId.xy] = saturate(Previous);
 		return;
 	}
 
+	float Mix = 0.0f;
+	if (HasBelowSurface != 0u && HasCurrentSurface != 0u)
+	{
+		Mix = LayerMix;
+	}
+	else if (HasCurrentSurface != 0u)
+	{
+		Mix = 1.0f;
+	}
+	else
+	{
+		Mix = 0.0f;
+	}
+
 	float Raw = 0.0f;
 
-	[branch] if (CurvatureWeight != 0.0f)
+	[branch] if (ConvexWeight > 0.0f || CavityWeight > 0.0f)
 	{
-		float Curvature;
-		float Cavity;
-		float Convex;
-		MixtormatEvaluateCurvature(
-			SurfaceNormal, LinearWrapSampler, UV, OutputSize,
-			CurvatureRadius, CurvatureSmoothing, CurvatureStrength, CurvaturePower,
-			FlipNormalY, Curvature, Cavity, Convex);
-		Raw += SignalContribution(lerp(Cavity, Convex, CurvatureBias), CurvatureWeight);
+		const float2 TexelSize = 1.0f / max(float2(OutputSize), 1.0f);
+		const int Rings = clamp(CurvatureSmoothing, 1, 4);
+		const float BaseRadius = float(clamp(CurvatureRadius, 1, 32));
+		const float H_C = SampleCombinedHeight(UV, Mix);
+
+		float TotalSignedCurv = 0.0f;
+		float TotalWeight = 0.0f;
+
+		[unroll(4)]
+		for (int Ring = 0; Ring < Rings; ++Ring)
+		{
+			const float RingRadius = BaseRadius * exp2(float(Ring));
+			const float2 Step = TexelSize * RingRadius;
+
+			const float3 TL_N = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2(-Step.x, -Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2(-Step.x, -Step.y), 0u), Mix));
+			const float3 T_N  = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2( 0.0f,   -Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2( 0.0f,   -Step.y), 0u), Mix));
+			const float3 TR_N = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2( Step.x, -Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2( Step.x, -Step.y), 0u), Mix));
+			const float3 L_N  = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2(-Step.x,  0.0f  ), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2(-Step.x,  0.0f  ), 0u), Mix));
+			const float3 R_N  = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2( Step.x,  0.0f  ), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2( Step.x,  0.0f  ), 0u), Mix));
+			const float3 BL_N = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2(-Step.x,  Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2(-Step.x,  Step.y), 0u), Mix));
+			const float3 B_N  = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2( 0.0f,    Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2( 0.0f,    Step.y), 0u), Mix));
+			const float3 BR_N = normalize(lerp(MixtormatSampleNormal(BelowNormal, LinearWrapSampler, UV + float2( Step.x,  Step.y), 0u), MixtormatSampleNormal(CurrentNormal, LinearWrapSampler, UV + float2( Step.x,  Step.y), 0u), Mix));
+
+			const float Dx = ((TR_N.x + 2.0f * R_N.x + BR_N.x) - (TL_N.x + 2.0f * L_N.x + BL_N.x)) / (8.0f * RingRadius);
+			const float Dy = ((BL_N.y + 2.0f * B_N.y + BR_N.y) - (TL_N.y + 2.0f * T_N.y + TR_N.y)) / (8.0f * RingRadius);
+			const float NormalDiv = Dx + Dy;
+
+			const float H_TL = SampleCombinedHeight(UV + float2(-Step.x, -Step.y), Mix);
+			const float H_T  = SampleCombinedHeight(UV + float2( 0.0f,   -Step.y), Mix);
+			const float H_TR = SampleCombinedHeight(UV + float2( Step.x, -Step.y), Mix);
+			const float H_L  = SampleCombinedHeight(UV + float2(-Step.x,  0.0f  ), Mix);
+			const float H_R  = SampleCombinedHeight(UV + float2( Step.x,  0.0f  ), Mix);
+			const float H_BL = SampleCombinedHeight(UV + float2(-Step.x,  Step.y), Mix);
+			const float H_B  = SampleCombinedHeight(UV + float2( 0.0f,    Step.y), Mix);
+			const float H_BR = SampleCombinedHeight(UV + float2( Step.x,  Step.y), Mix);
+
+			const float HeightLap = (H_C - ((H_L + H_R + H_T + H_B) * 0.2f + (H_TL + H_TR + H_BL + H_BR) * 0.05f))
+				* (float(OutputSize.x) / (32.0f * RingRadius));
+
+			const float RingWeight = lerp(1.0f / (1.0f + float(Ring)), (1.0f + float(Ring)) / float(Rings), CurvatureMacroMix);
+			TotalSignedCurv += (NormalDiv + HeightLap) * RingWeight;
+			TotalWeight += RingWeight;
+		}
+
+		const float SignedCurv = clamp((TotalSignedCurv / max(TotalWeight, 1.0e-6f)) * CurvatureStrength, -1.0f, 1.0f);
+		const float Convex = EvalUnitCurve(saturate(SignedCurv), CurvatureCurveCount, CurvatureCurveInterpolation, CurvatureCurvePoints);
+		const float Cavity = EvalUnitCurve(saturate(-SignedCurv), CurvatureCurveCount, CurvatureCurveInterpolation, CurvatureCurvePoints);
+		Raw += max(Convex * ConvexWeight, Cavity * CavityWeight);
 	}
 
-	[branch] if (DirectionWeight != 0.0f)
+	[branch] if (AOWeight > 0.0f)
 	{
-		const float3 Normal = MixtormatSampleNormal(SurfaceNormal, LinearWrapSampler, UV, FlipNormalY);
-		const float Facing = pow(saturate(dot(Normal, Direction)), DirectionBroadness);
-		Raw += SignalContribution(Facing, DirectionWeight);
+		const float BakedOcc = saturate(1.0f - lerp(
+			BelowRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g,
+			CurrentRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g,
+			Mix));
+
+		const float2 TexelSize = 1.0f / max(float2(OutputSize), 1.0f);
+		const float H_center = SampleCombinedHeight(UV, Mix);
+		const float PixelsPerHeight = float(OutputSize.x) / 64.0f;
+		const float BaseRadius = max(AORadius, 1.0f);
+
+		static const float2 Dirs[8] = {
+			float2( 1.0f,  0.0f),
+			float2(-1.0f,  0.0f),
+			float2( 0.0f,  1.0f),
+			float2( 0.0f, -1.0f),
+			float2( 0.70710678f,  0.70710678f),
+			float2(-0.70710678f,  0.70710678f),
+			float2( 0.70710678f, -0.70710678f),
+			float2(-0.70710678f, -0.70710678f)
+		};
+
+		float HorizonOcc = 0.0f;
+		[unroll(8)]
+		for (int d = 0; d < 8; ++d)
+		{
+			float MaxElev = 0.0f;
+			[unroll(4)]
+			for (int r = 1; r <= 4; ++r)
+			{
+				const float Dist = (float(r) / 4.0f) * BaseRadius;
+				const float2 OffsetUV = Dirs[d] * (Dist * TexelSize);
+				const float H_neighbor = SampleCombinedHeight(UV + OffsetUV, Mix);
+				const float Rise = (H_neighbor - H_center) * PixelsPerHeight;
+				const float Elev = Rise > 0.0f ? Rise / sqrt(Rise * Rise + Dist * Dist) : 0.0f;
+				MaxElev = max(MaxElev, Elev);
+			}
+			HorizonOcc += MaxElev;
+		}
+		HorizonOcc *= (1.0f / 8.0f);
+
+		float Occ = pow(saturate(max(BakedOcc, HorizonOcc * 2.5f)), max(AOPower, 0.1f));
+		if (AOInvert != 0u)
+		{
+			Occ = 1.0f - Occ;
+		}
+		Raw += Occ * AOWeight;
 	}
 
-	[branch] if (AOWeight != 0.0f)
+	float3 CombinedNormal = float3(0.0f, 0.0f, 1.0f);
+	if (SlopeWeight > 0.0f || DirectionWeight > 0.0f)
 	{
-		const float Occlusion = saturate(1.0f - SurfaceRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).g);
-		Raw += SignalContribution(Occlusion, AOWeight);
+		CombinedNormal = SampleCombinedNormal(UV, Mix);
 	}
 
-	[branch] if (HeightWeight != 0.0f)
+	[branch] if (SlopeWeight > 0.0f)
 	{
-		// The CPU schedules the shared measured-range normalization only for active height.
-		const float Height = saturate(SurfaceHeight.SampleLevel(LinearWrapSampler, UV, 0.0f) + HeightBias);
-		Raw += SignalContribution(Height, HeightWeight);
+		const float Slope01 = acos(clamp(CombinedNormal.z, -1.0f, 1.0f)) * (2.0f / 3.14159265f);
+		const float Soft = max(SlopeSoftness, 0.005f);
+		const float Enter = SlopeMin <= 0.001f ? 1.0f : smoothstep(SlopeMin - Soft, SlopeMin + Soft, Slope01);
+		const float Exit = SlopeMax >= 0.999f ? 1.0f : 1.0f - smoothstep(SlopeMax - Soft, SlopeMax + Soft, Slope01);
+		float SlopeMask = saturate(Enter * Exit);
+		if (SlopeInvert != 0u)
+		{
+			SlopeMask = 1.0f - SlopeMask;
+		}
+		Raw += SlopeMask * SlopeWeight;
 	}
 
-	[branch] if (RidgeWeight != 0.0f)
+	[branch] if (DirectionWeight > 0.0f)
+	{
+		float Facing = pow(saturate(dot(CombinedNormal, Direction)), max(DirectionBroadness, 0.05f));
+		if (DirectionInvert != 0u)
+		{
+			Facing = 1.0f - Facing;
+		}
+		Raw += Facing * DirectionWeight;
+	}
+
+	[branch] if (HeightWeight > 0.0f)
+	{
+		const float H = saturate(SampleCombinedHeight(UV, Mix) + HeightBias);
+		const float ShapedH = saturate(EvalUnitCurve(H, HeightCurveCount, HeightCurveInterpolation, HeightCurvePoints));
+		Raw += ShapedH * HeightWeight;
+	}
+
+	[branch] if (RidgeWeight > 0.0f)
 	{
 		const float Ridge = saturate(SurfaceRidge.SampleLevel(LinearWrapSampler, UV, 0.0f));
-		Raw += SignalContribution(Ridge, RidgeWeight);
+		Raw += Ridge * RidgeWeight;
 	}
 
-	// Bounded mixing is separate from measured input normalization and artist shaping.
-	// The latter remain entirely owned by the universal mask path, including raw output.
 	const float Incoming = MixtormatShapeMaskInput(Raw * MixScale);
 	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }

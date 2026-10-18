@@ -845,6 +845,43 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 				}
 			}
 		}
+		if (Out.SourceChildIndex == INDEX_NONE)
+		{
+			if (LayerChild.ScopeOwnerChildId.IsValid())
+			{
+				for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
+				{
+					if (Layer.Children[Index].ChildId == LayerChild.ScopeOwnerChildId)
+					{
+						Out.SourceChildIndex = Index;
+						break;
+					}
+				}
+			}
+			if (Out.SourceChildIndex == INDEX_NONE)
+			{
+				for (int32 Index = FMath::Min(SourceChildIndex, Layer.Children.Num()) - 1; Index >= 0; --Index)
+				{
+					const FMixtormatLayerChild& Candidate = Layer.Children[Index];
+					if (Candidate.Type == EMixtormatLayerChildType::Generator)
+					{
+						if (Candidate.Generator.bEnabled)
+						{
+							Out.SourceChildIndex = Index;
+							break;
+						}
+					}
+					else if (Candidate.Type == EMixtormatLayerChildType::Boolean)
+					{
+						if (Candidate.Boolean.bEnabled)
+						{
+							Out.SourceChildIndex = Index;
+							break;
+						}
+					}
+				}
+			}
+		}
 		break;
 	}
 	case EMixtormatLayerChildType::HeightCurve:
@@ -887,10 +924,24 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 		Out.OutputName = FName(TEXT("Color"));
 		Out.Source = static_cast<int32>(Ramp.Source);
 		Out.SourceChildIndex = INDEX_NONE;
-		const bool bUsesModuleChild = Ramp.Source == EMixtormatColorRampSource::ModuleRef
-			|| Ramp.Source == EMixtormatColorRampSource::FlowMagnitude
-			|| Ramp.Source == EMixtormatColorRampSource::FlowAngle
-			|| Ramp.Source == EMixtormatColorRampSource::NoiseValue;
+		Out.BlendMode = static_cast<int32>(Ramp.BlendMode);
+		Out.FlowModulation = FMath::IsFinite(Ramp.FlowModulation) ? Ramp.FlowModulation : 0.0f;
+		const float FlowRad = FMath::DegreesToRadians(Ramp.FlowModulationAngle);
+		Out.FlowModulationDir = FVector2f(FMath::Cos(FlowRad), FMath::Sin(FlowRad));
+		Out.UVModulation = FMath::IsFinite(Ramp.UVModulation) ? Ramp.UVModulation : 0.0f;
+		const float UVRad = FMath::DegreesToRadians(Ramp.UVModulationAngle);
+		Out.UVModulationDir = FVector2f(FMath::Cos(UVRad), FMath::Sin(UVRad));
+		Out.IdVariation = FMath::Clamp(FMath::IsFinite(Ramp.IdVariation) ? Ramp.IdVariation : 0.0f, 0.0f, 1.0f);
+		Out.IdVariationSeed = static_cast<uint32>(FMath::Max(0, Ramp.IdVariationSeed));
+
+		const bool bHasModulation = FMath::Abs(Out.FlowModulation) > 1.0e-5f
+			|| FMath::Abs(Out.UVModulation) > 1.0e-5f
+			|| Out.IdVariation > 1.0e-5f;
+		const bool bUsesModuleChild = (Ramp.Source != EMixtormatColorRampSource::GeneratorRunning
+			&& Ramp.Source != EMixtormatColorRampSource::LayerHeight
+			&& Ramp.Source != EMixtormatColorRampSource::CompositeBelow)
+			|| bHasModulation;
+
 		if (bUsesModuleChild && Ramp.SourceChildId.IsValid())
 		{
 			for (int32 Index = 0; Index < SourceChildIndex && Index < Layer.Children.Num(); ++Index)
@@ -913,7 +964,17 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 			for (int32 Index = FMath::Min(SourceChildIndex, Layer.Children.Num()) - 1; Index >= 0; --Index)
 			{
 				const FMixtormatLayerChild& Candidate = Layer.Children[Index];
-				if (Ramp.Source == EMixtormatColorRampSource::NoiseValue)
+				if (Ramp.Source == EMixtormatColorRampSource::RootArcLength
+					|| Ramp.Source == EMixtormatColorRampSource::RootAcross)
+				{
+					if (Candidate.Type == EMixtormatLayerChildType::Generator
+						&& Candidate.Generator.Type == EMixtormatGeneratorType::RootNetwork)
+					{
+						Out.SourceChildIndex = Index;
+						break;
+					}
+				}
+				else if (Ramp.Source == EMixtormatColorRampSource::NoiseValue)
 				{
 					if (Candidate.Type == EMixtormatLayerChildType::Generator
 						&& Candidate.Generator.Type == EMixtormatGeneratorType::Noise)
@@ -929,6 +990,19 @@ void GatherGeneratorHeightModuleChild(FLayerRenderData& Data, const FMixtormatLa
 						|| (Candidate.Type == EMixtormatLayerChildType::Behavior
 							&& (Candidate.Behavior.Type == EMixtormatBehaviorType::FlowField
 								|| Candidate.Behavior.Type == EMixtormatBehaviorType::Feather)))
+					{
+						Out.SourceChildIndex = Index;
+						break;
+					}
+				}
+				else if (Ramp.Source == EMixtormatColorRampSource::RegionRandom)
+				{
+					if (Candidate.Type == EMixtormatLayerChildType::Generator
+						|| Candidate.Type == EMixtormatLayerChildType::ColorId
+						|| Candidate.Type == EMixtormatLayerChildType::Filter
+						|| Candidate.Type == EMixtormatLayerChildType::CombineId
+						|| Candidate.Type == EMixtormatLayerChildType::PatternId
+						|| Candidate.Type == EMixtormatLayerChildType::RandomId)
 					{
 						Out.SourceChildIndex = Index;
 						break;

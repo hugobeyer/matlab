@@ -213,71 +213,130 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratedMask
 {
 	GENERATED_BODY()
 
+	FMixtormatGeneratedMask()
+	{
+		CurvatureCurve.DomainMin = 0.0f;
+		CurvatureCurve.DomainMax = 1.0f;
+		CurvatureCurve.Points = {
+			FMixtormatScalarRampPoint{0.0f, 0.0f},
+			FMixtormatScalarRampPoint{1.0f, 1.0f}
+		};
+		CurvatureCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+
+		HeightCurve.DomainMin = 0.0f;
+		HeightCurve.DomainMax = 1.0f;
+		HeightCurve.Points = {
+			FMixtormatScalarRampPoint{0.0f, 0.0f},
+			FMixtormatScalarRampPoint{1.0f, 1.0f}
+		};
+		HeightCurve.Interpolation = EMixtormatScalarRampInterpolation::Linear;
+	}
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask")
 	bool bEnabled = true;
 
-	// Signed influences: positive selects the signal, negative selects its inverse.
-	// Magnitudes blend the signals; totals above one are averaged, not clipped.
-	// A new node starts with cavity. Setting every influence to zero bypasses the node.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float CurvatureWeight = 1.0f;
+	// 0 reads the composite below, 1 reads this layer's own surface/generator relief, 0.5 blends both (auto-adapting when only one exists).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Surface", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float LayerMix = 0.5f;
 
-	// 0 = cavity, 1 = convex.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float CurvatureBias = 0.0f;
+	// Convexity (peaks, ridges, sharp outer edges).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ConvexWeight = 0.0f;
 
-	// Raw curvature is a normal difference over 2 x radius, so it is small. Strength is gain.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0"))
-	float CurvatureStrength = 4.0f;
+	// Concavity (crevices, valleys, inner seams). Default active signal on a new node.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CavityWeight = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.001"))
-	float CurvaturePower = 1.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float DirectionWeight = 0.0f;
-
-	// Tangent-space azimuth in degrees. 90 is +Y, independent of viewport lighting.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.0", UIMax = "360.0"))
-	float DirectionAngle = 90.0f;
-
-	// 0 selects side-facing slopes; 90 selects flat/up-facing surfaces.
-	// Negative influence at 90 selects steep slopes. This is not cast-shadow tracing.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
-	float DirectionElevation = 0.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "0.001", UIMax = "64.0"))
-	float DirectionBroadness = 1.0f;
-
-	// Positive selects occluded areas; negative selects exposed areas.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float AOWeight = 0.0f;
-
-	// Accumulated height is normalized before mixing, including signed/HDR heights.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float HeightWeight = 0.0f;
-
-	// Signal-local offset after height normalization, before polarity and mixing.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float HeightBias = 0.0f;
-
-	// Crest/drainage output from erosion below. Without erosion the signal is zero;
-	// its inverse is one, just as for any other empty signal.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (UIMin = "-1.0", UIMax = "1.0"))
-	float RidgeWeight = 0.0f;
-
-	// Extraction only. Final levels, curve, offset and inversion belong to Shaping.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "1", ClampMax = "32", UIMin = "1", UIMax = "32"))
+	// Curvature sample radius in texels. Multi-scale rings sample r, 2r, 4r around this base radius.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (ClampMin = "1", ClampMax = "32", UIMin = "1", UIMax = "32"))
 	int32 CurvatureRadius = 2;
 
-	// Averages curvature over widening Sobel rings. One ring uses eight normal samples.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Signals", meta = (ClampMin = "1", ClampMax = "4", UIMin = "1", UIMax = "4"))
+	// Gain applied to combined height-Laplacian and normal-Sobel curvature.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (UIMin = "0.0", UIMax = "16.0", Delta = "0.05"))
+	float CurvatureStrength = 4.0f;
+
+	// Widening Sobel / Laplacian rings to suppress high-frequency noise and capture broader form.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (ClampMin = "1", ClampMax = "4", UIMin = "1", UIMax = "4"))
 	int32 CurvatureSmoothing = 2;
+
+	// Fine-to-broad multi-scale balance (0 favors tight micro-edges, 1 favors broad macro-forms).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CurvatureMacroMix = 0.5f;
+
+	// Response curve sculpting the extracted curvature signal before mixing.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Curvature")
+	FMixtormatScalarRamp CurvatureCurve;
+
+	// Horizon + surface ambient occlusion weight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Occlusion", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float AOWeight = 0.0f;
+
+	// Horizon search radius in texels for height-based crevice occlusion.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Occlusion", meta = (UIMin = "1.0", UIMax = "64.0", Delta = "0.5"))
+	float AORadius = 12.0f;
+
+	// Occlusion falloff contrast power.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Occlusion", meta = (UIMin = "0.1", UIMax = "4.0", Delta = "0.05"))
+	float AOPower = 1.5f;
+
+	// Invert occlusion to select exposed peaks instead of sheltered crevices.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Occlusion")
+	bool bAOInvert = false;
+
+	// Slope angle selection weight (0 = flat up-facing, 90 = vertical cliff).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Slope", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float SlopeWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Slope", meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0", Delta = "0.5"))
+	float SlopeMin = 25.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Slope", meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0", Delta = "0.5"))
+	float SlopeMax = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Slope", meta = (UIMin = "0.01", UIMax = "1.0", Delta = "0.01"))
+	float SlopeSoftness = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Slope")
+	bool bSlopeInvert = false;
+
+	// Directional facing mask weight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Direction", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float DirectionWeight = 0.0f;
+
+	// Tangent-space azimuth in degrees. 90 is +Y.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Direction", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float DirectionAngle = 90.0f;
+
+	// 0 faces sideways, 90 faces straight up.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Direction", meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0", Delta = "1.0"))
+	float DirectionElevation = 35.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Direction", meta = (UIMin = "0.05", UIMax = "8.0", Delta = "0.05"))
+	float DirectionBroadness = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Direction")
+	bool bDirectionInvert = false;
+
+	// Normalized height selection weight.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float HeightWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Height", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
+	float HeightBias = 0.0f;
+
+	// Remaps normalized height [0..1] into mask coverage.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Height")
+	FMixtormatScalarRamp HeightCurve;
+
+	// Crest/drainage output from erosion below.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Height", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float RidgeWeight = 0.0f;
 
 	// Replace gives a useful first mask; all established stack blend modes remain available.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend")
 	EMixtormatMaskBlendMode BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Blend", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Weight = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Mask|Shaping")
@@ -285,11 +344,13 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratedMask
 
 	bool HasAnySignal() const
 	{
-		return CurvatureWeight != 0.0f
-			|| DirectionWeight != 0.0f
-			|| AOWeight != 0.0f
-			|| HeightWeight != 0.0f
-			|| RidgeWeight != 0.0f;
+		return ConvexWeight > 0.0f
+			|| CavityWeight > 0.0f
+			|| AOWeight > 0.0f
+			|| SlopeWeight > 0.0f
+			|| DirectionWeight > 0.0f
+			|| HeightWeight > 0.0f
+			|| RidgeWeight > 0.0f;
 	}
 };
 

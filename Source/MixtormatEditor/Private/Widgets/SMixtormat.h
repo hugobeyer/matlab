@@ -273,7 +273,8 @@ private:
 	// Chooses the live Flow output when an enabled Flow producer is selected.
 	// Only automatic previews are cleared when the selection changes.
 	bool UpdateAutomaticFlowPreview();
-	FReply CycleSelectedModulePreview();
+	// Bare V: cycle the composited PBR channels on every viewport, regardless of selection.
+	FReply CycleChannelPreview();
 	FReply ToggleMaskOverlayPreview();
 	FReply ToggleFlowOverlayPreview();
 	FReply ToggleDiagnosticOverlayPreview(EMixtormatPreviewOutputKind Kind, FName RequiredOutputName = NAME_None);

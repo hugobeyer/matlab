@@ -132,7 +132,6 @@ public:
 		SLATE_EVENT(FSimpleDelegate, OnToggleFlowOverlay)
 		SLATE_EVENT(FSimpleDelegate, OnResetDiagnosticOverlays)
 		SLATE_EVENT(FSimpleDelegate, OnChannelPreviewChanged)
-		SLATE_EVENT(FSimpleDelegate, OnCycleModulePreview)
 		// Bare 1-4 in the viewport: the workspace swaps the preview mesh through its own
 		// SetPreviewMesh, so the Plane re-press orientation toggle stays in one place.
 		SLATE_EVENT(FMixtormatSetPreviewMesh, OnSetPreviewMesh)
@@ -236,7 +235,6 @@ private:
 	void ToggleMaskOverlay();
 	void ToggleFlowOverlay();
 	void ResetDiagnosticOverlays();
-	void CycleModulePreview();
 	void ApplyChannelPreview();
 	void UpdateMaskPostFx();
 	void UpdateCamera();
@@ -298,7 +296,6 @@ private:
 	FSimpleDelegate OnToggleFlowOverlay;
 	FSimpleDelegate OnResetDiagnosticOverlays;
 	FSimpleDelegate OnChannelPreviewChanged;
-	FSimpleDelegate OnCycleModulePreview;
 	FMixtormatSetPreviewMesh OnSetPreviewMesh;
 	FSimpleDelegate OnToggleGlobalUVRotation90;
 	FSimpleDelegate OnRequestQuickControls;

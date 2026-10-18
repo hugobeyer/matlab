@@ -150,14 +150,15 @@ Other Inspector panels (`MixtormatInspectorGenerators.cpp`, `MixtormatInspectorE
    - `W` and `E` are handled in the workspace Slate input preprocessor (`SMixtormat.cpp` L142–154) AND in `FMixtormatPreviewViewportClient::InputKey` (`SMixtormatPreviewViewport.cpp` L459–479).
    - `R` / `I` is only in `SMixtormat::OnKeyDown` (`SMixtormat.cpp` L781–811). When focus is inside a child widget that consumes key down, `R` fails to fire.
    - Pressing `W` or `E` while `R` (`DebugPreviewMode::ChildOutput` with `RegionIds`) is active does not cleanly clear `DebugPreviewMode::ChildOutput` in `ToggleDiagnosticOverlayPreview` (`SMixtormat_Preview.cpp` L594), leaving conflicting preview states.
-2. **`V` key never triggers `CycleSelectedModulePreview()`:**
-   - `SMixtormat_Preview.cpp` (L618–746) implements `CycleSelectedModulePreview()` and binds it to `.OnCycleModulePreview` (L1313), which cycles the selected child's outputs when a module is selected and falls back to PBR channels when no module is selected.
-   - However, `SMixtormatPreviewViewport.cpp` (L493–505) calls `Owner.CycleChannelPreview()` directly on `V`, completely bypassing `OnCycleModulePreview` — and `V` is not in the workspace input preprocessor (`SMixtormat.cpp` L140) so `V` only works when the 3D viewport has focus.
+2. **`V` scope (REVISED — the original premise here was wrong and caused a regression):**
+   - Contract: bare `V` cycles only the composited PBR channels (BaseColor, Roughness, Metal, Normal, Height, …) on every viewport, regardless of the stack selection. `Shift+V` restores Material. `V` never selects module masks, flow, UVs or IDs.
+   - Per-module outputs are explicit: the inspector eye/chevron, and `W`/`E`/`R` in the viewport.
+   - `CycleSelectedModulePreview()` / `OnCycleModulePreview` were retired; `SMixtormat::CycleChannelPreview()` is the single workspace `V` route.
 
 ### Exact Changes
 - **`Source/MixtormatEditor/Private/Widgets/SMixtormat.cpp` (Input Preprocessor, L142–155):**
   - Add bare `R` / `I` to the preprocessor (calling a shared `ToggleRegionIdPreview()` helper extracted from `OnKeyDown` L784–810).
-  - Add bare `V` (and `Shift+V`) to the preprocessor so channel/module cycling works regardless of whether Layers, Inspector, or Viewport is focused.
+  - Add bare `V` (and `Shift+V`) to the preprocessor so PBR channel cycling works regardless of whether Layers, Inspector, or Viewport is focused. The preprocessor runs before the viewport, so it must call `CycleChannelPreview()` — never a selection-dependent cycle.
 - **`Source/MixtormatEditor/Private/Widgets/SMixtormat_Preview.cpp` (`ToggleDiagnosticOverlayPreview`, L592):**
   - When `W` or `E` activates `bMaskOverlayEnabled`, also clear `DebugPreviewMode = EMixtormatDebugPreviewMode::None` and `ChildPreviewTarget = FMixtormatChildPreviewTarget()` so `R` (Region IDs) and `W`/`E` swap cleanly just like `W` ↔ `E`.
 

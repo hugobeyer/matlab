@@ -738,6 +738,33 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightCurve
 	float Amount = 1.0f;
 };
 
+// How a layer's base colour combines with what is composited below it, or how a color ramp
+// blends with the previous color.
+UENUM(BlueprintType)
+enum class EMixtormatColorBlendMode : uint8
+{
+	Normal UMETA(DisplayName = "Normal"),
+	Add UMETA(DisplayName = "Add"),
+	Subtract UMETA(DisplayName = "Subtract"),
+	Multiply UMETA(DisplayName = "Multiply"),
+	Divide UMETA(DisplayName = "Divide"),
+	Screen UMETA(DisplayName = "Screen"),
+	Overlay UMETA(DisplayName = "Overlay"),
+	HardLight UMETA(DisplayName = "Hard Light"),
+	SoftLight UMETA(DisplayName = "Soft Light"),
+	ColorDodge UMETA(DisplayName = "Color Dodge"),
+	ColorBurn UMETA(DisplayName = "Color Burn"),
+	AddSub UMETA(DisplayName = "Add/Sub"),
+	Difference UMETA(DisplayName = "Difference"),
+	Exclusion UMETA(DisplayName = "Exclusion"),
+	Min UMETA(DisplayName = "Min"),
+	Max UMETA(DisplayName = "Max"),
+	Hue UMETA(DisplayName = "Hue"),
+	Saturation UMETA(DisplayName = "Saturation"),
+	Color UMETA(DisplayName = "Color"),
+	Luminosity UMETA(DisplayName = "Luminosity")
+};
+
 // Which scalar field a Color Ramp module reads. Serialized by value: append, never reorder.
 UENUM(BlueprintType)
 enum class EMixtormatColorRampSource : uint8
@@ -756,7 +783,12 @@ enum class EMixtormatColorRampSource : uint8
 	// Flow direction angle mapped from [-pi, pi] to [0..1].
 	FlowAngle UMETA(DisplayName = "Flow Angle"),
 	// Scalar Value output from an earlier Noise module.
-	NoiseValue UMETA(DisplayName = "Noise Value")
+	NoiseValue UMETA(DisplayName = "Noise Value"),
+	ModuleCoverage UMETA(DisplayName = "Coverage / Footprint"),
+	ModuleEdgeDistance UMETA(DisplayName = "Edge / Boundary Distance"),
+	RootArcLength UMETA(DisplayName = "Root Arc Length"),
+	RootAcross UMETA(DisplayName = "Root Cross-Profile"),
+	RegionRandom UMETA(DisplayName = "Region ID Random")
 };
 
 // A Generator-layer sublayer that maps the running signed height through a reusable colour ramp
@@ -781,6 +813,10 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Weight = 1.0f;
 
+	// How this ramp's color blends with the previous ramp or the layer's base/fill color.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
+	EMixtormatColorBlendMode BlendMode = EMixtormatColorBlendMode::Normal;
+
 	// Where the ramp's scalar comes from. The default preserves the original contract: the
 	// running generator height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
@@ -801,6 +837,29 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	bool bMirrorRepeat = false;
 
+	// Modulate the ramp lookup coordinate using the module's Flow field (magnitude + directional bias).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
+	float FlowModulation = 0.0f;
+
+	// Directional angle (degrees) for flow modulation bias.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float FlowModulationAngle = 90.0f;
+
+	// Modulate the ramp lookup coordinate using the module's warped/root UV coordinates.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
+	float UVModulation = 0.0f;
+
+	// Angle (degrees) of the UV gradient axis used for UV coordinate modulation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "0.0", UIMax = "360.0", Delta = "1.0"))
+	float UVModulationAngle = 45.0f;
+
+	// Per-Region ID random offset applied to the ramp lookup coordinate.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float IdVariation = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp|Modulation", meta = (ClampMin = "0", UIMin = "0", UIMax = "100"))
+	int32 IdVariationSeed = 1;
+
 	// The module referenced by ModuleRef. Only an earlier module can have produced a height by
 	// the time this sublayer runs, so a later or missing id reads the running height.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
@@ -809,6 +868,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGeneratorHeightColorRamp
 	// Stored against signed height; editor and GPU lookup use the unit-coordinate view below.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Color Ramp")
 	FMixtormatColorRamp Ramp;
+
 
 	FMixtormatColorRamp GetUnitRamp() const
 	{

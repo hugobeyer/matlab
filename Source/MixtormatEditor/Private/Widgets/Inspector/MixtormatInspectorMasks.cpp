@@ -630,7 +630,236 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 	const TFunction<FMixtormatGeneratedMask*()> Gen = [this]() { return GetSelectedGeneratedMask(); };
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 
-	AddSliderRow(Cards, MixtormatRow::MakePair(
+	const auto IsPositive = [this, Gen](float FMixtormatGeneratedMask::* Member)
+	{
+		const auto Address = MakeAddressResolver(Gen, Member);
+		return TAttribute<bool>::CreateLambda([this, Gen, Member, Address]()
+		{
+			const FMixtormatGeneratedMask* Selected = Gen();
+			return Selected && GetEffectiveFloatParameter(Address(), Selected->*Member) > 0.0f;
+		});
+	};
+	const auto IsAnyPositive = [this, Gen](float FMixtormatGeneratedMask::* MemberA, float FMixtormatGeneratedMask::* MemberB)
+	{
+		const auto AddressA = MakeAddressResolver(Gen, MemberA);
+		const auto AddressB = MakeAddressResolver(Gen, MemberB);
+		return TAttribute<bool>::CreateLambda([this, Gen, MemberA, MemberB, AddressA, AddressB]()
+		{
+			const FMixtormatGeneratedMask* Selected = Gen();
+			return Selected && (GetEffectiveFloatParameter(AddressA(), Selected->*MemberA) > 0.0f
+				|| GetEffectiveFloatParameter(AddressB(), Selected->*MemberB) > 0.0f);
+		});
+	};
+	const TAttribute<bool> CurvatureActive = IsAnyPositive(&FMixtormatGeneratedMask::CavityWeight, &FMixtormatGeneratedMask::ConvexWeight);
+	const TAttribute<bool> AOActive = IsPositive(&FMixtormatGeneratedMask::AOWeight);
+	const TAttribute<bool> SlopeActive = IsPositive(&FMixtormatGeneratedMask::SlopeWeight);
+	const TAttribute<bool> DirectionActive = IsPositive(&FMixtormatGeneratedMask::DirectionWeight);
+	const TAttribute<bool> HeightActive = IsPositive(&FMixtormatGeneratedMask::HeightWeight);
+
+	// Card 1: SURFACE
+	const TSharedRef<SVerticalBox> SurfaceCard = AddCard(Cards, LOCTEXT("GenSurfaceHeading", "SURFACE"));
+	AddSliderRow(SurfaceCard, MakeMemberSlider<FMixtormatGeneratedMask>(
+		LOCTEXT("GenLayerMix", "Layer Mix"), Gen, &FMixtormatGeneratedMask::LayerMix, 0.0, 1.0, 0.5, 0.01,
+		LOCTEXT("GenLayerMixHint", "0 reads the composite below, 1 reads this layer's own surface and generators, 0.5 blends both. Automatically adapts on Layer 0.")));
+
+	// Card 2: CURVATURE
+	const TSharedRef<SVerticalBox> CurvatureCard = AddCard(Cards, LOCTEXT("GenCurvatureHeading", "CURVATURE"));
+	AddSliderRow(CurvatureCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenCavityWeight", "Cavity / Crevice"), Gen, &FMixtormatGeneratedMask::CavityWeight, 0.0, 1.0, 1.0, 0.01,
+			LOCTEXT("GenCavityWeightHint", "Concavity (crevices, valleys, inner seams).")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenConvexWeight", "Convex / Edges"), Gen, &FMixtormatGeneratedMask::ConvexWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenConvexWeightHint", "Convexity (peaks, ridges, sharp outer edges)."))));
+
+	const TSharedRef<SWidget> CurvatureCurveEditor =
+		SNew(SMixtormatScalarRamp)
+		.Ramp_Lambda([Gen]()
+		{
+			const FMixtormatGeneratedMask* M = Gen();
+			return M ? M->CurvatureCurve : FMixtormatScalarRamp();
+		})
+		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
+		.CanonicalYMin(0.0f)
+		.CanonicalYMax(1.0f)
+		.SoftYMin(-1.5f)
+		.SoftYMax(1.5f)
+		.ExtendedYMin(-3.0f)
+		.ExtendedYMax(3.0f)
+		.OnChanged_Lambda([this, Gen](const FMixtormatScalarRamp& Ramp)
+		{
+			if (FMixtormatGeneratedMask* M = Gen())
+			{
+				M->CurvatureCurve = Ramp;
+				RefreshLayeredPreview();
+			}
+		});
+
+	const TSharedRef<SVerticalBox> CurvatureRows = SNew(SVerticalBox);
+	AddSliderRow(CurvatureRows, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatGeneratedMask>(
+			LOCTEXT("GenCurvatureRadius", "Radius"), Gen, &FMixtormatGeneratedMask::CurvatureRadius, 1.0, 32.0, 2,
+			LOCTEXT("GenCurvatureRadiusHint", "Curvature sample radius in texels. Multi-scale rings sample r, 2r, 4r around this base radius.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenCurvatureStrength", "Gain"), Gen, &FMixtormatGeneratedMask::CurvatureStrength, 0.0, 16.0, 4.0, 0.05,
+			LOCTEXT("GenCurvatureStrengthHint", "Gain applied to combined height-Laplacian and normal-Sobel curvature."))));
+	AddSliderRow(CurvatureRows, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatGeneratedMask>(
+			LOCTEXT("GenCurvatureSmoothing", "Rings"), Gen, &FMixtormatGeneratedMask::CurvatureSmoothing, 1.0, 4.0, 2,
+			LOCTEXT("GenCurvatureSmoothingHint", "Widening Sobel / Laplacian rings to suppress high-frequency noise and capture broader form.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenCurvatureMacroMix", "Macro Mix"), Gen, &FMixtormatGeneratedMask::CurvatureMacroMix, 0.0, 1.0, 0.5, 0.01,
+			LOCTEXT("GenCurvatureMacroMixHint", "Fine-to-broad multi-scale balance (0 favors tight micro-edges, 1 favors broad macro-forms)."))));
+	AddSliderRow(CurvatureRows, SNew(STextBlock)
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Text(LOCTEXT("GenCurvatureCurveLabel", "Response Curve")));
+	AddSliderRow(CurvatureRows, CurvatureCurveEditor);
+
+	CurvatureCard->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.Visibility_Lambda([CurvatureActive]() { return CurvatureActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[ CurvatureRows ]
+	];
+
+	// Card 3: OCCLUSION (AO)
+	const TSharedRef<SVerticalBox> AOCard = AddCard(Cards, LOCTEXT("GenAOHeading", "OCCLUSION (AO)"));
+	AddSliderRow(AOCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenAOWeight", "Occlusion"), Gen, &FMixtormatGeneratedMask::AOWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenAOHint", "Horizon + surface ambient occlusion weight.")),
+		MakeMemberToggle<FMixtormatGeneratedMask>(
+			LOCTEXT("GenAOInvert", "Invert (Exposed)"), Gen, &FMixtormatGeneratedMask::bAOInvert,
+			LOCTEXT("GenAOInvertHint", "Invert occlusion to select exposed peaks instead of sheltered crevices."))));
+
+	const TSharedRef<SVerticalBox> AORows = SNew(SVerticalBox);
+	AddSliderRow(AORows, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenAORadius", "Radius"), Gen, &FMixtormatGeneratedMask::AORadius, 1.0, 64.0, 12.0, 0.5,
+			LOCTEXT("GenAORadiusHint", "Horizon search radius in texels for height-based crevice occlusion.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenAOPower", "Contrast"), Gen, &FMixtormatGeneratedMask::AOPower, 0.1, 4.0, 1.5, 0.05,
+			LOCTEXT("GenAOPowerHint", "Occlusion falloff contrast power."))));
+	AOCard->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.Visibility_Lambda([AOActive]() { return AOActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[ AORows ]
+	];
+
+	// Card 4: SLOPE & DIRECTION
+	const TSharedRef<SVerticalBox> SlopeDirCard = AddCard(Cards, LOCTEXT("GenSlopeDirHeading", "SLOPE & DIRECTION"));
+	AddSliderRow(SlopeDirCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenSlopeWeight", "Slope"), Gen, &FMixtormatGeneratedMask::SlopeWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenSlopeHint", "Slope angle selection weight (0 = flat up-facing, 90 = vertical cliff).")),
+		MakeMemberToggle<FMixtormatGeneratedMask>(
+			LOCTEXT("GenSlopeInvert", "Invert"), Gen, &FMixtormatGeneratedMask::bSlopeInvert,
+			LOCTEXT("GenSlopeInvertHint", "Invert slope selection."))));
+
+	const TSharedRef<SVerticalBox> SlopeRows = SNew(SVerticalBox);
+	AddSliderRow(SlopeRows, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenSlopeMin", "Min Angle"), Gen, &FMixtormatGeneratedMask::SlopeMin, 0.0, 90.0, 25.0, 0.5,
+			LOCTEXT("GenSlopeMinHint", "Minimum slope angle in degrees.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenSlopeMax", "Max Angle"), Gen, &FMixtormatGeneratedMask::SlopeMax, 0.0, 90.0, 90.0, 0.5,
+			LOCTEXT("GenSlopeMaxHint", "Maximum slope angle in degrees."))));
+	AddSliderRow(SlopeRows, MakeMemberSlider<FMixtormatGeneratedMask>(
+		LOCTEXT("GenSlopeSoftness", "Softness"), Gen, &FMixtormatGeneratedMask::SlopeSoftness, 0.01, 1.0, 0.2, 0.01,
+		LOCTEXT("GenSlopeSoftnessHint", "Transition softness at slope angle thresholds.")));
+	SlopeDirCard->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.Visibility_Lambda([SlopeActive]() { return SlopeActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[ SlopeRows ]
+	];
+
+	AddSliderRow(SlopeDirCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenDirectionWeight", "Direction"), Gen, &FMixtormatGeneratedMask::DirectionWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenDirectionHint", "Directional facing mask weight.")),
+		MakeMemberToggle<FMixtormatGeneratedMask>(
+			LOCTEXT("GenDirectionInvert", "Invert"), Gen, &FMixtormatGeneratedMask::bDirectionInvert,
+			LOCTEXT("GenDirectionInvertHint", "Invert directional facing selection."))));
+
+	const TSharedRef<SVerticalBox> DirectionRows = SNew(SVerticalBox);
+	AddSliderRow(DirectionRows, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenDirectionAngle", "Azimuth"), Gen, &FMixtormatGeneratedMask::DirectionAngle, 0.0, 360.0, 90.0, 1.0,
+			LOCTEXT("GenDirectionAngleHint", "Tangent-space azimuth in degrees. 90 is +Y.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenDirectionElevation", "Elevation"), Gen, &FMixtormatGeneratedMask::DirectionElevation, 0.0, 90.0, 35.0, 1.0,
+			LOCTEXT("GenDirectionElevationHint", "0 faces sideways, 90 faces straight up."))));
+	AddSliderRow(DirectionRows, MakeMemberSlider<FMixtormatGeneratedMask>(
+		LOCTEXT("GenDirectionBroadness", "Focus"), Gen, &FMixtormatGeneratedMask::DirectionBroadness, 0.05, 8.0, 1.5, 0.05,
+		LOCTEXT("GenDirectionBroadnessHint", "Directional falloff focus sharpness.")));
+	SlopeDirCard->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.Visibility_Lambda([DirectionActive]() { return DirectionActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[ DirectionRows ]
+	];
+
+	// Card 5: HEIGHT & DRAINAGE
+	const TSharedRef<SVerticalBox> HeightCard = AddCard(Cards, LOCTEXT("GenHeightHeading", "HEIGHT & DRAINAGE"));
+	AddSliderRow(HeightCard, MixtormatRow::MakePair(
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenHeightWeight", "Height"), Gen, &FMixtormatGeneratedMask::HeightWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenHeightHint", "Normalized height selection weight.")),
+		MakeMemberSlider<FMixtormatGeneratedMask>(
+			LOCTEXT("GenRidgeWeight", "Erosion Ridge"), Gen, &FMixtormatGeneratedMask::RidgeWeight, 0.0, 1.0, 0.0, 0.01,
+			LOCTEXT("GenRidgeWeightHint", "Crest/drainage output from erosion below."))));
+
+	const TSharedRef<SWidget> HeightCurveEditor =
+		SNew(SMixtormatScalarRamp)
+		.Ramp_Lambda([Gen]()
+		{
+			const FMixtormatGeneratedMask* M = Gen();
+			return M ? M->HeightCurve : FMixtormatScalarRamp();
+		})
+		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
+		.CanonicalYMin(0.0f)
+		.CanonicalYMax(1.0f)
+		.SoftYMin(-1.5f)
+		.SoftYMax(1.5f)
+		.ExtendedYMin(-3.0f)
+		.ExtendedYMax(3.0f)
+		.OnChanged_Lambda([this, Gen](const FMixtormatScalarRamp& Ramp)
+		{
+			if (FMixtormatGeneratedMask* M = Gen())
+			{
+				M->HeightCurve = Ramp;
+				RefreshLayeredPreview();
+			}
+		});
+
+	const TSharedRef<SVerticalBox> HeightRows = SNew(SVerticalBox);
+	AddSliderRow(HeightRows, MakeMemberSlider<FMixtormatGeneratedMask>(
+		LOCTEXT("GenHeightBias", "Height Offset"), Gen, &FMixtormatGeneratedMask::HeightBias, -1.0, 1.0, 0.0, 0.01,
+		LOCTEXT("GenHeightBiasHint", "Offsets normalized height before curve evaluation.")));
+	AddSliderRow(HeightRows, SNew(STextBlock)
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.Text(LOCTEXT("GenHeightCurveLabel", "Height Profile")));
+	AddSliderRow(HeightRows, HeightCurveEditor);
+
+	HeightCard->AddSlot().AutoHeight()
+	[
+		SNew(SBox)
+		.Visibility_Lambda([HeightActive]() { return HeightActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
+		[ HeightRows ]
+	];
+
+	// Card 6: SHAPING
+	AddMaskShapingRows(Cards, [Gen]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatGeneratedMask* Generated = Gen();
+		return Generated ? &Generated->Shaping : nullptr;
+	});
+
+	// Card 7: BLENDING
+	const TSharedRef<SVerticalBox> BlendingCard = AddCard(Cards, LOCTEXT("GenBlendingHeading", "BLENDING"));
+	AddSliderRow(BlendingCard, MixtormatRow::MakePair(
 		MixtormatRow::MakeDropdown(
 			LOCTEXT("GenBlendMode", "Blend Mode"),
 			MixtormatRow::MakeChip(
@@ -644,106 +873,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 					return BuildGeneratedBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
 				}), nullptr, TAttribute<FText>(), 0.0f)),
 		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenGenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01)));
-
-	// Read effective values so linked influences reveal the same controls as authored ones.
-	const auto IsActive = [this, Gen](float FMixtormatGeneratedMask::* Member)
-	{
-		const auto Address = MakeAddressResolver(Gen, Member);
-		return TAttribute<bool>::CreateLambda([this, Gen, Member, Address]()
-		{
-			const FMixtormatGeneratedMask* Selected = Gen();
-			return Selected && GetEffectiveFloatParameter(Address(), Selected->*Member) != 0.0;
-		});
-	};
-	const TAttribute<bool> CurvatureActive = IsActive(&FMixtormatGeneratedMask::CurvatureWeight);
-	const TAttribute<bool> DirectionActive = IsActive(&FMixtormatGeneratedMask::DirectionWeight);
-	const TAttribute<bool> HeightActive = IsActive(&FMixtormatGeneratedMask::HeightWeight);
-
-	const TSharedRef<SVerticalBox> Signals = AddCard(Cards, LOCTEXT("GenHdrSignals", "Signals"));
-	AddSliderRow(Signals, SNew(STextBlock)
-		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
-		.Text(LOCTEXT("GenSignalGuide", "Surface below: + selects, - inverts, 0 disables."))
-		.AutoWrapText(true));
-
-	AddSliderRow(Signals, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenCurvatureWeight", "Curvature"), Gen, &FMixtormatGeneratedMask::CurvatureWeight, -1.0, 1.0, 1.0, 0.01,
-			LOCTEXT("GenCurvatureHint", "Normal-derived curvature. Positive selects the cavity/convex signal; negative selects its inverse.")),
-		SNew(SBox).IsEnabled(CurvatureActive)
-		[
-			MakeMemberSlider<FMixtormatGeneratedMask>(
-				LOCTEXT("GenCurvatureBias", "Cavity / Convex"), Gen, &FMixtormatGeneratedMask::CurvatureBias, 0.0, 1.0, 0.0, 0.01,
-				LOCTEXT("GenCurvatureBiasHint", "0 selects cavities, 1 selects convex edges. Intermediate values mix both."))
-		]));
-
-	const TSharedRef<SVerticalBox> CurvatureRows = SNew(SVerticalBox);
-	AddSliderRow(CurvatureRows, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatGeneratedMask>(
-			LOCTEXT("GenCurvatureRadius", "Radius"), Gen, &FMixtormatGeneratedMask::CurvatureRadius, 1.0, 32.0, 2,
-			LOCTEXT("GenCurvatureRadiusHint", "Curvature sample radius in pixels. Larger radii detect broader surface features.")),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenCurvatureStrength", "Gain"), Gen, &FMixtormatGeneratedMask::CurvatureStrength, 0.0, 32.0, 4.0, 0.05)));
-	AddSliderRow(CurvatureRows, MixtormatRow::MakePair(
-		MakeMemberSliderInt<FMixtormatGeneratedMask>(
-			LOCTEXT("GenCurvatureSmoothing", "Smoothing"), Gen, &FMixtormatGeneratedMask::CurvatureSmoothing, 1.0, 4.0, 2,
-			LOCTEXT("GenCurvatureSmoothingHint", "Widening Sobel rings suppress normal-map noise. More rings cost more samples.")),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenCurvaturePower", "Falloff"), Gen, &FMixtormatGeneratedMask::CurvaturePower, 0.05, 4.0, 1.0, 0.05,
-			LOCTEXT("GenCurvaturePowerHint", "Shapes curvature only, before mixing. Use the shared curve to shape the finished mask."))));
-	Signals->AddSlot().AutoHeight()
-	[
-		SNew(SBox)
-		.Visibility_Lambda([CurvatureActive]() { return CurvatureActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
-		[ CurvatureRows ]
-	];
-
-	AddSliderRow(Signals, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenDirectionWeight", "Direction"), Gen, &FMixtormatGeneratedMask::DirectionWeight, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("GenDirectionHint", "Positive selects facing normals, negative selects away-facing normals. At elevation 90, negative selects steep slopes. This is a facing mask, not cast shadows.")),
-		SNew(SBox).IsEnabled(DirectionActive)
-		[
-			MakeMemberSlider<FMixtormatGeneratedMask>(
-				LOCTEXT("GenDirectionAngle", "Azimuth"), Gen, &FMixtormatGeneratedMask::DirectionAngle, 0.0, 360.0, 90.0, 1.0)
-		]));
-	const TSharedRef<SVerticalBox> DirectionRows = SNew(SVerticalBox);
-	AddSliderRow(DirectionRows, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenDirectionElevation", "Elevation"), Gen, &FMixtormatGeneratedMask::DirectionElevation, 0.0, 90.0, 0.0, 1.0,
-			LOCTEXT("GenDirectionElevationHint", "0 faces sideways, 90 faces up in tangent space. Independent of viewport lights.")),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenDirectionBroadness", "Falloff"), Gen, &FMixtormatGeneratedMask::DirectionBroadness, 0.05, 8.0, 1.0, 0.05)));
-	Signals->AddSlot().AutoHeight()
-	[
-		SNew(SBox)
-		.Visibility_Lambda([DirectionActive]() { return DirectionActive.Get() ? EVisibility::Visible : EVisibility::Collapsed; })
-		[ DirectionRows ]
-	];
-
-	AddSliderRow(Signals, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenAOWeight", "Occlusion"), Gen, &FMixtormatGeneratedMask::AOWeight, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("GenAOHint", "Positive selects occluded areas from the accumulated AO; negative selects exposed areas. Does not bake new AO.")),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenRidgeWeight", "Ridge / Drainage"), Gen, &FMixtormatGeneratedMask::RidgeWeight, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("GenRidgeWeightHint", "Crest/drainage output from erosion below. Without erosion the signal is black; negative influence selects its white inverse."))));
-	AddSliderRow(Signals, MixtormatRow::MakePair(
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenHeightWeight", "Height"), Gen, &FMixtormatGeneratedMask::HeightWeight, -1.0, 1.0, 0.0, 0.01,
-			LOCTEXT("GenHeightHint", "Measured height is normalized to 0..1 before mixing. Positive selects peaks, negative selects valleys. Constant height maps to zero.")),
-		SNew(SBox).IsEnabled(HeightActive)
-		[
-			MakeMemberSlider<FMixtormatGeneratedMask>(
-				LOCTEXT("GenHeightBiasCtl", "Height Offset"), Gen, &FMixtormatGeneratedMask::HeightBias, -1.0, 1.0, 0.0, 0.01,
-				LOCTEXT("GenHeightBiasHint", "Offsets normalized height before mixing. The shared Shaping offset affects all signals together."))
-		]));
-
-	AddMaskShapingRows(Cards, [Gen]() -> FMixtormatMaskShaping*
-	{
-		FMixtormatGeneratedMask* Generated = Gen();
-		return Generated ? &Generated->Shaping : nullptr;
-	});
+			LOCTEXT("GenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01)));
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })

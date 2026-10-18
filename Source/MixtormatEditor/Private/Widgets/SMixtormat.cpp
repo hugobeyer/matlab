@@ -160,9 +160,10 @@ void SMixtormat::Construct(const FArguments& InArgs)
 			Self->ToggleRegionIdPreview();
 			return true;
 		}
+		// V is the composited PBR channel cycle only; it never selects module masks/flow/UVs/IDs.
 		if (KeyEvent.GetKey() == EKeys::V)
 		{
-			Self->CycleSelectedModulePreview();
+			Self->CycleChannelPreview();
 			return true;
 		}
 		if (KeyEvent.GetKey() == EKeys::L)
