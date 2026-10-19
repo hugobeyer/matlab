@@ -227,9 +227,10 @@ Root Layer Blur alone shows per-channel weights; irrelevant sections are collaps
 instead of rendered disabled. Flow guidance keeps an explicit typed source chip;
 its menu omits invalid sources and explains when none are available. Root Layer
 Blur executes after the layer's producers and can connect to their completed
-same-layer Flow outputs regardless of authored row position; scoped Blur still
-requires a completed earlier producer outside its owning scope. All existing
-Gaussian, Directional, Smear, scoped mask, copy/instance and output behaviors remain.
+same-layer Flow outputs regardless of authored row position; scoped Blur may
+use earlier producer rows, including its owner's already-published native
+Flow or an earlier Behavior Flow, but never a forward source. Existing
+Gaussian, Directional, Smear, scoped mask, copy/instance and output behavior remain.
 
 Feather's Width, Iterations and Direction Bias are nested `BehaviorFeatherSettings`
 parameters. Their editor ranges, reset defaults and optional clamps are authored under

@@ -366,38 +366,24 @@ namespace MixtormatChildScope
 			return true;
 		};
 		if (!HasValidScopes(Destination.Children) || !HasValidScopes(SourceLayer.Children)) { return INDEX_NONE; }
-		int32 ConsumerStart = BlurChildIndex;
 		for (int32 Index = BlurChildIndex; Index != INDEX_NONE;
 			Index = ResolveOwnerIndex(Destination.Children, Index))
 		{
 			if (!IsEnabled(Destination.Children[Index])) { return INDEX_NONE; }
-			ConsumerStart = Index;
 		}
 		const int32 SourceIndex = FindIndexById(SourceLayer.Children, Reference.SourceChildId);
 		if (SourceIndex == INDEX_NONE) { return INDEX_NONE; }
-		int32 SourceRoot = SourceIndex;
 		for (int32 Index = SourceIndex; Index != INDEX_NONE;
 			Index = ResolveOwnerIndex(SourceLayer.Children, Index))
 		{
 			if (!IsEnabled(SourceLayer.Children[Index])) { return INDEX_NONE; }
-			SourceRoot = Index;
 		}
+		// Generator native Flow and completed Behavior Flow are available before an
+		// owned Blur executes, even inside its parent scope. Only later rows would
+		// read a future producer. Root Layer Blur executes after the full layer rail.
 		if (SourceLayerIndex == LayerIndex
-			&& Destination.Children[BlurChildIndex].ScopeOwnerChildId.IsValid())
-		{
-			// Scoped Blurs execute inside their owner: only earlier completed producer
-			// scopes are available. Root Layer Blurs run after the full layer rail,
-			// so all completed producers in the same layer are valid regardless of row order.
-			if (SourceRoot >= ConsumerStart) { return INDEX_NONE; }
-			for (int32 Index = ConsumerStart; Index < SourceLayer.Children.Num(); ++Index)
-			{
-				for (int32 Parent = Index; Parent != INDEX_NONE;
-					Parent = ResolveOwnerIndex(SourceLayer.Children, Parent))
-				{
-					if (Parent == SourceRoot) { return INDEX_NONE; }
-				}
-			}
-		}
+			&& Destination.Children[BlurChildIndex].ScopeOwnerChildId.IsValid()
+			&& SourceIndex >= BlurChildIndex) { return INDEX_NONE; }
 		const FMixtormatLayerChild& Source = SourceLayer.Children[SourceIndex];
 		if (Source.Type == EMixtormatLayerChildType::Generator)
 		{
