@@ -1330,6 +1330,15 @@
 			"snap": 0,
 			"clampMin": 0,
 			"clampMax": 4
+		},
+		"RampId.Seed:Int":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 100,
+			"snap": 1,
+			"clampMin": 0,
+			"clampMax": 1000
 		}
 	},
 	"Feather":

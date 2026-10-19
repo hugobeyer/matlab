@@ -85,8 +85,7 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::Overlay,
 		EMixtormatMaskBlendMode::Difference,
-		EMixtormatMaskBlendMode::Exclusion,
-		EMixtormatMaskBlendMode::Divide
+		EMixtormatMaskBlendMode::Exclusion
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{

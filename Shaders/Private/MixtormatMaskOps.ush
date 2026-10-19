@@ -83,8 +83,12 @@ float MixtormatApplyMaskOutputRange(float Value, uint OutputRange, float MirrorS
 	if (OutputRange == 2u)
 	{
 		const float SafeScale = isnan(MirrorScale) || isinf(MirrorScale) ? 1.0f : MirrorScale;
-		const float Scaled = clamp(Value * SafeScale * 0.5f, -100000.0f, 100000.0f);
-		return 1.0f - abs(2.0f * frac(Scaled) - 1.0f);
+		const float Phase = Value * SafeScale * 0.5f;
+		if (isnan(Phase) || isinf(Phase))
+		{
+			return 0.0f;
+		}
+		return saturate(1.0f - abs(2.0f * frac(Phase) - 1.0f));
 	}
 	return saturate(Value);
 }
