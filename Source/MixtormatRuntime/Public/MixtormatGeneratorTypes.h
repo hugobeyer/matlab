@@ -398,28 +398,28 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 };
 
 
-// Foundation procedural colonies, not a time simulation or real mushroom geometry.
+// Bounded periodic growth solvers, evaluated from the seed; not a timeline simulation.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatOrganicGrowth
 {
 	GENERATED_BODY()
 
-	// Periodic jittered colony cells across the tile.
+	// Mycelium colony origins; Moss habitat frequency and tuft density.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "1", ClampMax = "64", UIMin = "1", UIMax = "32"))
 	int32 PatchCount = 6;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies")
 	int32 Seed = 0;
 
-	// Sets colony radius, not elapsed simulation time.
+	// Mycelium growth duration; Moss occupancy of reaction-diffusion habitat.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
 	float Coverage = 0.55f;
 
-	// Fine cushions for Moss; filaments for Mycelium.
+	// Mycelium correlated steering; Moss shoots per tuft.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
 	float Detail = 0.35f;
 
-	// Width as a fraction of a patch cell.
+	// Mycelium maximum radius divided by PatchCount; Moss blade width within a tuft.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0.001", ClampMax = "0.25", UIMin = "0.005", UIMax = "0.15", Delta = "0.001"))
 	float FilamentWidth = 0.04f;
 

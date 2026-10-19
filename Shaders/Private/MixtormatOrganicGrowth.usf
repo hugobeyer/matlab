@@ -4,8 +4,13 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
+// 0 initialize graph, 1 attract, 2 extend/reconnect, 3 pipe radii, 4 spatial bins,
+// 5 graph raster, 6 reaction initialization, 7 Gray-Scott step, 8 moss shoot raster.
+#ifndef GROWTH_STAGE
+#define GROWTH_STAGE 0
+#endif
+
 int2 OutputSize;
-uint GrowthType; // 0: moss cushions, 1: mycelium filaments
 // @param PatchCount
 int PatchCount;
 // @param Seed
@@ -16,124 +21,408 @@ float Coverage;
 float Detail;
 // @param FilamentWidth
 float FilamentWidth;
+uint NodeCapacity;
+uint NutrientCount;
+uint StepIndex;
+uint GrowthSteps;
+uint BinResolution;
+uint BinEntryCapacity;
+int ReactionSize;
+float StepLength;
+float BaseRadius;
+
+struct FGrowthNode
+{
+	float2 Pos;
+	float2 Dir;
+	uint Parent;
+	uint Colony;
+	uint Children;
+	uint Link;
+	float Radius;
+	float Arc;
+	uint Birth;
+	float Mass;
+};
+struct FGrowthNutrient
+{
+	float2 Pos;
+	uint Nearest;
+	float Distance;
+	uint Active;
+	uint3 Padding;
+};
+RWStructuredBuffer<FGrowthNode> Nodes;
+RWStructuredBuffer<FGrowthNutrient> Nutrients;
+RWBuffer<int> Pull; // x/y fixed-point attraction, count, cumulative consumed nutrients
+RWBuffer<uint> State; // count, frontier begin, frontier end, bin entry count
+RWBuffer<uint> BinHeads;
+RWStructuredBuffer<uint2> BinEntries; // node index, next entry
+Texture2D<float4> ReactionInput;
+RWTexture2D<float4> ReactionOutput; // U, V, feed, kill
+SamplerState LinearWrapSampler;
 RWTexture2D<float> OutGrowthHeight;
 RWTexture2D<float> OutGrowthCoverage;
 RWTexture2D<float> OutGrowthAge;
 RWTexture2D<uint> OutGrowthIds;
 
-float GrowthRandom(uint id, uint salt)
+float Random(uint id, uint salt)
 {
 	return MixtormatRegionRandomSalted(MixtormatRegionSeed(id, Seed), salt);
 }
-
-float GrowthNoise(float2 p, uint id)
+float2 Delta(float2 a, float2 b)
 {
-	int2 cell = int2(floor(p));
+	float2 d = b - a;
+	return d - floor(d + 0.5f);
+}
+float2 Unit(float2 v, float2 fallback)
+{
+	return dot(v, v) > 1.0e-12f ? normalize(v) : fallback;
+}
+uint CellId(int2 cell, int period)
+{
+	int2 wrapped = (cell % period + period) % period;
+	return uint(wrapped.y * period + wrapped.x);
+}
+float Noise(float2 uv, int period, uint salt)
+{
+	float2 p = frac(uv) * float(period);
+	int2 c = int2(floor(p));
 	float2 f = frac(p);
 	f = f * f * (3.0f - 2.0f * f);
-	uint a = uint(cell.x) * 73856093u;
-	uint b = uint(cell.y) * 19349663u;
-	uint c = uint(cell.x + 1) * 73856093u;
-	uint d = uint(cell.y + 1) * 19349663u;
-	return lerp(lerp(GrowthRandom(id, a ^ b), GrowthRandom(id, c ^ b), f.x),
-		lerp(GrowthRandom(id, a ^ d), GrowthRandom(id, c ^ d), f.x), f.y);
+	return lerp(lerp(Random(CellId(c, period), salt), Random(CellId(c + int2(1, 0), period), salt), f.x),
+		lerp(Random(CellId(c + int2(0, 1), period), salt), Random(CellId(c + 1, period), salt), f.x), f.y);
 }
-
-float GrowthSegment(float2 p, float2 a, float2 b, float width)
+float2 Guide(float2 uv)
 {
-	float2 edge = b - a;
-	float t = saturate(dot(p - a, edge) / max(dot(edge, edge), 1.0e-8f));
-	return length(p - lerp(a, b, t)) - width * lerp(1.0f, 0.3f, t);
+	float e = 0.002f;
+	float2 grad = float2(Noise(uv + float2(e, 0), PatchCount, 91u) - Noise(uv - float2(e, 0), PatchCount, 91u),
+		Noise(uv + float2(0, e), PatchCount, 91u) - Noise(uv - float2(0, e), PatchCount, 91u));
+	return Unit(float2(-grad.y, grad.x), float2(1, 0));
+}
+void Store(int2 p, float h, float coverage, float age, uint id)
+{
+	OutGrowthHeight[p] = h;
+	OutGrowthCoverage[p] = coverage;
+	OutGrowthAge[p] = coverage > 0.0f ? age : 0.0f;
+	OutGrowthIds[p] = coverage > 0.0f ? id : MIXTORMAT_INVALID_REGION;
 }
 
+#if GROWTH_STAGE == 0
+[numthreads(64, 1, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	uint i = tid.x;
+	uint roots = uint(PatchCount);
+	if (i == 0u)
+	{
+		State[0] = roots; State[1] = 0u; State[2] = roots; State[3] = 0u;
+	}
+	if (i < BinResolution * BinResolution) { BinHeads[i] = MIXTORMAT_INVALID_REGION; }
+	if (i < NodeCapacity)
+	{
+		[unroll] for (uint k = 0u; k < 4u; ++k) { Pull[4u * i + k] = 0; }
+		FGrowthNode n = (FGrowthNode)0;
+		n.Parent = MIXTORMAT_INVALID_REGION; n.Link = MIXTORMAT_INVALID_REGION;
+		if (i < roots)
+		{
+			// Low-discrepancy origins avoid a visible row grid at non-square root counts.
+			n.Pos = frac(float2(float(i) * 0.754877666f, float(i) * 0.569840296f)
+				+ float2(Random(0u, 29u), Random(0u, 53u)));
+			float angle = Random(i, 71u) * 6.28318530718f;
+			n.Dir = float2(cos(angle), sin(angle));
+			n.Colony = i;
+		}
+		Nodes[i] = n;
+	}
+	if (i < NutrientCount)
+	{
+		FGrowthNutrient a = (FGrowthNutrient)0;
+		uint side = uint(ceil(sqrt(float(NutrientCount))));
+		a.Pos = (float2(i % side, i / side) + 0.1f + 0.8f * float2(Random(i, 101u), Random(i, 131u))) / float(side);
+		a.Active = 1u; a.Nearest = MIXTORMAT_INVALID_REGION; a.Distance = 1.0e9f;
+		Nutrients[i] = a;
+	}
+}
+#elif GROWTH_STAGE == 1
+[numthreads(64, 1, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	uint i = tid.x;
+	if (i >= NutrientCount) { return; }
+	FGrowthNutrient a = Nutrients[i];
+	if (a.Active == 0u) { return; }
+	uint first = State[1];
+	if (a.Nearest != MIXTORMAT_INVALID_REGION)
+	{
+		FGrowthNode old = Nodes[a.Nearest];
+		if (old.Children >= 3u || old.Link != MIXTORMAT_INVALID_REGION)
+		{
+			a.Nearest = MIXTORMAT_INVALID_REGION; a.Distance = 1.0e9f; first = 0u;
+		}
+	}
+	for (uint n = first; n < State[2]; ++n)
+	{
+		FGrowthNode node = Nodes[n];
+		if (node.Children >= 3u || node.Link != MIXTORMAT_INVALID_REGION) { continue; }
+		float d = length(Delta(node.Pos, a.Pos));
+		if (d < a.Distance) { a.Distance = d; a.Nearest = n; }
+	}
+	if (a.Nearest != MIXTORMAT_INVALID_REGION)
+	{
+		if (a.Distance < StepLength * 0.85f)
+		{
+			a.Active = 0u;
+			InterlockedAdd(Pull[4u * a.Nearest + 3u], 1);
+		}
+		else if (a.Distance < max(4.0f * StepLength, 0.4f / sqrt(float(PatchCount))))
+		{
+			float2 dir = Unit(Delta(Nodes[a.Nearest].Pos, a.Pos), float2(1, 0));
+			InterlockedAdd(Pull[4u * a.Nearest], int(round(dir.x * 65536.0f)));
+			InterlockedAdd(Pull[4u * a.Nearest + 1u], int(round(dir.y * 65536.0f)));
+			InterlockedAdd(Pull[4u * a.Nearest + 2u], 1);
+		}
+	}
+	Nutrients[i] = a;
+}
+#elif GROWTH_STAGE == 2
+// Ordered extension makes topology and collision/reconnection choices deterministic.
+[numthreads(1, 1, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	uint oldCount = State[0];
+	uint count = oldCount;
+	for (uint i = 0u; i < oldCount; ++i)
+	{
+		int votes = Pull[4u * i + 2u];
+		float2 force = float2(Pull[4u * i], Pull[4u * i + 1u]);
+		Pull[4u * i] = 0; Pull[4u * i + 1u] = 0; Pull[4u * i + 2u] = 0;
+		FGrowthNode parent = Nodes[i];
+		if (votes == 0 || parent.Children >= 3u || parent.Link != MIXTORMAT_INVALID_REGION || count >= NodeCapacity) { continue; }
+		float2 dir = Unit(Unit(force, parent.Dir) + parent.Dir * 0.35f
+			+ Guide(parent.Pos) * (0.1f + 0.3f * Detail), parent.Dir);
+		float2 target = frac(parent.Pos + dir * StepLength);
+		uint link = MIXTORMAT_INVALID_REGION;
+		float nearest = StepLength * 0.7f;
+		for (uint j = 0u; j < count; ++j)
+		{
+			FGrowthNode other = Nodes[j];
+			if (j == i || j == parent.Parent || other.Parent == i || other.Link == i) { continue; }
+			// Do not fold back onto the immediately adjacent portion of the same branch.
+			if (other.Colony == parent.Colony && abs(other.Arc - parent.Arc) < 3.0f * StepLength) { continue; }
+			float d = length(Delta(target, other.Pos));
+			if (d < nearest) { nearest = d; link = j; }
+		}
+		FGrowthNode child = (FGrowthNode)0;
+		child.Pos = link == MIXTORMAT_INVALID_REGION ? target : Nodes[link].Pos;
+		child.Dir = Unit(Delta(parent.Pos, child.Pos), dir);
+		child.Parent = i; child.Colony = parent.Colony; child.Link = link;
+		child.Arc = parent.Arc + length(Delta(parent.Pos, child.Pos));
+		child.Birth = StepIndex + 1u;
+		Nodes[count++] = child;
+		parent.Children += 1u;
+		Nodes[i] = parent;
+	}
+	State[0] = count; State[1] = oldCount; State[2] = count;
+}
+#elif GROWTH_STAGE == 3
+[numthreads(1, 1, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	uint count = State[0];
+	for (uint i = 0u; i < count; ++i)
+	{
+		FGrowthNode n = Nodes[i];
+		n.Mass = float(Pull[4u * i + 3u]) + (n.Children == 0u ? 1.0f : 0.1f);
+		Nodes[i] = n;
+	}
+	// Consumed nutrients and terminal demand feed the parent tree. Reconnection adds
+	// terminal demand but does not pretend to solve hydraulic transport around graph loops.
+	for (uint k = count; k > 0u; --k)
+	{
+		FGrowthNode n = Nodes[k - 1u];
+		if (n.Parent < k - 1u)
+		{
+			FGrowthNode parent = Nodes[n.Parent]; parent.Mass += n.Mass; Nodes[n.Parent] = parent;
+		}
+	}
+	for (uint j = 0u; j < count; ++j)
+	{
+		FGrowthNode n = Nodes[j];
+		float rootMass = max(Nodes[n.Colony].Mass, 1.0f);
+		n.Radius = BaseRadius * max(pow(saturate(n.Mass / rootMass), 0.45f), 0.08f);
+		Nodes[j] = n;
+	}
+}
+#elif GROWTH_STAGE == 4
+[numthreads(64, 1, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	uint i = tid.x;
+	if (i >= State[0]) { return; }
+	FGrowthNode n = Nodes[i];
+	if (n.Parent == MIXTORMAT_INVALID_REGION) { return; }
+	FGrowthNode a = Nodes[n.Parent];
+	float2 end = a.Pos + Delta(a.Pos, n.Pos);
+	float2 control = a.Pos + a.Dir * length(end - a.Pos) / 3.0f;
+	float pad = BaseRadius * 1.5f;
+	int2 lo = int2(floor((min(min(a.Pos, end), control) - pad) * float(BinResolution)));
+	int2 hi = int2(floor((max(max(a.Pos, end), control) + pad) * float(BinResolution)));
+	hi = min(hi, lo + int(BinResolution) - 1);
+	for (int y = lo.y; y <= hi.y; ++y)
+	{
+		for (int x = lo.x; x <= hi.x; ++x)
+		{
+			uint slot; InterlockedAdd(State[3], 1u, slot);
+			// CPU chooses bins wider than the maximum swept footprint; 16 entries/node
+			// is conservative. Keep the guard even though the allocation bound proves fit.
+			if (slot >= BinEntryCapacity) { continue; }
+			uint old; InterlockedExchange(BinHeads[CellId(int2(x, y), int(BinResolution))], slot, old);
+			BinEntries[slot] = uint2(i, old);
+		}
+	}
+}
+#elif GROWTH_STAGE == 5
 [numthreads(8, 8, 1)]
-void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+void MainCS(uint3 tid : SV_DispatchThreadID)
 {
-	int2 pixel = int2(DispatchThreadId.xy);
+	int2 pixel = int2(tid.xy);
 	if (any(pixel >= OutputSize)) { return; }
-
-	float2 rawUV = (float2(pixel) + 0.5f) / float2(OutputSize);
-	float2 mapped = MixtormatGeneratorUV(rawUV);
-	float2 p = frac(mapped) * float(PatchCount);
-	int2 baseCell = int2(floor(p));
-	// Estimate the mapped pixel footprint, including non-uniform placement and pre-generation UV.
-	float2 dx = MixtormatGeneratorUV(rawUV + float2(1.0f / OutputSize.x, 0.0f)) - mapped;
-	float2 dy = MixtormatGeneratorUV(rawUV + float2(0.0f, 1.0f / OutputSize.y)) - mapped;
-	dx -= floor(dx + 0.5f);
-	dy -= floor(dy + 0.5f);
-	float aa = max(0.5f * float(PatchCount) * max(length(dx), length(dy)), 1.0e-5f);
-	float bestHeight = 0.0f;
-	float bestCoverage = 0.0f;
-	float bestAge = 0.0f;
-	uint bestId = MIXTORMAT_INVALID_REGION;
-
-	// Centres stay within [0.3, 0.7] of their cell; radius <= 0.65 cell.
-	// Thus a 3x3 neighbourhood contains every contributing periodic colony.
+	float2 uv = frac(MixtormatGeneratorUV((float2(pixel) + 0.5f) / float2(OutputSize)));
+	uint entry = BinHeads[CellId(int2(floor(uv * float(BinResolution))), int(BinResolution))];
+	float height = 0.0f, coverage = 0.0f, age = 0.0f;
+	uint owner = MIXTORMAT_INVALID_REGION;
+	uint bestNode = MIXTORMAT_INVALID_REGION;
+	float aa = min(0.5f / float(max(OutputSize.x, OutputSize.y)), BaseRadius * 0.5f);
+	while (entry != MIXTORMAT_INVALID_REGION && entry < BinEntryCapacity)
+	{
+		uint2 e = BinEntries[entry]; entry = e.y;
+		FGrowthNode n = Nodes[e.x]; FGrowthNode a = Nodes[n.Parent];
+		float2 p = a.Pos + Delta(a.Pos, uv);
+		float2 chord = Delta(a.Pos, n.Pos);
+		float2 b = a.Pos + a.Dir * length(chord) / 3.0f;
+		float2 c = a.Pos + chord * (2.0f / 3.0f);
+		float2 d = a.Pos + chord;
+		float2 previous = a.Pos;
+		[unroll] for (uint k = 1u; k <= 4u; ++k)
+		{
+			float t = float(k) * 0.25f, s = 1.0f - t;
+			float2 next = s*s*s*a.Pos + 3.0f*s*s*t*b + 3.0f*s*t*t*c + t*t*t*d;
+			float2 segment = next - previous;
+			float along = saturate(dot(p - previous, segment) / max(dot(segment, segment), 1.0e-12f));
+			float f = (float(k - 1u) + along) * 0.25f;
+			float radius = lerp(a.Radius, n.Radius, f);
+			float dist = length(p - lerp(previous, next, along));
+			float support = 1.0f - smoothstep(radius - aa, radius + aa, dist);
+			float h = sqrt(saturate(1.0f - dist * dist / max(radius * radius, 1.0e-12f))) * radius / BaseRadius;
+			coverage = max(coverage, support);
+			if (support > 0.0f && (h > height || (h == height && e.x < bestNode)))
+			{
+				height = h; owner = n.Colony; bestNode = e.x;
+				age = 1.0f - lerp(float(a.Birth), float(n.Birth), f) / float(max(GrowthSteps, 1u));
+			}
+			previous = next;
+		}
+	}
+	Store(pixel, height, coverage, age, owner);
+}
+#elif GROWTH_STAGE == 6
+[numthreads(8, 8, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	int2 p = int2(tid.xy); if (any(p >= ReactionSize)) { return; }
+	float2 uv = (float2(p) + 0.5f) / float(ReactionSize);
+	float habitat = 0.65f * Noise(uv, PatchCount, 31u) + 0.35f * Noise(uv, PatchCount * 2, 47u);
+	float seed = smoothstep(0.62f, 0.7f, Noise(uv, PatchCount * 3, 71u));
+	ReactionOutput[p] = float4(1.0f - 0.5f * seed, 0.25f * seed,
+		lerp(0.025f, 0.045f, habitat), lerp(0.058f, 0.064f, habitat));
+}
+#elif GROWTH_STAGE == 7
+[numthreads(8, 8, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	int2 p = int2(tid.xy); if (any(p >= ReactionSize)) { return; }
+	float4 state = ReactionInput.Load(int3(p, 0));
+	float2 lap = -state.xy;
+	[unroll] for (int y = -1; y <= 1; ++y)
+	{
+		[unroll] for (int x = -1; x <= 1; ++x)
+		{
+			if (x == 0 && y == 0) { continue; }
+			int2 q = (p + int2(x, y) + ReactionSize) % ReactionSize;
+			lap += ReactionInput.Load(int3(q, 0)).xy * (x == 0 || y == 0 ? 0.2f : 0.05f);
+		}
+	}
+	float reaction = state.x * state.y * state.y;
+	float2 change = float2(0.85f, 0.4f) * lap + float2(-reaction + state.z * (1.0f - state.x),
+		reaction - (state.z + state.w) * state.y);
+	ReactionOutput[p] = float4(saturate(state.xy + change), state.zw);
+}
+#else // GROWTH_STAGE == 8
+[numthreads(8, 8, 1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	int2 pixel = int2(tid.xy); if (any(pixel >= OutputSize)) { return; }
+	float2 uv = frac(MixtormatGeneratorUV((float2(pixel) + 0.5f) / float2(OutputSize)));
+	int cells = PatchCount * 8;
+	float2 p = uv * float(cells);
+	int2 cell = int2(floor(p));
+	float height = 0.0f, coverage = 0.0f, age = 0.0f;
+	uint owner = MIXTORMAT_INVALID_REGION;
+	float aa = clamp(0.5f * float(cells) / float(max(OutputSize.x, OutputSize.y)), 0.001f, 0.1f);
 	[loop] for (int y = -1; y <= 1; ++y)
 	{
 		[loop] for (int x = -1; x <= 1; ++x)
 		{
-			int2 cell = baseCell + int2(x, y);
-			int2 wrapped = (cell % PatchCount + PatchCount) % PatchCount;
-			uint id = uint(wrapped.y * PatchCount + wrapped.x);
-			float2 centre = float2(cell) + 0.3f + 0.4f * float2(
-				GrowthRandom(id, 17u), GrowthRandom(id, 53u));
-			float2 q = p - centre;
-			float radius = 0.65f * saturate(Coverage);
-			if (radius <= 0.0f || length(q) > radius + aa) { continue; }
-			float age = saturate(1.0f - length(q) / radius);
-			float sd;
-			float height;
-			if (GrowthType == 0u)
+			int2 c = cell + int2(x, y);
+			uint tuft = CellId(c, cells);
+			float2 anchor = float2(c) + 0.3f + 0.4f * float2(Random(tuft, 101u), Random(tuft, 131u));
+			float2 local = p - anchor;
+			if (length(local) > 0.75f + aa) { continue; }
+			float2 at = frac(anchor / float(cells));
+			float nutrient = ReactionInput.SampleLevel(LinearWrapSampler, at, 0).y;
+			float maturity = smoothstep(0.05f, 0.3f, nutrient);
+			float habitat = Noise(at, PatchCount, 31u);
+			// Coverage controls colony occupancy. A shoot is either present or absent;
+			// the final material is not faded across the whole colony.
+			float density = maturity * saturate((habitat + Coverage - 0.55f) * 3.0f);
+			if (Coverage <= 0.0f || Random(tuft, 157u) >= density) { continue; }
+			float2 guide = Guide(at);
+			float phase = Random(CellId(int2(floor(at * float(PatchCount))), PatchCount), 191u) * 6.28318530718f;
+			uint shoots = 5u + uint(round(Detail * 7.0f));
+			[loop] for (uint shoot = 0u; shoot < shoots; ++shoot)
 			{
-				float lobes = GrowthNoise(q * 7.0f, id);
-				float localRadius = radius * lerp(1.0f, 0.65f + 0.35f * lobes, Detail);
-				sd = length(q) - localRadius;
-				float dome = sqrt(saturate(1.0f - dot(q, q) / max(localRadius * localRadius, 1.0e-8f)));
-				// Grain remains relief, not a separate shading-normal layer.
-				float grain = GrowthNoise(q / max(FilamentWidth, 2.0f * aa), id ^ 0xa511e9b3u);
-				height = dome * lerp(1.0f, 0.45f + 0.55f * grain, Detail);
-			}
-			else
-			{
-				sd = 1.0f;
-				float width = min(FilamentWidth, radius * 0.2f);
-				float phase = GrowthRandom(id, 103u) * 6.28318530718f;
-				[unroll] for (uint branch = 0u; branch < 5u; ++branch)
+				float angle = phase + float(shoot) * 2.39996323f + (Random(tuft, shoot + 211u) - 0.5f) * 0.5f;
+				float2 radial = float2(cos(angle), sin(angle));
+				float2 root = radial * (0.05f + 0.08f * Random(tuft, shoot + 251u));
+				float2 lean = Unit(radial + guide * 0.65f, radial);
+				float lengthXY = 0.25f + 0.3f * Random(tuft, shoot + 307u);
+				float3 a = float3(root, 0.04f);
+				float3 b = float3(root + lean * lengthXY * 0.3f, 0.45f + 0.45f * maturity);
+				float3 d = float3(root + lean * lengthXY, 0.2f + 0.5f * Random(tuft, shoot + 401u));
+				float bladeWidth = clamp(FilamentWidth * 3.0f, 0.01f, 0.2f);
+				float3 previous = a;
+				[unroll] for (uint k = 1u; k <= 4u; ++k)
 				{
-					float angle = phase + float(branch) * 1.25663706144f
-						+ (GrowthRandom(id, branch + 211u) - 0.5f) * 0.5f;
-					float2 axis = float2(cos(angle), sin(angle));
-					float2 side = float2(-axis.y, axis.x);
-					float2 joint = radius * (axis * 0.45f + side *
-						(GrowthRandom(id, branch + 307u) - 0.5f) * 0.3f);
-					float2 tip = radius * axis * (0.75f + 0.25f * GrowthRandom(id, branch + 401u));
-					sd = min(sd, GrowthSegment(q, 0.0f, joint, width));
-					sd = min(sd, GrowthSegment(q, joint, tip, width * 0.55f));
-					// Detail grows lateral filaments from the main stem, rather than fading the colony.
-					if (Detail > 0.0f)
+					float t = float(k) * 0.25f;
+					float3 next = (1.0f-t)*(1.0f-t)*a + 2.0f*(1.0f-t)*t*b + t*t*d;
+					float2 edge = next.xy - previous.xy;
+					float f = saturate(dot(local - previous.xy, edge) / max(dot(edge, edge), 1.0e-10f));
+					float along = (float(k-1u) + f) * 0.25f;
+					float width = bladeWidth * max(sin(along * 3.14159265f), 0.08f);
+					float dist = length(local - lerp(previous.xy, next.xy, f));
+					float support = 1.0f - smoothstep(width - aa, width + aa, dist);
+					float h = lerp(previous.z, next.z, f) + 0.06f * sqrt(saturate(1.0f - dist*dist / (width*width)));
+					coverage = max(coverage, support);
+					if (support > 0.0f && (h * support > height || (h * support == height && tuft < owner)))
 					{
-						float2 fork = joint + radius * Detail * (axis * 0.3f + side * 0.35f);
-						sd = min(sd, GrowthSegment(q, joint, fork, width * 0.4f));
+						height = h * support; owner = tuft; age = maturity;
 					}
+					previous = next;
 				}
-				sd = max(sd, length(q) - radius);
-				height = sqrt(saturate(-sd / max(width, 1.0e-6f))) * (0.3f + 0.7f * age);
-			}
-			float support = 1.0f - smoothstep(-aa, aa, sd);
-			height *= support;
-			bestCoverage = max(bestCoverage, support);
-			// Highest visible colony owns the age and ID, with deterministic tie breaking.
-			if (height > bestHeight || (height == bestHeight && support > 0.0f && id < bestId))
-			{
-				bestHeight = height;
-				bestAge = age;
-				bestId = id;
 			}
 		}
 	}
-	OutGrowthHeight[pixel] = bestHeight;
-	OutGrowthCoverage[pixel] = bestCoverage;
-	OutGrowthAge[pixel] = bestAge;
-	OutGrowthIds[pixel] = bestId;
+	Store(pixel, height, coverage, age, owner);
 }
+#endif

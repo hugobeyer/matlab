@@ -2931,15 +2931,16 @@ TSharedRef<SWidget> SMixtormat::BuildOrganicGrowthControls()
 			LOCTEXT("GrowthNormalizeHint", "Zero-preserving normalization of colony height before Height Scale. Does not normalize the published masks."))));
 	Panel = AddCard(Cards, LOCTEXT("GrowthColonies", "COLONIES"));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
-		LOCTEXT("GrowthPatchCount", "Patch Count"), Growth, &FMixtormatOrganicGrowth::PatchCount, 1, 32, Defaults.PatchCount));
+		LOCTEXT("GrowthPatchCount", "Patch Count"), Growth, &FMixtormatOrganicGrowth::PatchCount, 1, 32, Defaults.PatchCount,
+				LOCTEXT("GrowthPatchCountHint", "Mycelium: number of competing colony origins. Moss: spatial frequency of colony habitat and tuft distribution.")));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
 		LOCTEXT("GrowthSeed", "Seed"), Growth, &FMixtormatOrganicGrowth::Seed, 0, 99999, Defaults.Seed));
 	AddSliderRow(Panel, Slider(LOCTEXT("GrowthCoverage", "Coverage"), &FMixtormatOrganicGrowth::Coverage, 0, 1, .01,
-		LOCTEXT("GrowthCoverageHint", "Colony radius in periodic jittered patch cells. Growth Coverage is the coverage mask; Growth Age is colony-center progression, not elapsed time.")));
+		LOCTEXT("GrowthCoverageHint", "Mycelium: growth duration in the bounded nutrient solver. Moss: occupancy of reaction-diffusion colonies. Growth Coverage is an explicit mask, not automatic layer visibility. Growth Age shows strand age or moss maturity.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("GrowthDetail", "Detail"), &FMixtormatOrganicGrowth::Detail, 0, 1, .01,
-		LOCTEXT("GrowthDetailHint", "Fine cushions for Moss or fine filaments for Mycelium.")));
+		LOCTEXT("GrowthDetailHint", "Mycelium: strength of spatially correlated steering. Moss: number of curved shoots per tuft. Higher moss detail increases rasterization cost.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("GrowthFilamentWidth", "Filament Width"), &FMixtormatOrganicGrowth::FilamentWidth, .005, .15, .001,
-		LOCTEXT("GrowthFilamentWidthHint", "Width as a fraction of a patch cell, not pixels. Typed values are limited to 0.001..0.25.")));
+		LOCTEXT("GrowthFilamentWidthHint", "Mycelium: maximum strand radius relative to Patch Count; nutrient demand tapers the network. Moss: shoot blade width. Typed values are limited to 0.001..0.25.")));
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedOrganicGrowth() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)
 		.Title(LOCTEXT("OrganicGrowthHeading", "ORGANIC GROWTH"))
