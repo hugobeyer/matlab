@@ -302,6 +302,31 @@ namespace MixtormatGpuCompositor
 		Out.HeightToUV = FMath::Max(Out.HeightToUV, 0.00001f);
 		break;
 	}
+	case EMixtormatGeneratorType::Moss:
+	case EMixtormatGeneratorType::Mycelium:
+	{
+		FOrganicGrowthRenderData& Out = ChildData.Generator.OrganicGrowth;
+		Out.Settings = Generator.OrganicGrowth;
+		FMixtormatOrganicGrowth& S = Out.Settings;
+		const FMixtormatOrganicGrowth Defaults;
+		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
+		S.PatchCount = FMath::Clamp(S.PatchCount, 1, 64);
+		S.Coverage = FMath::Clamp(Finite(S.Coverage, Defaults.Coverage), 0.0f, 1.0f);
+		S.Detail = FMath::Clamp(Finite(S.Detail, Defaults.Detail), 0.0f, 1.0f);
+		S.FilamentWidth = FMath::Clamp(Finite(S.FilamentWidth, Defaults.FilamentWidth), 0.001f, 0.25f);
+		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
+		if (bCacheLayers)
+		{
+			MixtormatComposeHash::FHasher Hasher;
+			Hasher.SkipTopLevel = {TEXT("HeightScale"), TEXT("bNormalizeHeight")};
+			Hasher.Struct(FMixtormatOrganicGrowth::StaticStruct(), &S);
+			const uint64 TypeKey = Generator.Type == EMixtormatGeneratorType::Moss
+				? 0x4d6f737347723031ull : 0x4d79636547723031ull;
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), TypeKey) | 1ull;
+		}
+		break;
+	}
 	case EMixtormatGeneratorType::Scales:
 	{
 		FScalesRenderData& Out = ChildData.Generator.Scales;
@@ -476,6 +501,14 @@ namespace MixtormatGpuCompositor
 			{
 				ChildData.Generator.CliffStrata.FieldKey = MixtormatComposeHash::Combine(
 					ChildData.Generator.CliffStrata.FieldKey, PlacementKey) | 1ull;
+			}
+			break;
+		case EMixtormatGeneratorType::Moss:
+		case EMixtormatGeneratorType::Mycelium:
+			if (ChildData.Generator.OrganicGrowth.FieldKey != 0)
+			{
+				ChildData.Generator.OrganicGrowth.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.OrganicGrowth.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		case EMixtormatGeneratorType::Scales:

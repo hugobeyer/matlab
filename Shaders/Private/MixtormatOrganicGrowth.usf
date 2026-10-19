@@ -1,0 +1,139 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+int2 OutputSize;
+uint GrowthType; // 0: moss cushions, 1: mycelium filaments
+// @param PatchCount
+int PatchCount;
+// @param Seed
+uint Seed;
+// @param Coverage saturates
+float Coverage;
+// @param Detail saturates
+float Detail;
+// @param FilamentWidth
+float FilamentWidth;
+RWTexture2D<float> OutGrowthHeight;
+RWTexture2D<float> OutGrowthCoverage;
+RWTexture2D<float> OutGrowthAge;
+RWTexture2D<uint> OutGrowthIds;
+
+float GrowthRandom(uint id, uint salt)
+{
+	return MixtormatRegionRandomSalted(MixtormatRegionSeed(id, Seed), salt);
+}
+
+float GrowthNoise(float2 p, uint id)
+{
+	int2 cell = int2(floor(p));
+	float2 f = frac(p);
+	f = f * f * (3.0f - 2.0f * f);
+	uint a = uint(cell.x) * 73856093u;
+	uint b = uint(cell.y) * 19349663u;
+	uint c = uint(cell.x + 1) * 73856093u;
+	uint d = uint(cell.y + 1) * 19349663u;
+	return lerp(lerp(GrowthRandom(id, a ^ b), GrowthRandom(id, c ^ b), f.x),
+		lerp(GrowthRandom(id, a ^ d), GrowthRandom(id, c ^ d), f.x), f.y);
+}
+
+float GrowthSegment(float2 p, float2 a, float2 b, float width)
+{
+	float2 edge = b - a;
+	float t = saturate(dot(p - a, edge) / max(dot(edge, edge), 1.0e-8f));
+	return length(p - lerp(a, b, t)) - width * lerp(1.0f, 0.3f, t);
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 pixel = int2(DispatchThreadId.xy);
+	if (any(pixel >= OutputSize)) { return; }
+
+	float2 rawUV = (float2(pixel) + 0.5f) / float2(OutputSize);
+	float2 mapped = MixtormatGeneratorUV(rawUV);
+	float2 p = frac(mapped) * float(PatchCount);
+	int2 baseCell = int2(floor(p));
+	// Estimate the mapped pixel footprint, including non-uniform placement and pre-generation UV.
+	float2 dx = MixtormatGeneratorUV(rawUV + float2(1.0f / OutputSize.x, 0.0f)) - mapped;
+	float2 dy = MixtormatGeneratorUV(rawUV + float2(0.0f, 1.0f / OutputSize.y)) - mapped;
+	dx -= floor(dx + 0.5f);
+	dy -= floor(dy + 0.5f);
+	float aa = max(0.5f * float(PatchCount) * max(length(dx), length(dy)), 1.0e-5f);
+	float bestHeight = 0.0f;
+	float bestCoverage = 0.0f;
+	float bestAge = 0.0f;
+	uint bestId = MIXTORMAT_INVALID_REGION;
+
+	// Centres stay within [0.3, 0.7] of their cell; radius <= 0.65 cell.
+	// Thus a 3x3 neighbourhood contains every contributing periodic colony.
+	[loop] for (int y = -1; y <= 1; ++y)
+	{
+		[loop] for (int x = -1; x <= 1; ++x)
+		{
+			int2 cell = baseCell + int2(x, y);
+			int2 wrapped = (cell % PatchCount + PatchCount) % PatchCount;
+			uint id = uint(wrapped.y * PatchCount + wrapped.x);
+			float2 centre = float2(cell) + 0.3f + 0.4f * float2(
+				GrowthRandom(id, 17u), GrowthRandom(id, 53u));
+			float2 q = p - centre;
+			float radius = 0.65f * saturate(Coverage);
+			if (radius <= 0.0f || length(q) > radius + aa) { continue; }
+			float age = saturate(1.0f - length(q) / radius);
+			float sd;
+			float height;
+			if (GrowthType == 0u)
+			{
+				float lobes = GrowthNoise(q * 7.0f, id);
+				float localRadius = radius * lerp(1.0f, 0.65f + 0.35f * lobes, Detail);
+				sd = length(q) - localRadius;
+				float dome = sqrt(saturate(1.0f - dot(q, q) / max(localRadius * localRadius, 1.0e-8f)));
+				// Grain remains relief, not a separate shading-normal layer.
+				float grain = GrowthNoise(q / max(FilamentWidth, 2.0f * aa), id ^ 0xa511e9b3u);
+				height = dome * lerp(1.0f, 0.45f + 0.55f * grain, Detail);
+			}
+			else
+			{
+				sd = 1.0f;
+				float width = min(FilamentWidth, radius * 0.2f);
+				float phase = GrowthRandom(id, 103u) * 6.28318530718f;
+				[unroll] for (uint branch = 0u; branch < 5u; ++branch)
+				{
+					float angle = phase + float(branch) * 1.25663706144f
+						+ (GrowthRandom(id, branch + 211u) - 0.5f) * 0.5f;
+					float2 axis = float2(cos(angle), sin(angle));
+					float2 side = float2(-axis.y, axis.x);
+					float2 joint = radius * (axis * 0.45f + side *
+						(GrowthRandom(id, branch + 307u) - 0.5f) * 0.3f);
+					float2 tip = radius * axis * (0.75f + 0.25f * GrowthRandom(id, branch + 401u));
+					sd = min(sd, GrowthSegment(q, 0.0f, joint, width));
+					sd = min(sd, GrowthSegment(q, joint, tip, width * 0.55f));
+					// Detail grows lateral filaments from the main stem, rather than fading the colony.
+					if (Detail > 0.0f)
+					{
+						float2 fork = joint + radius * Detail * (axis * 0.3f + side * 0.35f);
+						sd = min(sd, GrowthSegment(q, joint, fork, width * 0.4f));
+					}
+				}
+				sd = max(sd, length(q) - radius);
+				height = sqrt(saturate(-sd / max(width, 1.0e-6f))) * (0.3f + 0.7f * age);
+			}
+			float support = 1.0f - smoothstep(-aa, aa, sd);
+			height *= support;
+			bestCoverage = max(bestCoverage, support);
+			// Highest visible colony owns the age and ID, with deterministic tie breaking.
+			if (height > bestHeight || (height == bestHeight && support > 0.0f && id < bestId))
+			{
+				bestHeight = height;
+				bestAge = age;
+				bestId = id;
+			}
+		}
+	}
+	OutGrowthHeight[pixel] = bestHeight;
+	OutGrowthCoverage[pixel] = bestCoverage;
+	OutGrowthAge[pixel] = bestAge;
+	OutGrowthIds[pixel] = bestId;
+}

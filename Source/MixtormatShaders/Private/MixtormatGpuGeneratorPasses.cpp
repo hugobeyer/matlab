@@ -320,6 +320,39 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
+class FMixtormatOrganicGrowthCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatOrganicGrowthCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatOrganicGrowthCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
+		SHADER_PARAMETER(uint32, GrowthType)
+		SHADER_PARAMETER(int32, PatchCount)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, Coverage)
+		SHADER_PARAMETER(float, Detail)
+		SHADER_PARAMETER(float, FilamentWidth)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthAge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutGrowthIds)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatOrganicGrowthCS, "/Plugin/Mixtormat/Private/MixtormatOrganicGrowth.usf", "MainCS", SF_Compute);
+
 class FMixtormatScalesCS final : public FGlobalShader
 {
 public:
@@ -3685,6 +3718,89 @@ namespace
 		return Combined;
 	}
 
+	FRDGTextureRef AddOrganicGrowthPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FOrganicGrowthRenderData& Data = Child.Generator.OrganicGrowth;
+		const FMixtormatOrganicGrowth& Settings = Data.Settings;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		constexpr int32 SlotCount = 4;
+		FRDGTextureRef Outputs[SlotCount] = {};
+		static const TCHAR* Names[SlotCount] = {
+			TEXT("Mixtormat.Growth.Height"), TEXT("Mixtormat.Growth.Coverage"),
+			TEXT("Mixtormat.Growth.Age"), TEXT("Mixtormat.Growth.Ids")};
+		if (const auto* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Index = 0; Index < SlotCount; ++Index) { Outputs[Index] = (*Memo)[Index]; }
+		}
+		else
+		{
+			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
+			const uint64 Key = Cache && !Child.PreUV ? Data.FieldKey : 0;
+			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			bool bComplete = Hit.IsValid();
+			for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)
+			{
+				bComplete = Hit->Outputs[Index].IsValid();
+			}
+			if (bComplete)
+			{
+				for (int32 Index = 0; Index < SlotCount; ++Index)
+				{
+					Outputs[Index] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[Index], Names[Index]);
+				}
+			}
+			else
+			{
+				const EPixelFormat Formats[SlotCount] = {PF_R32_FLOAT, PF_R16F, PF_R16F, PF_R32_UINT};
+				for (int32 Index = 0; Index < SlotCount; ++Index)
+				{
+					Outputs[Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size, Formats[Index],
+						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[Index]);
+				}
+				TShaderMapRef<FMixtormatOrganicGrowthCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+				auto* Parameters = GraphBuilder.AllocParameters<FMixtormatOrganicGrowthCS::FParameters>();
+				FillGeneratorPlacement(Parameters, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+				Parameters->OutputSize = Size;
+				Parameters->GrowthType = Child.Generator.Type == EMixtormatGeneratorType::Mycelium ? 1u : 0u;
+				Parameters->PatchCount = Settings.PatchCount;
+				Parameters->Seed = static_cast<uint32>(Settings.Seed);
+				Parameters->Coverage = Settings.Coverage;
+				Parameters->Detail = Settings.Detail;
+				Parameters->FilamentWidth = Settings.FilamentWidth;
+				Parameters->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
+				Parameters->OutGrowthCoverage = GraphBuilder.CreateUAV(Outputs[1]);
+				Parameters->OutGrowthAge = GraphBuilder.CreateUAV(Outputs[2]);
+				Parameters->OutGrowthIds = GraphBuilder.CreateUAV(Outputs[3]);
+				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.OrganicGrowth.L%d.C%d",
+					LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, Parameters,
+					FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+				if (Key)
+				{
+					auto Entry = MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = Key;
+					Entry->Resolution = Size;
+					for (int32 Index = 0; Index < SlotCount; ++Index)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Index], &Entry->Outputs[Index]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+			LayerCtx.GeneratorFields.Add(Child.SourceChildIndex).Append(Outputs, SlotCount);
+		}
+		if (Bundle)
+		{
+			Bundle->Height = Outputs[0];
+			Bundle->Coverage = Outputs[1];
+			Bundle->RegionIds = Outputs[3];
+			Bundle->RegisterNamedMask(FName(TEXT("GrowthCoverage")), Outputs[1], FGeneratorBundle::EFieldSemantic::CoverageAlias);
+			Bundle->RegisterNamedMask(FName(TEXT("GrowthAge")), Outputs[2], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		}
+		return Outputs[0];
+	}
+
 	FRDGTextureRef AddScalesPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FGeneratorBundle* Bundle)
 	{
@@ -4677,6 +4793,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
+		case EMixtormatGeneratorType::Moss:
+		case EMixtormatGeneratorType::Mycelium:
+			AddOrganicGrowthPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			break;
 		case EMixtormatGeneratorType::Scales:
 			AddScalesPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
@@ -4956,6 +5076,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
 			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
+			if (Child.Generator.Type == EMixtormatGeneratorType::Moss
+				|| Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
+			{
+				Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key),
+					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Mask.Value, nullptr, nullptr, false});
+			}
 			const bool bDistance = Mask.Key == FName(TEXT("RockEdgeDistance"))
 				|| Mask.Key == FName(TEXT("PebbleEdgeDistance"))
 				|| Mask.Key == FName(TEXT("RootEdgeDistance"));

@@ -30,6 +30,22 @@ field, so Signed Distance stays unavailable there (`MixtormatGeneratorHasFlowBou
 distinction for the inspector and authoring defaults). Every other eligible generator keeps both
 source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md` (archived).
 
+## Moss / Mycelium foundation
+
+- Both use `FMixtormatOrganicGrowth`, `GatherGeneratorChild`, and
+  `AddOrganicGrowthPasses` → `MixtormatOrganicGrowth.usf` (one compute dispatch).
+- Moss generates lobed cushions with grain relief; Mycelium generates tapered radial
+  stems with lateral forks. These are deterministic periodic colonies, not growth simulations.
+- Shared outputs: signed `Height` after the existing normalization/scale path,
+  `GrowthCoverage`, `GrowthAge` (centre-to-edge progression, not elapsed time), and region IDs.
+  Empty pixels use `MIXTORMAT_INVALID_REGION`. Coverage is an explicit mask, not automatic
+  layer visibility; use it as a mask to isolate a moss/mycelium material.
+- Raw-field caching includes type, seed, shape parameters and placement; normalization and
+  height scale remain downstream. Pre-generation UV bypasses the persistent field cache.
+- Normals use the existing height-derived path. No independent fiber-normal output,
+  native Flow, signed-boundary output, mushroom overhangs, or substrate-driven growth yet.
+- Static review only; C++/shader compilation and visual verification remain required.
+
 ## Boolean Ops — Scatter Carve and field combining
 
 > [!NOTE]
