@@ -150,8 +150,11 @@ Pass Through Fill over the layers being filtered.
   `MixtormatLayerChildren.cpp`: expose scoped Blur on Color Ramp and preserve
   placement validation, copying/instances and nested masks. Trace existing callers
   of `CanOwnScopedBlurs` rather than adding parallel owner lists.
-- Disable inapplicable controls instead of hiding them. Preserve Gaussian settings
-  when switching modes. Explain Flow Influence versus Amount versus channel weights.
+- The later implemented inspector correction supersedes the former disabled-control
+  presentation: collapse inapplicable cards, use direct segmented mode/target/direction
+  controls and list only valid explicit Flow guidance connections. Retain all stored
+  Gaussian settings when switching modes, and preserve existing Flow Influence,
+  Amount and channel-weight behavior.
 - Inspect parameter metadata/authoring registration and update it only where the
   actual existing control architecture requires explicit entries.
 - Update COMPOSITION.md and the directly affected UI documentation.

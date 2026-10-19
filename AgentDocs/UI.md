@@ -219,10 +219,17 @@ are inactive. Curvature combines multi-scale normal Sobel and height Laplacian; 
 baked AO and height horizon occlusion; Slope and Direction support full 3D normals combined from
 normal maps and height gradients. Mixer scale is bounded on the CPU with `max(Convex, Cavity)`.
 
-Blur uses the generic `FMixtormatBlur` payload with FOOTPRINT (Radius X/Y) and
-AMOUNT cards. Mask and Curvature owners support Add Blur and scoped copy/instance
-paste; Curvature can own Blur, not another Curvature. Broader owners and root-Layer
-channel controls remain unavailable until their render scheduling is implemented.
+Blur uses the generic `FMixtormatBlur` payload with Mode (Gaussian / Directional /
+Smear), FOOTPRINT (Gaussian only), DIRECTION (Directional / Smear only), and AMOUNT.
+Discrete Mode, Direction Source (Angle / Flow), and applicable Generator/Behavior
+Height / Flow / Height + Flow targeting use full-width segmented strips, not dropdowns.
+Root Layer Blur alone shows per-channel weights; irrelevant sections are collapsed
+instead of rendered disabled. Flow guidance keeps an explicit typed source chip;
+its menu omits invalid sources and explains when none are available. Root Layer
+Blur executes after the layer's producers and can connect to their completed
+same-layer Flow outputs regardless of authored row position; scoped Blur still
+requires a completed earlier producer outside its owning scope. All existing
+Gaussian, Directional, Smear, scoped mask, copy/instance and output behaviors remain.
 
 Feather's Width, Iterations and Direction Bias are nested `BehaviorFeatherSettings`
 parameters. Their editor ranges, reset defaults and optional clamps are authored under

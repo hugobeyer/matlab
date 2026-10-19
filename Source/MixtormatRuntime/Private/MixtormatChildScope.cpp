@@ -382,9 +382,12 @@ namespace MixtormatChildScope
 			if (!IsEnabled(SourceLayer.Children[Index])) { return INDEX_NONE; }
 			SourceRoot = Index;
 		}
-		if (SourceLayerIndex == LayerIndex)
+		if (SourceLayerIndex == LayerIndex
+			&& Destination.Children[BlurChildIndex].ScopeOwnerChildId.IsValid())
 		{
-			// Published producer outputs are captured only after their entire scope finishes.
+			// Scoped Blurs execute inside their owner: only earlier completed producer
+			// scopes are available. Root Layer Blurs run after the full layer rail,
+			// so all completed producers in the same layer are valid regardless of row order.
 			if (SourceRoot >= ConsumerStart) { return INDEX_NONE; }
 			for (int32 Index = ConsumerStart; Index < SourceLayer.Children.Num(); ++Index)
 			{

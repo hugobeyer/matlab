@@ -14,6 +14,7 @@
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Controls/SMixtormatTile.h"
 #include "UI/Controls/SMixtormatScalarRamp.h"
+#include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -1116,9 +1117,13 @@ TSharedRef<SWidget> SMixtormat::BuildBlurFlowSourceMenu()
 		RefreshLayeredPreview();
 		RebuildLayerList();
 	};
-	Menu.Item(LOCTEXT("BlurClearFlowSource", "Clear source"), nullptr,
-		FSimpleDelegate::CreateLambda([Assign]() { Assign(FMixtormatBlur{}.FlowSource); }));
-	Menu.Separator();
+	if (Selected->Blur.FlowSource.HasSource())
+	{
+		Menu.Item(LOCTEXT("BlurClearFlowSource", "Clear source"), nullptr,
+			FSimpleDelegate::CreateLambda([Assign]() { Assign(FMixtormatBlur{}.FlowSource); }));
+		Menu.Separator();
+	}
+	bool bHasCompatibleSource = false;
 	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
 	for (const FMixtormatLayer& AuthoredLayer : WorkingLayers)
 	{
@@ -1134,12 +1139,17 @@ TSharedRef<SWidget> SMixtormat::BuildBlurFlowSourceMenu()
 				Reference.SourceChildId = Producer.ChildId;
 				Reference.OutputName = Output.Name;
 				Reference.Kind = EMixtormatPublishedFieldKind::Flow;
+				if (!CanSelectBlurFlowSource(Address, Reference)) { continue; }
+				bHasCompatibleSource = true;
 				Menu.Item(FText::Format(LOCTEXT("BlurFlowSourceEntry", "{0} / {1} / {2}"),
 					SourceLayer.DisplayName, GetLayerChildName(Producer), Output.Label), MixtormatIcons::Generator(),
-					FSimpleDelegate::CreateLambda([Assign, Reference]() { Assign(Reference); }))
-					.Enabled(CanSelectBlurFlowSource(Address, Reference));
+					FSimpleDelegate::CreateLambda([Assign, Reference]() { Assign(Reference); }));
 			}
 		}
+	}
+	if (!bHasCompatibleSource)
+	{
+		Menu.Caption(LOCTEXT("BlurNoCompatibleFlow", "No completed Flow source is available"));
 	}
 	return Menu.Build();
 }
@@ -1155,29 +1165,91 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 			return GetSelectedLayerBlur() ? EVisibility::Visible : EVisibility::Collapsed;
 		});
 
+	const auto EditableBlur = [this]()
+	{
+		const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+		return Child && Child->Type == EMixtormatLayerChildType::Blur && !Child->IsInstance();
+	};
 	TSharedRef<SVerticalBox> Settings = AddCard(Panel, LOCTEXT("BlurSettingsCard", "FILTER"));
-	AddSliderRow(Settings, MakeMemberEnum<FMixtormatBlur>(
-		LOCTEXT("BlurModeLabel", "Mode"), Blur, &FMixtormatBlur::Mode,
-		LOCTEXT("BlurModeHint", "Gaussian uses Radius and X/Y Scale. Directional averages both sides of the path. Smear trails on one side; negative Length reverses the trail.")));
 	AddSliderRow(Settings, SNew(SBox)
-		.IsEnabled_Lambda([this]()
+		.IsEnabled_Lambda(EditableBlur)
+		[
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("BlurModeGaussian", "Gaussian"),
+				LOCTEXT("BlurModeDirectional", "Directional"), LOCTEXT("BlurModeSmear", "Smear")})
+			.ToolTips(TArray<FText>{
+				LOCTEXT("BlurModeGaussianHint", "Gaussian uses Radius and X/Y Scale."),
+				LOCTEXT("BlurModeDirectionalHint", "Averages samples on both sides of the chosen path."),
+				LOCTEXT("BlurModeSmearHint", "Trails samples on one side; negative Length reverses direction.")})
+			.ActiveIndex_Lambda([Blur]() -> int32
+			{
+				const FMixtormatBlur* B = Blur();
+				return B ? static_cast<int32>(B->Mode) : INDEX_NONE;
+			})
+			.OnChosen_Lambda([this, Blur, EditableBlur](int32 Index)
+			{
+				if (!EditableBlur() || Index < 0 || Index > 2) { return; }
+				if (FMixtormatBlur* B = Blur())
+				{
+					B->Mode = static_cast<EMixtormatBlurMode>(Index);
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			})
+		]);
+	TSharedRef<SVerticalBox> TargetControls = SNew(SVerticalBox);
+	TargetControls->AddSlot().AutoHeight()
+		[
+			MixtormatRow::MakeCaption(LOCTEXT("BlurTargetCaption", "TARGET"))
+		];
+	TargetControls->AddSlot().AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
+		[
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("BlurTargetHeight", "Height"),
+				LOCTEXT("BlurTargetFlow", "Flow"), LOCTEXT("BlurTargetBoth", "Height + Flow")})
+			.ToolTips(TArray<FText>{
+				LOCTEXT("BlurTargetHeightHint", "Filter the generator's signed Height."),
+				LOCTEXT("BlurTargetFlowHint", "Filter the owner's valid Flow output."),
+				LOCTEXT("BlurTargetBothHint", "Filter both Height and Flow without changing their ownership.")})
+			.ActiveIndex_Lambda([Blur]() -> int32
+			{
+				const FMixtormatBlur* B = Blur();
+				return B ? static_cast<int32>(B->Target) : INDEX_NONE;
+			})
+			.OnChosen_Lambda([this, Blur, EditableBlur](int32 Index)
+			{
+				if (!EditableBlur() || Index < 0 || Index > 2) { return; }
+				if (FMixtormatBlur* B = Blur())
+				{
+					B->Target = static_cast<EMixtormatBlurTarget>(Index);
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			})
+		];
+	AddSliderRow(Settings, SNew(SBox)
+		.Visibility_Lambda([this]()
 		{
 			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 			const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-			if (!Child || Child->IsInstance() || !Children) { return false; }
+			if (!Children) { return EVisibility::Collapsed; }
 			const int32 OwnerIndex = MixtormatChildScope::ResolveOwnerIndex(*Children, ResolveChildIndexAt(Address));
 			return Children->IsValidIndex(OwnerIndex)
 				&& ((*Children)[OwnerIndex].Type == EMixtormatLayerChildType::Generator
-					|| (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::Behavior);
+					|| (*Children)[OwnerIndex].Type == EMixtormatLayerChildType::Behavior)
+				? EVisibility::Visible : EVisibility::Collapsed;
 		})
+		.IsEnabled_Lambda(EditableBlur)
 		[
-			MakeMemberEnum<FMixtormatBlur>(
-				LOCTEXT("BlurTargetLabel", "Target"), Blur, &FMixtormatBlur::Target,
-				LOCTEXT("BlurTargetHint", "Select which Generator or Behavior output to filter: Height, Flow, or both. Height preserves the existing default. Filtering Flow preserves its validity and uses the owner's native working Flow. This is separate from Flow Source, which only guides the sampling path. Other owners use their own output contract; this setting does not apply."))
+			TargetControls
 		]);
 	TSharedRef<SVerticalBox> Gaussian = SNew(SVerticalBox)
-		.IsEnabled_Lambda([Blur]() { const FMixtormatBlur* B = Blur(); return B && B->Mode == EMixtormatBlurMode::Gaussian; });
+		.Visibility_Lambda([Blur]()
+		{
+			const FMixtormatBlur* B = Blur();
+			return B && B->Mode == EMixtormatBlurMode::Gaussian ? EVisibility::Visible : EVisibility::Collapsed;
+		});
 	Panel->AddSlot().AutoHeight()[Gaussian];
 	TSharedRef<SVerticalBox> Footprint = AddCard(Gaussian, LOCTEXT("BlurFootprintCard", "FOOTPRINT"));
 	AddSliderRow(Footprint, MakeMemberSlider<FMixtormatBlur>(
@@ -1195,12 +1267,38 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 			LOCTEXT("BlurScaleYHint", "Vertical radius multiplier. One uses the master Radius; zero disables vertical filtering. Each scale remains independently bindable."))));
 
 	TSharedRef<SVerticalBox> Directional = SNew(SVerticalBox)
-		.IsEnabled_Lambda([Blur]() { const FMixtormatBlur* B = Blur(); return B && B->Mode != EMixtormatBlurMode::Gaussian; });
+		.Visibility_Lambda([Blur]()
+		{
+			const FMixtormatBlur* B = Blur();
+			return B && B->Mode != EMixtormatBlurMode::Gaussian ? EVisibility::Visible : EVisibility::Collapsed;
+		});
 	Panel->AddSlot().AutoHeight()[Directional];
 	TSharedRef<SVerticalBox> Direction = AddCard(Directional, LOCTEXT("BlurDirectionCard", "DIRECTION"));
-	AddSliderRow(Direction, MakeMemberEnum<FMixtormatBlur>(
-		LOCTEXT("BlurDirectionSourceLabel", "Direction Source"), Blur, &FMixtormatBlur::DirectionSource,
-		LOCTEXT("BlurDirectionSourceHint", "Angle needs no source. Flow requires an explicit, available, completed earlier Flow output; an unavailable source leaves the filter unchanged, without substituting Angle.")));
+	AddSliderRow(Direction, SNew(SBox)
+		.IsEnabled_Lambda(EditableBlur)
+		[
+			SNew(SMixtormatSegmentedControl)
+			.Options(TArray<FText>{LOCTEXT("BlurDirectionAngle", "Angle"),
+				LOCTEXT("BlurDirectionFlow", "Flow")})
+			.ToolTips(TArray<FText>{
+				LOCTEXT("BlurDirectionAngleHint", "Follow Angle; no Flow connection required."),
+				LOCTEXT("BlurDirectionFlowHint", "Blend Angle with a connected, completed Flow source. Unavailable Flow leaves the filter unchanged.")})
+			.ActiveIndex_Lambda([Blur]() -> int32
+			{
+				const FMixtormatBlur* B = Blur();
+				return B ? static_cast<int32>(B->DirectionSource) : INDEX_NONE;
+			})
+			.OnChosen_Lambda([this, Blur, EditableBlur](int32 Index)
+			{
+				if (!EditableBlur() || Index < 0 || Index > 1) { return; }
+				if (FMixtormatBlur* B = Blur())
+				{
+					B->DirectionSource = static_cast<EMixtormatBlurDirectionSource>(Index);
+					RefreshLayeredPreview();
+					RebuildLayerList();
+				}
+			})
+		]);
 	AddSliderRow(Direction, MakeMemberSlider<FMixtormatBlur>(
 		LOCTEXT("BlurLengthLabel", "Length"), Blur, &FMixtormatBlur::Length,
 		LengthMin, LengthMax, LengthDefault, SnapDelta,
@@ -1210,19 +1308,20 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 		AngleMin, AngleMax, AngleDefault, AngleSnapDelta,
 		LOCTEXT("BlurAngleHint", "Texture-space direction in degrees; also the base direction blended with normalized Flow. Flow magnitude does not change Length.")));
 	TSharedRef<SVerticalBox> Flow = SNew(SVerticalBox)
-		.IsEnabled_Lambda([this, Blur]()
+		.Visibility_Lambda([Blur]()
 		{
 			const FMixtormatBlur* B = Blur();
-			const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
-			return B && B->DirectionSource == EMixtormatBlurDirectionSource::Flow && Child && !Child->IsInstance();
-		});
+			return B && B->DirectionSource == EMixtormatBlurDirectionSource::Flow
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.IsEnabled_Lambda(EditableBlur);
 	Direction->AddSlot().AutoHeight()[Flow];
 	AddSliderRow(Flow, MixtormatRow::MakeDropdown(
 		LOCTEXT("BlurFlowSourceLabel", "Flow Source"),
 		MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this, Blur]()
 		{
 			const FMixtormatBlur* B = Blur();
-			if (!B || !B->FlowSource.HasSource()) { return LOCTEXT("BlurFlowUnset", "Unavailable / Choose source"); }
+			if (!B || !B->FlowSource.HasSource()) { return LOCTEXT("BlurFlowUnset", "Choose Flow source"); }
 			const FMixtormatOutputReference& Ref = B->FlowSource;
 			if (!CanSelectBlurFlowSource(GetSelectedChildAddress(), Ref))
 			{
@@ -1246,13 +1345,13 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 		LOCTEXT("BlurAmountHint", "How much of the completed filter replaces the original input. Zero keeps the input unchanged; one uses the fully filtered result.")));
 
 	TSharedRef<SVerticalBox> ChannelsPanel = SNew(SVerticalBox)
-		.IsEnabled_Lambda([this]()
+		.Visibility_Lambda([this]()
 		{
 			const FMixtormatChildAddress Address = GetSelectedChildAddress();
 			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 			return Address.OwnerType == EMixtormatChildOwnerType::Layer
 				&& Child && Child->Type == EMixtormatLayerChildType::Blur
-				&& !Child->ScopeOwnerChildId.IsValid();
+				&& !Child->ScopeOwnerChildId.IsValid() ? EVisibility::Visible : EVisibility::Collapsed;
 		});
 	Panel->AddSlot().AutoHeight()[ChannelsPanel];
 	TSharedRef<SVerticalBox> Channels = AddCard(ChannelsPanel, LOCTEXT("BlurChannelsCard", "CHANNELS"));
