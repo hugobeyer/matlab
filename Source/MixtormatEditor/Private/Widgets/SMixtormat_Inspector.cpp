@@ -507,6 +507,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildCliffStrataControls()]
 					+ SScrollBox::Slot()[BuildRootNetworkControls()]
 										+ SScrollBox::Slot()[BuildScalesControls()]
+					+ SScrollBox::Slot()[BuildOrganicGrowthControls()]
 					+ SScrollBox::Slot()[BuildNoiseControls()]
 					+ SScrollBox::Slot()[BuildBooleanOpsControls()]
 					+ SScrollBox::Slot()[BuildBooleanStackControls()]
@@ -575,6 +576,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						+ SVerticalBox::Slot().AutoHeight()[BuildCliffStrataControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildRootNetworkControls()]
 												+ SVerticalBox::Slot().AutoHeight()[BuildScalesControls()]
+						+ SVerticalBox::Slot().AutoHeight()[BuildOrganicGrowthControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildBooleanOpsControls()]
 
 						// No "Normal Detail Only" checkbox: DETAIL is one of the four cells in

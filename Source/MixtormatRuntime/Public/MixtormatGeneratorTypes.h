@@ -29,7 +29,9 @@ enum class EMixtormatGeneratorType : uint8
 	Noise UMETA(DisplayName = "Noise"),
 	BooleanOps UMETA(DisplayName = "Boolean Ops"),
 	RootNetwork UMETA(DisplayName = "Root Network"),
-		Scales UMETA(DisplayName = "Scales")
+	Scales UMETA(DisplayName = "Scales"),
+	Moss UMETA(DisplayName = "Moss"),
+	Mycelium UMETA(DisplayName = "Mycelium")
 };
 
 // How a pebble's cut planes are oriented.
@@ -395,6 +397,38 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 	float PebbleHeightScale = 1.0f;
 };
 
+
+// Foundation procedural colonies, not a time simulation or real mushroom geometry.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatOrganicGrowth
+{
+	GENERATED_BODY()
+
+	// Periodic jittered colony cells across the tile.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "1", ClampMax = "64", UIMin = "1", UIMax = "32"))
+	int32 PatchCount = 6;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies")
+	int32 Seed = 0;
+
+	// Sets colony radius, not elapsed simulation time.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
+	float Coverage = 0.55f;
+
+	// Fine cushions for Moss; filaments for Mycelium.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
+	float Detail = 0.35f;
+
+	// Width as a fraction of a patch cell.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0.001", ClampMax = "0.25", UIMin = "0.005", UIMax = "0.15", Delta = "0.001"))
+	float FilamentWidth = 0.04f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Output", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01"))
+	float HeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Output")
+	bool bNormalizeHeight = false;
+};
 
 UENUM(BlueprintType)
 enum class EMixtormatScaleShape : uint8
@@ -1604,4 +1638,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Scales"))
 	FMixtormatScales Scales;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Moss || Type == EMixtormatGeneratorType::Mycelium"))
+	FMixtormatOrganicGrowth OrganicGrowth;
 };

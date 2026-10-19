@@ -824,7 +824,9 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
 		case EMixtormatGeneratorType::RootNetwork:   return EMixtormatChildCreation::RootNetwork;
-				case EMixtormatGeneratorType::Scales:        return EMixtormatChildCreation::Scales;
+	case EMixtormatGeneratorType::Moss:          return EMixtormatChildCreation::Moss;
+	case EMixtormatGeneratorType::Mycelium:      return EMixtormatChildCreation::Mycelium;
+	case EMixtormatGeneratorType::Scales:        return EMixtormatChildCreation::Scales;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
 		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::ScatterCarve;
@@ -854,7 +856,9 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RootNetwork:     return EMixtormatLayerChildType::Generator;
-				case EMixtormatChildCreation::Scales:          return EMixtormatLayerChildType::Generator;
+	case EMixtormatChildCreation::Moss:            return EMixtormatLayerChildType::Generator;
+	case EMixtormatChildCreation::Mycelium:        return EMixtormatLayerChildType::Generator;
+	case EMixtormatChildCreation::Scales:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Noise:            return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::NoiseFlow:        return EMixtormatLayerChildType::Generator;
@@ -928,6 +932,12 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Pebbles:
 			Child.Generator.Type = EMixtormatGeneratorType::Pebbles;
+			break;
+		case EMixtormatChildCreation::Moss:
+			Child.Generator.Type = EMixtormatGeneratorType::Moss;
+			break;
+		case EMixtormatChildCreation::Mycelium:
+			Child.Generator.Type = EMixtormatGeneratorType::Mycelium;
 			break;
 		case EMixtormatChildCreation::Scales:
 			Child.Generator.Type = EMixtormatGeneratorType::Scales;
@@ -1541,6 +1551,10 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("RockFormationChildName", "Rock Formation");
 		case EMixtormatGeneratorType::Pebbles:
 			return LOCTEXT("PebblesChildName", "Pebbles");
+		case EMixtormatGeneratorType::Moss:
+			return LOCTEXT("MossChildName", "Moss");
+		case EMixtormatGeneratorType::Mycelium:
+			return LOCTEXT("MyceliumChildName", "Mycelium");
 		case EMixtormatGeneratorType::Scales:
 			return LOCTEXT("ScalesChildName", "Scales");
 		case EMixtormatGeneratorType::RootNetwork:
@@ -2217,6 +2231,20 @@ const FMixtormatScales* SMixtormat::GetSelectedScales() const
 {
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
 	return Generator && Generator->Type == EMixtormatGeneratorType::Scales ? &Generator->Scales : nullptr;
+}
+
+FMixtormatOrganicGrowth* SMixtormat::GetSelectedOrganicGrowth()
+{
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && (Generator->Type == EMixtormatGeneratorType::Moss
+		|| Generator->Type == EMixtormatGeneratorType::Mycelium) ? &Generator->OrganicGrowth : nullptr;
+}
+
+const FMixtormatOrganicGrowth* SMixtormat::GetSelectedOrganicGrowth() const
+{
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && (Generator->Type == EMixtormatGeneratorType::Moss
+		|| Generator->Type == EMixtormatGeneratorType::Mycelium) ? &Generator->OrganicGrowth : nullptr;
 }
 
 FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata()

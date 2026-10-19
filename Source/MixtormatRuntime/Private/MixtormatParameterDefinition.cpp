@@ -191,6 +191,20 @@ namespace
 			Add(ET::Effect, TEXT("PeelCornerRadius"), {});
 			Add(ET::Effect, TEXT("PeelIDInfluence"), {});
 
+			FMixtormatParameterContract PatchCount;
+			PatchCount.HardMin = 1.0f;
+			PatchCount.HardMax = 64.0f;
+			Add(ET::Generator, TEXT("PatchCount"), PatchCount);
+			FMixtormatParameterContract GrowthUnit;
+			GrowthUnit.HardMin = 0.0f;
+			GrowthUnit.HardMax = 1.0f;
+			Add(ET::Generator, TEXT("Coverage"), GrowthUnit);
+			Add(ET::Generator, TEXT("Detail"), GrowthUnit);
+			FMixtormatParameterContract FilamentWidth;
+			FilamentWidth.HardMin = 0.001f;
+			FilamentWidth.HardMax = 0.25f;
+			Add(ET::Generator, TEXT("FilamentWidth"), FilamentWidth);
+
 			return Built;
 		}();
 
@@ -336,6 +350,7 @@ namespace
 			static const FMixtormatRockFormation RockDefaults;
 			static const FMixtormatPebbles PebbleDefaults;
 			static const FMixtormatNoise NoiseDefaults;
+			static const FMixtormatOrganicGrowth OrganicGrowthDefaults;
 			const void* Defaults = &StrataDefaults;
 			const FProperty* Property = FMixtormatStrataCarver::StaticStruct()->FindPropertyByName(Parameter);
 			if (!Property)
@@ -357,6 +372,11 @@ namespace
 			{
 				Property = FMixtormatNoise::StaticStruct()->FindPropertyByName(Parameter);
 				Defaults = &NoiseDefaults;
+			}
+			if (!Property)
+			{
+				Property = FMixtormatOrganicGrowth::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &OrganicGrowthDefaults;
 			}
 			if (Property)
 			{

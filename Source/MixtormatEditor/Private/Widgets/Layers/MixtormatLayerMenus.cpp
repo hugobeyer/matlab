@@ -1258,6 +1258,12 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			CreateChild(Target, EMixtormatChildCreation::RootNetwork);
 		}))
 		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Moss); }))
+		.Enabled(bCanAdd).ToolTip(Reason);
+	Menu.Item(LOCTEXT("AddMyceliumChild", "Mycelium"), MixtormatIcons::Generator(),
+		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Mycelium); }))
+		.Enabled(bCanAdd).ToolTip(Reason);
 	Menu.Item(LOCTEXT("AddScalesChild", "Scales"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Scales); }))
 		.Enabled(bCanAdd).ToolTip(Reason);
@@ -1511,7 +1517,9 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 						{EMixtormatChildCreation::Cracks, LOCTEXT("BooleanAddCracks", "Add Cracks")},
 						{EMixtormatChildCreation::Pebbles, LOCTEXT("BooleanAddPebbles", "Add Pebbles")},
 						{EMixtormatChildCreation::RootNetwork, LOCTEXT("BooleanAddRootNetwork", "Add Root Network")},
-												{EMixtormatChildCreation::Scales, LOCTEXT("BooleanAddScales", "Add Scales")},
+						{EMixtormatChildCreation::Moss, LOCTEXT("BooleanAddMoss", "Add Moss")},
+						{EMixtormatChildCreation::Mycelium, LOCTEXT("BooleanAddMycelium", "Add Mycelium")},
+						{EMixtormatChildCreation::Scales, LOCTEXT("BooleanAddScales", "Add Scales")},
 						{EMixtormatChildCreation::CliffStrata, LOCTEXT("BooleanAddCliff", "Add Cliff Strata")},
 						{EMixtormatChildCreation::Noise, LOCTEXT("BooleanAddNoise", "Add Noise")},
 						{EMixtormatChildCreation::ScatterCarve, LOCTEXT("BooleanAddScatterCarve", "Add Scatter Carve")}};

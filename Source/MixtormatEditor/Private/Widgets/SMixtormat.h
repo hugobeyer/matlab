@@ -94,6 +94,8 @@ enum class EMixtormatChildCreation : uint8
 	BehaviorFlowField,
 	BehaviorFeather,
 	Scales,
+	Moss,
+	Mycelium,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -574,6 +576,9 @@ private:
 	FMixtormatScales* GetSelectedScales();
 	const FMixtormatScales* GetSelectedScales() const;
 	TSharedRef<SWidget> BuildScalesControls();
+	FMixtormatOrganicGrowth* GetSelectedOrganicGrowth();
+	const FMixtormatOrganicGrowth* GetSelectedOrganicGrowth() const;
+	TSharedRef<SWidget> BuildOrganicGrowthControls();
 	FMixtormatCliffStrata* GetSelectedCliffStrata();
 	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
 	TSharedRef<SWidget> BuildCliffStrataControls();

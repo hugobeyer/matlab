@@ -2911,6 +2911,49 @@ TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
 	return Menu.Build();
 }
 
+TSharedRef<SWidget> SMixtormat::BuildOrganicGrowthControls()
+{
+	const auto Growth = [this]() { return GetSelectedOrganicGrowth(); };
+	const FMixtormatOrganicGrowth Defaults;
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("GrowthOutput", "OUTPUT"));
+	const auto Slider = [this, Growth, Defaults](const FText& Label, float FMixtormatOrganicGrowth::* Member,
+		double Min, double Max, double Delta, const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatOrganicGrowth>(Label, Growth, Member, Min, Max, Defaults.*Member, Delta, Hint);
+	};
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("GrowthHeightScale", "Height Scale"), &FMixtormatOrganicGrowth::HeightScale, -4, 4, .01,
+			LOCTEXT("GrowthHeightScaleHint", "Scales the signed colony height after optional zero-preserving normalization. Negative values invert the relief.")),
+		MixtormatRow::MakeTrailing(LOCTEXT("GrowthNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([Growth]() { const auto* G = Growth(); return G && G->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+			FOnCheckStateChanged::CreateLambda([this, Growth](ECheckBoxState State) { if (auto* G = Growth()) { G->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
+			LOCTEXT("GrowthNormalizeHint", "Zero-preserving normalization of colony height before Height Scale. Does not normalize the published masks."))));
+	Panel = AddCard(Cards, LOCTEXT("GrowthColonies", "COLONIES"));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
+		LOCTEXT("GrowthPatchCount", "Patch Count"), Growth, &FMixtormatOrganicGrowth::PatchCount, 1, 32, Defaults.PatchCount));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
+		LOCTEXT("GrowthSeed", "Seed"), Growth, &FMixtormatOrganicGrowth::Seed, 0, 99999, Defaults.Seed));
+	AddSliderRow(Panel, Slider(LOCTEXT("GrowthCoverage", "Coverage"), &FMixtormatOrganicGrowth::Coverage, 0, 1, .01,
+		LOCTEXT("GrowthCoverageHint", "Colony radius in periodic jittered patch cells. Growth Coverage is the coverage mask; Growth Age is colony-center progression, not elapsed time.")));
+	AddSliderRow(Panel, Slider(LOCTEXT("GrowthDetail", "Detail"), &FMixtormatOrganicGrowth::Detail, 0, 1, .01,
+		LOCTEXT("GrowthDetailHint", "Fine cushions for Moss or fine filaments for Mycelium.")));
+	AddSliderRow(Panel, Slider(LOCTEXT("GrowthFilamentWidth", "Filament Width"), &FMixtormatOrganicGrowth::FilamentWidth, .005, .15, .001,
+		LOCTEXT("GrowthFilamentWidthHint", "Width as a fraction of a patch cell, not pixels. Typed values are limited to 0.001..0.25.")));
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedOrganicGrowth() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("OrganicGrowthHeading", "ORGANIC GROWTH"))
+		.InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
+				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
+					Probe.Generator.Type = EMixtormatGeneratorType::Moss; return GetChildPreviewOutputSet(Probe); }())]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* G = GetSelectedGenerator(); return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* G = GetSelectedGenerator()) { G->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])
+		[Cards]];
+}
+
 TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 {
 	const auto Ramp = [this]() { return GetSelectedHeightColorRamp(); };

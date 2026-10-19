@@ -260,6 +260,24 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Moss
+			|| Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
+		{
+			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
+				false, true, false, NAME_None});
+			Result.Outputs.Add({FName(TEXT("GrowthCoverage")),
+				NSLOCTEXT("SMixtormat", "PreviewGrowthCoverage", "Growth Coverage"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Scalar01});
+			Result.Outputs.Add({FName(TEXT("GrowthAge")),
+				NSLOCTEXT("SMixtormat", "PreviewGrowthAge", "Growth Age"),
+				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::Scalar01});
+			Result.Outputs.Add({FName(TEXT("Height")),
+				NSLOCTEXT("SMixtormat", "PreviewGrowthHeight", "Height"),
+				EMixtormatPreviewOutputKind::SignedDistance, false, true, false, NAME_None,
+				true, EMixtormatPublishedFieldKind::ScalarSigned});
+		}
 		else if (Child.Generator.Type == EMixtormatGeneratorType::Scales)
 		{
 			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
