@@ -5,6 +5,7 @@
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
+#include "UObject/UObjectGlobals.h"
 #include "Widgets/Dialogs/SMixtormatActionDialog.h"
 #include "Widgets/Dialogs/SMixtormatBakeResultDialog.h"
 #include "Widgets/Dialogs/SMixtormatBakeSettingsDialog.h"
@@ -250,6 +251,9 @@ FReply SMixtormat::OpenWorkingMaterial()
 	bInteractiveEdit = false;
 	bInteractiveHistoryPending = false;
 
+	SelectedSurfacePath.Reset();
+	SelectedLibrarySurfaceName = FText::GetEmpty();
+	SelectedPreviewMaterial.Reset();
 	if (bHasSelectedLayer)
 	{
 		if (const UMixtormatSurface* FirstSurface = WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous())
@@ -261,9 +265,6 @@ FReply SMixtormat::OpenWorkingMaterial()
 	}
 	else
 	{
-		SelectedSurfacePath.Reset();
-		SelectedLibrarySurfaceName = FText::GetEmpty();
-		SelectedPreviewMaterial.Reset();
 		SelectedMaskPath.Reset();
 		SelectedLibraryMaskName = FText::GetEmpty();
 	}
@@ -378,6 +379,7 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	const FString PackageName = FPackageName::ObjectPathToPackageName(ObjectPath);
 	const FString AssetName = FPackageName::ObjectPathToObjectName(ObjectPath);
 	UPackage* Package = CreatePackage(*PackageName);
+	const bool bPackageWasDirty = Package && Package->IsDirty();
 	UMixtormatMaterial* MaterialAsset = Package
 		? NewObject<UMixtormatMaterial>(
 			Package,
@@ -417,6 +419,24 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 		LastHistoryRecordTime = 0.0;
 		WorkingMaterialAsset.Reset(MaterialAsset);
 		WorkingMaterialName = MaterialAsset->GetName();
+	}
+	else
+	{
+		// Unregister at the original path, then free that name without a redirector or undo entry.
+		FAssetRegistryModule::AssetDeleted(MaterialAsset);
+		MaterialAsset->ClearFlags(RF_Public | RF_Standalone | RF_Transactional);
+		MaterialAsset->SetFlags(RF_Transient);
+		const FName DiscardedName = MakeUniqueObjectName(GetTransientPackage(), MaterialAsset->GetClass());
+		const bool bReleasedName = MaterialAsset->Rename(
+			*DiscardedName.ToString(), GetTransientPackage(),
+			REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+		Package->SetDirtyFlag(bPackageWasDirty);
+		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+		if (!bReleasedName)
+		{
+			WorkingStatusText = FString::Printf(TEXT("Save failed · could not release %s"), *ObjectPath);
+			return FReply::Handled();
+		}
 	}
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
