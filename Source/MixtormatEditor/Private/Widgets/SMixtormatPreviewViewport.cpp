@@ -879,10 +879,11 @@ bool SMixtormatPreviewViewport::ComposeLayersAtResolution(
 	const TArray<FMixtormatLayerGroup>& Groups,
 	const int32 Resolution)
 {
+	// Bake requests full material composition without diagnostic or child preview overrides.
 	FMixtormatDebugPreviewSettings DebugSettings;
-	DebugSettings.Mode = bDebugPreviewMode;
-	DebugSettings.LayerIndex = bDebugLayerIndex;
-	DebugSettings.ChildIndex = bDebugChildIndex;
+	DebugSettings.Mode = EMixtormatDebugPreviewMode::None;
+	DebugSettings.LayerIndex = INDEX_NONE;
+	DebugSettings.ChildIndex = INDEX_NONE;
 	// A newer request would overwrite what the caller is about to read back.
 	PendingCompose.Reset();
 	// The blocking wait would read as the cost of one preview compose and throttle the next drag.

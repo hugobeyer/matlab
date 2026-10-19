@@ -241,12 +241,13 @@ private:
 	TSharedPtr<std::atomic<bool>, ESPMode::ThreadSafe> InFlight;
 
 	// Referenced compositions, one compositor per source asset, recomposed only when the
-	// source's content hash changes. Rebuilding one per reference per composite allocated a full
-	// set of render targets every frame of a drag.
+	// source's content hash or requested resolution changes. Rebuilding one per reference per
+	// composite allocated a full set of render targets every frame of a drag.
 	struct FReferenceEntry
 	{
 		TUniquePtr<FMixtormatGpuCompositor> Compositor;
 		uint64 ContentHash = 0;
+		FIntPoint Resolution = FIntPoint::ZeroValue;
 		bool bValid = false;
 	};
 	TMap<TObjectKey<UMixtormatMaterial>, TSharedPtr<FReferenceEntry>> ReferenceCompositors;

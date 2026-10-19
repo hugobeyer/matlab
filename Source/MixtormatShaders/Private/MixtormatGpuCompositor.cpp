@@ -471,6 +471,31 @@ namespace MixtormatGpuCompositor
 		return Target;
 	}
 
+	static bool CheckReferencedOutputsResolution(
+		const FMixtormatGpuCompositor& Compositor,
+		const FIntPoint ExpectedResolution)
+	{
+		if (ExpectedResolution.X <= 0 || ExpectedResolution.Y <= 0)
+		{
+			return false;
+		}
+		if (Compositor.GetResolution() != ExpectedResolution)
+		{
+			return false;
+		}
+		const UTextureRenderTarget2D* BaseColor = Compositor.GetBaseColorOutput();
+		const UTextureRenderTarget2D* Normal = Compositor.GetNormalOutput();
+		const UTextureRenderTarget2D* RAM = Compositor.GetRAMOutput();
+		const UTextureRenderTarget2D* Height = Compositor.GetHeightOutput();
+		const UTextureRenderTarget2D* RegionId = Compositor.GetRegionIdPickOutput();
+
+		return BaseColor && BaseColor->SizeX == ExpectedResolution.X && BaseColor->SizeY == ExpectedResolution.Y
+			&& Normal && Normal->SizeX == ExpectedResolution.X && Normal->SizeY == ExpectedResolution.Y
+			&& RAM && RAM->SizeX == ExpectedResolution.X && RAM->SizeY == ExpectedResolution.Y
+			&& Height && Height->SizeX == ExpectedResolution.X && Height->SizeY == ExpectedResolution.Y
+			&& RegionId && RegionId->SizeX == ExpectedResolution.X && RegionId->SizeY == ExpectedResolution.Y;
+	}
+
 
 	// The per-region source placement the layer's texture reads through, resolved for one layer.
 	//
@@ -1660,8 +1685,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 					Entry->Compositor = MakeUnique<FMixtormatGpuCompositor>();
 					Entry->Compositor->bCacheLayerResults = false;
 				}
-				if (!Entry->bValid || Entry->ContentHash != SourceHash
-					|| !Entry->Compositor->PendingOutputs.IsValid())
+				const bool bOutputsValid = Entry->Compositor->PendingOutputs.IsValid()
+					&& CheckReferencedOutputsResolution(*Entry->Compositor, Resolution);
+				if (!Entry->bValid
+					|| Entry->ContentHash != SourceHash
+					|| Entry->Resolution != Resolution
+					|| !bOutputsValid)
 				{
 					Entry->bValid = false;
 					ActiveSources.Add(Source.Get());
@@ -1670,11 +1699,14 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 							FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
 							ActiveSources);
 					ActiveSources.Remove(Source.Get());
-					if (!bComposed)
+					if (!bComposed
+						|| !Entry->Compositor->PendingOutputs.IsValid()
+						|| !CheckReferencedOutputsResolution(*Entry->Compositor, Resolution))
 					{
 						return false;
 					}
 					Entry->ContentHash = SourceHash;
+					Entry->Resolution = Resolution;
 					Entry->bValid = true;
 				}
 				Data.SourceOutputs = Entry->Compositor->PendingOutputs;
@@ -1688,7 +1720,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 						FSimpleDelegate(), FMixtormatDebugPreviewSettings(), Source->bRotateUV90,
 						ActiveSources);
 				ActiveSources.Remove(Source.Get());
-				if (!bComposed)
+				if (!bComposed
+					|| !SourceCompositor.PendingOutputs.IsValid()
+					|| !CheckReferencedOutputsResolution(SourceCompositor, Resolution))
 				{
 					return false;
 				}
