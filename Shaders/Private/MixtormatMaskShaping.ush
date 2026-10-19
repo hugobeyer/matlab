@@ -11,6 +11,8 @@ uint Invert;
 float Offset;
 float2 MaskInputLevels;
 uint MaskRawOutput;
+uint MaskOutputRange;
+float MaskMirrorScale;
 uint ScalarRampCount;
 uint ScalarRampInterpolation;
 float4 ScalarRampPoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
@@ -82,7 +84,8 @@ float MixtormatBlendShapedMask(float Previous, float Incoming, uint BlendMode, f
 		return Incoming;
 	}
 	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	return saturate(lerp(Previous, Result, Weight));
+	const float Blended = lerp(Previous, Result, Weight);
+	return MixtormatApplyMaskOutputRange(Blended, MaskOutputRange, MaskMirrorScale);
 }
 
 #endif

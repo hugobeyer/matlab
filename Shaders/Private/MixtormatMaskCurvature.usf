@@ -199,5 +199,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Multiplied in, and lerped by Weight so the node can be dialled back without being removed.
 	// Keeping is the operation: this narrows what the mask already covers and never widens it.
 	const float Previous = PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Previous * Coverage, saturate(Weight)));
+	OutputMask[DispatchThreadId.xy] = lerp(Previous, Previous * Coverage, saturate(Weight));
 }

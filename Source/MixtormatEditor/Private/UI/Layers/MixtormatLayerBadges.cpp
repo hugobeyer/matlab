@@ -165,6 +165,9 @@ namespace MixtormatLayerBadges
 		case EMixtormatMaskBlendMode::Max:      return LOCTEXT("MaskBadgeMax", "MAX");
 		case EMixtormatMaskBlendMode::AddSub:   return LOCTEXT("MaskBadgeAddSub", "ADDSUB");
 		case EMixtormatMaskBlendMode::Overlay:  return LOCTEXT("MaskBadgeOverlay", "OVRLAY");
+		case EMixtormatMaskBlendMode::Difference: return LOCTEXT("MaskBadgeDifference", "DIFF");
+		case EMixtormatMaskBlendMode::Exclusion:  return LOCTEXT("MaskBadgeExclusion", "EXCL");
+		case EMixtormatMaskBlendMode::Divide:     return LOCTEXT("MaskBadgeDivide", "DIV");
 		default:                                return LOCTEXT("MaskBadgeReplace", "REPL");
 		}
 	}

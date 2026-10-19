@@ -926,6 +926,13 @@ private:
 		const TSharedRef<SVerticalBox>& TargetPanel,
 		TFunction<FMixtormatMaskShaping*()> Resolve);
 
+	void AddMaskOutputRangeRows(
+		const TSharedRef<SVerticalBox>& BlendingCard,
+		TFunction<FMixtormatMaskShaping*()> Resolve);
+
+	TSharedRef<SWidget> BuildMaskOutputRangeMenu(
+		TFunction<FMixtormatMaskShaping*()> Resolve);
+
 	// The per-field composition block: amplitude, direction reverse, and the
 	// signed-scalar blend where the operation has a base to fold into. One resolver
 	// so Warp, Deform, Push and Carve cannot drift apart on which socket offers

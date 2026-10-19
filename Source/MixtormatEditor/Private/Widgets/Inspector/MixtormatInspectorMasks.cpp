@@ -54,7 +54,10 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
@@ -498,7 +501,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		LOCTEXT("CraqSeed", "Seed"), Craq, &FMixtormatCraquelure::Seed, 0.0, 64.0, 1,
 		LOCTEXT("CraqSeedHint", "Reshuffles the crack network without changing its scale or density. The warp is seeded off this too, so reseeding moves both rather than leaving a second seed to remember.")));
 
-	Panel = AddCard(Cards, LOCTEXT("CraqGrpBlend", "Blend"));
+	Panel = AddCard(Cards, LOCTEXT("CraqGrpBlend", "BLENDING"));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("CraqBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
@@ -512,6 +515,12 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 
 	AddSliderRow(Panel, Slider(LOCTEXT("CraqWeight", "Weight"), &FMixtormatCraquelure::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("CraqWeightHint", "How far the blend is taken. 0 is the off switch for this node.")));
+
+	AddMaskOutputRangeRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatCraquelure* C = GetSelectedCraquelure();
+		return C ? &C->Shaping : nullptr;
+	});
 
 	// Reuse the shared levels, curve and offset controls on all mask producers.
 	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
@@ -864,21 +873,25 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 
 	// Card 7: BLENDING
 	const TSharedRef<SVerticalBox> BlendingCard = AddCard(Cards, LOCTEXT("GenBlendingHeading", "BLENDING"));
-	AddSliderRow(BlendingCard, MixtormatRow::MakePair(
-		MixtormatRow::MakeDropdown(
-			LOCTEXT("GenBlendMode", "Blend Mode"),
-			MixtormatRow::MakeChip(
-				TAttribute<FText>::CreateLambda([this]()
-				{
-					const FMixtormatGeneratedMask* Selected = GetSelectedGeneratedMask();
-					return Selected ? MixtormatUI::MaskBlendModeText(Selected->BlendMode) : FText::GetEmpty();
-				}),
-				FOnGetContent::CreateLambda([this]()
-				{
-					return BuildGeneratedBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
-				}), nullptr, TAttribute<FText>(), 0.0f)),
-		MakeMemberSlider<FMixtormatGeneratedMask>(
-			LOCTEXT("GenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01)));
+	AddSliderRow(BlendingCard, MixtormatRow::MakeDropdown(
+		LOCTEXT("GenBlendMode", "Blend Mode"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([this]()
+			{
+				const FMixtormatGeneratedMask* Selected = GetSelectedGeneratedMask();
+				return Selected ? MixtormatUI::MaskBlendModeText(Selected->BlendMode) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateLambda([this]()
+			{
+				return BuildGeneratedBlendModeMenu(SelectedLayerIndex, GetSelectedChildIndex());
+			}), nullptr, TAttribute<FText>(), 0.0f)));
+	AddSliderRow(BlendingCard, MakeMemberSlider<FMixtormatGeneratedMask>(
+		LOCTEXT("GenWeight", "Weight"), Gen, &FMixtormatGeneratedMask::Weight, 0.0, 1.0, 1.0, 0.01));
+	AddMaskOutputRangeRows(BlendingCard, [Gen]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatGeneratedMask* Generated = Gen();
+		return Generated ? &Generated->Shaping : nullptr;
+	});
 
 	return SNew(SBox)
 		.Visibility_Lambda([this]() { return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
@@ -1692,6 +1705,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 	AddSliderRow(Blend, MakeMemberSlider<FMixtormatMaskLayer>(
 		LOCTEXT("SelectedMaskWeight", "Weight"), Mask, &FMixtormatMaskLayer::Weight, 0.0, 1.0, 1.0, 0.01));
 
+	AddMaskOutputRangeRows(Blend, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatMaskLayer* Selected = GetSelectedLayerMask();
+		return Selected ? &Selected->Shaping : nullptr;
+	});
+
 
 	return SNew(SBox)
 		// Gated on the selected child actually being a Mask, not just on a layer being selected:
@@ -1801,8 +1820,69 @@ void SMixtormat::AddMaskShapingRows(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,
 		LOCTEXT("MaskOffsetHint", "Offsets the curved mask before clamping to 0..1.")));
+}
 
+TSharedRef<SWidget> SMixtormat::BuildMaskOutputRangeMenu(
+	TFunction<FMixtormatMaskShaping*()> Resolve)
+{
+	MixtormatMenu::FBuilder Menu;
+	const EMixtormatMaskOutputRange Ranges[] = {
+		EMixtormatMaskOutputRange::Clamp,
+		EMixtormatMaskOutputRange::Unclamped,
+		EMixtormatMaskOutputRange::Mirror
+	};
+	for (const EMixtormatMaskOutputRange Range : Ranges)
+	{
+		Menu.Item(
+			MixtormatUI::MaskOutputRangeText(Range),
+			nullptr,
+			FSimpleDelegate::CreateLambda([this, Resolve, Range]()
+			{
+				if (FMixtormatMaskShaping* S = Resolve())
+				{
+					S->OutputRange = Range;
+					RefreshLayeredPreview();
+				}
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([Resolve, Range]()
+			{
+				const FMixtormatMaskShaping* S = Resolve();
+				return S && S->OutputRange == Range;
+			}));
+	}
+	return Menu.Build();
+}
 
+void SMixtormat::AddMaskOutputRangeRows(
+	const TSharedRef<SVerticalBox>& BlendingCard,
+	TFunction<FMixtormatMaskShaping*()> Resolve)
+{
+	AddSliderRow(BlendingCard, MixtormatRow::MakeDropdown(
+		LOCTEXT("MaskOutputRangeLabel", "Output Range"),
+		MixtormatRow::MakeChip(
+			TAttribute<FText>::CreateLambda([Resolve]()
+			{
+				const FMixtormatMaskShaping* S = Resolve();
+				return S ? MixtormatUI::MaskOutputRangeText(S->OutputRange) : FText::GetEmpty();
+			}),
+			FOnGetContent::CreateSP(this, &SMixtormat::BuildMaskOutputRangeMenu, Resolve),
+			nullptr, TAttribute<FText>(), 0.0f),
+		LOCTEXT("MaskOutputRangeHint", "Controls how blended scalar values are output. Clamp clips to 0..1, Unclamped preserves negative and HDR values, Mirror reflects values into 0..1.")));
+
+	AddSliderRow(BlendingCard, SNew(SBox)
+		.Visibility_Lambda([Resolve]()
+		{
+			const FMixtormatMaskShaping* S = Resolve();
+			return (S && S->OutputRange == EMixtormatMaskOutputRange::Mirror)
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			MakeMemberSlider<FMixtormatMaskShaping>(
+				LOCTEXT("MaskMirrorScaleLabel", "Mirror Scale"), Resolve,
+				&FMixtormatMaskShaping::MirrorScale, 0.1, 10.0, 1.0, 0.05,
+				LOCTEXT("MaskMirrorScaleHint", "Frequency of scalar reflection across the range, folding overflow values back into 0..1."))
+		]);
 }
 
 #undef LOCTEXT_NAMESPACE

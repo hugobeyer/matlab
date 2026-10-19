@@ -327,7 +327,18 @@ namespace MixtormatUI
 		case EMixtormatMaskBlendMode::Overlay: return LOCTEXT("MaskModeOverlay", "Overlay");
 		case EMixtormatMaskBlendMode::Difference: return LOCTEXT("MaskModeDifference", "Difference");
 		case EMixtormatMaskBlendMode::Exclusion: return LOCTEXT("MaskModeExclusion", "Exclusion");
+		case EMixtormatMaskBlendMode::Divide: return LOCTEXT("MaskModeDivide", "Divide");
 		default: return LOCTEXT("MaskModeReplace", "Replace");
+		}
+	}
+
+	inline FText MaskOutputRangeText(const EMixtormatMaskOutputRange Range)
+	{
+		switch (Range)
+		{
+		case EMixtormatMaskOutputRange::Unclamped: return LOCTEXT("MaskOutputRangeUnclamped", "Unclamped");
+		case EMixtormatMaskOutputRange::Mirror: return LOCTEXT("MaskOutputRangeMirror", "Mirror");
+		default: return LOCTEXT("MaskOutputRangeClamp", "Clamp");
 		}
 	}
 

@@ -51,8 +51,42 @@ float MixtormatApplyMaskOperation(uint BlendMode, float Previous, float Incoming
 	{
 		return abs(Previous - Incoming);
 	}
-	// Exclusion: difference's softer relative -- the same endpoints, no hard crease at the match.
-	return Previous + Incoming - 2.0f * Previous * Incoming;
+	if (BlendMode == 9)
+	{
+		// Exclusion: difference's softer relative -- the same endpoints, no hard crease at the match.
+		return Previous + Incoming - 2.0f * Previous * Incoming;
+	}
+	if (BlendMode == 10)
+	{
+		// Divide: Previous / Incoming, with a small, signed-safe denominator
+		const float Denom = abs(Incoming) < 1.0e-6f ? (Incoming >= 0.0f ? 1.0e-6f : -1.0e-6f) : Incoming;
+		const float Div = Previous / Denom;
+		return isnan(Div) || isinf(Div) ? 0.0f : Div;
+	}
+	return Incoming;
+}
+
+// Controls how blended scalar values are constrained:
+// 0: Clamp (0..1)
+// 1: Unclamped (preserves negative values and values > 1)
+// 2: Mirror (triangle-wave value remap: 1 - abs(2 * frac(Value * MirrorScale / 2) - 1))
+float MixtormatApplyMaskOutputRange(float Value, uint OutputRange, float MirrorScale)
+{
+	if (isnan(Value) || isinf(Value))
+	{
+		return 0.0f;
+	}
+	if (OutputRange == 1u)
+	{
+		return clamp(Value, -65504.0f, 65504.0f);
+	}
+	if (OutputRange == 2u)
+	{
+		const float SafeScale = isnan(MirrorScale) || isinf(MirrorScale) ? 1.0f : MirrorScale;
+		const float Scaled = clamp(Value * SafeScale * 0.5f, -100000.0f, 100000.0f);
+		return 1.0f - abs(2.0f * frac(Scaled) - 1.0f);
+	}
+	return saturate(Value);
 }
 
 // Input levels and the curve provide nonlinear shaping; offset adjusts its

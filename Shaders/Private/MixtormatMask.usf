@@ -105,8 +105,7 @@ void MergeCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		? 0.0f
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	const float Incoming = PreShapedMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	const float Result = MixtormatApplyMaskOperation(BlendMode, Previous, Incoming);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, Result, Weight));
+	OutputMask[DispatchThreadId.xy] = MixtormatBlendShapedMask(Previous, Incoming, BlendMode, Weight);
 }
 
 [numthreads(8, 8, 1)]

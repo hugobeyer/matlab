@@ -6,6 +6,15 @@
 #include "MixtormatScalarRamp.h"
 #include "MixtormatMaskShaping.generated.h"
 
+// Controls how blended scalar values are constrained.
+UENUM(BlueprintType)
+enum class EMixtormatMaskOutputRange : uint8
+{
+	Clamp = 0 UMETA(DisplayName = "Clamp"),
+	Unclamped = 1 UMETA(DisplayName = "Unclamped"),
+	Mirror = 2 UMETA(DisplayName = "Mirror")
+};
+
 // Shared mask shaping: optional input normalization, levels, scalar curve,
 // value offset and invert. Input levels and curve replace redundant
 // balance/contrast adjustments on every mask producer.
@@ -40,6 +49,15 @@ struct MIXTORMATRUNTIME_API FMixtormatMaskShaping
 	// clips to the same result.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Shaping", meta = (UIMin = "-1.0", UIMax = "1.0", Delta = "0.01"))
 	float Offset = 0.0f;
+
+	// Range policy applied to the blended scalar mask.
+	// Default: Clamp (0..1), preserving current behavior.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blending")
+	EMixtormatMaskOutputRange OutputRange = EMixtormatMaskOutputRange::Clamp;
+
+	// Frequency scale of scalar reflection into 0..1 when OutputRange is Mirror.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blending", meta = (UIMin = "0.01", UIMax = "10.0", Delta = "0.01"))
+	float MirrorScale = 1.0f;
 };
 
 

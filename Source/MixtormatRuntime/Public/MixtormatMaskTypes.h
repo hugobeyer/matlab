@@ -25,7 +25,8 @@ enum class EMixtormatMaskBlendMode : uint8
 	// Appended, never reordered: these are serialised by value, so inserting above would
 	// silently re-map every mask layer already authored against the old ordering.
 	Difference UMETA(DisplayName = "Difference"),
-	Exclusion UMETA(DisplayName = "Exclusion")
+	Exclusion UMETA(DisplayName = "Exclusion"),
+	Divide UMETA(DisplayName = "Divide")
 };
 
 // Where a Mask child reads its scalar from.

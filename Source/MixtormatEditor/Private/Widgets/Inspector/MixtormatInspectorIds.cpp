@@ -85,7 +85,8 @@ TSharedRef<SWidget> SMixtormat::BuildRampIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::Overlay,
 		EMixtormatMaskBlendMode::Difference,
-		EMixtormatMaskBlendMode::Exclusion
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
@@ -120,7 +121,10 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
@@ -686,7 +690,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 
 	AddSliderRow(Cards, RangeCards);
 
-	Panel = AddCard(Cards, LOCTEXT("IdGrpBlend", "Blend"));
+	Panel = AddCard(Cards, LOCTEXT("IdGrpBlend", "BLENDING"));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
@@ -700,7 +704,12 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		LOCTEXT("IdBlendModeHint", "How the selection combines with the mask accumulated above it in this layer. Max is what unions two ID nodes; Multiply is what intersects one with a painted mask.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("IdWeight", "Weight"), &FMixtormatColorIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("IdWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")));
-	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	AddMaskOutputRangeRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatColorIdMask* ColorId = GetSelectedColorId();
+		return ColorId ? &ColorId->Shaping : nullptr;
+	});
+	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatColorIdMask* ColorId = GetSelectedColorId();
 		return ColorId ? &ColorId->Shaping : nullptr;
@@ -1932,7 +1941,10 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdBlendModeMenu()
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
@@ -1986,7 +1998,7 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 		LOCTEXT("RandomSeedHint", "Reshuffles which region gets which value without changing the range. Independent of the cluster filter's own controls, so reseeding here does not re-segment -- it is the cheap dial.")));
 
 	const TSharedRef<SVerticalBox> Cards = Panel;
-		Panel = AddCard(Cards, LOCTEXT("RandomGrpBlend", "Blend"));
+	Panel = AddCard(Cards, LOCTEXT("RandomGrpBlend", "BLENDING"));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("RandomBlendMode", "Mode"),
 		MixtormatRow::MakeChip(
@@ -2002,10 +2014,16 @@ TSharedRef<SWidget> SMixtormat::BuildRandomIdControls()
 	AddSliderRow(Panel, Slider(LOCTEXT("RandomWeight", "Weight"), &FMixtormatRandomIdMask::Weight, 0.0, 1.0, 1.0, 0.01,
 		LOCTEXT("RandomWeightHint", "How far the blend is taken. 0 is the off switch for this node, and it costs nothing -- the pass is skipped rather than run to reproduce its input.")));
 
+	AddMaskOutputRangeRows(Panel, [this]() -> FMixtormatMaskShaping*
+	{
+		FMixtormatRandomIdMask* R = GetSelectedRandomId();
+		return R ? &R->Shaping : nullptr;
+	});
+
 	// The shared shaping block, and it is doing real work here rather than being boilerplate.
 	// Contrast above 1 about the 0.5 midpoint pulls most regions toward the mean and leaves a
 	// few outliers, which is what the prototype's ramp distribution mode was for.
-	AddMaskShapingRows(Panel, [this]() -> FMixtormatMaskShaping*
+	AddMaskShapingRows(Cards, [this]() -> FMixtormatMaskShaping*
 	{
 		FMixtormatRandomIdMask* R = GetSelectedRandomId();
 		return R ? &R->Shaping : nullptr;

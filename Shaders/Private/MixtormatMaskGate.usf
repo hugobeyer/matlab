@@ -23,5 +23,5 @@ void GateCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: PreviousMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	const float After = AfterMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
 	const float Gate = GateMask.SampleLevel(LinearWrapSampler, UV, 0.0f);
-	OutputMask[DispatchThreadId.xy] = saturate(lerp(Previous, After, Gate));
+	OutputMask[DispatchThreadId.xy] = lerp(Previous, After, saturate(Gate));
 }

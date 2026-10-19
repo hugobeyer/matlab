@@ -14,6 +14,8 @@
 	SHADER_PARAMETER(float, Offset) \
 	SHADER_PARAMETER(FVector2f, MaskInputLevels) \
 	SHADER_PARAMETER(uint32, MaskRawOutput) \
+	SHADER_PARAMETER(uint32, MaskOutputRange) \
+	SHADER_PARAMETER(float, MaskMirrorScale) \
 	SHADER_PARAMETER(uint32, ScalarRampCount) \
 	SHADER_PARAMETER(uint32, ScalarRampInterpolation) \
 	SHADER_PARAMETER_ARRAY(FVector4f, ScalarRampPoints, [FMixtormatScalarRamp::MaxPoints])
@@ -27,6 +29,8 @@ namespace MixtormatGpuCompositor
 		Parameters.Offset = Shaping.Offset;
 		Parameters.MaskInputLevels = FVector2f(Shaping.InputMin, Shaping.InputMax);
 		Parameters.MaskRawOutput = 0u;
+		Parameters.MaskOutputRange = static_cast<uint32>(Shaping.OutputRange);
+		Parameters.MaskMirrorScale = Shaping.MirrorScale;
 		const MixtormatScalarRampMath::FGpuPayload Ramp =
 			MixtormatScalarRampMath::PrepareGpuPayload(Shaping.CurveBias);
 		Parameters.ScalarRampCount = Ramp.PointCount;

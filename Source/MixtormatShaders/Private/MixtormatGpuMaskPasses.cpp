@@ -107,6 +107,7 @@ public:
 		SHADER_PARAMETER(uint32, Initialize)
 		SHADER_PARAMETER(uint32, BlendMode)
 		SHADER_PARAMETER(float, Weight)
+		MIXTORMAT_MASK_SHAPING_PARAMETERS
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreShapedMask)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -474,7 +475,7 @@ namespace MixtormatGpuCompositor
 				Settings.RadiusX = Blur.GetRadiusX();
 				Settings.RadiusY = Blur.GetRadiusY();
 				Settings.Amount = Blur.Amount;
-				Settings.bClampCoverage = true;
+				Settings.bClampCoverage = Mask.OutputRange == EMixtormatMaskOutputRange::Clamp;
 				Source = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Blur, Source, Settings,
 					MixtormatGaussianBlur::EField::Scalar);
 			}
@@ -678,6 +679,7 @@ namespace MixtormatGpuCompositor
 				Merge->OutputSize = Request.Resolution;
 				Merge->Initialize = ScopedPassIndex == 0 ? 1u : 0u;
 				Merge->BlendMode = static_cast<uint32>(Mask.BlendMode);
+				BindMaskShaping(*Merge, Mask);
 				Merge->Weight = Mask.Weight;
 				Merge->PreviousMask = FeatureMask;
 				Merge->PreShapedMask = LocalMask;
@@ -1228,6 +1230,7 @@ namespace MixtormatGpuCompositor
 			Merge->OutputSize = Request.Resolution;
 			Merge->Initialize = MaskPassIndex == 0 ? 1u : 0u;
 			Merge->BlendMode = static_cast<uint32>(Mask.BlendMode);
+			BindMaskShaping(*Merge, Mask);
 			Merge->Weight = Mask.Weight;
 			Merge->PreviousMask = MaskTargets[MaskReadIndex];
 			Merge->PreShapedMask = LocalMask;

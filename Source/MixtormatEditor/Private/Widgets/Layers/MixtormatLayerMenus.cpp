@@ -1896,7 +1896,10 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBlendModeMenu(const int32 LayerIndex, c
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay};
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
 		// Ticked rather than merely listed: the mode a mask is already in is the thing you most
@@ -2071,7 +2074,10 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 		EMixtormatMaskBlendMode::Min,
 		EMixtormatMaskBlendMode::Max,
 		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay
+		EMixtormatMaskBlendMode::Overlay,
+		EMixtormatMaskBlendMode::Difference,
+		EMixtormatMaskBlendMode::Exclusion,
+		EMixtormatMaskBlendMode::Divide
 	};
 	for (const EMixtormatMaskBlendMode Mode : Modes)
 	{
