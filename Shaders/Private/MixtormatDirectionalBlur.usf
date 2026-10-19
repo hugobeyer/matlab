@@ -8,6 +8,7 @@ float FlowInfluence;
 float StepLength;
 int StepCount;
 uint Centered;
+uint SmearCombine;
 float Amount;
 float4 ChannelWeights;
 uint ClampCoverage;
@@ -52,6 +53,8 @@ void StoreResult(int2 P, float4 V)
 // Carry numerator and mass into the kernel; empty samples never become zero-valued taps.
 void GatherSource(float2 UV, float KernelWeight, inout float4 Sum, inout float Mass)
 {
+	float4 SampleSum = 0.0f;
+	float SampleMass = 0.0f;
 	const float2 Texel = frac(UV) * float2(OutputSize) - 0.5f;
 	const int2 Base = int2(floor(Texel));
 	const float2 F = frac(Texel);
@@ -78,9 +81,28 @@ void GatherSource(float2 UV, float KernelWeight, inout float4 Sum, inout float M
 #if FIELD_TYPE == 4
 			V.rgb *= V.a;
 #endif
-			Sum += V * (W * Valid);
-			Mass += W * Valid;
+			const float Contribution = W * Valid;
+			if (SmearCombine == 0u)
+			{
+				Sum += V * Contribution;
+				Mass += Contribution;
+			}
+			else
+			{
+				SampleSum += V * Contribution;
+				SampleMass += Contribution;
+			}
 		}
+	}
+	// Reduce complete interpolated samples, not individual bilinear corners.
+	// Flow validity is already respected by the sample weights above.
+	if (SmearCombine != 0u && SampleMass > 0.0f && isfinite(SampleMass)
+		&& all(isfinite(SampleSum)))
+	{
+		const float4 Sample = SampleSum / SampleMass;
+		if (Mass <= 0.0f) { Sum = Sample; }
+		else { Sum = SmearCombine == 1u ? min(Sum, Sample) : max(Sum, Sample); }
+		Mass += 1.0f;
 	}
 }
 

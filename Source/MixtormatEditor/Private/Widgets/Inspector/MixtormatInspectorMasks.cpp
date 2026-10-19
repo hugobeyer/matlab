@@ -1299,6 +1299,47 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 				}
 			})
 		]);
+	AddSliderRow(Direction, SNew(SBox)
+		.Visibility_Lambda([Blur]()
+		{
+			const FMixtormatBlur* B = Blur();
+			return B && B->Mode == EMixtormatBlurMode::Smear
+				? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.IsEnabled_Lambda(EditableBlur)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				MixtormatRow::MakeCaption(LOCTEXT("BlurSmearCombineCaption", "TRAIL COMBINE"))
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.SegmentedControlGap)
+			[
+				SNew(SMixtormatSegmentedControl)
+				.Options(TArray<FText>{LOCTEXT("BlurSmearAverage", "Average"),
+					LOCTEXT("BlurSmearMin", "Min"), LOCTEXT("BlurSmearMax", "Max")})
+				.ToolTips(TArray<FText>{
+					LOCTEXT("BlurSmearAverageHint", "Average valid samples along the one-sided trail."),
+					LOCTEXT("BlurSmearMinHint", "Use the minimum of sampled trail values; erodes scalar height and coverage."),
+					LOCTEXT("BlurSmearMaxHint", "Use the maximum of sampled trail values; dilates scalar height and coverage.")})
+				.ActiveIndex_Lambda([Blur]() -> int32
+				{
+					const FMixtormatBlur* B = Blur();
+					return B ? static_cast<int32>(B->SmearCombine) : INDEX_NONE;
+				})
+				.OnChosen_Lambda([this, Blur, EditableBlur](int32 Index)
+				{
+					if (!EditableBlur() || Index < 0 || Index > 2) { return; }
+					if (FMixtormatBlur* B = Blur())
+					{
+						B->SmearCombine = static_cast<EMixtormatSmearCombine>(Index);
+						RefreshLayeredPreview();
+						RebuildLayerList();
+					}
+				})
+			]
+		]);
 	AddSliderRow(Direction, MakeMemberSlider<FMixtormatBlur>(
 		LOCTEXT("BlurLengthLabel", "Length"), Blur, &FMixtormatBlur::Length,
 		LengthMin, LengthMax, LengthDefault, SnapDelta,

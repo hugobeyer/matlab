@@ -26,6 +26,7 @@ public:
 		SHADER_PARAMETER(float, StepLength)
 		SHADER_PARAMETER(int32, StepCount)
 		SHADER_PARAMETER(uint32, Centered)
+		SHADER_PARAMETER(uint32, SmearCombine)
 		SHADER_PARAMETER(float, Amount)
 		SHADER_PARAMETER(FVector4f, ChannelWeights)
 		SHADER_PARAMETER(uint32, ClampCoverage)
@@ -124,6 +125,8 @@ namespace MixtormatDirectionalBlur
 		P->StepLength = (Extent / static_cast<float>(Count)) * (bCentered ? 1.0f : TrailSign);
 		P->StepCount = Count;
 		P->Centered = bCentered ? 1u : 0u;
+		P->SmearCombine = Blur.Mode == EMixtormatBlurMode::Smear
+			? static_cast<uint32>(Blur.SmearCombine) : 0u;
 		P->Amount = FMath::Clamp(Settings.Amount, 0.0f, 1.0f);
 		P->ChannelWeights = Settings.ChannelWeights;
 		P->ClampCoverage = Settings.bClampCoverage ? 1u : 0u;

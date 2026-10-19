@@ -221,6 +221,10 @@ normal maps and height gradients. Mixer scale is bounded on the CPU with `max(Co
 
 Blur uses the generic `FMixtormatBlur` payload with Mode (Gaussian / Directional /
 Smear), FOOTPRINT (Gaussian only), DIRECTION (Directional / Smear only), and AMOUNT.
+Smear additionally offers TRAIL COMBINE: Average (original box-weighted mean),
+Min or Max (component-wise extrema over valid, bilinearly interpolated trail
+samples including the center). All use the same signed Length, Angle/Flow guidance,
+masking, channel weights and Amount; other Blur modes remain unchanged.
 Discrete Mode, Direction Source (Angle / Flow), and applicable Generator/Behavior
 Height / Flow / Height + Flow targeting use full-width segmented strips, not dropdowns.
 Root Layer Blur alone shows per-channel weights; irrelevant sections are collapsed

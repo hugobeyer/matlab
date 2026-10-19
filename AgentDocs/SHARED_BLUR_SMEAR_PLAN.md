@@ -41,6 +41,9 @@ Pass Through Fill over the layers being filtered.
 3. Smear uses one-sided trailing samples. Positive Length trails opposite the
    travel direction; negative Length reverses the trail. It is a spatial filter,
    not a temporal paint simulation or repeated feedback operation.
+   TRAIL COMBINE offers Average (original), Min and Max. The latter select
+   per-component extrema of valid bilinearly interpolated samples along the
+   trail including the center. Amount, gating and Flow validity remain unchanged.
 4. Amount remains 0..1: mix original and completed filtered output once.
    Layer channel weights multiply Amount; scoped filter masks gate this mix.
 5. Add Direction Source = Angle / Flow, Angle, Flow Source, Flow Influence,

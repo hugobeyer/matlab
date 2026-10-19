@@ -15,6 +15,14 @@ enum class EMixtormatBlurMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EMixtormatSmearCombine : uint8
+{
+	Average,
+	Min,
+	Max
+};
+
+UENUM(BlueprintType)
 enum class EMixtormatBlurDirectionSource : uint8
 {
 	Angle,
@@ -46,6 +54,10 @@ struct MIXTORMATRUNTIME_API FMixtormatBlur
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur")
 	EMixtormatBlurMode Mode = EMixtormatBlurMode::Gaussian;
+
+	// One-sided Smear trail reduction; Average preserves the original box-filter behaviour.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blur|Direction")
+	EMixtormatSmearCombine SmearCombine = EMixtormatSmearCombine::Average;
 
 	// Generator/Behavior output selection, independent of the Flow guidance socket.
 	// Other owners retain their own output contract and ignore this setting.
