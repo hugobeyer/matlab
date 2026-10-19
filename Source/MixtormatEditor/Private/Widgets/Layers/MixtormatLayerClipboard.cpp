@@ -14,11 +14,16 @@ namespace MixtormatLayersPrivate
 {
 
 	TArray<FMixtormatLayerChild> CopyChildSubtree(TArray<FMixtormatLayerChild> Copies,
-		const FGuid OldOwnerId, const FGuid NewOwnerId)
+		const FGuid OldOwnerId, const FGuid NewOwnerId,
+		const FMixtormatBindingScope* Scope)
 	{
 		TMap<FGuid, FGuid> ChildIdRemap;
 		for (FMixtormatLayerChild& Copy : Copies)
 		{
+			if (Copy.IsInstance() && Scope)
+			{
+				MixtormatParameterBinding::BreakChildInstance(*Scope, Copy, OldOwnerId);
+			}
 			const FGuid OldId = Copy.ChildId;
 			Copy.SourceLayerId.Invalidate();
 			Copy.SourceChildId.Invalidate();
@@ -34,6 +39,10 @@ namespace MixtormatLayersPrivate
 				{
 					OwnerId = NewOwnerId;
 					ChildId = *NewId;
+				}
+				else if (!ChildId.IsValid())
+				{
+					OwnerId = NewOwnerId;
 				}
 			}
 		};
@@ -60,22 +69,26 @@ namespace MixtormatLayersPrivate
 			RemapPair(Copy.Mask.PublishedSourceLayerId, Copy.Mask.PublishedSourceChildId);
 			RemapPair(Copy.HeightBlend.SourceLayerId, Copy.HeightBlend.SourceChildId);
 			if (const FGuid* Input = ChildIdRemap.Find(Copy.HeightColorRamp.SourceChildId))
-            {
-                Copy.HeightColorRamp.SourceChildId = *Input;
-            }
-            if (Copy.Generator.Type == EMixtormatGeneratorType::BooleanOps)
-            {
-                if (const FGuid* Source = ChildIdRemap.Find(Copy.Generator.BooleanOps.SourceChildId))
-                {
-                    Copy.Generator.BooleanOps.SourceChildId = *Source;
-                }
-                else if (OldOwnerId != NewOwnerId)
-                {
-                    // A Boolean field source is same-layer only. A copied subtree
-                    // cannot silently point back to its original owner's generator.
-                    Copy.Generator.BooleanOps.SourceChildId.Invalidate();
-                }
-            }
+			{
+				Copy.HeightColorRamp.SourceChildId = *Input;
+			}
+			else if (OldOwnerId != NewOwnerId)
+			{
+				Copy.HeightColorRamp.SourceChildId.Invalidate();
+			}
+			if (Copy.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+			{
+				if (const FGuid* Source = ChildIdRemap.Find(Copy.Generator.BooleanOps.SourceChildId))
+				{
+					Copy.Generator.BooleanOps.SourceChildId = *Source;
+				}
+				else if (OldOwnerId != NewOwnerId)
+				{
+					// A Boolean field source is same-layer only. A copied subtree
+					// cannot silently point back to its original owner's generator.
+					Copy.Generator.BooleanOps.SourceChildId.Invalidate();
+				}
+			}
 			for (FMixtormatParameterBinding& Binding : Copy.ParameterBindings)
 			{
 				RemapPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
@@ -99,6 +112,7 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	{
 		return;
 	}
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
 	FMixtormatChildClipboard Clipboard;
 	Clipboard.Mode = bAsInstance ? EMixtormatChildClipboardMode::Instance : EMixtormatChildClipboardMode::Copy;
 	Clipboard.Payload = *Child;
@@ -106,11 +120,48 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 	// instance would build a chain for the resolver to unwind with nothing gained by it.
 	if (Child->IsInstance())
 	{
-		Clipboard.Source.OwnerId = Child->SourceLayerId;
-		Clipboard.Source.ChildId = Child->SourceChildId;
-		Clipboard.Source.OwnerType = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Child->SourceLayerId)
-			? EMixtormatChildOwnerType::Group
-			: EMixtormatChildOwnerType::Layer;
+		if (bAsInstance)
+		{
+			FGuid TerminalOwnerId = Child->SourceLayerId;
+			FGuid TerminalChildId = Child->SourceChildId;
+			TSet<FGuid> Visited;
+			Visited.Add(Child->ChildId);
+			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, TerminalOwnerId, TerminalChildId);
+			while (Source && Source->IsInstance())
+			{
+				if (Visited.Contains(Source->ChildId))
+				{
+					break;
+				}
+				Visited.Add(Source->ChildId);
+				TerminalOwnerId = Source->SourceLayerId;
+				TerminalChildId = Source->SourceChildId;
+				Source = MixtormatParameterBinding::FindChild(Scope, TerminalOwnerId, TerminalChildId);
+			}
+			Clipboard.Source.OwnerId = TerminalOwnerId;
+			Clipboard.Source.ChildId = TerminalChildId;
+			Clipboard.Source.OwnerType = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TerminalOwnerId)
+				? EMixtormatChildOwnerType::Group
+				: EMixtormatChildOwnerType::Layer;
+			if (Source)
+			{
+				const bool bKeepMaskOverrides = Child->Type == EMixtormatLayerChildType::Mask;
+				const EMixtormatMaskBlendMode LocalBlendMode = Child->Mask.BlendMode;
+				const bool bLocalInvert = Child->Mask.Shaping.bInvert;
+				Clipboard.Payload = *Source;
+				if (bKeepMaskOverrides && Clipboard.Payload.Type == EMixtormatLayerChildType::Mask)
+				{
+					Clipboard.Payload.Mask.BlendMode = LocalBlendMode;
+					Clipboard.Payload.Mask.Shaping.bInvert = bLocalInvert;
+				}
+			}
+		}
+		else
+		{
+			// Copy as Independent: Materialize the effective source payload before clearing instance references.
+			MixtormatParameterBinding::BreakChildInstance(Scope, Clipboard.Payload, Address.OwnerId);
+			Clipboard.Source = Address;
+		}
 	}
 	else
 	{
@@ -124,7 +175,12 @@ void SMixtormat::CopyChild(const FMixtormatChildAddress& Address, const bool bAs
 		const int32 Root = ResolveChildIndexAt(Address);
 		for (int32 Index = Root + 1; Index < FindSubtreeEnd(*Children, Root); ++Index)
 		{
-			ChildClipboardScopedRows.Add((*Children)[Index]);
+			FMixtormatLayerChild ScopedRow = (*Children)[Index];
+			if (ScopedRow.IsInstance())
+			{
+				MixtormatParameterBinding::BreakChildInstance(Scope, ScopedRow, Address.OwnerId);
+			}
+			ChildClipboardScopedRows.Add(MoveTemp(ScopedRow));
 		}
 	}
 	ChildClipboard = MoveTemp(Clipboard);
@@ -240,7 +296,14 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 	{
 		// A Behavior is scoped to a generator in the destination layer, so a group container
 		// can never own one. Structural modules used to be layer-local for the same reason.
-		if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior) { return INDEX_NONE; }
+		if (Clipboard.Payload.Type == EMixtormatLayerChildType::Behavior
+			|| ChildClipboardScopedRows.ContainsByPredicate([](const FMixtormatLayerChild& Child)
+			{
+				return Child.Type == EMixtormatLayerChildType::Behavior;
+			}))
+		{
+			return INDEX_NONE;
+		}
 	}
 	if (DestContainer->IsValidIndex(AnchorChildIndex)
 		&& (*DestContainer)[AnchorChildIndex].Type == EMixtormatLayerChildType::IdGroup)
@@ -328,7 +391,7 @@ int32 SMixtormat::ResolvePasteInsertIndex(
 			TArray<FMixtormatLayerChild> Copies;
 			Copies.Add(Clipboard.Payload);
 			Copies.Append(ChildClipboardScopedRows);
-			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+			Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId, &Scope);
 			Copies[0].ScopeOwnerChildId = Payload.ScopeOwnerChildId;
 			TArray<FMixtormatLayer> Layers = WorkingLayers;
 			TArray<FMixtormatLayerGroup> Groups = WorkingLayerGroups;
@@ -596,7 +659,8 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 	const int32 Insert = FindSubtreeEnd(*Container, Anchor);
 	TArray<FMixtormatLayerChild> Copies;
 	Copies.Add(MoveTemp(Pasted));
-	Copies = CopyChildSubtree(MoveTemp(Copies), ChildClipboard.GetValue().Source.OwnerId, Address.OwnerId);
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	Copies = CopyChildSubtree(MoveTemp(Copies), ChildClipboard.GetValue().Source.OwnerId, Address.OwnerId, &Scope);
 	Copies[0].ScopeOwnerChildId = (*Container)[Anchor].ChildId;
 	Container->Insert(MoveTemp(Copies[0]), Insert);
 
@@ -654,13 +718,18 @@ FReply SMixtormat::PasteChild(const FMixtormatChildAddress& Dest, const int32 An
 		// Copies receive fresh node identity, but gate/field nodes keep their authored live
 		// output reference and local shaping rather than becoming producer instances.
 		FMixtormatLayerChild Pasted = Clipboard.Payload;
+		const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+		if (Pasted.IsInstance())
+		{
+			MixtormatParameterBinding::BreakChildInstance(Scope, Pasted, Dest.OwnerId);
+		}
 		Pasted.SourceLayerId = FGuid();
 		Pasted.SourceChildId = FGuid();
 		Pasted.ScopeOwnerChildId = ScopeOwnerChildId;
 		TArray<FMixtormatLayerChild> Copies;
 		Copies.Add(MoveTemp(Pasted));
 		Copies.Append(ChildClipboardScopedRows);
-		Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId);
+		Copies = CopyChildSubtree(MoveTemp(Copies), Clipboard.Source.OwnerId, Dest.OwnerId, &Scope);
 		Copies[0].ScopeOwnerChildId = ScopeOwnerChildId;
 		for (int32 Index = 0; Index < Copies.Num(); ++Index)
 		{

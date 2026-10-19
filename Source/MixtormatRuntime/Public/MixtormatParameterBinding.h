@@ -150,7 +150,8 @@ namespace MixtormatParameterBinding
 	// Bakes an instance down to a plain child holding the source's current payload.
 	MIXTORMATRUNTIME_API bool BreakChildInstance(
 		const FMixtormatBindingScope& Layers,
-		FMixtormatLayerChild& InOutChild);
+		FMixtormatLayerChild& InOutChild,
+		const FGuid& InDestOwnerId = FGuid());
 
 	// Rewrites every address in the stack that named ChildId under OldLayerId to name it under
 	// NewLayerId. A moved child is the same child, so the references, drivers and instances

@@ -452,8 +452,9 @@ FReply SMixtormat::ExecuteLayerSelectionCommand(const ELayerSelectionCommand Com
 			}
 			if (Copies.IsEmpty()) { return FReply::Handled(); }
 
+			const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
 			// One identity map lets references between selected subtrees follow their copies.
-			Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId);
+			Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId, &Scope);
 			SelectedLayerChildIds.Reset();
 			for (const int32 Offset : CopyOffsets)
 			{
@@ -550,24 +551,93 @@ FReply SMixtormat::DuplicateSelectedLayer()
 	}
 
 	SoloLayerIndex = INDEX_NONE;
-	TArray<FMixtormatLayer> Copies;
-	Copies.Reserve(Selected.Num());
+
+	// Filter valid indices (GetSelectedLayerIndices returns sorted indices).
+	TArray<int32> ValidSelected;
+	ValidSelected.Reserve(Selected.Num());
 	for (const int32 LayerIndex : Selected)
 	{
-		if (!WorkingLayers.IsValidIndex(LayerIndex)) { continue; }
-		FMixtormatLayer Copy = WorkingLayers[LayerIndex];
-		Copies.Add(MoveTemp(Copy));
+		if (WorkingLayers.IsValidIndex(LayerIndex))
+		{
+			ValidSelected.Add(LayerIndex);
+		}
 	}
-	if (Copies.IsEmpty()) { return FReply::Handled(); }
+	if (ValidSelected.IsEmpty())
+	{
+		return FReply::Handled();
+	}
+
+	TArray<FMixtormatLayer> Copies;
+	Copies.Reserve(ValidSelected.Num());
+	for (const int32 LayerIndex : ValidSelected)
+	{
+		Copies.Add(WorkingLayers[LayerIndex]);
+	}
+
+	// RegenerateLayerIdentities remaps all internal child GUIDs, instances, structural
+	// sources, published refs, behavior dependencies, and parameter bindings among the copies.
 	MixtormatParameterBinding::RegenerateLayerIdentities(Copies);
 
-	const int32 InsertAt = Selected.Last() + 1;
-	for (int32 CopyIndex = 0; CopyIndex < Copies.Num(); ++CopyIndex)
+	const int32 InsertAt = ValidSelected.Last() + 1;
+	const int32 NumCopies = Copies.Num();
+
+	// Build mapping from original layer index to its duplicate's index after insertion.
+	TMap<int32, int32> OriginalToDuplicate;
+	for (int32 CopyIndex = 0; CopyIndex < NumCopies; ++CopyIndex)
+	{
+		OriginalToDuplicate.Add(ValidSelected[CopyIndex], InsertAt + CopyIndex);
+	}
+
+	// Remap height references for the copies:
+	// - References pointing to a layer inside the duplicated set follow to its duplicate.
+	// - References pointing to a layer outside the duplicated set remain external.
+	// Since ValidSelected is sorted and ValidSelected[CopyIndex] < InsertAt, any external
+	// reference must point to a layer < ValidSelected[CopyIndex] < InsertAt, which does not shift.
+	for (int32 CopyIndex = 0; CopyIndex < NumCopies; ++CopyIndex)
+	{
+		const int32 OriginalRef = WorkingLayers[ValidSelected[CopyIndex]].HeightReferenceLayerIndex;
+		if (OriginalRef != INDEX_NONE)
+		{
+			if (const int32* DuplicatedRef = OriginalToDuplicate.Find(OriginalRef))
+			{
+				Copies[CopyIndex].HeightReferenceLayerIndex = *DuplicatedRef;
+			}
+			else
+			{
+				Copies[CopyIndex].HeightReferenceLayerIndex = OriginalRef;
+			}
+		}
+		else
+		{
+			Copies[CopyIndex].HeightReferenceLayerIndex = INDEX_NONE;
+		}
+	}
+
+	// Update existing layers whose height references point at or after InsertAt
+	// (they will shift by NumCopies).
+	for (FMixtormatLayer& ExistingLayer : WorkingLayers)
+	{
+		if (ExistingLayer.HeightReferenceLayerIndex >= InsertAt)
+		{
+			ExistingLayer.HeightReferenceLayerIndex += NumCopies;
+		}
+	}
+
+	// Insert copies into WorkingLayers
+	for (int32 CopyIndex = 0; CopyIndex < NumCopies; ++CopyIndex)
 	{
 		WorkingLayers.Insert(MoveTemp(Copies[CopyIndex]), InsertAt + CopyIndex);
-		MixtormatUI::RemapHeightReferencesAfterInsert(WorkingLayers, InsertAt + CopyIndex);
 	}
-	SelectedLayerIndex = InsertAt + Copies.Num() - 1;
+
+	MixtormatUI::ValidateHeightReferences(WorkingLayers);
+
+	SelectedLayerIndex = InsertAt + NumCopies - 1;
+	SelectedLayerIds.Reset();
+	for (int32 CopyIndex = 0; CopyIndex < NumCopies; ++CopyIndex)
+	{
+		SelectedLayerIds.Add(WorkingLayers[InsertAt + CopyIndex].LayerId);
+	}
+	SelectionAnchorLayerId = WorkingLayers[SelectedLayerIndex].LayerId;
 	bHasSelectedLayer = true;
 	SyncSelectedLayerControls();
 	RefreshLayeredPreview();
@@ -1180,7 +1250,8 @@ FReply SMixtormat::DuplicateLayerChild(const int32 LayerIndex, const int32 Child
 		Copies.Add(Layer.Children[CopyIndex]);
 	}
 
-	Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId);
+	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+	Copies = CopyChildSubtree(MoveTemp(Copies), Layer.LayerId, Layer.LayerId, &Scope);
 
 	const int32 NewChildIndex = InsertAt;
 	for (int32 CopyIndex = 0; CopyIndex < Copies.Num(); ++CopyIndex)

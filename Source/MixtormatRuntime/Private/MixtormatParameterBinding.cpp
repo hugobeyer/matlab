@@ -815,24 +815,42 @@ namespace MixtormatParameterBinding
 				Id = *Replacement;
 			}
 		};
-		const auto RemapBinding = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap](FMixtormatParameterBinding& Binding)
+		const auto RemapChildPair = [&](FGuid& SourceLayerId, FGuid& SourceChildId)
 		{
-			RemapGuid(Binding.Reference.Source.LayerId, OwnerIdRemap);
-			RemapGuid(Binding.Reference.Source.ChildId, ChildIdRemap);
-			RemapGuid(Binding.Driver.SourceLayerId, OwnerIdRemap);
-			RemapGuid(Binding.Driver.SourceChildId, ChildIdRemap);
+			const TSet<FGuid>* SourceChildren = OriginalOwnerChildIds.Find(SourceLayerId);
+			if (SourceChildren && SourceChildren->Contains(SourceChildId))
+			{
+				RemapGuid(SourceLayerId, OwnerIdRemap);
+				RemapGuid(SourceChildId, ChildIdRemap);
+			}
 		};
-		const auto RemapChildren = [&RemapGuid, &OwnerIdRemap, &ChildIdRemap, &RemapBinding,
-			&OriginalOwnerChildIds](const FGuid& OldOwnerId, TArray<FMixtormatLayerChild>& Children)
+		const auto RemapBindingPair = [&](FGuid& SourceLayerId, FGuid& SourceChildId)
+		{
+			const TSet<FGuid>* SourceChildren = OriginalOwnerChildIds.Find(SourceLayerId);
+			if (SourceChildren && SourceChildren->Contains(SourceChildId))
+			{
+				RemapGuid(SourceLayerId, OwnerIdRemap);
+				RemapGuid(SourceChildId, ChildIdRemap);
+			}
+			else if (OwnerIdRemap.Contains(SourceLayerId) && !SourceChildId.IsValid())
+			{
+				RemapGuid(SourceLayerId, OwnerIdRemap);
+			}
+		};
+		const auto RemapBinding = [&RemapBindingPair](FMixtormatParameterBinding& Binding)
+		{
+			RemapBindingPair(Binding.Reference.Source.LayerId, Binding.Reference.Source.ChildId);
+			RemapBindingPair(Binding.Driver.SourceLayerId, Binding.Driver.SourceChildId);
+		};
+		const auto RemapChildren = [&RemapGuid, &RemapChildPair, &RemapBinding,
+			&OriginalOwnerChildIds, &OwnerIdRemap, &ChildIdRemap](const FGuid& OldOwnerId, TArray<FMixtormatLayerChild>& Children)
 		{
 			for (FMixtormatLayerChild& Child : Children)
 			{
 				RemapGuid(Child.ChildId, ChildIdRemap);
 				RemapGuid(Child.ScopeOwnerChildId, ChildIdRemap);
-				RemapGuid(Child.SourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.SourceChildId, ChildIdRemap);
-				RemapGuid(Child.Mask.PublishedSourceLayerId, OwnerIdRemap);
-				RemapGuid(Child.Mask.PublishedSourceChildId, ChildIdRemap);
+				RemapChildPair(Child.SourceLayerId, Child.SourceChildId);
+				RemapChildPair(Child.Mask.PublishedSourceLayerId, Child.Mask.PublishedSourceChildId);
 				// Structural sources are owner/child pairs: a coincident child GUID in another
 				// owner must not make an external or dangling address follow this copied set.
 				const auto RemapStructuralSource = [&](FMixtormatOutputReference& Source)
@@ -852,12 +870,7 @@ namespace MixtormatParameterBinding
 				RemapStructuralSource(Child.Behavior.Direction.Published);
 				RemapStructuralSource(Child.Behavior.Height.Published);
 				RemapStructuralSource(Child.Behavior.Influence.Published);
-				const TSet<FGuid>* HeightSourceChildren = OriginalOwnerChildIds.Find(Child.HeightBlend.SourceLayerId);
-				if (HeightSourceChildren && HeightSourceChildren->Contains(Child.HeightBlend.SourceChildId))
-				{
-					RemapGuid(Child.HeightBlend.SourceLayerId, OwnerIdRemap);
-					RemapGuid(Child.HeightBlend.SourceChildId, ChildIdRemap);
-				}
+				RemapChildPair(Child.HeightBlend.SourceLayerId, Child.HeightBlend.SourceChildId);
 				const TSet<FGuid>* OwnerChildren = OriginalOwnerChildIds.Find(OldOwnerId);
 				if (OwnerChildren)
 				{
@@ -946,12 +959,17 @@ namespace MixtormatParameterBinding
 		const FGuid KeptSourceLayerId = To.SourceLayerId;
 		const FGuid KeptSourceChildId = To.SourceChildId;
 		const FGuid KeptScopeOwnerChildId = To.ScopeOwnerChildId;
+		const FText KeptDisplayName = To.DisplayName;
 		To = From;
 		To.ChildId = KeptChildId;
 		To.SourceLayerId = KeptSourceLayerId;
 		To.SourceChildId = KeptSourceChildId;
 		// Scope belongs to this placement, not to the source instance's placement.
 		To.ScopeOwnerChildId = KeptScopeOwnerChildId;
+		if (!KeptDisplayName.IsEmptyOrWhitespace())
+		{
+			To.DisplayName = KeptDisplayName;
+		}
 	}
 
 	const FMixtormatLayerChild* FindChild(
@@ -1174,7 +1192,8 @@ namespace MixtormatParameterBinding
 
 	bool BreakChildInstance(
 		const FMixtormatBindingScope& Scope,
-		FMixtormatLayerChild& InOutChild)
+		FMixtormatLayerChild& InOutChild,
+		const FGuid& InDestOwnerId)
 	{
 		const TArray<FMixtormatLayer>& Layers = Scope.GetLayers();
 		if (!InOutChild.IsInstance())
@@ -1182,8 +1201,8 @@ namespace MixtormatParameterBinding
 			return false;
 		}
 		const FGuid KeptChildId = InOutChild.ChildId;
-		FGuid DestOwnerId;
-		if (KeptChildId.IsValid())
+		FGuid DestOwnerId = InDestOwnerId;
+		if (!DestOwnerId.IsValid() && KeptChildId.IsValid())
 		{
 			for (const FMixtormatLayer& Layer : Layers)
 			{

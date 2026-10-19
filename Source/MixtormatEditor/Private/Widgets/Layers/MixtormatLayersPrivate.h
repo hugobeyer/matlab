@@ -131,7 +131,8 @@ namespace MixtormatLayersPrivate
 	const TArray<FMixtormatLayerChild>* FindChildrenInScope(const FMixtormatBindingScope& Scope, const FGuid OwnerId);
 
 	TArray<FMixtormatLayerChild> CopyChildSubtree(TArray<FMixtormatLayerChild> Copies,
-		const FGuid OldOwnerId, const FGuid NewOwnerId);
+		const FGuid OldOwnerId, const FGuid NewOwnerId,
+		const FMixtormatBindingScope* Scope = nullptr);
 
 	bool IsRegionIdsReference(const FMixtormatLayerChild& Child);
 
