@@ -826,9 +826,9 @@ TSharedRef<SWidget> SMixtormat::BuildGlobalPage()
 	{
 		const TSharedRef<SVerticalBox> Card = AddGlobalCard(PreviewSection, LOCTEXT("GlobalPreviewGeometry", "GEOMETRY & DISPLACEMENT"));
 		const TArray<FText> MeshOptions = {
-			LOCTEXT("MeshOptionCube", "CUBE"),
-			LOCTEXT("MeshOptionPlane", "PLANE"),
 			LOCTEXT("MeshOptionSphere", "SPHERE"),
+			LOCTEXT("MeshOptionPlane", "PLANE"),
+			LOCTEXT("MeshOptionCube", "CUBE"),
 			LOCTEXT("MeshOptionCylinder", "CYL")};
 		AddSliderRow(Card, SNew(SMixtormatSegmentedControl)
 			.Options(MeshOptions)

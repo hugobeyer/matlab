@@ -705,6 +705,22 @@ FReply SMixtormat::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKey
 		return FReply::Handled();
 	}
 	const bool bModifierDown = InKeyEvent.IsControlDown() || InKeyEvent.IsCommandDown();
+	if (bModifierDown && !InKeyEvent.IsAltDown() && !InKeyEvent.IsShiftDown()
+		&& InKeyEvent.GetKey() == EKeys::S && bHasWorkingMaterial)
+	{
+		// Let text entry retain its key handling and uncommitted value.
+		const TSharedPtr<SWidget> FocusedWidget = FSlateApplication::Get().GetKeyboardFocusedWidget();
+		if (FocusedWidget.IsValid())
+		{
+			const FString WidgetType = FocusedWidget->GetType().ToString();
+			if (WidgetType.Contains(TEXT("EditableText")) || WidgetType.Contains(TEXT("TextEntry")))
+			{
+				return FReply::Unhandled();
+			}
+		}
+		// Consume repeats without opening another save dialog or reaching editor shortcuts.
+		return InKeyEvent.IsRepeat() ? FReply::Handled() : SaveWorkingMaterial();
+	}
 	using EShortcut = MixtormatLayerShortcuts::EAction;
 	const auto HasShortcut = [&InKeyEvent](EShortcut Action)
 	{

@@ -200,11 +200,11 @@ FReply SMixtormat::OpenWorkingMaterial()
 	}
 
 	UMixtormatMaterial* MaterialAsset = Cast<UMixtormatMaterial>(Assets[0].GetAsset());
-	if (!MaterialAsset || MaterialAsset->Layers.IsEmpty())
+	if (!IsValid(MaterialAsset))
 	{
 		FMessageDialog::Open(
 			EAppMsgType::Ok,
-			LOCTEXT("InvalidMixtormatMaterial", "The selected recipe has no layers."));
+			LOCTEXT("InvalidMixtormatMaterial", "The selected asset is not a valid Mixtormat recipe."));
 		return FReply::Handled();
 	}
 
@@ -235,16 +235,37 @@ FReply SMixtormat::OpenWorkingMaterial()
 		? MaterialAsset->GetName()
 		: MaterialAsset->DisplayName.ToString();
 	bHasWorkingMaterial = true;
-	SelectedLayerIndex = 0;
+	SelectedLayerIndex = WorkingLayers.IsEmpty() ? INDEX_NONE : 0;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = INDEX_NONE;
-	bHasSelectedLayer = true;
+	SelectedLayerIds.Reset();
+	SelectionAnchorLayerId.Invalidate();
+	SelectedGroupId.Invalidate();
+	SelectedGroupChildIndex = INDEX_NONE;
+	SelectedGroupChildIds.Reset();
+	SelectionAnchorGroupChildId.Invalidate();
+	SelectedLayerChildIds.Reset();
+	SelectionAnchorLayerChildId.Invalidate();
+	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
+	bInteractiveEdit = false;
+	bInteractiveHistoryPending = false;
 
-	if (const UMixtormatSurface* FirstSurface = WorkingLayers[0].SourceSurface.LoadSynchronous())
+	if (bHasSelectedLayer)
 	{
-		SelectedSurfacePath = WorkingLayers[0].SourceSurface.ToSoftObjectPath();
-		SelectedLibrarySurfaceName = WorkingLayers[0].DisplayName;
-		SelectedPreviewMaterial.Reset(Cast<UMaterialInstanceConstant>(FirstSurface->PreviewMaterial.Get()));
+		if (const UMixtormatSurface* FirstSurface = WorkingLayers[SelectedLayerIndex].SourceSurface.LoadSynchronous())
+		{
+			SelectedSurfacePath = WorkingLayers[SelectedLayerIndex].SourceSurface.ToSoftObjectPath();
+			SelectedLibrarySurfaceName = WorkingLayers[SelectedLayerIndex].DisplayName;
+			SelectedPreviewMaterial.Reset(Cast<UMaterialInstanceConstant>(FirstSurface->PreviewMaterial.Get()));
+		}
+	}
+	else
+	{
+		SelectedSurfacePath.Reset();
+		SelectedLibrarySurfaceName = FText::GetEmpty();
+		SelectedPreviewMaterial.Reset();
+		SelectedMaskPath.Reset();
+		SelectedLibraryMaskName = FText::GetEmpty();
 	}
 
 	SyncSelectedLayerControls();
@@ -267,6 +288,12 @@ FReply SMixtormat::SaveWorkingMaterial()
 	{
 		return SaveWorkingMaterialAs();
 	}
+
+	// Commit any deferred edit before save synchronization can replace its history snapshot.
+	RecordEditHistory();
+	bInteractiveHistoryPending = false;
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 
 	UMixtormatMaterial* MaterialAsset = WorkingMaterialAsset.Get();
 	FText ReferenceError;
@@ -298,6 +325,9 @@ FReply SMixtormat::SaveWorkingMaterial()
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
+		CurrentHistoryState.FinalSettings = WorkingFinalSettings;
+		// The next edit must retain the saved state as an undo destination.
+		LastHistoryRecordTime = 0.0;
 	}
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
@@ -315,6 +345,12 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	{
 		return FReply::Handled();
 	}
+
+	// Settle deferred history before the modal dialog, including its cancellation path.
+	RecordEditHistory();
+	bInteractiveHistoryPending = false;
+	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
+	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 
 	FSaveAssetDialogConfig DialogConfig;
 	DialogConfig.DialogTitleOverride = LOCTEXT("SaveMixtormatMaterialAs", "Save Mixtormat Material As");
@@ -355,10 +391,8 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 	}
 	FAssetRegistryModule::AssetCreated(MaterialAsset);
 
-	WorkingMaterialAsset.Reset(MaterialAsset);
-	WorkingMaterialName = MaterialAsset->GetName();
 	MaterialAsset->Modify();
-	MaterialAsset->DisplayName = FText::FromString(WorkingMaterialName);
+	MaterialAsset->DisplayName = FText::FromString(MaterialAsset->GetName());
 	MaterialAsset->Layers = WorkingLayers;
 	MaterialAsset->LayerGroups = WorkingLayerGroups;
 	MaterialAsset->bRotateUV90 = bGlobalUVRotation90;
@@ -379,6 +413,10 @@ FReply SMixtormat::SaveWorkingMaterialAs()
 		CurrentHistoryState.Layers = WorkingLayers;
 		CurrentHistoryState.Groups = WorkingLayerGroups;
 		CurrentHistoryState.bRotateUV90 = bGlobalUVRotation90;
+		CurrentHistoryState.FinalSettings = WorkingFinalSettings;
+		LastHistoryRecordTime = 0.0;
+		WorkingMaterialAsset.Reset(MaterialAsset);
+		WorkingMaterialName = MaterialAsset->GetName();
 	}
 	WorkingStatusText = bSaved
 		? FString::Printf(TEXT("Saved %s"), *WorkingMaterialName)
