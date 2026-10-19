@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "../MixtormatGpuCompositorInternal.h"
+#include "../MixtormatGpuPatternPassesInternal.h"
 
 #include "MixtormatEffectPassesPrivate.h"
 #include "GlobalShader.h"
@@ -80,6 +81,7 @@ namespace MixtormatGpuCompositor
 	// no-op rather than an invented ID system.
 	void QueuePendingWornEdges(
 		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask)
@@ -91,15 +93,8 @@ namespace MixtormatGpuCompositor
 			LayerCtx.PendingWornEdges;
 
 		int32 ProducerChildIndex = INDEX_NONE;
-		FRDGTextureRef WearRegionIds = nullptr;
-		for (const TPair<int32, FRDGTextureRef>& Entry : RegionIdMaps)
-		{
-			if (Entry.Key < Child.SourceChildIndex)
-			{
-				ProducerChildIndex = Entry.Key;
-				WearRegionIds = Entry.Value;
-			}
-		}
+		FRDGTextureRef WearRegionIds = FindRegionIdsAboveWithIndex(
+			Layer, RegionIdMaps, Child, ProducerChildIndex);
 		if (!WearRegionIds)
 		{
 			// Task B contract: without an upstream Region ID producer Worn Edges
@@ -130,8 +125,8 @@ namespace MixtormatGpuCompositor
 		}
 	}
 
-	// Worn Edges: after Pattern/Ramp and craquelure relief so its input is the real structural
-	// height, before Breakup so later damage sees the rounded surface. Publishes its wear
+	// Worn Edges follows Pattern/Ramp, craquelure and Breakup, consuming their written
+	// height in the active output surface. Publishes its wear
 	// coverage as a named mask output.
 	void AddWornEdgesPasses(
 		FMixtormatComposeContext& Ctx,
@@ -152,8 +147,8 @@ namespace MixtormatGpuCompositor
 		TShaderMapRef<FMixtormatCarveShadeCS> CarveShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatEdgeWearCS> EdgeWearShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		// Worn Edges runs after Pattern/Ramp and craquelure relief so its input is the
-		// actual structural + material height, and before Breakup so later damage sees
-		// the rounded surface. Multiple Worn Edges nodes chain in child order.
+		// actual structural + material height, including Breakup relief.
+		// Multiple Worn Edges nodes chain in child order.
 		for (int32 WearIndex = 0; WearIndex < PendingWornEdges.Num(); ++WearIndex)
 		{
 			const FPendingWornEdges& PendingWear = PendingWornEdges[WearIndex];
@@ -372,7 +367,7 @@ namespace MixtormatGpuCompositor
 				WornN,
 				WornRAM,
 				Request.Resolution,
-				8.0f,
+				HeightDerivedNormalStrength,
 				true,
 				TEXT("WornEdges"));
 			FRDGTextureRef FinalWornRAM = WornRAM;

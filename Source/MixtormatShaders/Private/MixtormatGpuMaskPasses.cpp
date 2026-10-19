@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatGpuPatternPassesInternal.h"
 #include "MixtormatGpuMaskShaping.h"
 #include "MixtormatGpuGaussianBlur.h"
 #include "MixtormatGpuNoisePasses.h"
@@ -1036,8 +1037,9 @@ namespace MixtormatGpuCompositor
 		// From IDs follows, and for the same reason: a mask with no regions to
 		// select from has nothing to say, and emitting a flat zero would silently
 		// replace whatever the chain had accumulated.
-		FRDGTextureRef RegionIds = FindRegionIdsAbove(
-			GetRegionIdView(Layer, LayerCtx.RegionIdMaps, &Child), Child.SourceChildIndex);
+		int32 ProducerIndex = INDEX_NONE;
+		FRDGTextureRef RegionIds = FindRegionIdsAboveWithIndex(
+			Layer, LayerCtx.RegionIdMaps, Child, ProducerIndex);
 		if (bExactId && !RegionIds)
 		{
 			return;

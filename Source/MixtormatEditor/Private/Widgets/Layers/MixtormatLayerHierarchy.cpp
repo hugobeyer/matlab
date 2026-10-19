@@ -1573,7 +1573,17 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 					SelectGroupChild(GroupId, ChildIndex);
 					return BuildIdGroupFeatureMenu();
 				})
-				: FOnGetContent())
+				: (Child.Type == EMixtormatLayerChildType::Mask
+					|| Child.Type == EMixtormatLayerChildType::Generated
+					|| Child.Type == EMixtormatLayerChildType::Craquelure
+					|| Child.Type == EMixtormatLayerChildType::ColorId
+					|| Child.Type == EMixtormatLayerChildType::RandomId)
+					? FOnGetContent::CreateLambda([this, GroupId, ChildIndex]()
+					{
+						SelectGroupChild(GroupId, ChildIndex);
+						return BuildGeneratedBlendModeMenu(INDEX_NONE, ChildIndex);
+					})
+					: FOnGetContent())
 			.bActive_Lambda([this, GroupId, ChildIndex]()
 			{
 				const FMixtormatLayerGroup* Current =
@@ -1896,8 +1906,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				.Badge(MixtormatLayerBadges::ForChild(Child))
 				.Icon()[BuildLayerChildIcon(LayerIndex, ChildIndex)]
 				// The caller paints the branch in the existing scope gutter.
-				// Only children that have a blend mode get a badge menu: masks, and generated
-				// masks that emit coverage (not filters, ID nodes or generators).
+				// Coverage children edit their own blend mode; ID selectors are masks too.
 				.OnGetBadgeMenu(Child.Type == EMixtormatLayerChildType::Boolean
 					? FOnGetContent::CreateSP(this, &SMixtormat::BuildBooleanStackRowMenu, LayerIndex, ChildIndex)
 					: Child.Type == EMixtormatLayerChildType::IdGroup

@@ -124,7 +124,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// second effect: a crack is material that has parted, so this filter may only ever lower the
 	// height. Nothing in the profile is negative today, so the two forms agree -- the guard is
 	// what keeps them agreeing if a signed term is ever added to it.
-	OutputHeight[P] = saturate(min(Source, Source - HeightWeight * Offset));
+	// Accumulated height is signed relief, not coverage. Clamping would flatten
+	// negative grooves and unrelated source heights outside 0..1.
+	OutputHeight[P] = min(Source, Source - HeightWeight * Offset);
 
 	// Sobel over the same offset field the height was carved from, so the normal and the
 	// displacement describe one surface. Scaled by the height weight as well as its own, because
@@ -144,7 +146,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Opp = CraqReliefOffset(int2(Xp, Yp));
 
 	// Retained provisional-normal path; production dispatches bind NormalWeight to zero.
-	const float Scale = NormalWeight / 8.0f;
+	const float Scale = max(HeightWeight, 0.0f) * NormalWeight / 8.0f;
 	const float2 Gradient = float2(
 		(Opm + 2.0f * Op0 + Opp) - (Omm + 2.0f * Om0 + Omp),
 		(Omp + 2.0f * O0p + Opp) - (Omm + 2.0f * O0m + Opm)) * Scale;

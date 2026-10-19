@@ -24,12 +24,10 @@ Texture2D<float2> RampField;
 Texture2D<float2> EdgeField;
 Texture2D<float> SourceHeight;
 Texture2D<float4> PreviousNormal;
-// Bounded analysis roots, not raw identities. Both height stages use this map only as addresses.
+// Bounded analysis roots, not raw identities; excludes pixels outside valid regions.
 Texture2D<uint> PatternRegionIds;
-Texture2D<uint> PatternHeightMax;
 
 RWTexture2D<float> OutputHeight;
-RWTexture2D<uint> OutputPatternHeightMax;
 RWTexture2D<float4> OutputNormal;
 
 int2 OutputSize;
@@ -39,9 +37,8 @@ int2 OutputSize;
 float HeightAmount;
 float NormalStrength;
 
-// How the region's ramp meets the height already there. AddSub is the centred case the node used
-// to hard-code -- a region rises on one side exactly as much as it falls on the other -- and the
-// rest are the mask vocabulary, so Min carves, Multiply darkens and so on.
+// Mode shapes a local displacement around neutral 0.5, not the absolute signed height.
+// AddSub retains its centred tilt; Min only lowers and Max only raises the surface.
 uint BlendMode;
 
 // Pattern IDs only. UseEdge selects the whole pattern model: per-cell elevation plus a chamfer,
@@ -64,30 +61,6 @@ float BevelInsetPixels;
 float GapHeight;
 float FeatherGain;
 
-// Per-region reduction. Positive structural elevation is limited against one maximum source
-// height per region, so every flat-face texel receives the same safe offset.
-[numthreads(8, 8, 1)]
-void PatternHeightMaxCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const uint2 Pixel = DispatchThreadId.xy;
-	if (any(Pixel >= uint2(OutputSize)))
-	{
-		return;
-	}
-
-	const uint RegionId = PatternRegionIds.Load(int3(Pixel, 0));
-	if (RegionId >= uint(OutputSize.x) * uint(OutputSize.y))
-	{
-		return;
-	}
-
-	const uint2 RegionPixel = uint2(
-		RegionId % uint(OutputSize.x),
-		RegionId / uint(OutputSize.x));
-	const float Height = saturate(SourceHeight.Load(int3(Pixel, 0)));
-	InterlockedMax(OutputPatternHeightMax[RegionPixel], asuint(Height));
-}
-
 int RampWrap(int X, int Size)
 {
 	const int R = X % max(Size, 1);
@@ -101,11 +74,8 @@ int2 RampWrapPixel(int2 P)
 
 // The region ramp's contribution at one pixel, as a signed height delta.
 //
-// The blend happens against the height already under the pixel and the delta is what comes back,
-// so whatever mode is chosen, the Sobel below differentiates the surface that is actually
-// written. That matters more than it looks: under Add the delta and the composited result move
-// together and any formulation would pass, but under Min or Multiply they diverge, and a normal
-// derived from the unblended ramp would describe a surface the height does not have.
+// Blend modes operate on the ramp's local signal. Adding their delta preserves underlying
+// signed height and detail, including for Replace, Min and Multiply.
 //
 // Field.x is the ramp, fitted to the region's bounding box by the producer. Field.y is that
 // region's own strength draw. Intensity multiplies both as a blend weight, which is what keeps
@@ -115,10 +85,11 @@ float RampDelta(int2 P)
 {
 	const int2 W = RampWrapPixel(P);
 	const float2 Field = RampField.Load(int3(W, 0)).xy;
-	const float Source = SourceHeight.Load(int3(W, 0));
 	const float Weight = saturate(HeightAmount * Field.y);
-	const float Blended = MixtormatApplyMaskOperation(BlendMode, Source, saturate(Field.x));
-	return (Blended - Source) * Weight;
+	// Apply the mode to a neutral local signal, never to the signed substrate.
+	const float Neutral = 0.5f;
+	const float Blended = MixtormatApplyMaskOperation(BlendMode, Neutral, saturate(Field.x));
+	return (Blended - Neutral) * Weight;
 }
 
 // Feather Gain: what the feather's run-out does on the way up, rather than how wide it is.
@@ -136,27 +107,11 @@ float RampDelta(int2 P)
 // and past Gain 1 the curve arcs above the face and leaves a raised lip just inside the edge --
 // the rolled-over rim of a settled tile, and the thing that actually catches light.
 //
-// Normalising by the curve's own peak is what keeps this safe. Up to Gain 1 the peak is still the
-// flat face, so the slope doubles for nothing; past it the peak moves inside the band and the face
-// gives up a little height to pay for the lip, which is the honest trade and is bounded by the
-// same per-region headroom as before rather than clipping against 1.
+// The lip is signed displacement too; neither its peak nor the face is limited by 0..1 headroom.
 float PatternFeatherShape(float T)
 {
 	const float Clamped = saturate(T);
 	return Clamped + FeatherGain * Clamped * (1.0f - Clamped);
-}
-
-// The maximum of that curve on 0..1, in closed form. Below Gain 1 the turning point sits outside
-// the band and the maximum is the flat face itself.
-float PatternFeatherPeak()
-{
-	const float Gain = FeatherGain;
-	if (Gain <= 1.0f)
-	{
-		return 1.0f;
-	}
-	const float Turn = (1.0f + Gain) / (2.0f * Gain);
-	return Turn + Gain * Turn * (1.0f - Turn);
 }
 
 // The cell face's elevation across the chamfer band, from the grout line (T = 0, down at the
@@ -201,8 +156,8 @@ float MixtormatChamferProfile(float T, float Roundness)
 //
 // BevelHeight is signed and lifts the cell *face*: positive stands the cell proud of the grout
 // with the chamfer ramping down to it, negative sinks the face below the grout instead. The gap
-// itself is untouched either way -- that is Gap Height's job. Both directions are bounded against
-// the surface in BoundedDelta below.
+// itself is untouched either way -- that is Gap Height's job. Both directions preserve the
+// underlying signed surface.
 //
 // Width and profile take independent per-cell draws. Sharing one would tie a wide chamfer to a
 // soft one and the variation would read as a single axis instead of two.
@@ -288,8 +243,6 @@ float PatternGapHeight(int2 P)
 // somewhere between the base and full Height and never under it: at Random 0 every cell sits at
 // full Height, at 1 they spread the whole way down to the base. Nothing can go negative, so the
 // feather only ever ramps a cell *down* to meet its neighbour and cannot invert a face.
-float BoundedMove(float Amount, float Headroom);
-
 float PatternCellHeight(int2 P)
 {
 	if (UseEdge == 0 || CellHeightAmount == 0.0f)
@@ -307,84 +260,20 @@ float PatternCellHeight(int2 P)
 	const float2 Field = RampField.Load(int3(W, 0)).xy;
 	const float Multiplier = lerp(1.0f - CellHeightRandom, 1.0f, saturate(Field.x));
 	const float RequestedElevation = CellHeightAmount * Multiplier;
-	const int2 RegionPixel = int2(
-		RegionId % uint(OutputSize.x),
-		RegionId / uint(OutputSize.x));
-	const float RegionMaxHeight = asfloat(PatternHeightMax.Load(int3(RegionPixel, 0)));
-
-	// The feather, shaped and then normalised by its own peak, so the elevation is still bounded
-	// once per region against the same headroom whatever Gain is doing to the curve. Gain 0 leaves
-	// Peak at 1 and both factors exactly as they were.
-	const float Shaped = PatternFeatherShape(Field.y);
-	const float Peak = PatternFeatherPeak();
-	const float SafeElevation = BoundedMove(
-		RequestedElevation * Peak,
-		max(1.0f - RegionMaxHeight, 0.0f));
-	return SafeElevation * (Shaped / Peak);
+	// Uniform face offset preserves substrate detail regardless of its absolute height.
+	return RequestedElevation * PatternFeatherShape(Field.y);
 }
 
-// How far a relief delta is allowed to move the surface, given the room actually available.
-//
-// The bevel used to be added raw and the sum saturated at the write. Where it ran past whatever
-// height was left under it the surface went flat at zero across a band, and the edge of that band
-// was a crease. Worse, the Sobel below reads the delta and not the written height, so the normal
-// went on reporting a slope across ground the height had already flattened -- geometry and
-// lighting describing two different surfaces, which is what makes a clip read as a hard edge
-// rather than as a merely flat spot.
-//
-// So the move is eased into the limit instead of being cut off at it. Below Knee * Headroom this
-// is exactly the requested amount -- anything that never clipped is untouched, to the bit -- and
-// past that it bends over and approaches Headroom without ever reaching it. The join is C1, so no
-// derivative discontinuity is introduced either, and as Headroom falls to zero the whole curve
-// falls to zero with it rather than snapping off.
-float BoundedMove(float Amount, float Headroom)
-{
-	const float Knee = 0.8f;
-	const float Linear = Knee * Headroom;
-	if (Amount <= Linear)
-	{
-		return Amount;
-	}
-	// Headroom - Slack^2 / (Amount - Linear + Slack): equals Linear at the join with unit slope,
-	// and rises asymptotically to Headroom after it.
-	const float Slack = Headroom - Linear;
-	return Headroom - (Slack * Slack) / max(Amount - Linear + Slack, 1.0e-6f);
-}
-
-// Both directions, because the pattern relief is signed now. A raised lip clipping at 1 is the
-// same crease as a cut one clipping at 0, and having removed it at the floor it would walk
-// straight back in at the roof if only one end were bounded.
-float BoundedDelta(float Delta, float Source)
-{
-	if (Delta < 0.0f)
-	{
-		return -BoundedMove(-Delta, max(Source, 0.0f));
-	}
-	return BoundedMove(Delta, max(1.0f - Source, 0.0f));
-}
-
-// Position-only, and deliberately so: the Sobel below evaluates this at eight neighbours, and a
-// bound computed once at the centre pixel would put the taps back on a surface the centre is not
-// on -- reintroducing exactly the height/normal disagreement this is here to remove.
+// Evaluate the same local displacement at the centre and all normal taps.
 float ReliefDelta(int2 P)
 {
 	if (UseEdge == 0)
 	{
-		// Ramp From IDs. Left unbounded, with the saturate at the write as its only guard: the
-		// blend modes are already defined on 0..1 against a 0..1 surface, so the result cannot
-		// run away the way an unbounded chamfer could.
 		return RampDelta(P);
 	}
 
-	// Pattern IDs: cell elevation is structural and is limited once per region, preserving the
-	// source detail by adding one uniform offset over the flat face. Grout and bevel remain actual
-	// local geometry and are bounded against the already elevated surface.
-	const float Source = SourceHeight.Load(int3(RampWrapPixel(P), 0));
-	const float StructuralElevation = PatternCellHeight(P);
-	const float GeometryDelta = BoundedDelta(
-		PatternGapHeight(P) + PatternBevelDelta(P),
-		Source + StructuralElevation);
-	return StructuralElevation + GeometryDelta;
+	// Signed displacement has no coverage floor or ceiling.
+	return PatternCellHeight(P) + PatternGapHeight(P) + PatternBevelDelta(P);
 }
 
 [numthreads(8, 8, 1)]
@@ -398,7 +287,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 P = int2(DispatchThreadId.xy);
 	const float Source = SourceHeight.Load(int3(P, 0));
 
-	OutputHeight[P] = saturate(Source + ReliefDelta(P));
+	OutputHeight[P] = Source + ReliefDelta(P);
 
 	// Sobel over the same tilt field the height was moved by, so the normal and the displacement
 	// describe one surface. Scaled by the height amount as well as its own weight: a region that

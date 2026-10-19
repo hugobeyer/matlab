@@ -448,7 +448,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			}
 			const float NeighbourHeight = WELoadHeight(Pixel + Offset);
 			const float Allowed = NeighbourHeight + DirectionalSlope * (Distance / (float)LocalRadius);
-			const float Excess = H0 - Allowed;
+			// ID boundaries remain wearable even when adjacent faces have equal height.
+			// Slope/resistance and gravity shape the boundary carve as well as slope wear.
+			const uint NeighbourId = RegionIds.Load(int3(WEWrapP(Pixel + Offset), 0));
+			const float BoundaryProfile = NeighbourId != Rid
+				? saturate(1.0f - Distance / ((float)LocalRadius + 0.5f)) : 0.0f;
+			const float BoundaryExcess = BoundaryProfile / (1.0f + DirectionalSlope);
+			const float Excess = max(H0 - Allowed, BoundaryExcess);
 			if (Excess <= 0.0f)
 			{
 				continue;
@@ -490,5 +496,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Potential = max(H0 - Target, 0.0f);
 	const float Amount = Potential * LocalStrength;
 	OutputHeight[Pixel] = H0 - Amount;
-	OutputWearMask[Pixel] = Amount > 0.0f ? saturate(LocalStrength) : 0.0f;
+	// Coverage follows the feathered carve, including noise and per-ID variation.
+	OutputWearMask[Pixel] = saturate(Amount);
 }

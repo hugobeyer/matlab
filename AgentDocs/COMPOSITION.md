@@ -204,7 +204,32 @@ negative strength); ramp Weight, source selection and upstream Flow are unchange
 - Single-point application: Filter masks, Amount, channel weights, and coverage clamp each apply exactly once at the resolve stage.
 - Field preservation: Normals are renormalized in resolve; Flow fields preserve separate validity and untouched Z/W components.
 
+## Structural height
+
+Ramp / Relief From IDs, Pattern relief, Craquelure relief and Worn Edges operate
+on the accumulated surface after the layer merge, including when Breakup or root
+Blur requires isolated incoming-material preparation. Erosion / Breakup retain
+that preparation path; root Blur filters it before the merge. Structural relief
+then runs in order: Ramp / Pattern → Craquelure → Worn Edges.
+
+Height remains signed displacement: these stages do not clamp it to coverage
+range or consume per-region 0..1 headroom. Ramp blend modes use the shared mask
+operation on a neutral local 0.5 signal and add the resulting delta to the
+substrate, preserving its detail. Pattern face, bevel, gap and feather remain
+independent controls. Final Auto Remap and shared mask shaping are unchanged.
+Worn Edges also wears equal-height ID boundaries; its published coverage follows
+the feathered carve, and normals reconcile from the actual written height.
+
 ## IDs
+
+HSV, Exact Color ID, Random From IDs, Ramp / Relief, implicit Boundary and Worn
+Edges share `FindRegionIdsAboveWithIndex`: select the nearest authored earlier
+producer in the consumer's scope (or its owning ID producer), then read that
+producer's map. Missing/deferred publication never falls back to older IDs.
+Color Range retains its color-source path. Explicit Boundary references retain
+typed, completed-publication and same-layer earlier-row checks. UV From IDs
+runs before source sampling; deferred IDs stay unavailable rather than creating
+a source-sampling cycle. Private ID Group maps remain private.
 
 - `EMixtormatPublishedFieldKind` (`MixtormatOutputReference.h`) — append-only.
 - Producers publish named outputs; `MixtormatOutputReferences::CanonicalFieldOutputName`

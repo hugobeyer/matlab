@@ -346,8 +346,8 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			? Pattern.Feather : 0.15f;
 		// Finite-guarded, not range-clamped. The editor sliders bound the drag; a typed
 		// value goes through, because these are artistic amounts and the shader is what
-		// actually has to be safe -- BoundedDelta stops any height clipping the surface,
-		// and every divisor below is floored in the shader. A non-finite value is the one
+		// consumes them as signed displacement, with divisors floored in the shader.
+		// There is no 0..1 height headroom limit. A non-finite value is the one
 		// thing that cannot pass: a NaN here poisons the whole composited height.
 		PatternData.BevelHeight = FMath::IsFinite(Pattern.BevelHeight)
 			? Pattern.BevelHeight : 0.0f;

@@ -2204,6 +2204,7 @@ namespace MixtormatGpuCompositor
 
 	void QueuePendingWornEdges(
 		FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer,
 		const FChildRenderData& Child,
 		const FEffectRenderData& Effect,
 		FRDGTextureRef FeatureMask);

@@ -19,6 +19,20 @@ using namespace MixtormatLayersPrivate;
 
 namespace
 {
+	EMixtormatMaskBlendMode* GetChildMaskBlendMode(FMixtormatLayerChild* Child)
+	{
+		if (!Child) { return nullptr; }
+		switch (Child->Type)
+		{
+		case EMixtormatLayerChildType::Mask: return &Child->Mask.BlendMode;
+		case EMixtormatLayerChildType::Generated: return &Child->Generated.BlendMode;
+		case EMixtormatLayerChildType::Craquelure: return &Child->Craquelure.BlendMode;
+		case EMixtormatLayerChildType::ColorId: return &Child->ColorId.BlendMode;
+		case EMixtormatLayerChildType::RandomId: return &Child->RandomId.BlendMode;
+		default: return nullptr;
+		}
+	}
+
 	// One icon per published output, chosen by what the output is rather than by its name: an ID map
 	// gets the ID glyph, a scalar mask the mask glyph, and every typed field (colour, flow, UV) falls
 	// back to the neutral generated glyph until it has artwork of its own. Kept in one place so the
@@ -504,17 +518,14 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
 		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Mask)
 	{
-		// INDEX_NONE for the layer lane throughout: ResolveChild reaches a group's shared stack
-		// only that way, and the row selected this child before opening the menu, so
-		// SelectedGroupId already names the group these resolve against.
-		// Typed, not INDEX_NONE inline: the delegate payload would deduce the literal's own type
-		// rather than the int32 the method takes.
-		const int32 NoLayerLane = INDEX_NONE;
 		Menu.SubMenu(
 			LOCTEXT("MaskBlendModeContext", "Blend Mode"),
 			nullptr,
-			FOnGetContent::CreateSP(
-				this, &SMixtormat::BuildMaskBlendModeMenu, NoLayerLane, ChildIndex));
+			FOnGetContent::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				SelectGroupChild(GroupId, ChildIndex);
+				return BuildMaskBlendModeMenu(INDEX_NONE, ChildIndex);
+			}));
 		// The same entry a layer's mask has, and the only way to replace one: a grid inside a
 		// context menu is not how a mask gets picked -- that is the gallery, or a drag from it.
 		const FSoftObjectPath ReplacementPath = SelectedMaskPath;
@@ -563,6 +574,18 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 				AddFlowWarpToGroupChild(GroupId, ChildIndex);
 			}))
 			.Enabled(TAttribute<bool>(bCanNestChild));
+		Menu.Separator();
+	}
+	if (Group && Group->Children.IsValidIndex(ChildIndex)
+		&& Group->Children[ChildIndex].Type != EMixtormatLayerChildType::Mask
+		&& GetChildMaskBlendMode(ResolveChildAt(MakeGroupChildAddress(GroupId, ChildIndex))))
+	{
+		Menu.SubMenu(LOCTEXT("GeneratedBlendModeContext", "Blend Mode"), nullptr,
+			FOnGetContent::CreateLambda([this, GroupId, ChildIndex]()
+			{
+				SelectGroupChild(GroupId, ChildIndex);
+				return BuildGeneratedBlendModeMenu(INDEX_NONE, ChildIndex);
+			}));
 		Menu.Separator();
 	}
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
@@ -1887,38 +1910,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerHeightOpMenu(const int32 LayerIndex)
 
 TSharedRef<SWidget> SMixtormat::BuildMaskBlendModeMenu(const int32 LayerIndex, const int32 MaskIndex)
 {
-	MixtormatMenu::FBuilder Menu;
-	const EMixtormatMaskBlendMode Modes[] = {
-		EMixtormatMaskBlendMode::Replace,
-		EMixtormatMaskBlendMode::Add,
-		EMixtormatMaskBlendMode::Subtract,
-		EMixtormatMaskBlendMode::Multiply,
-		EMixtormatMaskBlendMode::Min,
-		EMixtormatMaskBlendMode::Max,
-		EMixtormatMaskBlendMode::AddSub,
-		EMixtormatMaskBlendMode::Overlay,
-		EMixtormatMaskBlendMode::Difference,
-		EMixtormatMaskBlendMode::Exclusion,
-		EMixtormatMaskBlendMode::Divide};
-	for (const EMixtormatMaskBlendMode Mode : Modes)
-	{
-		// Ticked rather than merely listed: the mode a mask is already in is the thing you most
-		// want to know when you open this.
-		Menu.Item(
-			MixtormatUI::MaskBlendModeText(Mode),
-			nullptr,
-			FSimpleDelegate::CreateLambda([this, LayerIndex, MaskIndex, Mode]()
-			{
-				SetMaskBlendMode(LayerIndex, MaskIndex, Mode);
-			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, MaskIndex, Mode]()
-			{
-				return WorkingLayers.IsValidIndex(LayerIndex)
-					&& WorkingLayers[LayerIndex].Children.IsValidIndex(MaskIndex)
-					&& WorkingLayers[LayerIndex].Children[MaskIndex].Mask.BlendMode == Mode;
-			}));
-	}
-	return Menu.Build();
+	return BuildGeneratedBlendModeMenu(LayerIndex, MaskIndex);
 }
 
 TSharedRef<SWidget> SMixtormat::BuildNormalSourceMenu(const int32 LayerIndex)
@@ -2066,6 +2058,10 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 	const int32 ChildIndex)
 {
 	MixtormatMenu::FBuilder Menu;
+	// Capture ownership once: menu callbacks must not follow later selection or index changes.
+	const FMixtormatChildAddress Address = LayerIndex == INDEX_NONE
+		? MakeGroupChildAddress(SelectedGroupId, ChildIndex)
+		: MakeChildAddress(LayerIndex, ChildIndex);
 	const EMixtormatMaskBlendMode Modes[] = {
 		EMixtormatMaskBlendMode::Replace,
 		EMixtormatMaskBlendMode::Add,
@@ -2084,22 +2080,26 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedBlendModeMenu(
 		Menu.Item(
 			MixtormatUI::MaskBlendModeText(Mode),
 			nullptr,
-			FSimpleDelegate::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			FSimpleDelegate::CreateLambda([this, Address, Mode]()
 			{
-				if (!ResolveChild(LayerIndex, ChildIndex)
-					|| ResolveChild(LayerIndex, ChildIndex)->Type
-						!= EMixtormatLayerChildType::Generated)
-				{
-					return;
-				}
-				ResolveChild(LayerIndex, ChildIndex)->Generated.BlendMode = Mode;
+				FMixtormatLayerChild* Child = ResolveChildAt(Address);
+				EMixtormatMaskBlendMode* BlendMode = GetChildMaskBlendMode(Child);
+				if (!BlendMode || Child->IsInstance() || *BlendMode == Mode) { return; }
+				LastHistoryRecordTime = 0.0;
+				*BlendMode = Mode;
 				RefreshLayeredPreview();
+				LastHistoryRecordTime = 0.0;
 				RebuildLayerList();
 			}))
-			.Checked(TAttribute<bool>::CreateLambda([this, LayerIndex, ChildIndex, Mode]()
+			.Enabled(TAttribute<bool>::CreateLambda([this, Address]()
 			{
-				return ResolveChild(LayerIndex, ChildIndex)
-					&& ResolveChild(LayerIndex, ChildIndex)->Generated.BlendMode == Mode;
+				FMixtormatLayerChild* Child = ResolveChildAt(Address);
+				return GetChildMaskBlendMode(Child) && !Child->IsInstance();
+			}))
+			.Checked(TAttribute<bool>::CreateLambda([this, Address, Mode]()
+			{
+				const EMixtormatMaskBlendMode* BlendMode = GetChildMaskBlendMode(ResolveChildAt(Address));
+				return BlendMode && *BlendMode == Mode;
 			}));
 	}
 	return Menu.Build();

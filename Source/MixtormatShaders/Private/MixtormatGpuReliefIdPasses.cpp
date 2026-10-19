@@ -73,32 +73,6 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Pattern-only reduction: one maximum source height at each centre-pixel Region ID.
-class FMixtormatPatternHeightMaxCS final : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FMixtormatPatternHeightMaxCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatPatternHeightMaxCS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FIntPoint, OutputSize)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputPatternHeightMax)
-	END_SHADER_PARAMETER_STRUCT()
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(
-	FMixtormatPatternHeightMaxCS,
-	"/Plugin/Mixtormat/Private/MixtormatRampIdRelief.usf",
-	"PatternHeightMaxCS",
-	SF_Compute);
-
 // The post-composite half: the gradient turned into a tilt in the composited height and normal.
 class FMixtormatRampIdReliefCS final : public FGlobalShader
 {
@@ -129,7 +103,6 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternRegionIds)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PatternHeightMax)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputNormal)
 	END_SHADER_PARAMETER_STRUCT()
@@ -845,7 +818,6 @@ namespace MixtormatGpuCompositor
 		TArray<FPendingRampTilt, TInlineAllocator<2>>& PendingRampTilts =
 			LayerCtx.PendingRampTilts;
 		TShaderMapRef<FMixtormatEdgeShadeCS> EdgeShadeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
-		TShaderMapRef<FMixtormatPatternHeightMaxCS> PatternHeightMaxShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TShaderMapRef<FMixtormatRampIdReliefCS> RampIdReliefShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		TMap<FRDGTextureRef, FRDGTextureRef> RootCache;
 		// The region tilt runs before craquelure relief, and the order is not
@@ -868,7 +840,6 @@ namespace MixtormatGpuCompositor
 				FRDGTextureRef TiltN = GraphBuilder.CreateTexture(
 					OutputN[WriteIndex]->Desc, TEXT("Mixtormat.RampTiltN"));
 
-				FRDGTextureRef PatternHeightMax = EmptyRegionIds;
 				FRDGTextureRef HeightRootIds = EmptyRegionIds;
 				if (Tilt.bUseEdge && Tilt.CellHeightAmount > 0.0f && Tilt.RegionIds)
 				{
@@ -876,34 +847,6 @@ namespace MixtormatGpuCompositor
 						[&Tilt](const FPatternIdPassOutput& Output) { return Output.Ids == Tilt.RegionIds; });
 					HeightRootIds = AddRegionIndexPasses(GraphBuilder, Tilt.RegionIds,
 						bPatternPixelRoots, Request.Resolution, RootCache);
-					PatternHeightMax = GraphBuilder.CreateTexture(
-						FRDGTextureDesc::Create2D(
-							Request.Resolution,
-							PF_R32_UINT,
-							FClearValueBinding::None,
-							TexCreate_ShaderResource | TexCreate_UAV),
-						TEXT("Mixtormat.Pattern.HeightMax"));
-					AddClearUAVPass(
-						GraphBuilder,
-						GraphBuilder.CreateUAV(PatternHeightMax),
-						0u);
-
-					FMixtormatPatternHeightMaxCS::FParameters* MaxP =
-						GraphBuilder.AllocParameters<FMixtormatPatternHeightMaxCS::FParameters>();
-					MaxP->OutputSize = Request.Resolution;
-					// This shader uses IDs only as addresses; random draws remain in the raw-ID fields.
-					MaxP->PatternRegionIds = HeightRootIds;
-					MaxP->SourceHeight = HeightTargets[WriteIndex];
-					MaxP->OutputPatternHeightMax = GraphBuilder.CreateUAV(PatternHeightMax);
-					FComputeShaderUtils::AddPass(
-						GraphBuilder,
-						RDG_EVENT_NAME("Mixtormat.PatternHeightMax.L%d.%d", LayerIndex, TiltIndex),
-						PatternHeightMaxShader,
-						MaxP,
-						FIntVector(
-							FMath::DivideAndRoundUp(Request.Resolution.X, 8),
-							FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
-							1));
 				}
 
 				FMixtormatRampIdReliefCS::FParameters* TiltP =
@@ -930,7 +873,6 @@ namespace MixtormatGpuCompositor
 				TiltP->SourceHeight = HeightTargets[WriteIndex];
 				TiltP->PreviousNormal = OutputN[WriteIndex];
 				TiltP->PatternRegionIds = HeightRootIds;
-				TiltP->PatternHeightMax = PatternHeightMax;
 				TiltP->OutputHeight = GraphBuilder.CreateUAV(TiltH);
 				TiltP->OutputNormal = GraphBuilder.CreateUAV(TiltN);
 

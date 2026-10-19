@@ -9,6 +9,7 @@
 #include "Compositing/MixtormatIdGather.h"
 #include "Compositing/MixtormatGeneratorGather.h"
 #include "MixtormatGpuCompositorInternal.h"
+#include "MixtormatGpuPatternPassesInternal.h"
 
 #include "Async/Async.h"
 #include "Engine/Texture2D.h"
@@ -1038,8 +1039,9 @@ namespace MixtormatGpuCompositor
 			{
 				continue;
 			}
-			if (FRDGTextureRef Ids = FindRegionIdsAbove(
-				GetRegionIdView(Layer, RegionIdMaps, &Child), Child.SourceChildIndex))
+			int32 ProducerIndex = INDEX_NONE;
+			if (FRDGTextureRef Ids = FindRegionIdsAboveWithIndex(
+				Layer, RegionIdMaps, Child, ProducerIndex))
 			{
 				ActiveHsv = &Child.HsvFilter;
 				HsvRegionIds = Ids;

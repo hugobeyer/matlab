@@ -1215,7 +1215,7 @@ namespace MixtormatGpuCompositor
 
 							if (Effect.Type == EMixtormatEffectType::WornEdges)
 							{
-								QueuePendingWornEdges(LayerCtx, Child, Effect, FeatureMask);
+								QueuePendingWornEdges(LayerCtx, Layer, Child, Effect, FeatureMask);
 								continue;
 							}
 
@@ -1252,8 +1252,8 @@ namespace MixtormatGpuCompositor
 						// Child-loop ID producers are now available.
 						CollectPendingRampTilts(Ctx, LayerCtx, Layer);
 
-						// Structural operators and root Blur consume the layer's isolated surface,
-						// never the accumulated composite. Merge coverage/opacity exactly once.
+						// Breakup and root Blur prepare the incoming material locally.
+						// Structural filters below must see the merged, accumulated surface.
 						const bool bPrepareSurface = !LayerCtx.PendingBreakups.IsEmpty()
 							|| !Layer.SurfaceBlurs.IsEmpty();
 						const int32 LocalWriteIndex = LayerIndex & 1;
@@ -1275,19 +1275,9 @@ namespace MixtormatGpuCompositor
 							AddLayerCompositePass(Ctx, LayerCtx, Layer, bPrepareSurface ? 1u : 0u);
 						}
 
-						{
-							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatStructure, "Mixtormat.Structure");
-							AddErosionPasses(Ctx, LayerCtx, Layer);
-							AddRampReliefPasses(Ctx, LayerCtx, Layer);
-							AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
-
-							// Breakup publishes structural IDs during child collection, then authors its relief here.
-							// Worn Edges follows it so a Worn Edges row below Breakup can wear the actual generated
-							// plate/flake boundaries instead of the pre-breakup surface.
-							AddBreakupPasses(Ctx, LayerCtx, Layer);
-
-							AddWornEdgesPasses(Ctx, LayerCtx, Layer);
-						}
+						// Erosion and Breakup retain their incoming-material preparation order.
+						AddErosionPasses(Ctx, LayerCtx, Layer);
+						AddBreakupPasses(Ctx, LayerCtx, Layer);
 
 						if (bPrepareSurface)
 						{
@@ -1304,6 +1294,14 @@ namespace MixtormatGpuCompositor
 							Ctx.OutputRAM[LocalWriteIndex] = SavedRAM;
 							Ctx.OutputHeight[LocalWriteIndex] = SavedHeight;
 							AddLayerCompositePass(Ctx, LayerCtx, Layer, 2u);
+						}
+
+						{
+							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatStructure, "Mixtormat.Structure");
+							AddRampReliefPasses(Ctx, LayerCtx, Layer);
+							AddCraquelureReliefPasses(Ctx, LayerCtx, Layer);
+							// Includes merged Breakup relief and its published boundaries.
+							AddWornEdgesPasses(Ctx, LayerCtx, Layer);
 						}
 
 						// Grade is applied to the incoming layer color inside the composite shader.

@@ -780,8 +780,8 @@ namespace MixtormatGpuCompositor
 	}
 
 
-	// Craquelure relief: after erosion, before chipping, so chipping selects from a height
-	// with the cracks already carved into it.
+	// Craquelure relief follows the layer merge and region relief, carving the
+	// accumulated surface rather than an isolated incoming-material buffer.
 	void AddCraquelureReliefPasses(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -818,6 +818,7 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.AllocParameters<FMixtormatCraquelureReliefCS::FParameters>();
 			RelP->OutputSize = Request.Resolution;
 			RelP->HeightWeight = Relief.HeightWeight;
+			// Reconcile normals from the signed height actually written below, once.
 			RelP->NormalWeight = 0.0f;
 			RelP->ReliefWidthPixels = Relief.WidthPixels;
 			RelP->Variation = Relief.Variation;
