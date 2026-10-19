@@ -1316,6 +1316,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 		+ SOverlay::Slot()
 		[
 			BuildQuickControlsOverlay()
+		]
+		// First-run / help welcome card overlay: centered, non-blocking outside card
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			BuildWelcomeOverlay()
 		];
 
 	if (!bReusingViewport)

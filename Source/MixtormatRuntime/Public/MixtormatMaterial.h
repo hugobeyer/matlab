@@ -4,13 +4,74 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
-#include "UObject/SoftObjectPtr.h"
+#include "Materials/MaterialParameters.h"
 #include "MixtormatLayerTypes.h"
 #include "MixtormatMaterial.generated.h"
 
 class UMaterialInterface;
 class UMixtormatSurface;
 class UTexture2D;
+
+UENUM(BlueprintType)
+enum class EMixtormatBakeMaterialParentMode : uint8
+{
+	Default UMETA(DisplayName = "Mixtormat Default"),
+	Custom  UMETA(DisplayName = "Custom Material")
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBakeMaterialMapping
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	FMaterialParameterInfo ParameterInfo;
+
+	bool IsAssigned() const { return !ParameterInfo.Name.IsNone(); }
+
+	void SetUnassigned()
+	{
+		ParameterInfo.Name = NAME_None;
+		ParameterInfo.Association = EMaterialParameterAssociation::GlobalParameter;
+		ParameterInfo.Index = INDEX_NONE;
+	}
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBakeMaterialSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	EMixtormatBakeMaterialParentMode ParentMode = EMixtormatBakeMaterialParentMode::Default;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	TSoftObjectPtr<UMaterialInterface> CustomMaster;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	FMixtormatBakeMaterialMapping BaseColorMapping;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	FMixtormatBakeMaterialMapping NormalMapping;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	FMixtormatBakeMaterialMapping RAMMapping;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake")
+	FMixtormatBakeMaterialMapping HeightMapping;
+};
+
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatBakeAppliedOverrides
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TSoftObjectPtr<UMaterialInterface> MaterialInstance;
+
+	UPROPERTY()
+	TArray<FMaterialParameterInfo> ParameterInfos;
+};
 
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
@@ -122,6 +183,12 @@ public:
 	// surface carries a single DefaultIOR in its place.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UMixtormatSurface> BakedSurface;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Bake")
+	FMixtormatBakeMaterialSettings BakeMaterialSettings;
+
+	UPROPERTY()
+	FMixtormatBakeAppliedOverrides LastAppliedBakeOverrides;
 
 	// A document-level quarter turn applied after composition. The GPU output pass also rotates
 	// tangent-space normal XY, so the baked normal remains aligned with the rotated channels.

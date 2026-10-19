@@ -9,15 +9,21 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "PropertyCustomizationHelpers.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
@@ -47,143 +53,312 @@ namespace MixtormatBakeDialog
 void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 {
 	Settings = InArgs._InitialSettings;
+	RefreshDiscoveredParameters();
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+
 	ChildSlot
 	[
 		SNew(SBorder)
-		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
-		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
+		.Padding(Resolved.ControlLayout.DialogPadding)
+		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Window")))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
+			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("BakeDestinationLabel", "Destination Folder"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				SNew(SScrollBox)
+				+ SScrollBox::Slot()
 				[
-					SNew(SMixtormatTextFieldGradient)
+					SNew(SVerticalBox)
+
+					// CARD 1: OUTPUT DESTINATION & NAMING
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 					[
-						SNew(SBox)
-						.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
-						.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+						SNew(SMixtormatInspectorCard)
+						.Title(LOCTEXT("BakeOutputSectionTitle", "OUTPUT DESTINATION & NAMING"))
 						[
-							SAssignNew(DestinationTextBox, SEditableTextBox)
-							.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
-							.Text(FText::FromString(Settings.DestinationPath))
-							.OnTextChanged_Lambda([this](const FText& Text)
+							SNew(SVerticalBox)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
+							[
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("BakeDestinationLabel", "Destination Folder"))
+									.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
+									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+								]
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().FillWidth(1.0f)
+									[
+										SNew(SMixtormatTextFieldGradient)
+										[
+											SNew(SBox)
+											.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+											.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+											[
+												SAssignNew(DestinationTextBox, SEditableTextBox)
+												.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+												.Text(FText::FromString(Settings.DestinationPath))
+												.OnTextChanged_Lambda([this](const FText& Text)
+												{
+													Settings.DestinationPath = Text.ToString();
+													ValidationText = FText::GetEmpty();
+												})
+											]
+										]
+									]
+									+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f, 0.0f, 0.0f)
+									[
+										SNew(SComboButton)
+										.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+										.OnGetMenuContent(this, &SMixtormatBakeSettingsDialog::BuildPathPicker)
+										.ButtonContent()
+										[
+											SNew(SHorizontalBox)
+											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 4.0f, 0.0f)
+											[
+												SNew(SBox)
+												.WidthOverride(12.0f)
+												.HeightOverride(12.0f)
+												[
+													SNew(SImage)
+													.Image(MixtormatIcons::Folder())
+													.ColorAndOpacity(FSlateColor::UseForeground())
+												]
+											]
+											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+											[
+												SNew(STextBlock)
+												.Text(LOCTEXT("BrowseBakeDestination", "Browse..."))
+												.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
+											]
+										]
+									]
+								]
+							]
+							+ SVerticalBox::Slot().AutoHeight()
+							[
+								SNew(SVerticalBox)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("BakeBaseNameLabel", "Output Base Name"))
+									.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
+									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+								]
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									SNew(SMixtormatTextFieldGradient)
+									[
+										SNew(SBox)
+										.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
+										.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+										[
+											SNew(SEditableTextBox)
+											.Style(&Style.GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+											.Text(FText::FromString(Settings.BaseName))
+											.OnTextChanged_Lambda([this](const FText& Text)
+											{
+												Settings.BaseName = Text.ToString();
+												ValidationText = FText::GetEmpty();
+											})
+										]
+									]
+								]
+							]
+						]
+					]
+
+					// CARD 2: BAKE RESOLUTION
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+					[
+						SNew(SMixtormatInspectorCard)
+						.Title(LOCTEXT("BakeSettingsSectionLabel", "RESOLUTION"))
+						[
+							SNew(SMixtormatSegmentedControl)
+							.Options({LOCTEXT("BakeRes512", "512"), LOCTEXT("BakeRes1024", "1024"), LOCTEXT("BakeRes2048", "2048"), LOCTEXT("BakeRes4096", "4096")})
+							.ActiveIndex_Lambda([this]()
 							{
-								Settings.DestinationPath = Text.ToString();
-								ValidationText = FText::GetEmpty();
+								return MixtormatBakeDialog::ValueToIndex(MixtormatBakeDialog::ResolutionOptions, Settings.Resolution, 2);
+							})
+							.OnChosen_Lambda([this](const int32 Index)
+							{
+								Settings.Resolution = MixtormatBakeDialog::ResolutionOptions[Index];
 							})
 						]
 					]
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SComboButton)
-					.OnGetMenuContent(this, &SMixtormatBakeSettingsDialog::BuildPathPicker)
-					.ButtonContent()
+
+					// CARD 3: MATERIAL PARENT & BINDINGS
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 					[
-						SNew(STextBlock).Text(LOCTEXT("BrowseBakeDestination", "Browse..."))
+						SNew(SMixtormatInspectorCard)
+						.Title(LOCTEXT("BakeMaterialParentTitle", "MATERIAL PARENT"))
+						[
+							SNew(SVerticalBox)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
+							[
+								SNew(SMixtormatSegmentedControl)
+								.Options({LOCTEXT("ParentModeDefault", "Mixtormat Default"), LOCTEXT("ParentModeCustom", "Custom Material")})
+								.ActiveIndex_Lambda([this]()
+								{
+									return Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom ? 1 : 0;
+								})
+								.OnChosen_Lambda([this](const int32 Index)
+								{
+									Settings.MaterialSettings.ParentMode = Index == 1
+										? EMixtormatBakeMaterialParentMode::Custom
+										: EMixtormatBakeMaterialParentMode::Default;
+									if (Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom && DiscoveredParameters.IsEmpty())
+									{
+										RefreshDiscoveredParameters();
+									}
+									ValidationText = FText::GetEmpty();
+								})
+							]
+
+							// Default Mode Note
+							+ SVerticalBox::Slot().AutoHeight()
+							[
+								SNew(SBox)
+								.Visibility_Lambda([this]()
+								{
+									return Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Default
+										? EVisibility::Visible : EVisibility::Collapsed;
+								})
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("DefaultMasterInfo", "Bakes to standard Substrate master with DA_BaseColor, DA_Normal, DA_RAMH, and DA_Height parameters."))
+									.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
+									.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+									.AutoWrapText(true)
+								]
+							]
+
+							// Custom Material Controls
+							+ SVerticalBox::Slot().AutoHeight()
+							[
+								SNew(SVerticalBox)
+								.Visibility_Lambda([this]()
+								{
+									return Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom
+										? EVisibility::Visible : EVisibility::Collapsed;
+								})
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
+								[
+									SNew(SVerticalBox)
+									+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
+									[
+										SNew(STextBlock)
+										.Text(LOCTEXT("CustomMasterLabel", "Master Material"))
+										.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
+										.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+									]
+									+ SVerticalBox::Slot().AutoHeight()
+									[
+										SNew(SObjectPropertyEntryBox)
+										.AllowedClass(UMaterialInterface::StaticClass())
+										.DisplayThumbnail(false)
+										.AllowClear(true)
+										.ObjectPath_Lambda([this]()
+										{
+											return Settings.MaterialSettings.CustomMaster.ToString();
+										})
+										.OnObjectChanged(this, &SMixtormatBakeSettingsDialog::OnCustomMasterChanged)
+									]
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("TextureMappingsCaption", "TEXTURE PARAMETER MAPPINGS"))
+									.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
+									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								[
+									BuildParameterMappingDropdown(Settings.MaterialSettings.BaseColorMapping, LOCTEXT("MapBC", "Base Color"))
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								[
+									BuildParameterMappingDropdown(Settings.MaterialSettings.NormalMapping, LOCTEXT("MapNormal", "Normal"))
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								[
+									BuildParameterMappingDropdown(Settings.MaterialSettings.RAMMapping, LOCTEXT("MapRAM", "Packed RAM"))
+								]
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									BuildParameterMappingDropdown(Settings.MaterialSettings.HeightMapping, LOCTEXT("MapHeight", "Height"))
+								]
+							]
+						]
 					]
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("BakeBaseNameLabel", "Output Base Name"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogFieldBottomMargin)
-			[
-				SNew(SMixtormatTextFieldGradient)
-				[
-					SNew(SBox)
-					.MinDesiredHeight(FMixtormatThemeStore::GetTheme().TextField.MinHeight)
-					.MinDesiredWidth(FMixtormatThemeStore::GetTheme().TextField.MinWidth)
+
+					// CARD 4: GENERATED ASSETS SUMMARY
+					+ SVerticalBox::Slot().AutoHeight()
 					[
-						SNew(SEditableTextBox)
-						.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
-						.Text(FText::FromString(Settings.BaseName))
-						.OnTextChanged_Lambda([this](const FText& Text)
-						{
-							Settings.BaseName = Text.ToString();
-							ValidationText = FText::GetEmpty();
-						})
+						SNew(SMixtormatInspectorCard)
+						.Title(LOCTEXT("BakeOutputPreviewLabel", "GENERATED ASSETS SUMMARY"))
+						[
+							SNew(STextBlock)
+							.Text_Lambda([this]()
+							{
+								const TArray<FString> Names = FMixtormatBakeService::GetOutputAssetNames(Settings);
+								if (Names.Num() < 7)
+								{
+									return FText::FromString(FString::Join(Names, TEXT("\n")));
+								}
+								return FText::Format(
+									LOCTEXT("BakeAssetSummaryFmt",
+										"{0}  (Base Color · sRGB)\n"
+										"{1}  (Normal Map · Tangent)\n"
+										"{2}  (Packed RAM · Roughness/AO/Metallic)\n"
+										"{3}  (Height · 16-bit Grayscale)\n"
+										"{4}  (Material Instance)\n"
+										"{5}  (Surface RAMH · Height in Alpha)\n"
+										"{6}  (Mixtormat Surface Asset)"),
+									FText::FromString(Names[0]),
+									FText::FromString(Names[1]),
+									FText::FromString(Names[2]),
+									FText::FromString(Names[3]),
+									FText::FromString(Names[4]),
+									FText::FromString(Names[5]),
+									FText::FromString(Names[6]));
+							})
+							.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
+							.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+							.LineHeightPercentage(1.35f)
+						]
 					]
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("BakeSettingsSectionLabel", "Bake Settings"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
-				[
-					SNew(SBox).WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)
-					[
-						SNew(STextBlock).Text(LOCTEXT("BakeResolutionLabel", "Resolution"))
-					]
-				]
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
-				[
-					SNew(SMixtormatSegmentedControl)
-					.Options({LOCTEXT("BakeRes512", "512"), LOCTEXT("BakeRes1024", "1024"), LOCTEXT("BakeRes2048", "2048"), LOCTEXT("BakeRes4096", "4096")})
-					.ActiveIndex_Lambda([this]()
-					{
-						return MixtormatBakeDialog::ValueToIndex(MixtormatBakeDialog::ResolutionOptions, Settings.Resolution, 2);
-					})
-					.OnChosen_Lambda([this](const int32 Index)
-					{
-						Settings.Resolution = MixtormatBakeDialog::ResolutionOptions[Index];
-					})
 				]
 			]
 
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("BakeOutputPreviewLabel", "Generated Asset Names"))
-				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Bold"), MixtormatTokens::FontDialogLabel))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogFieldTopMargin, 0.0f, MixtormatTokens::BakeDialogSectionGap)
-			[
-				SNew(STextBlock)
-				.Text_Lambda([this]()
-				{
-					return FText::FromString(FString::Join(
-						FMixtormatBakeService::GetOutputAssetNames(Settings),
-						TEXT("\n")));
-				})
-				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
+			// VALIDATION ERROR
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 4.0f)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() { return ValidationText; })
-				.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Error))
+				.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Error))
 				.AutoWrapText(true)
 			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+
+			// FOOTER ACTIONS
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.0f, MixtormatTokens::DialogActionsTopMargin, 0.0f, 0.0f)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 					.Text(LOCTEXT("CancelBakeSettings", "Cancel"))
 					.OnClicked(this, &SMixtormatBakeSettingsDialog::Cancel)
 				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().Padding(Resolved.ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
 				[
 					SNew(SButton)
+					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
 					.Text(LOCTEXT("AcceptBakeSettings", "Bake"))
 					.OnClicked(this, &SMixtormatBakeSettingsDialog::Accept)
 				]
@@ -235,6 +410,183 @@ FReply SMixtormatBakeSettingsDialog::Cancel()
 {
 	CloseWindow();
 	return FReply::Handled();
+}
+
+void SMixtormatBakeSettingsDialog::OnCustomMasterChanged(const FAssetData& AssetData)
+{
+	Settings.MaterialSettings.CustomMaster = TSoftObjectPtr<UMaterialInterface>(AssetData.ToSoftObjectPath());
+	RefreshDiscoveredParameters();
+	ValidationText = FText::GetEmpty();
+}
+
+void SMixtormatBakeSettingsDialog::RefreshDiscoveredParameters()
+{
+	DiscoveredParameters.Empty();
+	if (Settings.MaterialSettings.CustomMaster.IsNull())
+	{
+		return;
+	}
+
+	UMaterialInterface* Master = Settings.MaterialSettings.CustomMaster.LoadSynchronous();
+	if (!Master)
+	{
+		return;
+	}
+
+	DiscoveredParameters = FMixtormatBakeService::DiscoverTextureParameters(Master);
+
+	auto AutoMatchOrValidate = [this](FMixtormatBakeMaterialMapping& Mapping, const TArray<FString>& CandidateKeywords)
+	{
+		bool bFound = false;
+		if (Mapping.IsAssigned())
+		{
+			for (const FMixtormatDiscoveredTextureParameter& Param : DiscoveredParameters)
+			{
+				if (Param.ParameterInfo == Mapping.ParameterInfo)
+				{
+					bFound = true;
+					break;
+				}
+			}
+		}
+		if (!bFound)
+		{
+			Mapping.SetUnassigned();
+			for (const FString& Keyword : CandidateKeywords)
+			{
+				for (const FMixtormatDiscoveredTextureParameter& Param : DiscoveredParameters)
+				{
+					if (Param.ParameterInfo.Name.ToString().Contains(Keyword, ESearchCase::IgnoreCase))
+					{
+						Mapping.ParameterInfo = Param.ParameterInfo;
+						return;
+					}
+				}
+			}
+		}
+	};
+
+	AutoMatchOrValidate(Settings.MaterialSettings.BaseColorMapping, {TEXT("BaseColor"), TEXT("Albedo"), TEXT("Diffuse"), TEXT("BC")});
+	AutoMatchOrValidate(Settings.MaterialSettings.NormalMapping, {TEXT("Normal"), TEXT("Norm"), TEXT("Nrm")});
+	AutoMatchOrValidate(Settings.MaterialSettings.RAMMapping, {TEXT("RAMH"), TEXT("RAM"), TEXT("ORM"), TEXT("Masks"), TEXT("Roughness")});
+	AutoMatchOrValidate(Settings.MaterialSettings.HeightMapping, {TEXT("Height"), TEXT("Displacement"), TEXT("Disp")});
+}
+
+FText SMixtormatBakeSettingsDialog::GetParameterDisplayLabel(const FMixtormatBakeMaterialMapping& Mapping) const
+{
+	if (!Mapping.IsAssigned())
+	{
+		return LOCTEXT("UnassignedParamLabel", "[Unassigned]");
+	}
+	if (Mapping.ParameterInfo.Association == EMaterialParameterAssociation::GlobalParameter)
+	{
+		return FText::FromName(Mapping.ParameterInfo.Name);
+	}
+	if (Mapping.ParameterInfo.Association == EMaterialParameterAssociation::LayerParameter)
+	{
+		return FText::Format(LOCTEXT("LayerParamLabelFmt", "{0} (Layer {1})"), FText::FromName(Mapping.ParameterInfo.Name), FText::AsNumber(Mapping.ParameterInfo.Index));
+	}
+	return FText::Format(LOCTEXT("BlendParamLabelFmt", "{0} (Blend {1})"), FText::FromName(Mapping.ParameterInfo.Name), FText::AsNumber(Mapping.ParameterInfo.Index));
+}
+
+TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMappingDropdown(
+	FMixtormatBakeMaterialMapping& Mapping,
+	const FText& OutputLabel)
+{
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+		[
+			SNew(SBox)
+			.WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)
+			[
+				SNew(STextBlock)
+				.Text(OutputLabel)
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
+			]
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.0f)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SComboButton)
+			.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+			.OnGetMenuContent_Lambda([this, &Mapping]()
+			{
+				return BuildParameterMenu(&Mapping);
+			})
+			.ButtonContent()
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this, &Mapping]()
+				{
+					return GetParameterDisplayLabel(Mapping);
+				})
+				.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
+			]
+		];
+}
+
+TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMenu(FMixtormatBakeMaterialMapping* TargetMapping)
+{
+	FMenuBuilder MenuBuilder(true, nullptr);
+
+	MenuBuilder.AddMenuEntry(
+		LOCTEXT("UnassignedOption", "[Unassigned]"),
+		LOCTEXT("UnassignedOptionTip", "Leave this parameter at its inherited master default."),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateLambda([this, TargetMapping]()
+			{
+				TargetMapping->SetUnassigned();
+				ValidationText = FText::GetEmpty();
+			}),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateLambda([TargetMapping]()
+			{
+				return !TargetMapping->IsAssigned();
+			})
+		),
+		NAME_None,
+		EUserInterfaceActionType::RadioButton
+	);
+
+	if (!DiscoveredParameters.IsEmpty())
+	{
+		MenuBuilder.AddSeparator();
+		for (const FMixtormatDiscoveredTextureParameter& Param : DiscoveredParameters)
+		{
+			FText Label = GetParameterDisplayLabel(FMixtormatBakeMaterialMapping{Param.ParameterInfo});
+			FText ToolTip = Param.bHasKnownSamplerType
+				? FText::Format(LOCTEXT("ParamSamplerTipFmt", "Parameter: {0}\nSampler Type: {1}"), FText::FromName(Param.ParameterInfo.Name), FText::AsNumber(static_cast<int32>(Param.SamplerType)))
+				: FText::FromName(Param.ParameterInfo.Name);
+
+			MenuBuilder.AddMenuEntry(
+				Label,
+				ToolTip,
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateLambda([this, TargetMapping, Param]()
+					{
+						TargetMapping->ParameterInfo = Param.ParameterInfo;
+						ValidationText = FText::GetEmpty();
+					}),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateLambda([TargetMapping, Param]()
+					{
+						return TargetMapping->ParameterInfo == Param.ParameterInfo;
+					})
+				),
+				NAME_None,
+				EUserInterfaceActionType::RadioButton
+			);
+		}
+	}
+
+	return MenuBuilder.MakeWidget();
 }
 
 void SMixtormatBakeSettingsDialog::CloseWindow()

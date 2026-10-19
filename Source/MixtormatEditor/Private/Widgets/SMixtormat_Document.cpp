@@ -489,6 +489,9 @@ FReply SMixtormat::BakeWorkingMaterial()
 		BakeAASamples = MixtormatBakeAASamplesToInt(EditorSettings->DefaultBakeAASamples);
 	}
 
+	FMixtormatBakeSettings InitialSettings{BakeDestinationPath, BakeOutputBaseName, BakeResolution, BakeAASamples};
+	InitialSettings.MaterialSettings = WorkingMaterialAsset->BakeMaterialSettings;
+
 	TSharedPtr<SMixtormatBakeSettingsDialog> SettingsDialog;
 	const TSharedRef<SWindow> SettingsWindow = SNew(SWindow)
 		.Title(LOCTEXT("BakeSettingsTitle", "Bake Material"))
@@ -499,7 +502,7 @@ FReply SMixtormat::BakeWorkingMaterial()
 		.SupportsMinimize(false)
 		[
 			SAssignNew(SettingsDialog, SMixtormatBakeSettingsDialog)
-			.InitialSettings(FMixtormatBakeSettings{BakeDestinationPath, BakeOutputBaseName, BakeResolution, BakeAASamples})
+			.InitialSettings(InitialSettings)
 		];
 	FSlateApplication::Get().AddModalWindow(
 		SettingsWindow,
@@ -528,6 +531,15 @@ FReply SMixtormat::ExecuteBake(
 		FMessageDialog::Open(
 			EAppMsgType::Ok,
 			LOCTEXT("MissingRebakeRecipe", "Re-bake stopped because the recipe is no longer available."));
+		return FReply::Handled();
+	}
+
+	// Shared preflight gate for both initial Bake and Re-bake
+	FText PreflightError;
+	if (!FMixtormatBakeService::ValidateSettings(Settings, PreflightError))
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, PreflightError);
+		WorkingStatusText = TEXT("Bake stopped · validation failed");
 		return FReply::Handled();
 	}
 

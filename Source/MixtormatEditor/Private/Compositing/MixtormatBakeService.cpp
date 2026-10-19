@@ -14,6 +14,11 @@
 #include "MaterialEditingLibrary.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatSurface.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialExpressionTextureSampleParameter.h"
+#include "Materials/MaterialFunction.h"
+#include "Materials/MaterialFunctionInterface.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
@@ -353,6 +358,189 @@ namespace MixtormatBake
 	}
 }
 
+TArray<FMixtormatDiscoveredTextureParameter> FMixtormatBakeService::DiscoverTextureParameters(UMaterialInterface* Master)
+{
+	TArray<FMixtormatDiscoveredTextureParameter> Discovered;
+	if (!Master)
+	{
+		return Discovered;
+	}
+
+	TArray<FMaterialParameterInfo> ParameterInfos;
+	TArray<FGuid> ParameterGuids;
+	Master->GetAllTextureParameterInfo(ParameterInfos, ParameterGuids);
+
+	TMap<FName, EMaterialSamplerType> KnownSamplers;
+	if (UMaterial* RootMaterial = Master->GetMaterial())
+	{
+		auto InspectExpressions = [&KnownSamplers](auto& Self, TConstArrayView<TObjectPtr<UMaterialExpression>> Expressions, TSet<const UMaterialFunctionInterface*>& VisitedFunctions) -> void
+		{
+			for (const TObjectPtr<UMaterialExpression>& Expr : Expressions)
+			{
+				if (!Expr)
+				{
+					continue;
+				}
+				if (const UMaterialExpressionTextureSampleParameter* TextureSample = Cast<UMaterialExpressionTextureSampleParameter>(Expr))
+				{
+					if (!TextureSample->ParameterName.IsNone())
+					{
+						KnownSamplers.FindOrAdd(TextureSample->ParameterName, TextureSample->SamplerType);
+					}
+				}
+				else if (const UMaterialExpressionMaterialFunctionCall* FuncCall = Cast<UMaterialExpressionMaterialFunctionCall>(Expr))
+				{
+					if (FuncCall->MaterialFunction && !VisitedFunctions.Contains(FuncCall->MaterialFunction))
+					{
+						VisitedFunctions.Add(FuncCall->MaterialFunction);
+						if (const UMaterialFunction* Func = Cast<UMaterialFunction>(FuncCall->MaterialFunction))
+						{
+							Self(Self, Func->GetExpressions(), VisitedFunctions);
+						}
+					}
+				}
+			}
+		};
+
+		TSet<const UMaterialFunctionInterface*> VisitedFunctions;
+		InspectExpressions(InspectExpressions, RootMaterial->GetExpressions(), VisitedFunctions);
+	}
+
+	Discovered.Reserve(ParameterInfos.Num());
+	for (const FMaterialParameterInfo& Info : ParameterInfos)
+	{
+		FMixtormatDiscoveredTextureParameter Param;
+		Param.ParameterInfo = Info;
+		if (const EMaterialSamplerType* FoundSampler = KnownSamplers.Find(Info.Name))
+		{
+			Param.SamplerType = *FoundSampler;
+			Param.bHasKnownSamplerType = true;
+		}
+		Discovered.Add(Param);
+	}
+
+	return Discovered;
+}
+
+bool FMixtormatBakeService::ValidateMaterialSettings(
+	const FMixtormatBakeMaterialSettings& MaterialSettings,
+	FText& OutError)
+{
+	if (MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Default)
+	{
+		const FString MasterPath = FMixtormatPaths::MasterMaterialObjectPath();
+		UMaterialInterface* Master = LoadObject<UMaterialInterface>(nullptr, *MasterPath);
+		if (!Master)
+		{
+			OutError = FText::Format(
+				NSLOCTEXT("MixtormatBake", "MissingMaster", "Required master is missing: {0}"),
+				FText::FromString(MasterPath));
+			return false;
+		}
+
+		const TArray<FName> Missing = MixtormatBake::FindMissingMasterParameters(*Master);
+		if (!Missing.IsEmpty())
+		{
+			TArray<FString> MissingNames;
+			for (const FName& Name : Missing)
+			{
+				MissingNames.Add(Name.ToString());
+			}
+			OutError = FText::Format(
+				NSLOCTEXT("MixtormatBake", "MasterContractMismatch", "Master material does not expose the parameters Mixtormat requires.\nMissing parameters: {0}"),
+				FText::FromString(FString::Join(MissingNames, TEXT(", "))));
+			return false;
+		}
+		return true;
+	}
+
+	// Custom Mode
+	if (MaterialSettings.CustomMaster.IsNull())
+	{
+		OutError = NSLOCTEXT("MixtormatBake", "MissingCustomMaster", "Choose a custom material master.");
+		return false;
+	}
+
+	UMaterialInterface* CustomMaster = MaterialSettings.CustomMaster.LoadSynchronous();
+	if (!CustomMaster)
+	{
+		OutError = FText::Format(
+			NSLOCTEXT("MixtormatBake", "FailedLoadCustomMaster", "Could not load custom material master: {0}"),
+			FText::FromString(MaterialSettings.CustomMaster.ToString()));
+		return false;
+	}
+
+	const TArray<FMixtormatDiscoveredTextureParameter> Discovered = DiscoverTextureParameters(CustomMaster);
+	TSet<FMaterialParameterInfo> AvailableParams;
+	TMap<FMaterialParameterInfo, EMaterialSamplerType> SamplerMap;
+	for (const FMixtormatDiscoveredTextureParameter& Param : Discovered)
+	{
+		AvailableParams.Add(Param.ParameterInfo);
+		if (Param.bHasKnownSamplerType)
+		{
+			SamplerMap.Add(Param.ParameterInfo, Param.SamplerType);
+		}
+	}
+
+	const FMixtormatBakeMaterialMapping* Mappings[] = {
+		&MaterialSettings.BaseColorMapping,
+		&MaterialSettings.NormalMapping,
+		&MaterialSettings.RAMMapping,
+		&MaterialSettings.HeightMapping
+	};
+	const TCHAR* OutputNames[] = {
+		TEXT("Base Color"),
+		TEXT("Normal"),
+		TEXT("Packed RAM"),
+		TEXT("Height")
+	};
+
+	TSet<FMaterialParameterInfo> AssignedTargets;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		const FMixtormatBakeMaterialMapping& Mapping = *Mappings[Index];
+		if (!Mapping.IsAssigned())
+		{
+			continue;
+		}
+
+		if (!AvailableParams.Contains(Mapping.ParameterInfo))
+		{
+			OutError = FText::Format(
+				NSLOCTEXT("MixtormatBake", "MappedParamNotFound", "Parameter '{0}' assigned to {1} was not found on material '{2}'."),
+				FText::FromName(Mapping.ParameterInfo.Name),
+				FText::FromString(OutputNames[Index]),
+				FText::FromString(CustomMaster->GetName()));
+			return false;
+		}
+
+		if (AssignedTargets.Contains(Mapping.ParameterInfo))
+		{
+			OutError = FText::Format(
+				NSLOCTEXT("MixtormatBake", "DuplicateTargetParam", "Duplicate parameter assignment: '{0}' is assigned to multiple outputs."),
+				FText::FromName(Mapping.ParameterInfo.Name));
+			return false;
+		}
+		AssignedTargets.Add(Mapping.ParameterInfo);
+
+		if (Index == 3) // Height
+		{
+			if (const EMaterialSamplerType* SamplerType = SamplerMap.Find(Mapping.ParameterInfo))
+			{
+				if (*SamplerType == SAMPLERTYPE_Color || *SamplerType == SAMPLERTYPE_Normal)
+				{
+					OutError = FText::Format(
+						NSLOCTEXT("MixtormatBake", "HeightSamplerMismatch", "Parameter '{0}' uses a Color or Normal sampler type, which is incompatible with 16-bit Grayscale Height textures. Expected Grayscale or Linear Grayscale."),
+						FText::FromName(Mapping.ParameterInfo.Name));
+					return false;
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FMixtormatBakeService::ValidateSettings(
 	const FMixtormatBakeSettings& Settings,
 	FText& OutError)
@@ -375,7 +563,8 @@ bool FMixtormatBakeService::ValidateSettings(
 			return false;
 		}
 	}
-	return true;
+
+	return ValidateMaterialSettings(Settings.MaterialSettings, OutError);
 }
 
 TArray<FString> FMixtormatBakeService::GetOutputAssetNames(
@@ -468,34 +657,47 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		return Result;
 	}
 
-	const FString MasterPath = FMixtormatPaths::MasterMaterialObjectPath();
-	UMaterialInterface* Master = LoadObject<UMaterialInterface>(nullptr, *MasterPath);
-	if (!Master)
+	UMaterialInterface* Master = nullptr;
+	if (Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom)
 	{
-		Result.Errors.Add(FText::Format(
-			NSLOCTEXT("MixtormatBake", "MissingMaster", "Required master is missing: {0}"),
-			FText::FromString(MasterPath)));
-		return Result;
-	}
-
-	const TArray<FName> MissingMasterParameters = FindMissingMasterParameters(*Master);
-	if (!MissingMasterParameters.IsEmpty())
-	{
-		TArray<FString> MissingParameterNames;
-		MissingParameterNames.Reserve(MissingMasterParameters.Num());
-		for (const FName& ParameterName : MissingMasterParameters)
+		Master = Settings.MaterialSettings.CustomMaster.LoadSynchronous();
+		if (!Master)
 		{
-			MissingParameterNames.Add(ParameterName.ToString());
+			Result.Errors.Add(NSLOCTEXT("MixtormatBake", "MissingCustomMasterBake", "Custom master material is missing or invalid."));
+			return Result;
 		}
-		Result.Errors.Add(FText::Format(
-			NSLOCTEXT(
-				"MixtormatBake",
-				"MasterContractMismatch",
-				"Master material does not expose the parameters Mixtormat requires.\nMaster object path: {0}\nMaster class: {1}\nMissing parameters: {2}"),
-			FText::FromString(MasterPath),
-			FText::FromString(Master->GetClass()->GetName()),
-			FText::FromString(FString::Join(MissingParameterNames, TEXT(", ")))));
-		return Result;
+	}
+	else
+	{
+		const FString MasterPath = FMixtormatPaths::MasterMaterialObjectPath();
+		Master = LoadObject<UMaterialInterface>(nullptr, *MasterPath);
+		if (!Master)
+		{
+			Result.Errors.Add(FText::Format(
+				NSLOCTEXT("MixtormatBake", "MissingMaster", "Required master is missing: {0}"),
+				FText::FromString(MasterPath)));
+			return Result;
+		}
+
+		const TArray<FName> MissingMasterParameters = FindMissingMasterParameters(*Master);
+		if (!MissingMasterParameters.IsEmpty())
+		{
+			TArray<FString> MissingParameterNames;
+			MissingParameterNames.Reserve(MissingMasterParameters.Num());
+			for (const FName& ParameterName : MissingMasterParameters)
+			{
+				MissingParameterNames.Add(ParameterName.ToString());
+			}
+			Result.Errors.Add(FText::Format(
+				NSLOCTEXT(
+					"MixtormatBake",
+					"MasterContractMismatch",
+					"Master material does not expose the parameters Mixtormat requires.\nMaster object path: {0}\nMaster class: {1}\nMissing parameters: {2}"),
+				FText::FromString(MasterPath),
+				FText::FromString(Master->GetClass()->GetName()),
+				FText::FromString(FString::Join(MissingParameterNames, TEXT(", ")))));
+			return Result;
+		}
 	}
 
 	UEditorAssetSubsystem* AssetSubsystem = GEditor
@@ -682,37 +884,104 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.CreatedAssetPaths.AddUnique(ObjectPaths[MaterialOutputIndex]);
 	}
 
-	// Every DA_* name here was already confirmed present on Master above, so these calls are
-	// execution, not validation -- their bool return is ignored because it is unconditionally
-	// false in UE 5.8 (see the comment on FindMissingMasterParameters).
-	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_BaseColor"), Result.BaseColor);
-	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Normal"), Result.Normal);
-	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_RAMH"), Result.RAM);
-	UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Result.Material, TEXT("DA_Height"), Result.Height);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
-		Result.Material,
-		TEXT("DA_FuzzInfluence"),
-		MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers, Recipe.LayerGroups));
-	const TOptional<FLinearColor> FuzzColor =
-		MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers, Recipe.LayerGroups);
-	if (FuzzColor.IsSet())
+	const FString TargetMaterialObjectPath = MakeObjectPath(Settings.DestinationPath, MaterialName);
+	const bool bIsSameOutputInstance =
+		Recipe.LastAppliedBakeOverrides.MaterialInstance.ToSoftObjectPath() == FSoftObjectPath(TargetMaterialObjectPath);
+
+	TArray<FMaterialParameterInfo> AppliedParameters;
+
+	if (Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom)
 	{
-		UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
-			Result.Material, TEXT("DA_FuzzColor"), FuzzColor.GetValue());
+		TSet<FMaterialParameterInfo> NewAssigned;
+		const FMixtormatBakeMaterialMapping* Mappings[] = {
+			&Settings.MaterialSettings.BaseColorMapping,
+			&Settings.MaterialSettings.NormalMapping,
+			&Settings.MaterialSettings.RAMMapping,
+			&Settings.MaterialSettings.HeightMapping
+		};
+		UTexture2D* Textures[] = {
+			Result.BaseColor,
+			Result.Normal,
+			Result.RAM,
+			Result.Height
+		};
+
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			if (Mappings[Index]->IsAssigned() && Textures[Index])
+			{
+				NewAssigned.Add(Mappings[Index]->ParameterInfo);
+				AppliedParameters.Add(Mappings[Index]->ParameterInfo);
+				Result.Material->SetTextureParameterValueEditorOnly(Mappings[Index]->ParameterInfo, Textures[Index]);
+			}
+		}
+
+		if (bIsSameOutputInstance)
+		{
+			for (const FMaterialParameterInfo& PrevInfo : Recipe.LastAppliedBakeOverrides.ParameterInfos)
+			{
+				if (!NewAssigned.Contains(PrevInfo))
+				{
+					Result.Material->TextureParameterValues.RemoveAll([&PrevInfo](const FTextureParameterValue& Val)
+					{
+						return Val.ParameterInfo == PrevInfo;
+					});
+				}
+			}
+		}
 	}
 	else
 	{
-		// Re-baking without fuzz must remove the old override, not freeze the master's current value.
-		Result.Material->VectorParameterValues.RemoveAll([](const FVectorParameterValue& Value)
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_BaseColor")));
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_Normal")));
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_RAMH")));
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_Height")));
+
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_BaseColor")), Result.BaseColor);
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_Normal")), Result.Normal);
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_RAMH")), Result.RAM);
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_Height")), Result.Height);
+
+		if (bIsSameOutputInstance)
 		{
-			return Value.ParameterInfo.Name == FName(TEXT("DA_FuzzColor"));
-		});
+			TSet<FMaterialParameterInfo> DefaultSet(AppliedParameters);
+			for (const FMaterialParameterInfo& PrevInfo : Recipe.LastAppliedBakeOverrides.ParameterInfos)
+			{
+				if (!DefaultSet.Contains(PrevInfo))
+				{
+					Result.Material->TextureParameterValues.RemoveAll([&PrevInfo](const FTextureParameterValue& Val)
+					{
+						return Val.ParameterInfo == PrevInfo;
+					});
+				}
+			}
+		}
+
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
+			Result.Material,
+			TEXT("DA_FuzzInfluence"),
+			MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers, Recipe.LayerGroups));
+		const TOptional<FLinearColor> FuzzColor =
+			MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers, Recipe.LayerGroups);
+		if (FuzzColor.IsSet())
+		{
+			UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
+				Result.Material, TEXT("DA_FuzzColor"), FuzzColor.GetValue());
+		}
+		else
+		{
+			Result.Material->VectorParameterValues.RemoveAll([](const FVectorParameterValue& Value)
+			{
+				return Value.ParameterInfo.Name == FName(TEXT("DA_FuzzColor"));
+			});
+		}
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessOffset"), 0.0f);
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
 	}
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessOffset"), 0.0f);
-	UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
+
 	Result.Material->PostEditChange();
 	Result.Material->MarkPackageDirty();
 
@@ -742,6 +1011,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	Recipe.BakedHeight = Result.Height;
 	Recipe.BakedMaterial = Result.Material;
 	Recipe.BakedSurface = Result.Surface;
+	Recipe.BakeMaterialSettings = Settings.MaterialSettings;
+	Recipe.LastAppliedBakeOverrides.MaterialInstance = Result.Material;
+	Recipe.LastAppliedBakeOverrides.ParameterInfos = AppliedParameters;
 	Recipe.MarkPackageDirty();
 	Result.UpdatedAssetPaths.AddUnique(Recipe.GetPathName());
 

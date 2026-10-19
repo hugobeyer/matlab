@@ -30,7 +30,7 @@ values unless a design change is separately approved.
 | Category | Token source |
 |---|---|
 | Spacing / padding | `ControlLayout.RowGap`, `CardLayout.Gap`, `GalleryLayout.TileGap`, `PreviewLayout.OverlayButtonGap` / `ToolbarGap` / `TogglePadding`, `ControlLayout.InspectorFeatureButtonGap`, `MenuLayout.*`, `Well.*`, `MixtormatTokens::InspectorTopMargin` |
-| Sizing | `Icons.Roles[].GlyphSize` / `ButtonSize`, `LayerLayout.RowHeight` / `ThumbnailSize`, `PreviewLayout.ResolutionControlWidth`, `MenuLayout.Width` / `LipHeight` / `RowHeight`, `SegmentHeight`, `ScalarRampHeight`, `ColorRampHeight`, `MixtormatTokens::InspectorWidth` |
+| Sizing | `Icons.Roles[].GlyphSize` / `ButtonSize`, `LayerLayout.RowHeight` / `ThumbnailSize`, `PreviewLayout.ResolutionControlWidth`, `MenuLayout.Width` / `LipHeight` / `RowHeight`, `SegmentHeight`, `ScalarRampHeight`, `ColorRampHeight`, `ControlLayout.*Dialog*`, `ControlLayout.WelcomeCard*`, `MixtormatTokens::InspectorWidth` |
 | Opacity | `ControlLabelOpacity`, `ControlValueOpacity`, `TextDisabledOpacity`, `ZeroTickOpacity`, `SegmentShadeAlpha`, `FillDisabledSaturation`, `ToggleDisabledShadeTop/Bottom`, `FoldoutTitleDisabledOpacity`, `ScrollbarThumbOpacity` / `HoverOpacity`, `Well.BorderOpacity`, `Preview.PlateOpacity`, `MixtormatTokens::InspectorOverlayBackgroundOpacity` |
 | Colour | `EMixtormatColorRole` (14 roles) via `Palette.Get(...)`; `FMixtormatColorRef` adds opacity, saturation and a per-channel multiplier without inventing a palette entry |
 | Typography / boldness | `EMixtormatTextRole` (15 roles) + `FMixtormatTextSpec` through `FMixtormatTypography`. Weight lives in the spec, never per widget |

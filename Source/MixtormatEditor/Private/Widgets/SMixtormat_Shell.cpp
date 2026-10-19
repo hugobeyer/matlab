@@ -8,6 +8,8 @@
 #include "UI/Controls/SMixtormatIconRail.h"
 #include "UI/Controls/SMixtormatGroupAction.h"
 #include "UI/Menus/SMixtormatHelp.h"
+#include "UI/Menus/SMixtormatPopupAnchor.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Controls/MixtormatShellSplitterStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
@@ -393,27 +395,59 @@ TSharedRef<SWidget> SMixtormat::BuildTopBar()
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(SMixtormatShellAction, true, TopBarActionHeight())
-					.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
-					.ToolTipText(LOCTEXT("DocumentationTopHint", "Open Mixtormat documentation."))
-					.OnClicked(this, &SMixtormat::OpenDocumentation)
+					SAssignNew(DocsMenuAnchor, SMixtormatPopupAnchor)
+					.Placement(MenuPlacement_BelowRightAnchor)
+					.OnGetMenuContent_Lambda([this]()
+					{
+						MixtormatMenu::FBuilder Menu;
+						Menu.Caption(LOCTEXT("DocsMenuCaption", "Help & Reference"))
+							.Item(
+								LOCTEXT("DocsMenuWelcome", "Welcome & Quick Guide"),
+								MixtormatIcons::Documentation(),
+								FSimpleDelegate::CreateSP(this, &SMixtormat::ShowWelcomeCard))
+							.Item(
+								LOCTEXT("DocsMenuOnline", "Online Documentation"),
+								MixtormatIcons::Globe(),
+								FSimpleDelegate::CreateLambda([]()
+								{
+									FString LaunchError;
+									FPlatformProcess::LaunchURL(
+										TEXT("https://hugobeyer.github.io/mixtormat/"),
+										nullptr,
+										&LaunchError);
+								}));
+						return Menu.Build();
+					})
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						SNew(SMixtormatShellAction, true, TopBarActionHeight())
+						.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
+						.ToolTipText(LOCTEXT("DocumentationTopHint", "Open documentation and help."))
+						.OnClicked_Lambda([this]()
+						{
+							if (DocsMenuAnchor.IsValid())
+							{
+								DocsMenuAnchor->SetIsOpen(!DocsMenuAnchor->IsOpen());
+							}
+							return FReply::Handled();
+						})
 						[
-							SNew(SBox)
-							.WidthOverride(TopBarIconSize())
-							.HeightOverride(TopBarIconSize())
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 							[
-								SNew(SImage).Image(MixtormatIcons::Documentation()).ColorAndOpacity(TopBarIconTint())
+								SNew(SBox)
+								.WidthOverride(TopBarIconSize())
+								.HeightOverride(TopBarIconSize())
+								[
+									SNew(SImage).Image(MixtormatIcons::Documentation()).ColorAndOpacity(TopBarIconTint())
+								]
 							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
-						[
-							SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
-							.Font(TopBarTextStyle.Font)
-							.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
-							.ColorAndOpacity(FSlateColor::UseForeground())
+							+ SHorizontalBox::Slot().AutoWidth().Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ToolbarLabelPadding, 0.0f).VAlign(VAlign_Center)
+							[
+								SNew(STextBlock).Text(LOCTEXT("DocumentationTop", "DOCS"))
+								.Font(TopBarTextStyle.Font)
+								.RenderOpacity(TopBarTextStyle.ColorAndOpacity.GetSpecifiedColor().A)
+								.ColorAndOpacity(FSlateColor::UseForeground())
+							]
 						]
 					]
 				]

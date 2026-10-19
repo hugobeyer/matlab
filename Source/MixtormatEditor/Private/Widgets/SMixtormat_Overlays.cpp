@@ -12,6 +12,8 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/SMixtormatWelcomeCard.h"
+#include "MixtormatEditorSettings.h"
 #include "Widgets/SNullWidget.h"
 
 // Inspector overlay placement, drag/resize gestures and gallery drawer interactions.
@@ -363,6 +365,39 @@ FCursorReply SMixtormat::OnCursorQuery(const FGeometry& MyGeometry, const FPoint
 		}
 	}
 	return SCompoundWidget::OnCursorQuery(MyGeometry, CursorEvent);
+}
+
+void SMixtormat::ShowWelcomeCard()
+{
+	bWelcomeCardVisible = true;
+}
+
+void SMixtormat::DismissWelcomeCard()
+{
+	bWelcomeCardVisible = false;
+	if (UMixtormatEditorSettings* EditorSettings = GetMutableDefault<UMixtormatEditorSettings>())
+	{
+		if (!EditorSettings->bDismissedFirstRunWelcome)
+		{
+			EditorSettings->bDismissedFirstRunWelcome = true;
+			EditorSettings->SaveConfig();
+		}
+	}
+}
+
+TSharedRef<SWidget> SMixtormat::BuildWelcomeOverlay()
+{
+	return SNew(SBox)
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		.Visibility_Lambda([this]()
+		{
+			return bWelcomeCardVisible ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
+		})
+		[
+			SNew(SMixtormatWelcomeCard)
+			.OnDismiss(this, &SMixtormat::DismissWelcomeCard)
+		];
 }
 
 #undef LOCTEXT_NAMESPACE

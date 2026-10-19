@@ -17,6 +17,7 @@ translation units — search the member function, not the header.
 | Preview | `Widgets/SMixtormat_Preview.cpp`, `Widgets/SMixtormatPreviewViewport.*`, `Preview/*` |
 | Theme panel | `Widgets/SMixtormat_Theme.cpp`, `Widgets/SMixtormatThemePanel.*` |
 | Dialogs | `Widgets/Dialogs/SMixtormat{Action,BakeSettings,BakeResult}Dialog.*` |
+| Welcome & Guide | `Widgets/SMixtormatWelcomeCard.*` |
 
 ## Workspace splitters and creation actions
 
@@ -309,8 +310,9 @@ All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requir
   `MaskHeaderNameWidth`.
 - CONTROLS > Layout owns the parameter authoring panel widths
   (`ParameterInfoPanelWidth`, `ParameterRangePanelWidth`,
-  `ParameterAuthoringPanelWidth`); CONTROLS > Dialogs owns the bake path picker
-  and the four dialog window sizes. The UI STYLE window itself is deliberately
+  `ParameterAuthoringPanelWidth`); CONTROLS > Dialogs owns the bake path picker,
+  the dialog window sizes, and the welcome card dimensions (`ControlLayout.WelcomeCardWidth`,
+  `ControlLayout.WelcomeCardMaxHeight`). The UI STYLE window itself is deliberately
   untokenized.
 - Authored theme data: `Config/UIStyleTheme.json`.
 

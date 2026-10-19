@@ -237,3 +237,15 @@ combination is never node-cached.
 - `GetChildCapabilities` (`Editor/Private/Widgets/MixtormatChildCapabilities.cpp`)
   is the single source of what a child publishes (previewable / copyable).
 - Debug blit: `MixtormatGpuDebugPreviewPasses.cpp` + `MixtormatDebugPreviewBlit.usf`.
+
+## Bake Pipeline & Custom Material Masters
+
+- `Editor/Private/Compositing/MixtormatBakeService.*` — orchestrates GPU composition, asset creation, and material instance wiring.
+- Generates 7 coordinated output assets:
+  - Textures: Base Color (`T_*_BC`), Normal (`T_*_N`), packed RAM (`T_*_RAM`), Height (`T_*_H`), RAMH (`T_*_RAMH`).
+  - Instances & Surfaces: Material Instance (`MI_*`), Surface (`SF_*`).
+- Material Parent modes (`EMixtormatBakeMaterialParentMode`):
+  - **Mixtormat Default**: Targets `/Mixtormat/Materials/Masters/M_Master_Mixtormat.M_Master_Mixtormat`. Binds `Result.RAM` to `DA_RAMH`, while `Result.RAMH` is generated for the `UMixtormatSurface` definition.
+  - **Custom Material**: Accepts any user-specified `UMaterialInterface`. Discovers texture parameters across material and function expressions. Mappings support Base Color, Normal, Packed RAM, and Height, with explicit Unassigned options.
+- Identity-aware override tracking: `UMixtormatMaterial::LastAppliedBakeOverrides` tracks the target Material Instance identity and parameter keys. Re-baking safely resets only previously applied Mixtormat overrides without modifying user-authored parameters on existing instances.
+- Validation preflight executes in `SMixtormat::ExecuteBake` before GPU composition and asset generation, checking master validity, parameter name collisions, and G16 sampler compatibility.

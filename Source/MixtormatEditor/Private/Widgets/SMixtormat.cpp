@@ -94,6 +94,7 @@ void SMixtormat::Construct(const FArguments& InArgs)
 		bGalleryPinned = Settings->bGalleryDrawerPinned;
 		GalleryDrawerHeight = Settings->GalleryDrawerHeight;
 		bBottomLibraryCollapsed = !bGalleryPinned;
+		bWelcomeCardVisible = !Settings->bDismissedFirstRunWelcome;
 	}
 
 	BuildWorkspaceUI();

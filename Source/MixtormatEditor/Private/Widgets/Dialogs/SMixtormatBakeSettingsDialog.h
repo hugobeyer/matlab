@@ -26,11 +26,17 @@ public:
 private:
 	TSharedRef<SWidget> BuildPathPicker();
 	void SelectPath(const FString& Path);
+	TSharedRef<SWidget> BuildParameterMappingDropdown(FMixtormatBakeMaterialMapping& Mapping, const FText& OutputLabel);
+	TSharedRef<SWidget> BuildParameterMenu(FMixtormatBakeMaterialMapping* TargetMapping);
+	void OnCustomMasterChanged(const FAssetData& AssetData);
+	void RefreshDiscoveredParameters();
+	FText GetParameterDisplayLabel(const FMixtormatBakeMaterialMapping& Mapping) const;
 	FReply Accept();
 	FReply Cancel();
 	void CloseWindow();
 
 	FMixtormatBakeSettings Settings;
+	TArray<FMixtormatDiscoveredTextureParameter> DiscoveredParameters;
 	TSharedPtr<SEditableTextBox> DestinationTextBox;
 	FText ValidationText;
 	bool bAccepted = false;

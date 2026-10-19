@@ -427,12 +427,14 @@ namespace Mixtormat
 		T.ControlLayout.BakeDialogPathPickerHeight = 420.0f;
 		T.ControlLayout.BakeResultDialogWidth = 760.0f;
 		T.ControlLayout.BakeResultDialogHeight = 320.0f;
-		T.ControlLayout.BakeSettingsDialogWidth = 480.0f;
-		T.ControlLayout.BakeSettingsDialogHeight = 450.0f;
+		T.ControlLayout.BakeSettingsDialogWidth = 520.0f;
+		T.ControlLayout.BakeSettingsDialogHeight = 580.0f;
 		T.ControlLayout.FeedbackDialogWidth = 520.0f;
 		T.ControlLayout.FeedbackDialogHeight = 210.0f;
 		T.ControlLayout.ConfirmDialogWidth = 560.0f;
 		T.ControlLayout.ConfirmDialogHeight = 320.0f;
+		T.ControlLayout.WelcomeCardWidth = 480.0f;
+		T.ControlLayout.WelcomeCardMaxHeight = 520.0f;
 
 		T.GalleryLayout.TileSize = 80.0f;
 		T.GalleryLayout.DrawerInset = 8.0f;
@@ -842,12 +844,14 @@ namespace Mixtormat
 		T.ControlLayout.BakeDialogPathPickerHeight = 420.0f;
 		T.ControlLayout.BakeResultDialogWidth = 760.0f;
 		T.ControlLayout.BakeResultDialogHeight = 320.0f;
-		T.ControlLayout.BakeSettingsDialogWidth = 480.0f;
-		T.ControlLayout.BakeSettingsDialogHeight = 450.0f;
+		T.ControlLayout.BakeSettingsDialogWidth = 520.0f;
+		T.ControlLayout.BakeSettingsDialogHeight = 580.0f;
 		T.ControlLayout.FeedbackDialogWidth = 520.0f;
 		T.ControlLayout.FeedbackDialogHeight = 210.0f;
 		T.ControlLayout.ConfirmDialogWidth = 560.0f;
 		T.ControlLayout.ConfirmDialogHeight = 320.0f;
+		T.ControlLayout.WelcomeCardWidth = 480.0f;
+		T.ControlLayout.WelcomeCardMaxHeight = 520.0f;
 		T.Gallery.BorderWidth = 0.0f;
 		T.Gallery.BorderOpacity = 1.0f;
 		T.Gallery.HoverLiftOpacity = 0.0f;

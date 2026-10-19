@@ -313,12 +313,14 @@
 		"ControlLayout.BakeDialogPathPickerHeight": 420,
 		"ControlLayout.BakeResultDialogWidth": 760,
 		"ControlLayout.BakeResultDialogHeight": 320,
-		"ControlLayout.BakeSettingsDialogWidth": 480,
-		"ControlLayout.BakeSettingsDialogHeight": 450,
+		"ControlLayout.BakeSettingsDialogWidth": 520,
+		"ControlLayout.BakeSettingsDialogHeight": 580,
 		"ControlLayout.FeedbackDialogWidth": 520,
 		"ControlLayout.FeedbackDialogHeight": 210,
 		"ControlLayout.ConfirmDialogWidth": 560,
-		"ControlLayout.ConfirmDialogHeight": 320
+		"ControlLayout.ConfirmDialogHeight": 320,
+		"ControlLayout.WelcomeCardWidth": 480,
+		"ControlLayout.WelcomeCardMaxHeight": 520
 	},
 	"foldouts":
 	{

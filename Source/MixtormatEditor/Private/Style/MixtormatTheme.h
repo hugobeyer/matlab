@@ -645,12 +645,14 @@ namespace Mixtormat
 		float BakeDialogPathPickerHeight = 420.0f;
 		float BakeResultDialogWidth = 760.0f;
 		float BakeResultDialogHeight = 320.0f;
-		float BakeSettingsDialogWidth = 480.0f;
-		float BakeSettingsDialogHeight = 450.0f;
+		float BakeSettingsDialogWidth = 520.0f;
+		float BakeSettingsDialogHeight = 580.0f;
 		float FeedbackDialogWidth = 520.0f;
 		float FeedbackDialogHeight = 210.0f;
 		float ConfirmDialogWidth = 560.0f;
 		float ConfirmDialogHeight = 320.0f;
+		float WelcomeCardWidth = 480.0f;
+		float WelcomeCardMaxHeight = 520.0f;
 		float MaskPickerWidth = 600.0f;
 		float ThumbnailCardPadding = 2.0f;
 		float MaskGalleryTileGap = 5.0f;

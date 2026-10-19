@@ -212,6 +212,9 @@ private:
 	FReply OpenThemePanel();
 	FReply OpenDocumentation();
 	FReply OpenSettings();
+	void ShowWelcomeCard();
+	void DismissWelcomeCard();
+	TSharedRef<SWidget> BuildWelcomeOverlay();
 	// Theme refresh modes
 	enum class EThemeRefreshMode : uint8
 	{
@@ -1880,4 +1883,6 @@ private:
 	FString SearchText;
 	FName CategoryFilter;
 	double LastHistoryRecordTime = 0.0;
+	bool bWelcomeCardVisible = false;
+	TSharedPtr<class SMixtormatPopupAnchor> DocsMenuAnchor;
 };

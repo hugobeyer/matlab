@@ -86,4 +86,8 @@ public:
 
 	UPROPERTY(Config)
 	float GalleryDrawerHeight = 0.0f;
+
+	// Persists dismissal of the first-run welcome card across sessions.
+	UPROPERTY(Config)
+	bool bDismissedFirstRunWelcome = false;
 };

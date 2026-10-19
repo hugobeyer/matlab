@@ -4,7 +4,11 @@
 
 #include "CoreMinimal.h"
 
+#include "MixtormatMaterial.h"
+#include "Materials/MaterialParameters.h"
+
 class UMaterialInstanceConstant;
+class UMaterialInterface;
 class UMixtormatMaterial;
 class UMixtormatSurface;
 class UTexture2D;
@@ -18,6 +22,13 @@ enum class EMixtormatBakeStage : uint8
 	Save
 };
 
+struct FMixtormatDiscoveredTextureParameter
+{
+	FMaterialParameterInfo ParameterInfo;
+	EMaterialSamplerType SamplerType = SAMPLERTYPE_Color;
+	bool bHasKnownSamplerType = false;
+};
+
 struct FMixtormatBakeSettings
 {
 	FString DestinationPath;
@@ -29,6 +40,9 @@ struct FMixtormatBakeSettings
 	// Infrastructure only -- see UMixtormatEditorSettings::DefaultBakeAASamples. Not read by
 	// FMixtormatBakeService::Bake.
 	int32 AASamples = 1;
+
+	// Target master material parent mode and parameter mappings
+	FMixtormatBakeMaterialSettings MaterialSettings;
 };
 
 struct FMixtormatBakeResult
@@ -58,6 +72,8 @@ class FMixtormatBakeService final
 {
 public:
 	static bool ValidateSettings(const FMixtormatBakeSettings& Settings, FText& OutError);
+	static bool ValidateMaterialSettings(const FMixtormatBakeMaterialSettings& MaterialSettings, FText& OutError);
+	static TArray<FMixtormatDiscoveredTextureParameter> DiscoverTextureParameters(UMaterialInterface* Master);
 	static TArray<FString> GetOutputAssetNames(const FMixtormatBakeSettings& Settings);
 	static TArray<FString> GetOutputObjectPaths(const FMixtormatBakeSettings& Settings);
 	static TArray<FString> FindExistingOutputObjectPaths(const FMixtormatBakeSettings& Settings);

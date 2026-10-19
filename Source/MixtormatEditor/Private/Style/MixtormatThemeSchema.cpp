@@ -420,6 +420,8 @@ void AddIconRole(
 		NUM("ControlLayout.FeedbackDialogHeight", Controls, "Dialogs", "Feedback Height", ControlLayout.FeedbackDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ConfirmDialogWidth", Controls, "Dialogs", "Confirm Width", ControlLayout.ConfirmDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ConfirmDialogHeight", Controls, "Dialogs", "Confirm Height", ControlLayout.ConfirmDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.WelcomeCardWidth", Controls, "Dialogs", "Welcome Card Width", ControlLayout.WelcomeCardWidth, 320, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.WelcomeCardMaxHeight", Controls, "Dialogs", "Welcome Card Max Height", ControlLayout.WelcomeCardMaxHeight, 320, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.MaskPickerWidth", Controls, "Layout", "Mask Picker Width", ControlLayout.MaskPickerWidth, 200, 1200, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ThumbnailCardPadding", Controls, "Layout", "Thumbnail Card Padding", ControlLayout.ThumbnailCardPadding, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.MaskGalleryTileGap", Controls, "Layout", "Mask Gallery Tile Gap", ControlLayout.MaskGalleryTileGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
