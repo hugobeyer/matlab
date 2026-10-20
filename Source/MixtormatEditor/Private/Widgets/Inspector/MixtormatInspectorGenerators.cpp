@@ -3101,19 +3101,21 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.02, 0.3, .005,
-			LOCTEXT("MossCushionSizeHint", "Characteristic diameter of rounded moss cushions.")),
-		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .01,
-			LOCTEXT("MossCushionHeightHint", "Cushion thickness relative to the grown footprint, rounded down to zero at colony edges."))));
+			LOCTEXT("MossCushionSizeHint", "Coarse cushion diameter and boundary rounding width, independently of fine Clump Density.")),
+		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .001,
+			LOCTEXT("MossCushionHeightHint", "Nominal native cushion height before edge taper, coverage, optional normalization and Height Scale. It is not multiplied by cushion radius."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossClumpDensity", "Clump Density"), &FMixtormatMoss::ClumpDensity, 0, 1024, .01,
-			LOCTEXT("MossClumpDensityHint", "Clustering irregularity and internal lumpiness of cushions.")),
-		Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
-			LOCTEXT("MossShootDensityHint", "Density of high-frequency organic microshoots."))));
+			LOCTEXT("MossClumpDensityHint", "Fine clump cells across one tile, independent of Cushion Size. Rounded to whole repeats for seamless tiling; zero disables fine clump detail.")),
+		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
+			Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
+				LOCTEXT("MossShootDensityHint", "Density of high-frequency organic microshoots. Inactive while Shoot Length is zero."))]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossShootLength", "Shoot Length"), &FMixtormatMoss::ShootLength, 0, 1, .01,
 			LOCTEXT("MossShootLengthHint", "Height and prominence of microshoots.")),
-		Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
-			LOCTEXT("MossFiberThicknessHint", "Thickness and softness of individual organic shoot fibers."))));
+		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
+			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
+				LOCTEXT("MossFiberThicknessHint", "Broadens and softens shoot profiles continuously, including values above one. Inactive while Shoot Length is zero."))]));
 
 	// Physical Behavior
 	Panel = AddCard(Cards, LOCTEXT("MossPhysics", "PHYSICAL BEHAVIOR"));
@@ -3121,12 +3123,12 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		Slider(LOCTEXT("MossWeight", "Weight"), &FMixtormatMoss::Weight, 0, 1, .01,
 			LOCTEXT("MossWeightHint", "Colony mass accumulation factor.")),
 		Slider(LOCTEXT("MossAdhesion", "Adhesion"), &FMixtormatMoss::Adhesion, 0, 1, .01,
-			LOCTEXT("MossAdhesionHint", "Surface adhesion resisting gravitational sliding and sagging."))));
+			LOCTEXT("MossAdhesionHint", "Continuously resists gravitational sag instead of switching gravity off below a load threshold."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossGravityInfluence", "Gravity Influence"), &FMixtormatMoss::GravityInfluence, 0, 1, .01,
 			LOCTEXT("MossGravityInfluenceHint", "Downward gravitational pull on steep and inclined surfaces.")),
 		Slider(LOCTEXT("MossDroop", "Droop"), &FMixtormatMoss::Droop, 0, 1, .01,
-			LOCTEXT("MossDroopHint", "Hanging or sagging extension down gravity direction where mass exceeds adhesion."))));
+			LOCTEXT("MossDroopHint", "Amount of gravitational sag along Gravity Angle on sloped substrate. Scales with Weight and Gravity Influence; Adhesion continuously resists it."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)

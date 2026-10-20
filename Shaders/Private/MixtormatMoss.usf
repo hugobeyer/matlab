@@ -115,6 +115,7 @@ RWTexture2D<float> OutGrowthInteriorDistance;
 
 static const float MOSS_ACTIVE_B = 0.1f;
 static const float MOSS_EMPTY_B = 0.001f;
+static const uint MOSS_CLUMP_SALT = 909u;
 static const float2 MOSS_INOCULATION_GATE_RANGE = float2(0.05f, 0.35f);
 
 // --- Helper Functions ---
@@ -183,6 +184,27 @@ float2 CurlDomainWarp(float2 uv, int period, uint salt)
 	float nR = TileNoise(uv + float2(e, 0), period, salt);
 	float nL = TileNoise(uv - float2(e, 0), period, salt);
 	return float2(nU - nD, -(nR - nL));
+}
+
+// Shared secondary relief only; the chemical field still owns the colony silhouette.
+float MossCellDome(float2 UV, int Period, uint Salt)
+{
+	int2 BaseCell = int2(floor(UV * float(Period)));
+	float MinDistance = 1.0f;
+	[unroll]
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = -1; X <= 1; ++X)
+		{
+			int2 Cell = BaseCell + int2(X, Y);
+			int2 Wrapped = (Cell % Period + Period) % Period;
+			float2 Center = (float2(Wrapped) + Random22(Wrapped, Salt)) / float(Period);
+			MinDistance = min(MinDistance, length(TorusDelta(UV, Center)));
+		}
+	}
+	float Radius = MinDistance * float(Period);
+	return sqrt(max(0.0f, 1.0f - Radius * Radius));
 }
 
 int2 WrapSimulationPixel(int2 Pixel)
@@ -477,56 +499,36 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
 
-	// Physical Sagging / Droop displacement:
-	// Mass accumulates with colony age/thickness * Weight.
-	// On steep/inclined surfaces, gravity pulls downward along GravDir.
-	// Adhesion resists this sagging.
+	float TargetSize = max(CushionSize, 1.0e-6f);
+	// Continuous adhesion resistance avoids the old threshold that disabled every
+	// default gravity control. Zero slope, weight, gravity or droop still means no sag.
 	float Mass = (0.3f + 0.7f * ColonyAge) * Weight;
 	float GravityShear = Slope * GravityInfluence * Mass;
-	float SagAmount = max(0.0f, GravityShear - Adhesion * 0.5f) * Droop * 0.08f;
+	float AdhesionResistance = 1.0f + max(Adhesion, 0.0f);
+	float SagAmount = GravityShear * Droop * TargetSize / AdhesionResistance;
 	float2 DisplacedUV = UV - GravDir * SagAmount;
 
-	// Meso cushion cellular scale
-	float TargetSize = max(CushionSize, 1.0e-6f);
+	// Cushion Size sets coarse form; Clump Density independently sets fine clumps
+	// across one tile. Density changes frequency, never domain-warp amplitude.
 	int CushionDim = max(1, int(round(1.0f / TargetSize)));
-
-	// Curl domain warp for irregular organic cushion lobes
-	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * (0.25f * (1.0f + ClumpDensity));
-	float2 WarpedUV = DisplacedUV + Warp * (1.0f / float(CushionDim));
-
-	float2 CushionCellUV = WarpedUV * float(CushionDim);
-	int2 BaseCell = int2(floor(CushionCellUV));
-
-	float MinCushionDist = 1000.0f;
-
-	for (int cy = -1; cy <= 1; ++cy)
+	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * 0.25f;
+	float2 WarpedUV = DisplacedUV + Warp / float(CushionDim);
+	float Dome = MossCellDome(WarpedUV, CushionDim, 505u);
+	if (ClumpDensity > 0.0f)
 	{
-		for (int cx = -1; cx <= 1; ++cx)
-		{
-			int2 Cell = BaseCell + int2(cx, cy);
-			int2 WrappedCell = (Cell % CushionDim + CushionDim) % CushionDim;
-
-			// Wrap cell-local jitter rather than capping authored clump strength.
-			float2 Jitter = frac(Random22(WrappedCell, 505u) * (0.6f + 0.3f * ClumpDensity));
-			float2 CenterUV = (float2(WrappedCell) + Jitter) / float(CushionDim);
-
-			float2 Delta = TorusDelta(WarpedUV, CenterUV);
-			float Dist = length(Delta);
-			MinCushionDist = min(MinCushionDist, Dist);
-		}
+		int ClumpDim = max(1, int(round(ClumpDensity)));
+		float Clumps = MossCellDome(DisplacedUV, ClumpDim, MOSS_CLUMP_SALT);
+		float ClumpPresence = ClumpDensity / (1.0f + ClumpDensity);
+		Dome *= lerp(1.0f, Clumps, ClumpPresence);
 	}
 
-	// Parabolic rounded cushion dome profile
-	float NormalizedRadius = MinCushionDist * float(CushionDim);
-	float Dome = sqrt(max(0.0f, 1.0f - NormalizedRadius * NormalizedRadius));
-
-	// Thickness follows the actual grown footprint, not a full-height mask extrusion.
-	// This rounded envelope is <= distance to the growth edge (UV tile units), so a
-	// thin reaction band cannot acquire the height of an unrelated large cushion cell.
+	// Cushion Height is the nominal native amplitude, not an aspect ratio multiplied
+	// by a second UV-length scale. The dimensionless edge taper still rounds relief
+	// down to zero at the simulated footprint instead of extruding a hard mask wall.
 	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
 	float CushionRadius = 0.5f * TargetSize;
-	float RoundedThickness = CushionRadius * (1.0f - exp(-InteriorDistance / CushionRadius));
-	float MesoHeight = Dome * CushionHeight * RoundedThickness;
+	float EdgeProfile = 1.0f - exp(-InteriorDistance / CushionRadius);
+	float MesoHeight = Dome * CushionHeight * EdgeProfile;
 
 	// Final assembly applies coverage once, to both meso and micro contributions.
 	OutMesoHeight[Pixel] = MesoHeight;
@@ -589,6 +591,14 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
+	// Zero length deliberately disables shoot relief; it must not be overridden to
+	// make Density or Fiber Thickness look active when there are no shoots.
+	if (ShootLength == 0.0f)
+	{
+		OutGrowthHeight[Pixel] = Meso * ColonyMask;
+		return;
+	}
+
 	// Micro Shoot Organic Relief
 	// High-frequency cellular shoots with pointed tip profile
 	int ShootDim = max(1, int(round(OutputSize.x * 0.12f * (0.5f + 0.5f * ShootDensity))));
@@ -612,8 +622,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	float ShootNormDist = MinShootDist * float(ShootDim);
-	// Pointed organic shoot tip with fiber thickness control
-	float TipSharpness = max(1.0e-6f, lerp(2.0f, 0.6f, FiberThickness));
+	// Positive, continuous response beyond 1: thickness 5 no longer collapses
+	// onto the epsilon exponent shared by every value above the old range.
+	float TipSharpness = 2.0f / (1.0f + max(FiberThickness, 0.0f));
 	float ShootProfile = pow(saturate(1.0f - ShootNormDist), TipSharpness);
 
 	// Fine fibrous texture

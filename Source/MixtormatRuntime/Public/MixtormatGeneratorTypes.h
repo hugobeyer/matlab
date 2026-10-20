@@ -547,17 +547,18 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	int32 Seed = 1337;
 
 	// --- Structure (Meso Cushions & Micro Shoots) ---
-	// Characteristic diameter of rounded moss cushions.
+	// Coarse cushion diameter and boundary taper width, independent of fine clump frequency.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.000001", UIMin = "0.02", UIMax = "0.3", Delta = "0.005"))
 	float CushionSize = 0.12f;
 
-	// Cushion thickness relative to the grown footprint, with a rounded boundary profile.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float CushionHeight = 0.60f;
+	// Nominal native height before boundary taper, coverage, normalization and Height Scale.
+	// Retuned from the old aspect ratio to retain its default native amplitude.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float CushionHeight = 0.036f;
 
-	// Clustering irregularity and internal lumpiness of cushions.
+	// Fine clump cells across one tile; rounded to whole repeats for tiling. Zero disables them.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1024.0", Delta = "0.01"))
-	float ClumpDensity = 0.50f;
+	float ClumpDensity = 32.0f;
 
 	// Density of high-frequency organic microshoots.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -567,7 +568,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ShootLength = 0.40f;
 
-	// Thickness and softness of individual organic shoot fibers.
+	// Continuous shoot-profile broadening/softness; inactive when ShootLength is zero.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float FiberThickness = 0.35f;
 
@@ -576,7 +577,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Weight = 0.40f;
 
-	// Surface adhesion resisting gravitational sliding and sagging.
+	// Continuous resistance to sag, rather than a threshold that switches gravity off.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Adhesion = 0.60f;
 
@@ -584,7 +585,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float GravityInfluence = 0.45f;
 
-	// Hanging or sagging extension down gravity direction where mass exceeds adhesion.
+	// Gravitational sag along the authored gravity direction, continuously resisted by adhesion.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Droop = 0.35f;
 };
