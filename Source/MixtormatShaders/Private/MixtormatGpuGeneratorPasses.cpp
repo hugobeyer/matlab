@@ -325,7 +325,7 @@ class FMixtormatMossCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 9);
+	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 10);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -343,6 +343,8 @@ public:
 		SHADER_PARAMETER(int32, HeightJump)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, HeightSeeds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthInteriorDistance)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, CushionInflation)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutCushionInflation)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutHeightSeeds)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthInteriorDistance)
 		SHADER_PARAMETER(uint32, GeneratorLayer)
@@ -3900,13 +3902,12 @@ namespace
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
 
-		// Combine BelowHeight + RunningHeight + LayerInputHeight
-		FRDGTextureRef EffectiveBelow = BelowHeight;
-		FRDGTextureRef EffectiveRunning = RunningHeight;
-		FRDGTextureRef LayerInput = LayerCtx.LayerInputHeight;
-
-		if (EffectiveBelow && EffectiveRunning)
+		// RunningHeight starts at zero and contains generator deltas only. The layer's
+		// texture height is added at final assembly, so it must also enter substrate analysis.
+		const auto CombineHeight = [&](FRDGTextureRef Base, FRDGTextureRef Delta) -> FRDGTextureRef
 		{
+			if (!Base) { return Delta; }
+			if (!Delta) { return Base; }
 			FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 				Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 				TEXT("Mixtormat.Substrate.Combined"));
@@ -3915,18 +3916,17 @@ namespace
 			TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
 			P->OutputSize = Size;
-			P->RunningHeight = EffectiveBelow;
-			P->ModuleHeight = EffectiveRunning;
+			P->RunningHeight = Base;
+			P->ModuleHeight = Delta;
 			P->OutScalar = GraphBuilder.CreateUAV(Combined);
 			ClearUnusedGraphResources(Shader, P);
 			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.SubstrateCombine"), Shader, P,
 				FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
 			return Combined;
-		}
-		if (EffectiveRunning) { return EffectiveRunning; }
-		if (EffectiveBelow) { return EffectiveBelow; }
-		if (LayerInput) { return LayerInput; }
-		return Ctx.OutputHeight[0];
+		};
+		FRDGTextureRef Substrate = CombineHeight(BelowHeight, LayerCtx.LayerInputHeight);
+		Substrate = CombineHeight(Substrate, RunningHeight);
+		return Substrate ? Substrate : Ctx.OutputHeight[0];
 	}
 
 	FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
@@ -3990,6 +3990,8 @@ namespace
 					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Ping")),
 					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Pong"))};
 				FRDGTextureRef InteriorDistance = MakeTexture(SimulationSize, PF_R32_FLOAT, TEXT("Mixtormat.Moss.InteriorDistance"));
+				FRDGTextureRef RawInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Raw"));
+				FRDGTextureRef SmoothInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Smooth"));
 				int32 CurrentHeightSeeds = 0;
 
 				// A separate cache retains chemicals across output remaps, previews and relief edits.
@@ -4123,6 +4125,7 @@ namespace
 					}
 					else if (Stage == 2)
 					{
+						P->CushionInflation = SmoothInflation;
 						P->GrowthState = States[Current];
 						P->SubstrateAnalysis = SubstrateAnalysis;
 						P->HabitatColony = HabitatColony;
@@ -4154,8 +4157,16 @@ namespace
 					else if (Stage == 8)
 					{
 						P->Chemical = Chemicals[Current];
+						P->GrowthState = States[Current];
 						P->HeightSeeds = HeightSeeds[CurrentHeightSeeds];
 						P->OutGrowthInteriorDistance = GraphBuilder.CreateUAV(InteriorDistance);
+						P->OutCushionInflation = GraphBuilder.CreateUAV(RawInflation);
+					}
+					else if (Stage == 9)
+					{
+						P->CushionInflation = RawInflation;
+						P->GrowthInteriorDistance = InteriorDistance;
+						P->OutCushionInflation = GraphBuilder.CreateUAV(SmoothInflation);
 					}
 
 					ClearUnusedGraphResources(Shader, P);
@@ -4204,6 +4215,7 @@ namespace
 					DispatchStage(7, 1u);
 					CurrentHeightSeeds = 1 - CurrentHeightSeeds;
 					DispatchStage(8);
+					DispatchStage(9);
 				}
 				DispatchStage(5);
 				DispatchStage(2);
@@ -4257,7 +4269,7 @@ namespace
 
 			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
 			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
-				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d7963654e6f6465ull) : 0;
+				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d7963654e6f6432ull) : 0;
 			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			bool bComplete = Hit.IsValid();
 			for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)

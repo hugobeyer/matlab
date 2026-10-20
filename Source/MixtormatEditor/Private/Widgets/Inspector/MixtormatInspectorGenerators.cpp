@@ -3104,14 +3104,14 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.02, 0.3, .005,
-			LOCTEXT("MossCushionSizeHint", "Coarse cushion diameter and boundary rounding width, independently of fine Clump Density.")),
+			LOCTEXT("MossCushionSizeHint", "Inflation diameter and smoothing scale inside the grown footprint. Broad interiors reach full height; narrow patches remain lower. Does not expand coverage or bridge gaps.")),
 		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .001,
-			LOCTEXT("MossCushionHeightHint", "Base native cushion height before biomass buildup, edge taper, coverage, optional normalization and Height Scale. It is not multiplied by cushion radius."))));
-				AddSliderRow(Panel, Slider(LOCTEXT("MossMatureHeight", "Mature Height"), &FMixtormatMoss::MatureHeight, 0, 1, .001,
-					LOCTEXT("MossMatureHeightHint", "Extra coarse-cushion height at full accumulated biomass, added beneath fine clumps. New growth receives little extra height. Zero disables the added bulk. Keep Normalize Height off to compare thickness across iteration counts.")));
+			LOCTEXT("MossCushionHeightHint", "Base height of the smoothed, footprint-shaped cushion before biomass buildup, coverage and output scaling. Fine clumps only add shallow surface detail."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossMatureHeight", "Mature Height"), &FMixtormatMoss::MatureHeight, 0, 1, .001,
+		LOCTEXT("MossMatureHeightHint", "Extra footprint-shaped bulk at full biomass. Smoothing does not give fresh growth mature thickness. Zero disables added bulk. Keep Normalize Height off to compare thickness across iteration counts.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossClumpDensity", "Clump Density"), &FMixtormatMoss::ClumpDensity, 0, 1024, .01,
-			LOCTEXT("MossClumpDensityHint", "Fine clump cells across one tile, independent of Cushion Size. Rounded to whole repeats for seamless tiling; zero disables fine clump detail.")),
+			LOCTEXT("MossClumpDensityHint", "Shallow surface-detail cells across one tile, not separate full-height cushions. Finer cells have less relief relative to cushion size. Rounded for tiling; zero disables clump detail.")),
 		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
 			Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
 				LOCTEXT("MossShootDensityHint", "Density of high-frequency organic microshoots. Inactive while Shoot Length is zero."))]));

@@ -6,9 +6,10 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
-// Nine permutations: 0 analysis, 1 initialize, 2 meso, 3 height/preview,
+// Ten permutations: 0 analysis, 1 initialize, 2 meso, 3 height/preview,
 // 4 simulation step, 5 growth resolve, 6 height-boundary seeds,
-// 7 wrapped jump flood, 8 interior distance. Stages 0/1/4/6/7/8 use SimulationSize;
+// 7 wrapped jump flood, 8 interior distance/inflation, 9 constrained smoothing.
+// Stages 0/1/4/6/7/8/9 use SimulationSize;
 // stages 2/3/5 use OutputSize. All cached grids are in destination space.
 #ifndef MOSS_STAGE
 #define MOSS_STAGE 0
@@ -89,6 +90,7 @@ Texture2D<float> GrowthAge;
 Texture2D<uint> GrowthIds;
 Texture2D<float2> HeightSeeds;
 Texture2D<float> GrowthInteriorDistance;
+Texture2D<float2> CushionInflation;
 
 SamplerState LinearWrapSampler;
 
@@ -117,10 +119,15 @@ RWTexture2D<uint> OutGrowthIds;
 // Height-only footprint analysis; never writes chemical, coverage, age or IDs.
 RWTexture2D<float2> OutHeightSeeds;
 RWTexture2D<float> OutGrowthInteriorDistance;
+RWTexture2D<float2> OutCushionInflation;
 
 static const float MOSS_ACTIVE_B = 0.1f;
 static const float MOSS_EMPTY_B = 0.001f;
 static const uint MOSS_CLUMP_SALT = 909u;
+// Secondary detail must not carve the footprint-driven bulk into separate cellular peaks.
+static const float MOSS_CLUMP_RELIEF_FRACTION = 0.15f;
+static const float MOSS_COARSE_RELIEF_FRACTION = 0.1f;
+static const float MOSS_SMOOTH_RADIUS_FRACTION = 0.5f;
 static const float2 MOSS_INOCULATION_GATE_RANGE = float2(0.05f, 0.35f);
 
 // --- Helper Functions ---
@@ -473,8 +480,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 
 // ============================================================================
-// STAGE 2: Meso Cushions, Mass & Gravity Droop Pass
-// Generates irregular overlapping rounded cushions with physical mass & sagging.
+// STAGE 2: Footprint Cushions, Mass & Gravity Droop Pass
+// The smoothed colony interior owns bulk; displaced noise/clumps add shallow detail.
 // ============================================================================
 #if MOSS_STAGE == 2
 
@@ -513,30 +520,28 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float SagAmount = GravityShear * Droop * TargetSize / AdhesionResistance;
 	float2 DisplacedUV = UV - GravDir * SagAmount;
 
-	// Cushion Size sets coarse form; Clump Density independently sets fine clumps
-	// across one tile. Density changes frequency, never domain-warp amplitude.
+	float2 Inflation = CushionInflation.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+	// Filtering relief must not grant mature bulk to freshly occupied pixels.
+	float Biomass = GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z;
+	float MatureProfile = min(Inflation.y, Inflation.x * Biomass);
+	float BulkHeight = CushionHeight * Inflation.x + MatureHeight * MatureProfile;
+
+	// Preserve gravity-driven secondary deformation without moving the growth footprint.
 	int CushionDim = max(1, int(round(1.0f / TargetSize)));
 	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * 0.25f;
 	float2 WarpedUV = DisplacedUV + Warp / float(CushionDim);
-	float CushionDome = MossCellDome(WarpedUV, CushionDim, 505u);
-	float Dome = CushionDome;
+	float CoarseDetail = TileNoise(WarpedUV, CushionDim, 505u) - 0.5f;
+	float Detail = MOSS_COARSE_RELIEF_FRACTION * CoarseDetail;
 	if (ClumpDensity > 0.0f)
 	{
 		int ClumpDim = max(1, int(round(ClumpDensity)));
 		float Clumps = MossCellDome(DisplacedUV, ClumpDim, MOSS_CLUMP_SALT);
 		float ClumpPresence = ClumpDensity / (1.0f + ClumpDensity);
-		Dome *= lerp(1.0f, Clumps, ClumpPresence);
+		// Geometric detail budget: finer cells cannot retain full cushion-height relief.
+		float RelativeSpacing = saturate(1.0f / (float(ClumpDim) * TargetSize));
+		Detail += MOSS_CLUMP_RELIEF_FRACTION * ClumpPresence * RelativeSpacing * (Clumps - 0.5f);
 	}
-
-	// Cushion Height is the nominal native amplitude, not an aspect ratio multiplied
-	// by a second UV-length scale. The dimensionless edge taper still rounds relief
-	// down to zero at the simulated footprint instead of extruding a hard mask wall.
-	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
-	float CushionRadius = 0.5f * TargetSize;
-	float EdgeProfile = 1.0f - exp(-InteriorDistance / CushionRadius);
-	// Established biomass fills the coarse cushion beneath the fine surface clumps.
-	float Biomass = GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z;
-	float MesoHeight = (Dome * CushionHeight + CushionDome * MatureHeight * Biomass) * EdgeProfile;
+	float MesoHeight = BulkHeight * (1.0f + Detail);
 
 	// Final assembly applies coverage once, to both meso and micro contributions.
 	OutMesoHeight[Pixel] = MesoHeight;
@@ -876,6 +881,50 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		InteriorDistance = any(Nearest < 0.0f) ? length(float2(1.0f, 1.0f)) : length(TorusDelta(UV, Nearest));
 	}
 	OutGrowthInteriorDistance[Pixel] = InteriorDistance;
+	float Radius = 0.5f * max(CushionSize, 1.0e-6f);
+	float T = saturate(InteriorDistance / Radius);
+	// Circular cross-section: zero at the boundary, horizontal at full cushion radius.
+	float Profile = sqrt(max(0.0f, T * (2.0f - T)));
+	float Biomass = GrowthState.Load(int3(Pixel, 0)).z;
+	OutCushionInflation[Pixel] = float2(Profile, Profile * Biomass);
 }
 
-#endif // MOSS_STAGE == 6 / 7 / 8
+#elif MOSS_STAGE == 9
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SimulationSize)) return;
+
+	float Distance = GrowthInteriorDistance.Load(int3(Pixel, 0));
+	if (Distance <= 0.0f)
+	{
+		OutCushionInflation[Pixel] = 0.0f;
+		return;
+	}
+
+	float2 UV = (float2(Pixel) + 0.5f) / float2(SimulationSize);
+	float Radius = 0.5f * max(CushionSize, 1.0e-6f);
+	// The furthest diagonal tap is within the local interior reach. This avoids a
+	// broad blur across empty gaps; UV-sized support is independent of output resolution.
+	float Support = MOSS_SMOOTH_RADIUS_FRACTION * min(Radius, Distance);
+	const float Kernel[5] = {1.0f, 4.0f, 6.0f, 4.0f, 1.0f};
+	float2 Smoothed = 0.0f;
+	float WeightSum = 0.0f;
+	[unroll]
+	for (int Y = -2; Y <= 2; ++Y)
+	{
+		[unroll]
+		for (int X = -2; X <= 2; ++X)
+		{
+			float TapWeight = Kernel[X + 2] * Kernel[Y + 2];
+			float2 TapUV = WrapUV(UV + float2(X, Y) * (Support * 0.5f));
+			Smoothed += CushionInflation.SampleLevel(LinearWrapSampler, TapUV, 0) * TapWeight;
+			WeightSum += TapWeight;
+		}
+	}
+	OutCushionInflation[Pixel] = Smoothed / WeightSum;
+}
+
+#endif // MOSS_STAGE == 6 / 7 / 8 / 9

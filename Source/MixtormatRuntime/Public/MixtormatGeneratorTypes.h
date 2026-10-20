@@ -552,20 +552,19 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	int32 Seed = 1337;
 
 	// --- Structure (Meso Cushions & Micro Shoots) ---
-	// Coarse cushion diameter and boundary taper width, independent of fine clump frequency.
+	// Footprint inflation diameter and smoothing scale, independent of fine clump frequency.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.000001", UIMin = "0.02", UIMax = "0.3", Delta = "0.005"))
 	float CushionSize = 0.12f;
 
-	// Nominal native height before boundary taper, coverage, normalization and Height Scale.
-	// Retuned from the old aspect ratio to retain its default native amplitude.
+	// Native footprint-driven bulk height before coverage, normalization and Height Scale.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
 	float CushionHeight = 0.036f;
 
-	// Extra native coarse-cushion height at full biomass, before edge taper and output scaling.
+	// Extra footprint-driven bulk at full biomass, before coverage and output scaling.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
 	float MatureHeight = 0.05f;
 
-	// Fine clump cells across one tile; rounded to whole repeats for tiling. Zero disables them.
+	// Shallow detail cells across one tile; rounded for tiling. Zero disables clump detail.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1024.0", Delta = "0.01"))
 	float ClumpDensity = 32.0f;
 
