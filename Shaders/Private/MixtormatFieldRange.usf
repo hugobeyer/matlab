@@ -3,10 +3,11 @@
 // Normalizes a field on the GPU. Mode 0 is the original measured-range remap onto
 // [OutLow, OutHigh]. Modes 1 and 2 are the generator signed-height contract:
 //
-// RANGE_STAGE 0 (Reduce):    per-group min/max in groupshared memory, then one atomic per group into
-//   a two-entry buffer. The buffer is cleared to 0 beforehand; entry 0 holds max(~ordered(h)), which
-//   is the minimum, and entry 1 holds max(ordered(h)), the maximum -- both reduce with InterlockedMax
-//   from a zero clear. Only run when a measured range is actually needed.
+// RANGE_STAGE 0 (Tiles): each group writes its own min/max pair after a groupshared tree reduction.
+// RANGE_STAGE 2 (Reduce): tree-reduce intermediate pairs into a smaller buffer, repeated until one
+//   pair remains. No global atomics or clears: every output pair has exactly one writer. Entry 0
+//   holds max(~ordered(h)), the minimum; entry 1 holds max(ordered(h)), the maximum. Zero is the
+//   neutral value for either entry; non-finite samples contribute neither. Only measure when needed.
 // RANGE_STAGE 1 (Resolve):   mode 0 remaps (h - min) / (max - min) onto [OutLow, OutHigh]; mode 1
 //   is zero-preserving max-absolute normalization (h / max(abs(min), abs(max))) clamped to -1..1;
 //   mode 2 is the raw signed field times OutputScale, unclamped. Mode 3 is the generator
@@ -20,6 +21,9 @@
 #include "/Engine/Public/Platform.ush"
 
 int2 OutputSize;
+int2 GroupOffset;
+uint TileGroupCountX;
+uint RangeInputCount;
 float OutLow;
 float OutHigh;
 uint NormalizeMode;
@@ -44,46 +48,86 @@ float OrderedToFloat(uint Ordered)
 	return asfloat((Ordered & 0x80000000u) != 0u ? (Ordered & 0x7FFFFFFFu) : ~Ordered);
 }
 
-#if RANGE_STAGE == 0
-groupshared uint GroupMinInv;
-groupshared uint GroupMax;
+#if RANGE_STAGE == 0 || RANGE_STAGE == 2
+groupshared uint2 GroupRanges[RANGE_GROUP_THREADS];
 
-[numthreads(8, 8, 1)]
-void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID, uint GroupIndex : SV_GroupIndex)
+void ReduceGroupRange(uint GroupIndex, uint2 LocalRange)
 {
-	if (GroupIndex == 0u)
-	{
-		GroupMinInv = 0u;
-		GroupMax = 0u;
-	}
+	GroupRanges[GroupIndex] = LocalRange;
 	GroupMemoryBarrierWithGroupSync();
-
-	const int2 Pixel = int2(DispatchThreadId.xy);
-	if (all(Pixel < OutputSize))
+	[unroll]
+	for (uint Stride = RANGE_GROUP_THREADS / 2u; Stride > 0u; Stride >>= 1u)
 	{
-		const float Value = SourceField.Load(int3(Pixel, 0));
-		if (!isnan(Value) && !isinf(Value))
+		if (GroupIndex < Stride)
 		{
-			const uint Ordered = FloatToOrdered(Value);
-			InterlockedMax(GroupMinInv, ~Ordered);
-			InterlockedMax(GroupMax, Ordered);
+			GroupRanges[GroupIndex] = max(GroupRanges[GroupIndex], GroupRanges[GroupIndex + Stride]);
+		}
+		GroupMemoryBarrierWithGroupSync();
+	}
+}
+#endif
+
+#if RANGE_STAGE == 0
+[numthreads(RANGE_GROUP_SIZE, RANGE_GROUP_SIZE, 1)]
+void MainCS(uint3 GroupId : SV_GroupID, uint3 GroupThreadId : SV_GroupThreadID,
+	uint GroupIndex : SV_GroupIndex)
+{
+	const uint2 Tile = GroupId.xy + uint2(GroupOffset);
+	const int2 StartPixel = int2(Tile * (RANGE_GROUP_SIZE * RANGE_PIXELS_PER_THREAD) + GroupThreadId.xy);
+	uint2 LocalRange = uint2(0u, 0u);
+	[unroll]
+	for (uint Y = 0u; Y < RANGE_PIXELS_PER_THREAD; ++Y)
+	{
+		[unroll]
+		for (uint X = 0u; X < RANGE_PIXELS_PER_THREAD; ++X)
+		{
+			const int2 Pixel = StartPixel + int2(X, Y) * RANGE_GROUP_SIZE;
+			if (all(Pixel < OutputSize))
+			{
+				const float Value = SourceField.Load(int3(Pixel, 0));
+				if (!isnan(Value) && !isinf(Value))
+				{
+					const uint Ordered = FloatToOrdered(Value);
+					LocalRange = max(LocalRange, uint2(~Ordered, Ordered));
+				}
+			}
 		}
 	}
-	GroupMemoryBarrierWithGroupSync();
-
+	ReduceGroupRange(GroupIndex, LocalRange);
 	if (GroupIndex == 0u)
 	{
-		InterlockedMax(OutRange[0], GroupMinInv);
-		InterlockedMax(OutRange[1], GroupMax);
+		const uint OutputIndex = (Tile.y * TileGroupCountX + Tile.x) * 2u;
+		OutRange[OutputIndex] = GroupRanges[0].x;
+		OutRange[OutputIndex + 1u] = GroupRanges[0].y;
+	}
+}
+#endif
+
+#if RANGE_STAGE == 2
+[numthreads(RANGE_GROUP_THREADS, 1, 1)]
+void MainCS(uint3 GroupId : SV_GroupID, uint GroupIndex : SV_GroupIndex)
+{
+	const uint OutputIndex = GroupId.x + uint(GroupOffset.x);
+	const uint InputIndex = OutputIndex * RANGE_GROUP_THREADS + GroupIndex;
+	uint2 LocalRange = uint2(0u, 0u);
+	if (InputIndex < RangeInputCount)
+	{
+		LocalRange = uint2(Range[InputIndex * 2u], Range[InputIndex * 2u + 1u]);
+	}
+	ReduceGroupRange(GroupIndex, LocalRange);
+	if (GroupIndex == 0u)
+	{
+		OutRange[OutputIndex * 2u] = GroupRanges[0].x;
+		OutRange[OutputIndex * 2u + 1u] = GroupRanges[0].y;
 	}
 }
 #endif
 
 #if RANGE_STAGE == 1
-[numthreads(8, 8, 1)]
+[numthreads(RANGE_GROUP_SIZE, RANGE_GROUP_SIZE, 1)]
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-	const int2 Pixel = int2(DispatchThreadId.xy);
+	const int2 Pixel = int2(DispatchThreadId.xy) + GroupOffset * RANGE_GROUP_SIZE;
 	if (any(Pixel >= OutputSize))
 	{
 		return;

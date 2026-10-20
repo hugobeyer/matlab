@@ -728,6 +728,18 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
+namespace FieldRange
+{
+	constexpr int32 GroupSize = 8;
+	constexpr int32 GroupThreads = GroupSize * GroupSize;
+	constexpr int32 PixelsPerThread = 4;
+	constexpr int32 TileSize = GroupSize * PixelsPerThread;
+	// Bound each image dispatch to roughly one megapixel, not a full 4K image. This is a work
+	// cap, not a time guarantee; actual timeout headroom still needs profiling on target hardware.
+	constexpr int32 MaxPixelsPerDispatch = 1024 * 1024;
+	constexpr int32 MaxTileGroupsPerDispatch = MaxPixelsPerDispatch / (TileSize * TileSize);
+}
+
 // Measured-range normalization for generator height fields. See MixtormatFieldRange.usf.
 class FMixtormatFieldRangeCS final : public FGlobalShader
 {
@@ -735,12 +747,15 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatFieldRangeCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatFieldRangeCS, FGlobalShader);
 
-	// 0 reduce min/max, 1 normalize.
-	class FStage : SHADER_PERMUTATION_INT("RANGE_STAGE", 2);
+	// 0 image tiles, 1 normalize, 2 intermediate range reduction.
+	class FStage : SHADER_PERMUTATION_INT("RANGE_STAGE", 3);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, GroupOffset)
+		SHADER_PARAMETER(uint32, TileGroupCountX)
+		SHADER_PARAMETER(uint32, RangeInputCount)
 		SHADER_PARAMETER(float, OutLow)
 		SHADER_PARAMETER(float, OutHigh)
 		SHADER_PARAMETER(uint32, NormalizeMode)
@@ -758,6 +773,15 @@ public:
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+		FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("RANGE_GROUP_SIZE"), FieldRange::GroupSize);
+		OutEnvironment.SetDefine(TEXT("RANGE_GROUP_THREADS"), FieldRange::GroupThreads);
+		OutEnvironment.SetDefine(TEXT("RANGE_PIXELS_PER_THREAD"), FieldRange::PixelsPerThread);
+	}
 };
 
 IMPLEMENT_GLOBAL_SHADER(
@@ -766,7 +790,79 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Already inside namespace MixtormatGpuCompositor (opened at the top of the file).
+// Every tile owns a pair; successive buffers reduce those pairs until only one remains.
+static FRDGBufferRef AddFieldRangePasses(FRDGBuilder& GraphBuilder, FRDGTextureRef Field, const FIntPoint Size)
+{
+	const FIntPoint TileGroups(FMath::DivideAndRoundUp(Size.X, FieldRange::TileSize),
+		FMath::DivideAndRoundUp(Size.Y, FieldRange::TileSize));
+	int32 RangeCount = TileGroups.X * TileGroups.Y;
+	FRDGBufferRef Ranges = GraphBuilder.CreateBuffer(
+		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), RangeCount * 2), TEXT("Mixtormat.FieldRange.Tiles"));
+	{
+		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
+		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		const int32 RowsPerDispatch = FMath::Max(FieldRange::MaxTileGroupsPerDispatch / TileGroups.X, 1);
+		for (int32 FirstRow = 0; FirstRow < TileGroups.Y; FirstRow += RowsPerDispatch)
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->OutputSize = Size;
+			P->GroupOffset = FIntPoint(0, FirstRow);
+			P->TileGroupCountX = TileGroups.X;
+			P->SourceField = Field;
+			P->OutRange = GraphBuilder.CreateUAV(Ranges);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Tiles.Y%d", FirstRow),
+				Shader, P, FIntVector(TileGroups.X, FMath::Min(RowsPerDispatch, TileGroups.Y - FirstRow), 1));
+		}
+	}
+	for (int32 Level = 0; RangeCount > 1; ++Level)
+	{
+		const int32 ReducedCount = FMath::DivideAndRoundUp(RangeCount, FieldRange::GroupThreads);
+		FRDGBufferRef Reduced = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), ReducedCount * 2), TEXT("Mixtormat.FieldRange.Reduced"));
+		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatFieldRangeCS::FStage>(2);
+		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		for (int32 FirstGroup = 0; FirstGroup < ReducedCount; FirstGroup += FieldRange::MaxTileGroupsPerDispatch)
+		{
+			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+			P->GroupOffset = FIntPoint(FirstGroup, 0);
+			P->RangeInputCount = RangeCount;
+			P->Range = GraphBuilder.CreateSRV(Ranges);
+			P->OutRange = GraphBuilder.CreateUAV(Reduced);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder,
+				RDG_EVENT_NAME("Mixtormat.FieldRange.Reduce.L%d.G%d", Level, FirstGroup), Shader, P,
+				FIntVector(FMath::Min(FieldRange::MaxTileGroupsPerDispatch, ReducedCount - FirstGroup), 1, 1));
+		}
+		Ranges = Reduced;
+		RangeCount = ReducedCount;
+	}
+	return Ranges;
+}
+
+static void AddFieldRangeResolvePasses(FRDGBuilder& GraphBuilder,
+	const FMixtormatFieldRangeCS::FParameters& Parameters, const TCHAR* Name)
+{
+	FMixtormatFieldRangeCS::FPermutationDomain Permutation;
+	Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
+	TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+	const FIntPoint Groups(FMath::DivideAndRoundUp(Parameters.OutputSize.X, FieldRange::GroupSize),
+		FMath::DivideAndRoundUp(Parameters.OutputSize.Y, FieldRange::GroupSize));
+	const int32 RowsPerDispatch = FMath::Max(
+		FieldRange::MaxPixelsPerDispatch / FieldRange::GroupThreads / Groups.X, 1);
+	for (int32 FirstRow = 0; FirstRow < Groups.Y; FirstRow += RowsPerDispatch)
+	{
+		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
+		*P = Parameters;
+		P->GroupOffset = FIntPoint(0, FirstRow);
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("%s.Y%d", Name, FirstRow), Shader, P,
+			FIntVector(Groups.X, FMath::Min(RowsPerDispatch, Groups.Y - FirstRow), 1));
+	}
+}
+
 // A height field remapped from its own measured min/max onto [OutLow, OutHigh], on the GPU (no
 // readback). Always a new texture: the source (a cached generator field, or the final height) is
 // never written by this.
@@ -778,26 +874,9 @@ FRDGTextureRef AddNormalizeFieldPasses(
 	const float OutHigh,
 	const TCHAR* Name)
 {
-	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
-		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.FieldRange"));
-	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
-	{
-		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
-		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
-		P->OutputSize = Size;
-		P->SourceField = Field;
-		P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Reduce"), Shader, P, Groups);
-	}
+	FRDGBufferRef RangeBuffer = AddFieldRangePasses(GraphBuilder, Field, Size);
 	FRDGTextureRef Normalized = GraphBuilder.CreateTexture(Field->Desc, Name);
 	{
-		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
-		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
 		P->OutputSize = Size;
 		P->OutLow = OutLow;
@@ -809,8 +888,7 @@ FRDGTextureRef AddNormalizeFieldPasses(
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Normalized);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FieldRange.Normalize"), Shader, P, Groups);
+		AddFieldRangeResolvePasses(GraphBuilder, *P, TEXT("Mixtormat.FieldRange.Normalize"));
 	}
 	return Normalized;
 }
@@ -826,30 +904,21 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 	FRDGTextureRef HeightGate,
 	const TCHAR* Name)
 {
-	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-	// The reduce is only needed for the centring path. Normalize off uses the raw signed field, so
-	// the min/max dispatch is skipped entirely.
-	FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
-		FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
-	AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
+	// Normalize off uses the raw signed field, so no min/max dispatch is needed.
+	FRDGBufferRef RangeBuffer = nullptr;
 	if (bNormalize)
 	{
-		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
-		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
-		P->OutputSize = Size;
-		P->SourceField = Field;
-		P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorSigned.Reduce"), Shader, P, Groups);
+		RangeBuffer = AddFieldRangePasses(GraphBuilder, Field, Size);
+	}
+	else
+	{
+		RangeBuffer = GraphBuilder.CreateBuffer(
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.GeneratorSignedRange"));
+		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
 	}
 	FRDGTextureRef Signed = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 		Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
 	{
-		FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
-		TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
 		P->OutputSize = Size;
 		P->OutLow = -1.0f;
@@ -864,8 +933,7 @@ FRDGTextureRef AddSignedGeneratorHeightPasses(
 		P->SourceField = Field;
 		P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 		P->OutField = GraphBuilder.CreateUAV(Signed);
-		ClearUnusedGraphResources(Shader, P);
-		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.GeneratorSigned.Resolve"), Shader, P, Groups);
+		AddFieldRangeResolvePasses(GraphBuilder, *P, TEXT("Mixtormat.GeneratorSigned.Resolve"));
 	}
 	return Signed;
 }
@@ -3386,27 +3454,11 @@ namespace
 
 		// Equalize the raw field to 0..1, then remap into Depth Min/Max. Cached masks stay raw.
 		// Shared Normalize Height and Scale still run later on this result.
-		FRDGBufferRef RangeBuffer = GraphBuilder.CreateBuffer(
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 2), TEXT("Mixtormat.Rock.DepthRange"));
-		AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(RangeBuffer), 0u);
-		{
-			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-			Permutation.Set<FMixtormatFieldRangeCS::FStage>(0);
-			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
-			P->OutputSize = Size;
-			P->SourceField = Outputs[0];
-			P->OutRange = GraphBuilder.CreateUAV(RangeBuffer);
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Rock.Depth.Reduce"), Shader, P, Groups);
-		}
+		FRDGBufferRef RangeBuffer = AddFieldRangePasses(GraphBuilder, Outputs[0], Size);
 		FRDGTextureRef Height = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.Rock.Depth"));
 		{
-			FMixtormatFieldRangeCS::FPermutationDomain Permutation;
-			Permutation.Set<FMixtormatFieldRangeCS::FStage>(1);
-			TShaderMapRef<FMixtormatFieldRangeCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 			auto* P = GraphBuilder.AllocParameters<FMixtormatFieldRangeCS::FParameters>();
 			P->OutputSize = Size;
 			P->OutLow = Rock.DepthMin;
@@ -3418,8 +3470,7 @@ namespace
 			P->SourceField = Outputs[0];
 			P->Range = GraphBuilder.CreateSRV(RangeBuffer);
 			P->OutField = GraphBuilder.CreateUAV(Height);
-			ClearUnusedGraphResources(Shader, P);
-			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Rock.Depth.Remap"), Shader, P, Groups);
+			AddFieldRangeResolvePasses(GraphBuilder, *P, TEXT("Mixtormat.Rock.Depth.Remap"));
 		}
 		if (Bundle) { Bundle->Height = Height; }
 		return Height;

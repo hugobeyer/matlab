@@ -255,6 +255,20 @@ Generator module node caches stay
 settings-only and are safe: they hold input-independent fields, while input
 combination is never node-cached.
 
+Final Auto Remap also uses the node cache for its dedicated, unrotated normalized
+height, keyed by the complete stack prefix and resolution. An unchanged-stack
+hit skips both range measurement and normalization; color-only stack edits may
+conservatively miss. Debug/overlay requests and disabled caching bypass reuse.
+The texture shares the node cache's existing byte budget and invalidation.
+
+`MixtormatFieldRange.usf` measures finite samples with per-tile shared-memory
+tree reductions, then reduces intermediate min/max buffers to one pair without
+atomics. Shared dispatch helpers cover final remapping, signed generator heights
+and Rock depth remapping. Image reduction and normalization dispatches are capped
+at roughly one megapixel each; this bounds work, not GPU time. Timeout headroom
+must still be profiled on target hardware. Automatic 0..1 remapping stays before
+final AO and normal generation.
+
 ## Published fields / preview / debug
 
 - `EMixtormatDebugPreviewMode`, `EMixtormatPreviewOutputKind`,

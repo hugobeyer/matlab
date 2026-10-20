@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "MixtormatGpuCompositorInternal.h"
+#include "Compositing/MixtormatComposeHash.h"
 
 #include "Async/Async.h"
 #include "GlobalShader.h"
@@ -1389,9 +1390,38 @@ namespace MixtormatGpuCompositor
 				if (Request.bFinalAutoRemapHeight && !Request.Layers.IsEmpty())
 				{
 					const int32 Final = Request.PublishedTargetIndex;
-					FRDGTextureRef Remapped = AddNormalizeFieldPasses(
-						GraphBuilder, Ctx.OutputHeight[Final], Request.Resolution, 0.0f, 1.0f,
-						TEXT("Mixtormat.FinalHeight.Remapped"));
+					// The full stack hash conservatively identifies the unremapped height. Keep the
+					// dedicated remap, not a mutable ping-pong slot; debug previews must not seed it.
+					const bool bCacheRemap = Request.NodeCache.IsValid()
+						&& Request.PrefixHashes.Num() == Request.Layers.Num()
+						&& Request.DebugSettings.Mode == EMixtormatDebugPreviewMode::None
+						&& !Request.DebugSettings.bMaskOverlay;
+					constexpr uint64 FinalHeightRemapCacheTag = 0x46696E616C483031ull;
+					const uint64 RemapKey = bCacheRemap
+						? MixtormatComposeHash::Combine(Request.PrefixHashes.Last(), FinalHeightRemapCacheTag) : 0;
+					const TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Hit = bCacheRemap
+						? Request.NodeCache->Find(RemapKey, Request.Resolution)
+						: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					FRDGTextureRef Remapped = nullptr;
+					if (Hit.IsValid())
+					{
+						Remapped = GraphBuilder.RegisterExternalTexture(Hit->Outputs[0], TEXT("Mixtormat.FinalHeight.Remapped"));
+					}
+					else
+					{
+						Remapped = AddNormalizeFieldPasses(
+							GraphBuilder, Ctx.OutputHeight[Final], Request.Resolution, 0.0f, 1.0f,
+							TEXT("Mixtormat.FinalHeight.Remapped"));
+						if (bCacheRemap)
+						{
+							TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Entry =
+								MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+							Entry->Key = RemapKey;
+							Entry->Resolution = Request.Resolution;
+							GraphBuilder.QueueTextureExtraction(Remapped, &Entry->Outputs[0]);
+							Ctx.PendingNodeEntries.Add(Entry);
+						}
+					}
 					AddCopyTexturePass(GraphBuilder, Remapped, Ctx.OutputHeight[Final]);
 				}
 
