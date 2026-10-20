@@ -377,6 +377,8 @@ public:
 		SHADER_PARAMETER(float, Coverage)
 		SHADER_PARAMETER(float, CushionSize)
 		SHADER_PARAMETER(float, CushionHeight)
+		SHADER_PARAMETER(float, BiomassAccumulation)
+		SHADER_PARAMETER(float, MatureHeight)
 		SHADER_PARAMETER(float, ClumpDensity)
 		SHADER_PARAMETER(float, ShootDensity)
 		SHADER_PARAMETER(float, ShootLength)
@@ -388,12 +390,12 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Chemical)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, GrowthState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, GrowthState)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ActivationHabitat)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthAge)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutChemical)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutGrowthState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutGrowthState)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutActivationHabitat)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HabitatColony)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MesoCushionHeight)
@@ -4024,8 +4026,8 @@ namespace
 					ActivationHabitat = MakeTexture(SimulationSize, PF_FloatRGBA, TEXT("Mixtormat.Moss.Activation"));
 					Chemicals[0] = MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Chemical.Ping"));
 					Chemicals[1] = MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Chemical.Pong"));
-					States[0] = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Ping"));
-					States[1] = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Pong"));
+					States[0] = MakeTexture(SimulationSize, PF_A32B32G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Ping"));
+					States[1] = MakeTexture(SimulationSize, PF_A32B32G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Pong"));
 				}
 				int32 Current = 0;
 				const FIntVector Pixels(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
@@ -4075,6 +4077,8 @@ namespace
 					P->Coverage = Settings.Coverage;
 					P->CushionSize = Settings.CushionSize;
 					P->CushionHeight = Settings.CushionHeight;
+					P->BiomassAccumulation = Settings.BiomassAccumulation;
+					P->MatureHeight = Settings.MatureHeight;
 					P->ClumpDensity = Settings.ClumpDensity;
 					P->ShootDensity = Settings.ShootDensity;
 					P->ShootLength = Settings.ShootLength;
@@ -4119,6 +4123,7 @@ namespace
 					}
 					else if (Stage == 2)
 					{
+						P->GrowthState = States[Current];
 						P->SubstrateAnalysis = SubstrateAnalysis;
 						P->HabitatColony = HabitatColony;
 						P->GrowthInteriorDistance = InteriorDistance;

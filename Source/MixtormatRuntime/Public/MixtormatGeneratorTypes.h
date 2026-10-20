@@ -410,7 +410,8 @@ enum class EMixtormatMossPreview : uint8
 	ChemicalB = 2 UMETA(DisplayName = "Chemical B"),
 	Activation = 3 UMETA(DisplayName = "Activation"),
 	Arrival = 4 UMETA(DisplayName = "Arrival"),
-	Boundary = 5 UMETA(DisplayName = "Boundary")
+	Boundary = 5 UMETA(DisplayName = "Boundary"),
+		Biomass = 6 UMETA(DisplayName = "Biomass")
 };
 
 // Substrate-aware biological moss colonization and cushion synthesis.
@@ -458,6 +459,10 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// Time step per growth iteration.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Simulation", meta = (ClampMin = "0.0", UIMin = "0.05", UIMax = "1.0", Delta = "0.01"))
 	float TimeStep = 1.0f;
+
+	// Buildup rate per simulation-time unit under sustained chemical B activity.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Simulation", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.1", Delta = "0.001"))
+	float BiomassAccumulation = 0.01f;
 
 	// --- Seeding ---
 	// These inputs initialize chemical B; they never clip grown output or replace scoped masks.
@@ -555,6 +560,10 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// Retuned from the old aspect ratio to retain its default native amplitude.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
 	float CushionHeight = 0.036f;
+
+	// Extra native coarse-cushion height at full biomass, before edge taper and output scaling.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
+	float MatureHeight = 0.05f;
 
 	// Fine clump cells across one tile; rounded to whole repeats for tiling. Zero disables them.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1024.0", Delta = "0.01"))

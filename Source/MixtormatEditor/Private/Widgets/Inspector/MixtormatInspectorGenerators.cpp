@@ -3097,13 +3097,18 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 	AddSliderRow(Panel, Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
 		LOCTEXT("MossCoverageHint", "Overall moss abundance and coverage threshold.")));
 
+	AddSliderRow(Panel, Slider(LOCTEXT("MossBiomassAccumulation", "Biomass Accumulation"), &FMixtormatMoss::BiomassAccumulation, 0, .1, .001,
+		LOCTEXT("MossBiomassAccumulationHint", "Buildup rate per simulation-time unit under sustained chemical B activity. More iterations build older colonies toward full biomass; new growth starts empty. Zero disables buildup without changing chemistry. Dormant biomass is retained.")));
+
 	// Structure
 	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.02, 0.3, .005,
 			LOCTEXT("MossCushionSizeHint", "Coarse cushion diameter and boundary rounding width, independently of fine Clump Density.")),
 		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .001,
-			LOCTEXT("MossCushionHeightHint", "Nominal native cushion height before edge taper, coverage, optional normalization and Height Scale. It is not multiplied by cushion radius."))));
+			LOCTEXT("MossCushionHeightHint", "Base native cushion height before biomass buildup, edge taper, coverage, optional normalization and Height Scale. It is not multiplied by cushion radius."))));
+				AddSliderRow(Panel, Slider(LOCTEXT("MossMatureHeight", "Mature Height"), &FMixtormatMoss::MatureHeight, 0, 1, .001,
+					LOCTEXT("MossMatureHeightHint", "Extra coarse-cushion height at full accumulated biomass, added beneath fine clumps. New growth receives little extra height. Zero disables the added bulk. Keep Normalize Height off to compare thickness across iteration counts.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossClumpDensity", "Clump Density"), &FMixtormatMoss::ClumpDensity, 0, 1024, .01,
 			LOCTEXT("MossClumpDensityHint", "Fine clump cells across one tile, independent of Cushion Size. Rounded to whole repeats for seamless tiling; zero disables fine clump detail.")),

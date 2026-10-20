@@ -53,6 +53,8 @@ float Kill;
 float DiffusionA;
 float DiffusionB;
 float TimeStep;
+// @param BiomassAccumulation
+float BiomassAccumulation;
 uint bConstrainGrowthToHabitat;
 float BoundaryThreshold;
 int HeightJump;
@@ -60,6 +62,8 @@ int HeightJump;
 // Structure Uniforms
 float CushionSize;
 float CushionHeight;
+// @param MatureHeight
+float MatureHeight;
 float ClumpDensity;
 float ShootDensity;
 float ShootLength;
@@ -77,7 +81,8 @@ Texture2D<float4> SubstrateAnalysis;
 Texture2D<float4> HabitatColony;
 Texture2D<float> MesoCushionHeight;
 Texture2D<float2> Chemical;
-Texture2D<float2> GrowthState;
+// Arrival iteration, approximate root, accumulated biomass, reserved.
+Texture2D<float4> GrowthState;
 Texture2D<float4> ActivationHabitat;
 Texture2D<float> GrowthCoverage;
 Texture2D<float> GrowthAge;
@@ -92,7 +97,7 @@ RWTexture2D<float4> OutSubstrateAnalysis;
 
 // Stage 1 / 4 Outputs (SimulationSize; distinct from the previous-step SRVs)
 RWTexture2D<float2> OutChemical;
-RWTexture2D<float2> OutGrowthState;
+RWTexture2D<float4> OutGrowthState;
 
 // Stage 1 Output (SimulationSize)
 RWTexture2D<float4> OutActivationHabitat;
@@ -266,7 +271,7 @@ FMossSimulationSample SampleMossSimulation(float2 DestinationUV)
 			float TapWeight = (X == 0 ? 1.0f - Blend.x : Blend.x)
 				* (Y == 0 ? 1.0f - Blend.y : Blend.y);
 			float2 TapChemical = Chemical.Load(int3(Tap, 0));
-			float2 TapState = GrowthState.Load(int3(Tap, 0));
+			float4 TapState = GrowthState.Load(int3(Tap, 0));
 			float TapMaturity = MossMaturity(TapState.x);
 			bool Covered = ResolveMossCoverage(TapChemical.y) > 0.0f;
 			Result.Concentrations += TapChemical * TapWeight;
@@ -460,8 +465,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutActivationHabitat[Pixel] = float4(Activation, Habitat, Boundary, 0.0f);
 	OutChemical[Pixel] = float2(1.0f, B);
 	// Arrival is absolute: initialization is iteration 0, not a moving age counter.
-	// RG32F preserves integer arrival/root values exactly through 2^24 (including 2048-square grids).
-	OutGrowthState[Pixel] = float2(Active ? 0.0f : -1.0f, float(Label));
+	// RGBA32F preserves integer arrival/root values exactly through 2^24; biomass starts empty.
+	OutGrowthState[Pixel] = float4(Active ? 0.0f : -1.0f, float(Label), 0.0f, 0.0f);
 }
 
 #endif // MOSS_STAGE == 1
@@ -513,7 +518,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	int CushionDim = max(1, int(round(1.0f / TargetSize)));
 	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * 0.25f;
 	float2 WarpedUV = DisplacedUV + Warp / float(CushionDim);
-	float Dome = MossCellDome(WarpedUV, CushionDim, 505u);
+	float CushionDome = MossCellDome(WarpedUV, CushionDim, 505u);
+	float Dome = CushionDome;
 	if (ClumpDensity > 0.0f)
 	{
 		int ClumpDim = max(1, int(round(ClumpDensity)));
@@ -528,7 +534,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
 	float CushionRadius = 0.5f * TargetSize;
 	float EdgeProfile = 1.0f - exp(-InteriorDistance / CushionRadius);
-	float MesoHeight = Dome * CushionHeight * EdgeProfile;
+	// Established biomass fills the coarse cushion beneath the fine surface clumps.
+	float Biomass = GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z;
+	float MesoHeight = (Dome * CushionHeight + CushionDome * MatureHeight * Biomass) * EdgeProfile;
 
 	// Final assembly applies coverage once, to both meso and micro contributions.
 	OutMesoHeight[Pixel] = MesoHeight;
@@ -575,6 +583,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		else if (Preview == 5u)
 		{
 			Value = ActivationHabitat.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).b;
+		}
+		else if (Preview == 6u)
+		{
+			Value = GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z;
 		}
 		OutGrowthHeight[Pixel] = saturate(Value);
 		return;
@@ -670,12 +682,12 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (MossGrowthBlocked(Pixel))
 	{
 		OutChemical[Pixel] = float2(1.0f, 0.0f);
-		OutGrowthState[Pixel] = float2(-1.0f, 0.0f);
+		OutGrowthState[Pixel] = float4(-1.0f, 0.0f, 0.0f, 0.0f);
 		return;
 	}
 
 	float2 Center = Chemical.Load(int3(Pixel, 0));
-	float2 PreviousState = GrowthState.Load(int3(Pixel, 0));
+	float4 PreviousState = GrowthState.Load(int3(Pixel, 0));
 	uint PreviousRoot = uint(max(PreviousState.y, 0.0f));
 	uint InheritedRoot = PreviousRoot;
 	float2 Laplacian = -Center;
@@ -697,7 +709,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		if (!Blocked)
 		{
 			NeighborChemical = Chemical.Load(int3(Neighbor, 0));
-			float2 NeighborState = GrowthState.Load(int3(Neighbor, 0));
+			float4 NeighborState = GrowthState.Load(int3(Neighbor, 0));
 			if (NeighborChemical.y >= MOSS_ACTIVE_B && NeighborState.y >= 1.0f)
 			{
 				uint NeighborRoot = uint(NeighborState.y);
@@ -729,8 +741,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Minimum inherited roots spread locally between active neighbors. Merging colony IDs
 	// are deterministic APPROXIMATIONS, not converged connected components/union-find.
 	// Retain past roots/arrival through inactive phases; only uncovered resolve IDs are invalid.
+	// Local history is not inherited from neighbors or normalized by the requested run length.
+	// Require sustained activity over the step; dormant biomass remains until growth returns.
+	float Activity = saturate((min(Center.y, Next.y) - MOSS_ACTIVE_B) / (1.0f - MOSS_ACTIVE_B));
+	float Buildup = 1.0f - exp(-BiomassAccumulation * TimeStep * Activity);
+	float Biomass = saturate(PreviousState.z + (1.0f - PreviousState.z) * Buildup);
 	OutChemical[Pixel] = Next;
-	OutGrowthState[Pixel] = float2(Arrival, float(Root));
+	OutGrowthState[Pixel] = float4(Arrival, float(Root), Biomass, 0.0f);
 }
 
 #endif // MOSS_STAGE == 4
