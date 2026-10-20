@@ -1048,7 +1048,9 @@ namespace MixtormatGpuCompositor
 	struct FMossRenderData
 	{
 		FMixtormatMoss Settings;
+		FTextureRHIRef SeedMask;
 		uint64 FieldKey = 0;
+		uint64 SimulationKey = 0;
 	};
 
 	struct FMyceliumRenderData

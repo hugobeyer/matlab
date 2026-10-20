@@ -1,17 +1,22 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
-// Substrate-Aware Biological Moss Generator: multiscale cavity detection,
-// horizon shelter occlusion, slope-gravity runoff & droop, meso cushions, and microshoots.
+// Substrate-aware Gray-Scott moss: multiscale habitat-driven inoculation,
+// periodic reaction-diffusion growth, secondary meso cushions, droop, and microshoots.
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 
+// Nine permutations: 0 analysis, 1 initialize, 2 meso, 3 height/preview,
+// 4 simulation step, 5 growth resolve, 6 height-boundary seeds,
+// 7 wrapped jump flood, 8 interior distance. Stages 0/1/4/6/7/8 use SimulationSize;
+// stages 2/3/5 use OutputSize. All cached grids are in destination space.
 #ifndef MOSS_STAGE
 #define MOSS_STAGE 0
 #endif
 
 // Common Uniforms
 int2 OutputSize;
+int2 SimulationSize;
 uint Seed;
 float HeightScale;
 uint bNormalizeHeight;
@@ -24,11 +29,33 @@ float SurfaceAnglePreference;
 float GravityAngle;
 float ExposureTolerance;
 
+// Inoculation inputs only; never used as a post-growth coverage gate.
+float SeedHabitatWeight;
+float SeedNoiseWeight;
+float SeedMaskWeight;
+float SeedThreshold;
+uint bNormalizeSeedWeights;
+float SeedMaskTiling;
+uint bSeedMaskInvert;
+uint HasSeedMask;
+Texture2D<float4> SeedMask;
+
 // Growth Uniforms
 int ColonyDensity;
 float GrowthSpread;
 float ColonyConnectivity;
 float Coverage;
+uint GrowthIterations;
+uint IterationIndex;
+uint Preview;
+float Feed;
+float Kill;
+float DiffusionA;
+float DiffusionB;
+float TimeStep;
+uint bConstrainGrowthToHabitat;
+float BoundaryThreshold;
+int HeightJump;
 
 // Structure Uniforms
 float CushionSize;
@@ -49,23 +76,46 @@ Texture2D<float> SubstrateHeight;
 Texture2D<float4> SubstrateAnalysis;
 Texture2D<float4> HabitatColony;
 Texture2D<float> MesoCushionHeight;
+Texture2D<float2> Chemical;
+Texture2D<float2> GrowthState;
+Texture2D<float4> ActivationHabitat;
+Texture2D<float> GrowthCoverage;
+Texture2D<float> GrowthAge;
+Texture2D<uint> GrowthIds;
+Texture2D<float2> HeightSeeds;
+Texture2D<float> GrowthInteriorDistance;
 
 SamplerState LinearWrapSampler;
 
-// Stage 0 Output
+// Stage 0 Output (SimulationSize)
 RWTexture2D<float4> OutSubstrateAnalysis;
 
-// Stage 1 Output
-RWTexture2D<float4> OutHabitatColony;
+// Stage 1 / 4 Outputs (SimulationSize; distinct from the previous-step SRVs)
+RWTexture2D<float2> OutChemical;
+RWTexture2D<float2> OutGrowthState;
 
-// Stage 2 Output
+// Stage 1 Output (SimulationSize)
+RWTexture2D<float4> OutActivationHabitat;
+
+// Stage 2 Output (OutputSize)
 RWTexture2D<float> OutMesoHeight;
 
-// Stage 3 Outputs
+// Stage 3 Output (OutputSize; previews never write the named growth fields)
 RWTexture2D<float> OutGrowthHeight;
+
+// Stage 5 Outputs (OutputSize)
+RWTexture2D<float4> OutHabitatColony;
 RWTexture2D<float> OutGrowthCoverage;
 RWTexture2D<float> OutGrowthAge;
 RWTexture2D<uint> OutGrowthIds;
+
+// Height-only footprint analysis; never writes chemical, coverage, age or IDs.
+RWTexture2D<float2> OutHeightSeeds;
+RWTexture2D<float> OutGrowthInteriorDistance;
+
+static const float MOSS_ACTIVE_B = 0.1f;
+static const float MOSS_EMPTY_B = 0.001f;
+static const float2 MOSS_INOCULATION_GATE_RANGE = float2(0.05f, 0.35f);
 
 // --- Helper Functions ---
 
@@ -135,6 +185,91 @@ float2 CurlDomainWarp(float2 uv, int period, uint salt)
 	return float2(nU - nD, -(nR - nL));
 }
 
+int2 WrapSimulationPixel(int2 Pixel)
+{
+	return (Pixel % SimulationSize + SimulationSize) % SimulationSize;
+}
+
+float MossCoverageThreshold()
+{
+	return lerp(0.22f, 0.06f, Coverage);
+}
+
+float ResolveMossCoverage(float B)
+{
+	if (Coverage <= 0.0f || B <= MOSS_EMPTY_B) return 0.0f;
+	float Low = MossCoverageThreshold();
+	return smoothstep(Low, Low + 0.10f, B);
+}
+
+#if MOSS_STAGE == 3 || MOSS_STAGE == 5
+
+float MossMaturity(float Arrival)
+{
+	return Arrival >= 0.0f
+		? saturate((float(GrowthIterations) - Arrival + 1.0f) / (float(GrowthIterations) + 1.0f))
+		: 0.0f;
+}
+
+struct FMossSimulationSample
+{
+	float2 Concentrations;
+	float Maturity;
+	float CoveredAge;
+	uint ColonyId;
+};
+
+FMossSimulationSample SampleMossSimulation(float2 DestinationUV)
+{
+	float2 Position = frac(DestinationUV) * float2(SimulationSize) - 0.5f;
+	int2 Anchor = int2(floor(Position));
+	float2 Blend = frac(Position);
+	FMossSimulationSample Result;
+	Result.Concentrations = 0.0f;
+	Result.Maturity = 0.0f;
+	Result.CoveredAge = 0.0f;
+	Result.ColonyId = MIXTORMAT_INVALID_REGION;
+	float BestContribution = 0.0f;
+
+	// Bilinear chemical/age sampling, but never interpolate discrete float-stored roots.
+	// Choose the strongest contributing B among the four genuinely covered, labelled taps;
+	// a nearest-only label lookup could select an uncovered texel on an upscaled fringe.
+	[unroll]
+	for (int Y = 0; Y < 2; ++Y)
+	{
+		[unroll]
+		for (int X = 0; X < 2; ++X)
+		{
+			int2 Tap = WrapSimulationPixel(Anchor + int2(X, Y));
+			float TapWeight = (X == 0 ? 1.0f - Blend.x : Blend.x)
+				* (Y == 0 ? 1.0f - Blend.y : Blend.y);
+			float2 TapChemical = Chemical.Load(int3(Tap, 0));
+			float2 TapState = GrowthState.Load(int3(Tap, 0));
+			float TapMaturity = MossMaturity(TapState.x);
+			bool Covered = ResolveMossCoverage(TapChemical.y) > 0.0f;
+			Result.Concentrations += TapChemical * TapWeight;
+			Result.Maturity += TapMaturity * TapWeight;
+			Result.CoveredAge += (Covered ? TapMaturity : 0.0f) * TapWeight;
+
+			if (Covered && TapState.x >= 0.0f && TapState.y >= 1.0f && TapWeight > 0.0f)
+			{
+				float Contribution = TapChemical.y * TapWeight;
+				uint Label = uint(TapState.y);
+				if (Contribution > BestContribution
+					|| (Contribution == BestContribution && Label < Result.ColonyId))
+				{
+					BestContribution = Contribution;
+					Result.ColonyId = Label;
+				}
+			}
+		}
+	}
+
+	return Result;
+}
+
+#endif // MOSS_STAGE == 3 || MOSS_STAGE == 5
+
 // ============================================================================
 // STAGE 0: Substrate Multiscale Analysis
 // Detects crevices, broad cavities, horizon occlusion / shelter, slope & gravity.
@@ -145,25 +280,24 @@ float2 CurlDomainWarp(float2 uv, int period, uint salt)
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	int2 Pixel = int2(DispatchThreadId.xy);
-	if (any(Pixel >= OutputSize)) return;
+	if (any(Pixel >= SimulationSize)) return;
 
-	float2 Texel = 1.0f / float2(OutputSize);
+	float2 Texel = 1.0f / float2(SimulationSize);
 	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
-	float2 UV = MixtormatGeneratorUV(DestinationUV);
 
 	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
 
-	// Center height
-	float hC = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	// The composed/placed substrate is already in destination space: no generator UV map.
+	float hC = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 
 	// Fine neighborhood taps for gradient & narrow crevice detection
-	float hR = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + float2(Texel.x, 0)), 0);
-	float hL = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV - float2(Texel.x, 0)), 0);
-	float hU = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + float2(0, Texel.y)), 0);
-	float hD = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV - float2(0, Texel.y)), 0);
+	float hR = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV + float2(Texel.x, 0)), 0);
+	float hL = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV - float2(Texel.x, 0)), 0);
+	float hU = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV + float2(0, Texel.y)), 0);
+	float hD = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV - float2(0, Texel.y)), 0);
 
-	// Surface gradient & slope
-	float2 Grad = float2(hR - hL, hU - hD) / (2.0f * max(Texel.x, 1.0e-5f));
+	// Surface gradient & slope, normalized independently for each destination UV axis.
+	float2 Grad = float2(hR - hL, hU - hD) / (2.0f * Texel);
 	float Slope = saturate(length(Grad) * 0.15f);
 
 	// Alignment with gravity vector
@@ -171,8 +305,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float GravityAlignment = (GradLen > 1.0e-4f) ? dot(Grad / GradLen, GravDir) : 0.0f;
 
 	// Scale 1: Fine crack / crevice (Laplacian filter)
+	// neighborSum - 4 * center is positive in a depression, not on a peak.
 	float Laplacian = (hR + hL + hU + hD - 4.0f * hC);
-	float FineCrevice = saturate(-Laplacian * 16.0f);
+	float FineCrevice = saturate(Laplacian * 16.0f);
 
 	// Scale 2: Medium depression (radius 4 texels, 8 directions)
 	// Scale 3: Broad concave basin & horizon occlusion (radius 10-18 texels)
@@ -193,19 +328,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float2 Dir = DirTable[d];
 
 		// Medium tap (4 texels)
-		float hMed = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 4.0f), 0);
+		float hMed = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV + Dir * Texel * 4.0f), 0);
 		SumMedium += hMed;
 
 		// Broad taps for horizon occlusion (8 & 16 texels)
-		float h8 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 8.0f), 0);
-		float h16 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 16.0f), 0);
+		float h8 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV + Dir * Texel * 8.0f), 0);
+		float h16 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV + Dir * Texel * 16.0f), 0);
 		SumBroad += h16;
 
-		// Directional horizon slope
-		float Slope8 = (h8 - hC) / (8.0f * Texel.x);
-		float Slope16 = (h16 - hC) / (16.0f * Texel.x);
+		// Only an elevated horizon shelters the center; a flat substrate has zero shelter.
+		float DirectionTexel = length(Dir * Texel);
+		float Slope8 = (h8 - hC) / (8.0f * DirectionTexel);
+		float Slope16 = (h16 - hC) / (16.0f * DirectionTexel);
 		float MaxHorizonSlope = max(Slope8, Slope16);
-		HorizonShelterSum += saturate(0.5f + MaxHorizonSlope * 0.05f);
+		HorizonShelterSum += saturate(MaxHorizonSlope * 0.05f);
 	}
 
 	float AvgMedium = SumMedium * (1.0f / 8.0f);
@@ -227,8 +363,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 
 // ============================================================================
-// STAGE 1: Habitat Suitability & Colony Establishment
-// Evaluates habitat suitability, colony inoculation, and colonizing fronts.
+// STAGE 1: Habitat Suitability & Reaction-Diffusion Initialization
+// Habitat gates correlated inoculation patches, never a distance-to-point silhouette.
 // ============================================================================
 #if MOSS_STAGE == 1
 
@@ -236,99 +372,74 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
 	int2 Pixel = int2(DispatchThreadId.xy);
-	if (any(Pixel >= OutputSize)) return;
+	if (any(Pixel >= SimulationSize)) return;
 
-	float2 Texel = 1.0f / float2(OutputSize);
-	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 DestinationUV = (float2(Pixel) + 0.5f) / float2(SimulationSize);
 	float2 UV = MixtormatGeneratorUV(DestinationUV);
+	float4 Sub = SubstrateAnalysis.Load(int3(Pixel, 0));
 
-	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
-	float Cavity = Sub.r;
-	float Shelter = Sub.g;
+	// These analysis channels contain small height differences, not occupancy masks.
+	// Smoothly remap cavity [0.0005, 0.025] and shelter [0.002, 0.12] to habitat cues;
+	// then gate FULL-strength inoculation rather than multiply B by tiny raw curvature.
+	// These fixed initialization heuristics are not a Houdini ramp equivalence.
+	float Cavity = smoothstep(0.0005f, 0.025f, Sub.r);
+	float Shelter = smoothstep(0.002f, 0.12f, Sub.g);
 	float Slope = Sub.b;
 	float GravAlign = Sub.a;
+	float Exposure = (1.0f - Shelter) * (1.0f - Cavity);
 
-	// Habitat Suitability Field
 	float Habitat = Moisture;
-	// Cavity & crevice attraction
-	Habitat += CavityAttraction * Cavity * (1.0f + Moisture);
-	// Shelter vs exposure
-	Habitat += OcclusionInfluence * (Shelter - 0.45f) * 1.5f;
-	// Exposure penalty on high exposed peaks
-	Habitat -= (1.0f - ExposureTolerance) * saturate(0.40f - Shelter) * 2.5f;
-	// Slope preference (penalize steep surfaces if horizontal preferred)
+	Habitat += CavityAttraction * Cavity * (0.5f + 0.5f * Moisture);
+	Habitat += OcclusionInfluence * Shelter * 0.75f;
+	Habitat -= (1.0f - ExposureTolerance) * Exposure * 0.5f;
 	Habitat -= SurfaceAnglePreference * pow(Slope, 1.4f) * 1.2f;
-	// Moisture runoff accumulation along gravity into cavities
-	Habitat += 0.25f * saturate(GravAlign) * Slope * Cavity;
+	Habitat += 0.25f * saturate(GravAlign) * Slope * Cavity * Moisture;
 	Habitat = saturate(Habitat);
 
-	// Periodic cellular colony seeds
-	int GridDim = clamp(ColonyDensity, 1, 32);
-	float2 GridUV = UV * float(GridDim);
-	int2 BaseCell = int2(floor(GridUV));
+	// Periodic fractal value noise makes sparse, correlated multi-pixel ignition patches.
+	// ColonyDensity changes patch frequency only; no point centers, radii, or Voronoi fronts.
+	int Period = max(ColonyDensity, 1);
+	float Inoculation = TileNoise(UV, Period, 101u) * 0.57f
+		+ TileNoise(UV, Period * 2, 202u) * 0.29f
+		+ TileNoise(UV, Period * 4, 303u) * 0.14f;
+	float Patches = smoothstep(0.58f, 0.68f, Inoculation);
+	float HabitatGate = smoothstep(MOSS_INOCULATION_GATE_RANGE.x, MOSS_INOCULATION_GATE_RANGE.y, Habitat);
+	// Moisture/exposure alone must not inoculate a flat, unsheltered substrate.
+	// Keep the structural seed gate separate from habitat so established colonies can leave it.
+	float SeedHabitat = saturate(CavityAttraction * Cavity + OcclusionInfluence * Shelter);
+	float SeedGate = smoothstep(MOSS_INOCULATION_GATE_RANGE.x, MOSS_INOCULATION_GATE_RANGE.y, SeedHabitat);
 
-	float MinDist = 1000.0f;
-	float NearestSeedSuitability = 0.0f;
-	uint BestColonyId = 0;
-	float BestAge = 0.0f;
+	// Boundary is a separate habitat-only no-flux domain, not the sparse activation mask.
+	// By default it is ALL one: mature colonies may grow beyond their inoculation habitat.
+	float Boundary = (bConstrainGrowthToHabitat != 0u && Habitat < BoundaryThreshold) ? 0.0f : 1.0f;
 
-	// Search 3x3 periodic neighborhood
-	for (int dy = -1; dy <= 1; ++dy)
+	// Defaults preserve cavity inoculation. Noise and external masks can seed independently
+	// of cavities, allowing noise-only/mask-only starts without clipping later expansion.
+	float HabitatSeed = Patches * SeedGate * HabitatGate;
+	float MaskSeed = 0.0f;
+	if (HasSeedMask != 0u)
 	{
-		for (int dx = -1; dx <= 1; ++dx)
-		{
-			int2 NeighborCell = BaseCell + int2(dx, dy);
-			int2 WrappedCell = (NeighborCell % GridDim + GridDim) % GridDim;
-
-			// Seed jitter position in unit cell
-			float2 Jitter = Random22(WrappedCell, 101u);
-			float2 SeedUV = (float2(WrappedCell) + Jitter) / float(GridDim);
-
-			// Sample habitat suitability at the seed location
-			float4 SeedSub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(SeedUV), 0);
-			float SeedCavity = SeedSub.r;
-			float SeedShelter = SeedSub.g;
-			float SeedSlope = SeedSub.b;
-
-			float SeedHabitat = saturate(Moisture + CavityAttraction * SeedCavity
-				+ OcclusionInfluence * (SeedShelter - 0.45f)
-				- SurfaceAnglePreference * pow(SeedSlope, 1.4f));
-
-			// If seed falls on an uninhabitable surface, colony fails to establish
-			if (SeedHabitat < 0.05f) continue;
-
-			// Torus distance from current UV to this colony seed
-			float2 Delta = TorusDelta(UV, SeedUV);
-			float Dist = length(Delta);
-
-			if (Dist < MinDist)
-			{
-				MinDist = Dist;
-				NearestSeedSuitability = SeedHabitat;
-				BestColonyId = Hash21(WrappedCell, 777u);
-			}
-		}
+		MaskSeed = SeedMask.SampleLevel(LinearWrapSampler, frac(UV * SeedMaskTiling), 0).r;
+		if (bSeedMaskInvert != 0u) MaskSeed = 1.0f - MaskSeed;
 	}
+	float MaskWeight = HasSeedMask != 0u ? SeedMaskWeight : 0.0f;
+	float SeedSignal = HabitatSeed * SeedHabitatWeight + Patches * SeedNoiseWeight + MaskSeed * MaskWeight;
+	if (bNormalizeSeedWeights != 0u)
+	{
+		float WeightSum = abs(SeedHabitatWeight) + abs(SeedNoiseWeight) + abs(MaskWeight);
+		SeedSignal = WeightSum > 1.0e-6f ? SeedSignal / WeightSum : 0.0f;
+	}
+	// Bound the chemical activation field, not the authored weights or threshold.
+	float Activation = saturate((SeedSignal - SeedThreshold) / max(1.0f - SeedThreshold, 1.0e-6f)) * Boundary;
+	float B = Random21(Pixel, 808u) * Activation;
+	bool Active = B >= MOSS_ACTIVE_B;
+	uint Label = Active ? uint(Pixel.y * SimulationSize.x + Pixel.x) + 1u : 0u;
 
-	// Colony growth radius modulated by seed suitability, local habitat, and GrowthSpread
-	float MaxReach = (0.35f / float(GridDim)) * (0.4f + 0.6f * GrowthSpread) * (0.3f + 0.7f * NearestSeedSuitability);
-	
-	// Modulate distance by local habitat suitability (crevices allow growth to spread further)
-	float CreviceHighway = 1.0f + ColonyConnectivity * Cavity * 1.5f;
-	float NormalizedDist = MinDist / max(MaxReach * CreviceHighway, 1.0e-5f);
-
-	// Organic front noise
-	float FrontNoise = TileNoise(UV * 4.0f, GridDim * 4, 303u) * 0.35f;
-	float EffectiveDist = NormalizedDist + FrontNoise * (1.0f - Habitat * 0.5f);
-
-	// Coverage threshold
-	float CoverageThreshold = 1.0f - (Coverage * 0.9f);
-	float ColonyMask = saturate((1.0f - EffectiveDist - CoverageThreshold * 0.5f) / max(0.25f, 1.0e-4f));
-
-	// Colony age/maturity (1 at colony center, 0 at fringe)
-	BestAge = saturate(1.0f - NormalizedDist);
-
-	OutHabitatColony[Pixel] = float4(ColonyMask, BestAge, float(BestColonyId & 0xFFFFu) / 65535.0f, Habitat);
+	OutActivationHabitat[Pixel] = float4(Activation, Habitat, Boundary, 0.0f);
+	OutChemical[Pixel] = float2(1.0f, B);
+	// Arrival is absolute: initialization is iteration 0, not a moving age counter.
+	// RG32F preserves integer arrival/root values exactly through 2^24 (including 2048-square grids).
+	OutGrowthState[Pixel] = float2(Active ? 0.0f : -1.0f, float(Label));
 }
 
 #endif // MOSS_STAGE == 1
@@ -350,11 +461,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
 	float2 UV = MixtormatGeneratorUV(DestinationUV);
 
-	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 	float Slope = Sub.b;
 	float GravAlign = Sub.a;
 
-	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 	float ColonyMask = Hab.r;
 	float ColonyAge = Hab.g;
 
@@ -376,8 +487,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 DisplacedUV = UV - GravDir * SagAmount;
 
 	// Meso cushion cellular scale
-	float TargetSize = clamp(CushionSize, 0.01f, 0.5f);
-	int CushionDim = clamp(int(round(1.0f / TargetSize)), 4, 128);
+	float TargetSize = max(CushionSize, 1.0e-6f);
+	int CushionDim = max(1, int(round(1.0f / TargetSize)));
 
 	// Curl domain warp for irregular organic cushion lobes
 	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * (0.25f * (1.0f + ClumpDensity));
@@ -395,7 +506,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			int2 Cell = BaseCell + int2(cx, cy);
 			int2 WrappedCell = (Cell % CushionDim + CushionDim) % CushionDim;
 
-			float2 Jitter = Random22(WrappedCell, 505u) * (0.6f + 0.3f * ClumpDensity);
+			// Wrap cell-local jitter rather than capping authored clump strength.
+			float2 Jitter = frac(Random22(WrappedCell, 505u) * (0.6f + 0.3f * ClumpDensity));
 			float2 CenterUV = (float2(WrappedCell) + Jitter) / float(CushionDim);
 
 			float2 Delta = TorusDelta(WarpedUV, CenterUV);
@@ -408,9 +520,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float NormalizedRadius = MinCushionDist * float(CushionDim);
 	float Dome = sqrt(max(0.0f, 1.0f - NormalizedRadius * NormalizedRadius));
 
-	// Meso height modulated by cushion height and colony coverage mask
-	float MesoHeight = Dome * CushionHeight * ColonyMask;
+	// Thickness follows the actual grown footprint, not a full-height mask extrusion.
+	// This rounded envelope is <= distance to the growth edge (UV tile units), so a
+	// thin reaction band cannot acquire the height of an unrelated large cushion cell.
+	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
+	float CushionRadius = 0.5f * TargetSize;
+	float RoundedThickness = CushionRadius * (1.0f - exp(-InteriorDistance / CushionRadius));
+	float MesoHeight = Dome * CushionHeight * RoundedThickness;
 
+	// Final assembly applies coverage once, to both meso and micro contributions.
 	OutMesoHeight[Pixel] = MesoHeight;
 }
 
@@ -419,7 +537,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 // ============================================================================
 // STAGE 3: Micro Shoots & Final Assembly Pass
-// Generates dense organic leaf shoots, fibers, and writes final outputs.
+// Secondary leaf shoots/fibers over the resolved growth fields; writes height ONLY.
 // ============================================================================
 #if MOSS_STAGE == 3
 
@@ -433,25 +551,47 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
 	float2 UV = MixtormatGeneratorUV(DestinationUV);
 
-	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
-	float ColonyMask = Hab.r;
-	float ColonyAge = Hab.g;
-	float EncodedId = Hab.b;
+	// Raw simulation previews precede coverage rejection and bypass all relief/height scaling.
+	// With zero growth iterations Chemical still contains the initialization (including B).
+	if (Preview != 0u)
+	{
+		float Value = 0.0f;
+		if (Preview == 1u || Preview == 2u)
+		{
+			float2 AB = Chemical.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+			Value = Preview == 1u ? AB.x : AB.y;
+		}
+		else if (Preview == 3u)
+		{
+			Value = ActivationHabitat.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).r;
+		}
+		else if (Preview == 4u)
+		{
+			FMossSimulationSample Simulation = SampleMossSimulation(DestinationUV);
+			Value = Simulation.Maturity;
+		}
+		else if (Preview == 5u)
+		{
+			Value = ActivationHabitat.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).b;
+		}
+		OutGrowthHeight[Pixel] = saturate(Value);
+		return;
+	}
 
-	float Meso = MesoCushionHeight.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float ColonyMask = GrowthCoverage.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+	float ColonyAge = GrowthAge.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+	float Meso = MesoCushionHeight.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 
-	if (ColonyMask <= 0.001f)
+	if (ColonyMask <= MOSS_EMPTY_B)
 	{
 		OutGrowthHeight[Pixel] = 0.0f;
-		OutGrowthCoverage[Pixel] = 0.0f;
-		OutGrowthAge[Pixel] = 0.0f;
-		OutGrowthIds[Pixel] = 0u;
 		return;
 	}
 
 	// Micro Shoot Organic Relief
 	// High-frequency cellular shoots with pointed tip profile
-	int ShootDim = clamp(int(round(OutputSize.x * 0.12f * (0.5f + 0.5f * ShootDensity))), 32, 512);
+	int ShootDim = max(1, int(round(OutputSize.x * 0.12f * (0.5f + 0.5f * ShootDensity))));
 	float2 ShootUV = UV * float(ShootDim);
 	int2 ShootCell = int2(floor(ShootUV));
 
@@ -473,33 +613,241 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float ShootNormDist = MinShootDist * float(ShootDim);
 	// Pointed organic shoot tip with fiber thickness control
-	float TipSharpness = lerp(2.0f, 0.6f, FiberThickness);
+	float TipSharpness = max(1.0e-6f, lerp(2.0f, 0.6f, FiberThickness));
 	float ShootProfile = pow(saturate(1.0f - ShootNormDist), TipSharpness);
 
 	// Fine fibrous texture
 	float Fibers = TileNoise(UV * 16.0f, ShootDim, 707u) * 0.25f;
 
-	// Micro relief contribution, scaling with shoot length and fading at young colony margins
-	float MicroRelief = (ShootProfile * 0.8f + Fibers * 0.2f) * ShootLength * 0.35f * saturate(ColonyAge * 2.0f);
+	// Shoots use their own lateral scale and fade to zero at the grown boundary.
+	// A fixed full-range shoot amplitude would recreate the same walls as the old cushions.
+	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
+	float ShootHeightBudget = min(InteriorDistance, 1.0f / float(ShootDim));
+	float MicroRelief = (ShootProfile * 0.8f + Fibers * 0.2f) * ShootLength * ShootHeightBudget * saturate(ColonyAge * 2.0f);
+	// Habitat affects secondary shoot vigor only, never clips the simulated colony silhouette.
+	MicroRelief *= lerp(0.75f, 1.0f, Hab.a);
 
 	// Combined Signed Height: 0 is neutral, moss rises above substrate
 	float CombinedHeight = (Meso + MicroRelief) * ColonyMask;
 
-	if (bNormalizeHeight != 0)
-	{
-		// Zero-preserving normalization
-		CombinedHeight = saturate(CombinedHeight);
-	}
-
-	// Apply final artist HeightScale
-	float FinalHeight = CombinedHeight * HeightScale;
-
-	uint DiscreteColonyId = uint(round(EncodedId * 65535.0f)) + 1u;
-
-	OutGrowthHeight[Pixel] = FinalHeight;
-	OutGrowthCoverage[Pixel] = ColonyMask;
-	OutGrowthAge[Pixel] = ColonyAge;
-	OutGrowthIds[Pixel] = DiscreteColonyId;
+	// Shared signed-height assembly owns optional normalization and Height Scale.
+	// Keep native relief unbounded here so authored amplitudes reach that stage intact.
+	OutGrowthHeight[Pixel] = CombinedHeight;
 }
 
 #endif // MOSS_STAGE == 3
+
+
+// ============================================================================
+// STAGE 4: One Gray-Scott Step (SimulationSize)
+// Read previous Chemical/GrowthState SRVs, write distinct ping-pong UAVs ONLY.
+// ============================================================================
+#if MOSS_STAGE == 4
+
+bool MossGrowthBlocked(int2 Pixel)
+{
+	return bConstrainGrowthToHabitat != 0u
+		&& ActivationHabitat.Load(int3(Pixel, 0)).b < 0.5f;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SimulationSize)) return;
+
+	if (MossGrowthBlocked(Pixel))
+	{
+		OutChemical[Pixel] = float2(1.0f, 0.0f);
+		OutGrowthState[Pixel] = float2(-1.0f, 0.0f);
+		return;
+	}
+
+	float2 Center = Chemical.Load(int3(Pixel, 0));
+	float2 PreviousState = GrowthState.Load(int3(Pixel, 0));
+	uint PreviousRoot = uint(max(PreviousState.y, 0.0f));
+	uint InheritedRoot = PreviousRoot;
+	float2 Laplacian = -Center;
+	const int2 Offsets[8] = {
+		int2(1, 0), int2(-1, 0), int2(0, 1), int2(0, -1),
+		int2(1, 1), int2(-1, 1), int2(1, -1), int2(-1, -1)
+	};
+
+	// Nine-tap lattice stencil: -center + 0.2 * axial + 0.05 * diagonal, zero sum.
+	// Diffusion coefficients are in SIMULATION-TEXEL squared / simulation-time units,
+	// not UV units: no inverse-UV-texel-squared factor. TimeStep is explicit.
+	[unroll]
+	for (int Tap = 0; Tap < 8; ++Tap)
+	{
+		int2 Neighbor = WrapSimulationPixel(Pixel + Offsets[Tap]);
+		bool Blocked = MossGrowthBlocked(Neighbor);
+		// Optional no-flux boundary: blocked neighbors contribute the center chemical.
+		float2 NeighborChemical = Center;
+		if (!Blocked)
+		{
+			NeighborChemical = Chemical.Load(int3(Neighbor, 0));
+			float2 NeighborState = GrowthState.Load(int3(Neighbor, 0));
+			if (NeighborChemical.y >= MOSS_ACTIVE_B && NeighborState.y >= 1.0f)
+			{
+				uint NeighborRoot = uint(NeighborState.y);
+				InheritedRoot = InheritedRoot == 0u ? NeighborRoot : min(InheritedRoot, NeighborRoot);
+			}
+		}
+		Laplacian += NeighborChemical * (Tap < 4 ? 0.2f : 0.05f);
+	}
+
+	float Spread = lerp(0.5f, 1.5f, GrowthSpread);
+	float DA = DiffusionA * Spread;
+	float DB = DiffusionB * Spread * lerp(0.75f, 1.25f, ColonyConnectivity);
+	float Reaction = Center.x * Center.y * Center.y;
+	// Feed/Kill are spatially CONSTANT; habitat affects initialization/domain only.
+	float2 Delta = float2(
+		DA * Laplacian.x - Reaction + Feed * (1.0f - Center.x),
+		DB * Laplacian.y + Reaction - (Kill + Feed) * Center.y);
+	float2 Next = saturate(Center + TimeStep * Delta);
+
+	float Arrival = PreviousState.x;
+	uint Root = PreviousRoot;
+	if (Next.y >= MOSS_ACTIVE_B)
+	{
+		// IterationIndex is zero-based; step 0 produces absolute arrival iteration 1.
+		// Never overwrite an existing arrival, even if the chemical later recedes.
+		if (Arrival < 0.0f) Arrival = float(IterationIndex + 1u);
+		Root = InheritedRoot != 0u ? InheritedRoot : uint(Pixel.y * SimulationSize.x + Pixel.x) + 1u;
+	}
+	// Minimum inherited roots spread locally between active neighbors. Merging colony IDs
+	// are deterministic APPROXIMATIONS, not converged connected components/union-find.
+	// Retain past roots/arrival through inactive phases; only uncovered resolve IDs are invalid.
+	OutChemical[Pixel] = Next;
+	OutGrowthState[Pixel] = float2(Arrival, float(Root));
+}
+
+#endif // MOSS_STAGE == 4
+
+
+// ============================================================================
+// STAGE 5: Resolve Growth Fields (OutputSize)
+// Final B alone determines coverage; no late cavity/habitat clipping or preview writes.
+// ============================================================================
+#if MOSS_STAGE == 5
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 DestinationUV = (float2(Pixel) + 0.5f) / float2(OutputSize);
+	FMossSimulationSample Simulation = SampleMossSimulation(DestinationUV);
+	float ResolvedCoverage = ResolveMossCoverage(Simulation.Concentrations.y);
+	float ResolvedAge = ResolvedCoverage > 0.0f ? Simulation.CoveredAge : 0.0f;
+	uint ResolvedId = ResolvedCoverage > 0.0f ? Simulation.ColonyId : MIXTORMAT_INVALID_REGION;
+	float Habitat = ActivationHabitat.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).g;
+
+	OutHabitatColony[Pixel] = float4(ResolvedCoverage, ResolvedAge, 0.0f, Habitat);
+	OutGrowthCoverage[Pixel] = ResolvedCoverage;
+	OutGrowthAge[Pixel] = ResolvedAge;
+	OutGrowthIds[Pixel] = ResolvedId;
+}
+
+#endif // MOSS_STAGE == 5
+
+
+// ============================================================================
+// STAGES 6-8: Height Footprint Distance (SimulationSize)
+// A separate wrapped distance solve rounds native relief without changing growth.
+// ============================================================================
+#if MOSS_STAGE == 6
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SimulationSize)) return;
+
+	float2 UV = (float2(Pixel) + 0.5f) / float2(SimulationSize);
+	float B = Chemical.Load(int3(Pixel, 0)).y;
+	if (ResolveMossCoverage(B) <= 0.0f)
+	{
+		OutHeightSeeds[Pixel] = UV;
+		return;
+	}
+
+	float2 BestSeed = float2(-1.0f, -1.0f);
+	float BestDistanceSquared = 1.0e20f;
+	[unroll]
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = -1; X <= 1; ++X)
+		{
+			if (X == 0 && Y == 0) continue;
+			int2 Offset = int2(X, Y);
+			float NeighborB = Chemical.Load(int3(WrapSimulationPixel(Pixel + Offset), 0)).y;
+			if (ResolveMossCoverage(NeighborB) > 0.0f) continue;
+			// Interpolate the same B threshold used by the published growth field.
+			float T = saturate((B - MossCoverageThreshold()) / max(B - NeighborB, 1.0e-8f));
+			float2 Delta = float2(Offset) * T / float2(SimulationSize);
+			float DistanceSquared = dot(Delta, Delta);
+			if (DistanceSquared < BestDistanceSquared)
+			{
+				BestDistanceSquared = DistanceSquared;
+				BestSeed = frac(UV + Delta);
+			}
+		}
+	}
+	OutHeightSeeds[Pixel] = BestSeed;
+}
+
+#elif MOSS_STAGE == 7
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SimulationSize)) return;
+
+	float2 UV = (float2(Pixel) + 0.5f) / float2(SimulationSize);
+	float2 BestSeed = float2(-1.0f, -1.0f);
+	float BestDistanceSquared = 1.0e20f;
+	[unroll]
+	for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll]
+		for (int X = -1; X <= 1; ++X)
+		{
+			int2 Tap = WrapSimulationPixel(Pixel + int2(X, Y) * HeightJump);
+			float2 Candidate = HeightSeeds.Load(int3(Tap, 0));
+			if (any(Candidate < 0.0f)) continue;
+			float2 Delta = TorusDelta(UV, Candidate);
+			float DistanceSquared = dot(Delta, Delta);
+			if (DistanceSquared < BestDistanceSquared)
+			{
+				BestDistanceSquared = DistanceSquared;
+				BestSeed = Candidate;
+			}
+		}
+	}
+	OutHeightSeeds[Pixel] = BestSeed;
+}
+
+#elif MOSS_STAGE == 8
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= SimulationSize)) return;
+
+	float InteriorDistance = 0.0f;
+	if (ResolveMossCoverage(Chemical.Load(int3(Pixel, 0)).y) > 0.0f)
+	{
+		float2 UV = (float2(Pixel) + 0.5f) / float2(SimulationSize);
+		float2 Nearest = HeightSeeds.Load(int3(Pixel, 0));
+		// A completely covered torus has no boundary; one tile diagonal is its bounded reach.
+		InteriorDistance = any(Nearest < 0.0f) ? length(float2(1.0f, 1.0f)) : length(TorusDelta(UV, Nearest));
+	}
+	OutGrowthInteriorDistance[Pixel] = InteriorDistance;
+}
+
+#endif // MOSS_STAGE == 6 / 7 / 8

@@ -309,34 +309,100 @@ namespace MixtormatGpuCompositor
 		FMixtormatMoss& S = Out.Settings;
 		const FMixtormatMoss Defaults;
 		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
-		S.CavityAttraction = FMath::Clamp(Finite(S.CavityAttraction, Defaults.CavityAttraction), 0.0f, 1.0f);
-		S.OcclusionInfluence = FMath::Clamp(Finite(S.OcclusionInfluence, Defaults.OcclusionInfluence), 0.0f, 1.0f);
-		S.Moisture = FMath::Clamp(Finite(S.Moisture, Defaults.Moisture), 0.0f, 1.0f);
-		S.SurfaceAnglePreference = FMath::Clamp(Finite(S.SurfaceAnglePreference, Defaults.SurfaceAnglePreference), 0.0f, 1.0f);
+		// Artist maxima belong to the UI. Retain finite values and valid simulation dimensions/rates.
+		S.GrowthIterations = FMath::Max(S.GrowthIterations, 0);
+		S.SimulationResolution = FMath::Max(S.SimulationResolution, 1);
+		S.Feed = FMath::Max(Finite(S.Feed, Defaults.Feed), 0.0f);
+		S.Kill = FMath::Max(Finite(S.Kill, Defaults.Kill), 0.0f);
+		S.DiffusionA = FMath::Max(Finite(S.DiffusionA, Defaults.DiffusionA), 0.0f);
+		S.DiffusionB = FMath::Max(Finite(S.DiffusionB, Defaults.DiffusionB), 0.0f);
+		S.TimeStep = FMath::Max(Finite(S.TimeStep, Defaults.TimeStep), 0.0f);
+		S.BoundaryThreshold = Finite(S.BoundaryThreshold, Defaults.BoundaryThreshold);
+		S.Preview = static_cast<EMixtormatMossPreview>(FMath::Clamp(static_cast<int32>(S.Preview),
+			static_cast<int32>(EMixtormatMossPreview::Moss), static_cast<int32>(EMixtormatMossPreview::Boundary)));
+		S.CavityAttraction = Finite(S.CavityAttraction, Defaults.CavityAttraction);
+		S.OcclusionInfluence = Finite(S.OcclusionInfluence, Defaults.OcclusionInfluence);
+		S.Moisture = Finite(S.Moisture, Defaults.Moisture);
+		S.SurfaceAnglePreference = Finite(S.SurfaceAnglePreference, Defaults.SurfaceAnglePreference);
 		S.GravityAngle = Finite(S.GravityAngle, Defaults.GravityAngle);
-		S.ExposureTolerance = FMath::Clamp(Finite(S.ExposureTolerance, Defaults.ExposureTolerance), 0.0f, 1.0f);
-		S.ColonyDensity = FMath::Clamp(S.ColonyDensity, 1, 64);
-		S.GrowthSpread = FMath::Clamp(Finite(S.GrowthSpread, Defaults.GrowthSpread), 0.0f, 1.0f);
-		S.ColonyConnectivity = FMath::Clamp(Finite(S.ColonyConnectivity, Defaults.ColonyConnectivity), 0.0f, 1.0f);
-		S.Coverage = FMath::Clamp(Finite(S.Coverage, Defaults.Coverage), 0.0f, 1.0f);
-		S.CushionSize = FMath::Clamp(Finite(S.CushionSize, Defaults.CushionSize), 0.005f, 1.0f);
-		S.CushionHeight = FMath::Clamp(Finite(S.CushionHeight, Defaults.CushionHeight), 0.0f, 2.0f);
-		S.ClumpDensity = FMath::Clamp(Finite(S.ClumpDensity, Defaults.ClumpDensity), 0.0f, 1.0f);
-		S.ShootDensity = FMath::Clamp(Finite(S.ShootDensity, Defaults.ShootDensity), 0.0f, 1.0f);
-		S.ShootLength = FMath::Clamp(Finite(S.ShootLength, Defaults.ShootLength), 0.0f, 1.0f);
-		S.FiberThickness = FMath::Clamp(Finite(S.FiberThickness, Defaults.FiberThickness), 0.0f, 1.0f);
-		S.Weight = FMath::Clamp(Finite(S.Weight, Defaults.Weight), 0.0f, 1.0f);
-		S.Adhesion = FMath::Clamp(Finite(S.Adhesion, Defaults.Adhesion), 0.0f, 1.0f);
-		S.GravityInfluence = FMath::Clamp(Finite(S.GravityInfluence, Defaults.GravityInfluence), 0.0f, 1.0f);
-		S.Droop = FMath::Clamp(Finite(S.Droop, Defaults.Droop), 0.0f, 1.0f);
+		S.ExposureTolerance = Finite(S.ExposureTolerance, Defaults.ExposureTolerance);
+		S.ColonyDensity = FMath::Max(S.ColonyDensity, 1);
+		S.GrowthSpread = Finite(S.GrowthSpread, Defaults.GrowthSpread);
+		S.ColonyConnectivity = Finite(S.ColonyConnectivity, Defaults.ColonyConnectivity);
+		S.Coverage = Finite(S.Coverage, Defaults.Coverage);
+		S.CushionSize = Finite(S.CushionSize, Defaults.CushionSize);
+		S.CushionHeight = Finite(S.CushionHeight, Defaults.CushionHeight);
+		S.ClumpDensity = Finite(S.ClumpDensity, Defaults.ClumpDensity);
+		S.ShootDensity = Finite(S.ShootDensity, Defaults.ShootDensity);
+		S.ShootLength = Finite(S.ShootLength, Defaults.ShootLength);
+		S.FiberThickness = Finite(S.FiberThickness, Defaults.FiberThickness);
+		S.Weight = Finite(S.Weight, Defaults.Weight);
+		S.Adhesion = Finite(S.Adhesion, Defaults.Adhesion);
+		S.GravityInfluence = Finite(S.GravityInfluence, Defaults.GravityInfluence);
+		S.Droop = Finite(S.Droop, Defaults.Droop);
+		S.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
+		S.SeedHabitatWeight = Finite(S.SeedHabitatWeight, Defaults.SeedHabitatWeight);
+		S.SeedNoiseWeight = Finite(S.SeedNoiseWeight, Defaults.SeedNoiseWeight);
+		S.SeedMaskWeight = Finite(S.SeedMaskWeight, Defaults.SeedMaskWeight);
+		S.SeedThreshold = Finite(S.SeedThreshold, Defaults.SeedThreshold);
+		S.SeedMaskTiling = FMath::Max(S.SeedMaskTiling, 1);
+		// Same direct-texture/asset precedence as Peeling. Resolve before hashing so the
+		// live asset texture, streaming state and reimports participate in both cache keys.
+		UTexture2D* SeedTexture = S.SeedMaskTexture.LoadSynchronous();
+		if (!SeedTexture)
+		{
+			if (const UMixtormatMask* Mask = S.SeedMask.LoadSynchronous())
+			{
+				SeedTexture = Mask->MaskTexture.Get();
+			}
+		}
+		if (SeedTexture)
+		{
+			Out.SeedMask = GetTextureRHI(SeedTexture);
+		}
 		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
-		ChildData.Generator.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
+		ChildData.Generator.HeightScale = S.HeightScale;
 		if (bCacheLayers)
 		{
-			MixtormatComposeHash::FHasher Hasher;
-			Hasher.SkipTopLevel = {TEXT("HeightScale"), TEXT("bNormalizeHeight")};
-			Hasher.Struct(FMixtormatMoss::StaticStruct(), &S);
-			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x4d6f737347723032ull) | 1ull;
+			MixtormatComposeHash::FHasher DependencyHasher;
+			DependencyHasher.Value(static_cast<uint64>(LayerIndex));
+			DependencyHasher.Value(static_cast<uint64>(SourceChildIndex));
+			// Full reflection includes referenced assets affecting the composed substrate below.
+			for (int32 BelowLayerIndex = 0; BelowLayerIndex < LayerIndex; ++BelowLayerIndex)
+			{
+				DependencyHasher.Struct(FMixtormatLayer::StaticStruct(), &EffectiveLayers[BelowLayerIndex]);
+			}
+			// Include current-layer maps and placement, but never this Moss child's own settings.
+			DependencyHasher.SkipTopLevel = {GET_MEMBER_NAME_CHECKED(FMixtormatLayer, Children)};
+			DependencyHasher.Struct(FMixtormatLayer::StaticStruct(), &Layer);
+			// SkipTopLevel persists across Struct calls; children must be reflected in full.
+			DependencyHasher.SkipTopLevel.Reset();
+			for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
+			{
+				if (ChildIndex != SourceChildIndex)
+				{
+					// Conservative: scope effects can occur anywhere; later children may cause cache misses.
+					DependencyHasher.Struct(FMixtormatLayerChild::StaticStruct(), &Layer.Children[ChildIndex]);
+				}
+			}
+			const uint64 DependencyKey = DependencyHasher.Get();
+
+			MixtormatComposeHash::FHasher FieldHasher;
+			// Include output controls in the final-field identity; chemistry has a separate key.
+			FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
+			Out.FieldKey = MixtormatComposeHash::Combine(
+				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737347723037ull) | 1ull;
+
+			MixtormatComposeHash::FHasher SimulationHasher;
+			SimulationHasher.SkipTopLevel = {
+				TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionSize"),
+				TEXT("CushionHeight"), TEXT("ClumpDensity"), TEXT("ShootDensity"), TEXT("ShootLength"),
+				TEXT("FiberThickness"), TEXT("Weight"), TEXT("Adhesion"), TEXT("GravityInfluence"),
+				TEXT("Droop"), TEXT("Preview")};
+			SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
+			// Placement is already covered by the current-layer dependency hash.
+			Out.SimulationKey = MixtormatComposeHash::Combine(
+				MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737353696d34ull) | 1ull;
 		}
 		break;
 	}

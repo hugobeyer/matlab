@@ -325,10 +325,26 @@ class FMixtormatMossCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 4);
+	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 9);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(FIntPoint, SimulationSize)
+		SHADER_PARAMETER(uint32, GrowthIterations)
+		SHADER_PARAMETER(uint32, IterationIndex)
+		SHADER_PARAMETER(uint32, Preview)
+		SHADER_PARAMETER(float, Feed)
+		SHADER_PARAMETER(float, Kill)
+		SHADER_PARAMETER(float, DiffusionA)
+		SHADER_PARAMETER(float, DiffusionB)
+		SHADER_PARAMETER(float, TimeStep)
+		SHADER_PARAMETER(uint32, bConstrainGrowthToHabitat)
+		SHADER_PARAMETER(float, BoundaryThreshold)
+		SHADER_PARAMETER(int32, HeightJump)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, HeightSeeds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthInteriorDistance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutHeightSeeds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthInteriorDistance)
 		SHADER_PARAMETER(uint32, GeneratorLayer)
 		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
 		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
@@ -346,6 +362,15 @@ public:
 		SHADER_PARAMETER(float, SurfaceAnglePreference)
 		SHADER_PARAMETER(float, GravityAngle)
 		SHADER_PARAMETER(float, ExposureTolerance)
+		SHADER_PARAMETER(float, SeedHabitatWeight)
+		SHADER_PARAMETER(float, SeedNoiseWeight)
+		SHADER_PARAMETER(float, SeedMaskWeight)
+		SHADER_PARAMETER(float, SeedThreshold)
+		SHADER_PARAMETER(uint32, bNormalizeSeedWeights)
+		SHADER_PARAMETER(float, SeedMaskTiling)
+		SHADER_PARAMETER(uint32, bSeedMaskInvert)
+		SHADER_PARAMETER(uint32, HasSeedMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedMask)
 		SHADER_PARAMETER(int32, ColonyDensity)
 		SHADER_PARAMETER(float, GrowthSpread)
 		SHADER_PARAMETER(float, ColonyConnectivity)
@@ -362,6 +387,14 @@ public:
 		SHADER_PARAMETER(float, Droop)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Chemical)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, GrowthState)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ActivationHabitat)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthAge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutChemical)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutGrowthState)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutActivationHabitat)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HabitatColony)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MesoCushionHeight)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -3913,11 +3946,9 @@ namespace
 		}
 		else
 		{
-			FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
-
 			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
 			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
-				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f73734e6f6465ull) : 0;
+				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f737352444731ull) : 0;
 			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			bool bComplete = Hit.IsValid();
 			for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)
@@ -3940,19 +3971,67 @@ namespace
 						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[Index]);
 				}
 
-				FRDGTextureRef SubstrateAnalysis = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-					Size, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-					TEXT("Mixtormat.Moss.SubstrateAnalysis"));
-				FRDGTextureRef HabitatColony = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-					Size, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-					TEXT("Mixtormat.Moss.HabitatColony"));
-				FRDGTextureRef MesoHeight = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
-					Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
-					TEXT("Mixtormat.Moss.MesoHeight"));
+				RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.Total.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex);
+				// The lattice is independent of export pixel count; retain the tile's aspect ratio.
+				const int32 Longest = FMath::Max(Size.X, Size.Y);
+				const FIntPoint SimulationSize(
+					FMath::Max(1, FMath::RoundToInt(double(Settings.SimulationResolution) * Size.X / Longest)),
+					FMath::Max(1, FMath::RoundToInt(double(Settings.SimulationResolution) * Size.Y / Longest)));
+				const auto MakeTexture = [&](FIntPoint Extent, EPixelFormat Format, const TCHAR* Name)
+				{
+					return GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Extent, Format,
+						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+				};
+				FRDGTextureRef HabitatColony = MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.Moss.HabitatColony"));
+				FRDGTextureRef MesoHeight = MakeTexture(Size, PF_R32_FLOAT, TEXT("Mixtormat.Moss.MesoHeight"));
+				FRDGTextureRef HeightSeeds[2] = {
+					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Ping")),
+					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Pong"))};
+				FRDGTextureRef InteriorDistance = MakeTexture(SimulationSize, PF_R32_FLOAT, TEXT("Mixtormat.Moss.InteriorDistance"));
+				int32 CurrentHeightSeeds = 0;
 
+				// A separate cache retains chemicals across output remaps, previews and relief edits.
+				// Resolution here is the request resolution, as required by the shared node-cache LRU.
+				constexpr int32 SimulationSlotCount = 4;
+				const uint64 SimulationKey = Cache && !Child.PreUV ? Data.SimulationKey : 0;
+				const auto SimulationHit = SimulationKey ? Cache->Find(SimulationKey, Size)
+					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+				bool bSimulationComplete = SimulationHit.IsValid();
+				for (int32 Index = 0; bSimulationComplete && Index < SimulationSlotCount; ++Index)
+				{
+					bSimulationComplete = SimulationHit->Outputs[Index].IsValid();
+				}
+				FRDGTextureRef Chemicals[2] = {};
+				FRDGTextureRef States[2] = {};
+				FRDGTextureRef SubstrateAnalysis = nullptr;
+				FRDGTextureRef ActivationHabitat = nullptr;
+				FRDGTextureRef Substrate = nullptr;
+				FRDGTextureRef SeedMaskTexture = nullptr;
+				if (bSimulationComplete)
+				{
+					Chemicals[0] = GraphBuilder.RegisterExternalTexture(SimulationHit->Outputs[0], TEXT("Mixtormat.Moss.Chemical.Cached"));
+					States[0] = GraphBuilder.RegisterExternalTexture(SimulationHit->Outputs[1], TEXT("Mixtormat.Moss.ArrivalRoots.Cached"));
+					SubstrateAnalysis = GraphBuilder.RegisterExternalTexture(SimulationHit->Outputs[2], TEXT("Mixtormat.Moss.SubstrateAnalysis.Cached"));
+					ActivationHabitat = GraphBuilder.RegisterExternalTexture(SimulationHit->Outputs[3], TEXT("Mixtormat.Moss.Activation.Cached"));
+				}
+				else
+				{
+					Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
+					SeedMaskTexture = Data.SeedMask.IsValid()
+						? RegisterTexture(GraphBuilder, Ctx.RegisteredTextures, Data.SeedMask, TEXT("Mixtormat.Moss.SeedMask"))
+						: Ctx.EmptyDriverSignal;
+					SubstrateAnalysis = MakeTexture(SimulationSize, PF_FloatRGBA, TEXT("Mixtormat.Moss.SubstrateAnalysis"));
+					ActivationHabitat = MakeTexture(SimulationSize, PF_FloatRGBA, TEXT("Mixtormat.Moss.Activation"));
+					Chemicals[0] = MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Chemical.Ping"));
+					Chemicals[1] = MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Chemical.Pong"));
+					States[0] = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Ping"));
+					States[1] = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.ArrivalRoots.Pong"));
+				}
+				int32 Current = 0;
 				const FIntVector Pixels(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+				const FIntVector SimulationPixels(FMath::DivideAndRoundUp(SimulationSize.X, 8), FMath::DivideAndRoundUp(SimulationSize.Y, 8), 1);
 
-				const auto DispatchStage = [&](int32 Stage)
+				const auto DispatchStage = [&](int32 Stage, uint32 Iteration = 0u)
 				{
 					FMixtormatMossCS::FPermutationDomain Permutation;
 					Permutation.Set<FMixtormatMossCS::FStage>(Stage);
@@ -3960,15 +4039,36 @@ namespace
 					auto* P = GraphBuilder.AllocParameters<FMixtormatMossCS::FParameters>();
 					FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 					P->OutputSize = Size;
+					P->SimulationSize = SimulationSize;
+					P->GrowthIterations = static_cast<uint32>(Settings.GrowthIterations);
+					P->IterationIndex = Iteration;
+					P->Preview = static_cast<uint32>(Settings.Preview);
+					P->Feed = Settings.Feed;
+					P->Kill = Settings.Kill;
+					P->DiffusionA = Settings.DiffusionA;
+					P->DiffusionB = Settings.DiffusionB;
+					P->TimeStep = Settings.TimeStep;
+					P->bConstrainGrowthToHabitat = Settings.bConstrainGrowthToHabitat ? 1u : 0u;
+					P->BoundaryThreshold = Settings.BoundaryThreshold;
+					P->HeightJump = static_cast<int32>(Iteration);
 					P->Seed = static_cast<uint32>(Settings.Seed);
-					P->HeightScale = Settings.HeightScale;
-					P->bNormalizeHeight = Settings.bNormalizeHeight ? 1u : 0u;
+					// Shared signed-height assembly owns normalization/scale, once, downstream.
+					P->HeightScale = 1.0f;
+					P->bNormalizeHeight = 0u;
 					P->CavityAttraction = Settings.CavityAttraction;
 					P->OcclusionInfluence = Settings.OcclusionInfluence;
 					P->Moisture = Settings.Moisture;
 					P->SurfaceAnglePreference = Settings.SurfaceAnglePreference;
 					P->GravityAngle = Settings.GravityAngle;
 					P->ExposureTolerance = Settings.ExposureTolerance;
+					P->SeedHabitatWeight = Settings.SeedHabitatWeight;
+					P->SeedNoiseWeight = Settings.SeedNoiseWeight;
+					P->SeedMaskWeight = Data.SeedMask.IsValid() ? Settings.SeedMaskWeight : 0.0f;
+					P->SeedThreshold = Settings.SeedThreshold;
+					P->bNormalizeSeedWeights = Settings.bNormalizeSeedWeights ? 1u : 0u;
+					P->SeedMaskTiling = static_cast<float>(Settings.SeedMaskTiling);
+					P->bSeedMaskInvert = Settings.bSeedMaskInvert ? 1u : 0u;
+					P->HasSeedMask = Data.SeedMask.IsValid() ? 1u : 0u;
 					P->ColonyDensity = Settings.ColonyDensity;
 					P->GrowthSpread = Settings.GrowthSpread;
 					P->ColonyConnectivity = Settings.ColonyConnectivity;
@@ -3984,32 +4084,124 @@ namespace
 					P->GravityInfluence = Settings.GravityInfluence;
 					P->Droop = Settings.Droop;
 
-					P->SubstrateHeight = Substrate;
-					P->SubstrateAnalysis = SubstrateAnalysis;
-					P->HabitatColony = HabitatColony;
-					P->MesoCushionHeight = MesoHeight;
 					P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-
-					P->OutSubstrateAnalysis = GraphBuilder.CreateUAV(SubstrateAnalysis);
-					P->OutHabitatColony = GraphBuilder.CreateUAV(HabitatColony);
-					P->OutMesoHeight = GraphBuilder.CreateUAV(MesoHeight);
-					P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
-					P->OutGrowthCoverage = GraphBuilder.CreateUAV(Outputs[1]);
-					P->OutGrowthAge = GraphBuilder.CreateUAV(Outputs[2]);
-					P->OutGrowthIds = GraphBuilder.CreateUAV(Outputs[3]);
+					// Bind only this stage's reads/writes. No texture aliases an SRV and UAV in a step.
+					if (Stage == 0)
+					{
+						P->SubstrateHeight = Substrate;
+						P->OutSubstrateAnalysis = GraphBuilder.CreateUAV(SubstrateAnalysis);
+					}
+					else if (Stage == 1)
+					{
+						P->SubstrateAnalysis = SubstrateAnalysis;
+						P->SeedMask = SeedMaskTexture;
+						P->OutActivationHabitat = GraphBuilder.CreateUAV(ActivationHabitat);
+						P->OutChemical = GraphBuilder.CreateUAV(Chemicals[Current]);
+						P->OutGrowthState = GraphBuilder.CreateUAV(States[Current]);
+					}
+					else if (Stage == 4)
+					{
+						P->Chemical = Chemicals[Current];
+						P->GrowthState = States[Current];
+						P->ActivationHabitat = ActivationHabitat;
+						P->OutChemical = GraphBuilder.CreateUAV(Chemicals[1 - Current]);
+						P->OutGrowthState = GraphBuilder.CreateUAV(States[1 - Current]);
+					}
+					else if (Stage == 5)
+					{
+						P->Chemical = Chemicals[Current];
+						P->GrowthState = States[Current];
+						P->ActivationHabitat = ActivationHabitat;
+						P->OutHabitatColony = GraphBuilder.CreateUAV(HabitatColony);
+						P->OutGrowthCoverage = GraphBuilder.CreateUAV(Outputs[1]);
+						P->OutGrowthAge = GraphBuilder.CreateUAV(Outputs[2]);
+						P->OutGrowthIds = GraphBuilder.CreateUAV(Outputs[3]);
+					}
+					else if (Stage == 2)
+					{
+						P->SubstrateAnalysis = SubstrateAnalysis;
+						P->HabitatColony = HabitatColony;
+						P->GrowthInteriorDistance = InteriorDistance;
+						P->OutMesoHeight = GraphBuilder.CreateUAV(MesoHeight);
+					}
+					else if (Stage == 3)
+					{
+						P->Chemical = Chemicals[Current];
+						P->GrowthState = States[Current];
+						P->ActivationHabitat = ActivationHabitat;
+						P->GrowthCoverage = Outputs[1];
+						P->GrowthAge = Outputs[2];
+						P->HabitatColony = HabitatColony;
+						P->MesoCushionHeight = MesoHeight;
+						P->GrowthInteriorDistance = InteriorDistance;
+						P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
+					}
+					else if (Stage == 6)
+					{
+						P->Chemical = Chemicals[Current];
+						P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[CurrentHeightSeeds]);
+					}
+					else if (Stage == 7)
+					{
+						P->HeightSeeds = HeightSeeds[CurrentHeightSeeds];
+						P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[1 - CurrentHeightSeeds]);
+					}
+					else if (Stage == 8)
+					{
+						P->Chemical = Chemicals[Current];
+						P->HeightSeeds = HeightSeeds[CurrentHeightSeeds];
+						P->OutGrowthInteriorDistance = GraphBuilder.CreateUAV(InteriorDistance);
+					}
 
 					ClearUnusedGraphResources(Shader, P);
-					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Moss.S%d.L%d.C%d",
-						Stage, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P, Pixels);
+					const bool bSimulationStage = Stage == 0 || Stage == 1 || Stage == 4 || Stage >= 6;
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Moss.S%d.I%u.L%d.C%d",
+						Stage, Iteration, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P,
+						bSimulationStage ? SimulationPixels : Pixels);
 				};
 
-				// Stage 0: Substrate Multiscale Analysis
-				DispatchStage(0);
-				// Stage 1: Habitat Suitability & Colony Inoculation
-				DispatchStage(1);
-				// Stage 2: Meso Cushions, Mass & Gravity Droop
+				if (!bSimulationComplete)
+				{
+					RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.Simulation.%dx%d.%dSteps",
+						SimulationSize.X, SimulationSize.Y, Settings.GrowthIterations);
+					DispatchStage(0);
+					DispatchStage(1);
+					for (int32 Iteration = 0; Iteration < Settings.GrowthIterations; ++Iteration)
+					{
+						DispatchStage(4, static_cast<uint32>(Iteration));
+						Current = 1 - Current;
+					}
+					if (SimulationKey)
+					{
+						auto Entry = MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+						Entry->Key = SimulationKey;
+						Entry->Resolution = Size;
+						const FRDGTextureRef Fields[SimulationSlotCount] = {
+							Chemicals[Current], States[Current], SubstrateAnalysis, ActivationHabitat};
+						for (int32 Index = 0; Index < SimulationSlotCount; ++Index)
+						{
+							GraphBuilder.QueueTextureExtraction(Fields[Index], &Entry->Outputs[Index]);
+						}
+						Ctx.PendingNodeEntries.Add(Entry);
+					}
+				}
+				{
+					RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.HeightFootprint");
+					DispatchStage(6);
+					const int32 InitialJump = static_cast<int32>(FMath::RoundUpToPowerOfTwo(
+						static_cast<uint32>(FMath::Max(SimulationSize.X, SimulationSize.Y)))) / 2;
+					for (int32 Jump = InitialJump; Jump > 0; Jump /= 2)
+					{
+						DispatchStage(7, static_cast<uint32>(Jump));
+						CurrentHeightSeeds = 1 - CurrentHeightSeeds;
+					}
+					// One extra unit-step refinement reduces jump-flood error at narrow colony necks.
+					DispatchStage(7, 1u);
+					CurrentHeightSeeds = 1 - CurrentHeightSeeds;
+					DispatchStage(8);
+				}
+				DispatchStage(5);
 				DispatchStage(2);
-				// Stage 3: Micro Shoots & Final Assembly
 				DispatchStage(3);
 
 				if (Key)
@@ -5320,9 +5512,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: nullptr;
+			const bool bRawMossPreview = Child.Generator.Type == EMixtormatGeneratorType::Moss
+				&& Child.Generator.Moss.Settings.Preview != EMixtormatMossPreview::Moss;
 			Module.Height = AddSignedGeneratorHeightPasses(
 				Ctx.GraphBuilder, Module.Height, Size,
-				Child.Generator.bNormalizeHeight, Child.Generator.HeightScale,
+				bRawMossPreview ? false : Child.Generator.bNormalizeHeight,
+				bRawMossPreview ? 1.0f : Child.Generator.HeightScale,
 				Child.Generator.HeightBias,
 				Child.Generator.Type == EMixtormatGeneratorType::Noise,
 				NoiseHeightGate,
