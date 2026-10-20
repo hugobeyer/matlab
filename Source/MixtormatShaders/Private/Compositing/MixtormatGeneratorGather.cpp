@@ -303,27 +303,69 @@ namespace MixtormatGpuCompositor
 		break;
 	}
 	case EMixtormatGeneratorType::Moss:
-	case EMixtormatGeneratorType::Mycelium:
 	{
-		FOrganicGrowthRenderData& Out = ChildData.Generator.OrganicGrowth;
-		Out.Settings = Generator.OrganicGrowth;
-		FMixtormatOrganicGrowth& S = Out.Settings;
-		const FMixtormatOrganicGrowth Defaults;
+		FMossRenderData& Out = ChildData.Generator.Moss;
+		Out.Settings = Generator.Moss;
+		FMixtormatMoss& S = Out.Settings;
+		const FMixtormatMoss Defaults;
 		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
-		S.PatchCount = FMath::Clamp(S.PatchCount, 1, 64);
+		S.CavityAttraction = FMath::Clamp(Finite(S.CavityAttraction, Defaults.CavityAttraction), 0.0f, 1.0f);
+		S.OcclusionInfluence = FMath::Clamp(Finite(S.OcclusionInfluence, Defaults.OcclusionInfluence), 0.0f, 1.0f);
+		S.Moisture = FMath::Clamp(Finite(S.Moisture, Defaults.Moisture), 0.0f, 1.0f);
+		S.SurfaceAnglePreference = FMath::Clamp(Finite(S.SurfaceAnglePreference, Defaults.SurfaceAnglePreference), 0.0f, 1.0f);
+		S.GravityAngle = Finite(S.GravityAngle, Defaults.GravityAngle);
+		S.ExposureTolerance = FMath::Clamp(Finite(S.ExposureTolerance, Defaults.ExposureTolerance), 0.0f, 1.0f);
+		S.ColonyDensity = FMath::Clamp(S.ColonyDensity, 1, 64);
+		S.GrowthSpread = FMath::Clamp(Finite(S.GrowthSpread, Defaults.GrowthSpread), 0.0f, 1.0f);
+		S.ColonyConnectivity = FMath::Clamp(Finite(S.ColonyConnectivity, Defaults.ColonyConnectivity), 0.0f, 1.0f);
 		S.Coverage = FMath::Clamp(Finite(S.Coverage, Defaults.Coverage), 0.0f, 1.0f);
-		S.Detail = FMath::Clamp(Finite(S.Detail, Defaults.Detail), 0.0f, 1.0f);
-		S.FilamentWidth = FMath::Clamp(Finite(S.FilamentWidth, Defaults.FilamentWidth), 0.001f, 0.25f);
+		S.CushionSize = FMath::Clamp(Finite(S.CushionSize, Defaults.CushionSize), 0.005f, 1.0f);
+		S.CushionHeight = FMath::Clamp(Finite(S.CushionHeight, Defaults.CushionHeight), 0.0f, 2.0f);
+		S.ClumpDensity = FMath::Clamp(Finite(S.ClumpDensity, Defaults.ClumpDensity), 0.0f, 1.0f);
+		S.ShootDensity = FMath::Clamp(Finite(S.ShootDensity, Defaults.ShootDensity), 0.0f, 1.0f);
+		S.ShootLength = FMath::Clamp(Finite(S.ShootLength, Defaults.ShootLength), 0.0f, 1.0f);
+		S.FiberThickness = FMath::Clamp(Finite(S.FiberThickness, Defaults.FiberThickness), 0.0f, 1.0f);
+		S.Weight = FMath::Clamp(Finite(S.Weight, Defaults.Weight), 0.0f, 1.0f);
+		S.Adhesion = FMath::Clamp(Finite(S.Adhesion, Defaults.Adhesion), 0.0f, 1.0f);
+		S.GravityInfluence = FMath::Clamp(Finite(S.GravityInfluence, Defaults.GravityInfluence), 0.0f, 1.0f);
+		S.Droop = FMath::Clamp(Finite(S.Droop, Defaults.Droop), 0.0f, 1.0f);
 		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
 		ChildData.Generator.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
 		if (bCacheLayers)
 		{
 			MixtormatComposeHash::FHasher Hasher;
 			Hasher.SkipTopLevel = {TEXT("HeightScale"), TEXT("bNormalizeHeight")};
-			Hasher.Struct(FMixtormatOrganicGrowth::StaticStruct(), &S);
-			const uint64 TypeKey = Generator.Type == EMixtormatGeneratorType::Moss
-				? 0x4d6f737347723031ull : 0x4d79636547723031ull;
-			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), TypeKey) | 1ull;
+			Hasher.Struct(FMixtormatMoss::StaticStruct(), &S);
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x4d6f737347723032ull) | 1ull;
+		}
+		break;
+	}
+	case EMixtormatGeneratorType::Mycelium:
+	{
+		FMyceliumRenderData& Out = ChildData.Generator.Mycelium;
+		Out.Settings = Generator.Mycelium;
+		FMixtormatMycelium& S = Out.Settings;
+		const FMixtormatMycelium Defaults;
+		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
+		S.ColonyCount = FMath::Clamp(S.ColonyCount, 1, 32);
+		S.GrowthExtent = FMath::Clamp(Finite(S.GrowthExtent, Defaults.GrowthExtent), 0.0f, 1.0f);
+		S.Coverage = FMath::Clamp(Finite(S.Coverage, Defaults.Coverage), 0.0f, 1.0f);
+		S.NutrientAttraction = FMath::Clamp(Finite(S.NutrientAttraction, Defaults.NutrientAttraction), 0.0f, 1.0f);
+		S.BranchingFrequency = FMath::Clamp(Finite(S.BranchingFrequency, Defaults.BranchingFrequency), 0.0f, 1.0f);
+		S.DirectionalPersistence = FMath::Clamp(Finite(S.DirectionalPersistence, Defaults.DirectionalPersistence), 0.0f, 1.0f);
+		S.NetworkConnectivity = FMath::Clamp(Finite(S.NetworkConnectivity, Defaults.NetworkConnectivity), 0.0f, 1.0f);
+		S.SecondaryBranchDensity = FMath::Clamp(Finite(S.SecondaryBranchDensity, Defaults.SecondaryBranchDensity), 0.0f, 1.0f);
+		S.MicrofilamentDensity = FMath::Clamp(Finite(S.MicrofilamentDensity, Defaults.MicrofilamentDensity), 0.0f, 1.0f);
+		S.FilamentWidth = FMath::Clamp(Finite(S.FilamentWidth, Defaults.FilamentWidth), 0.001f, 0.25f);
+		S.Taper = FMath::Clamp(Finite(S.Taper, Defaults.Taper), 0.0f, 1.0f);
+		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
+		ChildData.Generator.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
+		if (bCacheLayers)
+		{
+			MixtormatComposeHash::FHasher Hasher;
+			Hasher.SkipTopLevel = {TEXT("HeightScale"), TEXT("bNormalizeHeight")};
+			Hasher.Struct(FMixtormatMycelium::StaticStruct(), &S);
+			Out.FieldKey = MixtormatComposeHash::Combine(Hasher.Get(), 0x4d79636547723032ull) | 1ull;
 		}
 		break;
 	}
@@ -504,11 +546,17 @@ namespace MixtormatGpuCompositor
 			}
 			break;
 		case EMixtormatGeneratorType::Moss:
-		case EMixtormatGeneratorType::Mycelium:
-			if (ChildData.Generator.OrganicGrowth.FieldKey != 0)
+			if (ChildData.Generator.Moss.FieldKey != 0)
 			{
-				ChildData.Generator.OrganicGrowth.FieldKey = MixtormatComposeHash::Combine(
-					ChildData.Generator.OrganicGrowth.FieldKey, PlacementKey) | 1ull;
+				ChildData.Generator.Moss.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.Moss.FieldKey, PlacementKey) | 1ull;
+			}
+			break;
+		case EMixtormatGeneratorType::Mycelium:
+			if (ChildData.Generator.Mycelium.FieldKey != 0)
+			{
+				ChildData.Generator.Mycelium.FieldKey = MixtormatComposeHash::Combine(
+					ChildData.Generator.Mycelium.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		case EMixtormatGeneratorType::Scales:

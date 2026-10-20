@@ -398,36 +398,168 @@ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pebbles")
 };
 
 
-// Bounded periodic growth solvers, evaluated from the seed; not a timeline simulation.
+// Substrate-aware biological moss colonization and cushion synthesis.
 USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatOrganicGrowth
+struct MIXTORMATRUNTIME_API FMixtormatMoss
 {
 	GENERATED_BODY()
 
-	// Mycelium colony origins; Moss habitat frequency and tuft density.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "1", ClampMax = "64", UIMin = "1", UIMax = "32"))
-	int32 PatchCount = 6;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies")
-	int32 Seed = 0;
-
-	// Mycelium growth duration; Moss occupancy of reaction-diffusion habitat.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
-	float Coverage = 0.55f;
-
-	// Mycelium correlated steering; Moss shoots per tuft.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1", Delta = "0.01"))
-	float Detail = 0.35f;
-
-	// Mycelium maximum radius divided by PatchCount; Moss blade width within a tuft.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Colonies", meta = (ClampMin = "0.001", ClampMax = "0.25", UIMin = "0.005", UIMax = "0.15", Delta = "0.001"))
-	float FilamentWidth = 0.04f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Output", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01"))
+	// --- Output ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
 	float HeightScale = 1.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Organic Growth|Output")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Output")
 	bool bNormalizeHeight = false;
+
+	// --- Habitat ---
+	// Attraction to substrate crevices, cracks, and concave depressions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CavityAttraction = 0.70f;
+
+	// Environmental shelter and directional occlusion preference over exposed peaks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float OcclusionInfluence = 0.50f;
+
+	// Base moisture availability and accumulation potential.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Moisture = 0.60f;
+
+	// Preference for horizontal surfaces (0 = grows on any slope, 1 = only flat upward surfaces).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float SurfaceAnglePreference = 0.35f;
+
+	// Direction of gravity in texture UV space (degrees, -90 = downward in UV space).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
+	float GravityAngle = -90.0f;
+
+	// Tolerance to exposed convex ridges and high peaks (0 = avoids exposure strictly, 1 = tolerates exposure).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ExposureTolerance = 0.20f;
+
+	// --- Growth ---
+	// Spatial frequency of initial colonization seeds across the substrate.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "1", ClampMax = "64", UIMin = "1", UIMax = "32"))
+	int32 ColonyDensity = 8;
+
+	// Colonizing expansion distance from favorable seed sites.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GrowthSpread = 0.55f;
+
+	// Bridging and clustering between adjacent colonies along substrate contours.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ColonyConnectivity = 0.50f;
+
+	// Overall moss abundance and coverage threshold.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Coverage = 0.55f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth")
+	int32 Seed = 1337;
+
+	// --- Structure (Meso Cushions & Micro Shoots) ---
+	// Characteristic diameter of rounded moss cushions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.01", ClampMax = "0.5", UIMin = "0.02", UIMax = "0.3", Delta = "0.005"))
+	float CushionSize = 0.12f;
+
+	// Meso elevation profile of individual cushions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float CushionHeight = 0.60f;
+
+	// Clustering irregularity and internal lumpiness of cushions.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ClumpDensity = 0.50f;
+
+	// Density of high-frequency organic microshoots.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ShootDensity = 0.70f;
+
+	// Height and prominence of microshoots.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float ShootLength = 0.40f;
+
+	// Thickness and softness of individual organic shoot fibers.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float FiberThickness = 0.35f;
+
+	// --- Physical Behavior ---
+	// Colony mass accumulation factor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Weight = 0.40f;
+
+	// Surface adhesion resisting gravitational sliding and sagging.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Adhesion = 0.60f;
+
+	// Downward gravitational pull on steep and inclined surfaces.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GravityInfluence = 0.45f;
+
+	// Hanging or sagging extension down gravity direction where mass exceeds adhesion.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Droop = 0.35f;
+};
+
+// Fungal hyphal network with primary, secondary, and tertiary microfilament hierarchy.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatMycelium
+{
+	GENERATED_BODY()
+
+	// --- Output ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
+	float HeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Output")
+	bool bNormalizeHeight = false;
+
+	// --- Growth & Colonies ---
+	// Number of competing colony origins across the substrate.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Growth", meta = (ClampMin = "1", ClampMax = "32", UIMin = "1", UIMax = "16"))
+	int32 ColonyCount = 4;
+
+	// Hyphal network expansion radius from colony centers.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float GrowthExtent = 0.65f;
+
+	// Overall network density and coverage abundance.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Growth", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Coverage = 0.50f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Growth")
+	int32 Seed = 42;
+
+	// --- Hyphal Hierarchy ---
+	// Attraction to substrate crevices and porous high-nutrient paths.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NutrientAttraction = 0.60f;
+
+	// Frequency of lateral branch bifurcations.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float BranchingFrequency = 0.55f;
+
+	// Directional momentum and persistence against wandering.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float DirectionalPersistence = 0.60f;
+
+	// Anastomosis: reconnection of tips into closed loops and mesh networks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NetworkConnectivity = 0.40f;
+
+	// Density of secondary branch generation.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float SecondaryBranchDensity = 0.70f;
+
+	// Density of wispy tertiary microfilaments filling local space.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float MicrofilamentDensity = 0.60f;
+
+	// Base thickness of primary hyphal strands.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.001", ClampMax = "0.1", UIMin = "0.003", UIMax = "0.05", Delta = "0.001"))
+	float FilamentWidth = 0.016f;
+
+	// Rate of thinning towards branch tips.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mycelium|Network", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Taper = 0.70f;
 };
 
 UENUM(BlueprintType)
@@ -1639,6 +1771,9 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Scales"))
 	FMixtormatScales Scales;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Moss || Type == EMixtormatGeneratorType::Mycelium"))
-	FMixtormatOrganicGrowth OrganicGrowth;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Moss"))
+	FMixtormatMoss Moss;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Mycelium"))
+	FMixtormatMycelium Mycelium;
 };

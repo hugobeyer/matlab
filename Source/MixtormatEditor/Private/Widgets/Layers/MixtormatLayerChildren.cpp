@@ -2233,18 +2233,28 @@ const FMixtormatScales* SMixtormat::GetSelectedScales() const
 	return Generator && Generator->Type == EMixtormatGeneratorType::Scales ? &Generator->Scales : nullptr;
 }
 
-FMixtormatOrganicGrowth* SMixtormat::GetSelectedOrganicGrowth()
+FMixtormatMoss* SMixtormat::GetSelectedMoss()
 {
 	FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && (Generator->Type == EMixtormatGeneratorType::Moss
-		|| Generator->Type == EMixtormatGeneratorType::Mycelium) ? &Generator->OrganicGrowth : nullptr;
+	return Generator && Generator->Type == EMixtormatGeneratorType::Moss ? &Generator->Moss : nullptr;
 }
 
-const FMixtormatOrganicGrowth* SMixtormat::GetSelectedOrganicGrowth() const
+const FMixtormatMoss* SMixtormat::GetSelectedMoss() const
 {
 	const FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && (Generator->Type == EMixtormatGeneratorType::Moss
-		|| Generator->Type == EMixtormatGeneratorType::Mycelium) ? &Generator->OrganicGrowth : nullptr;
+	return Generator && Generator->Type == EMixtormatGeneratorType::Moss ? &Generator->Moss : nullptr;
+}
+
+FMixtormatMycelium* SMixtormat::GetSelectedMycelium()
+{
+	FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Mycelium ? &Generator->Mycelium : nullptr;
+}
+
+const FMixtormatMycelium* SMixtormat::GetSelectedMycelium() const
+{
+	const FMixtormatGenerator* Generator = GetSelectedGenerator();
+	return Generator && Generator->Type == EMixtormatGeneratorType::Mycelium ? &Generator->Mycelium : nullptr;
 }
 
 FMixtormatCliffStrata* SMixtormat::GetSelectedCliffStrata()

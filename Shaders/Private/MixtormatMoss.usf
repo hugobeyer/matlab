@@ -1,0 +1,505 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Substrate-Aware Biological Moss Generator: multiscale cavity detection,
+// horizon shelter occlusion, slope-gravity runoff & droop, meso cushions, and microshoots.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+#ifndef MOSS_STAGE
+#define MOSS_STAGE 0
+#endif
+
+// Common Uniforms
+int2 OutputSize;
+uint Seed;
+float HeightScale;
+uint bNormalizeHeight;
+
+// Habitat Uniforms
+float CavityAttraction;
+float OcclusionInfluence;
+float Moisture;
+float SurfaceAnglePreference;
+float GravityAngle;
+float ExposureTolerance;
+
+// Growth Uniforms
+int ColonyDensity;
+float GrowthSpread;
+float ColonyConnectivity;
+float Coverage;
+
+// Structure Uniforms
+float CushionSize;
+float CushionHeight;
+float ClumpDensity;
+float ShootDensity;
+float ShootLength;
+float FiberThickness;
+
+// Physical Behavior Uniforms
+float Weight;
+float Adhesion;
+float GravityInfluence;
+float Droop;
+
+// Textures & Samplers
+Texture2D<float> SubstrateHeight;
+Texture2D<float4> SubstrateAnalysis;
+Texture2D<float4> HabitatColony;
+Texture2D<float> MesoCushionHeight;
+
+SamplerState LinearWrapSampler;
+
+// Stage 0 Output
+RWTexture2D<float4> OutSubstrateAnalysis;
+
+// Stage 1 Output
+RWTexture2D<float4> OutHabitatColony;
+
+// Stage 2 Output
+RWTexture2D<float> OutMesoHeight;
+
+// Stage 3 Outputs
+RWTexture2D<float> OutGrowthHeight;
+RWTexture2D<float> OutGrowthCoverage;
+RWTexture2D<float> OutGrowthAge;
+RWTexture2D<uint> OutGrowthIds;
+
+// --- Helper Functions ---
+
+float2 WrapUV(float2 uv)
+{
+	return frac(uv);
+}
+
+float2 TorusDelta(float2 a, float2 b)
+{
+	float2 d = b - a;
+	return d - floor(d + 0.5f);
+}
+
+uint Hash21(int2 p, uint salt)
+{
+	uint x = uint(p.x * 0x1f1f1f1f ^ p.y * 0x5b5b5b5b) ^ salt ^ Seed;
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	return x ^ (x >> 16);
+}
+
+float Random21(int2 p, uint salt)
+{
+	return float(Hash21(p, salt) >> 8) * (1.0f / 16777216.0f);
+}
+
+float2 Random22(int2 p, uint salt)
+{
+	return float2(
+		float(Hash21(p, salt) >> 8) * (1.0f / 16777216.0f),
+		float(Hash21(p, salt + 0x9e3779b9u) >> 8) * (1.0f / 16777216.0f)
+	);
+}
+
+// Tileable 2D Value Noise with periodic wrapping
+float TileNoise(float2 uv, int period, uint salt)
+{
+	float2 p = frac(uv) * float(period);
+	int2 c = int2(floor(p));
+	float2 f = frac(p);
+	f = f * f * (3.0f - 2.0f * f);
+
+	int2 c00 = (c % period + period) % period;
+	int2 c10 = ((c + int2(1, 0)) % period + period) % period;
+	int2 c01 = ((c + int2(0, 1)) % period + period) % period;
+	int2 c11 = ((c + int2(1, 1)) % period + period) % period;
+
+	float v00 = Random21(c00, salt);
+	float v10 = Random21(c10, salt);
+	float v01 = Random21(c01, salt);
+	float v11 = Random21(c11, salt);
+
+	return lerp(lerp(v00, v10, f.x), lerp(v01, v11, f.x), f.y);
+}
+
+// 2D Curl / Domain Warp for organic moss lobes
+float2 CurlDomainWarp(float2 uv, int period, uint salt)
+{
+	float e = 1.0f / float(period);
+	float nU = TileNoise(uv + float2(0, e), period, salt);
+	float nD = TileNoise(uv - float2(0, e), period, salt);
+	float nR = TileNoise(uv + float2(e, 0), period, salt);
+	float nL = TileNoise(uv - float2(e, 0), period, salt);
+	return float2(nU - nD, -(nR - nL));
+}
+
+// ============================================================================
+// STAGE 0: Substrate Multiscale Analysis
+// Detects crevices, broad cavities, horizon occlusion / shelter, slope & gravity.
+// ============================================================================
+#if MOSS_STAGE == 0
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 UV = MixtormatGeneratorUV(DestinationUV);
+
+	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
+
+	// Center height
+	float hC = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+
+	// Fine neighborhood taps for gradient & narrow crevice detection
+	float hR = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + float2(Texel.x, 0)), 0);
+	float hL = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV - float2(Texel.x, 0)), 0);
+	float hU = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + float2(0, Texel.y)), 0);
+	float hD = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV - float2(0, Texel.y)), 0);
+
+	// Surface gradient & slope
+	float2 Grad = float2(hR - hL, hU - hD) / (2.0f * max(Texel.x, 1.0e-5f));
+	float Slope = saturate(length(Grad) * 0.15f);
+
+	// Alignment with gravity vector
+	float GradLen = length(Grad);
+	float GravityAlignment = (GradLen > 1.0e-4f) ? dot(Grad / GradLen, GravDir) : 0.0f;
+
+	// Scale 1: Fine crack / crevice (Laplacian filter)
+	float Laplacian = (hR + hL + hU + hD - 4.0f * hC);
+	float FineCrevice = saturate(-Laplacian * 16.0f);
+
+	// Scale 2: Medium depression (radius 4 texels, 8 directions)
+	// Scale 3: Broad concave basin & horizon occlusion (radius 10-18 texels)
+	const float2 DirTable[8] = {
+		float2(1.0f, 0.0f), float2(0.7071f, 0.7071f),
+		float2(0.0f, 1.0f), float2(-0.7071f, 0.7071f),
+		float2(-1.0f, 0.0f), float2(-0.7071f, -0.7071f),
+		float2(0.0f, -1.0f), float2(0.7071f, -0.7071f)
+	};
+
+	float SumMedium = 0.0f;
+	float SumBroad = 0.0f;
+	float HorizonShelterSum = 0.0f;
+
+	[unroll]
+	for (int d = 0; d < 8; ++d)
+	{
+		float2 Dir = DirTable[d];
+
+		// Medium tap (4 texels)
+		float hMed = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 4.0f), 0);
+		SumMedium += hMed;
+
+		// Broad taps for horizon occlusion (8 & 16 texels)
+		float h8 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 8.0f), 0);
+		float h16 = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(UV + Dir * Texel * 16.0f), 0);
+		SumBroad += h16;
+
+		// Directional horizon slope
+		float Slope8 = (h8 - hC) / (8.0f * Texel.x);
+		float Slope16 = (h16 - hC) / (16.0f * Texel.x);
+		float MaxHorizonSlope = max(Slope8, Slope16);
+		HorizonShelterSum += saturate(0.5f + MaxHorizonSlope * 0.05f);
+	}
+
+	float AvgMedium = SumMedium * (1.0f / 8.0f);
+	float AvgBroad = SumBroad * (1.0f / 8.0f);
+
+	float MediumDepression = saturate((AvgMedium - hC) * 8.0f);
+	float BroadBasin = saturate((AvgBroad - hC) * 4.0f);
+
+	// Combined multiscale cavity metric
+	float Cavity = saturate(FineCrevice * 0.50f + MediumDepression * 0.30f + BroadBasin * 0.20f);
+
+	// Horizon enclosure / environmental shelter (0 = exposed ridge/peak, 1 = deep sheltered pocket)
+	float Shelter = saturate(HorizonShelterSum * (1.0f / 8.0f));
+
+	OutSubstrateAnalysis[Pixel] = float4(Cavity, Shelter, Slope, GravityAlignment);
+}
+
+#endif // MOSS_STAGE == 0
+
+
+// ============================================================================
+// STAGE 1: Habitat Suitability & Colony Establishment
+// Evaluates habitat suitability, colony inoculation, and colonizing fronts.
+// ============================================================================
+#if MOSS_STAGE == 1
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 UV = MixtormatGeneratorUV(DestinationUV);
+
+	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float Cavity = Sub.r;
+	float Shelter = Sub.g;
+	float Slope = Sub.b;
+	float GravAlign = Sub.a;
+
+	// Habitat Suitability Field
+	float Habitat = Moisture;
+	// Cavity & crevice attraction
+	Habitat += CavityAttraction * Cavity * (1.0f + Moisture);
+	// Shelter vs exposure
+	Habitat += OcclusionInfluence * (Shelter - 0.45f) * 1.5f;
+	// Exposure penalty on high exposed peaks
+	Habitat -= (1.0f - ExposureTolerance) * saturate(0.40f - Shelter) * 2.5f;
+	// Slope preference (penalize steep surfaces if horizontal preferred)
+	Habitat -= SurfaceAnglePreference * pow(Slope, 1.4f) * 1.2f;
+	// Moisture runoff accumulation along gravity into cavities
+	Habitat += 0.25f * saturate(GravAlign) * Slope * Cavity;
+	Habitat = saturate(Habitat);
+
+	// Periodic cellular colony seeds
+	int GridDim = clamp(ColonyDensity, 1, 32);
+	float2 GridUV = UV * float(GridDim);
+	int2 BaseCell = int2(floor(GridUV));
+
+	float MinDist = 1000.0f;
+	float NearestSeedSuitability = 0.0f;
+	uint BestColonyId = 0;
+	float BestAge = 0.0f;
+
+	// Search 3x3 periodic neighborhood
+	for (int dy = -1; dy <= 1; ++dy)
+	{
+		for (int dx = -1; dx <= 1; ++dx)
+		{
+			int2 NeighborCell = BaseCell + int2(dx, dy);
+			int2 WrappedCell = (NeighborCell % GridDim + GridDim) % GridDim;
+
+			// Seed jitter position in unit cell
+			float2 Jitter = Random22(WrappedCell, 101u);
+			float2 SeedUV = (float2(WrappedCell) + Jitter) / float(GridDim);
+
+			// Sample habitat suitability at the seed location
+			float4 SeedSub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(SeedUV), 0);
+			float SeedCavity = SeedSub.r;
+			float SeedShelter = SeedSub.g;
+			float SeedSlope = SeedSub.b;
+
+			float SeedHabitat = saturate(Moisture + CavityAttraction * SeedCavity
+				+ OcclusionInfluence * (SeedShelter - 0.45f)
+				- SurfaceAnglePreference * pow(SeedSlope, 1.4f));
+
+			// If seed falls on an uninhabitable surface, colony fails to establish
+			if (SeedHabitat < 0.05f) continue;
+
+			// Torus distance from current UV to this colony seed
+			float2 Delta = TorusDelta(UV, SeedUV);
+			float Dist = length(Delta);
+
+			if (Dist < MinDist)
+			{
+				MinDist = Dist;
+				NearestSeedSuitability = SeedHabitat;
+				BestColonyId = Hash21(WrappedCell, 777u);
+			}
+		}
+	}
+
+	// Colony growth radius modulated by seed suitability, local habitat, and GrowthSpread
+	float MaxReach = (0.35f / float(GridDim)) * (0.4f + 0.6f * GrowthSpread) * (0.3f + 0.7f * NearestSeedSuitability);
+	
+	// Modulate distance by local habitat suitability (crevices allow growth to spread further)
+	float CreviceHighway = 1.0f + ColonyConnectivity * Cavity * 1.5f;
+	float NormalizedDist = MinDist / max(MaxReach * CreviceHighway, 1.0e-5f);
+
+	// Organic front noise
+	float FrontNoise = TileNoise(UV * 4.0f, GridDim * 4, 303u) * 0.35f;
+	float EffectiveDist = NormalizedDist + FrontNoise * (1.0f - Habitat * 0.5f);
+
+	// Coverage threshold
+	float CoverageThreshold = 1.0f - (Coverage * 0.9f);
+	float ColonyMask = saturate((1.0f - EffectiveDist - CoverageThreshold * 0.5f) / max(0.25f, 1.0e-4f));
+
+	// Colony age/maturity (1 at colony center, 0 at fringe)
+	BestAge = saturate(1.0f - NormalizedDist);
+
+	OutHabitatColony[Pixel] = float4(ColonyMask, BestAge, float(BestColonyId & 0xFFFFu) / 65535.0f, Habitat);
+}
+
+#endif // MOSS_STAGE == 1
+
+
+// ============================================================================
+// STAGE 2: Meso Cushions, Mass & Gravity Droop Pass
+// Generates irregular overlapping rounded cushions with physical mass & sagging.
+// ============================================================================
+#if MOSS_STAGE == 2
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 UV = MixtormatGeneratorUV(DestinationUV);
+
+	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float Slope = Sub.b;
+	float GravAlign = Sub.a;
+
+	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float ColonyMask = Hab.r;
+	float ColonyAge = Hab.g;
+
+	if (ColonyMask <= 0.001f)
+	{
+		OutMesoHeight[Pixel] = 0.0f;
+		return;
+	}
+
+	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
+
+	// Physical Sagging / Droop displacement:
+	// Mass accumulates with colony age/thickness * Weight.
+	// On steep/inclined surfaces, gravity pulls downward along GravDir.
+	// Adhesion resists this sagging.
+	float Mass = (0.3f + 0.7f * ColonyAge) * Weight;
+	float GravityShear = Slope * GravityInfluence * Mass;
+	float SagAmount = max(0.0f, GravityShear - Adhesion * 0.5f) * Droop * 0.08f;
+	float2 DisplacedUV = UV - GravDir * SagAmount;
+
+	// Meso cushion cellular scale
+	float TargetSize = clamp(CushionSize, 0.01f, 0.5f);
+	int CushionDim = clamp(int(round(1.0f / TargetSize)), 4, 128);
+
+	// Curl domain warp for irregular organic cushion lobes
+	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * (0.25f * (1.0f + ClumpDensity));
+	float2 WarpedUV = DisplacedUV + Warp * (1.0f / float(CushionDim));
+
+	float2 CushionCellUV = WarpedUV * float(CushionDim);
+	int2 BaseCell = int2(floor(CushionCellUV));
+
+	float MinCushionDist = 1000.0f;
+
+	for (int cy = -1; cy <= 1; ++cy)
+	{
+		for (int cx = -1; cx <= 1; ++cx)
+		{
+			int2 Cell = BaseCell + int2(cx, cy);
+			int2 WrappedCell = (Cell % CushionDim + CushionDim) % CushionDim;
+
+			float2 Jitter = Random22(WrappedCell, 505u) * (0.6f + 0.3f * ClumpDensity);
+			float2 CenterUV = (float2(WrappedCell) + Jitter) / float(CushionDim);
+
+			float2 Delta = TorusDelta(WarpedUV, CenterUV);
+			float Dist = length(Delta);
+			MinCushionDist = min(MinCushionDist, Dist);
+		}
+	}
+
+	// Parabolic rounded cushion dome profile
+	float NormalizedRadius = MinCushionDist * float(CushionDim);
+	float Dome = sqrt(max(0.0f, 1.0f - NormalizedRadius * NormalizedRadius));
+
+	// Meso height modulated by cushion height and colony coverage mask
+	float MesoHeight = Dome * CushionHeight * ColonyMask;
+
+	OutMesoHeight[Pixel] = MesoHeight;
+}
+
+#endif // MOSS_STAGE == 2
+
+
+// ============================================================================
+// STAGE 3: Micro Shoots & Final Assembly Pass
+// Generates dense organic leaf shoots, fibers, and writes final outputs.
+// ============================================================================
+#if MOSS_STAGE == 3
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 UV = MixtormatGeneratorUV(DestinationUV);
+
+	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+	float ColonyMask = Hab.r;
+	float ColonyAge = Hab.g;
+	float EncodedId = Hab.b;
+
+	float Meso = MesoCushionHeight.SampleLevel(LinearWrapSampler, WrapUV(UV), 0);
+
+	if (ColonyMask <= 0.001f)
+	{
+		OutGrowthHeight[Pixel] = 0.0f;
+		OutGrowthCoverage[Pixel] = 0.0f;
+		OutGrowthAge[Pixel] = 0.0f;
+		OutGrowthIds[Pixel] = 0u;
+		return;
+	}
+
+	// Micro Shoot Organic Relief
+	// High-frequency cellular shoots with pointed tip profile
+	int ShootDim = clamp(int(round(OutputSize.x * 0.12f * (0.5f + 0.5f * ShootDensity))), 32, 512);
+	float2 ShootUV = UV * float(ShootDim);
+	int2 ShootCell = int2(floor(ShootUV));
+
+	float MinShootDist = 1000.0f;
+	[unroll]
+	for (int sy = -1; sy <= 1; ++sy)
+	{
+		[unroll]
+		for (int sx = -1; sx <= 1; ++sx)
+		{
+			int2 Cell = ShootCell + int2(sx, sy);
+			int2 Wrapped = (Cell % ShootDim + ShootDim) % ShootDim;
+			float2 Jitter = Random22(Wrapped, 606u);
+			float2 Center = (float2(Wrapped) + Jitter) / float(ShootDim);
+			float2 D = TorusDelta(UV, Center);
+			MinShootDist = min(MinShootDist, length(D));
+		}
+	}
+
+	float ShootNormDist = MinShootDist * float(ShootDim);
+	// Pointed organic shoot tip with fiber thickness control
+	float TipSharpness = lerp(2.0f, 0.6f, FiberThickness);
+	float ShootProfile = pow(saturate(1.0f - ShootNormDist), TipSharpness);
+
+	// Fine fibrous texture
+	float Fibers = TileNoise(UV * 16.0f, ShootDim, 707u) * 0.25f;
+
+	// Micro relief contribution, scaling with shoot length and fading at young colony margins
+	float MicroRelief = (ShootProfile * 0.8f + Fibers * 0.2f) * ShootLength * 0.35f * saturate(ColonyAge * 2.0f);
+
+	// Combined Signed Height: 0 is neutral, moss rises above substrate
+	float CombinedHeight = (Meso + MicroRelief) * ColonyMask;
+
+	if (bNormalizeHeight != 0)
+	{
+		// Zero-preserving normalization
+		CombinedHeight = saturate(CombinedHeight);
+	}
+
+	// Apply final artist HeightScale
+	float FinalHeight = CombinedHeight * HeightScale;
+
+	uint DiscreteColonyId = uint(round(EncodedId * 65535.0f)) + 1u;
+
+	OutGrowthHeight[Pixel] = FinalHeight;
+	OutGrowthCoverage[Pixel] = ColonyMask;
+	OutGrowthAge[Pixel] = ColonyAge;
+	OutGrowthIds[Pixel] = DiscreteColonyId;
+}
+
+#endif // MOSS_STAGE == 3

@@ -320,12 +320,12 @@ IMPLEMENT_GLOBAL_SHADER(
 	SF_Compute);
 
 
-class FMixtormatOrganicGrowthCS final : public FGlobalShader
+class FMixtormatMossCS final : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FMixtormatOrganicGrowthCS);
-	SHADER_USE_PARAMETER_STRUCT(FMixtormatOrganicGrowthCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("GROWTH_STAGE", 9);
+	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
+	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 4);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -337,29 +337,37 @@ public:
 		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
 		SHADER_PARAMETER(uint32, UsePreGenerationUV)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
-		SHADER_PARAMETER(uint32, NodeCapacity)
-		SHADER_PARAMETER(uint32, NutrientCount)
-		SHADER_PARAMETER(uint32, StepIndex)
-		SHADER_PARAMETER(uint32, GrowthSteps)
-		SHADER_PARAMETER(uint32, BinResolution)
-		SHADER_PARAMETER(uint32, BinEntryCapacity)
-		SHADER_PARAMETER(int32, ReactionSize)
-		SHADER_PARAMETER(float, StepLength)
-		SHADER_PARAMETER(float, BaseRadius)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FGrowthNode>, Nodes)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FGrowthNutrient>, Nutrients)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<int>, Pull)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, State)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, BinHeads)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint2>, BinEntries)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ReactionInput)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ReactionOutput)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
-		SHADER_PARAMETER(int32, PatchCount)
 		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(uint32, bNormalizeHeight)
+		SHADER_PARAMETER(float, CavityAttraction)
+		SHADER_PARAMETER(float, OcclusionInfluence)
+		SHADER_PARAMETER(float, Moisture)
+		SHADER_PARAMETER(float, SurfaceAnglePreference)
+		SHADER_PARAMETER(float, GravityAngle)
+		SHADER_PARAMETER(float, ExposureTolerance)
+		SHADER_PARAMETER(int32, ColonyDensity)
+		SHADER_PARAMETER(float, GrowthSpread)
+		SHADER_PARAMETER(float, ColonyConnectivity)
 		SHADER_PARAMETER(float, Coverage)
-		SHADER_PARAMETER(float, Detail)
-		SHADER_PARAMETER(float, FilamentWidth)
+		SHADER_PARAMETER(float, CushionSize)
+		SHADER_PARAMETER(float, CushionHeight)
+		SHADER_PARAMETER(float, ClumpDensity)
+		SHADER_PARAMETER(float, ShootDensity)
+		SHADER_PARAMETER(float, ShootLength)
+		SHADER_PARAMETER(float, FiberThickness)
+		SHADER_PARAMETER(float, Weight)
+		SHADER_PARAMETER(float, Adhesion)
+		SHADER_PARAMETER(float, GravityInfluence)
+		SHADER_PARAMETER(float, Droop)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HabitatColony)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, MesoCushionHeight)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSubstrateAnalysis)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutHabitatColony)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutMesoHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthCoverage)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthAge)
@@ -370,7 +378,70 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
-IMPLEMENT_GLOBAL_SHADER(FMixtormatOrganicGrowthCS, "/Plugin/Mixtormat/Private/MixtormatOrganicGrowth.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FMixtormatMossCS, "/Plugin/Mixtormat/Private/MixtormatMoss.usf", "MainCS", SF_Compute);
+
+class FMixtormatMyceliumCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatMyceliumCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatMyceliumCS, FGlobalShader);
+	class FStage : SHADER_PERMUTATION_INT("MYCELIUM_STAGE", 4);
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
+	struct FHyphalSegment
+	{
+		float P0[2];
+		float P1[2];
+		float Radius0;
+		float Radius1;
+		uint32 Generation;
+		uint32 ColonyId;
+		float Age;
+		float Pad;
+	};
+	static_assert(sizeof(FHyphalSegment) == 40, "FHyphalSegment stride");
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, GeneratorLayer)
+		SHADER_PARAMETER(FVector2f, GeneratorUVScale)
+		SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
+		SHADER_PARAMETER(int32, GeneratorUVRotation)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipU)
+		SHADER_PARAMETER(uint32, GeneratorUVFlipV)
+		SHADER_PARAMETER(uint32, UsePreGenerationUV)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
+		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(float, HeightScale)
+		SHADER_PARAMETER(uint32, bNormalizeHeight)
+		SHADER_PARAMETER(int32, ColonyCount)
+		SHADER_PARAMETER(float, GrowthExtent)
+		SHADER_PARAMETER(float, Coverage)
+		SHADER_PARAMETER(float, NutrientAttraction)
+		SHADER_PARAMETER(float, BranchingFrequency)
+		SHADER_PARAMETER(float, DirectionalPersistence)
+		SHADER_PARAMETER(float, NetworkConnectivity)
+		SHADER_PARAMETER(float, SecondaryBranchDensity)
+		SHADER_PARAMETER(float, MicrofilamentDensity)
+		SHADER_PARAMETER(float, FilamentWidth)
+		SHADER_PARAMETER(float, Taper)
+		SHADER_PARAMETER(uint32, BinResolution)
+		SHADER_PARAMETER(uint32, SegmentCapacity)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
+		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<FHyphalSegment>, Segments)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, SegmentCounter)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWBuffer<uint>, BinHeads)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint2>, BinEntries)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthHeight)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutGrowthAge)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutGrowthIds)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatMyceliumCS, "/Plugin/Mixtormat/Private/MixtormatMycelium.usf", "MainCS", SF_Compute);
 
 class FMixtormatScalesCS final : public FGlobalShader
 {
@@ -3737,27 +3808,65 @@ namespace
 		return Combined;
 	}
 
-	FRDGTextureRef AddOrganicGrowthPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FGeneratorBundle* Bundle)
+	FRDGTextureRef ResolveSubstrateHeight(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight, FRDGTextureRef BelowHeight)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FOrganicGrowthRenderData& Data = Child.Generator.OrganicGrowth;
-		const FMixtormatOrganicGrowth& Settings = Data.Settings;
+		const FIntPoint Size = Ctx.Request.Resolution;
+
+		// Combine BelowHeight + RunningHeight + LayerInputHeight
+		FRDGTextureRef EffectiveBelow = BelowHeight;
+		FRDGTextureRef EffectiveRunning = RunningHeight;
+		FRDGTextureRef LayerInput = LayerCtx.LayerInputHeight;
+
+		if (EffectiveBelow && EffectiveRunning)
+		{
+			FRDGTextureRef Combined = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+				Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+				TEXT("Mixtormat.Substrate.Combined"));
+			FMixtormatGeneratorBundleCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatGeneratorBundleCS::FStage>(9);
+			TShaderMapRef<FMixtormatGeneratorBundleCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* P = GraphBuilder.AllocParameters<FMixtormatGeneratorBundleCS::FParameters>();
+			P->OutputSize = Size;
+			P->RunningHeight = EffectiveBelow;
+			P->ModuleHeight = EffectiveRunning;
+			P->OutScalar = GraphBuilder.CreateUAV(Combined);
+			ClearUnusedGraphResources(Shader, P);
+			FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.SubstrateCombine"), Shader, P,
+				FIntVector(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1));
+			return Combined;
+		}
+		if (EffectiveRunning) { return EffectiveRunning; }
+		if (EffectiveBelow) { return EffectiveBelow; }
+		if (LayerInput) { return LayerInput; }
+		return Ctx.OutputHeight[0];
+	}
+
+	FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight,
+		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FMossRenderData& Data = Child.Generator.Moss;
+		const FMixtormatMoss& Settings = Data.Settings;
 		const FIntPoint Size = Ctx.Request.Resolution;
 		constexpr int32 SlotCount = 4;
 		FRDGTextureRef Outputs[SlotCount] = {};
 		static const TCHAR* Names[SlotCount] = {
-			TEXT("Mixtormat.Growth.Height"), TEXT("Mixtormat.Growth.Coverage"),
-			TEXT("Mixtormat.Growth.Age"), TEXT("Mixtormat.Growth.Ids")};
+			TEXT("Mixtormat.Moss.Height"), TEXT("Mixtormat.Moss.Coverage"),
+			TEXT("Mixtormat.Moss.Age"), TEXT("Mixtormat.Moss.Ids")};
 		if (const auto* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
 			for (int32 Index = 0; Index < SlotCount; ++Index) { Outputs[Index] = (*Memo)[Index]; }
 		}
 		else
 		{
+			FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
+
 			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
 			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
-				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4f7267616e696332ull) : 0;
+				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f73734e6f6465ull) : 0;
 			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			bool bComplete = Hit.IsValid();
 			for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)
@@ -3779,116 +3888,220 @@ namespace
 					Outputs[Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size, Formats[Index],
 						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[Index]);
 				}
-				// Bounded solve budgets, independent of output resolution. Field caching keeps
-				// normalization/height-scale edits out of these iterative stages.
-				constexpr uint32 NodeCapacity = 2048;
-				constexpr uint32 NutrientCount = 4096;
-				constexpr uint32 BinEntryCapacity = NodeCapacity * 16;
-				constexpr int32 ReactionSize = 128;
-				constexpr int32 ReactionSteps = 192;
-				constexpr int32 MaximumGrowthSteps = 128;
-				const bool bMycelium = Child.Generator.Type == EMixtormatGeneratorType::Mycelium;
-				const uint32 GrowthSteps = static_cast<uint32>(FMath::RoundToInt(Settings.Coverage * MaximumGrowthSteps));
-				const float StepLength = 0.55f / FMath::Sqrt(static_cast<float>(NutrientCount));
-				const float BaseRadius = Settings.FilamentWidth / Settings.PatchCount;
-				// Each bin is wider than any curve's control hull + radius + AA reach.
-				// Thus a segment visits at most 4 wrapped bins (allocation allows 16).
-				const uint32 BinResolution = FMath::Clamp(FMath::FloorToInt(
-					1.0f / (3.0f * BaseRadius + 4.0f * StepLength)), 1, 64);
-				struct FNodeStride
+
+				FRDGTextureRef SubstrateAnalysis = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					Size, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.Moss.SubstrateAnalysis"));
+				FRDGTextureRef HabitatColony = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					Size, PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.Moss.HabitatColony"));
+				FRDGTextureRef MesoHeight = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+					Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
+					TEXT("Mixtormat.Moss.MesoHeight"));
+
+				const FIntVector Pixels(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
+
+				const auto DispatchStage = [&](int32 Stage)
 				{
-					float Position[2], Direction[2];
-					uint32 Parent, Colony, Children, Link;
-					float Radius, Arc;
-					uint32 Birth;
-					float Mass;
-				};
-				struct FNutrientStride
-				{
-					float Position[2]; uint32 Nearest; float Distance;
-					uint32 Active, Padding[3];
-				};
-				static_assert(sizeof(FNodeStride) == 48, "FGrowthNode shader stride");
-				static_assert(sizeof(FNutrientStride) == 32, "FGrowthNutrient shader stride");
-				FRDGBufferRef Nodes = nullptr, Nutrients = nullptr, Pull = nullptr;
-				FRDGBufferRef State = nullptr, BinHeads = nullptr, BinEntries = nullptr;
-				FRDGTextureRef Reaction[2] = {};
-				if (bMycelium)
-				{
-					Nodes = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FNodeStride), NodeCapacity), TEXT("Mixtormat.Growth.Nodes"));
-					Nutrients = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(FNutrientStride), NutrientCount), TEXT("Mixtormat.Growth.Nutrients"));
-					Pull = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(int32), NodeCapacity * 4), TEXT("Mixtormat.Growth.Pull"));
-					State = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 4), TEXT("Mixtormat.Growth.State"));
-					BinHeads = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), BinResolution * BinResolution), TEXT("Mixtormat.Growth.BinHeads"));
-					BinEntries = GraphBuilder.CreateBuffer(FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 2, BinEntryCapacity), TEXT("Mixtormat.Growth.BinEntries"));
-				}
-				else
-				{
-					const FRDGTextureDesc Desc = FRDGTextureDesc::Create2D(FIntPoint(ReactionSize, ReactionSize),
-						PF_A32B32G32R32F, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV);
-					Reaction[0] = GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.Moss.ReactionA"));
-					Reaction[1] = GraphBuilder.CreateTexture(Desc, TEXT("Mixtormat.Moss.ReactionB"));
-				}
-				const auto Dispatch = [&](int32 Stage, uint32 Step, FRDGTextureRef ReadReaction,
-					FRDGTextureRef WriteReaction, const FIntVector& Groups)
-				{
-					FMixtormatOrganicGrowthCS::FPermutationDomain Permutation;
-					Permutation.Set<FMixtormatOrganicGrowthCS::FStage>(Stage);
-					TShaderMapRef<FMixtormatOrganicGrowthCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-					auto* P = GraphBuilder.AllocParameters<FMixtormatOrganicGrowthCS::FParameters>();
+					FMixtormatMossCS::FPermutationDomain Permutation;
+					Permutation.Set<FMixtormatMossCS::FStage>(Stage);
+					TShaderMapRef<FMixtormatMossCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatMossCS::FParameters>();
 					FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
 					P->OutputSize = Size;
-					P->PatchCount = Settings.PatchCount;
 					P->Seed = static_cast<uint32>(Settings.Seed);
+					P->HeightScale = Settings.HeightScale;
+					P->bNormalizeHeight = Settings.bNormalizeHeight ? 1u : 0u;
+					P->CavityAttraction = Settings.CavityAttraction;
+					P->OcclusionInfluence = Settings.OcclusionInfluence;
+					P->Moisture = Settings.Moisture;
+					P->SurfaceAnglePreference = Settings.SurfaceAnglePreference;
+					P->GravityAngle = Settings.GravityAngle;
+					P->ExposureTolerance = Settings.ExposureTolerance;
+					P->ColonyDensity = Settings.ColonyDensity;
+					P->GrowthSpread = Settings.GrowthSpread;
+					P->ColonyConnectivity = Settings.ColonyConnectivity;
 					P->Coverage = Settings.Coverage;
-					P->Detail = Settings.Detail;
-					P->FilamentWidth = Settings.FilamentWidth;
-					P->NodeCapacity = NodeCapacity; P->NutrientCount = NutrientCount;
-					P->StepIndex = Step; P->GrowthSteps = GrowthSteps;
-					P->BinResolution = BinResolution; P->BinEntryCapacity = BinEntryCapacity;
-					P->StepLength = StepLength; P->BaseRadius = BaseRadius;
-					P->ReactionSize = ReactionSize;
+					P->CushionSize = Settings.CushionSize;
+					P->CushionHeight = Settings.CushionHeight;
+					P->ClumpDensity = Settings.ClumpDensity;
+					P->ShootDensity = Settings.ShootDensity;
+					P->ShootLength = Settings.ShootLength;
+					P->FiberThickness = Settings.FiberThickness;
+					P->Weight = Settings.Weight;
+					P->Adhesion = Settings.Adhesion;
+					P->GravityInfluence = Settings.GravityInfluence;
+					P->Droop = Settings.Droop;
+
+					P->SubstrateHeight = Substrate;
+					P->SubstrateAnalysis = SubstrateAnalysis;
+					P->HabitatColony = HabitatColony;
+					P->MesoCushionHeight = MesoHeight;
 					P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
-					P->Nodes = Nodes ? GraphBuilder.CreateUAV(Nodes) : nullptr;
-					P->Nutrients = Nutrients ? GraphBuilder.CreateUAV(Nutrients) : nullptr;
-					P->Pull = Pull ? GraphBuilder.CreateUAV(Pull, PF_R32_SINT) : nullptr;
-					P->State = State ? GraphBuilder.CreateUAV(State, PF_R32_UINT) : nullptr;
-					P->BinHeads = BinHeads ? GraphBuilder.CreateUAV(BinHeads, PF_R32_UINT) : nullptr;
-					P->BinEntries = BinEntries ? GraphBuilder.CreateUAV(BinEntries) : nullptr;
-					P->ReactionInput = ReadReaction;
-					P->ReactionOutput = WriteReaction ? GraphBuilder.CreateUAV(WriteReaction) : nullptr;
+
+					P->OutSubstrateAnalysis = GraphBuilder.CreateUAV(SubstrateAnalysis);
+					P->OutHabitatColony = GraphBuilder.CreateUAV(HabitatColony);
+					P->OutMesoHeight = GraphBuilder.CreateUAV(MesoHeight);
 					P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
 					P->OutGrowthCoverage = GraphBuilder.CreateUAV(Outputs[1]);
 					P->OutGrowthAge = GraphBuilder.CreateUAV(Outputs[2]);
 					P->OutGrowthIds = GraphBuilder.CreateUAV(Outputs[3]);
+
 					ClearUnusedGraphResources(Shader, P);
-					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.OrganicGrowth.S%d.L%d.C%d",
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Moss.S%d.L%d.C%d",
+						Stage, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P, Pixels);
+				};
+
+				// Stage 0: Substrate Multiscale Analysis
+				DispatchStage(0);
+				// Stage 1: Habitat Suitability & Colony Inoculation
+				DispatchStage(1);
+				// Stage 2: Meso Cushions, Mass & Gravity Droop
+				DispatchStage(2);
+				// Stage 3: Micro Shoots & Final Assembly
+				DispatchStage(3);
+
+				if (Key)
+				{
+					auto Entry = MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+					Entry->Key = Key;
+					Entry->Resolution = Size;
+					for (int32 Index = 0; Index < SlotCount; ++Index)
+					{
+						GraphBuilder.QueueTextureExtraction(Outputs[Index], &Entry->Outputs[Index]);
+					}
+					Ctx.PendingNodeEntries.Add(Entry);
+				}
+			}
+			LayerCtx.GeneratorFields.Add(Child.SourceChildIndex).Append(Outputs, SlotCount);
+		}
+		if (Bundle)
+		{
+			Bundle->Height = Outputs[0];
+			Bundle->Coverage = Outputs[1];
+			Bundle->RegionIds = Outputs[3];
+			Bundle->RegisterNamedMask(FName(TEXT("GrowthCoverage")), Outputs[1], FGeneratorBundle::EFieldSemantic::CoverageAlias);
+			Bundle->RegisterNamedMask(FName(TEXT("GrowthAge")), Outputs[2], FGeneratorBundle::EFieldSemantic::ContinuousAttribute);
+		}
+		return Outputs[0];
+	}
+
+	FRDGTextureRef AddMyceliumPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight,
+		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const FMyceliumRenderData& Data = Child.Generator.Mycelium;
+		const FMixtormatMycelium& Settings = Data.Settings;
+		const FIntPoint Size = Ctx.Request.Resolution;
+		constexpr int32 SlotCount = 4;
+		FRDGTextureRef Outputs[SlotCount] = {};
+		static const TCHAR* Names[SlotCount] = {
+			TEXT("Mixtormat.Mycelium.Height"), TEXT("Mixtormat.Mycelium.Coverage"),
+			TEXT("Mixtormat.Mycelium.Age"), TEXT("Mixtormat.Mycelium.Ids")};
+		if (const auto* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
+		{
+			for (int32 Index = 0; Index < SlotCount; ++Index) { Outputs[Index] = (*Memo)[Index]; }
+		}
+		else
+		{
+			FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
+
+			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
+			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
+				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d7963654e6f6465ull) : 0;
+			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
+			bool bComplete = Hit.IsValid();
+			for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)
+			{
+				bComplete = Hit->Outputs[Index].IsValid();
+			}
+			if (bComplete)
+			{
+				for (int32 Index = 0; Index < SlotCount; ++Index)
+				{
+					Outputs[Index] = GraphBuilder.RegisterExternalTexture(Hit->Outputs[Index], Names[Index]);
+				}
+			}
+			else
+			{
+				const EPixelFormat Formats[SlotCount] = {PF_R32_FLOAT, PF_R16F, PF_R16F, PF_R32_UINT};
+				for (int32 Index = 0; Index < SlotCount; ++Index)
+				{
+					Outputs[Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size, Formats[Index],
+						FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Names[Index]);
+				}
+
+				constexpr uint32 SegmentCapacity = 4096;
+				constexpr uint32 BinResolution = 32;
+
+				FRDGBufferRef Segments = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(FMixtormatMyceliumCS::FHyphalSegment), SegmentCapacity),
+					TEXT("Mixtormat.Mycelium.Segments"));
+				FRDGBufferRef SegmentCounter = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), 1),
+					TEXT("Mixtormat.Mycelium.Counter"));
+				FRDGBufferRef BinHeads = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateBufferDesc(sizeof(uint32), BinResolution * BinResolution),
+					TEXT("Mixtormat.Mycelium.BinHeads"));
+				FRDGBufferRef BinEntries = GraphBuilder.CreateBuffer(
+					FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32) * 2, SegmentCapacity),
+					TEXT("Mixtormat.Mycelium.BinEntries"));
+
+				const auto DispatchStage = [&](int32 Stage, const FIntVector& Groups)
+				{
+					FMixtormatMyceliumCS::FPermutationDomain Permutation;
+					Permutation.Set<FMixtormatMyceliumCS::FStage>(Stage);
+					TShaderMapRef<FMixtormatMyceliumCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+					auto* P = GraphBuilder.AllocParameters<FMixtormatMyceliumCS::FParameters>();
+					FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+					P->OutputSize = Size;
+					P->Seed = static_cast<uint32>(Settings.Seed);
+					P->HeightScale = Settings.HeightScale;
+					P->bNormalizeHeight = Settings.bNormalizeHeight ? 1u : 0u;
+					P->ColonyCount = Settings.ColonyCount;
+					P->GrowthExtent = Settings.GrowthExtent;
+					P->Coverage = Settings.Coverage;
+					P->NutrientAttraction = Settings.NutrientAttraction;
+					P->BranchingFrequency = Settings.BranchingFrequency;
+					P->DirectionalPersistence = Settings.DirectionalPersistence;
+					P->NetworkConnectivity = Settings.NetworkConnectivity;
+					P->SecondaryBranchDensity = Settings.SecondaryBranchDensity;
+					P->MicrofilamentDensity = Settings.MicrofilamentDensity;
+					P->FilamentWidth = Settings.FilamentWidth;
+					P->Taper = Settings.Taper;
+					P->BinResolution = BinResolution;
+					P->SegmentCapacity = SegmentCapacity;
+
+					P->SubstrateHeight = Substrate;
+					P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+
+					P->Segments = GraphBuilder.CreateUAV(Segments);
+					P->SegmentCounter = GraphBuilder.CreateUAV(SegmentCounter, PF_R32_UINT);
+					P->BinHeads = GraphBuilder.CreateUAV(BinHeads, PF_R32_UINT);
+					P->BinEntries = GraphBuilder.CreateUAV(BinEntries);
+
+					P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
+					P->OutGrowthCoverage = GraphBuilder.CreateUAV(Outputs[1]);
+					P->OutGrowthAge = GraphBuilder.CreateUAV(Outputs[2]);
+					P->OutGrowthIds = GraphBuilder.CreateUAV(Outputs[3]);
+
+					ClearUnusedGraphResources(Shader, P);
+					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Mycelium.S%d.L%d.C%d",
 						Stage, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P, Groups);
 				};
+
+				// Stage 0: Clear bins & counter
+				DispatchStage(0, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(BinResolution * BinResolution), 64), 1, 1));
+				// Stage 1: Growth Solver
+				const int32 NumTrunks = FMath::Clamp(Settings.ColonyCount, 1, 16) * 6;
+				DispatchStage(1, FIntVector(FMath::DivideAndRoundUp(NumTrunks, 32), 1, 1));
+				// Stage 2: Spatial Binning
+				DispatchStage(2, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(SegmentCapacity), 64), 1, 1));
+				// Stage 3: Rasterization & Microfilaments
 				const FIntVector Pixels(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
-				if (bMycelium)
-				{
-					const uint32 InitCount = FMath::Max(FMath::Max(NodeCapacity, NutrientCount), BinResolution * BinResolution);
-					Dispatch(0, 0, nullptr, nullptr, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(InitCount), 64), 1, 1));
-					for (uint32 Step = 0; Step < GrowthSteps; ++Step)
-					{
-						Dispatch(1, Step, nullptr, nullptr, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(NutrientCount), 64), 1, 1));
-						Dispatch(2, Step, nullptr, nullptr, FIntVector(1, 1, 1));
-					}
-					Dispatch(3, 0, nullptr, nullptr, FIntVector(1, 1, 1));
-					Dispatch(4, 0, nullptr, nullptr, FIntVector(FMath::DivideAndRoundUp(static_cast<int32>(NodeCapacity), 64), 1, 1));
-					Dispatch(5, 0, nullptr, nullptr, Pixels);
-				}
-				else
-				{
-					const FIntVector SolveGroups(FMath::DivideAndRoundUp(ReactionSize, 8), FMath::DivideAndRoundUp(ReactionSize, 8), 1);
-					Dispatch(6, 0, nullptr, Reaction[0], SolveGroups);
-					for (int32 Step = 0; Step < ReactionSteps; ++Step)
-					{
-						Dispatch(7, Step, Reaction[Step & 1], Reaction[1 - (Step & 1)], SolveGroups);
-					}
-					Dispatch(8, 0, Reaction[ReactionSteps & 1], nullptr, Pixels);
-				}
+				DispatchStage(3, Pixels);
+
 				if (Key)
 				{
 					auto Entry = MakeShared<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
@@ -4907,8 +5120,14 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		case EMixtormatGeneratorType::Moss:
+			AddMossPasses(Ctx, LayerCtx, Layer, Input, OperandRunningHeight,
+				(LayerCtx.LayerIndex > 0) ? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr,
+				&Module);
+			break;
 		case EMixtormatGeneratorType::Mycelium:
-			AddOrganicGrowthPasses(Ctx, LayerCtx, Layer, Input, &Module);
+			AddMyceliumPasses(Ctx, LayerCtx, Layer, Input, OperandRunningHeight,
+				(LayerCtx.LayerIndex > 0) ? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr,
+				&Module);
 			break;
 		case EMixtormatGeneratorType::Scales:
 			AddScalesPasses(Ctx, LayerCtx, Layer, Input, &Module);

@@ -1045,9 +1045,15 @@ namespace MixtormatGpuCompositor
 		uint64 FieldKey = 0;
 	};
 
-	struct FOrganicGrowthRenderData
+	struct FMossRenderData
 	{
-		FMixtormatOrganicGrowth Settings;
+		FMixtormatMoss Settings;
+		uint64 FieldKey = 0;
+	};
+
+	struct FMyceliumRenderData
+	{
+		FMixtormatMycelium Settings;
 		uint64 FieldKey = 0;
 	};
 
@@ -1066,7 +1072,8 @@ namespace MixtormatGpuCompositor
 		FBooleanOpsRenderData BooleanOps;
 		FRootNetworkRenderData RootNetwork;
 		FScalesRenderData Scales;
-		FOrganicGrowthRenderData OrganicGrowth;
+		FMossRenderData Moss;
+		FMyceliumRenderData Mycelium;
 	};
 
 	// One driven scalar's Driver, flattened for the graph. Signal-source agnostic: it names a

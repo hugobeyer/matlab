@@ -137,9 +137,12 @@ namespace
 			View.Struct = FMixtormatNoise::StaticStruct();
 			break;
 		case EMixtormatGeneratorType::Moss:
+			View.ConstData = &Generator.Moss;
+			View.Struct = FMixtormatMoss::StaticStruct();
+			break;
 		case EMixtormatGeneratorType::Mycelium:
-			View.ConstData = &Generator.OrganicGrowth;
-			View.Struct = FMixtormatOrganicGrowth::StaticStruct();
+			View.ConstData = &Generator.Mycelium;
+			View.Struct = FMixtormatMycelium::StaticStruct();
 			break;
 		case EMixtormatGeneratorType::Scales:
 			View.ConstData = &Generator.Scales;
@@ -590,7 +593,7 @@ namespace MixtormatParameterBinding
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
 				FMixtormatCliffStrata::StaticStruct(), FMixtormatNoise::StaticStruct(),
 				FMixtormatRootNetwork::StaticStruct(), FMixtormatScales::StaticStruct(),
-				FMixtormatOrganicGrowth::StaticStruct() };
+				FMixtormatMoss::StaticStruct(), FMixtormatMycelium::StaticStruct() };
 		default: return {};
 		}
 	}

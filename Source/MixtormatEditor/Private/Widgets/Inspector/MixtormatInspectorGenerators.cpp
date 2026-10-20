@@ -2911,44 +2911,170 @@ TSharedRef<SWidget> SMixtormat::BuildColorRampSourceMenu()
 	return Menu.Build();
 }
 
-TSharedRef<SWidget> SMixtormat::BuildOrganicGrowthControls()
+TSharedRef<SWidget> SMixtormat::BuildMossControls()
 {
-	const auto Growth = [this]() { return GetSelectedOrganicGrowth(); };
-	const FMixtormatOrganicGrowth Defaults;
+	const auto Moss = [this]() { return GetSelectedMoss(); };
+	const FMixtormatMoss Defaults;
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
-	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("GrowthOutput", "OUTPUT"));
-	const auto Slider = [this, Growth, Defaults](const FText& Label, float FMixtormatOrganicGrowth::* Member,
+
+	// Output
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("MossOutput", "OUTPUT"));
+	const auto Slider = [this, Moss, Defaults](const FText& Label, float FMixtormatMoss::* Member,
 		double Min, double Max, double Delta, const FText& Hint)
 	{
-		return MakeMemberSlider<FMixtormatOrganicGrowth>(Label, Growth, Member, Min, Max, Defaults.*Member, Delta, Hint);
+		return MakeMemberSlider<FMixtormatMoss>(Label, Moss, Member, Min, Max, Defaults.*Member, Delta, Hint);
 	};
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("GrowthHeightScale", "Height Scale"), &FMixtormatOrganicGrowth::HeightScale, -4, 4, .01,
-			LOCTEXT("GrowthHeightScaleHint", "Scales the signed colony height after optional zero-preserving normalization. Negative values invert the relief.")),
-		MixtormatRow::MakeTrailing(LOCTEXT("GrowthNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
-			TAttribute<ECheckBoxState>::CreateLambda([Growth]() { const auto* G = Growth(); return G && G->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
-			FOnCheckStateChanged::CreateLambda([this, Growth](ECheckBoxState State) { if (auto* G = Growth()) { G->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
-			LOCTEXT("GrowthNormalizeHint", "Zero-preserving normalization of colony height before Height Scale. Does not normalize the published masks."))));
-	Panel = AddCard(Cards, LOCTEXT("GrowthColonies", "COLONIES"));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
-		LOCTEXT("GrowthPatchCount", "Patch Count"), Growth, &FMixtormatOrganicGrowth::PatchCount, 1, 32, Defaults.PatchCount,
-				LOCTEXT("GrowthPatchCountHint", "Mycelium: number of competing colony origins. Moss: spatial frequency of colony habitat and tuft distribution.")));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatOrganicGrowth>(
-		LOCTEXT("GrowthSeed", "Seed"), Growth, &FMixtormatOrganicGrowth::Seed, 0, 99999, Defaults.Seed));
-	AddSliderRow(Panel, Slider(LOCTEXT("GrowthCoverage", "Coverage"), &FMixtormatOrganicGrowth::Coverage, 0, 1, .01,
-		LOCTEXT("GrowthCoverageHint", "Mycelium: growth duration in the bounded nutrient solver. Moss: occupancy of reaction-diffusion colonies. Growth Coverage is an explicit mask, not automatic layer visibility. Growth Age shows strand age or moss maturity.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("GrowthDetail", "Detail"), &FMixtormatOrganicGrowth::Detail, 0, 1, .01,
-		LOCTEXT("GrowthDetailHint", "Mycelium: strength of spatially correlated steering. Moss: number of curved shoots per tuft. Higher moss detail increases rasterization cost.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("GrowthFilamentWidth", "Filament Width"), &FMixtormatOrganicGrowth::FilamentWidth, .005, .15, .001,
-		LOCTEXT("GrowthFilamentWidthHint", "Mycelium: maximum strand radius relative to Patch Count; nutrient demand tapers the network. Moss: shoot blade width. Typed values are limited to 0.001..0.25.")));
-	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedOrganicGrowth() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		Slider(LOCTEXT("MossHeightScale", "Height Scale"), &FMixtormatMoss::HeightScale, -4, 4, .01,
+			LOCTEXT("MossHeightScaleHint", "Scales the signed colony relief after optional normalization. Negative values invert the relief.")),
+		MixtormatRow::MakeTrailing(LOCTEXT("MossNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([Moss]() { const auto* M = Moss(); return M && M->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+			FOnCheckStateChanged::CreateLambda([this, Moss](ECheckBoxState State) { if (auto* M = Moss()) { M->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
+			LOCTEXT("MossNormalizeHint", "Zero-preserving normalization of moss height before Height Scale."))));
+
+	// Habitat
+	Panel = AddCard(Cards, LOCTEXT("MossHabitat", "HABITAT"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossCavityAttraction", "Cavity Attraction"), &FMixtormatMoss::CavityAttraction, 0, 1, .01,
+			LOCTEXT("MossCavityAttractionHint", "Attraction to substrate crevices, cracks, and concave depressions.")),
+		Slider(LOCTEXT("MossOcclusion", "Occlusion Influence"), &FMixtormatMoss::OcclusionInfluence, 0, 1, .01,
+			LOCTEXT("MossOcclusionHint", "Preference for sheltered pockets and horizon-enclosed surface regions."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossMoisture", "Moisture"), &FMixtormatMoss::Moisture, 0, 1, .01,
+			LOCTEXT("MossMoistureHint", "Base moisture availability and accumulation potential.")),
+		Slider(LOCTEXT("MossAnglePref", "Surface Angle"), &FMixtormatMoss::SurfaceAnglePreference, 0, 1, .01,
+			LOCTEXT("MossAnglePrefHint", "Surface angle preference (0 = any slope, 1 = flat horizontal upward surfaces only)."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossGravityAngle", "Gravity Angle"), &FMixtormatMoss::GravityAngle, -180, 180, 1.0,
+			LOCTEXT("MossGravityAngleHint", "Projected gravity direction in UV space (-90 = downward).")),
+		Slider(LOCTEXT("MossExposure", "Exposure Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
+			LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks."))));
+
+	// Growth
+	Panel = AddCard(Cards, LOCTEXT("MossGrowth", "GROWTH"));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
+		LOCTEXT("MossColonyDensity", "Colony Density"), Moss, &FMixtormatMoss::ColonyDensity, 1, 32, Defaults.ColonyDensity,
+		LOCTEXT("MossColonyDensityHint", "Spatial frequency of initial colonization seeds across the substrate.")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
+		LOCTEXT("MossSeed", "Seed"), Moss, &FMixtormatMoss::Seed, 0, 99999, Defaults.Seed));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossSpread", "Growth Spread"), &FMixtormatMoss::GrowthSpread, 0, 1, .01,
+			LOCTEXT("MossSpreadHint", "Colonizing expansion distance from favorable seed sites.")),
+		Slider(LOCTEXT("MossConnectivity", "Connectivity"), &FMixtormatMoss::ColonyConnectivity, 0, 1, .01,
+			LOCTEXT("MossConnectivityHint", "Bridging and clustering between adjacent colonies along substrate contours."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
+		LOCTEXT("MossCoverageHint", "Overall moss abundance and coverage threshold.")));
+
+	// Structure
+	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.02, 0.3, .005,
+			LOCTEXT("MossCushionSizeHint", "Characteristic diameter of rounded moss cushions.")),
+		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .01,
+			LOCTEXT("MossCushionHeightHint", "Meso elevation profile of individual cushions."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossClumpDensity", "Clump Density"), &FMixtormatMoss::ClumpDensity, 0, 1, .01,
+			LOCTEXT("MossClumpDensityHint", "Clustering irregularity and internal lumpiness of cushions.")),
+		Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
+			LOCTEXT("MossShootDensityHint", "Density of high-frequency organic microshoots."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossShootLength", "Shoot Length"), &FMixtormatMoss::ShootLength, 0, 1, .01,
+			LOCTEXT("MossShootLengthHint", "Height and prominence of microshoots.")),
+		Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
+			LOCTEXT("MossFiberThicknessHint", "Thickness and softness of individual organic shoot fibers."))));
+
+	// Physical Behavior
+	Panel = AddCard(Cards, LOCTEXT("MossPhysics", "PHYSICAL BEHAVIOR"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossWeight", "Weight"), &FMixtormatMoss::Weight, 0, 1, .01,
+			LOCTEXT("MossWeightHint", "Colony mass accumulation factor.")),
+		Slider(LOCTEXT("MossAdhesion", "Adhesion"), &FMixtormatMoss::Adhesion, 0, 1, .01,
+			LOCTEXT("MossAdhesionHint", "Surface adhesion resisting gravitational sliding and sagging."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossGravityInfluence", "Gravity Influence"), &FMixtormatMoss::GravityInfluence, 0, 1, .01,
+			LOCTEXT("MossGravityInfluenceHint", "Downward gravitational pull on steep and inclined surfaces.")),
+		Slider(LOCTEXT("MossDroop", "Droop"), &FMixtormatMoss::Droop, 0, 1, .01,
+			LOCTEXT("MossDroopHint", "Hanging or sagging extension down gravity direction where mass exceeds adhesion."))));
+
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)
-		.Title(LOCTEXT("OrganicGrowthHeading", "ORGANIC GROWTH"))
+		.Title(LOCTEXT("MossHeading", "MOSS"))
 		.InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
 				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
 					Probe.Generator.Type = EMixtormatGeneratorType::Moss; return GetChildPreviewOutputSet(Probe); }())]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
+				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* G = GetSelectedGenerator(); return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* G = GetSelectedGenerator()) { G->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])
+		[Cards]];
+}
+
+TSharedRef<SWidget> SMixtormat::BuildMyceliumControls()
+{
+	const auto Mycelium = [this]() { return GetSelectedMycelium(); };
+	const FMixtormatMycelium Defaults;
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+
+	// Output
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("MyceliumOutput", "OUTPUT"));
+	const auto Slider = [this, Mycelium, Defaults](const FText& Label, float FMixtormatMycelium::* Member,
+		double Min, double Max, double Delta, const FText& Hint)
+	{
+		return MakeMemberSlider<FMixtormatMycelium>(Label, Mycelium, Member, Min, Max, Defaults.*Member, Delta, Hint);
+	};
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumHeightScale", "Height Scale"), &FMixtormatMycelium::HeightScale, -4, 4, .01,
+			LOCTEXT("MyceliumHeightScaleHint", "Scales the signed hyphal network relief after optional normalization. Negative values invert the relief.")),
+		MixtormatRow::MakeTrailing(LOCTEXT("MyceliumNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
+			TAttribute<ECheckBoxState>::CreateLambda([Mycelium]() { const auto* M = Mycelium(); return M && M->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+			FOnCheckStateChanged::CreateLambda([this, Mycelium](ECheckBoxState State) { if (auto* M = Mycelium()) { M->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
+			LOCTEXT("MyceliumNormalizeHint", "Zero-preserving normalization of mycelium height before Height Scale."))));
+
+	// Growth & Colonies
+	Panel = AddCard(Cards, LOCTEXT("MyceliumColonies", "COLONIES & GROWTH"));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMycelium>(
+		LOCTEXT("MyceliumColonyCount", "Colony Count"), Mycelium, &FMixtormatMycelium::ColonyCount, 1, 16, Defaults.ColonyCount,
+		LOCTEXT("MyceliumColonyCountHint", "Number of competing colony inoculation origins across the substrate.")));
+	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMycelium>(
+		LOCTEXT("MyceliumSeed", "Seed"), Mycelium, &FMixtormatMycelium::Seed, 0, 99999, Defaults.Seed));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumGrowthExtent", "Growth Extent"), &FMixtormatMycelium::GrowthExtent, 0, 1, .01,
+			LOCTEXT("MyceliumGrowthExtentHint", "Hyphal network exploration radius from colony centers.")),
+		Slider(LOCTEXT("MyceliumCoverage", "Coverage"), &FMixtormatMycelium::Coverage, 0, 1, .01,
+			LOCTEXT("MyceliumCoverageHint", "Overall hyphal network density and coverage abundance."))));
+
+	// Hyphal Hierarchy
+	Panel = AddCard(Cards, LOCTEXT("MyceliumHierarchy", "HYPHAL HIERARCHY"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumNutrient", "Nutrient Attraction"), &FMixtormatMycelium::NutrientAttraction, 0, 1, .01,
+			LOCTEXT("MyceliumNutrientHint", "Attraction to substrate crevices and porous high-nutrient paths.")),
+		Slider(LOCTEXT("MyceliumBranching", "Branch Frequency"), &FMixtormatMycelium::BranchingFrequency, 0, 1, .01,
+			LOCTEXT("MyceliumBranchingHint", "Frequency of lateral branch bifurcations."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumPersistence", "Persistence"), &FMixtormatMycelium::DirectionalPersistence, 0, 1, .01,
+			LOCTEXT("MyceliumPersistenceHint", "Directional momentum and persistence against wandering.")),
+		Slider(LOCTEXT("MyceliumConnectivity", "Anastomosis"), &FMixtormatMycelium::NetworkConnectivity, 0, 1, .01,
+			LOCTEXT("MyceliumConnectivityHint", "Reconnection of hyphal tips into closed loops and interconnected networks."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumSecondary", "Secondary Branches"), &FMixtormatMycelium::SecondaryBranchDensity, 0, 1, .01,
+			LOCTEXT("MyceliumSecondaryHint", "Density of secondary branch generations exploring lateral space.")),
+		Slider(LOCTEXT("MyceliumMicro", "Microfilaments"), &FMixtormatMycelium::MicrofilamentDensity, 0, 1, .01,
+			LOCTEXT("MyceliumMicroHint", "Density of delicate wispy terminal hyphae filling local space."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MyceliumFilamentWidth", "Filament Width"), &FMixtormatMycelium::FilamentWidth, 0.003, 0.05, .001,
+			LOCTEXT("MyceliumFilamentWidthHint", "Base thickness of primary hyphal strands.")),
+		Slider(LOCTEXT("MyceliumTaper", "Taper"), &FMixtormatMycelium::Taper, 0, 1, .01,
+			LOCTEXT("MyceliumTaperHint", "Rate of thinning towards branch tips."))));
+
+	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMycelium() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("MyceliumHeading", "MYCELIUM"))
+		.InitiallyExpanded(true)
+		.HeaderAction(SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
+				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
+					Probe.Generator.Type = EMixtormatGeneratorType::Mycelium; return GetChildPreviewOutputSet(Probe); }())]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* G = GetSelectedGenerator(); return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
 				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* G = GetSelectedGenerator()) { G->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])

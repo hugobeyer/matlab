@@ -350,7 +350,8 @@ namespace
 			static const FMixtormatRockFormation RockDefaults;
 			static const FMixtormatPebbles PebbleDefaults;
 			static const FMixtormatNoise NoiseDefaults;
-			static const FMixtormatOrganicGrowth OrganicGrowthDefaults;
+			static const FMixtormatMoss MossDefaults;
+			static const FMixtormatMycelium MyceliumDefaults;
 			const void* Defaults = &StrataDefaults;
 			const FProperty* Property = FMixtormatStrataCarver::StaticStruct()->FindPropertyByName(Parameter);
 			if (!Property)
@@ -375,8 +376,13 @@ namespace
 			}
 			if (!Property)
 			{
-				Property = FMixtormatOrganicGrowth::StaticStruct()->FindPropertyByName(Parameter);
-				Defaults = &OrganicGrowthDefaults;
+				Property = FMixtormatMoss::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &MossDefaults;
+			}
+			if (!Property)
+			{
+				Property = FMixtormatMycelium::StaticStruct()->FindPropertyByName(Parameter);
+				Defaults = &MyceliumDefaults;
 			}
 			if (Property)
 			{

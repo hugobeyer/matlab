@@ -1,0 +1,476 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Fungal Mycelium Generator: Hierarchical Hyphal Network
+// Primary trunks, secondary branching generations, and tertiary microfilaments
+// responding to substrate crevices and porous nutrient paths.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+
+#ifndef MYCELIUM_STAGE
+#define MYCELIUM_STAGE 0
+#endif
+
+// Common Uniforms
+int2 OutputSize;
+uint Seed;
+float HeightScale;
+uint bNormalizeHeight;
+
+// Growth & Colonies Uniforms
+int ColonyCount;
+float GrowthExtent;
+float Coverage;
+
+// Hyphal Hierarchy Uniforms
+float NutrientAttraction;
+float BranchingFrequency;
+float DirectionalPersistence;
+float NetworkConnectivity;
+float SecondaryBranchDensity;
+float MicrofilamentDensity;
+float FilamentWidth;
+float Taper;
+
+// Spatial Bin Uniforms
+uint BinResolution;
+uint SegmentCapacity;
+
+struct FHyphalSegment
+{
+	float2 P0;
+	float2 P1;
+	float Radius0;
+	float Radius1;
+	uint Generation; // 0 = primary, 1 = secondary, 2 = tertiary
+	uint ColonyId;
+	float Age;
+	float Pad;
+};
+
+// Textures & Buffers
+Texture2D<float> SubstrateHeight;
+SamplerState LinearWrapSampler;
+
+RWStructuredBuffer<FHyphalSegment> Segments;
+RWBuffer<uint> SegmentCounter; // [0] = total segment count
+RWBuffer<uint> BinHeads;
+RWStructuredBuffer<uint2> BinEntries; // x = segment index, y = next entry
+
+// Raster Outputs
+RWTexture2D<float> OutGrowthHeight;
+RWTexture2D<float> OutGrowthCoverage;
+RWTexture2D<float> OutGrowthAge;
+RWTexture2D<uint> OutGrowthIds;
+
+// --- Helpers ---
+
+float2 WrapUV(float2 uv)
+{
+	return frac(uv);
+}
+
+float2 TorusDelta(float2 a, float2 b)
+{
+	float2 d = b - a;
+	return d - floor(d + 0.5f);
+}
+
+uint Hash11(uint x, uint salt)
+{
+	x ^= salt ^ Seed;
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	return x ^ (x >> 16);
+}
+
+float Random11(uint x, uint salt)
+{
+	return float(Hash11(x, salt) >> 8) * (1.0f / 16777216.0f);
+}
+
+float2 Random12(uint x, uint salt)
+{
+	return float2(
+		float(Hash11(x, salt) >> 8) * (1.0f / 16777216.0f),
+		float(Hash11(x, salt + 0x9e3779b9u) >> 8) * (1.0f / 16777216.0f)
+	);
+}
+
+uint Hash21(int2 p, uint salt)
+{
+	uint x = uint(p.x * 0x1f1f1f1f ^ p.y * 0x5b5b5b5b) ^ salt ^ Seed;
+	x ^= x >> 16;
+	x *= 0x7feb352du;
+	x ^= x >> 15;
+	x *= 0x846ca68bu;
+	return x ^ (x >> 16);
+}
+
+float Random21(int2 p, uint salt)
+{
+	return float(Hash21(p, salt) >> 8) * (1.0f / 16777216.0f);
+}
+
+float TileNoise(float2 uv, int period, uint salt)
+{
+	float2 p = frac(uv) * float(period);
+	int2 c = int2(floor(p));
+	float2 f = frac(p);
+	f = f * f * (3.0f - 2.0f * f);
+
+	int2 c00 = (c % period + period) % period;
+	int2 c10 = ((c + int2(1, 0)) % period + period) % period;
+	int2 c01 = ((c + int2(0, 1)) % period + period) % period;
+	int2 c11 = ((c + int2(1, 1)) % period + period) % period;
+
+	float v00 = Random21(c00, salt);
+	float v10 = Random21(c10, salt);
+	float v01 = Random21(c01, salt);
+	float v11 = Random21(c11, salt);
+
+	return lerp(lerp(v00, v10, f.x), lerp(v01, v11, f.x), f.y);
+}
+
+// Distance from point P to periodic 2D capsule segment [A, B]
+float DistanceToSegmentTorus(float2 P, float2 A, float2 B, float rA, float rB, out float OutT, out float OutRadius)
+{
+	float2 AB = TorusDelta(A, B);
+	float2 AP = TorusDelta(A, P);
+
+	float lenSq = dot(AB, AB);
+	float t = (lenSq > 1.0e-8f) ? saturate(dot(AP, AB) / lenSq) : 0.0f;
+	OutT = t;
+
+	float2 Closest = A + AB * t;
+	float2 Disp = TorusDelta(Closest, P);
+	OutRadius = lerp(rA, rB, t);
+
+	return length(Disp);
+}
+
+
+// ============================================================================
+// STAGE 0: Clear Spatial Bins & Counter
+// ============================================================================
+#if MYCELIUM_STAGE == 0
+
+[numthreads(64, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint Index = DispatchThreadId.x;
+	if (Index == 0)
+	{
+		SegmentCounter[0] = 0u;
+	}
+	uint TotalBins = BinResolution * BinResolution;
+	if (Index < TotalBins)
+	{
+		BinHeads[Index] = 0xFFFFFFFFu;
+	}
+}
+
+#endif // MYCELIUM_STAGE == 0
+
+
+// ============================================================================
+// STAGE 1: Hierarchical Hyphal Growth Engine
+// Generates primary trunks, secondary lateral branches, and anastomosis loops.
+// ============================================================================
+#if MYCELIUM_STAGE == 1
+
+[numthreads(32, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint TrunkId = DispatchThreadId.x;
+	uint NumColonies = uint(clamp(ColonyCount, 1, 16));
+	uint TrunksPerColony = 6u;
+	uint TotalTrunks = NumColonies * TrunksPerColony;
+	if (TrunkId >= TotalTrunks) return;
+
+	uint ColonyIdx = TrunkId / TrunksPerColony;
+	uint TrunkInColony = TrunkId % TrunksPerColony;
+
+	// Inoculation center for this colony (periodic jittered position)
+	int GridCols = int(ceil(sqrt(float(NumColonies))));
+	int2 CellCoord = int2(ColonyIdx % GridCols, ColonyIdx / GridCols);
+	float2 CellJitter = Random12(ColonyIdx + 100u, 11u);
+	float2 ColonyOrigin = (float2(CellCoord) + 0.2f + 0.6f * CellJitter) / float(GridCols);
+
+	// Primary trunk initial heading
+	float AngleBase = 6.2831853f * (float(TrunkInColony) / float(TrunksPerColony));
+	float AngleJitter = (Random11(TrunkId + 200u, 22u) - 0.5f) * 0.4f;
+	float Heading = AngleBase + AngleJitter;
+
+	// Growth parameters
+	uint Steps = uint(round(clamp(GrowthExtent, 0.1f, 1.0f) * 20.0f));
+	float StepLength = 0.025f;
+	float BaseRadius = clamp(FilamentWidth, 0.002f, 0.06f);
+
+	float2 CurrentPos = ColonyOrigin;
+	float CurrentHeading = Heading;
+	float CurrentRadius = BaseRadius;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+
+	// --- Primary Trunk Growth ---
+	for (uint s = 0; s < Steps; ++s)
+	{
+		float Progress = float(s) / float(max(Steps, 1u));
+		float NextRadius = BaseRadius * max(0.15f, pow(1.0f - Progress * Taper, 1.2f));
+
+		// Substrate crevice steering
+		float2 CreviceForce = float2(0.0f, 0.0f);
+		if (NutrientAttraction > 0.01f)
+		{
+			float hC = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(CurrentPos), 0);
+			float hR = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(CurrentPos + float2(Texel.x * 2.0f, 0)), 0);
+			float hL = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(CurrentPos - float2(Texel.x * 2.0f, 0)), 0);
+			float hU = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(CurrentPos + float2(0, Texel.y * 2.0f)), 0);
+			float hD = SubstrateHeight.SampleLevel(LinearWrapSampler, WrapUV(CurrentPos - float2(0, Texel.y * 2.0f)), 0);
+			// Gradient pointing towards lower height / crevices
+			CreviceForce = -float2(hR - hL, hU - hD) * 10.0f;
+		}
+
+		// Directional inertia vs wander
+		float Wander = (Random11(TrunkId * 100u + s, 33u) - 0.5f) * (1.0f - DirectionalPersistence * 0.7f) * 0.8f;
+		CurrentHeading += Wander + dot(CreviceForce, float2(-sin(CurrentHeading), cos(CurrentHeading))) * NutrientAttraction * 0.3f;
+
+		float2 StepDir = float2(cos(CurrentHeading), sin(CurrentHeading));
+		float2 NextPos = frac(CurrentPos + StepDir * StepLength);
+
+		// Record Primary Segment
+		uint SegIdx;
+		InterlockedAdd(SegmentCounter[0], 1u, SegIdx);
+		if (SegIdx < SegmentCapacity)
+		{
+			FHyphalSegment Seg;
+			Seg.P0 = CurrentPos;
+			Seg.P1 = NextPos;
+			Seg.Radius0 = CurrentRadius;
+			Seg.Radius1 = NextRadius;
+			Seg.Generation = 0u; // Primary
+			Seg.ColonyId = ColonyIdx + 1u;
+			Seg.Age = 1.0f - Progress;
+			Seg.Pad = 0.0f;
+			Segments[SegIdx] = Seg;
+		}
+
+		// --- Secondary Branch Bifurcation ---
+		float BranchProb = BranchingFrequency * 0.85f;
+		float BranchRoll = Random11(TrunkId * 300u + s * 7u, 44u);
+		if (BranchRoll < BranchProb && s > 2u && s < Steps - 2u)
+		{
+			float BranchSide = (Random11(TrunkId * 500u + s, 55u) > 0.5f) ? 1.0f : -1.0f;
+			float BranchAngle = CurrentHeading + BranchSide * (0.6f + 0.3f * Random11(TrunkId * 700u + s, 66u));
+
+			float2 SecPos = CurrentPos;
+			float SecHeading = BranchAngle;
+			float SecBaseRadius = CurrentRadius * 0.65f;
+			uint SecSteps = uint(round(float(Steps - s) * (0.4f + 0.4f * SecondaryBranchDensity)));
+
+			for (uint b = 0; b < SecSteps; ++b)
+			{
+				float SecProgress = float(b) / float(max(SecSteps, 1u));
+				float SecNextRadius = SecBaseRadius * max(0.12f, 1.0f - SecProgress * Taper);
+
+				SecHeading += (Random11(TrunkId * 1000u + s * 13u + b, 77u) - 0.5f) * 0.5f;
+				float2 SecStepDir = float2(cos(SecHeading), sin(SecHeading));
+				float2 SecNextPos = frac(SecPos + SecStepDir * (StepLength * 0.75f));
+
+				uint SecSegIdx;
+				InterlockedAdd(SegmentCounter[0], 1u, SecSegIdx);
+				if (SecSegIdx < SegmentCapacity)
+				{
+					FHyphalSegment SecSeg;
+					SecSeg.P0 = SecPos;
+					SecSeg.P1 = SecNextPos;
+					SecSeg.Radius0 = SecBaseRadius;
+					SecSeg.Radius1 = SecNextRadius;
+					SecSeg.Generation = 1u; // Secondary
+					SecSeg.ColonyId = ColonyIdx + 1u;
+					SecSeg.Age = (1.0f - Progress) * (1.0f - SecProgress * 0.5f);
+					SecSeg.Pad = 0.0f;
+					Segments[SecSegIdx] = SecSeg;
+				}
+
+				SecPos = SecNextPos;
+				SecBaseRadius = SecNextRadius;
+			}
+		}
+
+		CurrentPos = NextPos;
+		CurrentRadius = NextRadius;
+	}
+}
+
+#endif // MYCELIUM_STAGE == 1
+
+
+// ============================================================================
+// STAGE 2: Spatial Binning of Segments
+// Assigns segments to the 2D periodic bin grid for fast localized lookup.
+// ============================================================================
+#if MYCELIUM_STAGE == 2
+
+[numthreads(64, 1, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	uint SegIdx = DispatchThreadId.x;
+	uint TotalSegments = SegmentCounter[0];
+	if (SegIdx >= TotalSegments || SegIdx >= SegmentCapacity) return;
+
+	FHyphalSegment Seg = Segments[SegIdx];
+
+	// Insert segment into the bin containing its midpoint
+	float2 Mid = frac(Seg.P0 + TorusDelta(Seg.P0, Seg.P1) * 0.5f);
+	int2 BinCoord = int2(floor(Mid * float(BinResolution)));
+	int2 WrappedBin = (BinCoord % int(BinResolution) + int(BinResolution)) % int(BinResolution);
+	uint BinIndex = uint(WrappedBin.y * int(BinResolution) + WrappedBin.x);
+
+	uint OldHead;
+	InterlockedExchange(BinHeads[BinIndex], SegIdx, OldHead);
+
+	BinEntries[SegIdx] = uint2(SegIdx, OldHead);
+}
+
+#endif // MYCELIUM_STAGE == 2
+
+
+// ============================================================================
+// STAGE 3: Continuous Rasterization & Microfilament Assembly
+// Renders primary & secondary hyphal distance fields + wispy tertiary filaments.
+// ============================================================================
+#if MYCELIUM_STAGE == 3
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) return;
+
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
+	float2 UV = MixtormatGeneratorUV(DestinationUV);
+
+	int BinRes = int(BinResolution);
+	int2 CenterBin = int2(floor(UV * float(BinRes)));
+
+	float MinDistToSurface = 1000.0f;
+	float BestAge = 0.0f;
+	uint BestColonyId = 0u;
+	uint BestGen = 0u;
+	float NearestFilamentDist = 1000.0f;
+
+	// Query 3x3 surrounding bins on the torus
+	for (int dy = -1; dy <= 1; ++dy)
+	{
+		for (int dx = -1; dx <= 1; ++dx)
+		{
+			int2 BinCoord = CenterBin + int2(dx, dy);
+			int2 WrappedBin = (BinCoord % BinRes + BinRes) % BinRes;
+			uint BinIdx = uint(WrappedBin.y * BinRes + WrappedBin.x);
+
+			uint EntryIdx = BinHeads[BinIdx];
+			uint Iterations = 0u;
+
+			while (EntryIdx != 0xFFFFFFFFu && Iterations < 32u)
+			{
+				uint2 Entry = BinEntries[EntryIdx];
+				uint SegIdx = Entry.x;
+				EntryIdx = Entry.y;
+				++Iterations;
+
+				if (SegIdx >= SegmentCapacity) continue;
+
+				FHyphalSegment Seg = Segments[SegIdx];
+
+				float SegT, SegRadius;
+				float CenterlineDist = DistanceToSegmentTorus(UV, Seg.P0, Seg.P1, Seg.Radius0, Seg.Radius1, SegT, SegRadius);
+				float SurfaceDist = CenterlineDist - SegRadius;
+
+				if (CenterlineDist < NearestFilamentDist)
+				{
+					NearestFilamentDist = CenterlineDist;
+				}
+
+				if (SurfaceDist < MinDistToSurface)
+				{
+					MinDistToSurface = SurfaceDist;
+					BestAge = Seg.Age;
+					BestColonyId = Seg.ColonyId;
+					BestGen = Seg.Generation;
+				}
+			}
+		}
+	}
+
+	// --- Primary & Secondary Hyphal Relief ---
+	float MainRelief = 0.0f;
+	float MainCoverage = 0.0f;
+
+	if (MinDistToSurface < 0.0f)
+	{
+		// Inside hyphal tube: semicircular cap cross-section
+		float NormDepth = saturate(-MinDistToSurface / max(FilamentWidth * 0.5f, 1.0e-5f));
+		MainRelief = sqrt(max(0.0f, 1.0f - (1.0f - NormDepth) * (1.0f - NormDepth)));
+		MainCoverage = 1.0f;
+	}
+	else
+	{
+		// Smooth anti-aliased edge falloff
+		float EdgeFalloff = saturate(1.0f - MinDistToSurface / max(Texel.x * 2.0f, 1.0e-5f));
+		MainCoverage = EdgeFalloff;
+		MainRelief = EdgeFalloff * 0.1f;
+	}
+
+	// Anastomosis: smooth interconnection loops where branches approach each other
+	if (NetworkConnectivity > 0.05f && MinDistToSurface > 0.0f && MinDistToSurface < FilamentWidth * NetworkConnectivity)
+	{
+		float BridgeFactor = saturate(1.0f - MinDistToSurface / (FilamentWidth * NetworkConnectivity));
+		MainRelief = max(MainRelief, BridgeFactor * 0.5f);
+		MainCoverage = max(MainCoverage, BridgeFactor);
+	}
+
+	// --- Tertiary Wispy Microfilaments ---
+	// High-frequency delicate web branching out from secondary hyphae
+	float MicroRelief = 0.0f;
+	float MicroCoverage = 0.0f;
+
+	if (MicrofilamentDensity > 0.05f && NearestFilamentDist < FilamentWidth * 6.0f)
+	{
+		int MicroPeriod = clamp(int(round(float(BinResolution) * 4.0f)), 64, 256);
+		float FineNoise1 = TileNoise(UV * 8.0f, MicroPeriod, 808u);
+		float FineNoise2 = TileNoise(UV * 16.0f, MicroPeriod * 2, 909u);
+
+		float WebPattern = saturate(1.0f - abs(FineNoise1 - 0.5f) * 12.0f) * saturate(FineNoise2 * 1.5f);
+		float ProximityFade = saturate(1.0f - NearestFilamentDist / (FilamentWidth * 6.0f));
+
+		MicroCoverage = WebPattern * ProximityFade * MicrofilamentDensity * 0.7f;
+		MicroRelief = MicroCoverage * 0.25f;
+	}
+
+	// Combine hierarchical networks
+	float TotalRelief = max(MainRelief, MicroRelief);
+	float TotalCoverage = saturate(MainCoverage + MicroCoverage);
+
+	// Modulate by global coverage parameter
+	float CoverageBias = (Coverage - 0.5f) * 2.0f;
+	TotalCoverage = saturate(TotalCoverage + CoverageBias * 0.25f);
+
+	if (bNormalizeHeight != 0)
+	{
+		TotalRelief = saturate(TotalRelief);
+	}
+
+	float FinalHeight = TotalRelief * HeightScale;
+
+	OutGrowthHeight[Pixel] = FinalHeight;
+	OutGrowthCoverage[Pixel] = TotalCoverage;
+	OutGrowthAge[Pixel] = BestAge;
+	OutGrowthIds[Pixel] = (TotalCoverage > 0.05f) ? BestColonyId : 0u;
+}
+
+#endif // MYCELIUM_STAGE == 3

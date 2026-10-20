@@ -19,9 +19,9 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Noise: return &Generator.Noise;
 		case EMixtormatGeneratorType::BooleanOps: return &Generator.BooleanOps;
 		case EMixtormatGeneratorType::RootNetwork: return &Generator.RootNetwork;
-	case EMixtormatGeneratorType::Moss:
-	case EMixtormatGeneratorType::Mycelium: return &Generator.OrganicGrowth;
-	case EMixtormatGeneratorType::Scales: return &Generator.Scales;
+		case EMixtormatGeneratorType::Moss: return &Generator.Moss;
+		case EMixtormatGeneratorType::Mycelium: return &Generator.Mycelium;
+		case EMixtormatGeneratorType::Scales: return &Generator.Scales;
 		}
 		return nullptr;
 	}
@@ -39,9 +39,9 @@ namespace MixtormatGeneratorPayload
 		case EMixtormatGeneratorType::Noise: return FMixtormatNoise::StaticStruct();
 		case EMixtormatGeneratorType::BooleanOps: return FMixtormatBooleanOps::StaticStruct();
 		case EMixtormatGeneratorType::RootNetwork: return FMixtormatRootNetwork::StaticStruct();
-	case EMixtormatGeneratorType::Moss:
-	case EMixtormatGeneratorType::Mycelium: return FMixtormatOrganicGrowth::StaticStruct();
-	case EMixtormatGeneratorType::Scales: return FMixtormatScales::StaticStruct();
+		case EMixtormatGeneratorType::Moss: return FMixtormatMoss::StaticStruct();
+		case EMixtormatGeneratorType::Mycelium: return FMixtormatMycelium::StaticStruct();
+		case EMixtormatGeneratorType::Scales: return FMixtormatScales::StaticStruct();
 		}
 		return nullptr;
 	}

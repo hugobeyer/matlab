@@ -576,9 +576,12 @@ private:
 	FMixtormatScales* GetSelectedScales();
 	const FMixtormatScales* GetSelectedScales() const;
 	TSharedRef<SWidget> BuildScalesControls();
-	FMixtormatOrganicGrowth* GetSelectedOrganicGrowth();
-	const FMixtormatOrganicGrowth* GetSelectedOrganicGrowth() const;
-	TSharedRef<SWidget> BuildOrganicGrowthControls();
+	FMixtormatMoss* GetSelectedMoss();
+	const FMixtormatMoss* GetSelectedMoss() const;
+	TSharedRef<SWidget> BuildMossControls();
+	FMixtormatMycelium* GetSelectedMycelium();
+	const FMixtormatMycelium* GetSelectedMycelium() const;
+	TSharedRef<SWidget> BuildMyceliumControls();
 	FMixtormatCliffStrata* GetSelectedCliffStrata();
 	const FMixtormatCliffStrata* GetSelectedCliffStrata() const;
 	TSharedRef<SWidget> BuildCliffStrataControls();

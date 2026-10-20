@@ -32,19 +32,12 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 
 ## Moss / Mycelium foundation
 
-- Both use `FMixtormatOrganicGrowth`, `GatherGeneratorChild`, and
-  `AddOrganicGrowthPasses` → `MixtormatOrganicGrowth.usf` (one compute dispatch).
-- Moss generates lobed cushions with grain relief; Mycelium generates tapered radial
-  stems with lateral forks. These are deterministic periodic colonies, not growth simulations.
-- Shared outputs: signed `Height` after the existing normalization/scale path,
-  `GrowthCoverage`, `GrowthAge` (centre-to-edge progression, not elapsed time), and region IDs.
-  Empty pixels use `MIXTORMAT_INVALID_REGION`. Coverage is an explicit mask, not automatic
-  layer visibility; use it as a mask to isolate a moss/mycelium material.
-- Raw-field caching includes type, seed, shape parameters and placement; normalization and
-  height scale remain downstream. Pre-generation UV bypasses the persistent field cache.
-- Normals use the existing height-derived path. No independent fiber-normal output,
-  native Flow, signed-boundary output, mushroom overhangs, or substrate-driven growth yet.
-- Static review only; C++/shader compilation and visual verification remain required.
+- **Moss** uses `FMixtormatMoss`, `AddMossPasses` → `MixtormatMoss.usf` (4-stage RDG compute pipeline: Substrate Multiscale Analysis, Habitat & Colony Inoculation, Meso Cushions with Mass & Gravity Droop, Micro Shoots & Assembly).
+- Substrate awareness: reads preexisting substrate height (`BelowHeight + RunningHeight`), analyzes multiscale crevices/cavities (narrow cracks vs medium/broad depressions via Laplacian and multi-radius stencils), horizon shelter occlusion, slope, and projected gravity runoff/droop.
+- **Mycelium** uses `FMixtormatMycelium`, `AddMyceliumPasses` → `MixtormatMycelium.usf` (4-stage RDG compute pipeline: Clear, Hierarchical Growth Solver, Spatial Binning, Rasterization & Microfilaments).
+- Hierarchical hyphal structure: primary trunks with directional persistence and substrate crevice attraction, secondary lateral branches with branching frequency and anastomosis loops, and tertiary wispy microfilaments.
+- Shared outputs: signed `Height` after normalization/scale, `GrowthCoverage`, `GrowthAge` (maturity), and `RegionIds`.
+- Field caching includes type, seed, shape parameters and placement; normalization and height scale remain downstream without invalidating simulation caches.
 
 ## Boolean Ops — Scatter Carve and field combining
 
