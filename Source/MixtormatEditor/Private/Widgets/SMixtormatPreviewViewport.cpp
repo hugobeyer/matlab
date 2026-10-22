@@ -26,6 +26,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Compositing/MixtormatBakeService.h"
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
+#include "Preview/MixtormatPreviewMaterial.h"
 #include "Preview/MixtormatViewportMaskPostFx.h"
 #include "Services/MixtormatPaths.h"
 #include "Style/MixtormatThemeStore.h"
@@ -991,6 +992,7 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		LayerPreviewMaster.Reset(SelectedMaster);
 		bReportedUnsupportedSurfaceOptics = false;
 		// Diagnostic displacement must follow the explicitly chosen master too.
+		MaskPostFx.Reset();
 		DebugPreviewMaterial.Reset();
 		ChannelPreviewMaterial.Reset();
 		ChannelPreviewMaterialInstance.Reset();

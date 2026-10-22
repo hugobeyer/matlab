@@ -14,9 +14,11 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 {
 	const auto Skin = [this]() { return GetSelectedSkin(); };
 	const FMixtormatSkin Defaults;
-	const auto Property = [](FName Name)
+	const auto Property = [](FName Name) -> const FProperty*
 	{
-		return FindFPropertyChecked<FProperty>(FMixtormatSkin::StaticStruct(), Name);
+		const FProperty* Result = FMixtormatSkin::StaticStruct()->FindPropertyByName(Name);
+		check(Result);
+		return Result;
 	};
 	const auto Scalar = [this, Skin, Property](FName Name, float FMixtormatSkin::* Member)
 	{

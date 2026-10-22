@@ -6,6 +6,7 @@
 
 class FAdvancedPreviewScene;
 class UMaterial;
+class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class USceneCaptureComponent2D;
 class UStaticMeshComponent;
@@ -41,7 +42,7 @@ public:
 	UMaterialInstanceDynamic* GetBlendInstance() const { return bReady ? BlendInstance.Get() : nullptr; }
 
 private:
-	bool EnsureResources(UTextureRenderTarget2D* InitialField);
+	bool EnsureResources(UTextureRenderTarget2D* InitialField, UMaterialInterface* MasterInterface);
 	FAdvancedPreviewScene& Scene;
 	UStaticMeshComponent* UvProxy = nullptr;
 	USceneCaptureComponent2D* UvCapture = nullptr;

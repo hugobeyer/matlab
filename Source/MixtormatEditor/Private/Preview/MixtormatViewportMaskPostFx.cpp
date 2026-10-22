@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Preview/MixtormatViewportMaskPostFx.h"
+#include "Preview/MixtormatPreviewMaterial.h"
 #include "MixtormatEditorModule.h"
 #include "MixtormatGpuCompositor.h"
 
@@ -33,14 +34,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialInterface.h"
 #include "UObject/SoftObjectPath.h"
 
-namespace MixtormatPreview
-{
-	// Existing master-displacement copy in SMixtormatPreviewViewport.cpp. The UV
-	// proxy deliberately uses the *same* helper, not a parallel WPO contract.
-	void AddHeightDisplacement(
-		UMaterial* Material,
-		UMaterialExpressionTextureSampleParameter2D* HeightSample);
-}
 
 namespace
 {
@@ -107,7 +100,7 @@ namespace
 		return Sample;
 	}
 
-	UMaterial* MakeUvMaterial(UTextureRenderTarget2D* HeightDefault)
+	UMaterial* MakeUvMaterial(UTextureRenderTarget2D* HeightDefault, UMaterialInterface* MasterInterface)
 	{
 		UMaterial* Material = NewObject<UMaterial>(
 			GetTransientPackage(), NAME_None, RF_Transient);
@@ -124,7 +117,7 @@ namespace
 		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, WithValidity);
 
 		auto* Height = AddSample(Material, HeightName, HeightDefault);
-		MixtormatPreview::AddHeightDisplacement(Material, Height);
+		MixtormatPreview::AddHeightDisplacement(Material, Height, MasterInterface);
 		Material->PostEditChange();
 		return Material;
 	}
@@ -260,7 +253,7 @@ FMixtormatViewportMaskPostFx::~FMixtormatViewportMaskPostFx()
 }
 
 bool FMixtormatViewportMaskPostFx::EnsureResources(
-	UTextureRenderTarget2D* InitialField)
+	UTextureRenderTarget2D* InitialField, UMaterialInterface* MasterInterface)
 {
 	if (BlendInstance.IsValid())
 	{
@@ -284,7 +277,7 @@ bool FMixtormatViewportMaskPostFx::EnsureResources(
 	UvTarget->UpdateResourceImmediate(true);
 	CapturedSize = FIntPoint(16, 16);
 
-	UvMaterial.Reset(MakeUvMaterial(InitialField));
+	UvMaterial.Reset(MakeUvMaterial(InitialField, MasterInterface));
 
 	// The artist-authored material stays the first choice; the built-in default removes the
 	// dependency on a /Game/ asset that may not exist in this project.
@@ -351,7 +344,8 @@ void FMixtormatViewportMaskPostFx::Update(
 	const EMixtormatPreviewOutputKind OutputKind)
 {
 	if (!MaskField || !HeightField || !PreviewMesh.GetStaticMesh()
-		|| ViewSize.X <= 0 || ViewSize.Y <= 0 || !EnsureResources(MaskField))
+		|| ViewSize.X <= 0 || ViewSize.Y <= 0
+				|| !EnsureResources(MaskField, PreviewMesh.GetMaterial(0)))
 	{
 		Disable();
 		return;
