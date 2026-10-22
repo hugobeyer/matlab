@@ -14,11 +14,18 @@ enum class EMixtormatSurfacingType : uint8
 	Skin
 };
 
-// Curvature-driven surface response, not a tissue mechanics simulation.
+// Compressed height-field film relaxation on a tissue foundation.
+// Connected wandering fold families have signed shoulders; this is not XPBD,
+// full 3D tissue mechanics or self-contact.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatSkin
 {
 	GENERATED_BODY()
+
+	static constexpr int32 MaxSolverIterations = 128;
+	static constexpr int32 MinSolverResolution = 64;
+	static constexpr int32 MaxSolverResolution = 512;
+	static constexpr int32 MaxWarpLayers = 5;
 
 	FMixtormatSkin()
 	{
@@ -43,9 +50,18 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "16", Delta = "1", ToolTip = "Integer repeats of baked microdetail. This is not independent runtime detail mapping."))
 	int32 DetailTiling = 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "128", Delta = "1", ToolTip = "Iterations of compressed height-field film relaxation on a tissue foundation. Zero bypasses relaxation; not XPBD, full 3D mechanics or self-contact."))
+	int32 SolverIterations = 48;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "64", UIMax = "512", Delta = "1", ToolTip = "Maximum dimension of the tissue/solver grid; smaller outputs are not upscaled. Preserves output aspect ratio. Any integer from 64 to 512 is supported. More resolution needs more iterations to relax."))
+	int32 SolverResolution = 256;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Film bending resistance during height-field relaxation. Higher values resist tight bends."))
+	float Bending = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Tissue foundation support during film relaxation. Higher values hold the film closer to its foundation."))
+	float Support = 0.5f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Contribution after child masks. Zero preserves every incoming channel exactly."))
 	float Amount = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Signed relief gain. Zero removes Skin displacement, not its material response."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Signed gain on shallow surface relief. Zero removes Skin displacement, not its material response."))
 	float HeightScale = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fullness of the periodic tissue lobes."))
 	float Fullness = 0.9f;
@@ -55,7 +71,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float Compression = 0.75f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Authored stretching and fold suppression."))
 	float Tension = 0.15f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Depth of the primary fold relief."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Signed relief strength of connected fold valleys and raised shoulders."))
 	float FoldDepth = 0.85f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.01", UIMax = "0.5", Delta = "0.001", ToolTip = "Fold width relative to cell spacing."))
 	float FoldWidth = 0.14f;
@@ -65,6 +81,16 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float Crossing = 0.65f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "How strongly tissue variation shapes folds."))
 	float TissueCoupling = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Large-scale wandering of connected fold families through the tissue field."))
+	float MarbleDrift = 1.15f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "5", Delta = "1", ToolTip = "Number of layered domain warps shaping connected wandering fold families."))
+	int32 WarpLayers = 3;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Local variation around the preferred fold direction, preserving connected fold families."))
+	float DirectionVariation = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "8", Delta = "0.01", ToolTip = "Elongation of fold families along their preferred direction. One is isotropic."))
+	float Elongation = 3.8f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Cellular breakup mixed into the connected fold pattern. Zero retains only wandering fold families."))
+	float Cellular = 0.12f;
 	// Radius in destination UV space, independent of output resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.001", UIMax = "0.1", Delta = "0.001", ToolTip = "Upstream curvature analysis radius in destination UV units, not pixels."))
 	float CurvatureRadius = 0.01f;
@@ -76,8 +102,12 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float PoreVariation = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fine surface grain amount."))
 	float Grain = 0.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Pigment variation along the linear albedo ramp."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Multiscale pigment variation linked to tissue thickness and absorption. Zero removes pigment variation, not separately controlled vascular absorption."))
 	float PigmentVariation = 0.12f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Tissue thickness variation linking pigment and vascular absorption to the tissue field. Not geometric self-contact."))
+	float ThicknessVariation = 0.4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Vascular absorption contribution linked to tissue thickness and pigmentation. Zero removes vascular absorption."))
+	float VascularAmount = 0.12f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Cavity occlusion contribution."))
 	float CavityAO = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Additional roughness in cavities."))
@@ -139,8 +169,17 @@ struct MIXTORMATRUNTIME_API FMixtormatSurfacingOutput
 	bool bReferenceable = true;
 };
 
+// Built-in looks contain settings only; applying them must retain destination composition gates.
+struct MIXTORMATRUNTIME_API FMixtormatSkinPreset
+{
+	FText Name;
+	FText Description;
+	FMixtormatSkin Settings;
+};
+
 namespace MixtormatSurfacing
 {
+	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSkinPreset> GetSkinPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSurfacingOutput> GetOutputs(EMixtormatSurfacingType Type);
 	MIXTORMATRUNTIME_API bool PublishesField(const FMixtormatSurfacing& Surfacing,
 		EMixtormatPublishedFieldKind Kind, FName OutputName);

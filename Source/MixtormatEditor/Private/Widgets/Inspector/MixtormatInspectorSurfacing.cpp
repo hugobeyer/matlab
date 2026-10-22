@@ -57,11 +57,18 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_INT(Seed), SKIN_INT(TissueCells)));
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_FLOAT(Fullness), SKIN_FLOAT(Softness)));
 
+	const auto Solver = AddCard(Cards, LOCTEXT("SkinSolverCard", "FILM RELAXATION"));
+	AddSliderRow(Solver, MixtormatRow::MakePair(SKIN_INT(SolverIterations), SKIN_INT(SolverResolution)));
+	AddSliderRow(Solver, MixtormatRow::MakePair(SKIN_FLOAT(Bending), SKIN_FLOAT(Support)));
+
 	const auto Folds = AddCard(Cards, LOCTEXT("SkinFoldsCard", "FOLDS & RESPONSE"));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_INT(FoldCells), SKIN_FLOAT(FoldDepth)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(FoldWidth), SKIN_FLOAT(Direction)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Compression), SKIN_FLOAT(Tension)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Crossing), SKIN_FLOAT(TissueCoupling)));
+	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(MarbleDrift), SKIN_INT(WarpLayers)));
+	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(DirectionVariation), SKIN_FLOAT(Elongation)));
+	AddSliderRow(Folds, SKIN_FLOAT(Cellular));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(CurvatureRadius), SKIN_FLOAT(CurvatureStrength)));
 
 	const auto Micro = AddCard(Cards, LOCTEXT("SkinMicroCard", "MICRODETAIL"));
@@ -93,7 +100,8 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
 	AddSliderRow(Albedo, WrapParameterControl(AlbedoEditor,
 		MakeAddressResolver<FMixtormatSkin>(Skin, &FMixtormatSkin::AlbedoRamp)));
-	AddSliderRow(Albedo, SKIN_FLOAT(PigmentVariation));
+	AddSliderRow(Albedo, MixtormatRow::MakePair(SKIN_FLOAT(PigmentVariation), SKIN_FLOAT(VascularAmount)));
+	AddSliderRow(Albedo, SKIN_FLOAT(ThicknessVariation));
 
 	const auto Roughness = AddCard(Cards, LOCTEXT("SkinRoughnessCard", "ROUGHNESS & CAVITY"));
 	const TSharedRef<SWidget> RoughnessEditor = SNew(SMixtormatScalarRamp)

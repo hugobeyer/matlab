@@ -212,10 +212,32 @@ namespace
 			for (const TCHAR* Name : {TEXT("Amount"), TEXT("Fullness"), TEXT("Softness"),
 				TEXT("Compression"), TEXT("Tension"), TEXT("Crossing"), TEXT("TissueCoupling"),
 				TEXT("PoreVariation"), TEXT("Grain"), TEXT("PigmentVariation"), TEXT("CavityAO"),
-				TEXT("FuzzAmount"), TEXT("FuzzRoughness"), TEXT("SSSAmount")})
+				TEXT("FuzzAmount"), TEXT("FuzzRoughness"), TEXT("SSSAmount"),
+				TEXT("Bending"), TEXT("Support"), TEXT("DirectionVariation"), TEXT("Cellular"),
+				TEXT("ThicknessVariation"), TEXT("VascularAmount")})
 			{
 				Add(ET::Surfacing, Name, SkinUnit);
 			}
+			FMixtormatParameterContract SkinIterations;
+			SkinIterations.HardMin = 0.0f;
+			SkinIterations.HardMax = float(FMixtormatSkin::MaxSolverIterations);
+			Add(ET::Surfacing, TEXT("SolverIterations"), SkinIterations);
+			FMixtormatParameterContract SkinResolution;
+			SkinResolution.HardMin = float(FMixtormatSkin::MinSolverResolution);
+			SkinResolution.HardMax = float(FMixtormatSkin::MaxSolverResolution);
+			Add(ET::Surfacing, TEXT("SolverResolution"), SkinResolution);
+			FMixtormatParameterContract SkinDrift;
+			SkinDrift.HardMin = 0.0f;
+			SkinDrift.HardMax = 3.0f;
+			Add(ET::Surfacing, TEXT("MarbleDrift"), SkinDrift);
+			FMixtormatParameterContract SkinWarpLayers;
+			SkinWarpLayers.HardMin = 1.0f;
+			SkinWarpLayers.HardMax = float(FMixtormatSkin::MaxWarpLayers);
+			Add(ET::Surfacing, TEXT("WarpLayers"), SkinWarpLayers);
+			FMixtormatParameterContract SkinElongation;
+			SkinElongation.HardMin = 1.0f;
+			SkinElongation.HardMax = 8.0f;
+			Add(ET::Surfacing, TEXT("Elongation"), SkinElongation);
 			FMixtormatParameterContract PositivePeriod;
 			PositivePeriod.HardMin = 1.0f;
 			for (const TCHAR* Name : {TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"),

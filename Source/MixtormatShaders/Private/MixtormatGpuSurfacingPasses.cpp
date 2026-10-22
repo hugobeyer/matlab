@@ -47,7 +47,7 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinAnalysisCS,
 		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "AnalysisCS", SF_Compute);
 
-	class FMixtormatSkinFieldCS final : public FGlobalShader
+	class FMixtormatSkinFieldCS : public FGlobalShader
 	{
 	public:
 		DECLARE_GLOBAL_SHADER(FMixtormatSkinFieldCS);
@@ -55,6 +55,22 @@ namespace
 
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER(FIntPoint, FinalOutputSize)
+			SHADER_PARAMETER(float, MarbleDrift)
+			SHADER_PARAMETER(int32, WarpLayers)
+			SHADER_PARAMETER(float, DirectionVariation)
+			SHADER_PARAMETER(float, Elongation)
+			SHADER_PARAMETER(float, Cellular)
+			SHADER_PARAMETER(float, ThicknessVariation)
+			SHADER_PARAMETER(float, VascularAmount)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TissueState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FoldState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, MicroState)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutMicro)
+			SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutTissue)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSeed)
 			SHADER_PARAMETER(uint32, GeneratorLayer)
 			SHADER_PARAMETER(FVector2f, GeneratorUVScale)
 			SHADER_PARAMETER(FVector2f, GeneratorUVOffset)
@@ -119,10 +135,81 @@ namespace
 		{
 			FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 			OutEnvironment.SetDefine(TEXT("SKIN_ANALYSIS"), 0);
+			OutEnvironment.SetDefine(TEXT("SKIN_STAGE"), 2);
 		}
 	};
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinFieldCS,
 		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "FieldCS", SF_Compute);
+
+	class FMixtormatSkinTissueCS final : public FMixtormatSkinFieldCS
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatSkinTissueCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinTissueCS, FMixtormatSkinFieldCS);
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FMixtormatSkinFieldCS::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("SKIN_STAGE"), 0);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinTissueCS,
+		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "TissueCS", SF_Compute);
+
+	class FMixtormatSkinSeedCS final : public FMixtormatSkinFieldCS
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatSkinSeedCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinSeedCS, FMixtormatSkinFieldCS);
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FMixtormatSkinFieldCS::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("SKIN_STAGE"), 1);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinSeedCS,
+		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "SeedCS", SF_Compute);
+
+	class FMixtormatSkinMicroCS final : public FMixtormatSkinFieldCS
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatSkinMicroCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinMicroCS, FMixtormatSkinFieldCS);
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FMixtormatSkinFieldCS::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("SKIN_STAGE"), 3);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinMicroCS,
+		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "MicroCS", SF_Compute);
+
+	class FMixtormatSkinSolveCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatSkinSolveCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinSolveCS, FGlobalShader);
+		class FInitialize : SHADER_PERMUTATION_BOOL("SKIN_INITIALIZE");
+		using FPermutationDomain = TShaderPermutationDomain<FInitialize>;
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
+			SHADER_PARAMETER(float, FoldRate)
+			SHADER_PARAMETER(float, Bending)
+			SHADER_PARAMETER(float, Support)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TissueState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousFold)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutFold)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinSolveCS,
+		"/Plugin/Mixtormat/Private/MixtormatSkinSolve.usf", "MainCS", SF_Compute);
 
 	class FMixtormatSurfacingApplyCS final : public FGlobalShader
 	{
@@ -268,6 +355,15 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	TShaderMapRef<FMixtormatSkinFieldCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	auto* P = Graph.AllocParameters<FMixtormatSkinFieldCS::FParameters>();
 	P->OutputSize = Size;
+	P->FinalOutputSize = Size;
+	P->MarbleDrift = Skin.MarbleDrift;
+	P->WarpLayers = Skin.WarpLayers;
+	P->DirectionVariation = Skin.DirectionVariation;
+	P->Elongation = Skin.Elongation;
+	P->Cellular = Skin.Cellular;
+	P->ThicknessVariation = Skin.ThicknessVariation;
+	P->VascularAmount = Skin.VascularAmount;
+	P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 	// Reuse lifted PreUV sampling but keep placement unwrapped in SkinPlacedUV for derivatives.
 	// This flag controls a shared math helper; Skin remains a distinct Surfacing child category.
 	P->GeneratorLayer = 0u;
@@ -325,6 +421,84 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	{
 		P->RoughnessPoints[I] = Roughness.Points[I];
 	}
+	// Bound simulation memory independently of bake resolution, retaining the target aspect.
+	// Grid size is authored; reducing it intentionally removes unresolved simulated folds.
+	const int32 MaxSolveSize = FMath::Clamp(Skin.SolverResolution,
+		FMixtormatSkin::MinSolverResolution, FMixtormatSkin::MaxSolverResolution);
+	const float SolveScale = FMath::Min(1.0f, float(MaxSolveSize) / float(FMath::Max(Size.X, Size.Y)));
+	const FIntPoint SolveSize(FMath::Max(1, FMath::RoundToInt(Size.X * SolveScale)),
+		FMath::Max(1, FMath::RoundToInt(Size.Y * SolveScale)));
+	const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
+	const auto MakeState = [&Graph, SolveSize](const TCHAR* Name, EPixelFormat Format)
+	{
+		return Graph.CreateTexture(FRDGTextureDesc::Create2D(SolveSize, Format,
+			FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+	};
+	FRDGTextureRef Tissue = MakeState(TEXT("Mixtormat.Skin.Tissue"), PF_A32B32G32R32F);
+	FRDGTextureRef Seed = MakeState(TEXT("Mixtormat.Skin.Seed"), PF_A32B32G32R32F);
+	{
+		TShaderMapRef<FMixtormatSkinTissueCS> TissueShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* TissueParameters = Graph.AllocParameters<FMixtormatSkinTissueCS::FParameters>();
+		*TissueParameters = *P;
+		TissueParameters->OutputSize = SolveSize;
+		TissueParameters->OutTissue = Graph.CreateUAV(Tissue);
+		ClearUnusedGraphResources(TissueShader, TissueParameters);
+		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Tissue"),
+			TissueShader, TissueParameters, SolveGroups);
+	}
+	P->TissueState = Tissue;
+	{
+		TShaderMapRef<FMixtormatSkinSeedCS> SeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* SeedParameters = Graph.AllocParameters<FMixtormatSkinSeedCS::FParameters>();
+		*SeedParameters = *P;
+		SeedParameters->OutputSize = SolveSize;
+		SeedParameters->OutSeed = Graph.CreateUAV(Seed);
+		ClearUnusedGraphResources(SeedShader, SeedParameters);
+		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Seed"),
+			SeedShader, SeedParameters, SolveGroups);
+	}
+	P->SeedState = Seed;
+	FRDGTextureRef PreviousFold = nullptr;
+	const int32 Iterations = FMath::Clamp(Skin.SolverIterations, 0, FMixtormatSkin::MaxSolverIterations);
+	// Normalize solver lengths to an authored fold wavelength. Local directors/loads still
+	// come from the placement-aware seed; this is not a surface-metric 3D mechanics solver.
+	const FVector2f PlacementScale = P->GeneratorUVScale;
+	const float Rate = FMath::Max(1.0f, float(Skin.FoldCells)
+		* FMath::Max(FMath::Abs(PlacementScale.X), FMath::Abs(PlacementScale.Y))
+		/ FMath::Sqrt(FMath::Max(Skin.Elongation, 1.0f)));
+	for (int32 Iteration = 0; Iteration <= Iterations; ++Iteration)
+	{
+		FMixtormatSkinSolveCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatSkinSolveCS::FInitialize>(Iteration == 0);
+		TShaderMapRef<FMixtormatSkinSolveCS> SolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		auto* SolveParameters = Graph.AllocParameters<FMixtormatSkinSolveCS::FParameters>();
+		SolveParameters->OutputSize = SolveSize;
+		SolveParameters->FoldRate = FMath::Clamp(FMath::IsFinite(Rate) ? Rate : 1.0f,
+			1.0f, float(FMath::Max(SolveSize.X, SolveSize.Y)));
+		SolveParameters->Bending = Skin.Bending;
+		SolveParameters->Support = Skin.Support;
+		SolveParameters->TissueState = Tissue;
+		SolveParameters->SeedState = Seed;
+		SolveParameters->PreviousFold = PreviousFold;
+		FRDGTextureRef NextFold = MakeState(TEXT("Mixtormat.Skin.FoldIteration"), PF_R32_FLOAT);
+		SolveParameters->OutFold = Graph.CreateUAV(NextFold);
+		ClearUnusedGraphResources(SolveShader, SolveParameters);
+		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Relax.%d", Iteration),
+			SolveShader, SolveParameters, SolveGroups);
+		PreviousFold = NextFold;
+	}
+	P->FoldState = PreviousFold;
+	FRDGTextureRef Micro = Make(TEXT("Mixtormat.Skin.Micro"), PF_G32R32F);
+	{
+		TShaderMapRef<FMixtormatSkinMicroCS> MicroShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* MicroParameters = Graph.AllocParameters<FMixtormatSkinMicroCS::FParameters>();
+		*MicroParameters = *P;
+		MicroParameters->OutMicro = Graph.CreateUAV(Micro);
+		ClearUnusedGraphResources(MicroShader, MicroParameters);
+		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Micro"),
+			MicroShader, MicroParameters, Groups);
+	}
+	P->MicroState = Micro;
 	P->OutHeight = Graph.CreateUAV(Result.Height);
 	P->OutColor = Graph.CreateUAV(Result.Color);
 	P->OutRAM = Graph.CreateUAV(Result.RAM);

@@ -2,10 +2,12 @@
 
 ## Status and scope
 
-**Research completed; production implementation pending.** The Skin GLSL reference exists at
-[Prototypes/skin.glsl](Prototypes/skin.glsl). It is not a registered Mixtormat module.
-This document records source inspection, the integration plan, and follow-up features requested
-for existing producers. No builds, tests, diagnostics, commands, or subagents were used.
+**Historical integration plan; Skin is now implemented in source.** Current status and limits
+are in [SURFACING_RUNTIME_UI_HANDOFF.md](SURFACING_RUNTIME_UI_HANDOFF.md) and
+[SHADERS.md](SHADERS.md#skin-staged-tissue-folds-and-material-response). The reference remains
+[Prototypes/skin.glsl](Prototypes/skin.glsl). Proposed identities and integration work below
+record the original plan, not a current TODO list. Existing-producer follow-ups remain backlog.
+Current work used delegated source review, but no builds, tests, diagnostics or commands.
 
 User requirements:
 - A distinct **Surfacing** authoring family, with **Skin** as its first type; more types will follow.

@@ -3,8 +3,11 @@
 ## Status
 
 Runtime, artist UI, Skin compute production and ordered GPU dispatch are implemented in source.
-Only targeted source review was performed: no commands, git, builds, tests, diagnostics,
-additional agents or binary access. This is **not a compiled or end-to-end completion claim**.
+The current Skin revision includes generated-tissue analysis, connected folds, iterative GPU
+height-field relaxation, full-resolution cached microdetail and five built-in looks. See
+[SHADERS.md](SHADERS.md#skin-staged-tissue-folds-and-material-response) for stages and limitations.
+Only source/math review, including delegated review, was performed: no commands, git, builds,
+tests, diagnostics or binary access. This is **not a compiled or end-to-end completion claim**.
 
 The three central Editor registry hooks are implemented; **no parent edits are needed there**.
 The native generator/Behavior gate-order validation gap is now closed in Runtime. Parent owns
@@ -15,7 +18,7 @@ separate plan backlog, distinct from the implemented producer below.
 ## Shared contract
 
 `Source/MixtormatRuntime/Public/MixtormatSurfacingTypes.h` is the canonical contract.
-All agreed field names, types and numeric defaults are unchanged. `EMixtormatSurfacingType::Skin`
+The contract now includes solver, drift, thickness and vascular controls. `EMixtormatSurfacingType::Skin`
 is separate from `EMixtormatGeneratorType`. `FMixtormatSurfacing` contains only `bEnabled`,
 `Type`, and `Skin`. `FMixtormatLayerChild::Surfacing` is reflected and its child enum value
 is appended after Boolean. Parameter owner `Surfacing = 32` is also append-only.
@@ -280,7 +283,8 @@ Paths are relative to `Mixtormat/`.
 
 ### GPU production and dispatch
 
-- `Shaders/Private/MixtormatSkin.usf` — curvature analysis and eight raw periodic Skin fields.
+- `Shaders/Private/MixtormatSkin.usf` — analysis, tissue, connected fold seeds, cached microdetail and eight raw fields.
+- `Shaders/Private/MixtormatSkinSolve.usf` — immutable-state compressed-film relaxation.
 - `Shaders/Private/MixtormatSurfacingApply.usf` — gate product, material/height apply, diagnostics.
 - `Source/MixtormatShaders/Private/MixtormatGpuSurfacingPasses.h` — interfaces and shared integration contract.
 - `Source/MixtormatShaders/Private/MixtormatGpuSurfacingPasses.cpp` — RDG production/apply/publication.

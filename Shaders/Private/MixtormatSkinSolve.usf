@@ -1,0 +1,134 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Quasi-static compressed-film height-field relaxation, not XPBD or a 3D tissue solver.
+#include "/Engine/Public/Platform.ush"
+
+#ifndef SKIN_INITIALIZE
+#define SKIN_INITIALIZE 0
+#endif
+
+int2 OutputSize;
+float FoldRate;
+// @param Bending saturates
+float Bending;
+// @param Support saturates
+float Support;
+Texture2D<float4> TissueState;
+Texture2D<float4> SeedState;
+Texture2D<float> PreviousFold;
+RWTexture2D<float> OutFold;
+
+// Length and residual height are both measured in fold wavelengths inside the solve.
+// Stored heights remain unscaled unit-UV relief; HeightScale and Amount belong downstream.
+static const float SkinMinRigidity = 0.00001f;
+static const float SkinMaxRigidity = 0.0005f;
+static const float SkinMinFoundation = 0.05f;
+static const float SkinMaxFoundation = 1.0f;
+static const float SkinMaxThickness = 1.4f;
+static const float SkinCompressionStrain = 0.3f;
+static const float SkinTensileStrain = 0.2f;
+// For e in [-.2,.3], |d/ds (s*(s*s-2*e)/(1+s*s))| <= 1.2.
+static const float SkinStrainHessianBound = 1.2f;
+static const float SkinRelaxationSafety = 0.8f;
+
+int2 SkinWrapPixel(int2 P)
+{
+	return (P % OutputSize + OutputSize) % OutputSize;
+}
+
+float4 SkinSeed(int2 P)
+{
+	return SeedState.Load(int3(SkinWrapPixel(P), 0));
+}
+
+#if !SKIN_INITIALIZE
+float SkinThickness(int2 P)
+{
+	return clamp(TissueState.Load(int3(SkinWrapPixel(P), 0)).a, 0.6f, SkinMaxThickness);
+}
+
+float SkinPrevious(int2 P)
+{
+	return PreviousFold.Load(int3(SkinWrapPixel(P), 0)) * FoldRate;
+}
+
+float SkinRigidity(int2 P)
+{
+	float Thickness = SkinThickness(P);
+	return lerp(SkinMinRigidity, SkinMaxRigidity, saturate(Bending))
+		* Thickness * Thickness * Thickness;
+}
+
+float SkinMoment(int2 P, float2 InvSpacing2)
+{
+	float C = SkinPrevious(P);
+	float Laplacian = InvSpacing2.x * (SkinPrevious(P + int2(1, 0)) + SkinPrevious(P - int2(1, 0)) - 2.0f * C)
+		+ InvSpacing2.y * (SkinPrevious(P + int2(0, 1)) + SkinPrevious(P - int2(0, 1)) - 2.0f * C);
+	return SkinRigidity(P) * Laplacian;
+}
+
+float SkinRestStrain(float4 State, float2 Edge)
+{
+	float2 Normal = float2(cos(State.a), sin(State.a));
+	float Projection = dot(Edge, Normal);
+	// Project the director tensor before averaging endpoints: angles have a pi seam.
+	return SkinCompressionStrain * saturate(State.g) * Projection * Projection
+		- SkinTensileStrain * saturate(State.b);
+}
+#endif
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DTid : SV_DispatchThreadID)
+{
+	int2 P = int2(DTid.xy);
+	if (any(P >= OutputSize)) { return; }
+	float4 Seed = SkinSeed(P);
+#if SKIN_INITIALIZE
+	OutFold[P] = Seed.r;
+#else
+	float C = SkinPrevious(P);
+	float2 Spacing = FoldRate / float2(OutputSize);
+	float2 InvSpacing2 = float2(OutputSize.x > 1 ? 1.0f / (Spacing.x * Spacing.x) : 0.0f,
+		OutputSize.y > 1 ? 1.0f / (Spacing.y * Spacing.y) : 0.0f);
+	float Thickness = SkinThickness(P);
+	float Foundation = lerp(SkinMinFoundation, SkinMaxFoundation, saturate(Support));
+	float Force = -Foundation * Thickness * (C - Seed.r * FoldRate);
+	float Moment = SkinMoment(P, InvSpacing2);
+	// Variable rigidity belongs INSIDE the second Laplacian (gradient of .5*B*(Delta h)^2).
+	Force -= InvSpacing2.x * (SkinMoment(P + int2(1, 0), InvSpacing2)
+		+ SkinMoment(P - int2(1, 0), InvSpacing2) - 2.0f * Moment)
+		+ InvSpacing2.y * (SkinMoment(P + int2(0, 1), InvSpacing2)
+		+ SkinMoment(P - int2(0, 1), InvSpacing2) - 2.0f * Moment);
+
+	float Bound = Foundation * SkinMaxThickness;
+	float MaxB = lerp(SkinMinRigidity, SkinMaxRigidity, saturate(Bending))
+		* SkinMaxThickness * SkinMaxThickness * SkinMaxThickness;
+	float LaplacianBound = 4.0f * (InvSpacing2.x + InvSpacing2.y);
+	Bound += MaxB * LaplacianBound * LaplacianBound;
+	[unroll] for (int Y = -1; Y <= 1; ++Y)
+	{
+		[unroll] for (int X = -1; X <= 1; ++X)
+		{
+			if ((X == 0 && Y == 0) || (OutputSize.x == 1 && X != 0) || (OutputSize.y == 1 && Y != 0)) { continue; }
+			int2 Offset = int2(X, Y);
+			float2 Delta = float2(Offset) * Spacing;
+			float InvDistance = rsqrt(dot(Delta, Delta));
+			float2 Edge = Delta * InvDistance;
+			float4 NeighborSeed = SkinSeed(P + Offset);
+			float Strain = 0.5f * (SkinRestStrain(Seed, Edge) + SkinRestStrain(NeighborSeed, Edge));
+			float Slope = (SkinPrevious(P + Offset) - C) * InvDistance;
+			float Weight = (X != 0 && Y != 0) ? 0.25f : 0.5f;
+			float Membrane = Weight * 0.5f * (Thickness + SkinThickness(P + Offset));
+			// dE/ds for E=.5*s^2-.5*(1+2*e)*log(1+s^2).
+			// Near zero this has compressive negative stiffness and stabilizing quartic strain;
+			// large slopes retain a bounded Hessian instead of an unstable explicit cubic force.
+			float Stress = Slope * (1.0f - (1.0f + 2.0f * Strain) / (1.0f + Slope * Slope));
+			Force += Membrane * Stress * InvDistance;
+			Bound += 2.0f * Weight * SkinMaxThickness * SkinStrainHessianBound * InvDistance * InvDistance;
+		}
+	}
+	// Global Hessian row-sum bound, including rectangular spacing and maximum tissue rigidity.
+	// Every texel reads one immutable previous state; no UAV reads or order-dependent updates.
+	float Next = (C + SkinRelaxationSafety * Force / max(Bound, 1.0e-8f)) / FoldRate;
+	OutFold[P] = isfinite(Next) ? Next : PreviousFold.Load(int3(P, 0));
+#endif
+}

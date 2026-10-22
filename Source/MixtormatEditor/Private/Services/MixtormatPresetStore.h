@@ -37,6 +37,8 @@ namespace MixtormatPresetStore
 
 	struct FModulePreset : FDocumentInfo
 	{
+		// Built-ins carry their payload in memory; file presets are reloaded on apply.
+		bool bBuiltIn = false;
 		FMixtormatLayerChild Settings;
 	};
 

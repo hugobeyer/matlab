@@ -2,6 +2,7 @@
 #include "Services/MixtormatPresetStore.h"
 #include "Services/MixtormatPresetJson.h"
 #include "Services/MixtormatRecipeService.h"
+#include "MixtormatSurfacingTypes.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -248,6 +249,23 @@ namespace MixtormatPresetStore
 		if (!MixtormatPresetJson::Encode(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Preset.Settings), true, Json, Error)) { return false; }
 		FMixtormatLayerChild Copy = Destination;
 		if (!MixtormatPresetJson::Decode(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Copy), true, Json, Error)) { return false; }
+		if (Destination.Type == EMixtormatLayerChildType::Surfacing
+			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Skin)
+		{
+			// A look changes tissue settings, never destination composition gates.
+			// Masks, bindings and scope remain on the copied destination child.
+			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
+			FMixtormatSkin& Skin = Copy.Surfacing.Skin;
+			const FMixtormatSkin& Original = Destination.Surfacing.Skin;
+			Skin.Amount = Original.Amount;
+			Skin.bWriteHeight = Original.bWriteHeight;
+			Skin.bWriteColor = Original.bWriteColor;
+			Skin.bWriteRoughness = Original.bWriteRoughness;
+			Skin.bWriteAO = Original.bWriteAO;
+			Skin.bWriteF0 = Original.bWriteF0;
+			Skin.bWriteFuzz = Original.bWriteFuzz;
+			Skin.bWriteSSS = Original.bWriteSSS;
+		}
 		TArray<FSoftObjectPath> Assets;
 		Documents::GatherAssets(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Copy), Assets);
 		if (!Documents::CheckAssets(Assets, Error)
@@ -293,6 +311,23 @@ namespace MixtormatPresetStore
 	{
 		TArray<FModulePreset> Presets;
 		const bool bClean = Documents::List(TEXT("Modules"), Presets, Error, LoadModule);
+		if (Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Skin)
+		{
+			for (const FMixtormatSkinPreset& SkinPreset : MixtormatSurfacing::GetSkinPresets())
+			{
+				FModulePreset& Preset = Presets.AddDefaulted_GetRef();
+				Preset.Name = SkinPreset.Name.ToString();
+				Preset.Description = SkinPreset.Description.ToString();
+				Preset.Category = TEXT("Skin");
+				Preset.bShipped = true;
+				Preset.bBuiltIn = true;
+				Preset.Settings.Type = EMixtormatLayerChildType::Surfacing;
+				Preset.Settings.Surfacing.Type = EMixtormatSurfacingType::Skin;
+				Preset.Settings.Surfacing.Skin = SkinPreset.Settings;
+			}
+			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
+		}
 		Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
 		OutPresets = MoveTemp(Presets);
 		return bClean;

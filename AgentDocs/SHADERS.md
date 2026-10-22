@@ -83,6 +83,89 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 - Height is `PF_R32_FLOAT`; BaseColor/Normal/RAM are `float4`.
 - Substrate defaults in `MixtormatGpuComposePipeline.cpp` (`MixtormatSubstrate`).
 
+## Skin staged tissue, folds and material response
+
+`MixtormatGpuSurfacingPasses.cpp::AddSkinSurfacePasses` dispatches:
+
+1. `AnalysisCS`: completed upstream substrate curvature, full output resolution.
+2. `TissueCS` (`SKIN_STAGE=0`): elliptical fat support, layered five-step RK2 drift,
+   periodic coordinate offsets and independent positive thickness variation.
+3. `SeedCS` (`SKIN_STAGE=1`): generated-tissue Hessian plus upstream curvature;
+   connected marble/cellular broad and crossing folds, signed valleys/shoulders,
+   compression, crown stretching and destination-space normal directors.
+4. `MixtormatSkinSolve.usf`: seed-copy initialization then **0–128 actual relaxation
+   iterations**, each reading an immutable previous R32F fold texture. No procedural
+   noise is reevaluated inside an iteration. Zero iterations retains the analytic seed.
+5. `MicroCS` (`SKIN_STAGE=3`): output-resolution medium/fine wrinkles, warped elliptical
+   pores and grain, cached once in RG32F. Medium/fine detail is strained, not simulated.
+6. `FieldCS` (`SKIN_STAGE=2`): fine-residual-only directional filtering, solved-height
+   geometric cavity/roughness, and the existing eight raw material/diagnostic outputs.
+
+Tissue/seed/solve grids preserve output aspect and never exceed `SolverResolution`
+(default 256, maximum 512 on the largest axis); they never upscale smaller outputs.
+The authored iteration budget is not a convergence guarantee. Higher solve resolution
+needs more iterations; unresolved broad folds are filtered rather than recovered later.
+Microdetail uses full output resolution and independent `DetailTiling`.
+
+### Relaxation model and bounds
+
+The solver is an art-directed compressed-film **height-field approximation**, not XPBD,
+not a full Föppl–von Kármán solve, and not volumetric tissue or self-contact. In-plane
+strain is prescribed from the seed's compression/stretch/director fields; it is not solved.
+It minimizes a discrete energy consisting of a spring to the seeded rest shape, variable
+thickness-cubed bending `B*(Laplacian h)^2/2`, and symmetric directional edge energies:
+
+`E(s,e) = s²/2 - (1 + 2e)*log(1 + s²)/2`
+
+Here `s` is edge slope and `e` projected compressive strain minus tensile strain. Its
+small-slope expansion has compressive negative stiffness and stabilizing quartic strain;
+large slopes have a bounded Hessian. The force uses its actual derivative, not repeated
+noise or a blur posing as simulation. Wrapped 8-neighbor strain and variable-rigidity
+biharmonic stencils use each axis' UV spacing; singleton axes are excluded. A conservative
+Hessian row-sum bound controls the explicit relaxation step (safety 0.8). `Bending` and
+`Support` are normalized artistic controls, not measured biological material constants.
+
+Lengths and residual heights are normalized by the authored placed fold rate, bounded
+by grid resolution. Directors use the placement/PreUV Jacobian; mechanics still operates
+in destination UV, not the preview mesh's physical metric. Highly distorted UVs therefore
+do not constitute physically metric-correct skin mechanics. State lifetime is per compose,
+not persistent real-time dynamics. RDG owns transient reuse; every iteration has distinct
+logical output state and no read/write alias.
+
+### Fields, periodicity and optical relationships
+
+Relief retains the prototype's amplitudes divided by its 3.4-unit patch width; no automatic
+0–1 normalization. `HeightScale` applies once at final field output. Shared composition
+still owns Amount, masks, ancestry, write flags and publications; no second renderer exists.
+Integer wavevectors and periodic drift offsets preserve the underlying tile. Direction is
+quantized at low fold counts. Seamless placed results require integer UV winding and a
+compatible PreUV map; arbitrary noninteger scale cannot be promised seamless.
+
+Pigment and vascular fields coordinate albedo with RGB MFP (centimeters); thickness is a
+separate tissue field, not displacement used as optical depth. Absorption coefficients are
+art-directed rather than measured spectral skin data. Neither cavity nor AO is painted into
+albedo. Set both `PigmentVariation` and `VascularAmount` to zero for uniform midpoint albedo.
+Cavity reads actual solved-height neighborhoods; fine cavity/filtering is approximate.
+RAM.a remains F0; baked RAMH.a remains height. Fuzz/SSS share the existing Substrate master.
+GBuffer/platform support can still limit simultaneous fuzz and per-pixel diffusion SSS;
+no renderer settings are changed by this implementation.
+
+Runtime owns five built-in looks: Elephant, Rough, Smooth, Pored and Human. The existing
+module Presets menu applies them through shared undo/instance synchronization while
+preserving Amount, write flags, enable state, destination bindings and scoped masks.
+Strict JSON preset loading still requires the complete current reflected schema.
+
+Research references: the supplied `Prototypes/skin.glsl` for tissue/drift/fold structure;
+[Föppl–von Kármán equations](https://en.wikipedia.org/wiki/F%C3%B6ppl%E2%80%93von_K%C3%A1rm%C3%A1n_equations)
+for bending/geometric-strain context (the regularized solver above is not that full system);
+[GPU Gems 3, Chapter 14](https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-14-advanced-techniques-realistic-real-time-skin)
+for separate surface/subsurface response; and
+[Epic Substrate overview](https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-substrate-materials-in-unreal-engine)
+for the shared shading contract. No unread PDF or exact-paper implementation is claimed.
+
+Only manual source/math review was performed. No build, shader compile, GPU timing,
+render, automated validation or visual-quality confirmation has been run.
+
 ## Structural Warp / bundle alignment (steps 5–7)
 
 - `FMixtormatGeneratorStructuralWarpCS` → `MixtormatGeneratorStructuralWarp.usf::MainCS`.

@@ -73,7 +73,7 @@ namespace MixtormatPresetUi
 TSharedRef<SWidget> SMixtormat::MakeModulePresetButton()
 {
 	return SNew(SMixtormatHelp)
-		.Text(LOCTEXT("ModulePresetHelp", "Parameter-only presets. IDs, connections, bindings and scoped modules stay on the destination. Bound parameters remain bound."))
+		.Text(LOCTEXT("ModulePresetHelp", "Parameter-only presets. IDs, connections, bindings and scoped modules stay on the destination. Bound parameters remain bound. Skin also retains Amount, channel write flags and its enable state."))
 		[
 			SNew(SComboButton)
 			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
@@ -145,13 +145,14 @@ TSharedRef<SWidget> SMixtormat::BuildModulePresetMenu()
 	for (const MixtormatPresetStore::FModulePreset& Preset : Presets)
 	{
 		const FText Label = FText::FromString(Preset.Name + (Preset.bShipped ? TEXT(" · Shipped") : FString()));
-		Menu.Item(Label, nullptr, FSimpleDelegate::CreateLambda([this, Address, Filename = Preset.Filename]()
+		Menu.Item(Label, nullptr, FSimpleDelegate::CreateLambda([this, Address, Preset]()
 		{
-			MixtormatPresetStore::FModulePreset Loaded;
+			MixtormatPresetStore::FModulePreset Loaded = Preset;
 			FText Issue;
 			FMixtormatLayerChild* Destination = ResolveChildAt(Address);
 			if (!Destination) { WorkingStatusText = LOCTEXT("PresetDestinationGone", "The destination module no longer exists.").ToString(); return; }
-						if (!MixtormatPresetStore::LoadModule(Filename, Loaded, Issue)) { WorkingStatusText = Issue.ToString(); return; }
+			if (!Preset.bBuiltIn && !MixtormatPresetStore::LoadModule(Preset.Filename, Loaded, Issue))
+			{ WorkingStatusText = Issue.ToString(); return; }
 			FMixtormatLayerChild Replacement = *Destination;
 			if (!MixtormatPresetStore::ApplyModule(Loaded, Replacement, Issue)) { WorkingStatusText = Issue.ToString(); return; }
 			RecordEditHistory();
