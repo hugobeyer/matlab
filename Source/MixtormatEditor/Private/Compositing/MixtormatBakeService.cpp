@@ -16,7 +16,10 @@
 #include "MixtormatSurface.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
+// UE 5.8's texture-sample header overrides the deprecated GetInputsView API.
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialFunction.h"
 #include "Materials/MaterialFunctionInterface.h"
 #include "Materials/MaterialInstanceConstant.h"

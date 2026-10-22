@@ -319,7 +319,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	const FMixtormatSkin& Skin = Child.Surfacing.Skin;
 	const FMixtormatSkin Defaults;
 	FRDGBuilder& Graph = Ctx.GraphBuilder;
-	RDG_GPU_STAT_SCOPE(Graph, MixtormatSkin);
+	RDG_EVENT_SCOPE_STAT(Graph, MixtormatSkin, "Mixtormat.Skin");
 	const FIntVector Groups(FMath::DivideAndRoundUp(Size.X, 8), FMath::DivideAndRoundUp(Size.Y, 8), 1);
 	const auto Make = [&Graph, Size](const TCHAR* Name, EPixelFormat Format)
 	{
