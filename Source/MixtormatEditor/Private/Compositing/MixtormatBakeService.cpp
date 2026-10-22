@@ -35,6 +35,9 @@ namespace MixtormatBake
 	constexpr int32 MaterialOutputIndex = 4;
 	constexpr int32 RAMHOutputIndex = 5;
 	constexpr int32 SurfaceOutputIndex = 6;
+	constexpr int32 OpticsOutputIndex = 7;
+	constexpr int32 FuzzColorOutputIndex = 8;
+	constexpr int32 SubsurfaceOutputIndex = 9;
 
 	FString MakePackageName(const FString& DestinationPath, const FString& AssetName)
 	{
@@ -91,6 +94,65 @@ namespace MixtormatBake
 		return true;
 	}
 
+	bool ReadLinearTarget(UTextureRenderTarget2D& Target, TArray<FLinearColor>& OutPixels)
+	{
+		FTextureRenderTargetResource* Resource = Target.GameThread_GetRenderTargetResource();
+		if (!Resource)
+		{
+			return false;
+		}
+		// RCM_UNorm would rescale HDR distances. No gamma conversion or 8-bit intermediary.
+		FReadSurfaceDataFlags Flags(RCM_MinMax);
+		Flags.SetLinearToGamma(false);
+		return Resource->ReadLinearColorPixels(OutPixels, Flags)
+			&& OutPixels.Num() == Target.SizeX * Target.SizeY;
+	}
+
+	UTexture2D* CreateOrUpdateOpticalTexture(
+		const FString& PackageName,
+		const FString& AssetName,
+		const FIntPoint Resolution,
+		const TArray<FLinearColor>& Pixels)
+	{
+		const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *AssetName);
+		UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ObjectPath);
+		const bool bCreated = Texture == nullptr;
+		if (bCreated)
+		{
+			Texture = NewObject<UTexture2D>(CreatePackage(*PackageName), *AssetName,
+				RF_Public | RF_Standalone | RF_Transactional);
+		}
+		if (!Texture)
+		{
+			return nullptr;
+		}
+		Texture->Modify();
+		Texture->PreEditChange(nullptr);
+		Texture->Source.Init(Resolution.X, Resolution.Y, 1, 1, TSF_RGBA32F,
+			reinterpret_cast<const uint8*>(Pixels.GetData()));
+		Texture->SRGB = false;
+		// Uncompressed RGBA float preserves small F0 values, HDR MFP and the SSS mask in A.
+		// BC6H/HDRCompressed would discard alpha; UNorm formats would clamp MFP to 1 cm.
+		Texture->CompressionSettings = TC_HDR_F32;
+		Texture->CompressionNoAlpha = false;
+		Texture->VirtualTextureStreaming = false;
+		Texture->LODGroup = TEXTUREGROUP_World;
+		// Data masks/radii are averaged, never sharpened or alpha-coverage rescaled.
+		Texture->MipGenSettings = TMGS_SimpleAverage;
+		Texture->bDoScaleMipsForAlphaCoverage = false;
+		Texture->NeverStream = true;
+		Texture->Filter = TF_Default;
+		Texture->AddressX = TA_Wrap;
+		Texture->AddressY = TA_Wrap;
+		Texture->PostEditChange();
+		Texture->MarkPackageDirty();
+		if (bCreated)
+		{
+			FAssetRegistryModule::AssetCreated(Texture);
+		}
+		return Texture;
+	}
+
 	UTexture2D* CreateOrUpdateTexture(
 		const FString& PackageName,
 		const FString& AssetName,
@@ -134,7 +196,7 @@ namespace MixtormatBake
 		Texture->CompressionSettings = Compression;
 		if (bPreserveAlpha)
 		{
-			// TC_Masks discards alpha by default, and the alpha is the height.
+			// Preserve RAM.A F0 and layer-facing RAMH.A height.
 			Texture->CompressionNoAlpha = false;
 		}
 		Texture->LODGroup = LODGroup;
@@ -215,10 +277,8 @@ namespace MixtormatBake
 		TEXT("DA_RAMH"),
 		TEXT("DA_Height"),
 	};
-	// DA_DielectricF0 / DA_UsePackedF0 are deliberately not required here: the master computes F0
-	// itself via MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0 (BaseColor + Metallic),
-	// confirmed by inspecting the master's own expression list. There is no manual F0 override
-	// input in the graph for these two names to bind to.
+	// The selected current master remains valid without optical parameters. Its optional
+	// optical contract is checked separately; do not force artists to replace the live asset.
 	const FName RequiredScalarParameters[] = {
 		TEXT("DA_FuzzInfluence"),
 		TEXT("DA_Tiling"),
@@ -276,12 +336,16 @@ namespace MixtormatBake
 		return Missing;
 	}
 
+
 	UMixtormatSurface* CreateOrUpdateSurface(
 		const FString& PackageName,
 		const FString& AssetName,
 		UTexture2D* BaseColor,
 		UTexture2D* Normal,
 		UTexture2D* RAMH,
+		UTexture2D* Optics,
+		UTexture2D* FuzzColorMap,
+		UTexture2D* Subsurface,
 		UMaterialInterface* PreviewMaterial,
 		const FText& DisplayName)
 	{
@@ -306,13 +370,14 @@ namespace MixtormatBake
 		Surface->BaseColor = BaseColor;
 		Surface->Normal = Normal;
 		Surface->RoughnessAOMetallic = RAMH;
+		Surface->Optics = Optics;
+		Surface->FuzzColorMap = FuzzColorMap;
+		Surface->Subsurface = Subsurface;
 		// Authored rather than derived: the height in that alpha is the composite's own, read
 		// back from the height target, not something reconstructed from the normal.
 		Surface->bHasBlendHeight = true;
 		Surface->BlendHeightProvenance = EMixtormatBlendHeightProvenance::AuthoredRAMH;
-		// The bake's per-pixel F0 lived in the alpha the height now occupies, so a single value
-		// stands in for it. 1.5 is the struct's own default and the usual dielectric.
-		Surface->DefaultIOR = 1.5f;
+		// Optics.R retains per-pixel F0. Leave the existing no-map DefaultIOR untouched.
 		Surface->PreviewMaterial = PreviewMaterial;
 		Surface->PostEditChange();
 		Surface->MarkPackageDirty();
@@ -356,6 +421,41 @@ namespace MixtormatBake
 		}
 		return Instance;
 	}
+}
+
+bool FMixtormatBakeService::HasSurfaceOpticsParameters(UMaterialInterface& Material, bool& bHasAny)
+{
+	bHasAny = false;
+	UMaterial* Definition = Material.GetMaterial();
+	if (!Definition)
+	{
+		return false;
+	}
+	// Inspect declarations on the chosen graph. Setting a value on an MID must not make an
+	// unsupported master appear capable, including leftover overrides after reparenting.
+	TArray<FMaterialParameterInfo> TextureInfo;
+	TArray<FMaterialParameterInfo> ScalarInfo;
+	TArray<FGuid> Ids;
+	Definition->GetAllTextureParameterInfo(TextureInfo, Ids);
+	Definition->GetAllScalarParameterInfo(ScalarInfo, Ids);
+	const auto HasGlobal = [&bHasAny](const TArray<FMaterialParameterInfo>& Infos, const FName Name)
+	{
+		bool bGlobal = false;
+		for (const FMaterialParameterInfo& Info : Infos)
+		{
+			if (Info.Name == Name)
+			{
+				bHasAny = true;
+				bGlobal |= Info.Association == EMaterialParameterAssociation::GlobalParameter;
+			}
+		}
+		return bGlobal;
+	};
+	const bool bOptics = HasGlobal(TextureInfo, TEXT("DA_Optics"));
+	const bool bFuzz = HasGlobal(TextureInfo, TEXT("DA_FuzzColorMap"));
+	const bool bSubsurface = HasGlobal(TextureInfo, TEXT("DA_Subsurface"));
+	const bool bEnable = HasGlobal(ScalarInfo, TEXT("DA_UseSurfaceOptics"));
+	return bOptics && bFuzz && bSubsurface && bEnable;
 }
 
 TArray<FMixtormatDiscoveredTextureParameter> FMixtormatBakeService::DiscoverTextureParameters(UMaterialInterface* Master)
@@ -426,6 +526,17 @@ bool FMixtormatBakeService::ValidateMaterialSettings(
 	const FMixtormatBakeMaterialSettings& MaterialSettings,
 	FText& OutError)
 {
+	const auto ValidateOpticalContract = [&OutError](UMaterialInterface& Material)
+	{
+		bool bHasAny = false;
+		if (!HasSurfaceOpticsParameters(Material, bHasAny) && bHasAny)
+		{
+			OutError = NSLOCTEXT("MixtormatBake", "IncompleteOpticalMaster",
+				"Master has an incomplete optical contract. Require global DA_Optics, DA_FuzzColorMap, DA_Subsurface and DA_UseSurfaceOptics. Upgrade a duplicate using Tools/upgrade_surface_optics.py.");
+			return false;
+		}
+		return true;
+	};
 	if (MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Default)
 	{
 		const FString MasterPath = FMixtormatPaths::MasterMaterialObjectPath();
@@ -451,7 +562,7 @@ bool FMixtormatBakeService::ValidateMaterialSettings(
 				FText::FromString(FString::Join(MissingNames, TEXT(", "))));
 			return false;
 		}
-		return true;
+		return ValidateOpticalContract(*Master);
 	}
 
 	// Custom Mode
@@ -470,6 +581,10 @@ bool FMixtormatBakeService::ValidateMaterialSettings(
 		return false;
 	}
 
+	if (!ValidateOpticalContract(*CustomMaster))
+	{
+		return false;
+	}
 	const TArray<FMixtormatDiscoveredTextureParameter> Discovered = DiscoverTextureParameters(CustomMaster);
 	TSet<FMaterialParameterInfo> AvailableParams;
 	TMap<FMaterialParameterInfo, EMaterialSamplerType> SamplerMap;
@@ -502,6 +617,15 @@ bool FMixtormatBakeService::ValidateMaterialSettings(
 		if (!Mapping.IsAssigned())
 		{
 			continue;
+		}
+
+		if (Mapping.ParameterInfo.Name == FName(TEXT("DA_Optics"))
+			|| Mapping.ParameterInfo.Name == FName(TEXT("DA_FuzzColorMap"))
+			|| Mapping.ParameterInfo.Name == FName(TEXT("DA_Subsurface")))
+		{
+			OutError = NSLOCTEXT("MixtormatBake", "ReservedOpticalMapping",
+				"DA_Optics, DA_FuzzColorMap and DA_Subsurface are reserved for the shared optical outputs, not BC/Normal/RAM/Height mappings.");
+			return false;
 		}
 
 		if (!AvailableParams.Contains(Mapping.ParameterInfo))
@@ -577,7 +701,10 @@ TArray<FString> FMixtormatBakeService::GetOutputAssetNames(
 		FString::Printf(TEXT("T_%s_H"), *Settings.BaseName),
 		FString::Printf(TEXT("MI_%s"), *Settings.BaseName),
 		FString::Printf(TEXT("T_%s_RAMH"), *Settings.BaseName),
-		FString::Printf(TEXT("SF_%s"), *Settings.BaseName)
+		FString::Printf(TEXT("SF_%s"), *Settings.BaseName),
+		FString::Printf(TEXT("T_%s_Optics"), *Settings.BaseName),
+		FString::Printf(TEXT("T_%s_FuzzColor"), *Settings.BaseName),
+		FString::Printf(TEXT("T_%s_Subsurface"), *Settings.BaseName)
 	};
 }
 
@@ -615,6 +742,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	UTextureRenderTarget2D& NormalTarget,
 	UTextureRenderTarget2D& RAMTarget,
 	UTextureRenderTarget2D& HeightTarget,
+	UTextureRenderTarget2D& OpticsTarget,
+	UTextureRenderTarget2D& FuzzColorTarget,
+	UTextureRenderTarget2D& SubsurfaceTarget,
 	const FMixtormatBakeSettings& Settings,
 	const TFunction<void(EMixtormatBakeStage)>& Progress)
 {
@@ -648,6 +778,17 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	{
 		Result.Errors.Add(NSLOCTEXT("MixtormatBake", "InvalidTargets", "Compositor outputs have invalid or mismatched dimensions."));
 		return Result;
+	}
+
+	for (UTextureRenderTarget2D* Target : { &OpticsTarget, &FuzzColorTarget, &SubsurfaceTarget })
+	{
+		if (Target->SizeX != Resolution.X || Target->SizeY != Resolution.Y
+			|| (Target->GetFormat() != PF_FloatRGBA && Target->GetFormat() != PF_A32B32G32R32F))
+		{
+			Result.Errors.Add(NSLOCTEXT("MixtormatBake", "InvalidOpticalTargets",
+				"Optics, FuzzColor and Subsurface must be full-resolution floating-point RGBA targets."));
+			return Result;
+		}
 	}
 
 	const FString RecipePackageName = Recipe.GetOutermost()->GetName();
@@ -700,6 +841,24 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		}
 	}
 
+	bool bHasAnyOpticalParameter = false;
+	const bool bSupportsSurfaceOptics = HasSurfaceOpticsParameters(*Master, bHasAnyOpticalParameter);
+	if (!bSupportsSurfaceOptics && bHasAnyOpticalParameter)
+	{
+		Result.Errors.Add(NSLOCTEXT("MixtormatBake", "IncompleteOpticalMaster",
+			"Master has an incomplete optical contract. Require global DA_Optics, DA_FuzzColorMap, DA_Subsurface and DA_UseSurfaceOptics. Upgrade a duplicate using Tools/upgrade_surface_optics.py."));
+		return Result;
+	}
+	if (!bSupportsSurfaceOptics)
+	{
+		const FText Warning = NSLOCTEXT("MixtormatBake", "LegacyOpticsUnbound",
+			"Selected parent has no shared optical parameters. Optical textures are exported, but this material instance renders the legacy channels/global fuzz, not per-pixel optical F0/fuzz/SSS. Upgrade and explicitly select a reviewed duplicate to render those maps; the current master is unchanged.");
+		Result.Warnings.Add(Warning);
+		UE_LOG(LogTemp, Warning, TEXT("Mixtormat bake: %s"), *Warning.ToString());
+	}
+
+	const bool bUseSurfaceOptics = bSupportsSurfaceOptics && Settings.bHasAuthoredSurfaceOptics;
+
 	UEditorAssetSubsystem* AssetSubsystem = GEditor
 		? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>()
 		: nullptr;
@@ -723,7 +882,10 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		UTexture2D::StaticClass(),
 		UMaterialInstanceConstant::StaticClass(),
 		UTexture2D::StaticClass(),
-		UMixtormatSurface::StaticClass()
+		UMixtormatSurface::StaticClass(),
+		UTexture2D::StaticClass(),
+		UTexture2D::StaticClass(),
+		UTexture2D::StaticClass()
 	};
 	for (int32 OutputIndex = 0; OutputIndex < ObjectPaths.Num(); ++OutputIndex)
 	{
@@ -755,14 +917,49 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	TArray<FColor> NormalPixels;
 	TArray<FColor> RAMPixels;
 	TArray<uint16> HeightPixels;
+	TArray<FLinearColor> OpticsPixels;
+	TArray<FLinearColor> FuzzColorPixels;
+	TArray<FLinearColor> SubsurfacePixels;
+	TArray<FLinearColor> LinearRAMPixels;
 	if (!ReadTarget(BaseColorTarget, true, BaseColorPixels)
 		|| !ReadTarget(NormalTarget, false, NormalPixels)
 		|| !ReadTarget(RAMTarget, false, RAMPixels)
-		|| !ReadHeightTarget(HeightTarget, HeightPixels))
+		|| !ReadHeightTarget(HeightTarget, HeightPixels)
+		|| !ReadLinearTarget(OpticsTarget, OpticsPixels)
+		|| !ReadLinearTarget(FuzzColorTarget, FuzzColorPixels)
+		|| !ReadLinearTarget(SubsurfaceTarget, SubsurfacePixels)
+		|| !ReadLinearTarget(RAMTarget, LinearRAMPixels)
+		|| BaseColorPixels.Num() != Resolution.X * Resolution.Y
+		|| NormalPixels.Num() != BaseColorPixels.Num()
+		|| RAMPixels.Num() != BaseColorPixels.Num()
+		|| HeightPixels.Num() != BaseColorPixels.Num())
 	{
 		Result.Errors.Add(NSLOCTEXT("MixtormatBake", "ReadbackFailed", "Failed to read compositor output from the GPU."));
 		return Result;
 	}
+
+	for (int32 Index = 0; Index < OpticsPixels.Num(); ++Index)
+	{
+		const FLinearColor& Optics = OpticsPixels[Index];
+		const FLinearColor& Fuzz = FuzzColorPixels[Index];
+		const FLinearColor& MFP = SubsurfacePixels[Index];
+		const auto IsFiniteNonnegative = [](const FLinearColor& Value)
+		{
+			return FMath::IsFinite(Value.R) && FMath::IsFinite(Value.G)
+				&& FMath::IsFinite(Value.B) && FMath::IsFinite(Value.A)
+				&& Value.R >= 0.0f && Value.G >= 0.0f && Value.B >= 0.0f && Value.A >= 0.0f;
+		};
+		if (!IsFiniteNonnegative(Optics) || !IsFiniteNonnegative(Fuzz) || !IsFiniteNonnegative(MFP)
+			|| Optics.R > 1.0f || Optics.G > 1.0f || Optics.B > 1.0f || Optics.A > 1.0f
+			|| !FMath::IsNearlyEqual(Optics.R, LinearRAMPixels[Index].A, KINDA_SMALL_NUMBER))
+		{
+			Result.Errors.Add(FText::Format(NSLOCTEXT("MixtormatBake", "InvalidOpticalPixels",
+				"Invalid optical data at pixel {0}: require finite nonnegative data, unit-range Optics masks, and Optics.R matching canonical RAM.A F0. Nothing saved."),
+				FText::AsNumber(Index)));
+			return Result;
+		}
+	}
+	LinearRAMPixels.Empty();
 
 	if (Progress)
 	{
@@ -798,7 +995,8 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		RAMPixels,
 		false,
 		TC_Masks,
-		TEXTUREGROUP_World);
+		TEXTUREGROUP_World,
+		true);
 	Result.Height = CreateOrUpdateHeightTexture(
 		MakePackageName(Settings.DestinationPath, HeightName),
 		HeightName,
@@ -834,10 +1032,23 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 			NSLOCTEXT("MixtormatBake", "RAMHCreationFailed", "Failed to create or update {0}."),
 			FText::FromString(ObjectPaths[RAMHOutputIndex])));
 	}
-	UObject* TextureOutputs[] = {Result.BaseColor, Result.Normal, Result.RAM, Result.Height};
+	Result.Optics = CreateOrUpdateOpticalTexture(
+		MakePackageName(Settings.DestinationPath, AssetNames[OpticsOutputIndex]),
+		AssetNames[OpticsOutputIndex], Resolution, OpticsPixels);
+	Result.FuzzColorMap = CreateOrUpdateOpticalTexture(
+		MakePackageName(Settings.DestinationPath, AssetNames[FuzzColorOutputIndex]),
+		AssetNames[FuzzColorOutputIndex], Resolution, FuzzColorPixels);
+	Result.Subsurface = CreateOrUpdateOpticalTexture(
+		MakePackageName(Settings.DestinationPath, AssetNames[SubsurfaceOutputIndex]),
+		AssetNames[SubsurfaceOutputIndex], Resolution, SubsurfacePixels);
+	UObject* TextureOutputs[] = { Result.BaseColor, Result.Normal, Result.RAM, Result.Height,
+		Result.RAMH, Result.Optics, Result.FuzzColorMap, Result.Subsurface };
+	const int32 TextureOutputIndices[] = { BaseColorOutputIndex, NormalOutputIndex, RAMOutputIndex,
+		HeightOutputIndex, RAMHOutputIndex, OpticsOutputIndex, FuzzColorOutputIndex, SubsurfaceOutputIndex };
 	for (int32 TextureIndex = 0; TextureIndex < UE_ARRAY_COUNT(TextureOutputs); ++TextureIndex)
 	{
-		const FString& OutputPath = ObjectPaths[TextureIndex];
+		const int32 OutputIndex = TextureOutputIndices[TextureIndex];
+		const FString& OutputPath = ObjectPaths[OutputIndex];
 		if (!TextureOutputs[TextureIndex])
 		{
 			Result.FailedAssetPaths.AddUnique(OutputPath);
@@ -847,7 +1058,7 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 			continue;
 		}
 
-		if (bOutputExisted[TextureIndex])
+		if (bOutputExisted[OutputIndex])
 		{
 			Result.UpdatedAssetPaths.AddUnique(OutputPath);
 		}
@@ -889,10 +1100,16 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Recipe.LastAppliedBakeOverrides.MaterialInstance.ToSoftObjectPath() == FSoftObjectPath(TargetMaterialObjectPath);
 
 	TArray<FMaterialParameterInfo> AppliedParameters;
+	if (bSupportsSurfaceOptics)
+	{
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_Optics")));
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_FuzzColorMap")));
+		AppliedParameters.Add(FMaterialParameterInfo(TEXT("DA_Subsurface")));
+	}
 
 	if (Settings.MaterialSettings.ParentMode == EMixtormatBakeMaterialParentMode::Custom)
 	{
-		TSet<FMaterialParameterInfo> NewAssigned;
+		TSet<FMaterialParameterInfo> NewAssigned(AppliedParameters);
 		const FMixtormatBakeMaterialMapping* Mappings[] = {
 			&Settings.MaterialSettings.BaseColorMapping,
 			&Settings.MaterialSettings.NormalMapping,
@@ -957,24 +1174,7 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 			}
 		}
 
-		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
-			Result.Material,
-			TEXT("DA_FuzzInfluence"),
-			MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers, Recipe.LayerGroups));
-		const TOptional<FLinearColor> FuzzColor =
-			MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers, Recipe.LayerGroups);
-		if (FuzzColor.IsSet())
-		{
-			UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
-				Result.Material, TEXT("DA_FuzzColor"), FuzzColor.GetValue());
-		}
-		else
-		{
-			Result.Material->VectorParameterValues.RemoveAll([](const FVectorParameterValue& Value)
-			{
-				return Value.ParameterInfo.Name == FName(TEXT("DA_FuzzColor"));
-			});
-		}
+
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_Tiling"), 1.0f);
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessBias"), 0.5f);
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_RoughnessContrast"), 0.0f);
@@ -982,6 +1182,54 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material, TEXT("DA_NormalIntensity"), 1.0f);
 	}
 
+	if (bSupportsSurfaceOptics)
+	{
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_Optics")), Result.Optics);
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_FuzzColorMap")), Result.FuzzColorMap);
+		Result.Material->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("DA_Subsurface")), Result.Subsurface);
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(
+			Result.Material, TEXT("DA_UseSurfaceOptics"), bUseSurfaceOptics ? 1.0f : 0.0f);
+	}
+	else
+	{
+		Result.Material->ScalarParameterValues.RemoveAll([](const FScalarParameterValue& Value)
+		{
+			return Value.ParameterInfo == FMaterialParameterInfo(TEXT("DA_UseSurfaceOptics"));
+		});
+	}
+	if (!bUseSurfaceOptics)
+	{
+		// Preserve the live legacy branch, including an upgraded master with no authored optical
+		// data. Do not let default-filled targets disable the existing document-wide fuzz.
+		TArray<FMaterialParameterInfo> ScalarInfo;
+		TArray<FMaterialParameterInfo> VectorInfo;
+		TArray<FGuid> Ids;
+		Master->GetAllScalarParameterInfo(ScalarInfo, Ids);
+		Master->GetAllVectorParameterInfo(VectorInfo, Ids);
+		if (ScalarInfo.Contains(FMaterialParameterInfo(TEXT("DA_FuzzInfluence"))))
+		{
+			UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Result.Material,
+				TEXT("DA_FuzzInfluence"),
+				MixtormatCompositionReferences::ComputeFuzzInfluence(Recipe.Layers, Recipe.LayerGroups));
+		}
+		if (VectorInfo.Contains(FMaterialParameterInfo(TEXT("DA_FuzzColor"))))
+		{
+			const TOptional<FLinearColor> FuzzColor =
+				MixtormatCompositionReferences::ComputeFuzzColor(Recipe.Layers, Recipe.LayerGroups);
+			if (FuzzColor.IsSet())
+			{
+				UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(
+					Result.Material, TEXT("DA_FuzzColor"), FuzzColor.GetValue());
+			}
+			else
+			{
+				Result.Material->VectorParameterValues.RemoveAll([](const FVectorParameterValue& Value)
+				{
+					return Value.ParameterInfo == FMaterialParameterInfo(TEXT("DA_FuzzColor"));
+				});
+			}
+		}
+	}
 	Result.Material->PostEditChange();
 	Result.Material->MarkPackageDirty();
 
@@ -992,6 +1240,11 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.BaseColor,
 		Result.Normal,
 		Result.RAMH,
+		// Do not turn allocation-only defaults into authored maps when this surface is reused.
+		// The standalone exports/recipe references still retain all three targets for inspection.
+		Settings.bHasAuthoredSurfaceOptics ? Result.Optics : nullptr,
+		Settings.bHasAuthoredSurfaceOptics ? Result.FuzzColorMap : nullptr,
+		Settings.bHasAuthoredSurfaceOptics ? Result.Subsurface : nullptr,
 		Result.Material,
 		Recipe.DisplayName.IsEmpty()
 			? FText::FromString(Recipe.GetName())
@@ -1002,6 +1255,15 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 		Result.Errors.Add(FText::Format(
 			NSLOCTEXT("MixtormatBake", "SurfaceCreationFailed", "Failed to create or update {0}."),
 			FText::FromString(ObjectPaths[SurfaceOutputIndex])));
+		return Result;
+	}
+	if (bOutputExisted[SurfaceOutputIndex])
+	{
+		Result.UpdatedAssetPaths.AddUnique(ObjectPaths[SurfaceOutputIndex]);
+	}
+	else
+	{
+		Result.CreatedAssetPaths.AddUnique(ObjectPaths[SurfaceOutputIndex]);
 	}
 
 	Recipe.Modify();
@@ -1009,6 +1271,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	Recipe.BakedNormal = Result.Normal;
 	Recipe.BakedRAM = Result.RAM;
 	Recipe.BakedHeight = Result.Height;
+	Recipe.BakedOptics = Result.Optics;
+	Recipe.BakedFuzzColorMap = Result.FuzzColorMap;
+	Recipe.BakedSubsurface = Result.Subsurface;
 	Recipe.BakedMaterial = Result.Material;
 	Recipe.BakedSurface = Result.Surface;
 	Recipe.BakeMaterialSettings = Settings.MaterialSettings;
@@ -1042,6 +1307,9 @@ FMixtormatBakeResult FMixtormatBakeService::Bake(
 	SaveAsset(Result.Normal);
 	SaveAsset(Result.RAM);
 	SaveAsset(Result.Height);
+	SaveAsset(Result.Optics);
+	SaveAsset(Result.FuzzColorMap);
+	SaveAsset(Result.Subsurface);
 	SaveAsset(Result.Material);
 	if (Result.RAMH)
 	{

@@ -3,6 +3,7 @@
 #include "MixtormatGpuCompositorInternal.h"
 #include "Compositing/MixtormatComposeHash.h"
 #include "MixtormatGpuNoisePasses.h"
+#include "MixtormatGpuSurfacingPasses.h"
 #include "MixtormatGpuNativeFlowPasses.h"
 #include "MixtormatGpuGaussianBlur.h"
 #include "MixtormatColorRampMath.h"
@@ -30,12 +31,12 @@
 //     Layer source height
 //         -> AddLayerInputPass            resolves it into output space
 //         -> AddLayerHeightSmoothPasses   optional pre-smooth
-//         -> AddGeneratorLayerPasses      <- here, on Generator layers only
+//         -> AddGeneratorLayerPasses      <- here, for ordered Generator/Surfacing producers
 //         -> mask children, effects, AddLayerCompositePass
 //
-// AddGeneratorLayerPasses is called once per Generator layer and walks its module children in
-// authored order. Each module builds its own scalar height, then blends into the layer's
-// running height with the shared HeightBlend; the result replaces LayerCtx.LayerInputHeight.
+// AddGeneratorLayerPasses walks ordered procedural children once per layer. Generators build
+// their native height bundles; distinct Surfacing children resolve height/material fields after
+// their substrate. The final signed delta enters LayerCtx.LayerInputHeight exactly once.
 
 namespace MixtormatGpuCompositor
 {
@@ -2408,7 +2409,8 @@ namespace
 
 	void ApplyGeneratorPostBehaviors(FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
-		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight)
+		const FChildRenderData& Owner, FGeneratorBundle& Module, FRDGTextureRef PreviousRunningHeight,
+		TSet<int32>* CompletedScopes = nullptr)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
 		FRDGTextureRef WorkingFlow = Ctx.GraphBuilder.CreateTexture(
@@ -2459,8 +2461,10 @@ namespace
 			{
 				FMixtormatNoiseRenderData Noise;
 				if (!MixtormatNoiseRenderStore().Find(
-					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)
-					|| (!Noise.bWriteFlow && !Noise.bWriteHeight)) { continue; }
+					FMixtormatNoiseRenderKey{Layer.LayerId, Child.SourceChildIndex}, Noise)) { continue; }
+				// Write switches disable this producer's channels, not its enabled Skin subtree.
+				if (CompletedScopes) { CompletedScopes->Add(Child.SourceChildIndex); }
+				if (!Noise.bWriteFlow && !Noise.bWriteHeight) { continue; }
 				FRDGTextureRef ParentUV = nullptr;
 				if (const FPublishedField* RootUVField = Ctx.PublishedFieldOutputs.Find(
 					PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("RootUV")))))
@@ -3905,7 +3909,7 @@ namespace
 	}
 
 	FRDGTextureRef ResolveSubstrateHeight(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-		const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight, FRDGTextureRef BelowHeight)
+		FRDGTextureRef RunningHeight, FRDGTextureRef BelowHeight)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FIntPoint Size = Ctx.Request.Resolution;
@@ -4028,7 +4032,7 @@ namespace
 				}
 				else
 				{
-					Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
+					Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, RunningHeight, BelowHeight);
 					SeedMaskTexture = Data.SeedMask.IsValid()
 						? RegisterTexture(GraphBuilder, Ctx.RegisteredTextures, Data.SeedMask, TEXT("Mixtormat.Moss.SeedMask"))
 						: Ctx.EmptyDriverSignal;
@@ -4273,7 +4277,7 @@ namespace
 		}
 		else
 		{
-			FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, Child, RunningHeight, BelowHeight);
+			FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, RunningHeight, BelowHeight);
 
 			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
 			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
@@ -4871,7 +4875,11 @@ void AddOutputReferencePasses(FMixtormatComposeContext& Ctx,
 void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer)
 {
-	if (!Layer.bEnabled || !Layer.bGenerator) { return; }
+	const bool bHasSurfacing = Layer.Children.ContainsByPredicate([](const FChildRenderData& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Surfacing;
+	});
+	if (!Layer.bEnabled || (!Layer.bGenerator && !bHasSurfacing)) { return; }
 	FGeneratorBundle& Bundle = LayerCtx.GeneratorBundle;
 	Bundle = FGeneratorBundle();
 	struct FPendingColorRamp
@@ -4945,7 +4953,10 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				{
 					const FChildRenderData& Prior = Layer.Children[J];
 					if (Prior.SourceChildIndex != OperandIdx
-						&& (Prior.Type == EMixtormatLayerChildType::Generator || Prior.Type == EMixtormatLayerChildType::Boolean))
+						&& (Prior.Type == EMixtormatLayerChildType::Generator || Prior.Type == EMixtormatLayerChildType::Boolean
+							|| (Prior.Type == EMixtormatLayerChildType::Surfacing && Prior.ScopeOwnerSourceChildIndex == INDEX_NONE
+								&& Prior.Surfacing.bEnabled && Prior.Surfacing.Skin.bWriteHeight
+								&& Prior.Surfacing.Skin.Amount > 0.0f && Prior.Surfacing.Skin.HeightScale != 0.0f)))
 					{
 						bHasOtherHeightProducer = true;
 						break;
@@ -4959,58 +4970,175 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		}
 	}
 
-	// Modules compose in child order from signed zero; zero is the neutral generator height.
-	for (const FChildRenderData& Child : Layer.Children)
+	// Preserve the legacy bottom-to-top ramp order within each uninterrupted batch. An active
+	// Skin color writer is an ordering barrier: consume earlier ramps ONCE, never replay them
+	// over the later surface at function exit. Zero-Amount Skin introduces no barrier.
+	const auto FlushPendingColorRamps = [&]()
 	{
-		if (PendingBoolean && Child.SourceChildIndex > PendingBoolean->Boolean.LastChildIndex)
+		FRDGTextureRef GeneratedColor = nullptr;
+		for (int32 RampIndex = PendingColorRamps.Num() - 1; RampIndex >= 0; --RampIndex)
 		{
-			FinishBoolean();
-		}
-		if (Child.Type == EMixtormatLayerChildType::Boolean)
-		{
-			FinishBoolean();
-			PendingBoolean = &Child;
-			continue;
-		}
-		const bool bBooleanOperand = PendingBoolean
-			&& Child.Type == EMixtormatLayerChildType::Generator
-			&& Child.ScopeOwnerSourceChildIndex == PendingBoolean->SourceChildIndex
-			&& (Child.SourceChildIndex == PendingBoolean->Boolean.TargetChildIndex
-				|| Child.SourceChildIndex == PendingBoolean->Boolean.SourceChildIndex);
-		const FRDGTextureRef OperandRunningHeight = bBooleanOperand ? BooleanNeutralHeight : RunningHeight;
-		// Generator sublayers rewrite the running signed height in place (or publish colour).
-		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
-		{
-			// Resolve the source texture first; HasSource must reflect actual texture availability,
-			// not merely a stored child index. A missing source falls back to the running height
-			// for RDG validation, but the shader then uses its operation-specific neutral behaviour
-			// rather than treating RunningHeight as a real operand (which would yield A+A, A-A, 0).
-			FRDGTextureRef Source = RunningHeight;
-			bool bHasSource = false;
-			if (Child.HeightBlend.SourceChildIndex != INDEX_NONE)
+			const FPendingColorRamp& Pending = PendingColorRamps[RampIndex];
+			const FChildRenderData& Child = *Pending.Child;
+			FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
+			RampData.bHasGate = Pending.bHasGate ? 1u : 0u;
+			FRDGTextureRef BaseColorForRamp = GeneratedColor ? GeneratedColor
+				: (LayerCtx.LayerInputBC ? LayerCtx.LayerInputBC
+					: (LayerCtx.LayerIndex != INDEX_NONE ? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)] : nullptr));
+			const bool bOverrideRampBaseColor = !GeneratedColor && !LayerCtx.bGeneratorColor
+				&& !LayerCtx.bSurfacingColor && !Layer.bFillPassThrough
+				&& Layer.bOverrideBaseColor && !LayerCtx.ReferencedColor;
+			FRDGTextureRef Color = Pending.FilteredColor
+				? AddGeneratorColorCompositePass(Ctx, Pending.FilteredColor, Pending.Gate,
+					BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor)
+				: AddGeneratorHeightColorRampPass(Ctx, Pending.SourceHeight, Pending.SourceFlow,
+					Pending.SourceUV, Pending.SourceIds, Pending.SourceMode, Pending.Gate,
+					BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor);
+			const FPublishedField ColorField{EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
+			Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Child.HeightColorRamp.OutputName), ColorField);
+			if (ColorField.IsComplete()) { GeneratedColor = Color; }
+			if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
+				Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
 			{
-				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(Child.HeightBlend.SourceChildIndex))
+				AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Color, Debug, Size);
+			}
+		}
+		if (GeneratedColor && Layer.bGeneratorAlbedo)
+		{
+			LayerCtx.LayerInputBC = GeneratedColor;
+			LayerCtx.bGeneratorColor = true;
+		}
+		PendingColorRamps.Reset();
+	};
+
+	TSet<int32> EvaluatedSkin;
+	TSet<int32> CapturedColorRamps;
+	TFunction<void(const FChildRenderData&, FRDGTextureRef, int32, FRDGTextureRef)> CaptureColorRamp;
+	TSet<int32> CompletedGeneratorScopes;
+	TMap<int32, FRDGTextureRef> SurfacingScopeGates;
+	const auto FindChild = [&](int32 Index) -> const FChildRenderData*
+	{
+		return Layer.Children.FindByPredicate([Index](const FChildRenderData& Candidate)
+		{
+			return Candidate.SourceChildIndex == Index;
+		});
+	};
+	const auto HasSurfacingBelow = [&](int32 OwnerIndex)
+	{
+		for (const FChildRenderData& Candidate : Layer.Children)
+		{
+			if (Candidate.Type != EMixtormatLayerChildType::Surfacing) { continue; }
+			int32 Parent = Candidate.ScopeOwnerSourceChildIndex;
+			while (Parent != INDEX_NONE)
+			{
+				if (Parent == OwnerIndex) { return true; }
+				const FChildRenderData* Ancestor = FindChild(Parent);
+				if (!Ancestor || Ancestor->ScopeOwnerSourceChildIndex >= Parent) { break; }
+				Parent = Ancestor->ScopeOwnerSourceChildIndex;
+			}
+		}
+		return false;
+	};
+	const auto ScopeGate = [&](int32 OwnerIndex)
+	{
+		if (FRDGTextureRef* Existing = SurfacingScopeGates.Find(OwnerIndex)) { return *Existing; }
+		FRDGTextureRef Gate = HasScopedGeneratorMasks(Layer, OwnerIndex)
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, OwnerIndex, true) : nullptr;
+		SurfacingScopeGates.Add(OwnerIndex, Gate);
+		return Gate;
+	};
+	// LocalHeight contains a completed parent's delta; UpstreamDelta is outside that scope.
+	// Descendants mutate only LocalHeight. The outer generator/Boolean combines it exactly once.
+	TFunction<FRDGTextureRef(const FChildRenderData&, FRDGTextureRef, FRDGTextureRef, FRDGTextureRef, float)> EvaluateSkin;
+	TFunction<FRDGTextureRef(int32, FRDGTextureRef, FRDGTextureRef, FRDGTextureRef, float)> EvaluateSkinChildren;
+	EvaluateSkinChildren = [&](int32 OwnerIndex, FRDGTextureRef LocalHeight, FRDGTextureRef UpstreamDelta,
+		FRDGTextureRef ParentGate, float AncestorAmount)
+	{
+		for (const FChildRenderData& Nested : Layer.Children)
+		{
+			if (Nested.ScopeOwnerSourceChildIndex != OwnerIndex || Nested.SourceChildIndex <= OwnerIndex) { continue; }
+			if (Nested.Type == EMixtormatLayerChildType::Surfacing)
+			{
+				LocalHeight = EvaluateSkin(Nested, LocalHeight, UpstreamDelta, ParentGate, AncestorAmount);
+			}
+			else if (Nested.Type == EMixtormatLayerChildType::HeightColorRamp)
+			{
+				FRDGTextureRef RampHeight = LocalHeight;
+				if (UpstreamDelta)
 				{
-					Source = *Found;
-					bHasSource = true;
+					FGeneratorBundle Local;
+					Local.Height = LocalHeight;
+					AddGeneratorModuleCombine(Ctx, UpstreamDelta, Local, Nested, RampHeight);
 				}
+				CaptureColorRamp(Nested, RampHeight, OwnerIndex, LocalHeight);
 			}
-			FGeneratorHeightBlendRenderData BlendData = Child.HeightBlend;
-			BlendData.SourceChildIndex = bHasSource ? Child.HeightBlend.SourceChildIndex : INDEX_NONE;
-			RunningHeight = AddGeneratorHeightBlendPass(Ctx, RunningHeight, Source, BlendData);
-			if (bHasSource)
+			else if (Nested.Type == EMixtormatLayerChildType::Generator
+				&& Nested.Generator.Type == EMixtormatGeneratorType::Noise && HasSurfacingBelow(Nested.SourceChildIndex))
 			{
-				bActualHeightAuthored = true;
+				const FRDGTextureRef NestedGate = ScopeGate(Nested.SourceChildIndex);
+				if (!CompletedGeneratorScopes.Contains(Nested.SourceChildIndex))
+				{
+					// A height-less parent skips its height Behavior chain. Its enabled Noise owner
+					// still exists for Skin: evaluate it here, never by enabling Behaviors on Skin.
+					FMixtormatNoiseRenderData Noise;
+					if (!MixtormatNoiseRenderStore().Find(
+						FMixtormatNoiseRenderKey{Layer.LayerId, Nested.SourceChildIndex}, Noise)) { continue; }
+					FGeneratorBundle Scoped;
+					AddNoisePasses(Ctx, LayerCtx, Layer, Nested.SourceChildIndex, &Scoped,
+						BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Nested), LocalHeight);
+					if (Scoped.Height)
+					{
+						ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Nested, Scoped, LocalHeight, &CompletedGeneratorScopes);
+						Scoped.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder, Scoped.Height, Size,
+							Nested.Generator.bNormalizeHeight, Nested.Generator.HeightScale,
+							Nested.Generator.HeightBias, true, NestedGate, TEXT("Mixtormat.Surfacing.NoiseOwnerHeight"));
+						AddGeneratorModuleCombine(Ctx, LocalHeight, Scoped, Nested, LocalHeight);
+					}
+					CompletedGeneratorScopes.Add(Nested.SourceChildIndex);
+				}
+				// Normally Noise already entered its parent's completed bundle. Do not add it twice.
+				LocalHeight = EvaluateSkinChildren(Nested.SourceChildIndex, LocalHeight, UpstreamDelta,
+					AddSurfacingGatePass(Ctx, ParentGate, NestedGate), AncestorAmount);
 			}
-			continue;
 		}
-		if (Child.Type == EMixtormatLayerChildType::HeightCurve)
+		return LocalHeight;
+	};
+	EvaluateSkin = [&](const FChildRenderData& Child, FRDGTextureRef LocalHeight,
+		FRDGTextureRef UpstreamDelta, FRDGTextureRef ParentGate, float AncestorAmount)
+	{
+		if (!Child.Surfacing.bEnabled || Child.Surfacing.Type != EMixtormatSurfacingType::Skin
+			|| EvaluatedSkin.Contains(Child.SourceChildIndex)) { return LocalHeight; }
+		EvaluatedSkin.Add(Child.SourceChildIndex);
+		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
+		if (!LayerCtx.LayerInputBC || !LayerCtx.LayerInputRAM) { AddLayerInputPass(Ctx, LayerCtx, Layer); }
+		const float EffectiveAmount = Child.Surfacing.Skin.Amount * AncestorAmount;
+		if (EffectiveAmount > 0.0f && Child.Surfacing.Skin.bWriteColor) { FlushPendingColorRamps(); }
+		FRDGTextureRef Gate = AddSurfacingGatePass(Ctx, ParentGate, ScopeGate(Child.SourceChildIndex));
+		FRDGTextureRef AnalysisDelta = LocalHeight;
+		if (UpstreamDelta)
 		{
-			RunningHeight = AddGeneratorHeightCurvePass(Ctx, RunningHeight, Child.HeightCurve);
-			continue;
+			FGeneratorBundle Local;
+			Local.Height = LocalHeight;
+			AddGeneratorModuleCombine(Ctx, UpstreamDelta, Local, Child, AnalysisDelta);
 		}
-		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
-		{
+		const FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, AnalysisDelta,
+			LayerCtx.LayerIndex > 0 ? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr);
+		const FSurfacingFields Raw = AddSkinSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV);
+		if (!Raw.Height) { return LocalHeight; }
+		const FRDGTextureRef Before = LocalHeight;
+		LocalHeight = ApplySurfacingFields(Ctx, LayerCtx, Child, Raw, Gate, LocalHeight, AncestorAmount);
+		LocalHeight = EvaluateSkinChildren(Child.SourceChildIndex, LocalHeight, UpstreamDelta, Gate, EffectiveAmount);
+		PublishSurfacingFields(Ctx, LayerCtx, Layer, Child, Raw, Gate, Before, LocalHeight, AncestorAmount);
+		return LocalHeight;
+	};
+
+	// Capture owned ramps at their authored position relative to Skin, even though their
+	// completed generator scope is evaluated before the flat list reaches the child rows.
+	CaptureColorRamp = [&](const FChildRenderData& Child, FRDGTextureRef RunningHeight,
+			int32 ScopeOwnerIndex, FRDGTextureRef ScopeHeight)
+	{
+		if (CapturedColorRamps.Contains(Child.SourceChildIndex)) { return; }
+		CapturedColorRamps.Add(Child.SourceChildIndex);
 			FRDGTextureRef RampSource = RunningHeight;
 			FRDGTextureRef RampFlow = nullptr;
 			FRDGTextureRef RampUV = nullptr;
@@ -5026,7 +5154,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				SourceMode = 0u;
 				break;
 			case EMixtormatColorRampSource::ModuleRef:
-				if (TargetChild != INDEX_NONE)
+				if (TargetChild == ScopeOwnerIndex && ScopeHeight)
+				{
+					// Private in-scope snapshot, not an early publication of an incomplete owner.
+					RampSource = ScopeHeight;
+				}
+				else if (TargetChild != INDEX_NONE)
 				{
 					if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(TargetChild))
 					{
@@ -5362,6 +5495,74 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				Pending.FilteredColor = AddOwnedBlurPass(Ctx, LayerCtx, Layer, Filter.Blur,
 					Pending.FilteredColor, Settings, MixtormatGaussianBlur::EField::ColorAlpha);
 			}
+	};
+
+	// Modules compose in child order from signed zero; zero is the neutral procedural height.
+	for (const FChildRenderData& Child : Layer.Children)
+	{
+		if (PendingBoolean && Child.SourceChildIndex > PendingBoolean->Boolean.LastChildIndex)
+		{
+			FinishBoolean();
+		}
+		if (Child.Type == EMixtormatLayerChildType::Boolean)
+		{
+			FinishBoolean();
+			PendingBoolean = &Child;
+			continue;
+		}
+		const bool bBooleanOperand = PendingBoolean
+			&& Child.Type == EMixtormatLayerChildType::Generator
+			&& Child.ScopeOwnerSourceChildIndex == PendingBoolean->SourceChildIndex
+			&& (Child.SourceChildIndex == PendingBoolean->Boolean.TargetChildIndex
+				|| Child.SourceChildIndex == PendingBoolean->Boolean.SourceChildIndex);
+		const FRDGTextureRef OperandRunningHeight = bBooleanOperand ? BooleanNeutralHeight : RunningHeight;
+		if (Child.Type == EMixtormatLayerChildType::Surfacing)
+		{
+			// Scoped Skin is evaluated by its completed owner, not once more in the flat list.
+			if (Child.ScopeOwnerSourceChildIndex == INDEX_NONE)
+			{
+				if (HeightBlendOperandIndices.Contains(Child.SourceChildIndex))
+				{
+					// Publish the isolated operand; Height Blend owns its eventual height contribution.
+					EvaluateSkin(Child, BooleanNeutralHeight, RunningHeight, nullptr, 1.0f);
+				}
+				else
+				{
+					const FRDGTextureRef Before = RunningHeight;
+					RunningHeight = EvaluateSkin(Child, RunningHeight, nullptr, nullptr, 1.0f);
+					bActualHeightAuthored |= RunningHeight != Before;
+				}
+			}
+			continue;
+		}
+		// Generator sublayers rewrite the running signed height in place (or publish colour).
+		if (Child.Type == EMixtormatLayerChildType::HeightBlend)
+		{
+			// Missing sources retain the operation's neutral behavior rather than reading A twice.
+			FRDGTextureRef Source = RunningHeight;
+			bool bHasSource = false;
+			if (Child.HeightBlend.SourceChildIndex != INDEX_NONE)
+			{
+				if (const FRDGTextureRef* Found = LayerCtx.GeneratorModuleHeights.Find(Child.HeightBlend.SourceChildIndex))
+				{
+					Source = *Found;
+					bHasSource = true;
+				}
+			}
+			FGeneratorHeightBlendRenderData BlendData = Child.HeightBlend;
+			BlendData.SourceChildIndex = bHasSource ? Child.HeightBlend.SourceChildIndex : INDEX_NONE;
+			RunningHeight = AddGeneratorHeightBlendPass(Ctx, RunningHeight, Source, BlendData);
+			if (bHasSource) { bActualHeightAuthored = true; }
+			continue;
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightCurve)
+		{
+			RunningHeight = AddGeneratorHeightCurvePass(Ctx, RunningHeight, Child.HeightCurve);
+			continue;
+		}
+		if (Child.Type == EMixtormatLayerChildType::HeightColorRamp)
+		{
+			CaptureColorRamp(Child, RunningHeight, INDEX_NONE, nullptr);
 			continue;
 		}
 		if (Child.Type != EMixtormatLayerChildType::Generator) { continue; }
@@ -5369,6 +5570,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// Only already-published maps may feed groups/references before this module.
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		FGeneratorBundle Module;
+		// Freeze the parent's child-mask dependency before publishing its own native fields.
+		if (HasSurfacingBelow(Child.SourceChildIndex)) { ScopeGate(Child.SourceChildIndex); }
 		const FRDGTextureRef PreUV = BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Child);
 		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, PreUV};
 		switch (Child.Generator.Type)
@@ -5404,7 +5607,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddRootNetworkPasses(Ctx, LayerCtx, Layer, Input, &Module);
 			break;
 		case EMixtormatGeneratorType::BooleanOps:
-				AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, RunningHeight,
+				AddBooleanCarvePasses(Ctx, LayerCtx, Layer, Input, OperandRunningHeight,
 					Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)], &Module);
 				break;
 		case EMixtormatGeneratorType::Noise:
@@ -5413,9 +5616,26 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, OperandRunningHeight);
 			break;
 		}
-		if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps)
+		if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
+			|| (!Module.Height && Child.Generator.Type != EMixtormatGeneratorType::Noise
+				&& HasSurfacingBelow(Child.SourceChildIndex)))
 		{
-			// No normalize/flow/second mask pass: the signed delta is already scoped.
+			// An enabled owner without native relief does not disable its Skin subtree.
+			for (const auto& Named : Module.NamedMasks)
+			{
+				Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Named.Key), Named.Value);
+			}
+			if (HasSurfacingBelow(Child.SourceChildIndex))
+			{
+				const FRDGTextureRef Before = Module.Height ? Module.Height : BooleanNeutralHeight;
+				FRDGTextureRef ParentGate = ScopeGate(Child.SourceChildIndex);
+				// Boolean's mask gates its operation at FinishBoolean, not its input operands.
+				const FRDGTextureRef After = EvaluateSkinChildren(Child.SourceChildIndex, Before,
+					OperandRunningHeight, ParentGate, 1.0f);
+				if (Module.Height || After != Before) { Module.Height = After; }
+			}
+			CompletedGeneratorScopes.Add(Child.SourceChildIndex);
+			// No normalization/second mask pass: BooleanOps and Skin deltas are already resolved.
 			if (Module.Height)
 			{
 				LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
@@ -5427,12 +5647,11 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
                 {
                     AddDebugPreviewSignedHeightBlitPass(Ctx.GraphBuilder, Module.Height, Debug, Size);
                 }
-                for (const auto& Named : Module.NamedMasks)
+				if (!bBooleanOperand && !HeightBlendOperandIndices.Contains(Child.SourceChildIndex))
 				{
-					Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Named.Key), Named.Value);
+					AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
+					bActualHeightAuthored = true;
 				}
-				AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
-				bActualHeightAuthored = true;
 			}
 			continue;
 		}
@@ -5528,7 +5747,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			{
 				AddNativeFlowPass(Ctx, Layer, Child.SourceChildIndex, Module.Height);
 			}
-			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, OperandRunningHeight);
+			ApplyGeneratorPostBehaviors(Ctx, LayerCtx, Layer, Child, Module, OperandRunningHeight, &CompletedGeneratorScopes);
 			// Normalize the unmasked Noise native height, then apply its scoped gate to the
 			// resolved signed result. Gating before centring turns masked zeros into negative height.
 			// Other generators keep the historical zero-preserving max-abs contract.
@@ -5653,18 +5872,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				}
 			}
 		}
-		// Retain this module's own signed height so a later Height Blend sublayer can reference it.
-		// Height-less Noise retains nothing and combines nothing: zero contribution, no phantom
-		// relief through Height Blend, no normalization side effects.
-		if (Module.Height)
-		{
-			LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
-			// Explicit inputs address the completed signed module result, never the running sum.
-			Ctx.PublishedFieldOutputs.Add(
-				PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
-				FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
-		}
-
+		// Native ID/mask publications are complete before owned ramps consume them; Skin changes
+		// height/material channels only. Height publication follows the completed Skin scope below.
 		// The only publication point: every module publishes under its own child index, after its
 		// flow. The layer's default IDs are therefore the last module that produced any.
 		if (Module.RegionIds)
@@ -5703,9 +5912,27 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			}
 		}
 
-		// Height-less Noise contributes nothing to the running height.
+		if (HasSurfacingBelow(Child.SourceChildIndex))
+		{
+			const FRDGTextureRef Before = Module.Height ? Module.Height : BooleanNeutralHeight;
+			// Boolean's mask gates its operation at FinishBoolean, not its input operands.
+			const FRDGTextureRef After = EvaluateSkinChildren(Child.SourceChildIndex, Before,
+				OperandRunningHeight, ScopeGate(Child.SourceChildIndex), 1.0f);
+			if (Module.Height || After != Before) { Module.Height = After; }
+		}
+		CompletedGeneratorScopes.Add(Child.SourceChildIndex);
+		// A height-less owner may acquire real height from Skin; otherwise it remains height-less.
 		if (Module.Height)
 		{
+			LayerCtx.GeneratorModuleHeights.Add(Child.SourceChildIndex, Module.Height);
+			Ctx.PublishedFieldOutputs.Add(
+				PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("Height"))),
+				FPublishedField{EMixtormatPublishedFieldKind::ScalarSigned, Module.Height, nullptr, nullptr, false});
+			if (HasSurfacingBelow(Child.SourceChildIndex) && IsChildOutputPreviewTarget(Ctx.Request,
+				EMixtormatPreviewOutputKind::SignedDistance, FName(TEXT("Height")), LayerCtx.LayerIndex, Child.SourceChildIndex))
+			{
+				AddDebugPreviewSignedHeightBlitPass(Ctx.GraphBuilder, Module.Height, Debug, Size);
+			}
 			if (!bBooleanOperand && !HeightBlendOperandIndices.Contains(Child.SourceChildIndex))
 			{
 				AddGeneratorModuleCombine(Ctx, RunningHeight, Module, Child, RunningHeight);
@@ -5715,49 +5942,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 	}
 	FinishBoolean();
 
-	// Visually higher ramps blend over lower ramps, independently of generator dependency order.
-	FRDGTextureRef GeneratedColor = nullptr;
-	for (int32 RampIndex = PendingColorRamps.Num() - 1; RampIndex >= 0; --RampIndex)
-	{
-		const FPendingColorRamp& Pending = PendingColorRamps[RampIndex];
-		const FChildRenderData& Child = *Pending.Child;
-		FGeneratorHeightColorRampRenderData RampData = Child.HeightColorRamp;
-		RampData.bHasGate = Pending.bHasGate ? 1u : 0u;
-		FRDGTextureRef BaseColorForRamp = GeneratedColor
-			? GeneratedColor
-			: (LayerCtx.LayerInputBC
-				? LayerCtx.LayerInputBC
-				: (LayerCtx.LayerIndex != INDEX_NONE
-					? Ctx.OutputBC[1 - (LayerCtx.LayerIndex & 1)]
-					: nullptr));
-		// The raw layer input has not received its authored Base Color override yet.
-		// Seed only the bottom ramp; higher ramps retain the accumulated colour.
-		const bool bOverrideRampBaseColor = !GeneratedColor && !Layer.bFillPassThrough
-			&& Layer.bOverrideBaseColor && !LayerCtx.ReferencedColor;
-		FRDGTextureRef Color = Pending.FilteredColor
-			? AddGeneratorColorCompositePass(Ctx, Pending.FilteredColor, Pending.Gate,
-				BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor)
-			: AddGeneratorHeightColorRampPass(Ctx, Pending.SourceHeight, Pending.SourceFlow,
-				Pending.SourceUV, Pending.SourceIds, Pending.SourceMode, Pending.Gate,
-				BaseColorForRamp, RampData, bOverrideRampBaseColor, Layer.FillColor);
-		const FPublishedField ColorField{
-			EMixtormatPublishedFieldKind::Color, Color, nullptr, nullptr, false};
-		Ctx.PublishedFieldOutputs.Add(
-			PublishedKey(Layer, Child.SourceChildIndex, Child.HeightColorRamp.OutputName), ColorField);
-		if (ColorField.IsComplete()) { GeneratedColor = Color; }
-		if (IsChildOutputPreviewTarget(Ctx.Request, EMixtormatPreviewOutputKind::Color,
-			Child.HeightColorRamp.OutputName, LayerCtx.LayerIndex, Child.SourceChildIndex))
-		{
-			AddDebugPreviewColorBlitPass(Ctx.GraphBuilder, Color, Debug, Size);
-		}
-	}
-	// Color Ramp only publishes Color. The layer owns whether the completed bottom-to-top
-	// Color stack becomes this layer's Base Color input.
-	if (GeneratedColor && Layer.bGeneratorAlbedo)
-	{
-		LayerCtx.LayerInputBC = GeneratedColor;
-		LayerCtx.bGeneratorColor = true;
-	}
+	FlushPendingColorRamps();
 	if (!RunningHeight || !bActualHeightAuthored) { return; }
 	Bundle.Height = RunningHeight;
 	if (LayerCtx.LayerInputHeight)

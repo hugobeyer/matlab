@@ -199,6 +199,11 @@ public:
 	UTextureRenderTarget2D* GetCompositedNormal() const;
 	UTextureRenderTarget2D* GetCompositedRAM() const;
 	UTextureRenderTarget2D* GetCompositedHeight() const;
+	UTextureRenderTarget2D* GetCompositedOptics() const;
+	UTextureRenderTarget2D* GetCompositedFuzzColor() const;
+	UTextureRenderTarget2D* GetCompositedSubsurface() const;
+	// Authored optical output state, independent of the currently selected material's support.
+	bool HasCompositedSurfaceOptics() const;
 	// The debug view the preview is currently showing, and the raw Region IDs behind it. The
 	// second is what the Exact ID picker reads: one float per pixel, -1 where no region covers it.
 	UTextureRenderTarget2D* GetCompositedDebug() const;
@@ -248,9 +253,8 @@ private:
 	void ApplyPresentationState();
 	void UpdatePreviewMeshFloorClearance();
 	void InvalidateDisplacementShadows();
-	// bWaitForCompletion blocks the game thread until the composite has run. Only a caller that
-	// reads the targets back straight away (bake) needs it; the live preview binds the targets
-	// and lets the render thread catch up.
+	// Readback (bake) waits for submission without changing presentation or selecting a master.
+	// Live presentation binds from a success callback, ignored if newer intent supersedes it.
 	bool ComposeLayersWithDebug(
 		const TArray<FMixtormatLayer>& Layers,
 		const TArray<FMixtormatLayerGroup>& Groups,
@@ -267,6 +271,12 @@ private:
 		int32 Resolution,
 		const FMixtormatDebugPreviewSettings& DebugSettings);
 	void EnsureComposeTimer();
+	void OnComposeCompleted(uint64 RequestSerial,
+		TWeakObjectPtr<UMaterialInstanceDynamic> ExpectedMaterial,
+		float LegacyFuzzInfluence, TOptional<FLinearColor> LegacyFuzzColor);
+	// Invalidated on new intent (including queued requests), material switches and bake requests.
+	uint64 PreviewRequestSerial = 0;
+	uint64 BoundComposeSerial = 0;
 
 	// Latest preview request that arrived while the previous composite was still in flight or
 	// the drag-time interval had not elapsed. Only the newest is kept: intermediate frames of a
@@ -303,6 +313,9 @@ private:
 	FMixtormatCameraFovChanged OnCameraFovChanged;
 	UStaticMeshComponent* PreviewMeshComponent = nullptr;
 	TWeakObjectPtr<UMaterialInstanceDynamic> PreviewMaterialInstance;
+	// Retains the selected shared master while a diagnostic material occupies the mesh.
+	TStrongObjectPtr<UMaterialInterface> LayerPreviewMaster;
+	FSoftObjectPath RequestedPreviewMasterPath;
 	TStrongObjectPtr<UMaterial> DebugPreviewMaterial;
 	EMixtormatChannelPreview ChannelPreview = EMixtormatChannelPreview::Material;
 	TStrongObjectPtr<UMaterial> ChannelPreviewMaterial;
@@ -340,6 +353,7 @@ private:
 	float DisplacementAmount = 1.0f;
 	FMixtormatFinalSettings FinalSettings;
 	float CompositedFuzzInfluence = 0.0f;
+	bool bReportedUnsupportedSurfaceOptics = false;
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;
 	float CameraPitch = MixtormatPreviewCamera::PitchDefault;

@@ -155,6 +155,9 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 			Menu.SubMenu(LOCTEXT("QuickGeneratorSubmodules", "Generator Submodules"), MixtormatIcons::Generator(),
 				FOnGetContent::CreateLambda([this]() { return BuildAddGeneratorsMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex)); }))
 				.Enabled(CanAddGeneratorModule(FMixtormatAddTarget::Layer(SelectedLayerIndex)));
+			Menu.SubMenu(LOCTEXT("QuickSurfacing", "Surfacing"), MixtormatIcons::Surfacing(),
+				FOnGetContent::CreateLambda([this]() { return BuildAddSurfacingMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex)); }))
+				.Enabled(CanAddSurfacingModule(FMixtormatAddTarget::Layer(SelectedLayerIndex)));
 			Menu.SubMenu(LOCTEXT("QuickMasks", "Masks"), MixtormatIcons::Mask(),
 				FOnGetContent::CreateLambda([this]() -> TSharedRef<SWidget>
 				{
@@ -590,11 +593,22 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildContextMenu(
 		Menu.Separator();
 	}
 	if (Group && Group->Children.IsValidIndex(ChildIndex)
-		&& Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Blur
+		&& (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Blur
+			|| Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Surfacing)
 		&& CanOwnScopedMasks(Group->Children[ChildIndex]))
 	{
 		FMixtormatAddTarget Destination = FMixtormatAddTarget::Group(GroupId);
 		Destination.ScopeOwnerChildId = Group->Children[ChildIndex].ChildId;
+		if (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Surfacing)
+		{
+			Menu.SubMenu(LOCTEXT("AddSurfacingChild", "Surfacing"), MixtormatIcons::Surfacing(),
+				FOnGetContent::CreateSP(this, &SMixtormat::BuildAddSurfacingMenu, Destination))
+				.Enabled(CanAddSurfacingModule(Destination));
+			Menu.Item(LOCTEXT("SurfacingBehaviorsUnavailable", "Behaviors"), MixtormatIcons::WarpStructural(), FSimpleDelegate())
+				.Enabled(false).ToolTip(LOCTEXT("SurfacingBehaviorsUnavailableHint", "Surfacing has no Behavior GPU rewrite adapter. Author upstream changes on a Generator instead."));
+			Menu.Item(LOCTEXT("SurfacingBlurUnavailable", "Blur"), MixtormatIcons::Filter(), FSimpleDelegate())
+				.Enabled(false).ToolTip(LOCTEXT("SurfacingBlurUnavailableHint", "Surfacing-local Blur is not integrated. Use a layer-output Blur instead."));
+		}
 		Menu.SubMenu(LOCTEXT("AddScopedMasksToChild", "Masks"), MixtormatIcons::Mask(),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddMasksMenu, Destination))
 			.Enabled(!Group->Children[ChildIndex].IsInstance()
@@ -978,6 +992,21 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 			MixtormatIcons::Generator(),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildAddGeneratorsMenu, Target));
 	}
+	Menu.SubMenu(LOCTEXT("AddSurfacingChild", "Surfacing"), MixtormatIcons::Surfacing(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildAddSurfacingMenu, Target))
+		.Enabled(CanAddSurfacingModule(Target));
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget Target)
+{
+	MixtormatMenu::FBuilder Menu;
+	const bool bCanAdd = CanAddSurfacingModule(Target);
+	Menu.Item(LOCTEXT("AddSkinChild", "Skin"), MixtormatIcons::Surfacing(),
+		FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Skin); }))
+		.Enabled(bCanAdd)
+		.ToolTip(bCanAdd ? LOCTEXT("AddSkinHint", "Curvature-driven tissue, folds and material response. Gates are authored as child masks.")
+			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
+	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target)
@@ -1477,6 +1506,13 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 	// the layer is built from before any blending exists to take part in.
 	const bool bGenerator = RowType == EMixtormatLayerChildType::Generator
 		|| RowType == EMixtormatLayerChildType::Boolean;
+	if (RowType == EMixtormatLayerChildType::Surfacing)
+	{
+		Menu.Item(LOCTEXT("SurfacingBehaviorsUnavailable", "Behaviors"), MixtormatIcons::WarpStructural(), FSimpleDelegate())
+			.Enabled(false).ToolTip(LOCTEXT("SurfacingBehaviorsUnavailableHint", "Surfacing has no Behavior GPU rewrite adapter. Author upstream changes on a Generator instead."));
+		Menu.Item(LOCTEXT("SurfacingBlurUnavailable", "Blur"), MixtormatIcons::Filter(), FSimpleDelegate())
+			.Enabled(false).ToolTip(LOCTEXT("SurfacingBlurUnavailableHint", "Surfacing-local Blur is not integrated. Use a layer-output Blur instead."));
+	}
 	const bool bFilter = RowType == EMixtormatLayerChildType::Filter
 		|| RowType == EMixtormatLayerChildType::HsvFilter
 		|| RowType == EMixtormatLayerChildType::RampId
@@ -1487,6 +1523,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 
 		|| RowType == EMixtormatLayerChildType::IdGroup
 		|| RowType == EMixtormatLayerChildType::OutputReference
+		|| RowType == EMixtormatLayerChildType::Surfacing
 		|| RowType == EMixtormatLayerChildType::Behavior
 		|| bGenerator;
 
@@ -1629,6 +1666,13 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedContextMenu(
 		{
 			FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(LayerIndex);
 			Destination.ScopeOwnerChildId = TargetChild.ChildId;
+			if (TargetChild.Type == EMixtormatLayerChildType::Generator
+				|| TargetChild.Type == EMixtormatLayerChildType::Surfacing)
+			{
+				Menu.SubMenu(LOCTEXT("AddSurfacingChild", "Surfacing"), MixtormatIcons::Surfacing(),
+					FOnGetContent::CreateSP(this, &SMixtormat::BuildAddSurfacingMenu, Destination))
+					.Enabled(CanAddSurfacingModule(Destination));
+			}
 			if (bCanFilterIds)
 			{
 				Menu.SubMenu(

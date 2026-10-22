@@ -2,6 +2,7 @@
 
 #include "Widgets/SMixtormat.h"
 #include "MixtormatEditorSettings.h"
+#include "MixtormatSurface.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
 #include "Services/MixtormatPaths.h"
@@ -598,12 +599,15 @@ FReply SMixtormat::ExecuteBake(
 		UTextureRenderTarget2D* Normal = PreviewViewports[0]->GetCompositedNormal();
 		UTextureRenderTarget2D* RAM = PreviewViewports[0]->GetCompositedRAM();
 		UTextureRenderTarget2D* Height = PreviewViewports[0]->GetCompositedHeight();
-		if (!BaseColor || !Normal || !RAM || !Height)
+		UTextureRenderTarget2D* Optics = PreviewViewports[0]->GetCompositedOptics();
+		UTextureRenderTarget2D* FuzzColor = PreviewViewports[0]->GetCompositedFuzzColor();
+		UTextureRenderTarget2D* Subsurface = PreviewViewports[0]->GetCompositedSubsurface();
+		if (!BaseColor || !Normal || !RAM || !Height || !Optics || !FuzzColor || !Subsurface)
 		{
 			RefreshLayeredPreview(false);
 			FMessageDialog::Open(
 				EAppMsgType::Ok,
-				LOCTEXT("MissingBakeOutputs", "Readback cannot start because the GPU compositor has no valid outputs."));
+				LOCTEXT("MissingBakeOutputs", "Readback requires BaseColor, Normal, RAM, Height, Optics, FuzzColor and Subsurface targets. The compositor must allocate and initialize all seven, even without authored optics."));
 			WorkingStatusText = TEXT("Bake failed · Readback");
 			return FReply::Handled();
 		}
@@ -629,13 +633,18 @@ FReply SMixtormat::ExecuteBake(
 			WorkingStatusText = FString::Printf(TEXT("Bake · %s"), *StageText.ToString());
 			SlowTask.EnterProgressFrame(1.0f, StageText);
 		};
+		FMixtormatBakeSettings ComposedSettings = Settings;
+		ComposedSettings.bHasAuthoredSurfaceOptics = PreviewViewports[0]->HasCompositedSurfaceOptics();
 		Result = FMixtormatBakeService::Bake(
 			*WorkingMaterialAsset.Get(),
 			*BaseColor,
 			*Normal,
 			*RAM,
 			*Height,
-			Settings,
+			*Optics,
+			*FuzzColor,
+			*Subsurface,
+			ComposedSettings,
 			ReportProgress);
 	}
 
@@ -670,6 +679,10 @@ FReply SMixtormat::ExecuteBake(
 		AppendAssetPaths(TEXT("Updated in memory:"), Result.UpdatedAssetPaths);
 		AppendAssetPaths(TEXT("Saved successfully:"), Result.SavedAssetPaths);
 		AppendAssetPaths(TEXT("Failed or incomplete:"), Result.FailedAssetPaths);
+		for (const FText& Warning : Result.Warnings)
+		{
+			ErrorText += FString::Printf(TEXT("\n\nWarning: %s"), *Warning.ToString());
+		}
 
 		FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(ErrorText));
 		WorkingStatusText = TEXT("Bake failed · review reported asset paths");
@@ -677,26 +690,37 @@ FReply SMixtormat::ExecuteBake(
 	}
 
 	const TArray<FString> OutputPaths = FMixtormatBakeService::GetOutputObjectPaths(Settings);
+	FString OutputSummary = FString::Join(OutputPaths, TEXT("\n"));
+	for (const FText& Warning : Result.Warnings)
+	{
+		OutputSummary += FString::Printf(TEXT("\n\nWarning: %s"), *Warning.ToString());
+	}
 	const FText SuccessMessage = FText::Format(
 		LOCTEXT(
-			"BakeSucceeded",
-			"Bake completed successfully:\n\n{0}"),
-		FText::FromString(FString::Join(OutputPaths, TEXT("\n"))));
+			"BakeOutputsSaved",
+			"Bake outputs saved:\n\n{0}"),
+		FText::FromString(OutputSummary));
 	WorkingStatusText = FString::Printf(
-		TEXT("Baked %s · 5 outputs saved"),
-		*Settings.BaseName);
+		TEXT("Baked %s · %d outputs saved%s"),
+		*Settings.BaseName, OutputPaths.Num(),
+		Result.Warnings.IsEmpty() ? TEXT("") : TEXT(" · review warnings"));
 
 	switch (ShowMixtormatBakeResultDialog(AsShared(), SuccessMessage))
 	{
 	case EMixtormatBakeResultAction::Reveal:
 	{
 		TArray<FAssetData> Assets;
-		Assets.Reserve(5);
+		Assets.Reserve(OutputPaths.Num());
 		Assets.Add(FAssetData(Result.BaseColor));
 		Assets.Add(FAssetData(Result.Normal));
 		Assets.Add(FAssetData(Result.RAM));
 		Assets.Add(FAssetData(Result.Height));
 		Assets.Add(FAssetData(Result.Material));
+		Assets.Add(FAssetData(Result.RAMH));
+		Assets.Add(FAssetData(Result.Surface));
+		Assets.Add(FAssetData(Result.Optics));
+		Assets.Add(FAssetData(Result.FuzzColorMap));
+		Assets.Add(FAssetData(Result.Subsurface));
 		FContentBrowserModule& ContentBrowserModule =
 			FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 		ContentBrowserModule.Get().SyncBrowserToAssets(Assets);

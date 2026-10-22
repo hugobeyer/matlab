@@ -1,6 +1,7 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "Widgets/MixtormatChildCapabilities.h"
+#include "Widgets/Layers/MixtormatSurfacingCapabilities.h"
 
 #include "MixtormatEffect.h"
 #include "MixtormatOutputReference.h"
@@ -90,6 +91,8 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 	const EMixtormatEffectType EffectType = ResolveChildEffectType(Child);
 	switch (Child.Type)
 	{
+	case EMixtormatLayerChildType::Surfacing:
+		return GetSurfacingCapabilities(Child.Surfacing);
 	case EMixtormatLayerChildType::Filter:
 		// No invalid pixels to black out: every pixel in a cluster segmentation belongs to some
 		// region, so there is no separate gap concept here to combine in. Not copyable: an ID map

@@ -120,7 +120,7 @@ namespace MixtormatCompositionReferences
 		const FSoftObjectPath& OwnerPath,
 		FText& OutError);
 
-	// Resolves the non-texture fuzz channel through live composition references.
+	// Legacy master branch only: resolves document-wide fuzz when optical maps are absent.
 	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(const TArray<FMixtormatLayer>& Layers);
 	MIXTORMATRUNTIME_API float ComputeFuzzInfluence(
 		const TArray<FMixtormatLayer>& Layers,
@@ -172,6 +172,15 @@ public:
 	TSoftObjectPtr<UTexture2D> BakedHeight;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
+	TSoftObjectPtr<UTexture2D> BakedOptics;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
+	TSoftObjectPtr<UTexture2D> BakedFuzzColorMap;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
+	TSoftObjectPtr<UTexture2D> BakedSubsurface;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UMaterialInterface> BakedMaterial;
 
 	// The same bake, wrapped so a layer can source it. A layer points at a UMixtormatSurface
@@ -179,8 +188,8 @@ public:
 	// bake fills with F0 -- so this carries its own repacked RAMH rather than reusing BakedRAM.
 	//
 	// Owned by the recipe, so its lifetime is the recipe's: there is nothing provisional to
-	// promote on save or collect on discard. Per-pixel F0 does not survive the repack; the
-	// surface carries a single DefaultIOR in its place.
+	// promote on save or collect on discard. BakedOptics preserves per-pixel dielectric F0
+	// independently of the RAMH repack; DefaultIOR remains the no-map authoring default.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bake")
 	TSoftObjectPtr<UMixtormatSurface> BakedSurface;
 

@@ -8,6 +8,7 @@
 #include "Compositing/MixtormatMaskGather.h"
 #include "Compositing/MixtormatIdGather.h"
 #include "Compositing/MixtormatGeneratorGather.h"
+#include "Compositing/MixtormatSurfacingGather.h"
 #include "MixtormatGpuCompositorInternal.h"
 #include "MixtormatGpuPatternPassesInternal.h"
 
@@ -25,6 +26,7 @@
 #include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/Material.h"
 #include "Misc/ScopeExit.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphUtils.h"
@@ -44,9 +46,10 @@ FMixtormatComposeResources::~FMixtormatComposeResources()
 {
 	if (!IsInGameThread())
 	{
-		AsyncTask(ENamedThreads::GameThread, [KeepAlive = MoveTemp(Pins)]() mutable
+		AsyncTask(ENamedThreads::GameThread, [KeepAlive = MoveTemp(Pins), KeepTextures = MoveTemp(TexturePins)]() mutable
 		{
 			KeepAlive.Reset();
+			KeepTextures.Reset();
 		});
 	}
 }
@@ -106,6 +109,7 @@ public:
 		SHADER_PARAMETER(uint32, FillPassThrough)
 		SHADER_PARAMETER(uint32, HasSurface)
 		SHADER_PARAMETER(uint32, PreparedLayerMode)
+		SHADER_PARAMETER(uint32, ResolveMaterialValues)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(uint32, HasSeparateHeight)
 		SHADER_PARAMETER(uint32, LayerInputResolved)
@@ -264,6 +268,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputOccupancy)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputHeight)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputDebug)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputOpticalCoverage)
 	END_SHADER_PARAMETER_STRUCT()
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -278,8 +283,8 @@ IMPLEMENT_GLOBAL_SHADER(
 	"MainCS",
 	SF_Compute);
 
-// Resolves an authored or referenced material into this layer's output-space tangent basis.
-// Allocated only for a top-level Flow Warp, so ordinary layers retain the direct sample path.
+// Resolves all material channels into one output-space basis, before procedural writes or
+// effects. Plain Surface layers resolve lazily at composite; procedural layers resolve earlier.
 class FMixtormatLayerInputCS final : public FGlobalShader
 {
 public:
@@ -292,6 +297,32 @@ public:
 		SHADER_PARAMETER(uint32, HasSeparateHeight)
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(float, ConstantHeight)
+		SHADER_PARAMETER(uint32, HasSurfaceOptics)
+		SHADER_PARAMETER(uint32, ResolveMaterialValues)
+		SHADER_PARAMETER(uint32, UseSourceF0)
+		SHADER_PARAMETER(uint32, OverrideBaseColor)
+		SHADER_PARAMETER(uint32, OverrideRoughness)
+		SHADER_PARAMETER(uint32, OverrideMetallic)
+		SHADER_PARAMETER(uint32, IsFill)
+		SHADER_PARAMETER(FVector4f, FillColor)
+		SHADER_PARAMETER(float, FillRoughness)
+		SHADER_PARAMETER(float, FillMetallic)
+		SHADER_PARAMETER(float, RoughnessBias)
+		SHADER_PARAMETER(float, RoughnessContrast)
+		SHADER_PARAMETER(float, RoughnessOffset)
+		SHADER_PARAMETER(float, LayerF0)
+		SHADER_PARAMETER(FVector4f, DefaultOptics)
+		SHADER_PARAMETER(FVector4f, DefaultFuzzColor)
+		SHADER_PARAMETER(FVector4f, DefaultSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerOptics)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousOptics)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputOptics)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputSubsurface)
 		SHADER_PARAMETER(uint32, LayerInputResolved)
 		SHADER_PARAMETER(uint32, FillPassThrough)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousBC)
@@ -367,6 +398,7 @@ public:
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, ResolveMaterialValues)
 		// uint32, matching the globals these share with the composite -- the shader lerps with
 		// them and HLSL converts, but the parameter type has to agree or the bind is rejected.
 		SHADER_PARAMETER(uint32, OverrideBaseColor)
@@ -396,6 +428,57 @@ IMPLEMENT_GLOBAL_SHADER(
 	"/Plugin/Mixtormat/Private/MixtormatComposite.usf",
 	"ResolveLayerValuesCS",
 	SF_Compute);
+
+class FMixtormatCompositeOpticsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatCompositeOpticsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatCompositeOpticsCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OpticalCoverage)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CompositedRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerOptics)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousOptics)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputOptics)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputSubsurface)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatCompositeOpticsCS,
+	"/Plugin/Mixtormat/Private/MixtormatComposite.usf", "CompositeOpticsCS", SF_Compute);
+
+class FMixtormatFinalizeOpticsCS final : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FMixtormatFinalizeOpticsCS);
+	SHADER_USE_PARAMETER_STRUCT(FMixtormatFinalizeOpticsCS, FGlobalShader);
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER(FIntPoint, OutputSize)
+		SHADER_PARAMETER(uint32, RotateOpticalOutput)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CompositedRAM)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousOptics)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousSubsurface)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputOptics)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputFuzzColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputSubsurface)
+	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+};
+IMPLEMENT_GLOBAL_SHADER(FMixtormatFinalizeOpticsCS,
+	"/Plugin/Mixtormat/Private/MixtormatComposite.usf", "FinalizeOpticsCS", SF_Compute);
 
 class FMixtormatRotateOutputCS final : public FGlobalShader
 {
@@ -492,6 +575,14 @@ namespace MixtormatGpuCompositor
 		const UTextureRenderTarget2D* RAM = Compositor.GetRAMOutput();
 		const UTextureRenderTarget2D* Height = Compositor.GetHeightOutput();
 		const UTextureRenderTarget2D* RegionId = Compositor.GetRegionIdPickOutput();
+		for (const UTextureRenderTarget2D* Optical : {Compositor.GetOpticsOutput(),
+			Compositor.GetFuzzColorOutput(), Compositor.GetSubsurfaceOutput()})
+		{
+			if (!Optical || Optical->SizeX != ExpectedResolution.X || Optical->SizeY != ExpectedResolution.Y)
+			{
+				return false;
+			}
+		}
 
 		return BaseColor && BaseColor->SizeX == ExpectedResolution.X && BaseColor->SizeY == ExpectedResolution.Y
 			&& Normal && Normal->SizeX == ExpectedResolution.X && Normal->SizeY == ExpectedResolution.Y
@@ -633,6 +724,14 @@ namespace MixtormatGpuCompositor
 			Binding.Orientation ? Binding.Orientation : Ctx.EmptyPatternOrientation;
 	}
 
+	static bool HasOrderedSurfacing(const FLayerRenderData& Layer)
+	{
+		return Layer.Children.ContainsByPredicate([](const FChildRenderData& Child)
+		{
+			return Child.Type == EMixtormatLayerChildType::Surfacing;
+		});
+	}
+
 	void AddLayerInputPass(
 		FMixtormatComposeContext& Ctx,
 		FMixtormatLayerPassContext& LayerCtx,
@@ -656,6 +755,12 @@ namespace MixtormatGpuCompositor
 			Ctx.OutputRAM[0]->Desc, TEXT("Mixtormat.LayerInputRAM"));
 		LayerCtx.LayerInputHeight = GraphBuilder.CreateTexture(
 			Ctx.OutputHeight[0]->Desc, TEXT("Mixtormat.LayerInputHeight"));
+		LayerCtx.LayerInputOptics = GraphBuilder.CreateTexture(
+			Ctx.OutputOptics[0]->Desc, TEXT("Mixtormat.LayerInputOptics"));
+		LayerCtx.LayerInputFuzzColor = GraphBuilder.CreateTexture(
+			Ctx.OutputFuzzColor[0]->Desc, TEXT("Mixtormat.LayerInputFuzzColor"));
+		LayerCtx.LayerInputSubsurface = GraphBuilder.CreateTexture(
+			Ctx.OutputSubsurface[0]->Desc, TEXT("Mixtormat.LayerInputSubsurface"));
 
 		FMixtormatLayerInputCS::FParameters* Parameters =
 			GraphBuilder.AllocParameters<FMixtormatLayerInputCS::FParameters>();
@@ -664,6 +769,23 @@ namespace MixtormatGpuCompositor
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
 		Parameters->ConstantHeight = Layer.ConstantHeight;
+		Parameters->HasSurfaceOptics = Layer.bHasSurfaceOptics ? 1u : 0u;
+		Parameters->ResolveMaterialValues = HasOrderedSurfacing(Layer) ? 1u : 0u;
+		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
+		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor && !LayerCtx.ReferencedColor ? 1u : 0u;
+		Parameters->OverrideRoughness = Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
+		Parameters->IsFill = Layer.bFill ? 1u : 0u;
+		Parameters->FillColor = Layer.FillColor;
+		Parameters->FillRoughness = Layer.FillRoughness;
+		Parameters->FillMetallic = Layer.FillMetallic;
+		Parameters->RoughnessBias = Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.RoughnessOffset;
+		Parameters->LayerF0 = Layer.LayerF0;
+		Parameters->DefaultOptics = FVector4f(MixtormatSurfaceOptics::Optics);
+		Parameters->DefaultFuzzColor = FVector4f(MixtormatSurfaceOptics::FuzzColor);
+		Parameters->DefaultSubsurface = FVector4f(MixtormatSurfaceOptics::Subsurface);
 		Parameters->LayerInputResolved = 0u;
 		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
 		const int32 PreviousIndex = 1 - (LayerCtx.LayerIndex & 1);
@@ -671,6 +793,18 @@ namespace MixtormatGpuCompositor
 		Parameters->PreviousN = Ctx.OutputN[PreviousIndex];
 		Parameters->PreviousRAM = Ctx.OutputRAM[PreviousIndex];
 		Parameters->PreviousHeight = Ctx.OutputHeight[PreviousIndex];
+		Parameters->PreviousOptics = Ctx.OutputOptics[PreviousIndex];
+		Parameters->PreviousFuzzColor = Ctx.OutputFuzzColor[PreviousIndex];
+		Parameters->PreviousSubsurface = Ctx.OutputSubsurface[PreviousIndex];
+		Parameters->LayerOptics = Layer.Optics.IsValid()
+			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Optics, TEXT("Mixtormat.SourceOptics"))
+			: Ctx.OutputOptics[PreviousIndex];
+		Parameters->LayerFuzzColor = Layer.FuzzColor.IsValid()
+			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.FuzzColor, TEXT("Mixtormat.SourceFuzzColor"))
+			: Ctx.OutputFuzzColor[PreviousIndex];
+		Parameters->LayerSubsurface = Layer.Subsurface.IsValid()
+			? RegisterTexture(GraphBuilder, RegisteredTextures, Layer.Subsurface, TEXT("Mixtormat.SourceSubsurface"))
+			: Ctx.OutputSubsurface[PreviousIndex];
 		Parameters->HasNormal = Layer.bHasNormal ? 1u : 0u;
 		Parameters->FlipNormalY = Layer.bFlipNormalY ? 1u : 0u;
 		Parameters->Tiling = Layer.Tiling;
@@ -704,6 +838,9 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputN = GraphBuilder.CreateUAV(LayerCtx.LayerInputN);
 		Parameters->OutputRAM = GraphBuilder.CreateUAV(LayerCtx.LayerInputRAM);
 		Parameters->OutputHeight = GraphBuilder.CreateUAV(LayerCtx.LayerInputHeight);
+		Parameters->OutputOptics = GraphBuilder.CreateUAV(LayerCtx.LayerInputOptics);
+		Parameters->OutputFuzzColor = GraphBuilder.CreateUAV(LayerCtx.LayerInputFuzzColor);
+		Parameters->OutputSubsurface = GraphBuilder.CreateUAV(LayerCtx.LayerInputSubsurface);
 
 		TShaderMapRef<FMixtormatLayerInputCS> Shader(
 			GetGlobalShaderMap(GMaxRHIFeatureLevel));
@@ -756,19 +893,22 @@ namespace MixtormatGpuCompositor
 			GraphBuilder.AllocParameters<FMixtormatLayerValuesCS::FParameters>();
 		Parameters->OutputSize = Request.Resolution;
 
-		const bool bHasProceduralAlbedo =
-			(Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
+		const bool bResolvedMaterial = HasOrderedSurfacing(Layer);
+		Parameters->ResolveMaterialValues = bResolvedMaterial || Layer.bFillPassThrough ? 1u : 0u;
+		const bool bHasProceduralAlbedo = bResolvedMaterial || LayerCtx.bSurfacingColor
+			|| (Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
 		Parameters->OverrideBaseColor =
 			(!Layer.bFillPassThrough && Layer.bOverrideBaseColor && !bHasProceduralAlbedo) ? 1u : 0u;
-		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideRoughness = !Layer.bFillPassThrough && !bResolvedMaterial
+			&& !LayerCtx.bSurfacingRoughness && Layer.bOverrideRoughness ? 1u : 0u;
 		Parameters->FillColor = Layer.FillColor;
 		Parameters->FillRoughness = Layer.FillRoughness;
 		Parameters->HueShift = Layer.bFillPassThrough ? 0.0f : Layer.HueShift;
 		Parameters->Saturation = Layer.bFillPassThrough ? 1.0f : Layer.Saturation;
 		Parameters->Value = Layer.bFillPassThrough ? 1.0f : Layer.Value;
-		Parameters->RoughnessBias = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessBias;
-		Parameters->RoughnessContrast = Layer.bFillPassThrough ? 1.0f : Layer.RoughnessContrast;
-		Parameters->RoughnessOffset = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessOffset;
+		Parameters->RoughnessBias = Layer.bFillPassThrough || bResolvedMaterial ? 0.0f : Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.bFillPassThrough || bResolvedMaterial ? 1.0f : Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.bFillPassThrough || bResolvedMaterial ? 0.0f : Layer.RoughnessOffset;
 		Parameters->LayerBC = LayerCtx.LayerInputBC;
 		Parameters->LayerRAM = LayerCtx.LayerInputRAM;
 		Parameters->LinearWrapSampler = TStaticSamplerState<
@@ -800,6 +940,8 @@ namespace MixtormatGpuCompositor
 		const FLayerRenderData& Layer,
 		const uint32 PreparedLayerMode)
 	{
+		// One source-space resolver for all material channels, including plain Surface layers.
+		AddLayerInputPass(Ctx, LayerCtx, Layer);
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 		const FRenderRequest& Request = Ctx.Request;
 		TMap<FRHITexture*, FRDGTextureRef>& RegisteredTextures = Ctx.RegisteredTextures;
@@ -835,12 +977,15 @@ namespace MixtormatGpuCompositor
 		Parameters->HasMask = Layer.bHasMask ? 1u : 0u;
 
 		Parameters->HasEffects = Layer.bHasEffects ? 1u : 0u;
-		const bool bHasProceduralAlbedo =
-			(Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
+		const bool bResolvedMaterial = HasOrderedSurfacing(Layer);
+		const bool bHasProceduralAlbedo = bResolvedMaterial || LayerCtx.bSurfacingColor
+			|| (Layer.bGeneratorAlbedo && LayerCtx.bGeneratorColor) || LayerCtx.ReferencedColor != nullptr;
 		Parameters->OverrideBaseColor =
 			(!Layer.bFillPassThrough && Layer.bOverrideBaseColor && !bHasProceduralAlbedo) ? 1u : 0u;
-		Parameters->OverrideRoughness = !Layer.bFillPassThrough && Layer.bOverrideRoughness ? 1u : 0u;
-		Parameters->OverrideMetallic = Layer.bOverrideMetallic ? 1u : 0u;
+		Parameters->OverrideRoughness = !Layer.bFillPassThrough && !bResolvedMaterial
+			&& !LayerCtx.bSurfacingRoughness && Layer.bOverrideRoughness ? 1u : 0u;
+		Parameters->OverrideMetallic = !bResolvedMaterial && Layer.bOverrideMetallic ? 1u : 0u;
+		Parameters->ResolveMaterialValues = bResolvedMaterial || LayerCtx.bSurfacingAO ? 1u : 0u;
 		Parameters->CompositionMode = !Layer.bFillPassThrough && Layer.bCoat ? 1u : 0u;
 		Parameters->IsFill = Layer.bFill ? 1u : 0u;
 		Parameters->FillPassThrough = Layer.bFillPassThrough ? 1u : 0u;
@@ -850,7 +995,9 @@ namespace MixtormatGpuCompositor
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight || LayerCtx.bGeneratedHeight ? 1u : 0u;
 		Parameters->HasSeparateHeight = Layer.SourceOutputs.IsValid() ? 1u : 0u;
 		Parameters->LayerInputResolved = LayerCtx.LayerInputBC ? 1u : 0u;
-		Parameters->UseSourceF0 = Layer.bFillPassThrough || Layer.bUseSourceF0 ? 1u : 0u;
+		// ResolveLayerInput has already selected source Optics.r vs authored IOR; Skin may
+		// subsequently write RAM.a. Never reinterpret imported height or overwrite that result.
+		Parameters->UseSourceF0 = 1u;
 		Parameters->HasNormal = (Layer.bHasNormal || LayerCtx.bGeneratedHeight) ? 1u : 0u;
 		Parameters->NormalOnly = !Layer.bFillPassThrough && Layer.bNormalOnly ? 1u : 0u;
 		Parameters->OverrideNormal = !Layer.bFillPassThrough && Layer.bOverrideNormal ? 1u : 0u;
@@ -889,9 +1036,9 @@ namespace MixtormatGpuCompositor
 		Parameters->HueShift = Layer.bFillPassThrough ? 0.0f : Layer.HueShift;
 		Parameters->Saturation = Layer.bFillPassThrough ? 1.0f : Layer.Saturation;
 		Parameters->Value = Layer.bFillPassThrough ? 1.0f : Layer.Value;
-		Parameters->RoughnessBias = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessBias;
-		Parameters->RoughnessContrast = Layer.bFillPassThrough ? 1.0f : Layer.RoughnessContrast;
-		Parameters->RoughnessOffset = Layer.bFillPassThrough ? 0.0f : Layer.RoughnessOffset;
+		Parameters->RoughnessBias = Layer.bFillPassThrough || bResolvedMaterial ? 0.0f : Layer.RoughnessBias;
+		Parameters->RoughnessContrast = Layer.bFillPassThrough || bResolvedMaterial ? 1.0f : Layer.RoughnessContrast;
+		Parameters->RoughnessOffset = Layer.bFillPassThrough || bResolvedMaterial ? 0.0f : Layer.RoughnessOffset;
 		Parameters->FillRoughness = Layer.FillRoughness;
 		Parameters->FillMetallic = Layer.FillMetallic;
 		Parameters->LayerF0 = Layer.LayerF0;
@@ -1242,6 +1389,10 @@ namespace MixtormatGpuCompositor
 		Parameters->OutputRAM = GraphBuilder.CreateUAV(OutputRAM[WriteIndex]);
 		Parameters->OutputHeight = GraphBuilder.CreateUAV(HeightTargets[WriteIndex]);
 		Parameters->OutputOccupancy = GraphBuilder.CreateUAV(LayerCtx.OccupancyTargets[WriteIndex]);
+		const FRDGTextureRef OpticalCoverage = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
+			Request.Resolution, PF_R32_FLOAT, FClearValueBinding::None,
+			TexCreate_ShaderResource | TexCreate_UAV), TEXT("Mixtormat.OpticalCoverage"));
+		Parameters->OutputOpticalCoverage = GraphBuilder.CreateUAV(OpticalCoverage);
 		// Only the selected layer writes debug output, and WriteDebug is already the shader's own
 		// guard on that block. Binding the real target on every other layer would declare a UAV
 		// dependency on the full-resolution debug target for a write that never happens, so those
@@ -1259,6 +1410,56 @@ namespace MixtormatGpuCompositor
 				FMath::DivideAndRoundUp(Request.Resolution.X, 8),
 				FMath::DivideAndRoundUp(Request.Resolution.Y, 8),
 				1));
+
+		auto* Optical = GraphBuilder.AllocParameters<FMixtormatCompositeOpticsCS::FParameters>();
+		Optical->OutputSize = Request.Resolution;
+		Optical->OpticalCoverage = OpticalCoverage;
+		Optical->CompositedRAM = OutputRAM[WriteIndex];
+		Optical->LayerOptics = LayerCtx.LayerInputOptics;
+		Optical->LayerFuzzColor = LayerCtx.LayerInputFuzzColor;
+		Optical->LayerSubsurface = LayerCtx.LayerInputSubsurface;
+		Optical->PreviousOptics = Ctx.OutputOptics[ReadIndex];
+		Optical->PreviousFuzzColor = Ctx.OutputFuzzColor[ReadIndex];
+		Optical->PreviousSubsurface = Ctx.OutputSubsurface[ReadIndex];
+		Optical->OutputOptics = GraphBuilder.CreateUAV(Ctx.OutputOptics[WriteIndex]);
+		Optical->OutputFuzzColor = GraphBuilder.CreateUAV(Ctx.OutputFuzzColor[WriteIndex]);
+		Optical->OutputSubsurface = GraphBuilder.CreateUAV(Ctx.OutputSubsurface[WriteIndex]);
+		TShaderMapRef<FMixtormatCompositeOpticsCS> OpticalShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.CompositeOptics.Layer%d", LayerIndex),
+			OpticalShader, Optical, FIntVector(FMath::DivideAndRoundUp(Request.Resolution.X, 8),
+				FMath::DivideAndRoundUp(Request.Resolution.Y, 8), 1));
+	}
+
+	void AddFinalizeSurfaceOpticsPass(FMixtormatComposeContext& Ctx,
+		const int32 InputIndex, const int32 OutputIndex, const bool bRotate)
+	{
+		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
+		const bool bInPlace = InputIndex == OutputIndex;
+		FRDGTextureRef Optics = bInPlace ? GraphBuilder.CreateTexture(
+			Ctx.OutputOptics[OutputIndex]->Desc, TEXT("Mixtormat.FinalOptics")) : Ctx.OutputOptics[OutputIndex];
+		FRDGTextureRef Fuzz = bInPlace ? GraphBuilder.CreateTexture(
+			Ctx.OutputFuzzColor[OutputIndex]->Desc, TEXT("Mixtormat.FinalFuzzColor")) : Ctx.OutputFuzzColor[OutputIndex];
+		FRDGTextureRef SSS = bInPlace ? GraphBuilder.CreateTexture(
+			Ctx.OutputSubsurface[OutputIndex]->Desc, TEXT("Mixtormat.FinalSubsurface")) : Ctx.OutputSubsurface[OutputIndex];
+		auto* P = GraphBuilder.AllocParameters<FMixtormatFinalizeOpticsCS::FParameters>();
+		P->OutputSize = Ctx.Request.Resolution;
+		P->RotateOpticalOutput = bRotate ? 1u : 0u;
+		P->CompositedRAM = Ctx.OutputRAM[InputIndex];
+		P->PreviousOptics = Ctx.OutputOptics[InputIndex];
+		P->PreviousFuzzColor = Ctx.OutputFuzzColor[InputIndex];
+		P->PreviousSubsurface = Ctx.OutputSubsurface[InputIndex];
+		P->OutputOptics = GraphBuilder.CreateUAV(Optics);
+		P->OutputFuzzColor = GraphBuilder.CreateUAV(Fuzz);
+		P->OutputSubsurface = GraphBuilder.CreateUAV(SSS);
+		TShaderMapRef<FMixtormatFinalizeOpticsCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.FinalizeOptics"), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(P->OutputSize.X, 8), FMath::DivideAndRoundUp(P->OutputSize.Y, 8), 1));
+		if (bInPlace)
+		{
+			AddCopyTexturePass(GraphBuilder, Optics, Ctx.OutputOptics[OutputIndex]);
+			AddCopyTexturePass(GraphBuilder, Fuzz, Ctx.OutputFuzzColor[OutputIndex]);
+			AddCopyTexturePass(GraphBuilder, SSS, Ctx.OutputSubsurface[OutputIndex]);
+		}
 	}
 
 	void AddRotateOutputPass(
@@ -1266,6 +1467,7 @@ namespace MixtormatGpuCompositor
 	const int32 InputTargetIndex,
 	const int32 OutputTargetIndex)
 {
+	AddFinalizeSurfaceOpticsPass(Ctx, InputTargetIndex, OutputTargetIndex, true);
 	FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
 	const FRenderRequest& Request = Ctx.Request;
 	TShaderMapRef<FMixtormatRotateOutputCS> RotateShader(
@@ -1390,6 +1592,8 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 	}
 
 	Resolution = InResolution;
+	PendingOutputs.Reset();
+	CompletedDiagnosticOutputs.Reset();
 	DiagnosticFlowOutput.Reset();
 	DiagnosticColorOutput.Reset();
 	for (FTargetSet& Set : Targets)
@@ -1397,6 +1601,9 @@ bool FMixtormatGpuCompositor::InitializeTargets(
 		Set.BaseColor.Reset(CreateTarget(Resolution, FLinearColor::Black));
 		Set.Normal.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.5f, 1.0f, 1.0f)));
 		Set.RAM.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 1.0f, 0.0f, 0.04f)));
+		Set.Optics.Reset(CreateTarget(Resolution, MixtormatSurfaceOptics::Optics));
+		Set.FuzzColor.Reset(CreateTarget(Resolution, MixtormatSurfaceOptics::FuzzColor, PF_A32B32G32R32F));
+		Set.Subsurface.Reset(CreateTarget(Resolution, MixtormatSurfaceOptics::Subsurface, PF_A32B32G32R32F));
 		Set.Height.Reset(CreateTarget(Resolution, FLinearColor(0.5f, 0.0f, 0.0f, 0.0f), PF_R16F));
 		Set.Debug.Reset(CreateTarget(Resolution, DebugClearColor()));
 		// One channel of full float, cleared to the no-region sentinel. Not half: the ids are
@@ -1625,11 +1832,15 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		Request.Targets->BaseColor[Index] = CaptureTarget(Targets[Index].BaseColor.Get());
 		Request.Targets->Normal[Index] = CaptureTarget(Targets[Index].Normal.Get());
 		Request.Targets->RAM[Index] = CaptureTarget(Targets[Index].RAM.Get());
+		Request.Targets->Optics[Index] = CaptureTarget(Targets[Index].Optics.Get());
+		Request.Targets->FuzzColor[Index] = CaptureTarget(Targets[Index].FuzzColor.Get());
+		Request.Targets->Subsurface[Index] = CaptureTarget(Targets[Index].Subsurface.Get());
 		Request.Targets->Height[Index] = CaptureTarget(Targets[Index].Height.Get());
 		Request.Targets->Debug[Index] = CaptureTarget(Targets[Index].Debug.Get());
 		Request.Targets->RegionIdPick[Index] = CaptureTarget(Targets[Index].RegionIdPick.Get());
 		if (!Request.Targets->BaseColor[Index] || !Request.Targets->Normal[Index]
 			|| !Request.Targets->RAM[Index] || !Request.Targets->Height[Index]
+			|| !Request.Targets->Optics[Index] || !Request.Targets->FuzzColor[Index] || !Request.Targets->Subsurface[Index]
 			|| !Request.Targets->Debug[Index] || !Request.Targets->RegionIdPick[Index])
 		{
 			return false;
@@ -1647,6 +1858,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		(static_cast<uint64>(static_cast<uint32>(Resolution.X)) << 32) | static_cast<uint32>(Resolution.Y));
 	// Scheduler readiness, Pair/Min shader modes and configurable boundaries change cached results.
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
+	// Optical transport, effective Surfacing inputs and full-precision physical channels.
+	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x4F70746963733031ull);
 
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{
@@ -1752,6 +1965,31 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 		{
 			return false;
 		}
+		// A Surface's RAMH alpha is height; its optical bundle is the only per-pixel F0 source.
+		// Reject partial/missing authored bundles rather than treating a bad load as legacy data.
+		if (Surface && (!Surface->Optics.IsNull() || !Surface->FuzzColorMap.IsNull() || !Surface->Subsurface.IsNull()))
+		{
+			UTexture2D* Optics = Surface->Optics.LoadSynchronous();
+			UTexture2D* Fuzz = Surface->FuzzColorMap.LoadSynchronous();
+			UTexture2D* SSS = Surface->Subsurface.LoadSynchronous();
+			const auto CaptureOpticalTexture = [&Request](UTexture2D* Texture, FTextureRHIRef& Out)
+			{
+				if (!Texture || Texture->SRGB || Texture->VirtualTextureStreaming) { return false; }
+				Request.Targets->TexturePins.Emplace(Texture);
+				Out = GetTextureRHI(Texture);
+				return Out.IsValid();
+			};
+			if (!CaptureOpticalTexture(Optics, Data.Optics)
+				|| !CaptureOpticalTexture(Fuzz, Data.FuzzColor)
+				|| !CaptureOpticalTexture(SSS, Data.Subsurface))
+			{
+				UE_LOG(LogMixtormatComposition, Error,
+					TEXT("Layer %d: Surface optical bundle requires three loadable, linear, non-virtual textures with resident RHI resources."), LayerIndex);
+				return false;
+			}
+			Data.bHasSurfaceOptics = true;
+			Data.bUseSourceF0 = !Layer.bOverrideIOR && !Data.bFill;
+		}
 		TArray<int32> ScopeOwners;
 		TArray<bool> DisabledGroupScopes;
 		ScopeOwners.Init(INDEX_NONE, Layer.Children.Num());
@@ -1792,6 +2030,12 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 				{
 					return false;
 				}
+				continue;
+			}
+
+			if (LayerChild.Type == EMixtormatLayerChildType::Surfacing)
+			{
+				GatherSurfacingChild(Data, Layer, LayerChild, SourceChildIndex, LayerIndex, EffectiveLayers);
 				continue;
 			}
 
@@ -2107,14 +2351,38 @@ void FMixtormatGpuCompositor::BindOutputs(UMaterialInstanceDynamic& MaterialInst
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_Normal"), GetNormalOutput());
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_RAMH"), GetRAMOutput());
 	MaterialInstance.SetTextureParameterValue(TEXT("DA_Height"), GetHeightOutput());
+	UMaterial* Definition = MaterialInstance.GetMaterial();
+	TArray<FMaterialParameterInfo> Textures;
+	TArray<FMaterialParameterInfo> Scalars;
+	TArray<FGuid> Ids;
+	if (Definition)
+	{
+		Definition->GetAllTextureParameterInfo(Textures, Ids);
+		Definition->GetAllScalarParameterInfo(Scalars, Ids);
+	}
+	const bool bSupportsOptics = Textures.Contains(FMaterialParameterInfo(TEXT("DA_Optics")))
+		&& Textures.Contains(FMaterialParameterInfo(TEXT("DA_FuzzColorMap")))
+		&& Textures.Contains(FMaterialParameterInfo(TEXT("DA_Subsurface")))
+		&& Scalars.Contains(FMaterialParameterInfo(TEXT("DA_UseSurfaceOptics")));
+	if (bSupportsOptics)
+	{
+		MaterialInstance.SetTextureParameterValue(TEXT("DA_Optics"), GetOpticsOutput());
+		MaterialInstance.SetTextureParameterValue(TEXT("DA_FuzzColorMap"), GetFuzzColorOutput());
+		MaterialInstance.SetTextureParameterValue(TEXT("DA_Subsurface"), GetSubsurfaceOutput());
+	}
+	if (Scalars.Contains(FMaterialParameterInfo(TEXT("DA_UseSurfaceOptics"))))
+	{
+		MaterialInstance.SetScalarParameterValue(TEXT("DA_UseSurfaceOptics"),
+			bSupportsOptics && HasSurfaceOpticsOutput() ? 1.0f : 0.0f);
+	}
+	// Legacy global fuzz remains the caller's responsibility; never zero its bindings here.
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_Tiling"), 1.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessBias"), 0.5f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessContrast"), 0.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_RoughnessOffset"), 0.0f);
 	MaterialInstance.SetScalarParameterValue(TEXT("DA_NormalIntensity"), 1.0f);
-	// DA_DielectricF0 / DA_UsePackedF0 intentionally not set: M_Mixtormat_Substrate has no such
-	// parameters -- it derives F0 itself via MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0
-	// (BaseColor + Metallic), so there is nothing in the graph for these two names to bind to.
+	// No invented DA_DielectricF0 / DA_UsePackedF0 parameters. Upgraded shared masters use
+	// Optics.r through their metal-aware conversion; the legacy master retains its original graph.
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetBaseColorOutput() const
@@ -2135,6 +2403,28 @@ UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRAMOutput() const
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetHeightOutput() const
 {
 	return Targets[PublishedTargetIndex].Height.Get();
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetOpticsOutput() const
+{
+	return Targets[PublishedTargetIndex].Optics.Get();
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetFuzzColorOutput() const
+{
+	return Targets[PublishedTargetIndex].FuzzColor.Get();
+}
+
+UTextureRenderTarget2D* FMixtormatGpuCompositor::GetSubsurfaceOutput() const
+{
+	return Targets[PublishedTargetIndex].Subsurface.Get();
+}
+
+bool FMixtormatGpuCompositor::HasSurfaceOpticsOutput() const
+{
+	check(IsInGameThread());
+	return !IsComposeInFlight() && PendingOutputs.IsValid()
+		&& PendingOutputs->bSucceeded && PendingOutputs->bHasSurfaceOptics;
 }
 
 UTextureRenderTarget2D* FMixtormatGpuCompositor::GetRegionIdPickOutput() const

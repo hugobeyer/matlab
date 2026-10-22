@@ -24,6 +24,14 @@ struct FMixtormatNetworkCache;
 struct FMixtormatPrefixCache;
 struct FMixtormatNodeCache;
 
+// Shared neutral transport values; amounts are inactive, MFP is in centimeters.
+namespace MixtormatSurfaceOptics
+{
+	inline const FLinearColor Optics(0.04f, 0.0f, 0.5f, 0.0f);
+	inline const FLinearColor FuzzColor(1.0f, 1.0f, 1.0f, 0.0f);
+	inline const FLinearColor Subsurface(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
 namespace MixtormatDiagnosticOutputs
 {
 	// Preview-only snapshot of the running Flow at a module's authored stack position.
@@ -186,6 +194,12 @@ public:
 	UTextureRenderTarget2D* GetNormalOutput() const;
 	UTextureRenderTarget2D* GetRAMOutput() const;
 	UTextureRenderTarget2D* GetHeightOutput() const;
+	UTextureRenderTarget2D* GetOpticsOutput() const;
+	UTextureRenderTarget2D* GetFuzzColorOutput() const;
+	UTextureRenderTarget2D* GetSubsurfaceOutput() const;
+	// Completed current generation only, never allocation or pixel-value inference.
+	// Includes authored zero values; false while a replacement compose is in flight.
+	bool HasSurfaceOpticsOutput() const;
 	UTextureRenderTarget2D* GetDebugOutput() const;
 	// Raw typed Flow/UV snapshot for the requested overlay owner, never another source's pixels.
 	UTextureRenderTarget2D* GetDiagnosticFlowOutput(const FMixtormatChildPreviewTarget& ExpectedTarget) const;
@@ -219,6 +233,9 @@ private:
 		TStrongObjectPtr<UTextureRenderTarget2D> Normal;
 		TStrongObjectPtr<UTextureRenderTarget2D> RAM;
 		TStrongObjectPtr<UTextureRenderTarget2D> Height;
+		TStrongObjectPtr<UTextureRenderTarget2D> Optics;
+		TStrongObjectPtr<UTextureRenderTarget2D> FuzzColor;
+		TStrongObjectPtr<UTextureRenderTarget2D> Subsurface;
 		TStrongObjectPtr<UTextureRenderTarget2D> Debug;
 		TStrongObjectPtr<UTextureRenderTarget2D> RegionIdPick;
 	};

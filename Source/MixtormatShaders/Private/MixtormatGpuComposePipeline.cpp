@@ -34,6 +34,7 @@ namespace
 	bool bLoggedFlowUnavailable = false;
 	bool bLoggedFlowResampled = false;
 	bool bLoggedMaskUnavailable = false;
+	bool bLoggedOpticalBlurLimit = false;
 }
 
 // Normal from the finished height with the composited detail on top. See MixtormatFinalNormal.usf.
@@ -96,6 +97,44 @@ namespace MixtormatSubstrate
 
 namespace MixtormatGpuCompositor
 {
+	// Implemented beside the shader in MixtormatGpuCompositor.cpp.
+	void AddFinalizeSurfaceOpticsPass(FMixtormatComposeContext& Ctx,
+		int32 InputIndex, int32 OutputIndex, bool bRotate);
+
+	static void AddLayerFlowWarpWithOptics(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, const FEffectRenderData& Effect, FRDGTextureRef FeatureMask)
+	{
+		if (Child.ScopeOwnerSourceChildIndex != INDEX_NONE
+			|| FMath::IsNearlyZero(Effect.FlowWarpAmount) || FMath::IsNearlyZero(Effect.FlowWarpWeight))
+		{
+			return;
+		}
+		AddLayerInputPass(Ctx, LayerCtx, Layer);
+		const FRDGTextureRef SourceBC = LayerCtx.LayerInputBC;
+		const FRDGTextureRef SourceN = LayerCtx.LayerInputN;
+		const FRDGTextureRef SourceRAM = LayerCtx.LayerInputRAM;
+		const FRDGTextureRef SourceHeight = LayerCtx.LayerInputHeight;
+		// Reuse the exact spatial kernel through its unmodified float4 slots. Keep the ORIGINAL
+		// height for every call: its SelectWarped decision must not see already-warped height.
+		LayerCtx.LayerInputBC = LayerCtx.LayerInputOptics;
+		LayerCtx.LayerInputRAM = LayerCtx.LayerInputFuzzColor;
+		AddLayerFlowWarpPass(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
+		LayerCtx.LayerInputOptics = LayerCtx.LayerInputBC;
+		LayerCtx.LayerInputFuzzColor = LayerCtx.LayerInputRAM;
+		LayerCtx.LayerInputBC = LayerCtx.LayerInputSubsurface;
+		LayerCtx.LayerInputN = SourceN;
+		LayerCtx.LayerInputRAM = SourceRAM;
+		LayerCtx.LayerInputHeight = SourceHeight;
+		AddLayerFlowWarpPass(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
+		LayerCtx.LayerInputSubsurface = LayerCtx.LayerInputBC;
+		LayerCtx.LayerInputBC = SourceBC;
+		LayerCtx.LayerInputN = SourceN;
+		LayerCtx.LayerInputRAM = SourceRAM;
+		LayerCtx.LayerInputHeight = SourceHeight;
+		AddLayerFlowWarpPass(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
+	}
+
 	// Kept local to the owned GPU translation units until the internal typed-ref seam lands.
 	TArray<TPair<int32, FRDGTextureRef>> GetRegionIdView(
 		const FLayerRenderData& Layer,
@@ -167,6 +206,8 @@ namespace MixtormatGpuCompositor
 			{
 				if (Texture == Ctx.OutputBC[Index] || Texture == Ctx.OutputN[Index]
 					|| Texture == Ctx.OutputRAM[Index] || Texture == Ctx.OutputHeight[Index]
+					|| Texture == Ctx.OutputOptics[Index] || Texture == Ctx.OutputFuzzColor[Index]
+					|| Texture == Ctx.OutputSubsurface[Index]
 					|| Texture == Ctx.OutputDebug[Index] || Texture == Ctx.OutputRegionIdPick[Index]
 					|| Texture == LayerCtx.MaskTargets[Index] || Texture == LayerCtx.RidgeTargets[Index]
 					|| Texture == LayerCtx.OccupancyTargets[Index]
@@ -188,10 +229,11 @@ namespace MixtormatGpuCompositor
 			return static_cast<uint64>(Texture->Desc.Extent.X) * static_cast<uint64>(Texture->Desc.Extent.Y)
 				* static_cast<uint64>(GPixelFormats[Texture->Desc.Format].BlockBytes);
 		};
-		const FRDGTextureRef Accumulation[6] = {
+		const FRDGTextureRef Accumulation[] = {
 			Ctx.OutputBC[WriteIndex], Ctx.OutputN[WriteIndex], Ctx.OutputRAM[WriteIndex],
 			Ctx.OutputHeight[WriteIndex], LayerCtx.RidgeTargets[WriteIndex],
-			LayerCtx.OccupancyTargets[WriteIndex]};
+			LayerCtx.OccupancyTargets[WriteIndex], Ctx.OutputOptics[WriteIndex],
+			Ctx.OutputFuzzColor[WriteIndex], Ctx.OutputSubsurface[WriteIndex]};
 		uint64 Bytes = 0;
 		for (const FRDGTextureRef Texture : Accumulation)
 		{
@@ -247,6 +289,7 @@ namespace MixtormatGpuCompositor
 		Entry->Key = Request.PrefixHashes[LayerIndex];
 		Entry->LayerIndex = LayerIndex;
 		Entry->Resolution = Request.Resolution;
+		Entry->bHasSurfaceOptics = Ctx.bHasSurfaceOptics;
 
 		const auto Keep = [&GraphBuilder](const FRDGTextureRef Source, TRefCountPtr<IPooledRenderTarget>* Out, const TCHAR* Name)
 		{
@@ -263,6 +306,9 @@ namespace MixtormatGpuCompositor
 		Keep(Accumulation[3], &Entry->Height, TEXT("Mixtormat.CacheSave.Height"));
 		Keep(Accumulation[4], &Entry->Ridge, TEXT("Mixtormat.CacheSave.Ridge"));
 		Keep(Accumulation[5], &Entry->Occupancy, TEXT("Mixtormat.CacheSave.Occupancy"));
+		Keep(Accumulation[6], &Entry->Optics, TEXT("Mixtormat.CacheSave.Optics"));
+		Keep(Accumulation[7], &Entry->FuzzColor, TEXT("Mixtormat.CacheSave.FuzzColor"));
+		Keep(Accumulation[8], &Entry->Subsurface, TEXT("Mixtormat.CacheSave.Subsurface"));
 
 		// The remaining snapshots are already dedicated copies nothing writes again, so they are
 		// extracted as they are. Arrays are sized before any extraction pointer is taken.
@@ -359,18 +405,27 @@ namespace MixtormatGpuCompositor
 					Layer.Normal = Source.Normal[Index]->GetRenderTargetTexture();
 					Layer.RAM = Source.RAM[Index]->GetRenderTargetTexture();
 					Layer.Height = Source.Height[Index]->GetRenderTargetTexture();
+					Layer.Optics = Source.Optics[Index]->GetRenderTargetTexture();
+					Layer.FuzzColor = Source.FuzzColor[Index]->GetRenderTargetTexture();
+					Layer.Subsurface = Source.Subsurface[Index]->GetRenderTargetTexture();
+					Layer.bHasSurfaceOptics = Source.bHasSurfaceOptics;
 				}
 				for (int32 Index = 0; Index < 2; ++Index)
 				{
 					Request.OutputBC[Index] = Request.Targets->BaseColor[Index]->GetRenderTargetTexture();
 					Request.OutputN[Index] = Request.Targets->Normal[Index]->GetRenderTargetTexture();
 					Request.OutputRAM[Index] = Request.Targets->RAM[Index]->GetRenderTargetTexture();
+					Request.OutputOptics[Index] = Request.Targets->Optics[Index]->GetRenderTargetTexture();
+					Request.OutputFuzzColor[Index] = Request.Targets->FuzzColor[Index]->GetRenderTargetTexture();
+					Request.OutputSubsurface[Index] = Request.Targets->Subsurface[Index]->GetRenderTargetTexture();
 					Request.OutputHeight[Index] = Request.Targets->Height[Index]->GetRenderTargetTexture();
 					Request.OutputDebug[Index] = Request.Targets->Debug[Index]->GetRenderTargetTexture();
 					Request.OutputRegionIdPick[Index] =
 						Request.Targets->RegionIdPick[Index]->GetRenderTargetTexture();
 					if (!Request.OutputBC[Index].IsValid() || !Request.OutputN[Index].IsValid()
 						|| !Request.OutputRAM[Index].IsValid() || !Request.OutputHeight[Index].IsValid()
+						|| !Request.OutputOptics[Index].IsValid() || !Request.OutputFuzzColor[Index].IsValid()
+						|| !Request.OutputSubsurface[Index].IsValid()
 						|| !Request.OutputDebug[Index].IsValid()
 						|| !Request.OutputRegionIdPick[Index].IsValid())
 					{
@@ -391,6 +446,9 @@ namespace MixtormatGpuCompositor
 				FRDGTextureRef* const OutputBC = Ctx.OutputBC;
 				FRDGTextureRef* const OutputN = Ctx.OutputN;
 				FRDGTextureRef* const OutputRAM = Ctx.OutputRAM;
+				FRDGTextureRef* const OutputOptics = Ctx.OutputOptics;
+				FRDGTextureRef* const OutputFuzzColor = Ctx.OutputFuzzColor;
+				FRDGTextureRef* const OutputSubsurface = Ctx.OutputSubsurface;
 				FRDGTextureRef* const OutputHeight = Ctx.OutputHeight;
 				FRDGTextureRef* const OutputDebug = Ctx.OutputDebug;
 				FRDGTextureRef* const OutputRegionIdPick = Ctx.OutputRegionIdPick;
@@ -411,6 +469,16 @@ namespace MixtormatGpuCompositor
 						RegisteredTextures,
 						Request.OutputRAM[Index],
 						TEXT("Mixtormat.OutputRAM"));
+					OutputOptics[Index] = RegisterTexture(GraphBuilder, RegisteredTextures,
+						Request.OutputOptics[Index], TEXT("Mixtormat.OutputOptics"));
+					OutputFuzzColor[Index] = RegisterTexture(GraphBuilder, RegisteredTextures,
+						Request.OutputFuzzColor[Index], TEXT("Mixtormat.OutputFuzzColor"));
+					OutputSubsurface[Index] = RegisterTexture(GraphBuilder, RegisteredTextures,
+						Request.OutputSubsurface[Index], TEXT("Mixtormat.OutputSubsurface"));
+					// Both halves are valid even on empty/legacy stacks and before lazy input resolve.
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputOptics[Index]), MixtormatSurfaceOptics::Optics);
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputFuzzColor[Index]), MixtormatSurfaceOptics::FuzzColor);
+					AddClearUAVPass(GraphBuilder, GraphBuilder.CreateUAV(OutputSubsurface[Index]), MixtormatSurfaceOptics::Subsurface);
 					OutputHeight[Index] = RegisterTexture(
 						GraphBuilder,
 						RegisteredTextures,
@@ -901,6 +969,10 @@ namespace MixtormatGpuCompositor
 								Request.PrefixHashes, Request.Resolution, Request.CacheLayerLimit,
 								[&](const FMixtormatPrefixCache::FEntry& Entry)
 								{
+									if (!Entry.Optics.IsValid() || !Entry.FuzzColor.IsValid() || !Entry.Subsurface.IsValid())
+									{
+										return false;
+									}
 									for (const int32 Required : RequiredHeightSnapshots)
 									{
 										if (Required <= Entry.LayerIndex
@@ -948,6 +1020,10 @@ namespace MixtormatGpuCompositor
 							Restore(Resumed->BaseColor, OutputBC[Half], TEXT("Mixtormat.Cache.BaseColor"));
 							Restore(Resumed->Normal, OutputN[Half], TEXT("Mixtormat.Cache.Normal"));
 							Restore(Resumed->RAM, OutputRAM[Half], TEXT("Mixtormat.Cache.RAM"));
+							Restore(Resumed->Optics, OutputOptics[Half], TEXT("Mixtormat.Cache.Optics"));
+							Restore(Resumed->FuzzColor, OutputFuzzColor[Half], TEXT("Mixtormat.Cache.FuzzColor"));
+							Restore(Resumed->Subsurface, OutputSubsurface[Half], TEXT("Mixtormat.Cache.Subsurface"));
+							Ctx.bHasSurfaceOptics = Resumed->bHasSurfaceOptics;
 							Restore(Resumed->Height, HeightTargets[Half], TEXT("Mixtormat.Cache.Height"));
 							Restore(Resumed->Ridge, RidgeTargets[Half], TEXT("Mixtormat.Cache.Ridge"));
 							Restore(Resumed->Occupancy, OccupancyTargets[Half], TEXT("Mixtormat.Cache.Occupancy"));
@@ -993,6 +1069,9 @@ namespace MixtormatGpuCompositor
 							const bool bHasIdGroups = Layer.Children.ContainsByPredicate(
 								[](const FChildRenderData& Child) { return Child.Type == EMixtormatLayerChildType::IdGroup; });
 							LayerCtx.BeginLayer(LayerIndex);
+							LayerCtx.BelowOptics = OutputOptics[1 - (LayerIndex & 1)];
+							LayerCtx.BelowFuzzColor = OutputFuzzColor[1 - (LayerIndex & 1)];
+							LayerCtx.BelowSubsurface = OutputSubsurface[1 - (LayerIndex & 1)];
 
 						TArray<TPair<int32, FRDGTextureRef>>& RegionIdMaps = LayerCtx.RegionIdMaps;
 						TArray<FPatternIdPassOutput, TInlineAllocator<2>>& PatternOutputs =
@@ -1135,6 +1214,7 @@ namespace MixtormatGpuCompositor
 							}
 							FScopedRegionIdView RegionView(LayerCtx, Layer, &Child, bHasIdGroups);
 							if (Child.Type == EMixtormatLayerChildType::Generator
+								|| Child.Type == EMixtormatLayerChildType::Surfacing
 								|| Child.Type == EMixtormatLayerChildType::Behavior)
 							{
 								// Already run, before this loop started. It has no mask to
@@ -1225,7 +1305,7 @@ namespace MixtormatGpuCompositor
 
 							if (Effect.Type == EMixtormatEffectType::FlowWarp)
 							{
-								AddLayerFlowWarpPass(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
+								AddLayerFlowWarpWithOptics(Ctx, LayerCtx, Layer, Child, Effect, FeatureMask);
 								continue;
 							}
 
@@ -1260,11 +1340,22 @@ namespace MixtormatGpuCompositor
 						// Structural filters below must see the merged, accumulated surface.
 						const bool bPrepareSurface = !LayerCtx.PendingBreakups.IsEmpty()
 							|| !Layer.SurfaceBlurs.IsEmpty();
+						if (!bLoggedOpticalBlurLimit && !Layer.SurfaceBlurs.IsEmpty()
+							&& (Layer.bHasSurfaceOptics || LayerCtx.bSurfacingFuzz || LayerCtx.bSurfacingSSS
+								|| (Layer.bFillPassThrough && Ctx.bHasSurfaceOptics)))
+						{
+							bLoggedOpticalBlurLimit = true;
+							UE_LOG(LogMixtormatComposition, Warning,
+								TEXT("Surface Blur has no fuzz/SSS channel controls: it filters existing BC/N/RAM/Height channels only. Optical F0 follows RAM.a; fuzz amount/roughness/tint and SSS amount/MFP remain unblurred. Optical blur needs an explicit channel policy and gather/UI integration."));
+						}
 						const int32 LocalWriteIndex = LayerIndex & 1;
 						FRDGTextureRef SavedBC = Ctx.OutputBC[LocalWriteIndex];
 						FRDGTextureRef SavedN = Ctx.OutputN[LocalWriteIndex];
 						FRDGTextureRef SavedRAM = Ctx.OutputRAM[LocalWriteIndex];
 						FRDGTextureRef SavedHeight = Ctx.OutputHeight[LocalWriteIndex];
+						FRDGTextureRef SavedOptics = Ctx.OutputOptics[LocalWriteIndex];
+						FRDGTextureRef SavedFuzzColor = Ctx.OutputFuzzColor[LocalWriteIndex];
+						FRDGTextureRef SavedSubsurface = Ctx.OutputSubsurface[LocalWriteIndex];
 						if (bPrepareSurface)
 						{
 							// Keep the read side intact for placement/height-reference evaluation.
@@ -1273,6 +1364,9 @@ namespace MixtormatGpuCompositor
 							Ctx.OutputN[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedN->Desc, TEXT("Mixtormat.LocalN"));
 							Ctx.OutputRAM[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedRAM->Desc, TEXT("Mixtormat.LocalRAM"));
 							Ctx.OutputHeight[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedHeight->Desc, TEXT("Mixtormat.LocalHeight"));
+							Ctx.OutputOptics[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedOptics->Desc, TEXT("Mixtormat.LocalOptics"));
+							Ctx.OutputFuzzColor[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedFuzzColor->Desc, TEXT("Mixtormat.LocalFuzzColor"));
+							Ctx.OutputSubsurface[LocalWriteIndex] = GraphBuilder.CreateTexture(SavedSubsurface->Desc, TEXT("Mixtormat.LocalSubsurface"));
 						}
 						{
 							RDG_EVENT_SCOPE_STAT(GraphBuilder, MixtormatComposite, "Mixtormat.Composite");
@@ -1293,10 +1387,16 @@ namespace MixtormatGpuCompositor
 							LayerCtx.LayerInputN = Ctx.OutputN[LocalWriteIndex];
 							LayerCtx.LayerInputRAM = Ctx.OutputRAM[LocalWriteIndex];
 							LayerCtx.LayerInputHeight = Ctx.OutputHeight[LocalWriteIndex];
+							LayerCtx.LayerInputOptics = Ctx.OutputOptics[LocalWriteIndex];
+							LayerCtx.LayerInputFuzzColor = Ctx.OutputFuzzColor[LocalWriteIndex];
+							LayerCtx.LayerInputSubsurface = Ctx.OutputSubsurface[LocalWriteIndex];
 							Ctx.OutputBC[LocalWriteIndex] = SavedBC;
 							Ctx.OutputN[LocalWriteIndex] = SavedN;
 							Ctx.OutputRAM[LocalWriteIndex] = SavedRAM;
 							Ctx.OutputHeight[LocalWriteIndex] = SavedHeight;
+							Ctx.OutputOptics[LocalWriteIndex] = SavedOptics;
+							Ctx.OutputFuzzColor[LocalWriteIndex] = SavedFuzzColor;
+							Ctx.OutputSubsurface[LocalWriteIndex] = SavedSubsurface;
 							AddLayerCompositePass(Ctx, LayerCtx, Layer, 2u);
 						}
 
@@ -1370,6 +1470,15 @@ namespace MixtormatGpuCompositor
 							}
 						}
 
+						// Authored availability comes from enabled source data or executed write flags,
+						// never target allocation or whether a deliberately authored amount is zero.
+						if (Layer.bEnabled && Layer.Opacity > 0.0f && (!Layer.bNormalOnly || Layer.bFillPassThrough))
+						{
+							Ctx.bHasSurfaceOptics |= (!Layer.bFillPassThrough && Layer.bHasSurfaceOptics)
+								|| (LayerCtx.bSurfacingF0 && Layer.F0Influence > 0.0f)
+								|| LayerCtx.bSurfacingFuzz || LayerCtx.bSurfacingSSS;
+						}
+						AddFinalizeSurfaceOpticsPass(Ctx, WriteIndex, WriteIndex, false);
 						PublishLayerRegionIdOutputs(Ctx, LayerCtx, Layer);
 						if (bPrefixCache
 							&& LayerIndex == Request.SnapshotLayer
@@ -1604,6 +1713,8 @@ namespace MixtormatGpuCompositor
 					}
 				}
 
+				// Final filters can rewrite RAM; optical export must mirror that exact result.
+				AddFinalizeSurfaceOpticsPass(Ctx, Request.PublishedTargetIndex, Request.PublishedTargetIndex, false);
 				int32 FinalTargetIndex = Request.PublishedTargetIndex;
 				if (Request.bRotateOutput90)
 				{
@@ -1623,6 +1734,9 @@ namespace MixtormatGpuCompositor
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputBC[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputN[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputRAM[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputOptics[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputFuzzColor[FinalTargetIndex], ERHIAccess::SRVMask);
+				GraphBuilder.SetTextureAccessFinal(Ctx.OutputSubsurface[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputHeight[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(Ctx.OutputDebug[FinalTargetIndex], ERHIAccess::SRVMask);
 				GraphBuilder.SetTextureAccessFinal(
@@ -1636,6 +1750,7 @@ namespace MixtormatGpuCompositor
 					GraphBuilder.SetTextureAccessFinal(DiagnosticColor, ERHIAccess::SRVMask);
 				}
 				GraphBuilder.Execute();
+				Request.Targets->bHasSurfaceOptics = Ctx.bHasSurfaceOptics;
 				Request.Targets->bSucceeded = true;
 				if (PendingSnapshot.IsValid() && Request.PrefixCache.IsValid())
 				{
@@ -1650,6 +1765,13 @@ namespace MixtormatGpuCompositor
 				}
 				if (Request.OnComplete.IsBound())
 				{
+					// Publish authored metadata before the game-thread callback can query it.
+					if (Request.InFlight.IsValid())
+					{
+						Request.InFlight->store(false);
+						// The callback may queue the next request; scope-exit must not clear its flag.
+						Request.InFlight.Reset();
+					}
 					AsyncTask(
 						ENamedThreads::GameThread,
 						[OnComplete = Request.OnComplete]() mutable

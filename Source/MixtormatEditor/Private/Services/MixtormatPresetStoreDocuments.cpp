@@ -54,6 +54,7 @@ namespace MixtormatPresetStore
 			PAYLOAD(HsvFilter, HsvFilter) PAYLOAD(RandomId, RandomId) PAYLOAD(RampId, RampId)
 			PAYLOAD(PatternId, PatternId) PAYLOAD(Blur, Blur) PAYLOAD(Curvature, Curvature)
 			PAYLOAD(CombineId, CombineId) PAYLOAD(Generator, Generator) PAYLOAD(Boolean, Boolean)
+			PAYLOAD(Surfacing, Surfacing)
 			PAYLOAD(UvFromIds, UvId) PAYLOAD(ReliefFromIds, ReliefId) PAYLOAD(IdGroup, IdGroup)
 			PAYLOAD(OutputReference, OutputReference) PAYLOAD(BoundaryFromIds, BoundaryId)
 			PAYLOAD(HeightBlend, HeightBlend) PAYLOAD(HeightCurve, HeightCurve)
@@ -217,6 +218,7 @@ namespace MixtormatPresetStore
 	{
 		if (A.Type != B.Type) { return false; }
 		if (A.Type == EMixtormatLayerChildType::Generator) { return A.Generator.Type == B.Generator.Type; }
+		if (A.Type == EMixtormatLayerChildType::Surfacing) { return A.Surfacing.Type == B.Surfacing.Type; }
 		if (A.Type == EMixtormatLayerChildType::Effect) { return ResolveChildEffectType(A) == ResolveChildEffectType(B); }
 		if (A.Type == EMixtormatLayerChildType::Behavior) { return A.Behavior.Type == B.Behavior.Type; }
 				if (A.Type == EMixtormatLayerChildType::OutputReference) { return A.OutputReference.Kind == B.OutputReference.Kind; }

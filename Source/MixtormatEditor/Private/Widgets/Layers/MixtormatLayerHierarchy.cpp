@@ -48,6 +48,10 @@ namespace MixtormatLayersPrivate
 		{
 			Specific = MixtormatIcons::BooleanOps();
 		}
+		else if (Child.Type == EMixtormatLayerChildType::Surfacing)
+		{
+			Specific = MixtormatIcons::Surfacing();
+		}
 		else if (Child.Type == EMixtormatLayerChildType::Blur)
 		{
 			Specific = MixtormatIcons::Filter();
@@ -1839,6 +1843,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			// items. It is not a mask and must not fall through to the mask row, which would
 			// toggle FMixtormatLayerChild::Mask on a child that has none.
 			|| Child.Type == EMixtormatLayerChildType::Generator
+			|| Child.Type == EMixtormatLayerChildType::Surfacing
 			|| Child.Type == EMixtormatLayerChildType::Boolean
 			// The Generator sublayers and Behaviors are the same case: they carry their own
 			// enable flag, so their row toggle has to route through the procedural path

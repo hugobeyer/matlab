@@ -249,6 +249,7 @@ bool SMixtormat::HasSelectedChildInspector() const
 		// claim the inspector, or it would show the layer's own sections instead and read as a
 		// broken selection.
 		|| HasSelectedGenerator()
+				|| GetSelectedSkin()
 		|| GetSelectedBooleanStack()
 		|| HasSelectedOutputReference()
 		// Generator-layer sublayers: each owns its own panel, so each must claim the inspector.
@@ -517,6 +518,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 					+ SScrollBox::Slot()[BuildNoiseControls()]
 					+ SScrollBox::Slot()[BuildBooleanOpsControls()]
 					+ SScrollBox::Slot()[BuildBooleanStackControls()]
+										+ SScrollBox::Slot()[BuildSkinControls()]
 					+ SScrollBox::Slot()[BuildHeightBlendModuleControls()]
 					+ SScrollBox::Slot()[BuildHeightCurveControls()]
 					+ SScrollBox::Slot()[BuildHeightColorRampControls()]

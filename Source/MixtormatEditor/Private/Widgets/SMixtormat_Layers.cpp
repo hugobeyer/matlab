@@ -30,7 +30,8 @@ void SMixtormat::RebuildLayerList()
 		if (!ResolveHierarchyChildAddress(*It, OwnerIndex, ChildIndex)) { It.RemoveCurrent(); continue; }
 		const auto& Children = It->OwnerType == EMixtormatChildOwnerType::Layer
 			? WorkingLayers[OwnerIndex].Children : WorkingLayerGroups[OwnerIndex].Children;
-		if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator) { It.RemoveCurrent(); }
+		if (Children[ChildIndex].Type != EMixtormatLayerChildType::Generator
+			&& Children[ChildIndex].Type != EMixtormatLayerChildType::Surfacing) { It.RemoveCurrent(); }
 	}
 	ChildRowWidgets.Reset();
 	EditableChildRowWidgets.Reset();

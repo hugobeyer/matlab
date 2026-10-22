@@ -1,0 +1,143 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Separate immutable reads/writes. No pass binds more than seven UAVs.
+#include "/Engine/Public/Platform.ush"
+int2 OutputSize;
+
+#if SURFACING_STAGE == 0
+uint HasParentGate;
+uint HasLocalGate;
+Texture2D<float> ParentGate;
+Texture2D<float> LocalGate;
+RWTexture2D<float> OutGate;
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float A = HasParentGate != 0u ? ParentGate.Load(int3(P, 0)) : 1.0f;
+	float B = HasLocalGate != 0u ? LocalGate.Load(int3(P, 0)) : 1.0f;
+	OutGate[P] = isfinite(A) && isfinite(B) ? saturate(A) * saturate(B) : 0.0f;
+}
+#else
+// @param Amount saturates
+float Amount;
+uint HasGate;
+Texture2D<float> Gate;
+float SurfaceWeight(int2 P)
+{
+	float G = HasGate != 0u ? Gate.Load(int3(P, 0)) : 1.0f;
+	return isfinite(Amount) && isfinite(G) ? saturate(Amount) * saturate(G) : 0.0f;
+}
+#if SURFACING_STAGE == 1
+uint WriteHeight;
+uint WriteColor;
+uint WriteRoughness;
+uint WriteAO;
+uint WriteF0;
+uint WriteFuzz;
+uint WriteSSS;
+Texture2D<float> RunningHeight;
+Texture2D<float> SkinHeight;
+Texture2D<float4> PreviousColor;
+Texture2D<float4> PreviousRAM;
+Texture2D<float4> PreviousOptics;
+Texture2D<float4> PreviousFuzzColor;
+Texture2D<float4> PreviousSubsurface;
+Texture2D<float4> SkinColor;
+Texture2D<float4> SkinRAM;
+Texture2D<float4> SkinOptics;
+Texture2D<float4> SkinFuzzColor;
+Texture2D<float4> SkinSubsurface;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float4> OutColor;
+RWTexture2D<float4> OutRAM;
+RWTexture2D<float4> OutOptics;
+RWTexture2D<float4> OutFuzzColor;
+RWTexture2D<float4> OutSubsurface;
+
+// Endpoint branches preserve the incoming bits at zero and avoid 0*NaN/Inf contamination.
+float MixChannel(float A, float B, float W) { return W <= 0.0f ? A : (W >= 1.0f ? B : lerp(A, B, W)); }
+float3 MixRGB(float3 A, float3 B, float W)
+{
+	return float3(MixChannel(A.x, B.x, W), MixChannel(A.y, B.y, W), MixChannel(A.z, B.z, W));
+}
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float H = RunningHeight.Load(int3(P, 0));
+	float4 C = PreviousColor.Load(int3(P, 0));
+	float4 R = PreviousRAM.Load(int3(P, 0));
+	float4 O = PreviousOptics.Load(int3(P, 0));
+	float4 F = PreviousFuzzColor.Load(int3(P, 0));
+	float4 S = PreviousSubsurface.Load(int3(P, 0));
+	float W = SurfaceWeight(P);
+	if (W > 0.0f)
+	{
+		if (WriteHeight != 0u)
+		{
+			float Delta = SkinHeight.Load(int3(P, 0)) * W;
+			// Zero signed relief is identity even for a signed-zero incoming height.
+			if (Delta != 0.0f && isfinite(Delta) && isfinite(H + Delta)) { H += Delta; }
+		}
+		if (WriteColor != 0u) { C = float4(MixRGB(C.rgb, SkinColor.Load(int3(P, 0)).rgb, W), C.a); }
+		float4 SR = SkinRAM.Load(int3(P, 0));
+		float4 SO = SkinOptics.Load(int3(P, 0));
+		if (WriteRoughness != 0u) { R.r = MixChannel(R.r, SR.r, W); }
+		if (WriteAO != 0u) { R.g = MixChannel(R.g, SR.g, W); }
+		// Skin has no metallic write flag; RAM.B is always preserved.
+		if (WriteF0 != 0u) { R.a = MixChannel(R.a, SR.a, W); O.r = MixChannel(O.r, SO.r, W); }
+		if (WriteFuzz != 0u)
+		{
+			O.g = MixChannel(O.g, SO.g, W);
+			O.b = MixChannel(O.b, SO.b, W);
+			F = float4(MixRGB(F.rgb, SkinFuzzColor.Load(int3(P, 0)).rgb, W), F.a);
+		}
+		if (WriteSSS != 0u)
+		{
+			O.a = MixChannel(O.a, SO.a, W);
+			S = float4(MixRGB(S.rgb, SkinSubsurface.Load(int3(P, 0)).rgb, W), S.a);
+		}
+	}
+	OutHeight[P] = H;
+	OutColor[P] = C;
+	OutRAM[P] = R;
+	OutOptics[P] = O;
+	OutFuzzColor[P] = F;
+	OutSubsurface[P] = S;
+}
+#else
+// Completed scope diagnostics; material fields retain the upstream value where Skin did not act.
+Texture2D<float> BeforeHeight;
+Texture2D<float> AfterHeight;
+Texture2D<float4> CompletedRAM;
+Texture2D<float4> CompletedOptics;
+Texture2D<float> RawPores;
+Texture2D<float> RawCompression;
+RWTexture2D<float> OutHeightDelta;
+RWTexture2D<float> OutRoughness;
+RWTexture2D<float> OutAO;
+RWTexture2D<float> OutF0;
+RWTexture2D<float> OutFuzz;
+RWTexture2D<float> OutPores;
+RWTexture2D<float> OutCompression;
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float W = SurfaceWeight(P);
+	float Delta = AfterHeight.Load(int3(P, 0)) - BeforeHeight.Load(int3(P, 0));
+	float4 R = CompletedRAM.Load(int3(P, 0));
+	float4 O = CompletedOptics.Load(int3(P, 0));
+	OutHeightDelta[P] = isfinite(Delta) ? Delta : 0.0f;
+	OutRoughness[P] = saturate(R.r);
+	OutAO[P] = saturate(R.g);
+	OutF0[P] = saturate(O.r);
+	OutFuzz[P] = saturate(O.g);
+	OutPores[P] = W > 0.0f ? saturate(RawPores.Load(int3(P, 0))) * W : 0.0f;
+	OutCompression[P] = W > 0.0f ? saturate(RawCompression.Load(int3(P, 0))) * W : 0.0f;
+}
+#endif
+#endif

@@ -5,6 +5,7 @@
 #include "Widgets/SMixtormatInternal.h"
 
 #include "MixtormatParameterBinding.h"
+#include "MixtormatSurfacingTypes.h"
 #include "MixtormatGroupControls.h"
 #include "MixtormatParameterDrivers.h"
 #include "Style/MixtormatDesignTokens.h"
@@ -99,6 +100,7 @@ namespace
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Behavior: return EMixtormatParameterOwnerType::Behavior;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
+		case EMixtormatLayerChildType::Surfacing: return EMixtormatParameterOwnerType::Surfacing;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
 	}
@@ -139,6 +141,8 @@ namespace
 		case EMixtormatLayerChildType::Behavior: return &Child.Behavior;
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Data(Child.Generator);
+		case EMixtormatLayerChildType::Surfacing:
+			return &Child.Surfacing.Skin;
 		default: return nullptr;
 		}
 	}
@@ -859,6 +863,8 @@ namespace
 		case EMixtormatLayerChildType::Curvature: return FMixtormatMaskCurvature::StaticStruct();
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Struct(Child.Generator);
+		case EMixtormatLayerChildType::Surfacing:
+			return FMixtormatSkin::StaticStruct();
 		default: return nullptr;
 		}
 	}

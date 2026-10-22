@@ -8,6 +8,7 @@
 #include "MixtormatMaskTypes.h"
 #include "MixtormatIdTypes.h"
 #include "MixtormatGeneratorTypes.h"
+#include "MixtormatSurfacingTypes.h"
 #include "MixtormatEffect.h"
 #include "MixtormatBlur.h"
 #include "MixtormatMaskCurvature.h"
@@ -135,7 +136,8 @@ enum class EMixtormatLayerChildType : uint8
 	// Appended: a Generator child that rewrites an earlier Generator's own output.
 	// This is the one and only structural authoring path.
 	Behavior UMETA(DisplayName = "Behavior"),
-	Boolean UMETA(DisplayName = "Boolean")
+	Boolean UMETA(DisplayName = "Boolean"),
+	Surfacing UMETA(DisplayName = "Surfacing")
 };
 
 UENUM(BlueprintType)
@@ -259,6 +261,9 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerChild
 	// struct there and touches nothing here, in the child dispatch, or in any saved asset.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Generator"))
 	FMixtormatGenerator Generator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Surfacing"))
+	FMixtormatSurfacing Surfacing;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Child", meta = (EditCondition = "Type == EMixtormatLayerChildType::Boolean"))
 	FMixtormatBooleanStack Boolean;
@@ -588,7 +593,8 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	TArray<FMixtormatLayerChild> Children;
 
 	// True when this layer owns anything the generator chain evaluates: a Generator module, a
-	// Boolean group, a height sublayer, or a Behavior.
+	// Boolean group, a height sublayer, a Behavior, or Surfacing. This is the ordered
+	// procedural dispatcher predicate, not a Generator subtype test.
 	bool HasGeneratorModules() const
 	{
 		for (const FMixtormatLayerChild& Child : Children)
@@ -596,6 +602,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 			switch (Child.Type)
 			{
 			case EMixtormatLayerChildType::Generator:
+			case EMixtormatLayerChildType::Surfacing:
 			case EMixtormatLayerChildType::Boolean:
 			case EMixtormatLayerChildType::HeightBlend:
 			case EMixtormatLayerChildType::HeightCurve:

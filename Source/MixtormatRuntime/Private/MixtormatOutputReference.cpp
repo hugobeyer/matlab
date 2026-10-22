@@ -3,6 +3,7 @@
 #include "MixtormatOutputReference.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatChildScope.h"
 
 namespace MixtormatOutputReferences
 {
@@ -107,6 +108,164 @@ namespace MixtormatOutputReferences
 		}
 	}
 
+	bool IsSurfacingSourceAvailable(const TArray<FMixtormatLayer>& EffectiveLayers,
+		const int32 LayerIndex, const int32 ChildIndex)
+	{
+		if (!EffectiveLayers.IsValidIndex(LayerIndex)
+			|| !EffectiveLayers[LayerIndex].Children.IsValidIndex(ChildIndex)
+			|| EffectiveLayers[LayerIndex].Children[ChildIndex].Type != EMixtormatLayerChildType::Surfacing)
+		{
+			return false;
+		}
+		TMap<FGuid, int32> LayerIndices;
+		for (int32 Index = 0; Index < EffectiveLayers.Num(); ++Index)
+		{
+			const FGuid Id = EffectiveLayers[Index].LayerId;
+			if (!Id.IsValid() || LayerIndices.Contains(Id)) { return false; }
+			LayerIndices.Add(Id, Index);
+		}
+		// Identity is (layer, child), not ChildId alone. Validate uniqueness in every reached
+		// container before invoking helpers whose authored lookup otherwise selects the first hit.
+		TSet<int32> ValidatedLayers;
+		const auto ValidateLayer = [&](int32 Index)
+		{
+			if (!EffectiveLayers.IsValidIndex(Index) || !EffectiveLayers[Index].bEnabled) { return false; }
+			if (ValidatedLayers.Contains(Index)) { return true; }
+			TSet<FGuid> ChildIds;
+			for (const FMixtormatLayerChild& Child : EffectiveLayers[Index].Children)
+			{
+				if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId)) { return false; }
+				ChildIds.Add(Child.ChildId);
+			}
+			ValidatedLayers.Add(Index);
+			return true;
+		};
+		const FMixtormatBindingScope Scope{EffectiveLayers};
+		TSet<FIntPoint> Visiting;
+		TSet<FIntPoint> Available;
+		TFunction<bool(int32, int32)> Visit;
+		Visit = [&](int32 OwnerLayerIndex, int32 OwnerChildIndex)
+		{
+			if (!ValidateLayer(OwnerLayerIndex)
+				|| !EffectiveLayers[OwnerLayerIndex].Children.IsValidIndex(OwnerChildIndex)) { return false; }
+			const FIntPoint Address(OwnerLayerIndex, OwnerChildIndex);
+			if (Available.Contains(Address)) { return true; }
+			if (Visiting.Contains(Address)) { return false; }
+			const FMixtormatLayer& Layer = EffectiveLayers[OwnerLayerIndex];
+			const FMixtormatLayerChild& Child = Layer.Children[OwnerChildIndex];
+			switch (Child.Type)
+			{
+			case EMixtormatLayerChildType::Surfacing:
+				if (!MixtormatChildScope::HasValidSurfacingScope(Layer.Children, OwnerChildIndex)
+					|| MixtormatSurfacing::GetOutputs(Child.Surfacing.Type).Num() == 0) { return false; }
+				break;
+			case EMixtormatLayerChildType::Generator:
+				if (!Child.Generator.bEnabled) { return false; }
+				break;
+			case EMixtormatLayerChildType::Boolean:
+				if (!Child.Boolean.bEnabled) { return false; }
+				break;
+			default:
+				return false;
+			}
+			Visiting.Add(Address);
+			if (Child.ScopeOwnerChildId.IsValid())
+			{
+				const int32 ParentIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, OwnerChildIndex);
+				if (ParentIndex == INDEX_NONE || !Visit(OwnerLayerIndex, ParentIndex)) { return false; }
+			}
+			// IsInstance checks only SourceChildId; a half-written link must not become a local source.
+			if (Child.SourceLayerId.IsValid() != Child.SourceChildId.IsValid()) { return false; }
+			if (Child.IsInstance())
+			{
+				const int32* SourceLayerIndex = LayerIndices.Find(Child.SourceLayerId);
+				if (!SourceLayerIndex || !ValidateLayer(*SourceLayerIndex)) { return false; }
+				const FMixtormatLayer& SourceLayer = EffectiveLayers[*SourceLayerIndex];
+				const int32 SourceIndex = MixtormatChildScope::FindIndexById(SourceLayer.Children, Child.SourceChildId);
+				if (SourceIndex == INDEX_NONE || SourceLayer.Children[SourceIndex].Type != Child.Type
+					|| MixtormatParameterBinding::ClassifyInstancePlacement(Scope,
+						Child.SourceLayerId, Child.SourceChildId, Layer.LayerId, OwnerChildIndex)
+						!= MixtormatParameterBinding::EInstancePlacement::Valid
+					|| !Visit(*SourceLayerIndex, SourceIndex)) { return false; }
+			}
+			Visiting.Remove(Address);
+			Available.Add(Address);
+			return true;
+		};
+		return Visit(LayerIndex, ChildIndex);
+	}
+
+	int32 ResolveSurfacingOutputSource(const TArray<FMixtormatLayer>& Layers,
+		const int32 DestinationLayerIndex, const int32 DestinationChildIndex,
+		const FMixtormatOutputReference& Reference)
+	{
+		if (!Reference.bEnabled || !Reference.HasSource()
+			|| !Layers.IsValidIndex(DestinationLayerIndex)
+			|| !Layers[DestinationLayerIndex].bEnabled
+			|| !Layers[DestinationLayerIndex].Children.IsValidIndex(DestinationChildIndex)) { return INDEX_NONE; }
+		int32 SourceLayerIndex = INDEX_NONE;
+		TSet<FGuid> LayerIds;
+		for (int32 Index = 0; Index < Layers.Num(); ++Index)
+		{
+			if (!Layers[Index].LayerId.IsValid() || LayerIds.Contains(Layers[Index].LayerId)) { return INDEX_NONE; }
+			LayerIds.Add(Layers[Index].LayerId);
+			if (Layers[Index].LayerId == Reference.SourceLayerId) { SourceLayerIndex = Index; }
+		}
+		if (SourceLayerIndex == INDEX_NONE || SourceLayerIndex > DestinationLayerIndex
+			|| !Layers[SourceLayerIndex].bEnabled) { return INDEX_NONE; }
+		const FMixtormatLayer& SourceLayer = Layers[SourceLayerIndex];
+		const int32 SourceIndex = MixtormatChildScope::FindIndexById(SourceLayer.Children, Reference.SourceChildId);
+		if (!IsSurfacingSourceAvailable(Layers, SourceLayerIndex, SourceIndex)
+			|| !MixtormatSurfacing::CanReferenceField(SourceLayer.Children[SourceIndex].Surfacing,
+				Reference.Kind, Reference.OutputName)) { return INDEX_NONE; }
+		TMap<FGuid, int32> SourceIndices;
+		for (int32 Index = 0; Index < SourceLayer.Children.Num(); ++Index)
+		{
+			const auto& Child = SourceLayer.Children[Index];
+			if (!Child.ChildId.IsValid() || SourceIndices.Contains(Child.ChildId)
+				|| (Child.ScopeOwnerChildId.IsValid() && !SourceIndices.Contains(Child.ScopeOwnerChildId)))
+			{ return INDEX_NONE; }
+			SourceIndices.Add(Child.ChildId, Index);
+		}
+		if (SourceLayerIndex != DestinationLayerIndex) { return SourceIndex; }
+		// A native generator finishes its whole Behavior/Noise chain before evaluating owned
+		// Skin. An earlier Skin row inside that chain is therefore NOT an available gate source.
+		// Follow filter/mask wrappers to the outer native generator's start. Skin and Color Ramp
+		// are later ordered consumers: stop at their own scope, preserving earlier-Skin inputs.
+		int32 ConsumerStart = DestinationChildIndex;
+		bool bNativeGenerator = false;
+		for (int32 Cursor = DestinationChildIndex; Cursor != INDEX_NONE;
+			Cursor = MixtormatChildScope::ResolveOwnerIndex(SourceLayer.Children, Cursor))
+		{
+			const auto Type = SourceLayer.Children[Cursor].Type;
+			if (Type == EMixtormatLayerChildType::Surfacing || Type == EMixtormatLayerChildType::HeightColorRamp)
+			{
+				if (!bNativeGenerator) { ConsumerStart = Cursor; }
+				break;
+			}
+			if (Type == EMixtormatLayerChildType::Generator)
+			{
+				ConsumerStart = Cursor;
+				bNativeGenerator = true;
+			}
+			else if (!bNativeGenerator)
+			{
+				ConsumerStart = Cursor;
+			}
+		}
+		if (SourceIndex >= ConsumerStart) { return INDEX_NONE; }
+		for (int32 Index = ConsumerStart; Index < SourceLayer.Children.Num(); ++Index)
+		{
+			FGuid Parent = SourceLayer.Children[Index].ScopeOwnerChildId;
+			while (Parent.IsValid())
+			{
+				if (Parent == Reference.SourceChildId) { return INDEX_NONE; }
+				Parent = SourceLayer.Children[SourceIndices.FindChecked(Parent)].ScopeOwnerChildId;
+			}
+		}
+		return SourceIndex;
+	}
+
 	int32 ResolveEarlierSource(const TArray<FMixtormatLayer>& Layers,
 		const int32 DestinationLayerIndex, const FMixtormatOutputReference& Reference)
 	{
@@ -119,16 +278,29 @@ namespace MixtormatOutputReferences
 		// Named kinds keep their canonical published output name; a generic kind carries the
 		// producer's own name, so only the named kinds constrain Reference.OutputName here.
 		const FName Expected = CanonicalFieldOutputName(Reference.Kind);
-		if (Expected != NAME_None && Reference.OutputName != Expected) { return INDEX_NONE; }
+		const bool bNamedColor = Reference.Kind == EMixtormatPublishedFieldKind::Color
+			&& Reference.OutputName != Expected;
+		if (Expected != NAME_None && Reference.OutputName != Expected && !bNamedColor) { return INDEX_NONE; }
 		for (int32 LayerIndex = 0; LayerIndex < DestinationLayerIndex; ++LayerIndex)
 		{
 			const FMixtormatLayer& Layer = Layers[LayerIndex];
 			if (Layer.LayerId == Reference.SourceLayerId && Layer.bEnabled)
 			{
-				return Layer.Children.IndexOfByPredicate([&Reference](const FMixtormatLayerChild& Child)
+				const int32 Index = Layer.Children.IndexOfByPredicate([&Reference](const FMixtormatLayerChild& Child)
 				{
 					return Child.ChildId == Reference.SourceChildId;
 				});
+				if (!Layer.Children.IsValidIndex(Index)) { return INDEX_NONE; }
+				const auto& Source = Layer.Children[Index];
+				if (Source.Type == EMixtormatLayerChildType::Surfacing)
+				{
+					// Validate retained instance links; never let a stale/copied payload prove availability.
+					// Preserve the exact requested name: physical SSS is not albedo Color.
+					return IsSurfacingSourceAvailable(Layers, LayerIndex, Index)
+						&& MixtormatSurfacing::CanReferenceField(Source.Surfacing, Reference.Kind, Reference.OutputName)
+						? Index : INDEX_NONE;
+				}
+				return bNamedColor ? INDEX_NONE : Index;
 			}
 		}
 		return INDEX_NONE;
@@ -193,6 +365,14 @@ namespace MixtormatOutputReferences
 		if (!Layers.IsValidIndex(DestinationLayer)) { return false; }
 		if (Reference.Kind != EMixtormatPublishedFieldKind::RegionIds)
 		{
+			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(
+				FMixtormatBindingScope{Layers}, Reference.SourceLayerId, Reference.SourceChildId);
+			if (Source && Source->Type == EMixtormatLayerChildType::Surfacing)
+			{
+				return ResolveSurfacingOutputSource(Layers, DestinationLayer,
+					MixtormatChildScope::FindIndexById(Layers[DestinationLayer].Children, DestinationChildId),
+					Reference) != INDEX_NONE;
+			}
 			return Layers[DestinationLayer].Children.ContainsByPredicate([&](const FMixtormatLayerChild& Child)
 			{
 				return Child.ChildId == DestinationChildId;
@@ -545,7 +725,19 @@ namespace MixtormatOutputReferences
 		const FMixtormatLayer& AuthoredSourceLayer = Layers[SourceLayerIndex];
 		const int32 SourceIndex = AuthoredSourceLayer.Children.IndexOfByPredicate(
 			[&](const FMixtormatLayerChild& Child) { return Child.ChildId == Mask.PublishedSourceChildId; });
-		if (SourceIndex == INDEX_NONE || !bNoiseValue) { return SourceIndex; }
+		if (SourceIndex == INDEX_NONE) { return INDEX_NONE; }
+		if (AuthoredSourceLayer.Children[SourceIndex].Type == EMixtormatLayerChildType::Surfacing)
+		{
+			if (!Mask.bEnabled) { return INDEX_NONE; }
+			FMixtormatOutputReference Reference;
+			Reference.SourceLayerId = Mask.PublishedSourceLayerId;
+			Reference.SourceChildId = Mask.PublishedSourceChildId;
+			Reference.OutputName = Mask.PublishedSourceOutput;
+			// Only unit scalar diagnostics are coverage. Height and physical RGB MFP are not masks.
+			Reference.Kind = EMixtormatPublishedFieldKind::Scalar01;
+			return ResolveSurfacingOutputSource(Layers, DestinationLayerIndex, DestinationChildIndex, Reference);
+		}
+		if (!bNoiseValue) { return SourceIndex; }
 
 		// Value stays a typed field. Only its use as coverage has this mask-specific ordering.
 		if (!Mask.bEnabled || !Layers[DestinationLayerIndex].bEnabled

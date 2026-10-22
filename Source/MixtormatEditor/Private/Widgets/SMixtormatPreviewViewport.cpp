@@ -21,7 +21,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "RenderingThread.h"
 #include "SceneView.h"
 #include "MixtormatEditorModule.h"
+#include "MixtormatEditorSettings.h"
 #include "MixtormatGpuCompositor.h"
+#include "Compositing/MixtormatBakeService.h"
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "Preview/MixtormatViewportMaskPostFx.h"
@@ -33,6 +35,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionIf.h"
 #include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionLinearInterpolate.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
@@ -46,6 +49,8 @@ namespace MixtormatPreview
 	const FName HeightAmountParameter(TEXT("DA_HeightAmount"));
 	const FName DebugTextureParameter(TEXT("DA_DebugTexture"));
 	const FName FuzzInfluenceParameter(TEXT("DA_FuzzInfluence"));
+	const FName UseSurfaceOpticsParameter(TEXT("DA_UseSurfaceOptics"));
+	const FName OpticsParameter(TEXT("DA_Optics"));
 	// Studio floor fade radii, in world units. Pushed from the subject's own size so the
 	// floor dissolves at the same point relative to the object whatever the object is.
 	const FName FloorFadeInParameter(TEXT("DA_FadeIn"));
@@ -68,17 +73,14 @@ namespace MixtormatPreview
 	// DA_HeightAmount the master reads.
 	void AddHeightDisplacement(
 		UMaterial* Material,
-		UMaterialExpressionTextureSampleParameter2D* HeightSample)
+		UMaterialExpressionTextureSampleParameter2D* HeightSample,
+		UMaterialInterface* MasterInterface)
 	{
-		UMaterialInterface* MasterInterface = LoadObject<UMaterialInterface>(
-			nullptr,
-			*FMixtormatPaths::MasterMaterialObjectPath());
 		const UMaterial* Master = MasterInterface ? MasterInterface->GetMaterial() : nullptr;
 		if (!Master)
 		{
 			UE_LOG(LogMixtormat, Error,
-				TEXT("Master material %s could not be loaded. Preview material built without displacement."),
-				*FMixtormatPaths::MasterMaterialObjectPath());
+				TEXT("Selected preview master has no material definition. Diagnostic material built without displacement."));
 			return;
 		}
 		Material->bEnableTessellation = Master->bEnableTessellation;
@@ -113,7 +115,7 @@ namespace MixtormatPreview
 		Material->GetEditorOnlyData()->Displacement.Connect(0, Scaled);
 	}
 
-	UMaterial* CreateDebugMaterial()
+	UMaterial* CreateDebugMaterial(UMaterialInterface* MasterInterface)
 	{
 		UMaterial* Material = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
 		if (!Material)
@@ -144,7 +146,7 @@ namespace MixtormatPreview
 		HeightSample->SamplerType = SAMPLERTYPE_Color;
 		HeightSample->Texture = DebugTexture->Texture;
 		Material->GetExpressionCollection().AddExpression(HeightSample);
-		AddHeightDisplacement(Material, HeightSample);
+		AddHeightDisplacement(Material, HeightSample, MasterInterface);
 
 		Material->PostEditChange();
 		return Material;
@@ -159,7 +161,7 @@ namespace MixtormatPreview
 	// It takes the same DA_BaseColor / DA_Normal / DA_RAMH / DA_Height parameter names
 	// FMixtormatGpuCompositor::BindOutputs already knows how to fill, so binding this material's
 	// textures is that same call, not a second copy of the texture lookup.
-	UMaterial* CreateChannelPreviewMaterial()
+	UMaterial* CreateChannelPreviewMaterial(UMaterialInterface* MasterInterface)
 	{
 		UMaterial* Material = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
 		if (!Material)
@@ -207,6 +209,18 @@ namespace MixtormatPreview
 		FuzzSample->DefaultValue = 0.0f;
 		Material->GetExpressionCollection().AddExpression(FuzzSample);
 
+		UMaterialExpressionTextureSampleParameter2D* OpticsSample = MakeTextureParam(OpticsParameter);
+		UMaterialExpressionScalarParameter* UseOptics = NewObject<UMaterialExpressionScalarParameter>(Material);
+		UseOptics->SetParameterName(UseSurfaceOpticsParameter);
+		UseOptics->ExpressionGUID = FGuid::NewGuid();
+		UseOptics->DefaultValue = 0.0f;
+		Material->GetExpressionCollection().AddExpression(UseOptics);
+		UMaterialExpressionLinearInterpolate* FuzzChannel = NewObject<UMaterialExpressionLinearInterpolate>(Material);
+		FuzzChannel->A.Connect(0, FuzzSample);
+		FuzzChannel->B.Connect(2, OpticsSample);
+		FuzzChannel->Alpha.Connect(0, UseOptics);
+		Material->GetExpressionCollection().AddExpression(FuzzChannel);
+
 		UMaterialExpressionScalarParameter* ModeParam =
 			NewObject<UMaterialExpressionScalarParameter>(Material);
 		ModeParam->SetParameterName(ChannelPreviewModeParameter);
@@ -230,7 +244,7 @@ namespace MixtormatPreview
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Metallic)] = { RamhSample, 3 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::F0)] = { RamhSample, 4 };
 		Sources[static_cast<int32>(EMixtormatChannelPreview::Height)] = { HeightSample, 1 };
-		Sources[static_cast<int32>(EMixtormatChannelPreview::Fuzz)] = { FuzzSample, 0 };
+		Sources[static_cast<int32>(EMixtormatChannelPreview::Fuzz)] = { FuzzChannel, 0 };
 
 		// FExpressionInput::Connect, not a hand assignment of Expression/OutputIndex: the R/G/B/A
 		// component mask lives on the *input* (Mask/MaskR/.../MaskA), copied over from the
@@ -304,7 +318,7 @@ namespace MixtormatPreview
 		ModeInput.Input.Connect(0, ModeParam);
 		Material->GetExpressionCollection().AddExpression(Display);
 		Material->GetEditorOnlyData()->EmissiveColor.Connect(0, Display);
-		AddHeightDisplacement(Material, HeightSample);
+		AddHeightDisplacement(Material, HeightSample, MasterInterface);
 		Material->PostEditChange();
 		return Material;
 	}
@@ -728,6 +742,10 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 
 void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 {
+	// Library/document switches must invalidate both queued work and already-posted callbacks.
+	++PreviewRequestSerial;
+	PendingCompose.Reset();
+	bMeasuringCompose = false;
 	bUsingLayerPreview = false;
 	bUsingDebugPreview = false;
 	if (!PreviewMeshComponent)
@@ -815,6 +833,8 @@ void SMixtormatPreviewViewport::SetPreviewLayers(
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bInteractive)
 {
+	// Invalidate on intent, not just submission: a coalesced request is already newer.
+	++PreviewRequestSerial;
 	bDebugPreviewMode = DebugSettings.Mode;
 	bDebugLayerIndex = DebugSettings.LayerIndex;
 	bDebugChildIndex = DebugSettings.ChildIndex;
@@ -898,6 +918,14 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	FMixtormatDebugPreviewSettings DebugSettings,
 	const bool bWaitForCompletion)
 {
+	++PreviewRequestSerial;
+	if (LayerCompositor && LayerCompositor->IsComposeInFlight())
+	{
+		if (!bWaitForCompletion) { return false; }
+		// A blocking bake may supersede live work at the same resolution. Drain it before
+		// reusing the shared in-flight flag/targets; its posted callback is now stale.
+		FlushRenderingCommands();
+	}
 	if (!LayerCompositor)
 	{
 		LayerCompositor = MakeUnique<FMixtormatGpuCompositor>();
@@ -907,26 +935,85 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
+	LayerCompositor->SetFinalSettings(
+		FinalSettings.HeightAOAmount,
+		FinalSettings.HeightAORadius,
+		FinalSettings.bNormalFromHeight,
+		FinalSettings.HeightNormalStrength,
+		FinalSettings.bAutoRemapHeight);
+	if (bWaitForCompletion)
+	{
+		// Bake is data-only: its own material selection is validated by the bake service.
+		// A live-preview preference must neither block it nor rebind the viewport afterward.
+		if (!LayerCompositor->RequestCompose(Layers, Groups, FSimpleDelegate(), DebugSettings,
+			bGlobalUVRotation90, FSoftObjectPath()))
+		{
+			return false;
+		}
+		FlushRenderingCommands();
+		return true;
+	}
+
+	const auto& MasterSelection = GetDefault<UMixtormatEditorSettings>()->LayerPreviewMaster;
+	const FSoftObjectPath SelectedPath = MasterSelection.ToSoftObjectPath();
+	UMaterialInterface* SelectedMaster = MasterSelection.IsNull()
+		? LoadObject<UMaterialInterface>(nullptr, *FMixtormatPaths::MasterMaterialObjectPath())
+		: MasterSelection.LoadSynchronous();
+	if (!SelectedMaster || !SelectedMaster->GetMaterial())
+	{
+		UE_LOG(LogMixtormat, Error, TEXT("Mixtormat preview master could not be loaded: %s. Choose a valid Layer Preview Master in Editor Preferences > Plugins > Mixtormat, or clear it to use the shipped master."),
+			MasterSelection.IsNull() ? *FMixtormatPaths::MasterMaterialObjectPath() : *SelectedPath.ToString());
+		return false;
+	}
+	if (!MasterSelection.IsNull())
+	{
+		// Live preview uses the shared names, not the bake dialog's arbitrary channel mapping.
+		TArray<FMaterialParameterInfo> Textures;
+		TArray<FGuid> Ids;
+		SelectedMaster->GetMaterial()->GetAllTextureParameterInfo(Textures, Ids);
+		bool bHasAnyOpticalParameter = false;
+		const bool bOpticalContract = FMixtormatBakeService::HasSurfaceOpticsParameters(
+			*SelectedMaster, bHasAnyOpticalParameter);
+		if (!Textures.Contains(FMaterialParameterInfo(TEXT("DA_BaseColor")))
+			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Normal")))
+			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_RAMH")))
+			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Height")))
+			|| (bHasAnyOpticalParameter && !bOpticalContract))
+		{
+			UE_LOG(LogMixtormat, Error, TEXT("Mixtormat Layer Preview Master '%s' does not declare the shared global DA_BaseColor/DA_Normal/DA_RAMH/DA_Height contract, or declares only part of the optical contract. Select the reviewed shared duplicate; custom bake mappings do not apply to live preview. No replacement master was selected."),
+				*SelectedPath.ToString());
+			return false;
+		}
+	}
+	const bool bMasterChanged = LayerPreviewMaster.Get() != SelectedMaster;
+	if (bMasterChanged)
+	{
+		LayerPreviewMaster.Reset(SelectedMaster);
+		bReportedUnsupportedSurfaceOptics = false;
+		// Diagnostic displacement must follow the explicitly chosen master too.
+		DebugPreviewMaterial.Reset();
+		ChannelPreviewMaterial.Reset();
+		ChannelPreviewMaterialInstance.Reset();
+	}
+	RequestedPreviewMasterPath = SelectedPath;
 	const bool bDebugPreview = DebugSettings.Mode != EMixtormatDebugPreviewMode::None
 		&& !DebugSettings.bMaskOverlay;
 	if (!bUsingLayerPreview
 		|| !PreviewMaterialInstance.IsValid()
-		|| bUsingDebugPreview != bDebugPreview)
+		|| bUsingDebugPreview != bDebugPreview || bMasterChanged)
 	{
 		UMaterialInterface* PreviewMaterial = nullptr;
 		if (bDebugPreview)
 		{
 			if (!DebugPreviewMaterial.IsValid())
 			{
-				DebugPreviewMaterial.Reset(MixtormatPreview::CreateDebugMaterial());
+				DebugPreviewMaterial.Reset(MixtormatPreview::CreateDebugMaterial(LayerPreviewMaster.Get()));
 			}
 			PreviewMaterial = DebugPreviewMaterial.Get();
 		}
 		else
 		{
-			PreviewMaterial = LoadObject<UMaterialInterface>(
-				nullptr,
-				*FMixtormatPaths::MasterMaterialObjectPath());
+			PreviewMaterial = LayerPreviewMaster.Get();
 		}
 		if (!PreviewMaterial)
 		{
@@ -943,28 +1030,47 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		return false;
 	}
 
-	LayerCompositor->SetFinalSettings(
-		FinalSettings.HeightAOAmount,
-		FinalSettings.HeightAORadius,
-		FinalSettings.bNormalFromHeight,
-		FinalSettings.HeightNormalStrength,
-		FinalSettings.bAutoRemapHeight);
+	// Capture only the resolved legacy values, not document arrays/references or a raw widget.
+	const float LegacyFuzzInfluence = MixtormatCompositionReferences::ComputeFuzzInfluence(Layers, Groups);
+	const TOptional<FLinearColor> LegacyFuzzColor = MixtormatCompositionReferences::ComputeFuzzColor(Layers, Groups);
+	const uint64 RequestSerial = PreviewRequestSerial;
+	const FSimpleDelegate OnComplete = FSimpleDelegate::CreateSP(this,
+		&SMixtormatPreviewViewport::OnComposeCompleted, RequestSerial,
+		PreviewMaterialInstance, LegacyFuzzInfluence, LegacyFuzzColor);
 	if (!LayerCompositor->RequestCompose(
 		Layers,
 		Groups,
-		FSimpleDelegate(),
+		OnComplete,
 		DebugSettings,
 		bGlobalUVRotation90,
 		FSoftObjectPath()))
 	{
 		return false;
 	}
-	if (bWaitForCompletion)
+	// Success-only OnComplete owns live presentation; queued work is not authored-result proof.
+	return true;
+}
+
+void SMixtormatPreviewViewport::OnComposeCompleted(
+	const uint64 RequestSerial,
+	const TWeakObjectPtr<UMaterialInstanceDynamic> ExpectedMaterial,
+	const float LegacyFuzzInfluence,
+	const TOptional<FLinearColor> LegacyFuzzColor)
+{
+	check(IsInGameThread());
+	if (RequestSerial != PreviewRequestSerial || BoundComposeSerial == RequestSerial
+		|| PendingCompose.IsSet() || !bUsingLayerPreview || !LayerCompositor
+		|| LayerCompositor->IsComposeInFlight() || !ExpectedMaterial.IsValid()
+		|| ExpectedMaterial != PreviewMaterialInstance
+		|| RequestedPreviewMasterPath != GetDefault<UMixtormatEditorSettings>()->LayerPreviewMaster.ToSoftObjectPath())
 	{
-		FlushRenderingCommands();
+		return;
 	}
-	if (bDebugPreview)
+	// Set before touching presentation so a repeated/reentrant notification cannot bind twice.
+	BoundComposeSerial = RequestSerial;
+	if (bUsingDebugPreview)
 	{
+		CompositedFuzzInfluence = HasCompositedSurfaceOptics() ? 0.0f : LegacyFuzzInfluence;
 		PreviewMaterialInstance->SetTextureParameterValue(
 			MixtormatPreview::DebugTextureParameter,
 			LayerCompositor->GetDebugOutput());
@@ -977,17 +1083,33 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		// Rebind the complete layer preview so removed overrides inherit the master again.
 		PreviewMaterialInstance->ClearParameterValues();
 		LayerCompositor->BindOutputs(*PreviewMaterialInstance.Get());
-		const TOptional<FLinearColor> FuzzColor =
-			MixtormatCompositionReferences::ComputeFuzzColor(Layers, Groups);
-		if (FuzzColor.IsSet())
-		{
-			PreviewMaterialInstance->SetVectorParameterValue(TEXT("DA_FuzzColor"), FuzzColor.GetValue());
-		}
-		CompositedFuzzInfluence =
-			MixtormatCompositionReferences::ComputeFuzzInfluence(Layers, Groups);
+		// Non-null targets and MID overrides are not proof of support. Check the chosen graph's
+		// declarations and the compositor's authored state independently, then override the gate.
+		bool bHasAnyOpticalParameter = false;
+		const bool bHasOpticalContract = FMixtormatBakeService::HasSurfaceOpticsParameters(
+			*PreviewMaterialInstance.Get(), bHasAnyOpticalParameter);
+		const bool bHasAuthoredOptics = HasCompositedSurfaceOptics();
+		const bool bUsesSurfaceOptics = bHasOpticalContract && bHasAuthoredOptics;
 		PreviewMaterialInstance->SetScalarParameterValue(
-			MixtormatPreview::FuzzInfluenceParameter,
-			CompositedFuzzInfluence);
+			MixtormatPreview::UseSurfaceOpticsParameter, bUsesSurfaceOptics ? 1.0f : 0.0f);
+		const bool bUnsupportedOptics = !bHasOpticalContract
+			&& (bHasAuthoredOptics || bHasAnyOpticalParameter);
+		if (bUnsupportedOptics && !bReportedUnsupportedSurfaceOptics)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Mixtormat preview: chosen master lacks the complete global DA_Optics, DA_FuzzColorMap, DA_Subsurface and DA_UseSurfaceOptics contract. Rendering legacy channels/global fuzz, not spatial optical F0/fuzz/SSS. Upgrade and explicitly select a reviewed duplicate; the master is unchanged."));
+		}
+		bReportedUnsupportedSurfaceOptics = bUnsupportedOptics;
+		CompositedFuzzInfluence = 0.0f;
+		if (!bUsesSurfaceOptics)
+		{
+			if (LegacyFuzzColor.IsSet())
+			{
+				PreviewMaterialInstance->SetVectorParameterValue(TEXT("DA_FuzzColor"), LegacyFuzzColor.GetValue());
+			}
+			CompositedFuzzInfluence = LegacyFuzzInfluence;
+			PreviewMaterialInstance->SetScalarParameterValue(
+				MixtormatPreview::FuzzInfluenceParameter, CompositedFuzzInfluence);
+		}
 	}
 	PreviewMaterialInstance->SetScalarParameterValue(
 		MixtormatPreview::UseHeightParameter,
@@ -995,16 +1117,11 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 	PreviewMaterialInstance->SetScalarParameterValue(
 		MixtormatPreview::HeightAmountParameter,
 		DisplacementAmount);
+	// Read the CURRENT channel/presentation state, never the mode captured at submission.
+	// This only rebinds; it must not request another compose or notify document mutation.
+	ApplyChannelPreview();
+	UpdateMaskPostFx();
 	InvalidateDisplacementShadows();
-	// PreviewMaterialInstance above was just refreshed regardless of what the mesh currently
-	// shows. If a diagnostic channel is active, reapply it too, both to pick up the new textures
-	// and because the swap branch above may have just rebound the mesh to PreviewMaterialInstance
-	// out from under it.
-	if (ChannelPreview != EMixtormatChannelPreview::Material)
-	{
-		ApplyChannelPreview();
-	}
-	return true;
 }
 
 UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedBaseColor() const
@@ -1025,6 +1142,28 @@ UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedRAM() const
 UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedHeight() const
 {
 	return LayerCompositor ? LayerCompositor->GetHeightOutput() : nullptr;
+}
+
+UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedOptics() const
+{
+	return LayerCompositor ? LayerCompositor->GetOpticsOutput() : nullptr;
+}
+
+UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedFuzzColor() const
+{
+	return LayerCompositor ? LayerCompositor->GetFuzzColorOutput() : nullptr;
+}
+
+UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedSubsurface() const
+{
+	return LayerCompositor ? LayerCompositor->GetSubsurfaceOutput() : nullptr;
+}
+
+bool SMixtormatPreviewViewport::HasCompositedSurfaceOptics() const
+{
+	return LayerCompositor && LayerCompositor->HasSurfaceOpticsOutput()
+		&& LayerCompositor->GetOpticsOutput() && LayerCompositor->GetFuzzColorOutput()
+		&& LayerCompositor->GetSubsurfaceOutput();
 }
 
 UTextureRenderTarget2D* SMixtormatPreviewViewport::GetCompositedDebug() const
@@ -1593,7 +1732,9 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 
 	if (!ChannelPreviewMaterial)
 	{
-		ChannelPreviewMaterial.Reset(MixtormatPreview::CreateChannelPreviewMaterial());
+		ChannelPreviewMaterial.Reset(MixtormatPreview::CreateChannelPreviewMaterial(
+			LayerPreviewMaster.IsValid() && bUsingLayerPreview
+				? LayerPreviewMaster.Get() : PreviewMaterialInstance.Get()));
 	}
 	if (!ChannelPreviewMaterial)
 	{
@@ -1617,9 +1758,20 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 		// current.
 		LayerCompositor->BindOutputs(*ChannelMID);
 	}
+	// This transient diagnostic graph explicitly reads Optics.G; it does not certify that the
+	// selected lit master supports optics. Allocation-only defaults must still use legacy fuzz.
+	const bool bHasAuthoredOptics = HasCompositedSurfaceOptics();
+	if (bHasAuthoredOptics)
+	{
+		ChannelMID->SetTextureParameterValue(MixtormatPreview::OpticsParameter, GetCompositedOptics());
+	}
 	ChannelMID->SetScalarParameterValue(
-		MixtormatPreview::FuzzInfluenceParameter,
-		CompositedFuzzInfluence);
+		MixtormatPreview::UseSurfaceOpticsParameter, bHasAuthoredOptics ? 1.0f : 0.0f);
+	if (!bHasAuthoredOptics)
+	{
+		ChannelMID->SetScalarParameterValue(
+			MixtormatPreview::FuzzInfluenceParameter, CompositedFuzzInfluence);
+	}
 	ChannelMID->SetScalarParameterValue(
 		MixtormatPreview::ChannelPreviewModeParameter,
 		static_cast<float>(ChannelPreview));

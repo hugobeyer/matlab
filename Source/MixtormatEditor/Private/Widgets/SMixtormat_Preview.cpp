@@ -6,6 +6,8 @@
 #include "Preview/SMixtormatLightGizmo.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatChildScope.h"
+#include "Widgets/Layers/MixtormatLayersPrivate.h"
 
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatRecipes.h"
@@ -20,6 +22,20 @@
 // viewport, the preview state, the debug/output plumbing and the panel's composition.
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
+
+// Authoring eligibility only; GPU publication/cache readiness remains compositor-owned.
+static bool IsSurfacingPreviewReady(const FMixtormatBindingScope& Scope,
+	const FGuid OwnerId, const FGuid ChildId)
+{
+	if (!MixtormatLayersPrivate::IsPublishedSourceEnabled(Scope, OwnerId, ChildId)) { return false; }
+	const TArray<FMixtormatLayerChild>* Children = MixtormatLayersPrivate::FindChildrenInScope(Scope, OwnerId);
+	if (!Children) { return false; }
+	FMixtormatLayer Resolved;
+	Resolved.Children = *Children;
+	MixtormatParameterBinding::ResolveChildInstances(Scope, Resolved);
+	return MixtormatChildScope::HasValidSurfacingScope(Resolved.Children,
+		MixtormatChildScope::FindIndexById(Resolved.Children, ChildId));
+}
 
 // The eye always toggles the primary; the chevron (built only when Secondary is non-empty) offers
 // the rest. Derived from GetChildCapabilities rather than hand-authored here a second time: the
@@ -339,6 +355,14 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveMaskOverlayTarget(
 	if (Address.ChildId.IsValid())
 	{
 		if (!Child || !IsGroupChildEnabled(*Child)) { return Target; }
+		if (Child->Type == EMixtormatLayerChildType::Surfacing)
+		{
+			const FMixtormatChildAddress Selected = GetSelectedChildAddress();
+			if ((bBypassSelectedChild && Selected.OwnerId == Address.OwnerId
+					&& Selected.ChildId == Address.ChildId)
+				|| !IsSurfacingPreviewReady(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+					Address.OwnerId, Address.ChildId)) { return Target; }
+		}
 		const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
 		FGuid ParentId = Child->ScopeOwnerChildId;
 		TSet<FGuid> Visited;
@@ -861,9 +885,8 @@ FMixtormatChildPreviewTarget SMixtormat::ResolveChildPreviewTarget(
 		}
 		Target.OwnerId = Layer.LayerId;
 		Target.ChildId = Child ? Child->ChildId : FGuid();
-		// An instance or reference has no map of its own to show: it reads its source's, so that is
-		// what the eye and the I key preview. The still-valid check re-resolves through here too,
-		// so the preview survives for as long as the instance stays selected.
+		// Region ID instances/references inspect their source's map. Surface producers keep
+		// this placement's identity: their result depends on the local upstream substrate.
 		RedirectToSource(Layer.LayerId, *Child);
 		return Target;
 	}
@@ -932,6 +955,12 @@ bool SMixtormat::IsChildOutputPreviewReady(const FMixtormatLayerChild& Child) co
 	if (Child.Type == EMixtormatLayerChildType::OutputReference)
 	{
 		return IsOutputReferenceAvailable(GetSelectedChildAddress());
+	}
+	if (Child.Type == EMixtormatLayerChildType::Surfacing)
+	{
+		const FMixtormatChildAddress Address = GetSelectedChildAddress();
+		return IsSurfacingPreviewReady(FMixtormatBindingScope{WorkingLayers, WorkingLayerGroups},
+			Address.OwnerId, Child.ChildId);
 	}
 	// An ID Group folds however many producers sit inside it -- none, one, several, or nested
 	// groups -- so it always has a map to show.

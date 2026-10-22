@@ -218,7 +218,9 @@ namespace MixtormatShaderParamScanner
 						break;
 					}
 				}
-				Tag.Owner = ShaderName == TEXT("MixtormatComposite.usf")
+				Tag.Owner = ShaderName == TEXT("MixtormatSkin.usf")
+					? EMixtormatParameterOwnerType::Surfacing
+					: ShaderName == TEXT("MixtormatComposite.usf")
 					? EMixtormatParameterOwnerType::Layer
 					: (bGeneratorShader
 						? EMixtormatParameterOwnerType::Generator

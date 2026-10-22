@@ -118,8 +118,25 @@ namespace MixtormatOutputReferences
 		EMixtormatPublishedFieldKind Kind,
 		FName OutputName);
 
+	// Read-only availability on effective, instance/binding-resolved layers retaining placement
+	// identity, declared placement Type and instance links. Expand groups first; no group fallback.
+	// An unsafe CopyChildPayload that has already erased the declared Type cannot be undone here.
+	// Validates the complete instance/source-ancestry graph, including Surfacing ancestors and
+	// their Generator/Boolean owners. Rejects disabled/missing/ambiguous/wrong-type/forward links.
+	// Does not resolve/copy payloads and does not certify output consumption order or GPU readiness.
+	MIXTORMATRUNTIME_API bool IsSurfacingSourceAvailable(
+		const TArray<FMixtormatLayer>& EffectiveLayers, int32 LayerIndex, int32 ChildIndex);
+
+	// Typed Surfacing outputs: completed scopes only, with no self/ancestor/forward reads.
+	// Same resolved-effective input contract as IsSurfacingSourceAvailable; no payload mutation.
+	// Returns the effective source-child index in Reference.SourceLayerId.
+	MIXTORMATRUNTIME_API int32 ResolveSurfacingOutputSource(
+		const TArray<FMixtormatLayer>& Layers, int32 DestinationLayerIndex,
+		int32 DestinationChildIndex, const FMixtormatOutputReference& Reference);
+
 	// Effective layers only: group addresses must first pass through BuildEffectiveLayers.
-	// Returns the authored source-child index, never a compacted render-child index.
+	// Surfacing uses IsSurfacingSourceAvailable's resolved-input contract without copying payloads.
+	// Returns the effective source-child index, never a compacted render-child index.
 	MIXTORMATRUNTIME_API int32 ResolveEarlierSource(
 		const TArray<FMixtormatLayer>& Layers,
 		int32 DestinationLayerIndex,

@@ -21,6 +21,20 @@ Texture2D<float> ReferenceHeight;
 Texture2D<float4> LayerBC;
 Texture2D<float4> LayerN;
 Texture2D<float4> LayerRAM;
+Texture2D<float4> LayerOptics;
+Texture2D<float4> LayerFuzzColor;
+Texture2D<float4> LayerSubsurface;
+Texture2D<float4> PreviousOptics;
+Texture2D<float4> PreviousFuzzColor;
+Texture2D<float4> PreviousSubsurface;
+Texture2D<float4> CompositedRAM;
+Texture2D<float> OpticalCoverage;
+uint HasSurfaceOptics;
+uint ResolveMaterialValues;
+uint RotateOpticalOutput;
+float4 DefaultOptics;
+float4 DefaultFuzzColor;
+float4 DefaultSubsurface;
 Texture2D<float> LayerSourceHeight;
 Texture2D<float> LayerMask;
 
@@ -99,6 +113,11 @@ RWTexture2D<float4> OutputRAM;
 RWTexture2D<float> OutputHeight;
 RWTexture2D<float> OutputOccupancy;
 RWTexture2D<float4> OutputDebug;
+// Coverage is exported by the material composite, never recomputed by the optical pass.
+RWTexture2D<float> OutputOpticalCoverage;
+RWTexture2D<float4> OutputOptics;
+RWTexture2D<float4> OutputFuzzColor;
+RWTexture2D<float4> OutputSubsurface;
 
 int2 OutputSize;
 uint Enabled;
@@ -892,6 +911,11 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		OutputN[Pixel] = PreviousN.Load(int3(Pixel, 0));
 		OutputRAM[Pixel] = PreviousRAM.Load(int3(Pixel, 0));
 		OutputHeight[Pixel] = PreviousHeight.Load(int3(Pixel, 0));
+		float4 Optics = PreviousOptics.Load(int3(Pixel, 0));
+		Optics.r = PreviousRAM.Load(int3(Pixel, 0)).a;
+		OutputOptics[Pixel] = Optics;
+		OutputFuzzColor[Pixel] = PreviousFuzzColor.Load(int3(Pixel, 0));
+		OutputSubsurface[Pixel] = PreviousSubsurface.Load(int3(Pixel, 0));
 		return;
 	}
 	const float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
@@ -932,7 +956,28 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	OutputBC[Pixel] = SourceBC;
 	OutputN[Pixel] = float4(EncodeNormal(Normal), SourceN.a);
-	OutputRAM[Pixel] = SourceRAM;
+	float4 Optics = HasSurfaceOptics != 0
+		? LayerOptics.SampleLevel(LinearWrapSampler, SourceUV, 0.0f) : DefaultOptics;
+	// Imported RAMH alpha is height. Only a live composition stores F0 there.
+	float4 ResolvedRAM = SourceRAM;
+	ResolvedRAM.a = UseSourceF0 != 0
+		? (HasSeparateHeight != 0 ? SourceRAM.a : Optics.r) : LayerF0;
+	if (ResolveMaterialValues != 0)
+	{
+		// Seed ordered Surfacing with the effective Fill/override values. HSV/region/Grade
+		// remain layer finishing operations after the ordered producer chain.
+		OutputBC[Pixel] = float4(lerp(SourceBC.rgb, FillColor.rgb, OverrideBaseColor), SourceBC.a);
+		ResolvedRAM.r = lerp(AdjustRoughness(SourceRAM.r), FillRoughness, OverrideRoughness);
+		ResolvedRAM.g = lerp(SourceRAM.g, 1.0f, IsFill);
+		ResolvedRAM.b = lerp(SourceRAM.b, FillMetallic, OverrideMetallic);
+	}
+	Optics.r = ResolvedRAM.a;
+	OutputRAM[Pixel] = ResolvedRAM;
+	OutputOptics[Pixel] = Optics;
+	OutputFuzzColor[Pixel] = HasSurfaceOptics != 0
+		? float4(LayerFuzzColor.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultFuzzColor;
+	OutputSubsurface[Pixel] = HasSurfaceOptics != 0
+		? float4(LayerSubsurface.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultSubsurface;
 	// A layer with no height of its own (a fill, or a surface without RAMH) contributes its
 	// constant height, so generators on it start from the same value the composite would use.
 	// The constant is a level, not a feature, so tiling leaves it alone.
@@ -980,10 +1025,9 @@ void ResolveLayerValuesCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		Albedo = AdjustHSV(Albedo);
 	}
 
-	const float Roughness = lerp(
-		AdjustRoughness(LayerRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).r),
-		FillRoughness,
-		OverrideRoughness);
+	const float SourceRoughness = LayerRAM.SampleLevel(LinearWrapSampler, UV, 0.0f).r;
+	const float Roughness = ResolveMaterialValues != 0 ? SourceRoughness
+		: lerp(AdjustRoughness(SourceRoughness), FillRoughness, OverrideRoughness);
 
 	// Albedo in RGB, roughness in the fourth channel -- the two signals a layer can be masked by,
 	// resolved together in one pass so the channel an artist picks costs nothing to change.
@@ -1019,7 +1063,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float4 SampledBaseColor = (HasSurface != 0 || PreparedLayerMode == 2 || LayerInputResolved != 0)
 		? LayerBC.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(1.0f, 1.0f, 1.0f, 1.0f);
-	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2 || FillPassThrough != 0)
+	float4 SampledRAM = (HasSurface != 0 || PreparedLayerMode == 2 || LayerInputResolved != 0)
 		? LayerRAM.SampleLevel(LinearWrapSampler, LayerUV, 0.0f)
 		: float4(0.5f, 1.0f, 0.0f, 0.04f);
 	float3 SampledNormal = HasNormal != 0
@@ -1087,9 +1131,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			LayerBaseColor = MixtormatApplyLayerGrade(LayerBaseColor, UV, GradeIndex);
 		}
 	}
-	float LayerRoughness = FillPassThrough != 0 ? SampledRAM.r
+	float LayerRoughness = FillPassThrough != 0 || ResolveMaterialValues != 0 ? SampledRAM.r
 		: lerp(AdjustRoughness(SampledRAM.r), FillRoughness, OverrideRoughness);
-	float LayerAO = FillPassThrough != 0 ? SampledRAM.g : lerp(SampledRAM.g, 1.0f, IsFill);
+	float LayerAO = FillPassThrough != 0 || ResolveMaterialValues != 0
+		? SampledRAM.g : lerp(SampledRAM.g, 1.0f, IsFill);
 	float LayerMetallic = FillPassThrough != 0 ? SampledRAM.b
 		: lerp(SampledRAM.b, FillMetallic, OverrideMetallic);
 	// A fill has no normal map -- unless a generator resolved one from the height it formed.
@@ -1124,6 +1169,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float IncomingHeight = SampleIncomingHeight(UV);
 	if (PreparedLayerMode == 1)
 	{
+		OutputOpticalCoverage[DispatchThreadId.xy] = 1.0f;
 		OutputBC[DispatchThreadId.xy] = float4(LayerBaseColor, 1.0f);
 		OutputN[DispatchThreadId.xy] = float4(EncodeNormal(
 			BlendReorientedNormals(SampledNormal, EffectNormal)), 1.0f);
@@ -1211,6 +1257,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		: 0.0f;
 
 	float Alpha = saturate(SurfaceCoverage * NonHeightCoverage);
+	OutputOpticalCoverage[DispatchThreadId.xy] = NormalOnly != 0 ? 0.0f : Alpha;
 	float Coat = CompositionMode != 0 ? 1.0f : 0.0f;
 	float ReplaceWeight = Alpha * (1.0f - Coat);
 	// Base colour is the one channel a coat only tints: the film is thin, so what is under it
@@ -1364,4 +1411,37 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutputOccupancy[DispatchThreadId.xy] = FillPassThrough != 0
 		? PreviousOccupancyValue
 		: max(PreviousOccupancyValue, NormalOnly != 0 ? 0.0f : Alpha);
+}
+
+// Three UAVs, separate from the seven-UAV material pass for SM5. Every source was
+// resolved by ResolveLayerInputCS with the SAME placement/UV basis as BC/N/RAM.
+[numthreads(8, 8, 1)]
+void CompositeOpticsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const float Alpha = OpticalCoverage.Load(int3(Pixel, 0));
+	float4 Optics = lerp(PreviousOptics.Load(int3(Pixel, 0)), LayerOptics.Load(int3(Pixel, 0)), Alpha);
+	Optics.r = CompositedRAM.Load(int3(Pixel, 0)).a;
+	OutputOptics[Pixel] = Optics;
+	OutputFuzzColor[Pixel] = float4(lerp(PreviousFuzzColor.Load(int3(Pixel, 0)).rgb,
+		LayerFuzzColor.Load(int3(Pixel, 0)).rgb, Alpha), 0.0f);
+	OutputSubsurface[Pixel] = float4(lerp(PreviousSubsurface.Load(int3(Pixel, 0)).rgb,
+		LayerSubsurface.Load(int3(Pixel, 0)).rgb, Alpha), 0.0f);
+}
+
+// Exact integer quarter-turn, matching MixtormatRotateOutput.usf. Also used without
+// rotation after filters to mirror the canonical RAM.a without a read/write alias.
+[numthreads(8, 8, 1)]
+void FinalizeOpticsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	const int2 Pixel = int2(DispatchThreadId.xy);
+	if (any(Pixel >= OutputSize)) { return; }
+	const int2 SourcePixel = RotateOpticalOutput != 0
+		? int2(Pixel.y, OutputSize.x - 1 - Pixel.x) : Pixel;
+	float4 Optics = PreviousOptics.Load(int3(SourcePixel, 0));
+	Optics.r = CompositedRAM.Load(int3(SourcePixel, 0)).a;
+	OutputOptics[Pixel] = Optics;
+	OutputFuzzColor[Pixel] = PreviousFuzzColor.Load(int3(SourcePixel, 0));
+	OutputSubsurface[Pixel] = PreviousSubsurface.Load(int3(SourcePixel, 0));
 }

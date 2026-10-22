@@ -93,6 +93,8 @@ namespace
 			return Child.Type == EMixtormatLayerChildType::Behavior
 				&& Child.Behavior.Type == EMixtormatBehaviorType::Feather;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
+		case EMixtormatParameterOwnerType::Surfacing: return Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Skin;
 				case EMixtormatParameterOwnerType::Boolean: return Child.Type == EMixtormatLayerChildType::Boolean;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
@@ -199,7 +201,8 @@ namespace
 		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; break;
 		case EMixtormatParameterOwnerType::MaskNoise: View.ConstData = &Child.Mask.Noise; break;
 		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
-				case EMixtormatParameterOwnerType::Boolean: View.ConstData = &Child.Boolean; break;
+		case EMixtormatParameterOwnerType::Surfacing: View.ConstData = &Child.Surfacing.Skin; break;
+		case EMixtormatParameterOwnerType::Boolean: View.ConstData = &Child.Boolean; break;
 		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; break;
 		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; break;
 		case EMixtormatParameterOwnerType::ColorId: View.ConstData = &Child.ColorId; break;
@@ -643,7 +646,8 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Mask: return { FMixtormatMaskLayer::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskNoise: return { FMixtormatNoise::StaticStruct() };
 		case EMixtormatParameterOwnerType::Effect: return { FMixtormatLayerEffect::StaticStruct() };
-				case EMixtormatParameterOwnerType::Boolean: return { FMixtormatBooleanStack::StaticStruct() };
+		case EMixtormatParameterOwnerType::Surfacing: return { FMixtormatSkin::StaticStruct() };
+		case EMixtormatParameterOwnerType::Boolean: return { FMixtormatBooleanStack::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
 		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };
 		case EMixtormatParameterOwnerType::ColorId: return { FMixtormatColorIdMask::StaticStruct() };
@@ -1148,7 +1152,9 @@ namespace MixtormatParameterBinding
 				Visited.Add(Source->ChildId);
 				Source = FindChild(Scope, Source->SourceLayerId, Source->SourceChildId);
 			}
-			if (Source && Source->ChildId != Child.ChildId)
+			if (Source && Source->ChildId != Child.ChildId
+				&& !((Child.Type == EMixtormatLayerChildType::Surfacing
+					|| Source->Type == EMixtormatLayerChildType::Surfacing) && Child.Type != Source->Type))
 			{
 				// A mask instance shares its source and shaping, but its placement in the mask
 				// accumulator is local. Blend Mode and Invert are the two intentional overrides:

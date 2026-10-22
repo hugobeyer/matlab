@@ -433,6 +433,34 @@ namespace MixtormatChildScope
 			|| Child.Type == EMixtormatLayerChildType::HeightColorRamp;
 	}
 
+	bool CanOwnScopedSurfacing(const FMixtormatLayerChild& Child)
+	{
+		return Child.Type == EMixtormatLayerChildType::Generator
+			|| Child.Type == EMixtormatLayerChildType::Surfacing;
+	}
+
+	bool HasValidSurfacingScope(const TArray<FMixtormatLayerChild>& Children, int32 ChildIndex)
+	{
+		if (!Children.IsValidIndex(ChildIndex)
+			|| Children[ChildIndex].Type != EMixtormatLayerChildType::Surfacing
+			|| !Children[ChildIndex].Surfacing.bEnabled) { return false; }
+		bool bDirectOwner = true;
+		while (Children[ChildIndex].ScopeOwnerChildId.IsValid())
+		{
+			ChildIndex = ResolveOwnerIndex(Children, ChildIndex);
+			if (!Children.IsValidIndex(ChildIndex)) { return false; }
+			const FMixtormatLayerChild& Owner = Children[ChildIndex];
+			if ((!CanOwnScopedSurfacing(Owner)
+					&& (bDirectOwner || Owner.Type != EMixtormatLayerChildType::Boolean))
+				|| (Owner.Type == EMixtormatLayerChildType::Generator && !Owner.Generator.bEnabled)
+				|| (Owner.Type == EMixtormatLayerChildType::Surfacing && !Owner.Surfacing.bEnabled)
+				|| (Owner.Type == EMixtormatLayerChildType::Boolean && !Owner.Boolean.bEnabled))
+			{ return false; }
+			bDirectOwner = false;
+		}
+		return true;
+	}
+
 	bool CanOwnScopedMasks(const FMixtormatLayerChild& Child)
 	{
 		switch (Child.Type)
@@ -441,6 +469,7 @@ namespace MixtormatChildScope
 		case EMixtormatLayerChildType::Effect:
 		case EMixtormatLayerChildType::Boolean:
 		case EMixtormatLayerChildType::Generator:
+		case EMixtormatLayerChildType::Surfacing:
 		case EMixtormatLayerChildType::Generated:
 		case EMixtormatLayerChildType::Craquelure:
 		case EMixtormatLayerChildType::ColorId:
@@ -466,6 +495,17 @@ namespace MixtormatChildScope
 		for (int32 Index = 0; Index < Children.Num(); ++Index)
 		{
 			FMixtormatLayerChild& Child = Children[Index];
+			if (Child.Type == EMixtormatLayerChildType::Surfacing)
+			{
+				// Preserve a broken scope for repair; never silently promote Skin to a root solve.
+				if (Child.ScopeOwnerChildId.IsValid()
+					&& ResolveOwnerIndex(Children, Index) == INDEX_NONE && Child.Surfacing.bEnabled)
+				{
+					Child.Surfacing.bEnabled = false;
+					bChanged = true;
+				}
+				continue;
+			}
 			if (Child.Type == EMixtormatLayerChildType::Behavior)
 			{
 				// Behaviors may be owned indirectly through other Behaviors.

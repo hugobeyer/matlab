@@ -1747,7 +1747,8 @@ FReply SMixtormat::RemoveGroupChild(const FGuid GroupId, const int32 ChildIndex)
 		? Group->Children[SelectedGroupChildIndex].ChildId : FGuid();
 	// Anything scoped beneath this child goes with it, the same as removing a layer child: a
 	// blur whose owner has left gates nothing.
-	if (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::IdGroup)
+	if (Group->Children[ChildIndex].Type == EMixtormatLayerChildType::IdGroup
+		|| Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Surfacing)
 	{
 		Group->Children.RemoveAt(ChildIndex, FindSubtreeEnd(Group->Children, ChildIndex) - ChildIndex);
 	}
@@ -1762,6 +1763,14 @@ FReply SMixtormat::RemoveGroupChild(const FGuid GroupId, const int32 ChildIndex)
 	if (SelectedGroupId == GroupId)
 	{
 		SelectedGroupChildIndex = FindChildById(Group->Children, SelectedChildId);
+		const bool bEffect = Group->Children.IsValidIndex(SelectedGroupChildIndex)
+			&& Group->Children[SelectedGroupChildIndex].Type == EMixtormatLayerChildType::Effect;
+		SelectedEffectIndex = bEffect ? SelectedGroupChildIndex : INDEX_NONE;
+		SelectedMaskIndex = bEffect ? INDEX_NONE : SelectedGroupChildIndex;
+		if (SelectedChildId.IsValid() && SelectedGroupChildIndex == INDEX_NONE)
+		{
+			bBypassSelectedChild = false;
+		}
 	}
 	RecordEditHistory();
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
@@ -2005,6 +2014,10 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		return FReply::Handled();
 	}
 	const EMixtormatLayerChildType CreatedType = ChildTypeForCreation(Kind);
+	if (CreatedType == EMixtormatLayerChildType::Surfacing && !CanAddSurfacingModule(Target))
+	{
+		return FReply::Handled();
+	}
 	FMixtormatAddTarget EffectiveTarget = Target;
 	if (!EffectiveTarget.ScopeOwnerChildId.IsValid()
 		&& (CreatedType == EMixtormatLayerChildType::HsvFilter
@@ -2052,8 +2065,11 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 	{
 		return FReply::Handled();
 	}
-	// Noise creation is a discrete edit, not part of the previous/next slider scrub.
-	if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
+	// Creation is a discrete edit, not part of the previous slider scrub.
+	if (Kind == EMixtormatChildCreation::NoiseMask || Kind == EMixtormatChildCreation::Skin)
+	{
+		LastHistoryRecordTime = 0.0;
+	}
 	if (EffectiveTarget.ScopeOwnerChildId.IsValid())
 	{
 		const FMixtormatChildAddress Owner = EffectiveTarget.IsGroup()
@@ -2383,6 +2399,7 @@ FReply SMixtormat::RemoveGeneratedFromLayer(const int32 LayerIndex, const int32 
 		&& ChildType != EMixtormatLayerChildType::IdGroup
 		&& ChildType != EMixtormatLayerChildType::OutputReference
 		&& ChildType != EMixtormatLayerChildType::Generator
+		&& ChildType != EMixtormatLayerChildType::Surfacing
 		&& ChildType != EMixtormatLayerChildType::Boolean
 		&& ChildType != EMixtormatLayerChildType::HeightBlend
 		&& ChildType != EMixtormatLayerChildType::HeightCurve

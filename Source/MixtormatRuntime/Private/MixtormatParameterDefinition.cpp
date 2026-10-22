@@ -205,6 +205,35 @@ namespace
 			FilamentWidth.HardMax = 0.25f;
 			Add(ET::Generator, TEXT("FilamentWidth"), FilamentWidth);
 
+			// Only semantic bounds here; ergonomic ranges live on FMixtormatSkin.
+			FMixtormatParameterContract SkinUnit;
+			SkinUnit.HardMin = 0.0f;
+			SkinUnit.HardMax = 1.0f;
+			for (const TCHAR* Name : {TEXT("Amount"), TEXT("Fullness"), TEXT("Softness"),
+				TEXT("Compression"), TEXT("Tension"), TEXT("Crossing"), TEXT("TissueCoupling"),
+				TEXT("PoreVariation"), TEXT("Grain"), TEXT("PigmentVariation"), TEXT("CavityAO"),
+				TEXT("FuzzAmount"), TEXT("FuzzRoughness"), TEXT("SSSAmount")})
+			{
+				Add(ET::Surfacing, Name, SkinUnit);
+			}
+			FMixtormatParameterContract PositivePeriod;
+			PositivePeriod.HardMin = 1.0f;
+			for (const TCHAR* Name : {TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"),
+				TEXT("PoreCells"), TEXT("DetailTiling"), TEXT("IOR")})
+			{
+				Add(ET::Surfacing, Name, PositivePeriod);
+			}
+			FMixtormatParameterContract NonNegative;
+			NonNegative.HardMin = 0.0f;
+			for (const TCHAR* Name : {TEXT("FoldDepth"), TEXT("FoldWidth"), TEXT("CurvatureRadius"),
+				TEXT("CurvatureStrength"), TEXT("PoreDepth"), TEXT("CavityRoughness")})
+			{
+				Add(ET::Surfacing, Name, NonNegative);
+			}
+			Add(ET::Surfacing, TEXT("Seed"), {});
+			Add(ET::Surfacing, TEXT("HeightScale"), {});
+			Add(ET::Surfacing, TEXT("Direction"), {});
+
 			return Built;
 		}();
 
@@ -339,6 +368,21 @@ namespace
 					Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
 					Result.bFound = true;
 				}
+			}
+		}
+		else if (Owner == EMixtormatParameterOwnerType::Surfacing)
+		{
+			static const FMixtormatSkin Defaults;
+			const FProperty* Property = FMixtormatSkin::StaticStruct()->FindPropertyByName(Parameter);
+			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+			{
+				Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+				Result.bFound = true;
+			}
+			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+			{
+				Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+				Result.bFound = true;
 			}
 		}
 		else if (Owner == EMixtormatParameterOwnerType::Generator)

@@ -424,6 +424,10 @@ namespace MixtormatLayerGroups
 						{
 							Clone.Behavior.bEnabled = false;
 						}
+						else if (Clone.Type == EMixtormatLayerChildType::Surfacing)
+						{
+							Clone.Surfacing.bEnabled = false;
+						}
 						else
 						{
 							Clone.ScopeOwnerChildId.Invalidate();
@@ -436,6 +440,11 @@ namespace MixtormatLayerGroups
 				}
 
 				RemapChildReferences(Clone);
+				if (Clone.Type == EMixtormatLayerChildType::Surfacing
+					&& !MixtormatChildScope::HasValidSurfacingScope(Layer.Children, Layer.Children.Num() - 1))
+				{
+					Clone.Surfacing.bEnabled = false;
+				}
 				// A remapped scope is still invalid if it points forward or to a
 				// non-Generator group child. Disable only the effective clone.
 				if (Clone.Type == EMixtormatLayerChildType::Behavior

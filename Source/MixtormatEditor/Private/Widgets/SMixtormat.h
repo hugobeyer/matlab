@@ -97,6 +97,7 @@ enum class EMixtormatChildCreation : uint8
 	Scales,
 	Moss,
 	Mycelium,
+	Skin,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -472,6 +473,11 @@ private:
 	FReply CreateChild(FMixtormatAddTarget Target, EMixtormatChildCreation Kind);
 	bool CanCreateChild(const FMixtormatAddTarget& Target) const;
 	bool CanAddGeneratorModule(const FMixtormatAddTarget& Target) const;
+	bool CanAddSurfacingModule(const FMixtormatAddTarget& Target) const;
+	TSharedRef<SWidget> BuildAddSurfacingMenu(FMixtormatAddTarget Target);
+	FMixtormatSkin* GetSelectedSkin();
+	const FMixtormatSkin* GetSelectedSkin() const;
+	TSharedRef<SWidget> BuildSkinControls();
 	bool CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const;
 	void AddHeightBlendRows(
 		const TSharedRef<SVerticalBox>& Panel,

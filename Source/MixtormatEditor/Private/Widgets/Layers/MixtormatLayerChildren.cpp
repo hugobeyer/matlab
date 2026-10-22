@@ -114,6 +114,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::IdGroup:         return Child.IdGroup.bEnabled;
 		case EMixtormatLayerChildType::OutputReference: return Child.OutputReference.bEnabled;
 		case EMixtormatLayerChildType::Generator:       return Child.Generator.bEnabled;
+		case EMixtormatLayerChildType::Surfacing:       return Child.Surfacing.bEnabled;
 		case EMixtormatLayerChildType::Boolean:         return Child.Boolean.bEnabled;
 		case EMixtormatLayerChildType::Blur:            return Child.Blur.bEnabled;
 		case EMixtormatLayerChildType::Curvature:       return Child.Curvature.bEnabled;
@@ -149,6 +150,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::IdGroup:         Child.IdGroup.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::OutputReference: Child.OutputReference.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Generator:       Child.Generator.bEnabled = bEnabled; break;
+		case EMixtormatLayerChildType::Surfacing:       Child.Surfacing.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Boolean:         Child.Boolean.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Blur:            Child.Blur.bEnabled = bEnabled; break;
 		case EMixtormatLayerChildType::Curvature:       Child.Curvature.bEnabled = bEnabled; break;
@@ -434,6 +436,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatLayerChildType::IdGroup: if (!Child.IdGroup.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::OutputReference: if (!Child.OutputReference.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::Generator: if (!Child.Generator.bEnabled) { return false; } break;
+		case EMixtormatLayerChildType::Surfacing: if (!Child.Surfacing.bEnabled) { return false; } break;
 		case EMixtormatLayerChildType::Effect: if (!Child.Effect.bEnabled) { return false; } break;
 		default: return false;
 		}
@@ -446,7 +449,21 @@ namespace MixtormatLayersPrivate
 			Visited.Add(ParentId);
 			const FMixtormatLayerChild& Parent = (*Children)[ParentIndex];
 			if (Parent.Type == EMixtormatLayerChildType::IdGroup && !Parent.IdGroup.bEnabled) { return false; }
+			if (Child.Type == EMixtormatLayerChildType::Surfacing && !IsChildEnabled(Parent)) { return false; }
 			ParentId = Parent.ScopeOwnerChildId;
+		}
+		if (Child.Type == EMixtormatLayerChildType::Surfacing)
+		{
+			if (!MixtormatChildScope::HasValidSurfacingScope(*Children, Index)) { return false; }
+			if (Child.IsInstance())
+			{
+				const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(
+					Scope, Child.SourceLayerId, Child.SourceChildId);
+				if (!Source || Source->Type != EMixtormatLayerChildType::Surfacing
+					|| MixtormatParameterBinding::ClassifyInstancePlacement(Scope,
+						Child.SourceLayerId, Child.SourceChildId, OwnerId, Index)
+						!= MixtormatParameterBinding::EInstancePlacement::Valid) { return false; }
+			}
 		}
 		if (Child.IsInstance()
 			&& !IsPublishedSourceEnabled(Scope, Child.SourceLayerId, Child.SourceChildId, &Active)) { return false; }
@@ -468,12 +485,13 @@ namespace MixtormatLayersPrivate
 		{
 			return true;
 		}
-		if (Child.Type == EMixtormatLayerChildType::Mask
-			&& Child.Mask.PublishedSourceOutput == TEXT("Value"))
+		if (Child.Type == EMixtormatLayerChildType::Mask)
 		{
 			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
-			if (Source && Source->Type == EMixtormatLayerChildType::Generator
-				&& Source->Generator.Type == EMixtormatGeneratorType::Noise)
+			if (Source && (Source->Type == EMixtormatLayerChildType::Surfacing
+				|| (Source->Type == EMixtormatLayerChildType::Generator
+					&& Source->Generator.Type == EMixtormatGeneratorType::Noise
+					&& Child.Mask.PublishedSourceOutput == TEXT("Value"))))
 			{
 				// Validate the actual projected position, including per-member shared identities.
 				TArray<FMixtormatLayer> Proposed = Scope.GetLayers();
@@ -519,9 +537,13 @@ namespace MixtormatLayersPrivate
 				return bFound;
 			}
 		}
-		if (IsRegionIdsReference(Child))
+		const FMixtormatLayerChild* TypedSource = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
+		if (IsRegionIdsReference(Child)
+			|| (Child.Type == EMixtormatLayerChildType::OutputReference && TypedSource
+				&& TypedSource->Type == EMixtormatLayerChildType::Surfacing))
 		{
-			const FMixtormatLayerChild* Source = MixtormatParameterBinding::FindChild(Scope, SourceOwnerId, SourceChildId);
+			// The effective-layer validator also handles completed typed Surfacing outputs.
+			const FMixtormatLayerChild* Source = TypedSource;
 			if (!Source) { return false; }
 			const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
 			return Caps.Outputs.ContainsByPredicate([&Child](const FMixtormatPublishedOutputDesc& Output)
@@ -741,6 +763,10 @@ namespace MixtormatLayersPrivate
 		const FMixtormatLayerChild& Owner,
 		const FMixtormatLayerChild& Child)
 	{
+		if (Child.Type == EMixtormatLayerChildType::Surfacing)
+		{
+			return MixtormatChildScope::CanOwnScopedSurfacing(Owner);
+		}
 		if (Child.Type == EMixtormatLayerChildType::Generator)
 		{
 			if (Owner.Type == EMixtormatLayerChildType::Boolean)
@@ -851,6 +877,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::GeneratedMask:   return EMixtormatLayerChildType::Generated;
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
+		case EMixtormatChildCreation::Skin:            return EMixtormatLayerChildType::Surfacing;
 		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Cracks:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
@@ -920,6 +947,9 @@ namespace MixtormatLayersPrivate
 			// looking broken until the first colour was added by hand. Exact ID ignores the list,
 			// and an unused red entry there costs nothing.
 			Child.ColorId.Colors.Add(FLinearColor::Red);
+			break;
+		case EMixtormatChildCreation::Skin:
+			Child.Surfacing.Type = EMixtormatSurfacingType::Skin;
 			break;
 		case EMixtormatChildCreation::StrataCarver:
 			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
@@ -1164,6 +1194,7 @@ int32 SMixtormat::GetSelectedChildIndex() const
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::IdGroup
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::OutputReference
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Generator
+			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Surfacing
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Blur
 			|| Layer.Children[SelectedMaskIndex].Type == EMixtormatLayerChildType::Curvature
 			// Generator-layer sublayers are stored through SelectedMaskIndex like every other
@@ -1444,6 +1475,11 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			LOCTEXT("InstanceChildName", "{0} {1}"),
 			FText::FromString(TEXT("\u2197")),
 			GetLayerChildName(Named));
+	}
+
+	if (Child.Type == EMixtormatLayerChildType::Surfacing)
+	{
+		return LOCTEXT("SkinChildName", "Skin");
 	}
 
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesNoise())
@@ -1796,6 +1832,32 @@ bool SMixtormat::CanAddGeneratorModule(const FMixtormatAddTarget& Target) const
 			&& Child.Type == EMixtormatLayerChildType::Generator) { ++Count; }
 	}
 	return Count < 2;
+}
+
+bool SMixtormat::CanAddSurfacingModule(const FMixtormatAddTarget& Target) const
+{
+	if (!CanCreateChild(Target)) { return false; }
+	if (!Target.ScopeOwnerChildId.IsValid()) { return true; }
+	const FMixtormatChildAddress Owner{Target.IsGroup() ? EMixtormatChildOwnerType::Group
+		: EMixtormatChildOwnerType::Layer,
+		Target.IsGroup() ? Target.GroupId : WorkingLayers[Target.LayerIndex].LayerId,
+		Target.ScopeOwnerChildId};
+	const FMixtormatLayerChild* Parent = ResolveChildAt(Owner);
+	FMixtormatLayerChild Probe;
+	Probe.Type = EMixtormatLayerChildType::Surfacing;
+	return Parent && !Parent->IsInstance() && CanAuthorScopedPlacement(*Parent, Probe);
+}
+
+FMixtormatSkin* SMixtormat::GetSelectedSkin()
+{
+	return const_cast<FMixtormatSkin*>(static_cast<const SMixtormat*>(this)->GetSelectedSkin());
+}
+
+const FMixtormatSkin* SMixtormat::GetSelectedSkin() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Surfacing
+		&& Child->Surfacing.Type == EMixtormatSurfacingType::Skin ? &Child->Surfacing.Skin : nullptr;
 }
 
 bool SMixtormat::CanAddScopedFlowGenerator(const FMixtormatAddTarget& Target) const

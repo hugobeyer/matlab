@@ -61,6 +61,12 @@ namespace MixtormatChildScope
 	// Typed Blur owners; GPU integration supplies each owner's output contract.
 	MIXTORMATRUNTIME_API bool CanOwnScopedBlurs(const FMixtormatLayerChild& Child);
 
+	// Surface producers are not Generator subtypes. Behavior/Blur support is separately gated.
+	MIXTORMATRUNTIME_API bool CanOwnScopedSurfacing(const FMixtormatLayerChild& Child);
+	// Instance-resolved children: reject disabled, missing, forward or unsupported ancestors.
+	MIXTORMATRUNTIME_API bool HasValidSurfacingScope(
+		const TArray<FMixtormatLayerChild>& Children, int32 ChildIndex);
+
 	// Who may have a Mask child scoped underneath. Gather and Editor both call this.
 	MIXTORMATRUNTIME_API bool CanOwnScopedMasks(const FMixtormatLayerChild& Child);
 }

@@ -11,6 +11,7 @@
 #include "MixtormatMask.h"
 #include "MixtormatMaskShaping.h"
 #include "MixtormatLayerTypes.h"
+#include "MixtormatSurfacingTypes.h"
 #include "MixtormatParameterDefinition.h"
 #include "RendererInterface.h"
 #include "RenderGraphBuilder.h"
@@ -35,10 +36,14 @@ DECLARE_LOG_CATEGORY_EXTERN(LogMixtormatComposition, Log, All);
 struct FMixtormatComposeResources
 {
 	TArray<TStrongObjectPtr<UTextureRenderTarget2D>> Pins;
+		TArray<TStrongObjectPtr<UTexture2D>> TexturePins;
 	FTextureRenderTargetResource* BaseColor[2] = {};
 	FTextureRenderTargetResource* Normal[2] = {};
 	FTextureRenderTargetResource* RAM[2] = {};
 	FTextureRenderTargetResource* Height[2] = {};
+		FTextureRenderTargetResource* Optics[2] = {};
+		FTextureRenderTargetResource* FuzzColor[2] = {};
+		FTextureRenderTargetResource* Subsurface[2] = {};
 	FTextureRenderTargetResource* Debug[2] = {};
 	FTextureRenderTargetResource* RegionIdPick[2] = {};
 	FTextureRenderTargetResource* DiagnosticFlow = nullptr;
@@ -54,6 +59,7 @@ struct FMixtormatComposeResources
 	int32 PublishedIndex = 0;
 	// Game-thread readers require the InFlight release/acquire handoff too.
 	bool bSucceeded = false;
+		bool bHasSurfaceOptics = false;
 
 	~FMixtormatComposeResources();
 };
@@ -278,7 +284,8 @@ namespace MixtormatGpuCompositor
 			if (!Texture) { return false; }
 						const EPixelFormat Format = Texture->Desc.Format;
 						const bool bFullPrecision = (Kind == EMixtormatPublishedFieldKind::Scalar01 && Format == PF_R32_FLOAT)
-							|| (Kind == EMixtormatPublishedFieldKind::Vector2 && Format == PF_G32R32F);
+							|| (Kind == EMixtormatPublishedFieldKind::Vector2 && Format == PF_G32R32F)
+														|| (Kind == EMixtormatPublishedFieldKind::Color && Format == PF_A32B32G32R32F);
 						if (Format != GetPublishedFieldFormat(Kind) && !bFullPrecision) { return false; }
 			if (Kind != EMixtormatPublishedFieldKind::Flow) { return true; }
 			return FlowSmooth && Validity
@@ -1315,6 +1322,7 @@ namespace MixtormatGpuCompositor
 
 		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
+				FMixtormatSurfacing Surfacing;
 		FBooleanStackRenderData Boolean;
 		FGeneratorHeightBlendRenderData HeightBlend;
 		FGeneratorHeightCurveRenderData HeightCurve;
@@ -1408,6 +1416,10 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef Normal;
 		FTextureRHIRef RAM;
 		FTextureRHIRef Height;
+		FTextureRHIRef Optics;
+		FTextureRHIRef FuzzColor;
+		FTextureRHIRef Subsurface;
+		bool bHasSurfaceOptics = false;
 		TSharedPtr<FMixtormatComposeResources, ESPMode::ThreadSafe> SourceOutputs;
 		bool bUseSourceF0 = false;
 		FTextureRHIRef Mask;
@@ -1512,6 +1524,9 @@ namespace MixtormatGpuCompositor
 		FTextureRHIRef OutputN[2];
 		FTextureRHIRef OutputRAM[2];
 		FTextureRHIRef OutputHeight[2];
+				FTextureRHIRef OutputOptics[2];
+				FTextureRHIRef OutputFuzzColor[2];
+				FTextureRHIRef OutputSubsurface[2];
 		FTextureRHIRef OutputDebug[2];
 		// The raw Region IDs behind whatever the Region IDs preview is showing, one float per
 		// pixel, so the editor can read an exact integer ID back off a click. Deliberately not
@@ -1771,6 +1786,10 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef OutputN[2] = {};
 		FRDGTextureRef OutputRAM[2] = {};
 		FRDGTextureRef OutputHeight[2] = {};
+				FRDGTextureRef OutputOptics[2] = {};
+				FRDGTextureRef OutputFuzzColor[2] = {};
+				FRDGTextureRef OutputSubsurface[2] = {};
+				bool bHasSurfaceOptics = false;
 		FRDGTextureRef OutputDebug[2] = {};
 		// Selected mask survives the layer loop for one display-only tint pass.
 		FRDGTextureRef SelectedOverlayMask = nullptr;
@@ -1833,6 +1852,18 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef LayerInputBC = nullptr;
 		FRDGTextureRef LayerInputN = nullptr;
 		FRDGTextureRef LayerInputRAM = nullptr;
+				FRDGTextureRef LayerInputOptics = nullptr;
+				FRDGTextureRef LayerInputFuzzColor = nullptr;
+				FRDGTextureRef LayerInputSubsurface = nullptr;
+				FRDGTextureRef BelowOptics = nullptr;
+				FRDGTextureRef BelowFuzzColor = nullptr;
+				FRDGTextureRef BelowSubsurface = nullptr;
+				bool bSurfacingColor = false;
+				bool bSurfacingRoughness = false;
+				bool bSurfacingAO = false;
+				bool bSurfacingF0 = false;
+				bool bSurfacingFuzz = false;
+				bool bSurfacingSSS = false;
 		// True when the generator stack produced a real colour this layer may paint as albedo
 		// (the completed bottom-to-top Color Ramp stack). Without it a GeneratorAlbedo layer must keep
 		// the composite below rather than writing the resolved neutral input.
@@ -1914,6 +1945,18 @@ namespace MixtormatGpuCompositor
 			LayerInputBC = nullptr;
 			LayerInputN = nullptr;
 			LayerInputRAM = nullptr;
+			LayerInputOptics = nullptr;
+			LayerInputFuzzColor = nullptr;
+			LayerInputSubsurface = nullptr;
+			BelowOptics = nullptr;
+			BelowFuzzColor = nullptr;
+			BelowSubsurface = nullptr;
+			bSurfacingColor = false;
+			bSurfacingRoughness = false;
+			bSurfacingAO = false;
+			bSurfacingF0 = false;
+			bSurfacingFuzz = false;
+			bSurfacingSSS = false;
 			LayerValues = nullptr;
 			LayerInputHeight = nullptr;
 			GeneratorBundle = FGeneratorBundle();
@@ -2442,6 +2485,10 @@ struct FMixtormatPrefixCache
 		TRefCountPtr<IPooledRenderTarget> Normal;
 		TRefCountPtr<IPooledRenderTarget> RAM;
 		TRefCountPtr<IPooledRenderTarget> Height;
+		TRefCountPtr<IPooledRenderTarget> Optics;
+		TRefCountPtr<IPooledRenderTarget> FuzzColor;
+		TRefCountPtr<IPooledRenderTarget> Subsurface;
+		bool bHasSurfaceOptics = false;
 		TRefCountPtr<IPooledRenderTarget> Ridge;
 		TRefCountPtr<IPooledRenderTarget> Occupancy;
 		TArray<TPair<int32, TRefCountPtr<IPooledRenderTarget>>> HeightSnapshots;
@@ -2536,13 +2583,15 @@ struct FMixtormatPrefixCache
 		check(IsInRenderingThread());
 		if (!Incoming.IsValid() || !Incoming->BaseColor.IsValid() || !Incoming->Normal.IsValid()
 			|| !Incoming->RAM.IsValid() || !Incoming->Height.IsValid() || !Incoming->Ridge.IsValid()
-			|| !Incoming->Occupancy.IsValid())
+			|| !Incoming->Occupancy.IsValid() || !Incoming->Optics.IsValid()
+						|| !Incoming->FuzzColor.IsValid() || !Incoming->Subsurface.IsValid())
 		{
 			return;
 		}
 		uint64 Bytes = TargetBytes(Incoming->BaseColor) + TargetBytes(Incoming->Normal)
 			+ TargetBytes(Incoming->RAM) + TargetBytes(Incoming->Height) + TargetBytes(Incoming->Ridge)
-			+ TargetBytes(Incoming->Occupancy);
+			+ TargetBytes(Incoming->Occupancy) + TargetBytes(Incoming->Optics)
+						+ TargetBytes(Incoming->FuzzColor) + TargetBytes(Incoming->Subsurface);
 		for (const auto& Pair : Incoming->HeightSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->DriverSnapshots) { Bytes += TargetBytes(Pair.Value); }
 		for (const auto& Pair : Incoming->PublishedMasks) { Bytes += TargetBytes(Pair.Value); }

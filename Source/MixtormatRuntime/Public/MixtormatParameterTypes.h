@@ -54,7 +54,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow"),
 	// Nested Feather authoring fields are independently addressable without shifting prior enum values.
 	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather"),
-		Boolean = 31 UMETA(DisplayName = "Boolean")
+		Boolean = 31 UMETA(DisplayName = "Boolean"),
+	Surfacing = 32 UMETA(DisplayName = "Surfacing")
 };
 
 UENUM(BlueprintType)

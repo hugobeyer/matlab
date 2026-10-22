@@ -4,7 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "UObject/SoftObjectPtr.h"
 #include "MixtormatEditorSettings.generated.h"
+
+class UMaterialInterface;
 
 // The bake dialog's resolution field is a fixed picker, not a free-typed int, matching
 // SMixtormat::SetCompositionResolution's own allow-list (plus 512, which that toolbar menu does
@@ -54,9 +57,8 @@ inline int32 MixtormatBakeAASamplesToInt(const EMixtormatBakeAASamples Samples)
 	}
 }
 
-// The bake dialog's starting values. Read via GetDefault<UMixtormatEditorSettings>(); they are
-// read once when the Mixtormat workspace / bake dialog is opened and never written back to, so
-// editing a destination or resolution for a single bake never changes these.
+// Per-user editor preferences. Bake defaults are read when the workspace/dialog opens;
+// Layer Preview Master is read for each compose. Individual bakes do not write these defaults.
 UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Mixtormat"))
 class MIXTORMATEDITOR_API UMixtormatEditorSettings : public UDeveloperSettings
 {
@@ -65,6 +67,11 @@ class MIXTORMATEDITOR_API UMixtormatEditorSettings : public UDeveloperSettings
 public:
 	virtual FName GetCategoryName() const override { return TEXT("Plugins"); }
 	virtual FName GetSectionName() const override { return TEXT("Mixtormat"); }
+
+	// Explicit live-preview selection only. Empty keeps the shipped master; never reparents assets.
+	// Uses the shared DA_* contract, not the bake dialog's custom channel mappings.
+	UPROPERTY(EditAnywhere, Config, Category = "Preview", meta = (DisplayName = "Layer Preview Master"))
+	TSoftObjectPtr<UMaterialInterface> LayerPreviewMaster;
 
 	// Bake-only (SMixtormat::BakeResolution): the live preview's own resolution
 	// (SMixtormat::CompositionResolution) is untouched by this setting.

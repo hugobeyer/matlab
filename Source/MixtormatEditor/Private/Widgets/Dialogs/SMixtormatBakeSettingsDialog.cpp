@@ -306,26 +306,32 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 							.Text_Lambda([this]()
 							{
 								const TArray<FString> Names = FMixtormatBakeService::GetOutputAssetNames(Settings);
-								if (Names.Num() < 7)
+								if (Names.Num() != 10)
 								{
 									return FText::FromString(FString::Join(Names, TEXT("\n")));
 								}
 								return FText::Format(
-									LOCTEXT("BakeAssetSummaryFmt",
+									LOCTEXT("BakeOpticalAssetSummaryFmt",
 										"{0}  (Base Color · sRGB)\n"
 										"{1}  (Normal Map · Tangent)\n"
-										"{2}  (Packed RAM · Roughness/AO/Metallic)\n"
+										"{2}  (Packed RAM · Roughness/AO/Metallic/F0)\n"
 										"{3}  (Height · 16-bit Grayscale)\n"
 										"{4}  (Material Instance)\n"
 										"{5}  (Surface RAMH · Height in Alpha)\n"
-										"{6}  (Mixtormat Surface Asset)"),
+										"{6}  (Mixtormat Surface Asset)\n"
+																				"{7}  (Optics · F0/Fuzz/Roughness/SSS · Linear Float)\n"
+																				"{8}  (Fuzz Tint · Linear Float RGB)\n"
+																				"{9}  (Subsurface MFP · Centimeters · HDR Float)"),
 									FText::FromString(Names[0]),
 									FText::FromString(Names[1]),
 									FText::FromString(Names[2]),
 									FText::FromString(Names[3]),
 									FText::FromString(Names[4]),
 									FText::FromString(Names[5]),
-									FText::FromString(Names[6]));
+									FText::FromString(Names[6]),
+																		FText::FromString(Names[7]),
+																		FText::FromString(Names[8]),
+																		FText::FromString(Names[9]));
 							})
 							.Font(FCoreStyle::GetDefaultFontStyle(TEXT("Regular"), MixtormatTokens::FontDialogLabel))
 							.ColorAndOpacity(FSlateColor::UseSubduedForeground())

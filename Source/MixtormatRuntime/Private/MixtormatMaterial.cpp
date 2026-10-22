@@ -144,8 +144,8 @@ float MixtormatCompositionReferences::ComputeFuzzInfluence(
 		float Result = 0.0f;
 		for (const FMixtormatLayer& Layer : CurrentLayers)
 		{
-			// Fuzz is resolved outside the compositor, so it never sees the effective stack and
-			// has to apply the group gate itself.
+			// This legacy-master scalar resolver bypasses the spatial compositor, so it must
+			// apply the group gate itself. Optical masters use the composited maps instead.
 			if (!IsLayerEffectivelyEnabled(Layer, CurrentGroups))
 			{
 				continue;

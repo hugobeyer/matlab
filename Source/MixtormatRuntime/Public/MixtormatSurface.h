@@ -56,6 +56,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures", meta = (DisplayName = "Roughness / AO / Metallic / Optional Height"))
 	TObjectPtr<UTexture2D> RoughnessAOMetallic;
 
+	// Linear RGBA: dielectric F0, fuzz amount, fuzz roughness, SSS amount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures")
+	TSoftObjectPtr<UTexture2D> Optics;
+
+	// Linear RGB fuzz tint; alpha reserved. Not premultiplied by fuzz amount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures")
+	TSoftObjectPtr<UTexture2D> FuzzColorMap;
+
+	// Linear HDR RGB mean-free-path in centimeters; alpha reserved. Not height/thickness.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Textures")
+	TSoftObjectPtr<UTexture2D> Subsurface;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Textures")
 	bool bHasBlendHeight = false;
 
