@@ -83,7 +83,10 @@ protected:
 	virtual float GetInputViewYMin() const override { return bDragging ? DragViewYMin : ViewYMin; }
 	virtual float GetInputViewYMax() const override { return bDragging ? DragViewYMax : ViewYMax; }
 	virtual void FrameView() override { bAutoZoom = true; FrameCurve(); }
-	virtual bool SupportsHorizontalFlip() const override { return true; }
+	virtual MixtormatPresetStore::FRampPreset CapturePreset() const override;
+		virtual bool CanApplyPreset(const MixtormatPresetStore::FRampPreset& Preset) const override;
+		virtual void ApplyStoredPreset(const MixtormatPresetStore::FRampPreset& Preset, bool bRemapDomain) override;
+		virtual bool SupportsHorizontalFlip() const override { return true; }
 	virtual void FlipHorizontally() override;
 	virtual bool HasInvertControl() const override { return OnInvertChanged.IsBound(); }
 	virtual bool IsInverted() const override { return InvertedAttribute.Get(false); }

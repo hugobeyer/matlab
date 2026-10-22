@@ -3,6 +3,7 @@
 #include "Compositing/MixtormatIdGather.h"
 
 #include "Compositing/MixtormatComposeHash.h"
+#include "MixtormatColorRampMath.h"
 #include "MixtormatSurface.h"
 
 namespace MixtormatGpuCompositor
@@ -44,7 +45,7 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	if (LayerChild.Type == EMixtormatLayerChildType::HsvFilter)
 	{
 		// Rewrites albedo at the composite's own sample, so it never reaches the mask
-		// chain. An empty palette is still valid -- the jitter rows work alone.
+		// chain. A zero tint range keeps the default black-to-white ramp jitter-only.
 		const FMixtormatHsvIdFilter& Hsv = LayerChild.HsvFilter;
 		if (!Layer.bEnabled || !Hsv.bEnabled)
 		{
@@ -54,13 +55,12 @@ bool GatherIdChild(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 		ChildData.Type = EMixtormatLayerChildType::HsvFilter;
 		ChildData.SourceChildIndex = SourceChildIndex;
 		FHsvIdFilterRenderData& HsvData = ChildData.HsvFilter;
-		const int32 PaletteCount =
-			FMath::Min(Hsv.Palette.Num(), FMixtormatHsvIdFilter::MaxPaletteColors);
-		HsvData.Palette.Reserve(PaletteCount);
-		for (int32 ColorIndex = 0; ColorIndex < PaletteCount; ++ColorIndex)
-		{
-			HsvData.Palette.Add(FVector4f(Hsv.Palette[ColorIndex]));
-		}
+		const MixtormatColorRampMath::FGpuPayload Payload =
+			MixtormatColorRampMath::PrepareGpuPayload(Hsv.ColorRamp);
+		HsvData.StopCount = Payload.StopCount;
+		HsvData.Interpolation = Payload.Interpolation;
+		HsvData.Positions = Payload.Positions;
+		HsvData.Colors = Payload.Colors;
 		HsvData.MixMin = Hsv.RampMixMin;
 		HsvData.MixMax = Hsv.RampMixMax;
 		HsvData.HueMin = Hsv.HueMin;

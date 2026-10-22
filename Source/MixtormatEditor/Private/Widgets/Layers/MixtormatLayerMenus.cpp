@@ -734,6 +734,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupContextMenu(const FGuid GroupId)
 	AddCreationSections(Menu, FMixtormatAddTarget::Group(GroupId));
 
 	Menu.Separator();
+	Menu.SubMenu(LOCTEXT("CreateGroupRecipe", "Create Recipe…"), MixtormatIcons::Add(),
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildRecipeCaptureMenu, GroupId))
+		.Enabled(Group != nullptr)
+		.ToolTip(LOCTEXT("CreateGroupRecipeHelp", "Capture this group and its ordered members. Outside references are rejected and asset dependencies are reported."));
 	// Type-specific actions next: the things only a group row can do, before the shared verbs.
 	Menu.SubMenu(
 		LOCTEXT("GroupAccentContext", "Colour"),

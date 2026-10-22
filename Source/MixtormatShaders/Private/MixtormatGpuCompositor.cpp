@@ -82,10 +82,9 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatCompositeCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatCompositeCS, FGlobalShader);
 
-	// Has to agree with MIXTORMAT_MAX_REGION_PALETTE in MixtormatComposite.usf and with
-	// FMixtormatHsvIdFilter::MaxPaletteColors. The ID gather clamps against that same
-	// authored palette cap.
-	static constexpr int32 MaxRegionPalette = FMixtormatHsvIdFilter::MaxPaletteColors;
+	// Has to agree with MIXTORMAT_COLOR_RAMP_MAX_STOPS in MixtormatComposite.usf. The
+	// shared colour-ramp payload is sanitized and bounded by the ID gather.
+	static constexpr int32 MaxRegionRampStops = FMixtormatColorRamp::MaxStops;
 	// Two driven scalars this step: slot 0 RoughnessInfluence, slot 1 HeightBlendAmount. Kept
 	// small on purpose -- every slot is a texture binding on every composite dispatch.
 	static constexpr int32 MaxScalarDrivers = 2;
@@ -226,8 +225,10 @@ public:
 		SHADER_PARAMETER(uint32, RegionTintEnabled)
 		SHADER_PARAMETER(uint32, UseRegionTintMask)
 		SHADER_PARAMETER(uint32, RegionSeed)
-		SHADER_PARAMETER_ARRAY(FVector4f, RegionPalette, [MaxRegionPalette])
-		SHADER_PARAMETER(int32, RegionPaletteCount)
+		SHADER_PARAMETER(uint32, RegionRampStopCount)
+		SHADER_PARAMETER(uint32, RegionRampInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, RegionRampPositions, [MaxRegionRampStops])
+		SHADER_PARAMETER_ARRAY(FVector4f, RegionRampColors, [MaxRegionRampStops])
 		SHADER_PARAMETER(float, RegionMixMin)
 		SHADER_PARAMETER(float, RegionMixMax)
 		SHADER_PARAMETER(float, RegionHueMin)
@@ -1208,17 +1209,18 @@ namespace MixtormatGpuCompositor
 			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, HsvSourceChildIndex, true)
 			: EmptyDriverSignal;
 		Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
-		Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
-		for (int32 ColorIndex = 0; ColorIndex < FMixtormatCompositeCS::MaxRegionPalette; ++ColorIndex)
+		Parameters->RegionRampStopCount = ActiveHsv ? ActiveHsv->StopCount : 0u;
+		Parameters->RegionRampInterpolation = ActiveHsv ? ActiveHsv->Interpolation : 0u;
+		for (int32 StopIndex = 0; StopIndex < FMixtormatCompositeCS::MaxRegionRampStops; ++StopIndex)
 		{
-			// The unused tail is filled rather than left alone, for the same reason
-			// FMixtormatColorIdCS fills its own: a shader parameter array is not
-			// zero initialised, and an uninitialised constant is the kind of thing
-			// that only misbehaves on one driver.
-			Parameters->RegionPalette[ColorIndex] =
-				ActiveHsv && ActiveHsv->Palette.IsValidIndex(ColorIndex)
-					? ActiveHsv->Palette[ColorIndex]
-					: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+			// The unused tail is filled rather than left alone: a shader parameter array is
+			// not zero initialized, and an uninitialized constant can misbehave per driver.
+			Parameters->RegionRampPositions[StopIndex] = ActiveHsv
+				? FVector4f(ActiveHsv->Positions[StopIndex], 0.0f, 0.0f, 0.0f)
+				: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
+			Parameters->RegionRampColors[StopIndex] = ActiveHsv
+				? ActiveHsv->Colors[StopIndex]
+				: FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
 		}
 		Parameters->RegionMixMin = ActiveHsv ? ActiveHsv->MixMin : 0.0f;
 		Parameters->RegionMixMax = ActiveHsv ? ActiveHsv->MixMax : 0.0f;

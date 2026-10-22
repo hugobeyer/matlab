@@ -732,15 +732,18 @@ namespace MixtormatGpuCompositor
 	// weight: this is applied at the composite's albedo sample, not in the mask chain.
 	struct FHsvIdFilterRenderData
 	{
-		TArray<FVector4f, TInlineAllocator<FMixtormatHsvIdFilter::MaxPaletteColors>> Palette;
+		uint32 StopCount = 0;
+		uint32 Interpolation = 0;
+		TStaticArray<float, FMixtormatColorRamp::MaxStops> Positions;
+		TStaticArray<FVector4f, FMixtormatColorRamp::MaxStops> Colors;
 		float MixMin = 0.0f;
-		float MixMax = 0.15f;
+		float MixMax = 0.0f;
 		float HueMin = 0.0f;
 		float HueMax = 0.0f;
-		float SatMin = 0.9f;
-		float SatMax = 1.1f;
-		float ValMin = 0.9f;
-		float ValMax = 1.1f;
+		float SatMin = 0.95f;
+		float SatMax = 1.05f;
+		float ValMin = 0.75f;
+		float ValMax = 1.0f;
 		uint32 Seed = 1;
 	};
 

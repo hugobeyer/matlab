@@ -3,6 +3,13 @@
 #include "UI/Controls/SMixtormatRampEditor.h"
 
 #include "Framework/Application/SlateApplication.h"
+#include "DesktopPlatformModule.h"
+#include "IDesktopPlatform.h"
+#include "Misc/Paths.h"
+#include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Styling/CoreStyle.h"
@@ -13,6 +20,109 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+
+TSharedRef<SWidget> SMixtormatRampEditorBase::BuildSavePresetMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(NSLOCTEXT("Mixtormat", "RampPresetName", "NAME — ENTER TO SAVE"));
+	Menu.Widget(SNew(STextBlock)
+		.Text_Lambda([this]() { return PresetError; })
+		.Visibility_Lambda([this]() { return PresetError.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+		.AutoWrapText(true)
+		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel"))));
+	Menu.Widget(SNew(SEditableTextBox)
+		.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
+		.OnTextCommitted_Lambda([this](const FText& Text, ETextCommit::Type Commit)
+		{
+			if (Commit != ETextCommit::OnEnter) { return; }
+			MixtormatPresetStore::FRampPreset Preset = CapturePreset();
+			Preset.Id = FGuid::NewGuid();
+			Preset.Name = Text.ToString().TrimStartAndEnd();
+			PresetError = FText::GetEmpty();
+			if (MixtormatPresetStore::SaveRamp(Preset, PresetError))
+			{
+				FSlateApplication::Get().DismissAllMenus();
+			}
+		}));
+	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormatRampEditorBase::BuildUserPresetMenu()
+{
+	MixtormatMenu::FBuilder Menu;
+	Menu.Caption(NSLOCTEXT("Mixtormat", "UserRampPresetsHeading", "USER RAMP PRESETS"));
+	const bool bHasDialogs = FDesktopPlatformModule::Get() != nullptr;
+	if (!PresetError.IsEmpty()) { Menu.Caption(PresetError); }
+	Menu.SubMenu(NSLOCTEXT("Mixtormat", "SaveRampPreset", "Save Preset…"), nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormatRampEditorBase::BuildSavePresetMenu));
+	Menu.Item(NSLOCTEXT("Mixtormat", "ImportRampPreset", "Import JSON…"), nullptr,
+		FSimpleDelegate::CreateSP(this, &SMixtormatRampEditorBase::ImportUserPreset))
+				.Enabled(bHasDialogs).ToolTip(NSLOCTEXT("Mixtormat", "RampImportHelp", "Import a JSON preset of this ramp type. Requires platform file dialogs."));
+	Menu.Item(NSLOCTEXT("Mixtormat", "ExportRampPreset", "Export Current Ramp…"), nullptr,
+		FSimpleDelegate::CreateSP(this, &SMixtormatRampEditorBase::ExportUserPreset))
+				.Enabled(bHasDialogs).ToolTip(NSLOCTEXT("Mixtormat", "RampExportHelp", "Export the current ramp to a new JSON file. Existing files are never overwritten. Requires platform file dialogs."));
+	Menu.Separator();
+	const MixtormatPresetStore::FRampPreset Current = CapturePreset();
+	TArray<MixtormatPresetStore::FRampPreset> Presets;
+	FText Error;
+	if (!MixtormatPresetStore::ListRamps(Current.Kind, Presets, Error)) { Menu.Caption(Error); }
+	for (const MixtormatPresetStore::FRampPreset& Preset : Presets)
+	{
+		const bool bExactDomain = Preset.DomainMin == DomainMin && Preset.DomainMax == DomainMax;
+		const bool bCanApply = CanApplyPreset(Preset);
+		Menu.Item(FText::FromString(Preset.Name), nullptr,
+			FSimpleDelegate::CreateLambda([this, Preset]() { ApplyStoredPreset(Preset, false); }))
+			.Enabled(bExactDomain && bCanApply)
+			.ToolTip(bExactDomain
+				? NSLOCTEXT("Mixtormat", "RampExactHelp", "Apply the authored ramp. Values outside this control's range cannot be applied.")
+				: NSLOCTEXT("Mixtormat", "RampDomainHelp", "Different X domain. Use the explicit Remap X action instead."));
+		if (!bExactDomain)
+		{
+			Menu.Item(FText::Format(NSLOCTEXT("Mixtormat", "RemapRampPreset", "{0} — Remap X to Current Domain"), FText::FromString(Preset.Name)), nullptr,
+				FSimpleDelegate::CreateLambda([this, Preset]() { ApplyStoredPreset(Preset, true); }))
+				.Enabled(bCanApply)
+				.ToolTip(NSLOCTEXT("Mixtormat", "RampRemapHelp", "Explicitly remap stop positions to this X domain; retain values and interpolation."));
+		}
+	}
+	if (Presets.IsEmpty() && Error.IsEmpty()) { Menu.Caption(NSLOCTEXT("Mixtormat", "NoUserRamps", "No saved ramps of this type.")); }
+	return Menu.Build();
+}
+
+void SMixtormatRampEditorBase::ImportUserPreset()
+{
+	IDesktopPlatform* Platform = FDesktopPlatformModule::Get();
+	if (!Platform)
+	{
+		PresetError = NSLOCTEXT("Mixtormat", "RampDialogUnavailable", "File dialogs are unavailable on this platform.");
+		return;
+	}
+	TArray<FString> Files;
+	if (!Platform->OpenFileDialog(FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
+		NSLOCTEXT("Mixtormat", "ImportRampTitle", "Import Ramp Preset").ToString(),
+		FPaths::ProjectDir(), FString(), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files) || Files.Num() != 1) { return; }
+	MixtormatPresetStore::FRampPreset Imported;
+	PresetError = FText::GetEmpty();
+	MixtormatPresetStore::ImportRamp(Files[0], CapturePreset().Kind, Imported, PresetError);
+}
+
+void SMixtormatRampEditorBase::ExportUserPreset()
+{
+	IDesktopPlatform* Platform = FDesktopPlatformModule::Get();
+	if (!Platform)
+	{
+		PresetError = NSLOCTEXT("Mixtormat", "RampDialogUnavailable", "File dialogs are unavailable on this platform.");
+		return;
+	}
+	TArray<FString> Files;
+	if (!Platform->SaveFileDialog(FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
+		NSLOCTEXT("Mixtormat", "ExportRampTitle", "Export Ramp Preset").ToString(),
+		FPaths::ProjectDir(), TEXT("Ramp.json"), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files) || Files.Num() != 1) { return; }
+	MixtormatPresetStore::FRampPreset Preset = CapturePreset();
+	Preset.Id = FGuid::NewGuid();
+	Preset.Name = FPaths::GetBaseFilename(Files[0]);
+	PresetError = FText::GetEmpty();
+	MixtormatPresetStore::ExportRamp(Files[0], Preset, PresetError);
+}
 
 void SMixtormatRampEditorBase::Construct(const FArguments& InArgs)
 {
@@ -88,9 +198,35 @@ void SMixtormatRampEditorBase::BuildLayout()
 		];
 	}
 
+	Toolbar->AddSlot().AutoWidth().VAlign(VAlign_Center)
+	.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGroupGap, 0.0f)
+	[
+		SNew(SMixtormatHelp)
+		.Text_Lambda([this]()
+				{
+					return PresetError.IsEmpty()
+						? NSLOCTEXT("Mixtormat", "RampUserPresetHelp", "Save, import or export ramp presets. Different X domains require an explicit remap.")
+						: PresetError;
+				})
+		[
+			SNew(SComboButton)
+			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
+			.HasDownArrow(false)
+			.ContentPadding(FMargin(0.0f))
+			.OnGetMenuContent(this, &SMixtormatRampEditorBase::BuildUserPresetMenu)
+			.ButtonContent()
+			[
+				SNew(STextBlock)
+				.Text(NSLOCTEXT("Mixtormat", "RampUserPresets", "User Presets"))
+				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			]
+		]
+	];
+
 	ChildSlot
 	[
 		SNew(SVerticalBox)
+
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
 			FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampToolbarGap)
 		[

@@ -144,7 +144,7 @@ TSharedRef<SWidget> SMixtormat::BuildStrataCarverControls()
 		.Visibility_Lambda([this]() { return GetSelectedStrataCarver() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("StrataCarverHeading", "STRATA CARVER"))
+			.Title(LOCTEXT("StrataCarverHeading", "STRATA CARVER")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -354,7 +354,7 @@ TSharedRef<SWidget> SMixtormat::BuildCracksControls()
 		.Visibility_Lambda([this]() { return GetSelectedCracks() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("CracksHeading", "CRACKS"))
+			.Title(LOCTEXT("CracksHeading", "CRACKS")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -563,7 +563,12 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanStackControls()
 		{
 			return GetSelectedBooleanStack() ? EVisibility::Visible : EVisibility::Collapsed;
 		})
-		[Cards];
+		[
+			SNew(SMixtormatInspectorGroup)
+			.Title(LOCTEXT("BooleanStackHeading", "BOOLEAN"))
+			.PresetAction(MakeModulePresetButton())
+			[Cards]
+		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
@@ -649,7 +654,7 @@ TSharedRef<SWidget> SMixtormat::BuildBooleanOpsControls()
 		.Visibility_Lambda([this]() { return GetSelectedBooleanOps() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("BooleanOpsHeading", "SCATTER CARVE"))
+			.Title(LOCTEXT("BooleanOpsHeading", "SCATTER CARVE")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -800,7 +805,7 @@ TSharedRef<SWidget> SMixtormat::BuildPebblesControls()
 		.Visibility_Lambda([this]() { return GetSelectedPebbles() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("PebblesHeading", "PEBBLES"))
+			.Title(LOCTEXT("PebblesHeading", "PEBBLES")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -1305,7 +1310,7 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 		.Visibility_Lambda([this]() { return GetSelectedRootNetwork() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("RootNetworkHeading", "ROOT NETWORK"))
+			.Title(LOCTEXT("RootNetworkHeading", "ROOT NETWORK")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -1399,7 +1404,7 @@ TSharedRef<SWidget> SMixtormat::BuildScalesControls()
 	AddSliderRow(Panel, Slider(LOCTEXT("ScalesGrooveDirection", "Groove Direction"), &FMixtormatScales::GrooveDirection, -180, 180));
 	AddNativeFlowControls(Cards);
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedScales() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ScalesHeading", "SCALES")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ScalesHeading", "SCALES")).PresetAction(MakeModulePresetButton()).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
 				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
@@ -1476,7 +1481,7 @@ TSharedRef<SWidget> SMixtormat::BuildCliffStrataControls()
 	AddNativeFlowControls(Cards);
 
 	return SNew(SBox).Visibility_Lambda([this](){return GetSelectedCliffStrata()?EVisibility::Visible:EVisibility::Collapsed;})[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("CliffStrataHeading","CLIFF STRATA")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("CliffStrataHeading","CLIFF STRATA")).PresetAction(MakeModulePresetButton()).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+SHorizontalBox::Slot().AutoWidth().Padding(0,0,FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap,0)[MakeChildOutputPreviewButton([](){FMixtormatLayerChild Probe;Probe.Type=EMixtormatLayerChildType::Generator;Probe.Generator.Type=EMixtormatGeneratorType::CliffStrata;return GetChildPreviewOutputSet(Probe);}())]
 			+SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(TAttribute<ECheckBoxState>::CreateLambda([this](){const FMixtormatGenerator* G=GetSelectedGenerator();return G&&G->bEnabled?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}),FOnCheckStateChanged::CreateLambda([this](ECheckBoxState S){if(FMixtormatGenerator* G=GetSelectedGenerator()){G->bEnabled=S==ECheckBoxState::Checked;RefreshLayeredPreview();RebuildLayerList();}}))])
@@ -1820,7 +1825,7 @@ void SMixtormat::AddBehaviorFieldCompositionRows(
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorPushTitle", "PUSH"))
+				.Title(LOCTEXT("BehaviorPushTitle", "PUSH")).PresetAction(MakeModulePresetButton())
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Push]()
@@ -1883,7 +1888,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorCarveControls()
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorSculptHeading", "SCULPT"))
+				.Title(LOCTEXT("BehaviorSculptHeading", "SCULPT")).PresetAction(MakeModulePresetButton())
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Sculpt]()
@@ -2123,7 +2128,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorWarpControls()
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorWarpHeading", "WARP"))
+				.Title(LOCTEXT("BehaviorWarpHeading", "WARP")).PresetAction(MakeModulePresetButton())
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Warp]()
@@ -2409,7 +2414,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorDeformSourceMenu()
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorDeformHeading", "DEFORM"))
+				.Title(LOCTEXT("BehaviorDeformHeading", "DEFORM")).PresetAction(MakeModulePresetButton())
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Deform]()
@@ -2578,7 +2583,7 @@ TSharedRef<SWidget> SMixtormat::BuildBehaviorFeatherControls()
 			})
 			[
 				SNew(SMixtormatInspectorGroup)
-				.Title(LOCTEXT("BehaviorFeatherTitle", "FEATHER"))
+				.Title(LOCTEXT("BehaviorFeatherTitle", "FEATHER")).PresetAction(MakeModulePresetButton())
 				.InitiallyExpanded(true)
 				.HeaderAction(MixtormatRow::MakeCheckbox(
 					TAttribute<ECheckBoxState>::CreateLambda([Get]()
@@ -2749,7 +2754,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendModuleControls()
         })
         [
             SNew(SMixtormatInspectorGroup)
-            .Title(LOCTEXT("HeightBlendHeading", "HEIGHT BLEND"))
+            .Title(LOCTEXT("HeightBlendHeading", "HEIGHT BLEND")).PresetAction(MakeModulePresetButton())
             .InitiallyExpanded(true)
             .HeaderAction(
                 SNew(SHorizontalBox)
@@ -2831,7 +2836,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 			LOCTEXT("HeightRemapAmountHint", "Blend the remapped result with the untouched running height. Zero bypasses the remap, including normalization."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightCurve() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightRemapHeading", "HEIGHT REMAP")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("HeightRemapHeading", "HEIGHT REMAP")).PresetAction(MakeModulePresetButton()).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
 				TAttribute<ECheckBoxState>::CreateLambda([this]()
@@ -3137,7 +3142,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)
-		.Title(LOCTEXT("MossHeading", "MOSS"))
+		.Title(LOCTEXT("MossHeading", "MOSS")).PresetAction(MakeModulePresetButton())
 		.InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
@@ -3208,7 +3213,7 @@ TSharedRef<SWidget> SMixtormat::BuildMyceliumControls()
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMycelium() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)
-		.Title(LOCTEXT("MyceliumHeading", "MYCELIUM"))
+		.Title(LOCTEXT("MyceliumHeading", "MYCELIUM")).PresetAction(MakeModulePresetButton())
 		.InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
@@ -3357,7 +3362,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 			LOCTEXT("ColorRampIdSeedHint", "Seed for per-region ID random variation."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedHeightColorRamp() ? EVisibility::Visible : EVisibility::Collapsed; })[
-		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ColorRampHeading", "COLOR RAMP")).InitiallyExpanded(true)
+		SNew(SMixtormatInspectorGroup).Title(LOCTEXT("ColorRampHeading", "COLOR RAMP")).PresetAction(MakeModulePresetButton()).InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f,
 				FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0.0f)
@@ -3393,7 +3398,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
 					[
-						SNew(STextBlock).Text(LOCTEXT("ColorRampPresets", "Presets"))
+						SNew(STextBlock).Text(LOCTEXT("ColorRampPresets", "Ramp Presets"))
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f, 2.0f, 0.0f)
 					[
@@ -3590,7 +3595,7 @@ TSharedRef<SWidget> SMixtormat::BuildRockFormationControls()
 		.Visibility_Lambda([this]() { return GetSelectedRockFormation() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("RockFormationHeading", "ROCK FORMATION"))
+			.Title(LOCTEXT("RockFormationHeading", "ROCK FORMATION")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -3753,7 +3758,7 @@ TSharedRef<SWidget> SMixtormat::BuildNoiseControls()
 		[
 			SNew(SMixtormatInspectorGroup)
 			.Title(GetSelectedNoise() && GetSelectedNoise()->NoisePreset == EMixtormatNoisePreset::Flow
-				? LOCTEXT("FlowHeading", "FLOW") : LOCTEXT("NoiseHeading", "NOISE"))
+				? LOCTEXT("FlowHeading", "FLOW") : LOCTEXT("NoiseHeading", "NOISE")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)

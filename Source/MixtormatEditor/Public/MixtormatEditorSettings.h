@@ -87,6 +87,10 @@ public:
 	UPROPERTY(Config)
 	float GalleryDrawerHeight = 0.0f;
 
+	// Relative splitter weights: Materials, Masks, Recipes. Canonical startup proportions.
+	UPROPERTY(Config)
+	FVector GalleryColumnWeights = FVector(0.45, 0.22, 0.33);
+
 	// Persists dismissal of the first-run welcome card across sessions.
 	UPROPERTY(Config)
 	bool bDismissedFirstRunWelcome = false;

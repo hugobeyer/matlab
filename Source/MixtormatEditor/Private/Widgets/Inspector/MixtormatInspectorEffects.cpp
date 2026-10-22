@@ -175,7 +175,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 		.Visibility_Lambda([this]() { return GetSelectedProceduralPeel() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ProcPeelHeading", "PEELING"))
+			.Title(LOCTEXT("ProcPeelHeading", "PEELING")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Cards
@@ -407,7 +407,7 @@ TSharedRef<SWidget> SMixtormat::BuildStainControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("StainHeading", "STAIN TRANSPORT"))
+			.Title(LOCTEXT("StainHeading", "STAIN TRANSPORT")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeFeaturePreviewButton(
@@ -492,7 +492,7 @@ TSharedRef<SWidget> SMixtormat::BuildRunoffControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("RunoffHeading", "RUNOFF"))
+			.Title(LOCTEXT("RunoffHeading", "RUNOFF")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeFeaturePreviewButton(
@@ -575,7 +575,7 @@ TSharedRef<SWidget> SMixtormat::BuildGradeControls()
 		.Visibility_Lambda([this]() { return GetSelectedGrade() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("GradeHeading", "GRADE"))
+			.Title(LOCTEXT("GradeHeading", "GRADE")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Cards
@@ -641,7 +641,7 @@ TSharedRef<SWidget> SMixtormat::BuildFlowWarpControls()
 		.Visibility_Lambda([this]() { return GetSelectedFlowWarp() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("FlowWarpHeading", "FLOW WARP"))
+			.Title(LOCTEXT("FlowWarpHeading", "FLOW WARP")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Cards
@@ -779,7 +779,7 @@ TSharedRef<SWidget> SMixtormat::BuildBreakupControls()
 		.Visibility_Lambda([this]() { return GetSelectedBreakup() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("BreakupHeading", "BREAKUP"))
+			.Title(LOCTEXT("BreakupHeading", "BREAKUP")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeChildOutputPreviewButton(
@@ -886,7 +886,7 @@ TSharedRef<SWidget> SMixtormat::BuildWornEdgesControls()
 		.Visibility_Lambda([this]() { return GetSelectedWornEdges() ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("WornEdgesHeading", "WORN EDGES"))
+			.Title(LOCTEXT("WornEdgesHeading", "WORN EDGES")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeChildOutputPreviewButton(
@@ -957,7 +957,7 @@ TSharedRef<SWidget> SMixtormat::BuildErosionControls()
 		.Visibility_Lambda([this]() { return GetSelectedErosion() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("ErosionHeading", "EROSION"))
+			.Title(LOCTEXT("ErosionHeading", "EROSION")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Cards

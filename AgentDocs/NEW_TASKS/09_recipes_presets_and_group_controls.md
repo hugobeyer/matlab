@@ -1,6 +1,9 @@
 # Recipes, user presets and group controls — implementation plan
 
-Status: planning complete; feature implementation not started.
+Status: partial implementation delivered by Sol/Terra and statically reviewed by the parent agent.
+Ramp/module/recipe storage, module header menus including IDs, closed-group recipe insertion,
+Recipes gallery/discovery and HSV color-ramp conversion are implemented in source.
+D1/D2 group-control/driver decisions remain open. No executable validation. See §10.
 Date: 2026-10-22.
 Evidence: targeted static source review only. No commands, builds, tests or diagnostics run.
 All paths below are relative to the Mixtormat plugin root. New paths are explicitly proposed.
@@ -352,5 +355,316 @@ No automatic migration stubs, fallback stores, duplicate compatibility layers, n
 - [x] Write phased implementation plan with owners and acceptance criteria.
 - [ ] Approve group control ownership (alias versus independent macro).
 - [ ] Approve integer/enum spatial mapping and ramp-driver meaning.
-- [ ] Implement P0–P8 after the affected decisions are resolved.
+- [ ] Finish P0 inventory; implement remaining P1–P8 work (see exact status below).
 - [ ] Obtain permission before executable validation in P9.
+
+## 8. Historical ramp-only handoff — 2026-10-22 (superseded by §9)
+
+The following records the initial delivery only. Use §9 for current implementation status.
+
+This is a **partial delivery**, not completion of the requested feature plan. No shader,
+module preset, recipe or group-control integration is claimed. Existing source was preserved.
+
+| Phase | Actual status |
+|---|---|
+| P0 | Partial: ramp widgets, sanitizers, shared menu/help/style and current Editor dependencies inspected. Full subtype/address/driver capability inventory still outstanding. D1–D3 unchanged. |
+| P1 | Partial: scalar/color user JSON store implemented. Module and recipe payloads, dependency declarations, metadata/category/preview fields and runtime envelope remain unimplemented. |
+| P2 | Not implemented; D1 still requires alias versus independent macro approval. |
+| P3 | Not implemented; D2 still requires integer quantization, enum mapping and ramp-driver meaning. Existing spatial driver execution is unchanged. |
+| P4 | Not implemented. No module header preset dropdowns added. |
+| P5 | Ramp implementation added: shared User Presets menu, typed round-trip, explicit X remap, color horizontal Flip. Existing built-in color presets remain. Runtime/editor acceptance is not executed. |
+| P6 | Not implemented. Existing HSV palette data, inspector and shader readers are unchanged. |
+| P7 | Not implemented. No capture, dependency resolution, identity remapping or insertion added. |
+| P8 | Not implemented. No third gallery column, thumbnails or shipped recipe assets added. |
+| P9 | Targeted source review only. No executable validation, diagnostics, commands or tests. |
+
+### Exact changed-file manifest
+
+All paths relative to the plugin root:
+
+- `Source/MixtormatEditor/Private/Services/MixtormatPresetStore.h` — new typed ramp-store API.
+- `Source/MixtormatEditor/Private/Services/MixtormatPresetStore.cpp` — new JSON encode/decode, validation, list/save/import/export.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatRampEditor.h` — shared preset hooks and error state.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatRampEditor.cpp` — themed preset menus, save-name entry and platform file dialogs.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatColorRamp.h` — color preset hooks and horizontal Flip overrides.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatColorRamp.cpp` — capture/apply and complete-stop horizontal reflection.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatScalarRamp.h` — scalar preset hooks.
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatScalarRamp.cpp` — capture/apply, destination output-range and remapped-spacing checks.
+- `AgentDocs/NEW_TASKS/09_recipes_presets_and_group_controls.md` — exact partial status and review handoff.
+
+### Implemented storage and edit contracts
+
+- One Editor service owns both ramp kinds; canonical Runtime ramp structs remain the payloads.
+- User files resolve through `FPaths::ProjectSavedDir()` to `Mixtormat/Presets/<GUID>.json`.
+  No excluded directory was inspected or edited by the agent; this is the runtime storage path.
+- Schema 1 contains ID, name, kind, X domain, interpolation and typed numeric points/stops.
+- Imports receive a fresh preset ID, enforce the importing ramp type and save without applying.
+- Reads use temporary state, a 64 KiB file limit, depth limit and canonical point capacities.
+- Invalid interpolation, nonfinite values, unsupported ranges and sanitizer-changing scalar
+  endpoint/spacing data are rejected instead of silently corrected.
+- Scalar Y values retain the canonical extended output range. A narrower destination disables
+  application rather than clamping; remapped scalar spacing must remain valid too.
+- User save rejects duplicate same-kind names; all writes reject existing destination files.
+  There is intentionally no overwrite action. Publishing uses a sibling temporary file and move.
+- Different X domains require the separate, explicitly labeled Remap X action. Y/color values
+  and interpolation are preserved. No automatic normalization or fallback store was added.
+- Preset application and Flip reuse begin/change/end edit callbacks, clear stale point selection
+  and leave document/module identities untouched. Existing owners still own undo/dirty/preview.
+  Callback lifecycle and actual undo/redo behavior require in-editor review, not assumed success.
+- Color Flip mirrors complete stops with `X = DomainMin + DomainMax - X`, then sorts/sanitizes.
+  Constant interpolation mirrors stop positions; discontinuities are not guaranteed to equal
+  an exact reflected step function. It does not invert colors or reorder unrelated modules.
+- New menus use `MixtormatMenu::FBuilder`, styled help, canonical styles and layout tokens.
+  Errors appear in save-name menus and the next preset menu/help; graph layout is unchanged.
+- No dependencies, package files, shader declarations or Runtime types were changed.
+
+### Review-sensitive entry points
+
+Line numbers reflect this handoff and may move during parent integration:
+
+- `Services/MixtormatPresetStore.cpp:35` — `Private::Validate`; canonical sanitizer/range rejection.
+- `Services/MixtormatPresetStore.cpp:106` — `Private::Read`; bounded JSON and transactional decode.
+- `Services/MixtormatPresetStore.cpp:197` — `ExportRamp`; no-overwrite temporary-file publication.
+- `Services/MixtormatPresetStore.cpp:255` — `SaveRamp`; naming and project-local storage.
+- `Services/MixtormatPresetStore.cpp:275` — `ImportRamp`; fresh identity and kind validation.
+- `UI/Controls/SMixtormatRampEditor.cpp:24` — `BuildSavePresetMenu`; commit/error handling.
+- `UI/Controls/SMixtormatRampEditor.cpp:50` — `BuildUserPresetMenu`; domain gating and explicit remap.
+- `UI/Controls/SMixtormatColorRamp.cpp:351` — `ApplyStoredPreset`; callback lifecycle.
+- `UI/Controls/SMixtormatColorRamp.cpp:372` — `FlipHorizontally`; complete-stop reflection.
+- `UI/Controls/SMixtormatScalarRamp.cpp:254` — `CanApplyPreset`; destination range/spacing checks.
+- `UI/Controls/SMixtormatScalarRamp.cpp:280` — `ApplyStoredPreset`; scalar domain and edit callbacks.
+
+Editor source paths above are under `Source/MixtormatEditor/Private/`.
+
+### Genuine decisions versus unfinished implementation
+
+- D1 blocks choosing a group-control ownership model, not the remaining independent UI/store work.
+- D2 blocks new integer/enum/ramp spatial evaluation semantics, not ordinary ramp presets.
+- D3 requires explicit resolution for recipes with outside references; no silent foreign GUIDs.
+- Shipping an authored library still requires actual recipe assets and their dependencies.
+- Remaining module presets, HSV replacement and recipe/gallery code are **unfinished work**, not
+  falsely attributed to D1/D2. Parent review must not merge this as completion of the whole plan.
+- Build, Unreal, diagnostics, tests and all other executable validation were explicitly forbidden
+  and were **not run**. Compilation, file dialogs, disk round-trip and undo/preview are unverified.
+
+## 9. Continuation delivery — module presets and closed group recipes
+
+### Current phase status
+
+| Phase | Actual source status |
+|---|---|
+| P0 | Current reflected payloads, identity/remapping owners, history/preview lifecycle and gallery sizing inspected. D1/D2 are still open; neither was used to defer the independent work below. |
+| P1 | Typed module and recipe records and JSON list/save/load/import/export added to the existing store. Uses canonical Runtime payloads, strict reflected types and a common user root. Ramp APIs preserved. No new dependencies or alternate stores. |
+| P2/P3 | Unchanged; no group-macro/alias or integer/enum/ramp-driver semantics chosen. |
+| P4 | Preset menus wired into 20 generator/behavior/height/Boolean top foldouts, eight effect foldouts and six mask/filter foldouts. Existing header actions preserved. Ten IDs-file header hooks remain for Terra/parent to insert as specified below. |
+| P5 | No ramp widgets changed in this continuation. Shared store header extended; store implementation only gains a canonical root getter. Color Ramp consumer header gains module presets and its old built-in menu label becomes “Ramp Presets” to avoid duplicate labels. |
+| P6 | Owned separately by Terra. None of Terra's six conversion files were edited by this continuation. No completion claim is made for that work. |
+| P7 | Group RMB capture, bounded typed JSON persistence, conservative external-reference rejection/reporting, all-GUID remapping in one mapping pass, local height-index rebasing and append insertion added. One isolated undo record; the inserted group is selected. No inclusion/materialization wizard is claimed. |
+| P8 | Third Recipes column, search/category filtering, shared cards, user/shipped badges, import/export/copy actions, refresh and persisted three-way sizing implemented. Shipped JSON discovery added; no actual shipped binary assets, thumbnails or thumbnail-authoring pipeline produced. |
+| P9 | Targeted file reads/searches and static source review only. No commands, builds, tests, diagnostics, Unreal launches or executable validation. |
+
+### Continuation changed-file manifest (23 files)
+
+Paths are relative to the plugin root. This list is **this continuation's** manifest;
+§8 retains the earlier ramp-widget manifest as historical context.
+
+New files:
+
+1. `Source/MixtormatEditor/Private/Services/MixtormatPresetJson.h`
+2. `Source/MixtormatEditor/Private/Services/MixtormatPresetJson.cpp`
+3. `Source/MixtormatEditor/Private/Services/MixtormatPresetStoreDocuments.cpp`
+4. `Source/MixtormatEditor/Private/Services/MixtormatRecipeService.h`
+5. `Source/MixtormatEditor/Private/Services/MixtormatRecipeService.cpp`
+6. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Presets.cpp`
+7. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Recipes.cpp`
+
+Extended existing files:
+
+8. `Source/MixtormatEditor/Private/Services/MixtormatPresetStore.h`
+9. `Source/MixtormatEditor/Private/Services/MixtormatPresetStore.cpp`
+10. `Source/MixtormatEditor/Private/UI/Containers/SMixtormatInspectorGroup.h`
+11. `Source/MixtormatEditor/Private/UI/Containers/SMixtormatInspectorGroup.cpp`
+12. `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp`
+13. `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorEffects.cpp`
+14. `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorMasks.cpp`
+15. `Source/MixtormatEditor/Private/Widgets/SMixtormat.h`
+16. `Source/MixtormatEditor/Private/Widgets/SMixtormat.cpp`
+17. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Library.cpp`
+18. `Source/MixtormatEditor/Private/Widgets/SMixtormat_Shell.cpp`
+19. `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerMenus.cpp`
+20. `Source/MixtormatEditor/Private/Widgets/Gallery/SMixtormatSurfaceCard.h`
+21. `Source/MixtormatEditor/Private/Widgets/Gallery/SMixtormatSurfaceCard.cpp`
+22. `Source/MixtormatEditor/Public/MixtormatEditorSettings.h`
+23. `AgentDocs/NEW_TASKS/09_recipes_presets_and_group_controls.md`
+
+No ramp widget, shader, Runtime model, build/dependency file or binary content was edited.
+`MixtormatPresetStore.cpp` only centralizes the unchanged user root for the new document kinds;
+its existing ramp encoding, menus and application implementation are otherwise untouched.
+
+### Module preset contract
+
+- `FModulePreset` carries a canonical child payload, not a hand-maintained field mirror.
+- Active payload selection covers every current child type except the retired authoring tags.
+- Compatibility checks child type plus Generator Type, resolved Effect Type, Behavior Type or
+  Output Reference field kind where applicable. Subtype selectors remain serialized settings.
+- Only the active payload is exported; child identity, display name, scope, instance endpoints,
+  parameter bindings and separate scoped child modules are never absorbed into a module preset.
+- The parameter-only codec excludes GUIDs, output/parameter addresses, Behavior field sockets,
+  published-source output keys, published output names and the Color Ramp input-source selector.
+  Applying overlays a temporary destination copy, so those destination connections survive.
+- Existing bindings remain bound; applying a preset does not secretly edit an authoritative
+  linked source, break a Follow/Link or add a spatial driver. The menu explains this policy.
+- Save/apply/export are disabled for instances; import only writes the compatible user store.
+  Apply re-resolves its captured stable owner/child address and rechecks type/instance eligibility.
+- All mutations happen after decode/asset checks. Instances are synchronized **before** the
+  post-edit history snapshot. History coalescing is fenced before/after the action; dirty state
+  and preview submission follow the existing workspace owners. Debug target identities are not reset.
+- `PresetAction` is a new additive header slot after existing actions, before reset. Eye/debug/
+  enable controls are not replaced. Boolean Stack receives the top foldout it previously lacked.
+
+### Store, dependency and recipe contract
+
+- Common root: `GetUserPresetDirectory()` resolves the existing project-local Saved user root.
+  Ramps keep their original files; modules use `Modules/*.json`, recipes `Recipes/*.json`.
+- Shipped discovery: `<PluginBase>/Resources/Presets/Modules/*.json` and
+  `<PluginBase>/Resources/Presets/Recipes/*.json`. Discovery is direct-directory, not recursive.
+  Shipped entries are read-only sources; Save User Copy creates a fresh preset identity.
+- To author a shipped recipe, export a validated recipe JSON into that Recipes directory and
+  distribute it with all declared Unreal assets and their transitive dependencies. JSON is not
+  an asset pack. No packaging/cook or installed-distribution validation was run or claimed.
+- Document schema 1 stores ID, kind, name, category, description, direct referenced assets and
+  typed payload. Reflected objects carry exact canonical `$type` names; field/type/schema
+  mismatches, unknown/missing fields, invalid enums and nonfinite numbers are rejected.
+- Reads are bounded at 8 MiB, depth 64 and 4096 elements per array. Ramp payloads that would
+  require canonical sanitizer changes are rejected, not silently truncated or clamped.
+- Soft assets are decoded as paths only. Explicit save/import/apply/insertion validates expected
+  asset classes and availability. Browsing JSON does not render thumbnails or load its assets.
+- Files publish via sibling temporary files with no overwrite. Duplicate user names are rejected;
+  corrupt files are reported without hiding otherwise valid gallery entries.
+- A recipe snapshot contains exactly the group record and its ordered, contiguous member layers,
+  including complete reflected payloads, substrates, group/member bindings and driver settings.
+- Capture reports referenced assets before saving and saves **that same snapshot**. Labels are
+  materialized as displayed text, not imported localization histories/string-table links; the
+  capture UI explicitly states this. Source data is never rewritten.
+- A valid GUID anywhere in the captured authored data must belong to the captured identity set.
+  Owner/child pairs, published-mask pairs, scopes, local source ordering, parameter-reference
+  sources and instance placement are additionally checked. Dormant/disabled outside GUIDs are
+  conservatively rejected too; no field is silently cleared or foreign GUID left looking valid.
+- Live composition sources, outside height references, duplicate identities, noncontiguous
+  membership and an outside first-member Fill Pass Through substrate are rejected with a report.
+- Insertion revalidates the entire temporary recipe and referenced asset classes. One GUID map
+  rewrites group/layer/module identities and every reflected GUID-bearing address together.
+  Height-reference indices are local in the file and offset to the append destination afterwards.
+- Append insertion leaves existing layer indices and group membership unchanged. No global/final
+  settings, source composition link or unrelated layer data is imported or reset.
+- The insertion is one undoable authored mutation, with instance sync before its history snapshot,
+  then standard preview invalidation and selection of the new group. It is not live referencing.
+- Recipes reuse gallery cards with surface dragging explicitly disabled. The shared card default
+  remains unchanged for Materials. Invalid operations report through existing menu/status surfaces.
+- Splitter weights now persist in `UMixtormatEditorSettings`; original columns remain, with
+  token-based minimum widths and wrapped recipe text. No new palette or native tooltip added.
+
+### Terra/parent integration: IDs top header hooks
+
+Do not replace any existing `HeaderAction`. In
+`Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorIds.cpp`, add this single
+argument to each **top** `SNew(SMixtormatInspectorGroup)` chain, immediately after its Title:
+
+```cpp
+.PresetAction(MakeModulePresetButton())
+```
+
+Apply to these ten builders (not their nested cards):
+
+- `BuildColorIdControls` — `ColorIdHeading`
+- `BuildHsvFilterControls` — `HsvFilterHeading`
+- `BuildPatternIdControls` — `PatternIdHeading`
+- `BuildRampIdControls` — `RampIdHeading`
+- `BuildUvIdControls` — `UvIdHeading`
+- `BuildBoundaryIdControls` — `BoundaryIdHeading`
+- `BuildReliefIdControls` — `ReliefIdHeading`
+- `BuildIdGroupControls` — `IdGroupHeading`
+- `BuildRandomIdControls` — `RandomIdHeading`
+- `BuildOutputReferenceControls` — `OutputReferenceHeading`
+
+The store reads the active HSV struct through reflection, so Terra's new canonical fields require
+no palette-specific store branch. Existing saved schema-1 JSON from a different reflected layout
+will be rejected explicitly rather than migrated. Terra's six owned files remain untouched here.
+
+### Review-sensitive functions and remaining limits
+
+Paths below are under `Source/MixtormatEditor/Private/`; line numbers may move during integration.
+
+- `Services/MixtormatPresetJson.cpp:14` — `Included`: parameter-only exclusions/connection preservation.
+- `Services/MixtormatPresetJson.cpp:35` — `TransferValue`: supported field kinds, enum/numeric bounds.
+- `Services/MixtormatPresetJson.cpp:155` — `TransferStruct`: strict schema/type checking and ramp validation.
+- `Services/MixtormatPresetJson.cpp:263` — `ValidateAssetClasses`: explicit-action asset/class validation.
+- `Services/MixtormatPresetStoreDocuments.cpp:97` — `ReadEnvelope`: pre-parser file/depth bounds.
+- `Services/MixtormatPresetStoreDocuments.cpp:148` — `Write`: no-overwrite publication.
+- `Services/MixtormatPresetStoreDocuments.cpp:226` — `CaptureModule`: active typed parameter snapshot.
+- `Services/MixtormatPresetStoreDocuments.cpp:239` — `ApplyModule`: temporary destination overlay.
+- `Services/MixtormatRecipeService.cpp:28` — `Validate`: closed-set and address/placement checks.
+- `Services/MixtormatRecipeService.cpp:131` — `Capture`: exact group closure and local height indices.
+- `Services/MixtormatRecipeService.cpp:166` — `PrepareInsertion`: one GUID map and preflight.
+- `Widgets/SMixtormat_Presets.cpp:90` — `BuildModulePresetMenu`: stable-address actions/history.
+- `Widgets/SMixtormat_Presets.cpp:174` — `BuildRecipeCaptureMenu`: shown snapshot/dependency report.
+- `Widgets/SMixtormat_Presets.cpp:202` — `InsertRecipe`: no document mutation before preflight succeeds.
+- `Widgets/SMixtormat_Recipes.cpp:21` — `RefreshRecipeGallery`: store-only refresh and error reporting.
+- `Widgets/SMixtormat_Recipes.cpp:99` — `BuildRecipeGallery`: third-column filtering and shared controls.
+
+Remaining limits are explicit, not blockers attributed to D1/D2:
+
+- IDs header hooks were subsequently integrated by Terra; see §10 for final integration status.
+- Recipe insertion requires an existing working material. The menu disables insertion otherwise;
+  card clicks report that a material must be created/opened first. No document/history is reset.
+- No thumbnail generation/authoring pipeline or actual shipped library content was supplied.
+- Recipe closure validation is not proof that every GPU field is available for every authored
+  shader configuration. No shader/driver changes or new enum/ramp GPU support are claimed.
+- D1/D2 group exposure/driver choices remain open and are not implemented by these flows.
+- **No executable validation was performed.** Compilation, disk round-trip, platform dialogs,
+  repeated insertion, undo/redo, responsive layout and actual preview results remain unverified.
+
+## 10. Parent review and Terra integration
+
+Current status supersedes the intermediate handoffs in §8–9.
+
+Implemented in source:
+- User JSON presets for modules and scalar/color ramps; explicit import/export and no overwrite.
+- Right-aligned module preset actions on top foldouts, including all ten IDs headers from §9.
+- Color horizontal Flip and explicit cross-domain ramp preset application.
+- HSV From IDs canonical color ramp across Runtime, inspector, gather, render payload and shader.
+- Group RMB capture and independent editable-group insertion with GUID remapping.
+- Third Recipes gallery column, filtering and shipped/user JSON discovery.
+
+Terra's additional changed-file manifest:
+- `Source/MixtormatRuntime/Public/MixtormatIdTypes.h`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorIds.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat.h` (retired palette helper declarations)
+- `Source/MixtormatShaders/Private/Compositing/MixtormatIdGather.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`
+- `Source/MixtormatShaders/Private/MixtormatGpuCompositor.cpp`
+- `Shaders/Private/MixtormatComposite.usf`
+
+Review performed by the parent:
+- Read typed serializer, storage application, recipe capture/validation/remapping/insertion,
+  menu integration, ramp callbacks and gallery construction.
+- Checked existing dependency declarations: DesktopPlatform, Json and Projects already exist.
+- Traced HSV ramp gather/bindings/evaluator and inspected its inspector edit lifecycle.
+- Found and fixed ramp listing failure isolation: one malformed file no longer hides valid
+  entries or blocks unrelated saves. Errors remain visible; invalid files are not changed/deleted.
+- Requested and reviewed Terra's HSV ramp edit lifecycle correction: explicit interactive history
+  hooks plus disabled instance editing and callback-level instance checks.
+- No executable proof is claimed for compilation, storage round-trips, shaders or undo behavior.
+
+Outstanding work:
+- P2: group-exposed controls (alias versus independent group-owned macro is unresolved).
+- P3: integer/enum spatial evaluation and whether ramps are driver transfer functions.
+- Authored shipped recipe content and visual thumbnails; current gallery entries are text cards.
+- Build and in-editor acceptance require explicit permission under repository rules.
+
+Important delivered restrictions:
+- Recipes with external document references are rejected with a report, not silently disconnected.
+- Referenced assets must be installed; JSON does not embed texture/substrate assets.
+- Insertion requires an existing material document.
+- Module presets preserve destination identities, bindings, connections and scoped children.
+- HSV tint defaults to zero so the default black-to-white ramp preserves jitter-only behavior.

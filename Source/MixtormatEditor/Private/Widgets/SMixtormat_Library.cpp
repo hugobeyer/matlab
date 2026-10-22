@@ -78,6 +78,7 @@ FReply SMixtormat::RefreshSurfaceList()
 	RebuildSurfaceList();
 	RebuildUserLibraryList();
 	RebuildMaskList();
+	RefreshRecipeGallery();
 	return FReply::Handled();
 }
 
@@ -605,12 +606,14 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 				.PhysicalSplitterHandleSize(FMixtormatThemeStore::GetResolved().ControlLayout.HairlineThickness)
 				.HitDetectionSplitterHandleSize(FMixtormatThemeStore::GetResolved().ShellLayout.SplitterHitWidth)
 				+ SSplitter::Slot()
-				.Value_Lambda([this]() { return GalleryColumnFraction; })
+				.MinSize(MixtormatTokens::MaterialGalleryTileMinimum + Gallery.TilePadding * 2.0f)
+								.Value_Lambda([this]() { return static_cast<float>(GalleryColumnWeights.X); })
 				.OnSlotResized_Lambda([this](float Value)
 				{
 					if (!bSuppressSplitWriteBack)
 					{
-						GalleryColumnFraction = Value;
+						GalleryColumnWeights.X = Value;
+						PersistGalleryPinState();
 					}
 				})
 				[
@@ -619,9 +622,32 @@ TSharedRef<SWidget> SMixtormat::BuildBottomLibrary()
 					+ SVerticalBox::Slot().FillHeight(1.0f).Padding(Gallery.TilePadding)[BuildSurfaceList()]
 				]
 				+ SSplitter::Slot()
-				.Value_Lambda([this]() { return 1.0f - GalleryColumnFraction; })
+				.MinSize(MixtormatTokens::MaskGalleryTileMinimum + Gallery.TilePadding * 2.0f)
+								.Value_Lambda([this]() { return static_cast<float>(GalleryColumnWeights.Y); })
+				.OnSlotResized_Lambda([this](float Value)
+				{
+					if (!bSuppressSplitWriteBack)
+					{
+						GalleryColumnWeights.Y = Value;
+						PersistGalleryPinState();
+					}
+				})
 				[
 					BuildMaskBar()
+				]
+				+ SSplitter::Slot()
+				.MinSize(MixtormatTokens::MaterialGalleryTileMinimum + Gallery.TilePadding * 2.0f)
+								.Value_Lambda([this]() { return static_cast<float>(GalleryColumnWeights.Z); })
+				.OnSlotResized_Lambda([this](float Value)
+				{
+					if (!bSuppressSplitWriteBack)
+					{
+						GalleryColumnWeights.Z = Value;
+						PersistGalleryPinState();
+					}
+				})
+				[
+					BuildRecipeGallery()
 				]
 			]
 	]

@@ -93,6 +93,12 @@ void SMixtormat::Construct(const FArguments& InArgs)
 	{
 		bGalleryPinned = Settings->bGalleryDrawerPinned;
 		GalleryDrawerHeight = Settings->GalleryDrawerHeight;
+		GalleryColumnWeights = Settings->GalleryColumnWeights;
+		if (GalleryColumnWeights.ContainsNaN() || GalleryColumnWeights.GetMin() <= 0.0)
+		{
+			GalleryColumnWeights = FVector::OneVector;
+		}
+		GalleryColumnWeights /= GalleryColumnWeights.X + GalleryColumnWeights.Y + GalleryColumnWeights.Z;
 		bBottomLibraryCollapsed = !bGalleryPinned;
 		bWelcomeCardVisible = !Settings->bDismissedFirstRunWelcome;
 	}

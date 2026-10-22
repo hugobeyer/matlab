@@ -13,6 +13,7 @@
 void SMixtormatSurfaceCard::Construct(const FArguments& InArgs)
 {
 	DisplayName = InArgs._DisplayName;
+	bAllowSurfaceDrag = InArgs._AllowSurfaceDrag;
 	SurfacePath = InArgs._SurfacePath;
 	ThumbnailAsset = InArgs._ThumbnailAsset;
 	ThumbnailPool = InArgs._ThumbnailPool;
@@ -79,7 +80,9 @@ FReply SMixtormatSurfaceCard::OnPreviewMouseButtonDown(
 		{
 			OnSelected.Execute(DisplayName, SurfacePath);
 		}
-		return FReply::Handled().DetectDrag(SharedThis(this), EKeys::LeftMouseButton);
+		return bAllowSurfaceDrag
+					? FReply::Handled().DetectDrag(SharedThis(this), EKeys::LeftMouseButton)
+					: FReply::Handled();
 	}
 	return SCompoundWidget::OnPreviewMouseButtonDown(MyGeometry, MouseEvent);
 }
@@ -94,6 +97,7 @@ FReply SMixtormatSurfaceCard::OnDragDetected(
 	const FGeometry& MyGeometry,
 	const FPointerEvent& MouseEvent)
 {
+	if (!bAllowSurfaceDrag) { return FReply::Unhandled(); }
 	return FReply::Handled().BeginDragDrop(
 		FMixtormatSurfaceDragDropOp::New(
 			DisplayName,

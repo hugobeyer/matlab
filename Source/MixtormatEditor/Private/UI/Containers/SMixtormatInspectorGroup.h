@@ -43,6 +43,8 @@ public:
 		// Anything the group wants in its header: a preview eye, a toggle. An argument rather than
 		// a named slot, so a caller can pass a widget it built conditionally.
 		SLATE_ARGUMENT(TSharedPtr<SWidget>, HeaderAction)
+					// Parameter presets join the top module header without replacing eye/debug actions.
+					SLATE_ARGUMENT(TSharedPtr<SWidget>, PresetAction)
 
 		// Bound: a reset control appears last and right-aligned, in the same place in every group.
 		SLATE_EVENT(FSimpleDelegate, OnReset)

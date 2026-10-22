@@ -1026,6 +1026,7 @@ void SMixtormat::PersistGalleryPinState()
 	UMixtormatEditorSettings* Settings = GetMutableDefault<UMixtormatEditorSettings>();
 	Settings->bGalleryDrawerPinned = bGalleryPinned;
 	Settings->GalleryDrawerHeight = GalleryDrawerHeight;
+	Settings->GalleryColumnWeights = GalleryColumnWeights;
 	Settings->SaveConfig();
 }
 

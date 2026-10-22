@@ -333,8 +333,45 @@ namespace MixtormatColorRampPresets
 	}
 }
 
+MixtormatPresetStore::FRampPreset SMixtormatColorRamp::CapturePreset() const
+{
+	MixtormatPresetStore::FRampPreset Preset;
+	Preset.Kind = MixtormatPresetStore::ERampKind::Color;
+	Preset.DomainMin = DomainMin;
+	Preset.DomainMax = DomainMax;
+	Preset.Color = RampAttribute.Get(Ramp);
+	return Preset;
+}
+
+bool SMixtormatColorRamp::CanApplyPreset(const MixtormatPresetStore::FRampPreset& Preset) const
+{
+	return OnChanged.IsBound() && Preset.Kind == MixtormatPresetStore::ERampKind::Color;
+}
+
+void SMixtormatColorRamp::ApplyStoredPreset(const MixtormatPresetStore::FRampPreset& Preset, const bool bRemapDomain)
+{
+	const TSharedRef<SMixtormatColorRamp> KeepAlive = SharedThis(this);
+	if (!CanApplyPreset(Preset) || (!bRemapDomain
+		&& (Preset.DomainMin != DomainMin || Preset.DomainMax != DomainMax))) { return; }
+	FMixtormatColorRamp Replacement = Preset.Color;
+	if (bRemapDomain)
+	{
+		for (FMixtormatColorRampStop& Stop : Replacement.Stops)
+		{
+			Stop.X = FMath::Lerp(DomainMin, DomainMax, (Stop.X - Preset.DomainMin) / (Preset.DomainMax - Preset.DomainMin));
+		}
+	}
+	OnBeginInteractiveEdit.ExecuteIfBound();
+	Ramp = MoveTemp(Replacement);
+	DragPoint = SelectedPoint = HoverPoint = INDEX_NONE;
+	NotifyEdit(true);
+	OnEndInteractiveEdit.ExecuteIfBound();
+	RebuildChrome();
+}
+
 void SMixtormatColorRamp::FlipHorizontally()
 {
+	const TSharedRef<SMixtormatColorRamp> KeepAlive = SharedThis(this);
 	OnBeginInteractiveEdit.ExecuteIfBound();
 	const float MirrorSum = DomainMin + DomainMax;
 	for (FMixtormatColorRampStop& Stop : Ramp.Stops)

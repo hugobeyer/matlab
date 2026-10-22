@@ -337,7 +337,7 @@ TSharedRef<SWidget> SMixtormat::BuildRegionFilterPanel(const bool bSurfaceIds)
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(bSurfaceIds ? LOCTEXT("SurfaceIdsHeading", "SURFACE IDS") : LOCTEXT("ClusterFilterHeading", "CLUSTER IDS"))
+			.Title(bSurfaceIds ? LOCTEXT("SurfaceIdsHeading", "SURFACE IDS") : LOCTEXT("ClusterFilterHeading", "CLUSTER IDS")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -533,7 +533,7 @@ TSharedRef<SWidget> SMixtormat::BuildCraquelureControls()
 		.Visibility_Lambda([this]() { return GetSelectedCraquelure() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("CraquelureHeading", "CRAQUELURE"))
+			.Title(LOCTEXT("CraquelureHeading", "CRAQUELURE")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				MakeFeaturePreviewButton(
@@ -897,7 +897,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 		.Visibility_Lambda([this]() { return GetSelectedGeneratedMask() != nullptr ? EVisibility::Visible : EVisibility::Collapsed; })
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("GeneratedMaskHeading", "GENERATED MASK"))
+			.Title(LOCTEXT("GeneratedMaskHeading", "GENERATED MASK")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)
@@ -1076,7 +1076,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskCurvatureControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("MaskCurvatureHeading", "CURVATURE"))
+			.Title(LOCTEXT("MaskCurvatureHeading", "CURVATURE")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Panel
@@ -1434,7 +1434,7 @@ TSharedRef<SWidget> SMixtormat::BuildBlurControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("MaskBlurHeading", "BLUR"))
+			.Title(LOCTEXT("MaskBlurHeading", "BLUR")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			[
 				Panel
@@ -1725,7 +1725,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerMaskControls()
 		})
 		[
 			SNew(SMixtormatInspectorGroup)
-			.Title(LOCTEXT("LayerMaskHeading", "MASK"))
+			.Title(LOCTEXT("LayerMaskHeading", "MASK")).PresetAction(MakeModulePresetButton())
 			.InitiallyExpanded(true)
 			.HeaderAction(
 				SNew(SHorizontalBox)

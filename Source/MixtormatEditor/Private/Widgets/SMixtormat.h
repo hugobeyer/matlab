@@ -21,6 +21,7 @@
 
 // Declared, not included: only a reference to the builder crosses this header.
 namespace MixtormatMenu { class FBuilder; }
+namespace MixtormatPresetStore { struct FRecipePreset; }
 
 class FAssetThumbnail;
 class FAssetThumbnailPool;
@@ -542,10 +543,6 @@ private:
 	FMixtormatHsvIdFilter* GetSelectedHsvFilter();
 	const FMixtormatHsvIdFilter* GetSelectedHsvFilter() const;
 	TSharedRef<SWidget> BuildHsvFilterControls();
-	FReply AddHsvPaletteEntry();
-	FReply RemoveHsvPaletteEntry(int32 ColorIndex);
-	FReply OpenHsvPalettePicker(int32 ColorIndex);
-	void SetHsvPaletteColor(FLinearColor NewColor, int32 LayerIndex, int32 ChildIndex, int32 ColorIndex);
 
 	FReply AddPatternIdToLayer(int32 LayerIndex);
 	FMixtormatPatternFilter* GetSelectedPatternId();
@@ -804,6 +801,16 @@ private:
 
 	TSharedRef<SWidget> BuildLayerGroupRow(FGuid GroupId);
 	TSharedRef<SWidget> BuildLayerGroupContextMenu(FGuid GroupId);
+	TSharedRef<SWidget> MakeModulePresetButton();
+	TSharedRef<SWidget> BuildModulePresetMenu();
+	TSharedRef<SWidget> BuildRecipeCaptureMenu(FGuid GroupId);
+	TSharedRef<SWidget> BuildRecipeGallery();
+	void RebuildRecipeGallery();
+	void RefreshRecipeGallery();
+	FReply InsertRecipe(const FString& Filename);
+	TSharedRef<SWidget> BuildRecipeGalleryActions();
+	TSharedRef<SWidget> BuildRecipeEntryMenu(FString Filename);
+	void ImportRecipeJson();
 	// Editor-only tagging: the compositor never reads a group's colour, so this asks for no
 	// recomposite -- only a rebuild of the rows that draw it.
 	FReply SetLayerGroupAccentColor(FGuid GroupId, FLinearColor AccentColor);
@@ -1689,7 +1696,12 @@ private:
 	// Unpinned starts collapsed; pin restores open + height from editor settings.
 	bool bBottomLibraryCollapsed = true;
 	float GalleryDrawerHeight = 0.0f;
-	float GalleryColumnFraction = 0.67f;
+	FVector GalleryColumnWeights = FVector::OneVector;
+	TSharedPtr<SVerticalBox> RecipeListBox;
+	FString RecipeSearchText;
+	FString RecipeCategoryFilter;
+	TArray<TSharedPtr<MixtormatPresetStore::FRecipePreset>> RecipeEntries;
+	FText RecipeGalleryError;
 	bool bGalleryDrawerResizing = false;
 	bool bGalleryDrawerResizeMoved = false;
 	float GalleryDrawerHeightAtResizeStart = 0.0f;

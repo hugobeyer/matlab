@@ -241,6 +241,67 @@ void SMixtormatScalarRamp::OnRampEdited(const bool bInteractive)
 	OnChanged.ExecuteIfBound(Ramp);
 }
 
+MixtormatPresetStore::FRampPreset SMixtormatScalarRamp::CapturePreset() const
+{
+	MixtormatPresetStore::FRampPreset Preset;
+	Preset.Kind = MixtormatPresetStore::ERampKind::Scalar;
+	Preset.Scalar = RampAttribute.Get(Ramp);
+	Preset.DomainMin = Preset.Scalar.DomainMin;
+	Preset.DomainMax = Preset.Scalar.DomainMax;
+	return Preset;
+}
+
+bool SMixtormatScalarRamp::CanApplyPreset(const MixtormatPresetStore::FRampPreset& Preset) const
+{
+	if (!OnChanged.IsBound() || Preset.Kind != MixtormatPresetStore::ERampKind::Scalar) { return false; }
+	for (const FMixtormatScalarRampPoint& Point : Preset.Scalar.Points)
+	{
+		if (Point.Y < ExtendedYMin || Point.Y > ExtendedYMax) { return false; }
+	}
+	FMixtormatScalarRamp Candidate = Preset.Scalar;
+	if (Preset.DomainMin != DomainMin || Preset.DomainMax != DomainMax)
+	{
+		for (FMixtormatScalarRampPoint& Point : Candidate.Points)
+		{
+			Point.X = FMath::Lerp(DomainMin, DomainMax, (Point.X - Preset.DomainMin) / (Preset.DomainMax - Preset.DomainMin));
+		}
+		Candidate.DomainMin = DomainMin;
+		Candidate.DomainMax = DomainMax;
+	}
+	FMixtormatScalarRamp Sanitized = Candidate;
+	Sanitized.Sanitize();
+	for (int32 Index = 0; Index < Candidate.Points.Num(); ++Index)
+	{
+		if (Sanitized.Points[Index].X != Candidate.Points[Index].X) { return false; }
+	}
+	return true;
+}
+
+void SMixtormatScalarRamp::ApplyStoredPreset(const MixtormatPresetStore::FRampPreset& Preset, const bool bRemapDomain)
+{
+	const TSharedRef<SMixtormatScalarRamp> KeepAlive = SharedThis(this);
+	if (!CanApplyPreset(Preset) || (!bRemapDomain
+		&& (Preset.DomainMin != DomainMin || Preset.DomainMax != DomainMax))) { return; }
+	FMixtormatScalarRamp Replacement = Preset.Scalar;
+	if (bRemapDomain)
+	{
+		for (FMixtormatScalarRampPoint& Point : Replacement.Points)
+		{
+			Point.X = FMath::Lerp(DomainMin, DomainMax, (Point.X - Preset.DomainMin) / (Preset.DomainMax - Preset.DomainMin));
+		}
+		Replacement.DomainMin = DomainMin;
+		Replacement.DomainMax = DomainMax;
+	}
+	OnBeginInteractiveEdit.ExecuteIfBound();
+	Ramp = MoveTemp(Replacement);
+	EscapeArms.Init(EEscapeArm::None, Ramp.Points.Num());
+	DragPoint = SelectedPoint = HoverPoint = INDEX_NONE;
+	bAutoZoom = true;
+	FrameCurve();
+	NotifyEdit(true);
+	OnEndInteractiveEdit.ExecuteIfBound();
+}
+
 void SMixtormatScalarRamp::FlipHorizontally()
 {
 	OnBeginInteractiveEdit.ExecuteIfBound();

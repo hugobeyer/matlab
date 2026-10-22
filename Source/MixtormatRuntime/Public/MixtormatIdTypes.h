@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MixtormatColorRamp.h"
 #include "MixtormatMaskTypes.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatIdTypes.generated.h"
@@ -152,31 +153,23 @@ struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
 {
 	GENERATED_BODY()
 
-	// Same cap and same reason as FMixtormatColorIdMask::MaxColors: a fixed constant array in the
-	// shader and a fixed set of rows in the inspector, both of which have to agree with this.
-	static constexpr int32 MaxPaletteColors = 8;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs")
 	bool bEnabled = true;
 
-	// The palette regions draw from, sampled as a ramp: entries are evenly spaced stops and a
-	// region lands anywhere between two of them.
-	//
-	// This is the half that matters, and it is what pure HSV jitter cannot do. Jitter can only
-	// wander from wherever the texture already sits; a palette lets the variation be *aimed* --
-	// brick reds through ochres, or the green-to-grey of weathered copper -- and then jittered
-	// around that. Empty means no tint, and the jitter rows below still apply.
+	// Regions sample this shared colour ramp from their existing deterministic ID random signal.
+	// The default black-to-white ramp is deliberately inert because the tint range defaults to
+	// zero; use matching-colour stops for a flat tint.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs")
-	TArray<FLinearColor> Palette;
+	FMixtormatColorRamp ColorRamp;
 
 	// How far a region tints toward the colour it sampled, as a random amount in this range.
 	// A range rather than one number so most regions can sit near the texture's own colour with
-	// a few pulled much further toward the palette.
+	// a few pulled much further toward the ramp.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float RampMixMin = 0.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float RampMixMax = 0.15f;
+	float RampMixMax = 0.0f;
 
 	// -- Jitter ---------------------------------------------------------------------------------
 	// Min/max pairs rather than a single +/- amount, so variation can be *biased*: hue 0 to 0.1
@@ -205,9 +198,8 @@ struct MIXTORMATRUNTIME_API FMixtormatHsvIdFilter
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs|Jitter", meta = (UIMin = "0.0", UIMax = "4.0"))
 	float ValueMax = 1.0f;
 
-	// Reshuffles which region gets which colour without changing the ranges. Five decorrelated
-	// randoms come off one hash of the ID and this seed -- palette position, tint amount, hue,
-	// saturation and value -- so moving it moves all five together.
+	// Reshuffles the ramp position, tint amount and jitter without changing their ranges. Five
+	// decorrelated randoms come off one hash of the ID and this seed, so they move together.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HSV From IDs", meta = (UIMin = "0"))
 	int32 Seed = 1;
 };

@@ -9,6 +9,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatDebugModes.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatHeightOps.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
 
 Texture2D<float4> PreviousBC;
 Texture2D<float4> PreviousN;
@@ -55,9 +56,10 @@ Texture2D<float> RegionTintMask;
 uint RegionTintEnabled;
 uint UseRegionTintMask;
 uint RegionSeed;
-#define MIXTORMAT_MAX_REGION_PALETTE 8
-float4 RegionPalette[MIXTORMAT_MAX_REGION_PALETTE];
-int RegionPaletteCount;
+uint RegionRampStopCount;
+uint RegionRampInterpolation;
+float4 RegionRampPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 RegionRampColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float RegionMixMin;
 float RegionMixMax;
 float RegionHueMin;
@@ -322,16 +324,11 @@ float3 HSVToRGB(float3 HSV)
 	return HSV.z * lerp(float3(1.0f, 1.0f, 1.0f), RGB, HSV.y);
 }
 
-// Per-region colour variation, from the ID map. Two stages, and the first is the one that
-// matters: each region samples a colour out of the authored palette and blends toward it by a
-// random amount, then hue/saturation/value jitter goes on top.
+// Per-region colour variation, from the ID map. A deterministic ID random samples the authored
+// shared colour ramp and blends toward it before hue/saturation/value jitter goes on top.
 //
-// The palette is what pure jitter cannot do. Jitter can only wander from wherever the texture
-// already sits; a palette lets the variation be aimed somewhere chosen and then jittered around
-// that -- brick reds through ochres rather than a random walk away from one red.
-//
-// Five decorrelated draws come off one region seed with five salts: palette position, tint
-// amount, hue, saturation, value. One hash, five constants.
+// Five decorrelated draws come off one region seed with five salts: ramp position, tint amount,
+// hue, saturation, value. One hash, five constants.
 float3 ApplyRegionVariation(float3 RGB, uint2 Pixel)
 {
 	if (RegionTintEnabled == 0)
@@ -350,16 +347,11 @@ float3 ApplyRegionVariation(float3 RGB, uint2 Pixel)
 	const uint Seeded = MixtormatRegionSeed(RegionId, RegionSeed);
 	float3 Tinted = RGB;
 
-	if (RegionPaletteCount > 0)
+	if (RegionRampStopCount >= 2u)
 	{
-		// Evenly spaced stops. A single entry is a flat colour rather than a degenerate ramp.
 		const float RampT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_RAMP);
-		const float Position = RampT * float(max(RegionPaletteCount - 1, 0));
-		const int Lower = clamp((int)floor(Position), 0, RegionPaletteCount - 1);
-		const int Upper = min(Lower + 1, RegionPaletteCount - 1);
-		const float3 Sampled = lerp(
-			RegionPalette[Lower].rgb, RegionPalette[Upper].rgb, saturate(Position - float(Lower)));
-
+		const float3 Sampled = MixtormatEvalColorRamp(RampT, RegionRampStopCount,
+			RegionRampInterpolation, RegionRampPositions, RegionRampColors).rgb;
 		const float MixT = MixtormatRegionRandomSalted(Seeded, MIXTORMAT_SALT_MIX);
 		Tinted = lerp(RGB, Sampled, saturate(RegionMixMin + (RegionMixMax - RegionMixMin) * MixT));
 	}

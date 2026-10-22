@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Services/MixtormatPresetStore.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Styling/SlateBrush.h"
@@ -93,7 +94,16 @@ protected:
 	virtual float GetInputViewYMin() const { return GetViewYMin(); }
 	virtual float GetInputViewYMax() const { return GetViewYMax(); }
 	virtual void FrameView() {}
-	// Scalar ramps can add point-reflection and semantic inversion without changing color ramps.
+	virtual MixtormatPresetStore::FRampPreset CapturePreset() const = 0;
+		virtual bool CanApplyPreset(const MixtormatPresetStore::FRampPreset& Preset) const = 0;
+		virtual void ApplyStoredPreset(const MixtormatPresetStore::FRampPreset& Preset, bool bRemapDomain) = 0;
+		TSharedRef<SWidget> BuildUserPresetMenu();
+		TSharedRef<SWidget> BuildSavePresetMenu();
+		void ImportUserPreset();
+		void ExportUserPreset();
+		FText PresetError;
+
+		// Horizontal reflection is independent of scalar semantic inversion.
 	virtual bool SupportsHorizontalFlip() const { return false; }
 	virtual void FlipHorizontally() {}
 	virtual bool HasInvertControl() const { return false; }

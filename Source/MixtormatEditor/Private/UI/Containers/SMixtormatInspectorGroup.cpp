@@ -209,6 +209,15 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 		];
 	}
 
+	if (InArgs._PresetAction.IsValid())
+	{
+		Header->AddSlot().AutoWidth().VAlign(VAlign_Center)
+		.Padding(MixtormatTokens::FoldoutHeaderGap, 0.0f, 0.0f, 0.0f)
+		[
+			InArgs._PresetAction.ToSharedRef()
+		];
+	}
+
 	// Reset is always last and right-aligned, so its position never shifts between groups.
 	if (InArgs._OnReset.IsBound())
 	{

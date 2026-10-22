@@ -18,10 +18,11 @@ class SMenuAnchor;
 class SMixtormatSurfaceCard final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatSurfaceCard) {}
+	SLATE_BEGIN_ARGS(SMixtormatSurfaceCard) : _AllowSurfaceDrag(true) {}
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 		SLATE_NAMED_SLOT(FArguments, HoverContent)
 		SLATE_ARGUMENT(FText, DisplayName)
+				SLATE_ARGUMENT(bool, AllowSurfaceDrag)
 		SLATE_ARGUMENT(FSoftObjectPath, SurfacePath)
 		SLATE_ARGUMENT(FAssetData, ThumbnailAsset)
 		SLATE_ARGUMENT(TSharedPtr<FAssetThumbnailPool>, ThumbnailPool)
@@ -42,6 +43,7 @@ public:
 
 private:
 	FText DisplayName;
+	bool bAllowSurfaceDrag = true;
 	FSoftObjectPath SurfacePath;
 	FAssetData ThumbnailAsset;
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
