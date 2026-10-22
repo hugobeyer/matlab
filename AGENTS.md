@@ -5,6 +5,10 @@ subsystem doc and the right files; it is not the full manual.
 
 # IMPORTANT
 
+- **Do not spend tokens on code reviews or review-only subagents unless explicitly requested.**
+- **The user handles compilation and testing. Do not duplicate that work with unsolicited validation.**
+- Read only the context needed to implement the requested change, then report it concisely.
+
 Minimize token consumption. Read only files necessary for the requested change if it was specified. Avoid repeated repository-wide searches, unnecessary explanations, and redundant tool calls. Preserve existing features or suggest necessities. When the request was literal, implement the task completely and report only modified files and essential findings.
 
 ## Code Reuse — Recommended Practices
