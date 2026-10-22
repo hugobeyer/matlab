@@ -1,7 +1,8 @@
 """Inspect/upgrade a DUPLICATE Mixtormat shared master in Unreal Editor 5.8.
 
-No work runs on import. See upgrade_surface_optics.md for explicit invocations.
-Only save_upgrade() saves. No source master, settings, functions or instances are edited.
+No work runs on import. Execute this file in Unreal to open the upgrade dialog.
+Only save_upgrade() saves, after explicit confirmation in the interactive workflow.
+No source master, settings, functions or instances are edited.
 """
 
 import json
@@ -573,3 +574,96 @@ def save_upgrade(path, *, editor_changes_applied=False):
     unreal.log(f"Saved duplicate only: {material.get_path_name()}. "
                "Original master, project settings and all material parents are unchanged.")
     return material
+
+
+_interactive_options_type = None
+
+
+def run_interactive():
+    """Pick assets, upgrade a duplicate, and ask separately before saving it."""
+    global _interactive_options_type
+    if _interactive_options_type is None:
+        @unreal.uclass()
+        class MixtormatOpticsUpgradeOptions(unreal.Object):
+            master = unreal.uproperty(unreal.Material, meta={
+                "Category": "Master", "DisplayName": "Source Master (unchanged)"})
+            destination = unreal.uproperty(str, meta={
+                "Category": "Master", "DisplayName": "Duplicate Package Path"})
+            optics = unreal.uproperty(unreal.Texture2D, meta={
+                "Category": "Baked Optical Maps", "DisplayName": "Optics (F0, Fuzz, Roughness, SSS)"})
+            fuzz_color = unreal.uproperty(unreal.Texture2D, meta={
+                "Category": "Baked Optical Maps", "DisplayName": "Fuzz Color"})
+            subsurface = unreal.uproperty(unreal.Texture2D, meta={
+                "Category": "Baked Optical Maps", "DisplayName": "Subsurface (MFP in cm)"})
+            editor_changes_applied = unreal.uproperty(bool, meta={
+                "Category": "Confirm", "DisplayName": "I Applied and Closed Material Editor Edits"})
+
+        _interactive_options_type = MixtormatOpticsUpgradeOptions
+
+    options = unreal.new_object(_interactive_options_type)
+    selected = [asset for asset in unreal.EditorUtilityLibrary.get_selected_assets()
+                if isinstance(asset, unreal.Material)]
+    if len(selected) == 1:
+        options.set_editor_property("master", selected[0])
+    options.set_editor_property("destination", "/Game/MixtormatOptics/M_Mixtormat_SurfaceOptics")
+    options.set_editor_property("editor_changes_applied", False)
+
+    while unreal.EditorDialog.show_object_details_view(
+            "Add Mixtormat Optical Nodes - Choose Master and Three Baked Maps", options):
+        try:
+            source = options.get_editor_property("master")
+            _require(isinstance(source, unreal.Material), "Choose your source Substrate master.")
+            paths = {}
+            for parameter, field in zip(TEXTURES, ("optics", "fuzz_color", "subsurface")):
+                texture = options.get_editor_property(field)
+                _require(isinstance(texture, unreal.Texture2D),
+                         f"Choose the baked {parameter} texture. If you have no optical maps yet, "
+                         "bake once in Mixtormat using the current Default master first.")
+                paths[parameter] = texture.get_path_name()
+            _require(options.get_editor_property("editor_changes_applied"),
+                     "Apply and close pending Material Editor edits, then tick the confirmation.")
+            destination = options.get_editor_property("destination").strip()
+            _api()
+            _require_shared_parameters(source)
+            _textures(paths)
+        except Exception as error:
+            unreal.log_error(str(error))
+            unreal.EditorDialog.show_message("Mixtormat - Check Upgrade Inputs", str(error), unreal.AppMsgType.OK)
+            continue
+
+        try:
+            duplicate_master(source.get_path_name(), destination)
+            material = upgrade_duplicate(destination, paths, editor_changes_applied=True)
+        except Exception as error:
+            unreal.log_error(str(error))
+            unreal.EditorDialog.show_message("Mixtormat - Upgrade Stopped", str(error), unreal.AppMsgType.OK)
+            return None
+
+        save = unreal.EditorDialog.show_message(
+            "Mixtormat - Nodes Added and Wired",
+            f"Optical nodes were added/verified on:\n{material.get_path_name()}\n\n"
+            "Unreal reported no compiler errors. Visual quality and renderer support are not verified.\n"
+            "Your original master and renderer settings are unchanged.\n\n"
+            "Save this upgraded duplicate now?",
+            unreal.AppMsgType.YES_NO, default_value=unreal.AppReturnType.NO)
+        if save == unreal.AppReturnType.YES:
+            try:
+                save_upgrade(destination, editor_changes_applied=True)
+            except Exception as error:
+                unreal.log_error(str(error))
+                unreal.EditorDialog.show_message("Mixtormat - Save Failed", str(error), unreal.AppMsgType.OK)
+                return material
+
+        unreal.EditorDialog.show_message(
+            "Mixtormat - Select the Upgraded Master",
+            f"Use {destination} as your shared master.\n\n"
+            "Live preview: Editor Preferences > Plugins > Mixtormat > Preview > Layer Preview Master.\n"
+            "Baking: choose the same material as the Custom master.\n\n"
+            "These selections were not changed automatically.\n\n" + RENDERER_WARNING,
+            unreal.AppMsgType.OK)
+        return material
+    return None
+
+
+if __name__ == "__main__":
+    run_interactive()

@@ -205,19 +205,8 @@ namespace
 			FilamentWidth.HardMax = 0.25f;
 			Add(ET::Generator, TEXT("FilamentWidth"), FilamentWidth);
 
-			// Only semantic bounds here; ergonomic ranges live on FMixtormatSkin.
-			FMixtormatParameterContract SkinUnit;
-			SkinUnit.HardMin = 0.0f;
-			SkinUnit.HardMax = 1.0f;
-			for (const TCHAR* Name : {TEXT("Amount"), TEXT("Fullness"), TEXT("Softness"),
-				TEXT("Compression"), TEXT("Tension"), TEXT("Crossing"), TEXT("TissueCoupling"),
-				TEXT("PoreVariation"), TEXT("Grain"), TEXT("PigmentVariation"), TEXT("CavityAO"),
-				TEXT("FuzzAmount"), TEXT("FuzzRoughness"), TEXT("SSSAmount"),
-				TEXT("Bending"), TEXT("Support"), TEXT("DirectionVariation"), TEXT("Cellular"),
-				TEXT("ThicknessVariation"), TEXT("VascularAmount")})
-			{
-				Add(ET::Surfacing, Name, SkinUnit);
-			}
+			// Only true runtime/dispatch/divisor safety bounds live here; UI/JSON authoring owns clamping.
+			Add(ET::Surfacing, TEXT("Amount"), Saturated());
 			FMixtormatParameterContract SkinIterations;
 			SkinIterations.HardMin = 0.0f;
 			SkinIterations.HardMax = float(FMixtormatSkin::MaxSolverIterations);
@@ -226,43 +215,33 @@ namespace
 			SkinResolution.HardMin = float(FMixtormatSkin::MinSolverResolution);
 			SkinResolution.HardMax = float(FMixtormatSkin::MaxSolverResolution);
 			Add(ET::Surfacing, TEXT("SolverResolution"), SkinResolution);
-			FMixtormatParameterContract SkinDrift;
-			SkinDrift.HardMin = 0.0f;
-			SkinDrift.HardMax = 3.0f;
-			Add(ET::Surfacing, TEXT("MarbleDrift"), SkinDrift);
-			FMixtormatParameterContract SkinWarpScale;
-			SkinWarpScale.HardMin = 0.125f;
-			SkinWarpScale.HardMax = 8.0f;
-			Add(ET::Surfacing, TEXT("WarpScale"), SkinWarpScale);
-			FMixtormatParameterContract SkinPoreSize;
-			SkinPoreSize.HardMin = 0.25f;
-			SkinPoreSize.HardMax = 3.0f;
-			Add(ET::Surfacing, TEXT("PoreSize"), SkinPoreSize);
 			FMixtormatParameterContract SkinWarpLayers;
-			SkinWarpLayers.HardMin = 1.0f;
+			SkinWarpLayers.HardMin = 0.0f;
 			SkinWarpLayers.HardMax = float(FMixtormatSkin::MaxWarpLayers);
 			Add(ET::Surfacing, TEXT("WarpLayers"), SkinWarpLayers);
-			FMixtormatParameterContract SkinElongation;
-			SkinElongation.HardMin = 1.0f;
-			SkinElongation.HardMax = 8.0f;
-			Add(ET::Surfacing, TEXT("Elongation"), SkinElongation);
 			FMixtormatParameterContract PositivePeriod;
 			PositivePeriod.HardMin = 1.0f;
 			for (const TCHAR* Name : {TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"),
-				TEXT("PoreCells"), TEXT("DetailTiling"), TEXT("IOR")})
+				TEXT("PoreCells"), TEXT("DetailTiling"), TEXT("Elongation"), TEXT("IOR")})
 			{
 				Add(ET::Surfacing, Name, PositivePeriod);
 			}
-			FMixtormatParameterContract NonNegative;
-			NonNegative.HardMin = 0.0f;
-			for (const TCHAR* Name : {TEXT("FoldDepth"), TEXT("FoldWidth"), TEXT("CurvatureRadius"),
-				TEXT("CurvatureStrength"), TEXT("PoreDepth"), TEXT("CavityRoughness")})
+			FMixtormatParameterContract SkinDivisor;
+			SkinDivisor.HardMin = DivisorFloor;
+			for (const TCHAR* Name : {TEXT("WarpScale"), TEXT("PoreSize"), TEXT("FoldWidth"), TEXT("CurvatureRadius")})
 			{
-				Add(ET::Surfacing, Name, NonNegative);
+				Add(ET::Surfacing, Name, SkinDivisor);
 			}
-			Add(ET::Surfacing, TEXT("Seed"), {});
-			Add(ET::Surfacing, TEXT("HeightScale"), {});
-			Add(ET::Surfacing, TEXT("Direction"), {});
+			for (const TCHAR* Name : {TEXT("Seed"), TEXT("HeightScale"), TEXT("Fullness"), TEXT("Softness"),
+				TEXT("Compression"), TEXT("Tension"), TEXT("FoldDepth"), TEXT("Direction"),
+				TEXT("Crossing"), TEXT("TissueCoupling"), TEXT("MarbleDrift"), TEXT("DirectionVariation"),
+				TEXT("Cellular"), TEXT("CurvatureStrength"), TEXT("PoreDepth"), TEXT("PoreVariation"),
+				TEXT("Grain"), TEXT("PigmentVariation"), TEXT("ThicknessVariation"), TEXT("VascularAmount"),
+				TEXT("CavityAO"), TEXT("CavityRoughness"), TEXT("FuzzAmount"), TEXT("FuzzRoughness"),
+				TEXT("SSSAmount"), TEXT("Bending"), TEXT("Support")})
+			{
+				Add(ET::Surfacing, Name, {});
+			}
 
 			return Built;
 		}();

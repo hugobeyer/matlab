@@ -495,7 +495,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 		const FIntPoint LevelSize(FMath::Max(1, FMath::RoundToInt(SolveSize.X * LevelScale)),
 			FMath::Max(1, FMath::RoundToInt(SolveSize.Y * LevelScale)));
 		const bool bFinest = LevelSize == SolveSize;
-		const int32 LevelIterations = bFinest ? RemainingIterations : (RemainingIterations + 1) / 2;
+		const int32 LevelIterations = bFinest ? RemainingIterations : (RemainingIterations + 2) / 3;
 		RemainingIterations -= LevelIterations;
 		const FIntVector LevelGroups(FMath::DivideAndRoundUp(LevelSize.X, 8), FMath::DivideAndRoundUp(LevelSize.Y, 8), 1);
 		const auto MakeLevel = [&Graph, LevelSize](const TCHAR* Name, EPixelFormat Format)

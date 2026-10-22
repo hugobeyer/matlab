@@ -232,6 +232,15 @@ reviewed duplicate, the existing selected master does not gain per-pixel optical
 
 ## Safe Python workflow
 
+**One-run dialog:** select the source base Material in the Content Browser, then use Unreal's
+**Execute Python Script** action to run `Tools/upgrade_surface_optics.py`. Choose the three
+baked optical maps in the asset pickers, confirm Material Editor edits are applied/closed,
+and press OK. The script adds/wires nodes on a duplicate and separately asks before saving.
+If no optical maps exist yet, bake once using Mixtormat's current Default master first.
+The source master, preview/bake selections and renderer settings remain unchanged.
+Importing the module still does nothing; `optics.run_interactive()` opens the same dialog.
+The interactive entry point has not been executed or visually verified by the agent.
+
 Enable Unreal's Python Editor Script Plugin and Editor Scripting support as needed. This is an
 interactive **Unreal Editor 5.8 Python** script, not a commandlet or external Python program.
 Imports do nothing. There is no automatic master replacement, parent reassignment, project-setting

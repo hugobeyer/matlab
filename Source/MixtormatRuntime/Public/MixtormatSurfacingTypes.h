@@ -23,12 +23,12 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	GENERATED_BODY()
 
 	static constexpr int32 MaxSolverIterations = 512;
-	static constexpr int32 MinCoarseSolverResolution = 32;
-	static constexpr int32 MaxCoarseSolverResolution = 128;
-	static constexpr float CoarseSamplesPerFold = 4.0f;
+	static constexpr int32 MinCoarseSolverResolution = 64;
+	static constexpr int32 MaxCoarseSolverResolution = 256;
+	static constexpr float CoarseSamplesPerFold = 8.0f;
 	static constexpr int32 MinSolverResolution = 64;
 	static constexpr int32 MaxSolverResolution = 2048;
-	static constexpr int32 MaxWarpLayers = 5;
+	static constexpr int32 MaxWarpLayers = 8;
 
 	FMixtormatSkin()
 	{

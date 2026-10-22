@@ -97,8 +97,9 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
    level; initialize/prolongate the correction; spend **0–512 total relaxation iterations**
    from coarse to fine, each reading an immutable previous R32F correction. No procedural
    noise is reevaluated inside iterations. Zero iterations returns zero correction.
-5. `MicroCS` (`SKIN_STAGE=3`): output-resolution medium/fine wrinkles, warped elliptical
-   pores and grain, cached once in RGBA32F. Medium/fine detail is strained, not simulated.
+5. `MicroCS` (`SKIN_STAGE=3`): output-resolution medium/fine cellular crease networks,
+   warped elliptical pores and grain, cached once in RGBA32F. Medium/fine detail is
+   procedurally strain-directed, not simulated.
 6. `ResolveCS` (`SKIN_STAGE=4`): fine-residual-only directional filtering and the final
    signed Skin height (HeightScale once), written before material evaluation.
 7. `FieldCS` (`SKIN_STAGE=2`): seven material/diagnostic outputs, reading resolved relief.
@@ -110,13 +111,25 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 Tissue and fold seeds use full output resolution, independently of `SolverResolution`.
 Only mechanics corrections use bounded grids (default maximum dimension 512, authored
 maximum 2048); aspect ratio is retained and smaller outputs are not upscaled. The coarsest
-level targets four samples per fold, bounded to 32–128 texels on the longest axis, then
-doubles toward the final grid. Half the remaining iteration budget is spent on each coarse
-level; the finest consumes the remainder. Default total budget is 128, hard maximum 512.
+level targets eight samples per fold, bounded to 64–256 texels on the longest axis, then
+doubles toward the final grid. One third of the remaining iteration budget is spent on each
+coarse level; the finest consumes the remainder. Default total budget is 128, hard maximum 512.
+Stage 0 restricts full-resolution seed and tissue fields with a 4-tap subtexel box filter.
 This improves low-frequency progress over one fine-grid explicit solve; it is not a
 convergence guarantee. Correction prolongation is bilinear; final correction reconstruction
 is cubic B-spline. Full-resolution analytic folds/pores are never replaced by the grid.
 Microdetail uses full output resolution and independent `DetailTiling`.
+Medium/fine creases use periodic jittered nearest-cell gaps, not perpendicular wave families.
+Both bands use the seed's double-angle-interpolated normal; its destination-space tangent
+is pushed through the advected-domain Jacobian. A bounded, area-preserving distance metric
+biases the networks along that tangent under compression, relaxing toward isotropy under
+stretch. Cell centres remain fixed and periodic; no locally rotated absolute-UV lattice is
+introduced. Crease filtering uses the local metric and projected edge gradient; rapid
+spatial changes of the metric are not integrated analytically.
+Pore axes retain cell randomness with at most 35% strain-director bias. Tensile strain adds
+bounded aspect-ratio stretch while preserving ellipse area; the neighbour search includes
+that enlarged support. The additional pore warp also transforms the strain tangent.
+Pores are not forced onto crease junctions. Roughness compensation remains unchanged.
 
 ### Relaxation model and bounds
 
@@ -132,9 +145,12 @@ Here `s` is edge slope and `e` projected compressive strain minus tensile strain
 small-slope expansion has compressive negative stiffness and stabilizing quartic strain;
 large slopes have a bounded Hessian. The force uses its actual derivative, not repeated
 noise or a blur posing as simulation. Wrapped 8-neighbor strain and variable-rigidity
-biharmonic stencils use each axis' UV spacing; singleton axes are excluded. A conservative
-Hessian row-sum bound controls the explicit relaxation step (safety 0.8). `Bending` and
-`Support` are normalized artistic controls, not measured biological material constants.
+biharmonic stencils use each axis' UV spacing (with the biharmonic inverse-spacing squared
+capped at 256 in fold-wavelength units so fine grids do not freeze explicit steps); singleton
+axes are excluded. A local per-texel/per-edge Hessian row-sum bound controls the explicit
+relaxation step (safety 0.8). `Bending` and `Support` are unclamped artistic controls
+(rescaled foundation 0.5–32 and rigidity 0.00002–0.0025 over 0–1), not measured biological
+material constants.
 
 Lengths and residual heights are normalized by the authored placed fold rate, bounded
 by grid resolution. Directors use the placement/PreUV Jacobian; mechanics still operates
@@ -145,18 +161,20 @@ logical output state and no read/write alias.
 
 ### Shader controls and relief resolve
 
-- `WarpScale` is a float, default **1**, hard range **0.125–8**. It multiplies the
-  integer-rounded drift/phase-noise lattice frequencies, independently of `MarbleDrift`;
-  higher values make smaller-scale wandering without changing fold or tissue cell counts.
+- `WarpScale` is a float, default **1**, divisor-floored (`> 0`) with UI/JSON owning upper
+  clamps. It multiplies the integer-rounded drift/phase-noise lattice frequencies,
+  independently of `MarbleDrift`; higher values make smaller-scale wandering without changing
+  fold or tissue cell counts.
 - `MarbleDrift` budgets advection in noise-cell spacings: reference travel `0.34 * amount`,
-  divided across five RK2 steps and normalized geometric octave weights. `WarpLayers`
+  divided across five RK2 steps and normalized geometric octave weights. `WarpLayers` (0–8)
   adds structure, not another full travel budget. Direct fold-phase noise uses bounded
-  `0.34 * amount / (1 + amount)` wandering instead of repeating unbounded advection.
-- `PoreSize` is a float, default **1**, hard range **0.25–3**. It multiplies ellipse
-  radii, independently of `PoreCells` density. Existing variation supplies ellipticity;
-  no extra stretch control is introduced. The warped pixel covariance filters both
-  ellipse axes with determinant-based area compensation and size-aware periodic support.
-- `PoreDepth` remains nonnegative with **no hard maximum**; its ergonomic slider is **0–4**.
+  `0.34 * amount / (1 + 0.25 * amount)` wandering instead of repeating unbounded advection.
+- `PoreSize` is a float, default **1**, divisor-floored (`> 0`) with loop reach capped at 6
+  for GPU safety. It multiplies ellipse radii, independently of `PoreCells` density. Existing
+  variation supplies ellipticity; no extra stretch control is introduced. The warped pixel
+  covariance filters both ellipse axes with determinant-based area compensation and
+  size-aware periodic support.
+- `PoreDepth` has no hard maximum; its ergonomic slider is **0–4**.
   Depth does not change pore size/density, and the pore diagnostic remains available.
 - GPU uniforms are exactly `float WarpScale` and `float PoreSize`. `MicroState` and
   `OutMicro` use `float4` / `PF_A32B32G32R32F`: **R** = medium/fine wrinkle + grain UV
