@@ -804,6 +804,20 @@ private:
 	TSharedRef<SWidget> MakeModulePresetButton();
 	TSharedRef<SWidget> BuildModulePresetMenu();
 	TSharedRef<SWidget> BuildRecipeCaptureMenu(FGuid GroupId);
+	const FMixtormatParameterValue* GroupControlValueFor(const void* Owner, UScriptStruct* OwnerStruct, FName Parameter) const;
+	TSharedRef<SWidget> BuildGroupControlsPanel();
+	void RebuildGroupControlsPanel();
+	TSharedRef<SWidget> BuildGroupControlAddMenu();
+	TSharedRef<SWidget> BuildGroupTargetPicker(FGuid GroupId, FGuid ControlId, int32 TypeFilter = INDEX_NONE);
+	TSharedRef<SWidget> BuildExposeToGroupMenu(FMixtormatParameterAddress Target);
+	void AddGroupControl(FGuid GroupId, EMixtormatParameterValueType Type, FMixtormatParameterAddress InitialTarget = {});
+	void AttachGroupControlTarget(FGuid GroupId, FGuid ControlId, FMixtormatParameterAddress Target);
+	void SetGroupControlValue(FGuid GroupId, FGuid ControlId, const FMixtormatParameterValue& Value);
+	void EditGroupControl(FGuid GroupId, FGuid ControlId, TFunction<void(FMixtormatGroupControl&)> Edit);
+	void BeginGroupControlEdit();
+	void EndGroupControlEdit();
+	TSharedPtr<SVerticalBox> GroupControlsBox;
+	bool bGroupControlInteractiveEdit = false;
 	TSharedRef<SWidget> BuildRecipeGallery();
 	void RebuildRecipeGallery();
 	void RefreshRecipeGallery();
@@ -1004,6 +1018,7 @@ private:
 	TSharedRef<SWidget> BuildAuthoringSetupPanel(FMixtormatParameterAddress Target);
 	void CopyParameterAddress(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterDriverPopover(FMixtormatParameterAddress Target);
+	TSharedRef<SWidget> BuildDriverTypedControls(FMixtormatParameterAddress Target);
 	TSharedRef<SWidget> BuildParameterContextMenuFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
 	TSharedRef<SWidget> BuildParameterDriverPopoverFor(TFunction<FMixtormatParameterAddress()> ResolveTarget);
 	TSharedRef<SWidget> BuildDriverSourceMenu(FMixtormatParameterAddress Target);

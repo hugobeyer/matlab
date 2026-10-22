@@ -565,10 +565,13 @@ namespace MixtormatGpuCompositor
 									DriverSnapshotDemand.Add(Driver.SourceLayerId);
 								}
 							}
+							const FScalarDriverRenderData& SideDriver = Child.Behavior.FeatherSideDriver;
+							if (SideDriver.bEnabled && SideDriver.SourceLayerId != DemandLayer.LayerId)
+							{ DriverSnapshotDemand.Add(SideDriver.SourceLayerId); }
 							Drivers = Child.Behavior.FlowDrivers;
 						}
 						if (!Drivers) { continue; }
-						for (int32 Slot = 0; Slot < 2; ++Slot)
+						for (int32 Slot = 0; Slot < 3; ++Slot)
 						{
 							const FScalarDriverRenderData& Driver = Drivers[Slot];
 							if (Driver.bEnabled && !Driver.bRegionSource

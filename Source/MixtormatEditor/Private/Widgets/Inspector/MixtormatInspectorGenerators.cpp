@@ -1119,10 +1119,12 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 
 		const TSharedRef<SVerticalBox> RadiusCard = AddCard(Cards, LOCTEXT("RootRadiusCard", "RADIUS TAPER RAMP"), RadiusHeader);
 		const TSharedRef<SWidget> RadiusRampWidget = SNew(SMixtormatScalarRamp)
-			.Ramp_Lambda([Root]()
+			.IsEnabled_Lambda([this, Root]() { return Root() && !GroupControlValueFor(Root(), FMixtormatRootNetwork::StaticStruct(), TEXT("RadiusCurve")); })
+			.Ramp_Lambda([this, Root]()
 			{
 				const FMixtormatRootNetwork* R = Root();
-				return R ? R->RadiusCurve : FMixtormatScalarRamp();
+				if (const auto* Value = GroupControlValueFor(R, FMixtormatRootNetwork::StaticStruct(), TEXT("RadiusCurve"))) { return Value->ScalarRampValue; }
+								return R ? R->RadiusCurve : FMixtormatScalarRamp();
 			})
 			.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
 			.CanonicalXMin(0.0f).CanonicalXMax(1.0f)
@@ -1133,6 +1135,7 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 			{
 				if (FMixtormatRootNetwork* R = Root())
 				{
+					if (GroupControlValueFor(R, FMixtormatRootNetwork::StaticStruct(), TEXT("RadiusCurve"))) { return; }
 					R->RadiusCurve = NewRamp;
 					RefreshLayeredPreview();
 				}
@@ -1255,10 +1258,12 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 			LOCTEXT("RootBurialHint", "Sinks thin roots beneath the soil plane while thick roots break through.")));
 
 		const TSharedRef<SWidget> BurialRampWidget = SNew(SMixtormatScalarRamp)
-			.Ramp_Lambda([Root]()
+			.IsEnabled_Lambda([this, Root]() { return Root() && !GroupControlValueFor(Root(), FMixtormatRootNetwork::StaticStruct(), TEXT("BurialCurve")); })
+			.Ramp_Lambda([this, Root]()
 			{
 				const FMixtormatRootNetwork* R = Root();
-				return R ? R->BurialCurve : FMixtormatScalarRamp();
+				if (const auto* Value = GroupControlValueFor(R, FMixtormatRootNetwork::StaticStruct(), TEXT("BurialCurve"))) { return Value->ScalarRampValue; }
+								return R ? R->BurialCurve : FMixtormatScalarRamp();
 			})
 			.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
 			.CanonicalXMin(0.0f).CanonicalXMax(1.0f)
@@ -1269,6 +1274,7 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 			{
 				if (FMixtormatRootNetwork* R = Root())
 				{
+					if (GroupControlValueFor(R, FMixtormatRootNetwork::StaticStruct(), TEXT("BurialCurve"))) { return; }
 					R->BurialCurve = NewRamp;
 					RefreshLayeredPreview();
 				}
@@ -2801,10 +2807,12 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 			LOCTEXT("HeightRemapInputMax", "Input Max"), Curve, &FMixtormatGeneratorHeightCurve::InputMax, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("HeightRemapInputMaxHint", "Positive endpoint mapped to 1 before the curve. Zero maps positive input to the curve center. The pivot remains zero."))));
 	AddSliderRow(Panel, SNew(SMixtormatScalarRamp)
-		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([Curve]()
+		.IsEnabled_Lambda([this, Curve]() { return Curve() && !GroupControlValueFor(Curve(), FMixtormatGeneratorHeightCurve::StaticStruct(), TEXT("Curve")); })
+		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([this, Curve]()
 		{
 			const FMixtormatGeneratorHeightCurve* C = Curve();
-			return C ? C->Curve : FMixtormatScalarRamp();
+			if (const auto* Value = GroupControlValueFor(C, FMixtormatGeneratorHeightCurve::StaticStruct(), TEXT("Curve"))) { return Value->ScalarRampValue; }
+						return C ? C->Curve : FMixtormatScalarRamp();
 		}))
 		.CanonicalXMin(-1.0f).CanonicalXMax(1.0f)
 		.bInverted_Lambda([Curve]() { const FMixtormatGeneratorHeightCurve* C = Curve(); return C && C->bInvert; })
@@ -2823,6 +2831,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 		{
 			if (FMixtormatGeneratorHeightCurve* C = Curve())
 			{
+				if (GroupControlValueFor(C, FMixtormatGeneratorHeightCurve::StaticStruct(), TEXT("Curve"))) { return; }
 				C->Curve = NewRamp;
 				RefreshLayeredPreview();
 			}
@@ -3233,9 +3242,15 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 	TSharedPtr<SMixtormatColorRamp> RampWidget;
 	const TSharedRef<SVerticalBox> RampCard = AddCard(Panel, LOCTEXT("ColorRampCardRamp", "RAMP"));
 	AddSliderRow(RampCard, SAssignNew(RampWidget, SMixtormatColorRamp)
-		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Ramp]()
+		.IsEnabled_Lambda([this, Ramp]() { return Ramp() && !GroupControlValueFor(Ramp(), FMixtormatGeneratorHeightColorRamp::StaticStruct(), TEXT("Ramp")); })
+		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([this, Ramp]()
 		{
 			const FMixtormatGeneratorHeightColorRamp* R = Ramp();
+			if (R)
+			{
+				if (const auto* Value = GroupControlValueFor(R, FMixtormatGeneratorHeightColorRamp::StaticStruct(), TEXT("Ramp")))
+				{ auto Effective = *R; Effective.Ramp = Value->ColorRampValue; return Effective.GetUnitRamp(); }
+			}
 			return R ? R->GetUnitRamp() : FMixtormatColorRamp();
 		}))
 		.DomainMin(0.0f).DomainMax(1.0f)
@@ -3243,6 +3258,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 		{
 			if (FMixtormatGeneratorHeightColorRamp* R = Ramp())
 			{
+				if (GroupControlValueFor(R, FMixtormatGeneratorHeightColorRamp::StaticStruct(), TEXT("Ramp"))) { return; }
 				R->SetUnitRamp(NewRamp);
 				RefreshLayeredPreview();
 			}
@@ -3378,7 +3394,8 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
 				.HasDownArrow(false)
 				.ContentPadding(FMargin(0.0f))
-				.OnGetMenuContent_Lambda([RampWidget]() -> TSharedRef<SWidget>
+				.IsEnabled_Lambda([this]() { const auto* R = GetSelectedHeightColorRamp(); return R && !GroupControlValueFor(R, FMixtormatGeneratorHeightColorRamp::StaticStruct(), TEXT("Ramp")); })
+								.OnGetMenuContent_Lambda([RampWidget]() -> TSharedRef<SWidget>
 				{
 					MixtormatMenu::FBuilder Menu;
 					Menu.Caption(LOCTEXT("ColorRampPresetsHeading", "PRESETS"));

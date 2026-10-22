@@ -3,6 +3,7 @@
 #include "MixtormatParameterBinding.h"
 
 #include "MixtormatLayerGroups.h"
+#include "MixtormatGroupControls.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -16,15 +17,7 @@ namespace
 		TArray<FMixtormatParameterBinding>* MutableBindings = nullptr;
 	};
 
-	struct FResolvedValue
-	{
-		EMixtormatParameterValueType Type = EMixtormatParameterValueType::Float;
-		FName TypeName;
-		float FloatValue = 0.0f;
-		int32 IntValue = 0;
-		bool BoolValue = false;
-		int64 EnumValue = 0;
-	};
+	using FResolvedValue = FMixtormatParameterValue;
 
 	FName EnumTypeName(const FProperty* Property)
 	{
@@ -55,6 +48,13 @@ namespace
 			return CastField<FBoolProperty>(Property) != nullptr;
 		case EMixtormatParameterValueType::Enum:
 			return !Address.TypeName.IsNone() && EnumTypeName(Property) == Address.TypeName;
+		case EMixtormatParameterValueType::ScalarRamp:
+		case EMixtormatParameterValueType::ColorRamp:
+		{
+			const FStructProperty* Struct = CastField<FStructProperty>(Property);
+			return Struct && Struct->Struct == (Address.ValueType == EMixtormatParameterValueType::ScalarRamp
+				? FMixtormatScalarRamp::StaticStruct() : FMixtormatColorRamp::StaticStruct());
+		}
 		default:
 			return false;
 		}
@@ -93,6 +93,7 @@ namespace
 			return Child.Type == EMixtormatLayerChildType::Behavior
 				&& Child.Behavior.Type == EMixtormatBehaviorType::Feather;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
+				case EMixtormatParameterOwnerType::Boolean: return Child.Type == EMixtormatLayerChildType::Boolean;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
 				|| Child.Type == EMixtormatLayerChildType::Generated
@@ -148,6 +149,10 @@ namespace
 			View.ConstData = &Generator.Scales;
 			View.Struct = FMixtormatScales::StaticStruct();
 			break;
+		case EMixtormatGeneratorType::BooleanOps:
+			View.ConstData = &Generator.BooleanOps;
+			View.Struct = FMixtormatBooleanOps::StaticStruct();
+			break;
 		case EMixtormatGeneratorType::RootNetwork:
 			View.ConstData = &Generator.RootNetwork;
 			View.Struct = FMixtormatRootNetwork::StaticStruct();
@@ -194,6 +199,7 @@ namespace
 		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; break;
 		case EMixtormatParameterOwnerType::MaskNoise: View.ConstData = &Child.Mask.Noise; break;
 		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
+				case EMixtormatParameterOwnerType::Boolean: View.ConstData = &Child.Boolean; break;
 		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; break;
 		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; break;
 		case EMixtormatParameterOwnerType::ColorId: View.ConstData = &Child.ColorId; break;
@@ -411,6 +417,16 @@ namespace
 
 		OutValue.Type = Address.ValueType;
 		OutValue.TypeName = Address.TypeName;
+		if (Address.ValueType == EMixtormatParameterValueType::ScalarRamp)
+		{
+			OutValue.ScalarRampValue = *Property->ContainerPtrToValuePtr<FMixtormatScalarRamp>(Owner.ConstData);
+			return true;
+		}
+		if (Address.ValueType == EMixtormatParameterValueType::ColorRamp)
+		{
+			OutValue.ColorRampValue = *Property->ContainerPtrToValuePtr<FMixtormatColorRamp>(Owner.ConstData);
+			return true;
+		}
 		switch (Address.ValueType)
 		{
 		case EMixtormatParameterValueType::Float:
@@ -458,6 +474,12 @@ namespace
 		}
 		Visiting.Add(Key);
 
+		if (const FMixtormatGroupControl* Control = MixtormatGroupControls::FindDrivingControl(Scope, Address))
+		{
+			OutValue = Control->Value;
+			Visiting.Remove(Key);
+			return true;
+		}
 		const FOwnerView Owner = LocateOwner(Scope, Address);
 		if (!Owner.ConstData || !Owner.Struct)
 		{
@@ -498,6 +520,16 @@ namespace
 		{
 			return false;
 		}
+		if (Binding.ValueType == EMixtormatParameterValueType::ScalarRamp)
+		{
+			*Property->ContainerPtrToValuePtr<FMixtormatScalarRamp>(Owner.MutableData) = Value.ScalarRampValue;
+			return true;
+		}
+		if (Binding.ValueType == EMixtormatParameterValueType::ColorRamp)
+		{
+			*Property->ContainerPtrToValuePtr<FMixtormatColorRamp>(Owner.MutableData) = Value.ColorRampValue;
+			return true;
+		}
 		switch (Binding.ValueType)
 		{
 		case EMixtormatParameterValueType::Float:
@@ -512,6 +544,7 @@ namespace
 		case EMixtormatParameterValueType::Enum:
 			if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
 			{
+				if (!EnumProperty->GetEnum()->IsValidEnumValue(Value.EnumValue)) { return false; }
 				EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(
 					EnumProperty->ContainerPtrToValuePtr<void>(Owner.MutableData),
 					Value.EnumValue);
@@ -519,6 +552,7 @@ namespace
 			}
 			if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
 			{
+				if (!ByteProperty->Enum || !ByteProperty->Enum->IsValidEnumValue(Value.EnumValue)) { return false; }
 				ByteProperty->SetPropertyValue_InContainer(Owner.MutableData, static_cast<uint8>(Value.EnumValue));
 				return true;
 			}
@@ -557,6 +591,50 @@ namespace
 
 namespace MixtormatParameterBinding
 {
+	EMixtormatParameterValueType ValueTypeForProperty(const FProperty* Property)
+	{
+		if (CastField<FFloatProperty>(Property)) { return EMixtormatParameterValueType::Float; }
+		if (CastField<FIntProperty>(Property)) { return EMixtormatParameterValueType::Int; }
+		if (CastField<FBoolProperty>(Property)) { return EMixtormatParameterValueType::Bool; }
+		if (!EnumTypeName(Property).IsNone()) { return EMixtormatParameterValueType::Enum; }
+		if (const FStructProperty* Struct = CastField<FStructProperty>(Property))
+		{
+			if (Struct->Struct == FMixtormatScalarRamp::StaticStruct()) { return EMixtormatParameterValueType::ScalarRamp; }
+			if (Struct->Struct == FMixtormatColorRamp::StaticStruct()) { return EMixtormatParameterValueType::ColorRamp; }
+		}
+		return EMixtormatParameterValueType::Invalid;
+	}
+
+	FName EnumTypeForProperty(const FProperty* Property) { return EnumTypeName(Property); }
+
+	const FProperty* FindParameterProperty(const FMixtormatBindingScope& Scope, const FMixtormatParameterAddress& Address)
+	{
+		const FOwnerView Owner = LocateOwner(Scope, Address);
+		const FProperty* Property = Owner.Struct ? Owner.Struct->FindPropertyByName(Address.Parameter) : nullptr;
+		return PropertyMatchesAddress(Property, Address) ? Property : nullptr;
+	}
+
+	bool TryReadLocalValue(const FMixtormatBindingScope& Scope, const FMixtormatParameterAddress& Address, FMixtormatParameterValue& OutValue)
+	{
+		return ReadLocalValue(LocateOwner(Scope, Address), Address, OutValue);
+	}
+
+	bool TryWriteValue(const FMixtormatMutableBindingScope& Scope, const FMixtormatParameterAddress& Address, const FMixtormatParameterValue& Value)
+	{
+		if (!Address.IsValid()) { return false; }
+		if (Address.ChildId.IsValid())
+		{
+			const FMixtormatLayerChild* Child = FindChild(Scope, Address.LayerId, Address.ChildId);
+			if (!Child || Child->IsInstance()) { return false; }
+		}
+		FMixtormatParameterBinding Binding;
+		Binding.DestinationOwner = Address.Owner;
+		Binding.DestinationParameter = Address.Parameter;
+		Binding.ValueType = Address.ValueType;
+		Binding.TypeName = Address.TypeName;
+		return WriteResolvedValue(LocateMutableOwnerByAddress(Scope, Address), Binding, Value);
+	}
+
 	TArray<UScriptStruct*> GetOwnerStructs(const EMixtormatParameterOwnerType Owner)
 	{
 		switch (Owner)
@@ -565,6 +643,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Mask: return { FMixtormatMaskLayer::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskNoise: return { FMixtormatNoise::StaticStruct() };
 		case EMixtormatParameterOwnerType::Effect: return { FMixtormatLayerEffect::StaticStruct() };
+				case EMixtormatParameterOwnerType::Boolean: return { FMixtormatBooleanStack::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
 		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };
 		case EMixtormatParameterOwnerType::ColorId: return { FMixtormatColorIdMask::StaticStruct() };
@@ -593,7 +672,7 @@ namespace MixtormatParameterBinding
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
 				FMixtormatCliffStrata::StaticStruct(), FMixtormatNoise::StaticStruct(),
 				FMixtormatRootNetwork::StaticStruct(), FMixtormatScales::StaticStruct(),
-				FMixtormatMoss::StaticStruct(), FMixtormatMycelium::StaticStruct() };
+				FMixtormatMoss::StaticStruct(), FMixtormatMycelium::StaticStruct(), FMixtormatBooleanOps::StaticStruct() };
 		default: return {};
 		}
 	}
@@ -652,6 +731,11 @@ namespace MixtormatParameterBinding
 				Group.GroupId = FGuid::NewGuid();
 			}
 			OwnerIds.Add(Group.GroupId);
+			for (FMixtormatGroupControl& Control : Group.Controls)
+			{
+				if (!Control.ControlId.IsValid() || ChildIds.Contains(Control.ControlId)) { Control.ControlId = FGuid::NewGuid(); }
+				ChildIds.Add(Control.ControlId);
+			}
 			for (FMixtormatLayerChild& Child : Group.Children)
 			{
 				if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
@@ -815,6 +899,7 @@ namespace MixtormatParameterBinding
 		{
 			AddOwner(Group.GroupId);
 			AddChildren(Group.GroupId, Group.Children);
+			for (const FMixtormatGroupControl& Control : Group.Controls) { ChildIdRemap.Add(Control.ControlId, FGuid::NewGuid()); }
 		}
 
 		const auto RemapGuid = [](FGuid& Id, const TMap<FGuid, FGuid>& Remap)
@@ -915,6 +1000,11 @@ namespace MixtormatParameterBinding
 		{
 			const FGuid OldOwnerId = Group.GroupId;
 			RemapGuid(Group.GroupId, OwnerIdRemap);
+			for (FMixtormatGroupControl& Control : Group.Controls)
+			{
+				RemapGuid(Control.ControlId, ChildIdRemap);
+				for (FMixtormatParameterAddress& Target : Control.Targets) { RemapBindingPair(Target.LayerId, Target.ChildId); }
+			}
 			RemapChildren(OldOwnerId, Group.Children);
 		}
 	}
@@ -1376,6 +1466,13 @@ namespace MixtormatParameterBinding
 		{
 			for (FMixtormatLayerGroup& Group : *Scope.Groups)
 			{
+				for (FMixtormatGroupControl& Control : Group.Controls)
+				{
+					for (FMixtormatParameterAddress& Target : Control.Targets)
+					{
+						if (Target.ChildId == ChildId && Target.LayerId == OldLayerId) { Target.LayerId = NewLayerId; }
+					}
+				}
 				for (FMixtormatLayerChild& Child : Group.Children)
 				{
 					for (FMixtormatParameterBinding& Binding : Child.ParameterBindings)

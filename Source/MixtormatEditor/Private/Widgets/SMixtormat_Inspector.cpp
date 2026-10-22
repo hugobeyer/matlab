@@ -465,6 +465,10 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 
 				+ SVerticalBox::Slot().FillHeight(1.0f)
 				[
+					BuildGroupControlsPanel()
+				]
+				+ SVerticalBox::Slot().FillHeight(1.0f)
+				[
 					SNew(SScrollBox)
 					.ScrollBarStyle(&Style.GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 					.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))

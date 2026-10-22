@@ -404,7 +404,12 @@ bool SMixtormat::IsCurrentStateSaved() const
 
 void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 {
+	const FGuid PreviousGroupId = SelectedGroupId;
+	const bool bGroupHeaderSelected = PreviousGroupId.IsValid() && SelectedGroupChildIndex == INDEX_NONE;
 	bApplyingHistory = true;
+	bGroupControlInteractiveEdit = false;
+	bInteractiveEdit = false;
+	bInteractiveHistoryPending = false;
 	WorkingLayers = State.Layers;
 	WorkingLayerGroups = State.Groups;
 	bGlobalUVRotation90 = State.bRotateUV90;
@@ -436,6 +441,14 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	SelectedGroupId.Invalidate();
 	SelectedGroupChildIndex = INDEX_NONE;
 	bHasSelectedLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
+	// Keep the control panel in place when undo changes its values, but not when its group vanished.
+	if (bGroupHeaderSelected && WorkingLayerGroups.ContainsByPredicate(
+		[PreviousGroupId](const FMixtormatLayerGroup& Group) { return Group.GroupId == PreviousGroupId; }))
+	{
+		SelectedGroupId = PreviousGroupId;
+		SelectedLayerIndex = INDEX_NONE;
+		bHasSelectedLayer = false;
+	}
 	bIsWorkingMaterialDirty = !IsCurrentStateSaved();
 	WorkingStatusText = bIsWorkingMaterialDirty ? TEXT("Unsaved changes") : TEXT("All changes saved");
 
@@ -443,6 +456,7 @@ void SMixtormat::ApplyEditHistoryState(const FEditHistoryState& State)
 	RefreshLayeredPreview(false);
 	RebuildLayerList();
 	RebuildMaskList();
+	RebuildGroupControlsPanel();
 	bApplyingHistory = false;
 }
 

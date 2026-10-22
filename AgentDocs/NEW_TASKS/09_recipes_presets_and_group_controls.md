@@ -1,9 +1,9 @@
 # Recipes, user presets and group controls — implementation plan
 
-Status: partial implementation delivered by Sol/Terra and statically reviewed by the parent agent.
-Ramp/module/recipe storage, module header menus including IDs, closed-group recipe insertion,
-Recipes gallery/discovery and HSV color-ramp conversion are implemented in source.
-D1/D2 group-control/driver decisions remain open. No executable validation. See §10.
+Status: preset/recipe features plus independent group controls and typed spatial drivers are
+implemented in source. The parent agent took over the interrupted Sol implementation and
+completed integration/review. No builds, tests, diagnostics or Unreal launches were run.
+See §11 for the current capability limits and handoff; earlier sections record intermediate status.
 Date: 2026-10-22.
 Evidence: targeted static source review only. No commands, builds, tests or diagnostics run.
 All paths below are relative to the Mixtormat plugin root. New paths are explicitly proposed.
@@ -47,7 +47,12 @@ Do not confuse an editable recipe insertion with a live composition reference. E
 
 Editor paths in that table are under `Source/MixtormatEditor/Private/` unless fully qualified.
 
-## 3. Decisions required before affected code phases
+## 3. Design decisions (approved; historical alternatives retained below)
+
+The user approved independent group-owned controls, nearest-rounded integer drivers,
+explicit enum bins and scalar ramps as driver transfer functions. The implementation uses
+those choices; it does not implement editable aliases or spatially mutable ramp stop arrays.
+D3 is delivered as conservative rejection/reporting of external document references.
 
 ### D1 — Meaning of group controls
 
@@ -668,3 +673,111 @@ Important delivered restrictions:
 - Insertion requires an existing material document.
 - Module presets preserve destination identities, bindings, connections and scoped children.
 - HSV tint defaults to zero so the default black-to-white ramp preserves jitter-only behavior.
+
+## 11. Direct takeover — group controls and typed drivers
+
+Supersedes §8–10 for P2/P3. The interrupted Sol session had written substantial source before
+cancellation. The parent retained that work, traced integration and completed focused fixes
+without launching another implementation agent.
+
+### Delivered group-control behavior
+
+- Group selection exposes Add Control plus cards for independent float, integer, enum,
+  scalar-ramp and color-ramp values. Values are owned by the group, not aliases.
+- Create a blank supported control or Expose Member Parameter; enum identity is taken from
+  a real internal enum property. Parameter context menus also offer Expose to Group.
+- Attach multiple compatible member-layer or group-module targets to one control.
+- Edit label, enable state, order and reset value; detach targets or remove a control.
+- Runtime applies overrides to transient render copies; the target's authored base survives.
+- Ordinary references read effective group-driven values. Instances, conflicting links/drivers,
+  duplicate ownership, missing targets and incompatible enum/ramp domains are rejected/reported.
+- Controls target leaf parameters only, not each other; no group-control cycles or guessed aliases.
+- Full ramp payloads/interpolation persist. Height Color Ramp retains its signed stored domain;
+  its existing module inspector still presents its unit-coordinate view.
+- Control identities and target addresses persist in documents/recipes and remap on insertion,
+  composition copying and parent moves. Reflection-based history includes all control data.
+- Undo/redo preserves a selected group header while that group still exists and rebuilds its
+  controls. Undoing past group creation still clears the missing selection.
+
+Primary Runtime owners:
+- `Source/MixtormatRuntime/Public/MixtormatGroupParameterTypes.h`
+- `Source/MixtormatRuntime/Public/MixtormatGroupControls.h`
+- `Source/MixtormatRuntime/Private/MixtormatGroupControls.cpp`
+- `Source/MixtormatRuntime/Public/MixtormatParameterTypes.h`
+- `Source/MixtormatRuntime/Public/MixtormatParameterBinding.h`
+- `Source/MixtormatRuntime/Private/MixtormatParameterBinding.cpp`
+- `Source/MixtormatRuntime/Public/MixtormatLayerTypes.h`
+- `Source/MixtormatRuntime/Private/MixtormatLayerGroups.cpp`
+
+Primary Editor integration:
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGroupParameters.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat.h`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Inspector.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Parameters.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerHierarchy.cpp`
+- `Source/MixtormatEditor/Private/Services/MixtormatRecipeService.cpp`
+- Ramp consumers in `Widgets/Inspector/MixtormatInspectorGenerators.cpp`,
+  `MixtormatInspectorMasks.cpp` and `MixtormatInspectorIds.cpp` display group-driven ramp values
+  and prevent edits to an overridden local ramp.
+
+### Delivered spatial driver behavior and explicit capability limits
+
+A group control can edit a uniform authored integer/enum even when that property cannot vary
+per pixel. The spatial capability registry is deliberately narrower:
+
+| Type | Implemented spatial reader | Evaluation |
+|---|---|---|
+| Integer | Published Flow placement `BehaviorFlow.FlowSteps` on Warp/Deform | Numeric mapping/combine, nearest rounding with ties toward +infinity, then clamp to 1–64 steps |
+| Enum | Eikonal Feather `BehaviorFeatherSettings.Side` on supported generator/behavior parents | Increasing upper-inclusive signal bins, final threshold 1, exact declared enum values |
+| Scalar ramp | Supported float/int/enum drivers | Optional transfer curve after invert/input window, before output mapping or enum bins |
+
+- Unsupported topology, pass-count and shader-permutation selectors stay disabled with a reason.
+- Float chains keep their original evaluation when the transfer curve is disabled.
+- Scalar curve Y values outside 0–1 are preserved for numeric output mapping; enum bin inputs
+  are normalized to 0–1. Enum drivers do not perform ordinal arithmetic or interpolate enum cases.
+- Driver source picking validates execution order and includes compatible group-owned ID producers.
+- The shared GPU transfer pass is cached per driver/source during composition, not persisted.
+- Flow tracing has a real third driver slot for Steps; Feather has a real per-pixel Side signal.
+- Invalid/unavailable signals retain the authored value rather than supplying an arbitrary enum.
+- Typed driver controls include a shared scalar ramp editor with user presets, bin editing and
+  validation messages. Numeric Amount/Combine/output controls are disabled for enum drivers.
+
+Primary driver files:
+- `Source/MixtormatRuntime/Public/MixtormatParameterDrivers.h`
+- `Source/MixtormatRuntime/Private/MixtormatParameterDrivers.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorDriverTypes.cpp`
+- `Source/MixtormatEditor/Private/UI/Parameters/SMixtormatDriverPopover.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuDriverPasses.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuCompositorInternal.h`
+- `Source/MixtormatShaders/Private/Compositing/MixtormatGeneratorGather.cpp`
+- `Source/MixtormatShaders/Private/Compositing/MixtormatLayerGather.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuCompositor.cpp`
+- `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`
+- `Shaders/Private/MixtormatDriverTransfer.usf`
+- `Shaders/Private/MixtormatDriver.ush`
+- `Shaders/Private/MixtormatFlowTrace.usf`
+- `Shaders/Private/MixtormatBehaviorFeather.usf`
+
+### Direct takeover fixes and static review
+
+- Fixed integer-to-float promotion in group-control hard-bound validation.
+- Require complete control metadata/default-value validity before it can drive a target.
+- Added finite-input protection to the integer quantization helper.
+- Made integer output-mapping slider ranges follow the execution capability, not float-only ranges.
+- Added scrolling for typed driver panels and long group target menus, using the shared scrollbar
+  style and centralized `ParameterPopoverMaxHeight` in `Style/MixtormatDesignTokens.h`.
+- Preserved group inspector selection across value undo/redo and cleared pending interactive state.
+- Traced group expansion → instance/reference resolution → gather, plus control ID remapping,
+  recipe closure validation, shader parameter arrays and driver snapshot demands.
+- Confirmed the HSV ramp edit guard resolves shared group children through `ResolveChild` when
+  the layer index is `INDEX_NONE`; group-owned modules need no alternate resolution path.
+- Reviewed typed-driver controls and the transfer-pass CPU/shader parameter declarations.
+- Source review only: compilation, UI interaction, shader compilation, disk round-trip and actual
+  undo/redo behavior are not execution-validated. No tests or diagnostics were run.
+
+Remaining delivery and validation:
+- User-authored shipped recipe assets and their dependencies are still required.
+- Gallery entries currently use text cards; thumbnail generation/authoring is not implemented.
+- Build/editor acceptance requires explicit permission, not inferred from implementation approval.

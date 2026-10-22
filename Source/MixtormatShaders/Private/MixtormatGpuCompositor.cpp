@@ -1136,15 +1136,16 @@ namespace MixtormatGpuCompositor
 			const bool bResolved = Driver.bRegionSource
 				? RegionSignal != nullptr
 				: Signal != nullptr;
+			if (bResolved && Driver.NeedsSignalTransform()) { Signal = AddDriverTransferPass(Ctx, Driver, Signal, RegionSignal); }
 			DriverSignals[SlotIndex] = Signal ? Signal : EmptyDriverSignal;
 			DriverRegionSignals[SlotIndex] = RegionSignal ? RegionSignal : EmptyRegionIds;
 			Parameters->DriverParamsC[SlotIndex] = FVector4f(
-				bResolved && Driver.bRegionSource ? 1.0f : 0.0f,
+				bResolved && Driver.bRegionSource && !Driver.NeedsSignalTransform() ? 1.0f : 0.0f,
 				static_cast<float>(Driver.Seed),
 				Driver.IdRandomMin,
 				Driver.IdRandomMax);
 			Parameters->DriverParamsA[SlotIndex] = FVector4f(
-				bResolved ? 1.0f : 0.0f,
+				DriverEnableValue(Driver, bResolved),
 				Driver.bInvert ? 1.0f : 0.0f,
 				Driver.InputMin,
 				Driver.InputMax);

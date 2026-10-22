@@ -1063,6 +1063,8 @@ public:
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, BehaviorDriverSignal1)
         SHADER_PARAMETER(float, DirectionBias)
         SHADER_PARAMETER(uint32, Side)
+        SHADER_PARAMETER(uint32, SideDriverEnabled)
+        SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SideDriverSignal)
         SHADER_PARAMETER(uint32, HasBoundary)
         SHADER_PARAMETER(uint32, HasMask)
         SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
@@ -1401,10 +1403,11 @@ public:
 		SHADER_PARAMETER(float, TraceLength)
 		SHADER_PARAMETER(float, WarpStrength)
 		SHADER_PARAMETER(int32, Steps)
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [2])
-		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [2])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsA, [3])
+		SHADER_PARAMETER_ARRAY(FVector4f, FlowDriverParamsB, [3])
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal0)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal1)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowDriverSignal2)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FlowField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FlowValidity)
 		SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
@@ -1465,15 +1468,15 @@ namespace
 		P->TraceLength = Reference.FlowTraceLength;
 		P->WarpStrength = Reference.FlowAmount;
 		P->Steps = FMath::Clamp(Reference.FlowSteps, 1, 64);
-		FRDGTextureRef Signals[2] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
-		for (int32 Slot = 0; Slot < 2; ++Slot)
+		FRDGTextureRef Signals[3] = {Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal, Ctx.EmptyDriverSignal};
+		for (int32 Slot = 0; Slot < 3; ++Slot)
 		{
 			const FScalarDriverRenderData* Driver = Drivers ? &Drivers[Slot] : nullptr;
 			FRDGTextureRef* Snapshot = Driver && Driver->bEnabled
 				? Ctx.DriverSnapshots.Find(Driver->SourceLayerId) : nullptr;
 			const bool bResolved = Snapshot != nullptr;
-			Signals[Slot] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
-			P->FlowDriverParamsA[Slot] = FVector4f(bResolved ? 1.0f : 0.0f,
+			Signals[Slot] = bResolved ? AddDriverTransferPass(Ctx, *Driver, *Snapshot) : Ctx.EmptyDriverSignal;
+			P->FlowDriverParamsA[Slot] = FVector4f(Driver ? DriverEnableValue(*Driver, bResolved) : 0.0f,
 				Driver && Driver->bInvert ? 1.0f : 0.0f,
 				Driver ? Driver->InputMin : 0.0f, Driver ? Driver->InputMax : 1.0f);
 			P->FlowDriverParamsB[Slot] = FVector4f(
@@ -1483,6 +1486,7 @@ namespace
 		}
 		P->FlowDriverSignal0 = Signals[0];
 		P->FlowDriverSignal1 = Signals[1];
+		P->FlowDriverSignal2 = Signals[2];
 		P->FlowField = Field.Texture;
 		P->FlowValidity = Field.Validity ? Field.Validity : Ctx.EmptyDriverSignal;
 		P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
@@ -1940,9 +1944,9 @@ namespace
 				}
 			}
 			const bool bResolved = Signal != nullptr;
-			Signals[Slot] = bResolved ? Signal : Ctx.EmptyDriverSignal;
+			Signals[Slot] = bResolved ? AddDriverTransferPass(Ctx, Driver, Signal) : Ctx.EmptyDriverSignal;
 			P->BehaviorDriverParamsA[Slot] = FVector4f(
-				bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+				DriverEnableValue(Driver, bResolved), Driver.bInvert ? 1.0f : 0.0f,
 				Driver.InputMin, Driver.InputMax);
 			P->BehaviorDriverParamsB[Slot] = FVector4f(
 				Driver.OutputMin, Driver.OutputMax, Driver.Amount,
@@ -2020,8 +2024,8 @@ namespace
 		P->TracedCoordinates = Traced ? Traced : (Standard ? Standard : Ctx.EmptyPatternUV);
 		FRDGTextureRef* Signal = Driver.bEnabled ? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
 		const bool bResolved = Signal != nullptr;
-		P->ModeMixDriverSignal = bResolved ? *Signal : Ctx.EmptyDriverSignal;
-		P->ModeMixDriverParamsA = FVector4f(bResolved ? 1.0f : 0.0f,
+		P->ModeMixDriverSignal = bResolved ? AddDriverTransferPass(Ctx, Driver, *Signal) : Ctx.EmptyDriverSignal;
+		P->ModeMixDriverParamsA = FVector4f(DriverEnableValue(Driver, bResolved),
 			Driver.bInvert ? 1.0f : 0.0f, Driver.InputMin, Driver.InputMax);
 		P->ModeMixDriverParamsB = FVector4f(Driver.OutputMin, Driver.OutputMax, Driver.Amount,
 			static_cast<float>(Driver.Combine));
@@ -2149,9 +2153,9 @@ namespace
 			FRDGTextureRef* Snapshot = Driver.bEnabled
 				? Ctx.DriverSnapshots.Find(Driver.SourceLayerId) : nullptr;
 			const bool bResolved = Snapshot != nullptr;
-			Signals[I] = bResolved ? *Snapshot : Ctx.EmptyDriverSignal;
+			Signals[I] = bResolved ? AddDriverTransferPass(Ctx, Driver, *Snapshot) : Ctx.EmptyDriverSignal;
 			P->SculptDriverParamsA[I] = FVector4f(
-				bResolved ? 1.0f : 0.0f, Driver.bInvert ? 1.0f : 0.0f,
+				DriverEnableValue(Driver, bResolved), Driver.bInvert ? 1.0f : 0.0f,
 				Driver.InputMin, Driver.InputMax);
 			P->SculptDriverParamsB[I] = FVector4f(
 				Driver.OutputMin, Driver.OutputMax, Driver.Amount,
@@ -2338,6 +2342,10 @@ namespace
 			SetBehaviorScalarDrivers(Ctx, P, Behavior.ScalarDrivers);
 			P->DirectionBias = Behavior.FeatherDirectionBias;
 			P->Side = static_cast<uint32>(Behavior.FeatherSide);
+			const auto& SideDriver = Behavior.FeatherSideDriver;
+			FRDGTextureRef* SideSignal = SideDriver.bEnabled ? Ctx.DriverSnapshots.Find(SideDriver.SourceLayerId) : nullptr;
+			P->SideDriverEnabled = SideSignal ? 1u : 0u;
+			P->SideDriverSignal = SideSignal ? AddDriverTransferPass(Ctx, SideDriver, *SideSignal) : Ctx.EmptyDriverSignal;
 			P->HasBoundary = bBoundary ? 1u : 0u;
 			P->HasMask = bHasMask && Mask ? 1u : 0u;
 			P->SourceHeight = Height;

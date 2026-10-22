@@ -3,6 +3,7 @@
 #include "Services/MixtormatPresetJson.h"
 #include "MixtormatLayerGroups.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatGroupControls.h"
 #include "UObject/UnrealType.h"
 #include "UObject/NoExportTypes.h"
 
@@ -38,6 +39,7 @@ namespace MixtormatRecipeService
 			Ids.Add(Id);
 		};
 		AddId(Recipe.Group.GroupId);
+		for (const FMixtormatGroupControl& Control : Recipe.Group.Controls) { AddId(Control.ControlId); }
 		if (Recipe.Layers.IsEmpty() || Recipe.Layers.Num() > MixtormatPresetJson::MaxArrayItems) { Issues.Add(TEXT("The group must contain a bounded, nonempty ordered member list.")); }
 		const auto AddChildren = [&AddId, &ChildrenByOwner](const FGuid& Owner, const TArray<FMixtormatLayerChild>& Children)
 		{
@@ -59,6 +61,15 @@ namespace MixtormatRecipeService
 		}
 		const TArray<FMixtormatLayerGroup> ScopeGroups{Recipe.Group};
 		const FMixtormatBindingScope Scope(Recipe.Layers, ScopeGroups);
+		for (const FMixtormatGroupControl& Control : Recipe.Group.Controls)
+		{
+			FText Issue;
+			if (!MixtormatGroupControls::ValidateControl(Control, Issue)) { Issues.AddUnique(Issue.ToString()); }
+			for (const FMixtormatParameterAddress& Target : Control.Targets)
+			{
+				if (!MixtormatGroupControls::ValidateTarget(Scope, Recipe.Group, Control, Target, Issue)) { Issues.AddUnique(Issue.ToString()); }
+			}
+		}
 		Private::Walk(Recipe, [&Issues, &Ids, &ChildrenByOwner, &Scope](const UScriptStruct* Type, void* Data)
 		{
 			if (Type == TBaseStructure<FGuid>::Get())
@@ -170,6 +181,7 @@ namespace MixtormatRecipeService
 		MixtormatPresetStore::FRecipePreset Copy = Recipe;
 		TMap<FGuid, FGuid> Remap;
 		Remap.Add(Copy.Group.GroupId, FGuid::NewGuid());
+		for (const FMixtormatGroupControl& Control : Copy.Group.Controls) { Remap.Add(Control.ControlId, FGuid::NewGuid()); }
 		for (const FMixtormatLayerChild& Child : Copy.Group.Children) { Remap.Add(Child.ChildId, FGuid::NewGuid()); }
 		for (const FMixtormatLayer& Layer : Copy.Layers)
 		{

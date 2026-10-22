@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MixtormatScalarRamp.h"
+#include "MixtormatColorRamp.h"
 #include "MixtormatParameterTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -51,7 +53,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	BehaviorFlow = 28 UMETA(DisplayName = "Behavior Flow Ref"),
 	BehaviorFlowSettings = 29 UMETA(DisplayName = "Behavior Flow"),
 	// Nested Feather authoring fields are independently addressable without shifting prior enum values.
-	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather")
+	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather"),
+		Boolean = 31 UMETA(DisplayName = "Boolean")
 };
 
 UENUM(BlueprintType)
@@ -65,7 +68,9 @@ enum class EMixtormatParameterValueType : uint8
 	// Bindings serialize this enum by value, so appending keeps existing assets intact. An
 	// Invalid address matches no property: every typed read/write refuses it instead of
 	// silently reinterpreting the value as a float (plan D6).
-	Invalid UMETA(DisplayName = "Invalid")
+	Invalid UMETA(DisplayName = "Invalid"),
+		ScalarRamp UMETA(DisplayName = "Scalar Ramp"),
+		ColorRamp UMETA(DisplayName = "Color Ramp")
 };
 
 UENUM(BlueprintType)
@@ -127,6 +132,21 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterAddress
 	}
 };
 
+// Authored, typed values shared by references and independent group controls.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatParameterValue
+{
+	GENERATED_BODY()
+	UPROPERTY() EMixtormatParameterValueType Type = EMixtormatParameterValueType::Float;
+	UPROPERTY() FName TypeName;
+	UPROPERTY() float FloatValue = 0.0f;
+	UPROPERTY() int32 IntValue = 0;
+	UPROPERTY() bool BoolValue = false;
+	UPROPERTY() int64 EnumValue = 0;
+	UPROPERTY() FMixtormatScalarRamp ScalarRampValue;
+	UPROPERTY() FMixtormatColorRamp ColorRampValue;
+};
+
 // What a reference does when the destination is edited.
 //
 // Follow is one-way: the destination shows the source and an edit to the destination is an edit
@@ -159,6 +179,15 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterReference
 };
 
 USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatDriverEnumBin
+{
+	GENERATED_BODY()
+	// Upper-inclusive threshold on the normalized (optionally curved) signal.
+	UPROPERTY(EditAnywhere, Category = "Driver") float UpperBound = 1.0f;
+	UPROPERTY(EditAnywhere, Category = "Driver") int64 Value = 0;
+};
+
+USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatParameterDriver
 {
 	GENERATED_BODY()
@@ -174,6 +203,11 @@ struct MIXTORMATRUNTIME_API FMixtormatParameterDriver
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Driver")
 	EMixtormatDriverSourceKind SourceKind = EMixtormatDriverSourceKind::None;
+
+	static constexpr int32 MaxEnumBins = 8;
+	UPROPERTY(EditAnywhere, Category = "Driver") bool bUseTransferCurve = false;
+	UPROPERTY(EditAnywhere, Category = "Driver") FMixtormatScalarRamp TransferCurve;
+	UPROPERTY(EditAnywhere, Category = "Driver") TArray<FMixtormatDriverEnumBin> EnumBins;
 
 	// Optional published output name. This keeps the serialized model extensible without making
 	// every future mask/effect output another enum value.

@@ -67,6 +67,15 @@ struct MIXTORMATRUNTIME_API FMixtormatMutableBindingScope
 
 namespace MixtormatParameterBinding
 {
+	MIXTORMATRUNTIME_API EMixtormatParameterValueType ValueTypeForProperty(const FProperty* Property);
+	MIXTORMATRUNTIME_API FName EnumTypeForProperty(const FProperty* Property);
+	// Canonical reflected access for complete typed values (including complete ramp payloads).
+	MIXTORMATRUNTIME_API const FProperty* FindParameterProperty(
+		const FMixtormatBindingScope& Scope, const FMixtormatParameterAddress& Address);
+	MIXTORMATRUNTIME_API bool TryReadLocalValue(const FMixtormatBindingScope& Scope,
+		const FMixtormatParameterAddress& Address, FMixtormatParameterValue& OutValue);
+	MIXTORMATRUNTIME_API bool TryWriteValue(const FMixtormatMutableBindingScope& Scope,
+		const FMixtormatParameterAddress& Address, const FMixtormatParameterValue& Value);
 	// Reflected payload candidates in binding order; Generator lists every generator payload.
 	MIXTORMATRUNTIME_API TArray<UScriptStruct*> GetOwnerStructs(EMixtormatParameterOwnerType Owner);
 

@@ -1,0 +1,50 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatDriver.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+
+int2 OutputSize;
+uint UseRegion;
+uint RegionSeed;
+float2 RegionRange;
+float4 InputMapping; // Invert, InputMin, InputMax, reserved.
+float2 CurveDomain;
+uint CurveCount;
+uint CurveInterpolation;
+float4 CurvePoints[MIXTORMAT_SCALAR_RAMP_MAX_POINTS];
+uint EnumBinCount;
+float4 EnumBins[MIXTORMAT_DRIVER_MAX_ENUM_BINS];
+Texture2D<float> SourceSignal;
+Texture2D<uint> SourceRegionIds;
+RWTexture2D<float> OutSignal;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    const int2 Pixel = int2(DispatchThreadId.xy);
+    if (any(Pixel >= OutputSize)) { return; }
+    float S = UseRegion != 0u
+        ? MixtormatDriverRegionSignal(SourceRegionIds.Load(int3(Pixel, 0)), RegionSeed, RegionRange.x, RegionRange.y)
+        : SourceSignal.Load(int3(Pixel, 0));
+    if (!isfinite(S)) { OutSignal[Pixel] = asfloat(0x7fc00000u); return; }
+    S = saturate(S);
+    S = InputMapping.x > 0.5f ? 1.0f - S : S;
+    const float Span = InputMapping.z - InputMapping.y;
+    S = abs(Span) > 1.0e-6f ? saturate((S - InputMapping.y) / Span) : 0.0f;
+    if (CurveCount >= 2u)
+    {
+        S = MixtormatEvalSignedScalarRamp(lerp(CurveDomain.x, CurveDomain.y, S), CurveCount, CurveInterpolation, CurvePoints);
+    }
+    if (EnumBinCount != 0u)
+    {
+        // First upper-inclusive bin. Values are declared enum cases, never interpolated ordinals.
+        S = saturate(S);
+        [loop] for (uint I = 0u; I < EnumBinCount; ++I)
+        {
+            if (S <= EnumBins[I].x) { OutSignal[Pixel] = EnumBins[I].y; return; }
+        }
+        OutSignal[Pixel] = asfloat(0x7fc00000u);
+        return;
+    }
+    OutSignal[Pixel] = S; // Extended curve Y values remain extended through output mapping.
+}

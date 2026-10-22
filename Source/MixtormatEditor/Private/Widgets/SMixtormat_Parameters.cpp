@@ -5,11 +5,14 @@
 #include "Widgets/SMixtormatInternal.h"
 
 #include "MixtormatParameterBinding.h"
+#include "MixtormatGroupControls.h"
+#include "MixtormatParameterDrivers.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 #include "UI/Parameters/SMixtormatParameterControl.h"
 #include "UI/Parameters/MixtormatShaderParamScanner.h"
@@ -38,15 +41,7 @@ namespace
 
 	EMixtormatParameterValueType ValueTypeForProperty(const FProperty* Property)
 	{
-		if (CastField<FFloatProperty>(Property)) return EMixtormatParameterValueType::Float;
-		if (CastField<FIntProperty>(Property)) return EMixtormatParameterValueType::Int;
-		if (CastField<FBoolProperty>(Property)) return EMixtormatParameterValueType::Bool;
-		if (CastField<FEnumProperty>(Property)) return EMixtormatParameterValueType::Enum;
-		if (const FByteProperty* Byte = CastField<FByteProperty>(Property); Byte && Byte->Enum)
-		{
-			return EMixtormatParameterValueType::Enum;
-		}
-		return EMixtormatParameterValueType::Invalid;
+		return MixtormatParameterBinding::ValueTypeForProperty(Property);
 	}
 
 	FName TypeNameForProperty(const FProperty* Property)
@@ -481,6 +476,8 @@ bool SMixtormat::WouldCreateParameterReferenceCycle(
 bool SMixtormat::CanPasteParameterReference(const FMixtormatParameterAddress& Target) const
 {
 	return ParameterReferenceClipboard.IsSet()
+		&& !MixtormatGroupControls::FindDrivingControl({WorkingLayers, WorkingLayerGroups}, Target)
+		&& !MixtormatGroupControls::FindDrivingControl({WorkingLayers, WorkingLayerGroups}, ParameterReferenceClipboard.GetValue())
 		&& MixtormatParameterBinding::AreReferenceTypesCompatible(Target, ParameterReferenceClipboard.GetValue())
 		&& MixtormatParameterBinding::IsReferenceSourceValid({WorkingLayers, WorkingLayerGroups}, ParameterReferenceClipboard.GetValue())
 		&& !WouldCreateParameterReferenceCycle(Target, ParameterReferenceClipboard.GetValue());
@@ -555,6 +552,12 @@ void SMixtormat::SetParameterReferenceMode(
 {
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, false))
 	{
+		if (Mode == EMixtormatReferenceMode::Link && MixtormatGroupControls::FindDrivingControl(
+			{WorkingLayers, WorkingLayerGroups}, Binding->Reference.Source))
+		{
+			WorkingStatusText = LOCTEXT("GroupControlLinkConflict", "A group control owns this source. Detach the control before changing Follow to Link.").ToString();
+			return;
+		}
 		Binding->Reference.Mode = Mode;
 		RefreshLayeredPreview();
 	}
@@ -610,6 +613,11 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 	// and disappear with the parameter's state move the item under the cursor between two
 	// right-clicks on the same row, and hide the vocabulary from anyone who has not already
 	// referenced something.
+	Menu.SubMenu(LOCTEXT("ExposeParameterToGroup", "Expose to Group…"), nullptr,
+		FOnGetContent::CreateSP(this, &SMixtormat::BuildExposeToGroupMenu, Target))
+		.Enabled(MixtormatGroupControls::FindTargetGroup({WorkingLayers, WorkingLayerGroups}, Target) != nullptr
+			&& Target.ValueType != EMixtormatParameterValueType::Bool && Target.ValueType != EMixtormatParameterValueType::Invalid)
+		.ToolTip(LOCTEXT("ExposeParameterToGroupHelp", "Create an independent group-owned value, or attach this internal parameter to a compatible group control. Instances and existing bindings must be resolved explicitly."));
 	Menu.Caption(LOCTEXT("ParameterReferenceCaption", "Parameter"))
 		.Item(
 			LOCTEXT("CopyParameterReference", "Copy Reference"),
@@ -676,7 +684,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 			LOCTEXT("AddParameterDriver", "Add Driver..."),
 			nullptr,
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildParameterDriverPopover, Target))
-		.Enabled(Target.IsValid());
+		.Enabled(MixtormatParameterDrivers::Capability({WorkingLayers, WorkingLayerGroups}, Target).IsSupported())
+		.ToolTip(MixtormatParameterDrivers::Capability({WorkingLayers, WorkingLayerGroups}, Target).Reason);
 
 	if (IsParameterDriven(Target))
 	{
@@ -805,7 +814,12 @@ TSharedRef<SWidget> SMixtormat::WrapParameterControl(
 		.OnGetDriverContent(FOnGetContent::CreateSP(
 			this, &SMixtormat::BuildParameterDriverPopoverFor, ResolveTarget))
 		[
-			Control
+			SNew(SBox)
+			.IsEnabled_Lambda([this, ResolveTarget]()
+			{
+				return MixtormatGroupControls::FindDrivingControl({WorkingLayers, WorkingLayerGroups}, ResolveTarget()) == nullptr;
+			})
+			[Control]
 		];
 }
 
@@ -1690,10 +1704,9 @@ void SMixtormat::SetDriverSource(
 	const EMixtormatDriverSourceKind SourceKind,
 	FName SourceOutput)
 {
-	if (Target.ValueType != EMixtormatParameterValueType::Float)
-	{
-		return;
-	}
+	FText SourceError;
+	if (!MixtormatParameterDrivers::SourceSupported({WorkingLayers, WorkingLayerGroups}, Target, SourceLayerId, SourceChildId, SourceKind, SourceError))
+	{ WorkingStatusText = SourceError.ToString(); return; }
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, true))
 	{
 		Binding->Reference.bEnabled = false;
@@ -1702,6 +1715,12 @@ void SMixtormat::SetDriverSource(
 		Binding->Driver.SourceChildId = SourceChildId;
 		Binding->Driver.SourceKind = SourceKind;
 		Binding->Driver.SourceOutput = SourceOutput;
+		if (Target.ValueType == EMixtormatParameterValueType::Enum && Binding->Driver.EnumBins.IsEmpty())
+		{
+			FMixtormatParameterValue Base;
+			if (MixtormatParameterBinding::TryReadLocalValue({WorkingLayers, WorkingLayerGroups}, Target, Base))
+			{ FMixtormatDriverEnumBin Bin; Bin.Value = Base.EnumValue; Binding->Driver.EnumBins.Add(Bin); }
+		}
 		RefreshLayeredPreview();
 	}
 }
@@ -1719,6 +1738,17 @@ void SMixtormat::SetDriverCombine(
 
 void SMixtormat::SetDriverEnabled(FMixtormatParameterAddress Target, const bool bEnabled)
 {
+	if (bEnabled)
+	{
+		const auto* Existing = FindParameterBinding(Target);
+		FText Error;
+		if (!Existing || !MixtormatParameterDrivers::SourceSupported({WorkingLayers, WorkingLayerGroups}, Target,
+			Existing->Driver.SourceLayerId, Existing->Driver.SourceChildId, Existing->Driver.SourceKind, Error)
+			|| !MixtormatParameterDrivers::ValidateTransfer(Existing->Driver, Error)
+			|| (Target.ValueType == EMixtormatParameterValueType::Enum
+				&& !MixtormatParameterDrivers::ValidateEnumBins(MixtormatGroupControls::FindEnumType(Target.TypeName), Existing->Driver.EnumBins, Error)))
+		{ WorkingStatusText = Error.ToString(); return; }
+	}
 	if (FMixtormatParameterBinding* Binding = FindParameterBinding(Target, bEnabled))
 	{
 		Binding->Driver.bEnabled = bEnabled && Binding->Driver.SourceKind != EMixtormatDriverSourceKind::None;
@@ -1750,7 +1780,9 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 			this, &SMixtormat::SetDriverSource, Target, FGuid{}, FGuid{}, EMixtormatDriverSourceKind::None, FName()));
 	for (const FMixtormatLayer& Layer : WorkingLayers)
 	{
-
+		FText LayerIssue;
+		const bool bLayerAllowed = MixtormatParameterDrivers::SourceSupported({WorkingLayers, WorkingLayerGroups}, Target,
+			Layer.LayerId, FGuid(), EMixtormatDriverSourceKind::CombinedMask, LayerIssue);
 		Menu.Item(
 			FText::Format(LOCTEXT("DriverLayerMaskSource", "{0} / Layer Mask"), Layer.DisplayName),
 			nullptr,
@@ -1761,7 +1793,7 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 				Layer.LayerId,
 				FGuid{},
 				EMixtormatDriverSourceKind::CombinedMask,
-				FName(TEXT("Mask"))));
+				FName(TEXT("Mask")))).Enabled(bLayerAllowed).ToolTip(LayerIssue);
 
 		for (const FMixtormatLayerChild& Child : Layer.Children)
 		{
@@ -1790,6 +1822,9 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 			{
 				continue;
 			}
+			FText ChildIssue;
+			const bool bChildAllowed = MixtormatParameterDrivers::SourceSupported({WorkingLayers, WorkingLayerGroups}, Target,
+				Layer.LayerId, Child.ChildId, Kind, ChildIssue);
 			Menu.Item(
 				FText::Format(
 					LOCTEXT("DriverChildSource", "{0} / {1}"),
@@ -1803,7 +1838,20 @@ TSharedRef<SWidget> SMixtormat::BuildDriverSourceMenu(FMixtormatParameterAddress
 					Layer.LayerId,
 					Child.ChildId,
 					Kind,
-					Output));
+					Output)).Enabled(bChildAllowed).ToolTip(ChildIssue);
+		}
+	}
+	for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+	{
+		for (const FMixtormatLayerChild& Child : Group.Children)
+		{
+			if (!GetChildCapabilities(Child).Outputs.ContainsByPredicate([](const auto& Output) { return Output.Kind == EMixtormatPreviewOutputKind::RegionIds; })) { continue; }
+			FText Issue;
+			const bool bAllowed = MixtormatParameterDrivers::SourceSupported({WorkingLayers, WorkingLayerGroups}, Target,
+				Group.GroupId, Child.ChildId, EMixtormatDriverSourceKind::RegionIds, Issue);
+			Menu.Item(FText::Format(LOCTEXT("DriverGroupIdsSource", "Group {0} / {1} / Region IDs"), Group.DisplayName, Child.DisplayName), nullptr,
+				FSimpleDelegate::CreateSP(this, &SMixtormat::SetDriverSource, Target, Group.GroupId, Child.ChildId,
+					EMixtormatDriverSourceKind::RegionIds, FName(TEXT("RandomPerId")))).Enabled(bAllowed).ToolTip(Issue);
 		}
 	}
 	return Menu.Build();
@@ -1864,11 +1912,12 @@ TSharedRef<SWidget> SMixtormat::BuildDriverCombineMenu(FMixtormatParameterAddres
 
 TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterAddress Target)
 {
-	if (Target.ValueType != EMixtormatParameterValueType::Float)
+	const auto Capability = MixtormatParameterDrivers::Capability({WorkingLayers, WorkingLayerGroups}, Target);
+	if (!Capability.IsSupported())
 	{
 		MixtormatMenu::FBuilder Menu;
 		Menu.Caption(LOCTEXT("DriverScalarOnly", "Drivers"))
-			.Item(LOCTEXT("DriverScalarOnlyMessage", "Spatial Drivers currently require a float parameter."), nullptr, FSimpleDelegate())
+			.Item(Capability.Reason, nullptr, FSimpleDelegate())
 			.Enabled(false);
 		return Menu.Build();
 	}
@@ -1899,6 +1948,12 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 				}
 			}
 		}
+		for (const FMixtormatLayerGroup& Group : WorkingLayerGroups)
+		{
+			if (Group.GroupId != Current->Driver.SourceLayerId) { continue; }
+			for (const auto& Child : Group.Children)
+			{ if (Child.ChildId == Current->Driver.SourceChildId) { return FText::Format(LOCTEXT("DriverGroupSourceText", "Group {0} / {1}"), Group.DisplayName, Child.DisplayName); } }
+		}
 		return LOCTEXT("DriverMissingSourceText", "Missing Source");
 	};
 
@@ -1923,6 +1978,14 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			[
 				Row
 			];
+	};
+
+	const auto AddNumericRow = [&AddRow, Target](const TSharedRef<SWidget>& Row)
+	{
+		AddRow(SNew(SMixtormatHelp)
+			.Enabled(Target.ValueType == EMixtormatParameterValueType::Enum)
+			.Text(LOCTEXT("DriverEnumNumericUnavailable", "Enum drivers select explicit bins. Numeric output mapping, Amount and Combine do not operate on enum ordinals."))
+			[SNew(SBox).IsEnabled(Target.ValueType != EMixtormatParameterValueType::Enum)[Row]]);
 	};
 
 	AddRow(MixtormatRow::Make(
@@ -2035,7 +2098,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			}
 		})));
 
-	AddRow(MixtormatRow::Make(
+	AddNumericRow(MixtormatRow::Make(
 		LOCTEXT("DriverCombineLabel", "Combine"),
 		MixtormatRow::MakeChip(
 			TAttribute<FText>::CreateLambda([this, Target]()
@@ -2045,7 +2108,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			}),
 			FOnGetContent::CreateSP(this, &SMixtormat::BuildDriverCombineMenu, Target))));
 
-	AddRow(MakeSlider(
+	AddNumericRow(MakeSlider(
 		LOCTEXT("DriverAmount", "Amount"),
 		TAttribute<double>::CreateLambda([this, Target]()
 		{
@@ -2120,14 +2183,19 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			}
 		})));
 
-	AddRow(MakeSlider(
+	AddRow(BuildDriverTypedControls(Target));
+
+	const bool bIntegerDriver = Capability.Execution == MixtormatParameterDrivers::EExecution::Integer;
+	const double OutputUiMin = bIntegerDriver ? FMath::Min(0, Capability.IntMin) : -2.0;
+	const double OutputUiMax = bIntegerDriver ? Capability.IntMax : 2.0;
+	AddNumericRow(MakeSlider(
 		LOCTEXT("DriverOutputMin", "Out Min"),
 		TAttribute<double>::CreateLambda([this, Target]()
 		{
 			const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
 			return Current ? Current->Driver.OutputMin : 0.0;
 		}),
-		-2.0, 2.0, 0.0, 0.01, false,
+		OutputUiMin, OutputUiMax, 0.0, 0.01, false,
 		FMixtormatOnSliderValueChanged::CreateLambda([this, Target](const double Value)
 		{
 			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))
@@ -2145,14 +2213,14 @@ TSharedRef<SWidget> SMixtormat::BuildParameterDriverPopover(FMixtormatParameterA
 			}
 		})));
 
-	AddRow(MakeSlider(
+	AddNumericRow(MakeSlider(
 		LOCTEXT("DriverOutputMax", "Out Max"),
 		TAttribute<double>::CreateLambda([this, Target]()
 		{
 			const FMixtormatParameterBinding* Current = FindParameterBinding(Target);
 			return Current ? Current->Driver.OutputMax : 1.0;
 		}),
-		-2.0, 2.0, 1.0, 0.01, false,
+		OutputUiMin, OutputUiMax, 1.0, 0.01, false,
 		FMixtormatOnSliderValueChanged::CreateLambda([this, Target](const double Value)
 		{
 			if (FMixtormatParameterBinding* Current = FindParameterBinding(Target, true))

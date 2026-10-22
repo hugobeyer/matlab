@@ -1102,7 +1102,27 @@ namespace MixtormatGpuCompositor
 		float OutputMax = 1.0f;
 		float Amount = 1.0f;
 		uint32 Combine = 0;
+		bool bUseTransferCurve = false;
+		FMixtormatScalarRamp TransferCurve;
+		bool bEnumBins = false;
+		TArray<FMixtormatDriverEnumBin> EnumBins;
+		bool NeedsSignalTransform() const { return bUseTransferCurve || bEnumBins; }
 	};
+
+	struct FDriverTransferKey
+	{
+		const FScalarDriverRenderData* Driver = nullptr;
+		FRDGTextureRef Signal = nullptr;
+		FRDGTextureRef RegionIds = nullptr;
+		bool operator==(const FDriverTransferKey&) const = default;
+		friend uint32 GetTypeHash(const FDriverTransferKey& Key)
+		{ return HashCombine(PointerHash(Key.Driver), HashCombine(PointerHash(Key.Signal), PointerHash(Key.RegionIds))); }
+	};
+
+	inline float DriverEnableValue(const FScalarDriverRenderData& Driver, bool bResolved)
+	{
+		return !bResolved ? 0.0f : (Driver.NeedsSignalTransform() ? 2.0f : 1.0f);
+	}
 
 	// A Generator child that rewrites an earlier Generator's own output. Warp, Push, Carve and
 	// Deform share the one ordered executor; stage/kind combinations that do not apply fail
@@ -1177,7 +1197,8 @@ namespace MixtormatGpuCompositor
 		FOutputReferenceRenderData Height;
 		FBehaviorFieldComposition HeightComposition;
 		// Reuse the scalar-driver signal contract for published Flow Amount/Trace Length.
-		FScalarDriverRenderData FlowDrivers[2];
+		FScalarDriverRenderData FlowDrivers[3];
+				FScalarDriverRenderData FeatherSideDriver;
 		// Shared per-pixel drivers for Strength and Gradient Reach.
 		FScalarDriverRenderData ScalarDrivers[2];
 		// Optional independent 0..1 field, distinct from nested mask children.
@@ -1755,6 +1776,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef SelectedOverlayMask = nullptr;
 		FRDGTextureRef OutputRegionIdPick[2] = {};
 
+		TMap<FDriverTransferKey, FRDGTextureRef> DriverTransferSignals;
 		FRDGTextureRef EmptyRegionIds = nullptr;
 		FRDGTextureRef EmptyPatternUV = nullptr;
 		FRDGTextureRef EmptyPatternOrientation = nullptr;
@@ -1909,6 +1931,9 @@ namespace MixtormatGpuCompositor
 	// Shared compositor seams. Shader-bound implementations stay with their shader classes in
 	// MixtormatGpuCompositor.cpp; the pipeline owns graph construction and layer orchestration.
 	FLinearColor DebugClearColor();
+
+	FRDGTextureRef AddDriverTransferPass(FMixtormatComposeContext& Ctx, const FScalarDriverRenderData& Driver,
+		FRDGTextureRef Signal, FRDGTextureRef RegionIds = nullptr);
 
 	void AddLayerCompositePass(
 		FMixtormatComposeContext& Ctx,

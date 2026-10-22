@@ -5,6 +5,7 @@
 #include "Compositing/MixtormatComposeHash.h"
 #include "MixtormatMaterial.h"
 #include "MixtormatParameterBinding.h"
+#include "MixtormatParameterDrivers.h"
 #include "MixtormatParameterDefinition.h"
 #include "MixtormatReliefScaling.h"
 #include "MixtormatSurface.h"
@@ -84,6 +85,7 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 				{
 					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::Layer
 						&& Candidate.DestinationParameter == DrivenScalars[SlotIndex]
+						&& Candidate.ValueType == EMixtormatParameterValueType::Float
 						&& Candidate.Driver.bEnabled
 						&& (Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
 							|| Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds)
@@ -93,7 +95,11 @@ bool GatherLayerSource(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 			{
 				continue;
 			}
+			FText TransferError;
+			if (!MixtormatParameterDrivers::ValidateTransfer(Binding->Driver, TransferError)) { continue; }
 			FScalarDriverRenderData& Driver = Data.ScalarDrivers[SlotIndex];
+			Driver.bUseTransferCurve = Binding->Driver.bUseTransferCurve;
+			Driver.TransferCurve = Binding->Driver.TransferCurve;
 			Driver.bRegionSource =
 				Binding->Driver.SourceKind == EMixtormatDriverSourceKind::RegionIds;
 			Driver.SourceLayerId = Binding->Driver.SourceLayerId;

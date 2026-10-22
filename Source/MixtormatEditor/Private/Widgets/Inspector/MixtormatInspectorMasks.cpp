@@ -688,9 +688,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 
 	const TSharedRef<SWidget> CurvatureCurveEditor =
 		SNew(SMixtormatScalarRamp)
-		.Ramp_Lambda([Gen]()
+		.IsEnabled_Lambda([this, Gen]() { return Gen() && !GroupControlValueFor(Gen(), FMixtormatGeneratedMask::StaticStruct(), TEXT("CurvatureCurve")); })
+		.Ramp_Lambda([this, Gen]()
 		{
 			const FMixtormatGeneratedMask* M = Gen();
+			if (const auto* Value = GroupControlValueFor(M, FMixtormatGeneratedMask::StaticStruct(), TEXT("CurvatureCurve"))) { return Value->ScalarRampValue; }
 			return M ? M->CurvatureCurve : FMixtormatScalarRamp();
 		})
 		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
@@ -704,7 +706,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 		{
 			if (FMixtormatGeneratedMask* M = Gen())
 			{
-				M->CurvatureCurve = Ramp;
+				if (GroupControlValueFor(M, FMixtormatGeneratedMask::StaticStruct(), TEXT("CurvatureCurve"))) { return; }
+								M->CurvatureCurve = Ramp;
 				RefreshLayeredPreview();
 			}
 		});
@@ -827,9 +830,11 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 
 	const TSharedRef<SWidget> HeightCurveEditor =
 		SNew(SMixtormatScalarRamp)
-		.Ramp_Lambda([Gen]()
+		.IsEnabled_Lambda([this, Gen]() { return Gen() && !GroupControlValueFor(Gen(), FMixtormatGeneratedMask::StaticStruct(), TEXT("HeightCurve")); })
+		.Ramp_Lambda([this, Gen]()
 		{
 			const FMixtormatGeneratedMask* M = Gen();
+			if (const auto* Value = GroupControlValueFor(M, FMixtormatGeneratedMask::StaticStruct(), TEXT("HeightCurve"))) { return Value->ScalarRampValue; }
 			return M ? M->HeightCurve : FMixtormatScalarRamp();
 		})
 		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
@@ -843,7 +848,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 		{
 			if (FMixtormatGeneratedMask* M = Gen())
 			{
-				M->HeightCurve = Ramp;
+				if (GroupControlValueFor(M, FMixtormatGeneratedMask::StaticStruct(), TEXT("HeightCurve"))) { return; }
+								M->HeightCurve = Ramp;
 				RefreshLayeredPreview();
 			}
 		});
@@ -1776,9 +1782,11 @@ void SMixtormat::AddMaskShapingRows(
 	// obscure the actual type error at the widget argument.
 	const TSharedRef<SWidget> CurveEditor =
 			SNew(SMixtormatScalarRamp)
-		.Ramp_Lambda([Resolve]()
+		.IsEnabled_Lambda([this, Resolve]() { return Resolve() && !GroupControlValueFor(Resolve(), FMixtormatMaskShaping::StaticStruct(), TEXT("CurveBias")); })
+		.Ramp_Lambda([this, Resolve]()
 		{
 			const FMixtormatMaskShaping* Shaping = Resolve();
+			if (const auto* Value = GroupControlValueFor(Shaping, FMixtormatMaskShaping::StaticStruct(), TEXT("CurveBias"))) { return Value->ScalarRampValue; }
 			return Shaping ? Shaping->CurveBias : FMixtormatScalarRamp();
 		})
 		.Height(FMixtormatThemeStore::GetResolved().ControlLayout.ScalarRampHeight)
@@ -1801,7 +1809,8 @@ void SMixtormat::AddMaskShapingRows(
 		{
 			if (FMixtormatMaskShaping* Shaping = Resolve())
 			{
-				Shaping->CurveBias = Ramp;
+				if (GroupControlValueFor(Shaping, FMixtormatMaskShaping::StaticStruct(), TEXT("CurveBias"))) { return; }
+								Shaping->CurveBias = Ramp;
 				RefreshLayeredPreview();
 			}
 		})

@@ -2,6 +2,7 @@
 
 #include "MixtormatLayerGroups.h"
 #include "MixtormatChildScope.h"
+#include "MixtormatGroupControls.h"
 
 #include "Misc/SecureHash.h"
 
@@ -187,6 +188,11 @@ namespace MixtormatLayerGroups
 		}
 		for (FMixtormatLayerGroup& Group : Groups)
 		{
+			for (FMixtormatGroupControl& Control : Group.Controls)
+			{
+				if (!Control.ControlId.IsValid() || ChildIds.Contains(Control.ControlId)) { Control.ControlId = FGuid::NewGuid(); }
+				ChildIds.Add(Control.ControlId);
+			}
 			for (FMixtormatLayerChild& Child : Group.Children)
 			{
 				if (!Child.ChildId.IsValid() || ChildIds.Contains(Child.ChildId))
@@ -221,7 +227,7 @@ namespace MixtormatLayerGroups
 				continue;
 			}
 			const FMixtormatLayerGroup* Group = FindGroup(Groups, Layer.GroupId);
-			if (Group && (Group->Children.Num() > 0 || !Group->bEnabled))
+			if (Group && (Group->Children.Num() > 0 || !Group->Controls.IsEmpty() || !Group->bEnabled))
 			{
 				return true;
 			}
@@ -231,10 +237,11 @@ namespace MixtormatLayerGroups
 
 	void BuildEffectiveLayers(
 		const TArray<FMixtormatLayer>& Layers,
-		const TArray<FMixtormatLayerGroup>& Groups,
+		const TArray<FMixtormatLayerGroup>& InGroups,
 		TArray<FMixtormatLayer>& OutLayers)
 	{
-		OutLayers = Layers;
+		TArray<FMixtormatLayerGroup> Groups;
+		MixtormatGroupControls::Apply(Layers, InGroups, OutLayers, Groups);
 		if (Groups.Num() == 0)
 		{
 			return;

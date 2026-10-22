@@ -737,7 +737,8 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 	const auto CanEditHsv = [this]()
 	{
 		const FMixtormatLayerChild* Child = ResolveChild(SelectedLayerIndex, SelectedMaskIndex);
-		return Child && Child->Type == EMixtormatLayerChildType::HsvFilter && !Child->IsInstance();
+		return Child && Child->Type == EMixtormatLayerChildType::HsvFilter && !Child->IsInstance()
+						&& !GroupControlValueFor(&Child->HsvFilter, FMixtormatHsvIdFilter::StaticStruct(), TEXT("ColorRamp"));
 	};
 
 	const auto Slider = [this, Hsv](
@@ -760,9 +761,10 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 		.IsEnabled_Lambda([CanEditHsv]() { return CanEditHsv(); })
 		[
 			SNew(SMixtormatColorRamp)
-			.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([Hsv]()
+			.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([this, Hsv]()
 			{
 				const FMixtormatHsvIdFilter* Filter = Hsv();
+				if (const auto* Value = GroupControlValueFor(Filter, FMixtormatHsvIdFilter::StaticStruct(), TEXT("ColorRamp"))) { return Value->ColorRampValue; }
 				return Filter ? Filter->ColorRamp : FMixtormatColorRamp();
 			}))
 			.DomainMin(0.0f).DomainMax(1.0f)

@@ -14,6 +14,7 @@
 #include "MixtormatOutputReference.h"
 #include "MixtormatBehaviorTypes.h"
 #include "MixtormatParameterTypes.h"
+#include "MixtormatGroupParameterTypes.h"
 #include "MixtormatLayerTypes.generated.h"
 
 class UMixtormatMaterial;
@@ -335,9 +336,10 @@ struct MIXTORMATRUNTIME_API FMixtormatLayerGroup
 
 	bool HasAccentColor() const { return AccentColor.A > 0.0f; }
 
-	// Reserved for group-level parameters. There are none yet, and these are deliberately not
-	// broadcast onto member layers: a group owns no layer parameter surface to bind against, and
-	// pushing them down would silently overwrite each member's own bindings.
+	UPROPERTY(EditAnywhere, Category = "Group Controls")
+	TArray<FMixtormatGroupControl> Controls;
+
+	// Bindings of shared child modules remain separate from independent group controls.
 	UPROPERTY()
 	TArray<FMixtormatParameterBinding> ParameterBindings;
 

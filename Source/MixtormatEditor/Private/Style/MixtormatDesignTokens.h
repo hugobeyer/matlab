@@ -674,6 +674,8 @@ namespace MixtormatTokens
 	// because they are lines of text rather than thumbnails, and wide enough that the longest
 	// option does not wrap.
 	constexpr float OptionMenuWidth = 260.0f;
+		// Parameter pickers and typed drivers can contain ramps and multiple enum-bin rows.
+		constexpr float ParameterPopoverMaxHeight = 600.0f;
 
 	constexpr int32 MaskPickerColumns = 4;
 	constexpr int32 MaskPickerColumnsDense = 5;

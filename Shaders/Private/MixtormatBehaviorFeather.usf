@@ -12,6 +12,14 @@ Texture2D<float> BehaviorDriverSignal0;
 Texture2D<float> BehaviorDriverSignal1;
 float DirectionBias;
 uint Side;
+uint SideDriverEnabled;
+Texture2D<float> SideDriverSignal;
+
+uint FeatherSideAt(int2 Pixel)
+{
+    const float Choice = SideDriverEnabled != 0u ? SideDriverSignal.Load(int3(Pixel, 0)) : (float)Side;
+    return isfinite(Choice) ? (uint)Choice : Side;
+}
 uint HasBoundary;
 uint HasMask;
 
@@ -170,8 +178,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         ? BoundaryField.Load(int3(P, 0)) : float2(H, 1.0f);
     if (!isfinite(Distance) || !all(isfinite(Boundary))
         || (HasBoundary != 0u && Boundary.y <= 0.5f)) { Weight = 0.0f; }
-    if (Side == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
-    if (Side == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
+    const uint DrivenSide = FeatherSideAt(P);
+    if (DrivenSide == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
+    if (DrivenSide == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
     const float T = saturate(Distance / max(Radius, 1.0e-4f));
     Weight *= 1.0f - T * T * (3.0f - 2.0f * T);
 #endif
@@ -258,8 +267,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
     float Weight = isfinite(M) && isfinite(Driven) && all(isfinite(Bounds))
         && all(isfinite(Boundary)) && (HasBoundary == 0u || Boundary.y > 0.5f)
         ? Driven * saturate(M) : 0.0f;
-    if (Side == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
-    if (Side == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
+    const uint DrivenSide = FeatherSideAt(P);
+    if (DrivenSide == 1u && Boundary.x >= 0.0f) { Weight = 0.0f; }
+    if (DrivenSide == 2u && Boundary.x <= 0.0f) { Weight = 0.0f; }
     // The mean of the high-to-low and low-to-high slope envelopes bevels a
     // hard edge without moving the entire feature as a broad Gaussian does.
     const float Feathered = 0.5f * (Bounds.x + Bounds.y);

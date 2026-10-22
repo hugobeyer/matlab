@@ -11,10 +11,11 @@ int2 OutputSize;
 float TraceLength;
 float WarpStrength;
 int Steps;
-float4 FlowDriverParamsA[2];
-float4 FlowDriverParamsB[2];
+float4 FlowDriverParamsA[3];
+float4 FlowDriverParamsB[3];
 Texture2D<float> FlowDriverSignal0;
 Texture2D<float> FlowDriverSignal1;
+Texture2D<float> FlowDriverSignal2;
 Texture2D<float4> FlowField;
 Texture2D<float> FlowValidity;
 SamplerState LinearWrapSampler;
@@ -46,7 +47,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    const int Count = clamp(Steps, 1, 64);
+    const int Count = MixtormatApplyIntegerDriver(Steps, FlowDriverSignal2.Load(int3(Pixel, 0)),
+            FlowDriverParamsA[2], FlowDriverParamsB[2], 1, 64);
     const float Dt = Strength * Length / (float)Count;
     float2 P = UV;
     [loop]

@@ -9,6 +9,7 @@
 #include "MixtormatMaterial.h"
 #include "MixtormatOutputReference.h"
 #include "MixtormatScalarRampMath.h"
+#include "MixtormatParameterDrivers.h"
 
 namespace MixtormatGpuCompositor
 {
@@ -768,7 +769,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		}
 		if (!bEarlier) { continue; }
 		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FText TransferError;
+		if (!MixtormatParameterDrivers::ValidateTransfer(Authored, TransferError)) { continue; }
 		FScalarDriverRenderData& Driver = FlowOut.SettingsDrivers[Slot];
+		Driver.bUseTransferCurve = Authored.bUseTransferCurve;
+		Driver.TransferCurve = Authored.TransferCurve;
 		Driver.bEnabled = true;
 		Driver.SourceLayerId = Authored.SourceLayerId;
 		Driver.bInvert = Authored.bInvert;
@@ -822,7 +827,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		}
 		if (!bEarlier) { continue; }
 		const FMixtormatParameterDriver& Authored = Binding->Driver;
+		FText TransferError;
+		if (!MixtormatParameterDrivers::ValidateTransfer(Authored, TransferError)) { continue; }
 		FScalarDriverRenderData& Driver = Out.ScalarDrivers[Slot];
+		Driver.bUseTransferCurve = Authored.bUseTransferCurve;
+		Driver.TransferCurve = Authored.TransferCurve;
 		Driver.bEnabled = true;
 		Driver.SourceLayerId = Authored.SourceLayerId;
 		Driver.bInvert = Authored.bInvert;
@@ -833,6 +842,38 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		Driver.Amount = Authored.Amount;
 		Driver.Combine = static_cast<uint32>(Authored.Combine);
 	}
+	if (bFeather)
+	{
+		FMixtormatParameterAddress Target;
+		Target.LayerId = Layer.LayerId; Target.ChildId = LayerChild.ChildId;
+		Target.Owner = EMixtormatParameterOwnerType::BehaviorFeatherSettings;
+		Target.Parameter = TEXT("Side"); Target.ValueType = EMixtormatParameterValueType::Enum;
+		Target.TypeName = StaticEnum<EMixtormatBehaviorFeatherSide>()->GetFName();
+		const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate([&Target](const auto& Candidate)
+		{
+			return Candidate.DestinationOwner == Target.Owner && Candidate.DestinationParameter == Target.Parameter
+				&& Candidate.ValueType == Target.ValueType && Candidate.TypeName == Target.TypeName && Candidate.Driver.bEnabled
+				&& !Candidate.Reference.bEnabled && Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask;
+		});
+		if (Binding && MixtormatParameterDrivers::Capability(EffectiveLayers, Target).IsSupported())
+		{
+			FText Error;
+			const auto& Authored = Binding->Driver;
+			bool bEarlier = false;
+			for (int32 Previous = 0; Previous < LayerIndex; ++Previous)
+			{ bEarlier |= EffectiveLayers[Previous].bEnabled && EffectiveLayers[Previous].LayerId == Authored.SourceLayerId; }
+			if (bEarlier && MixtormatParameterDrivers::ValidateEnumBins(StaticEnum<EMixtormatBehaviorFeatherSide>(), Authored.EnumBins, Error)
+				&& MixtormatParameterDrivers::ValidateTransfer(Authored, Error))
+			{
+				auto& Driver = Out.FeatherSideDriver;
+				Driver.bEnabled = true; Driver.bEnumBins = true; Driver.EnumBins = Authored.EnumBins;
+				Driver.SourceLayerId = Authored.SourceLayerId; Driver.bInvert = Authored.bInvert;
+				Driver.InputMin = Authored.InputMin; Driver.InputMax = Authored.InputMax;
+				Driver.bUseTransferCurve = Authored.bUseTransferCurve; Driver.TransferCurve = Authored.TransferCurve;
+			}
+		}
+	}
+
 	// A zero-authored Strength remains neutral unless a valid ordered driver
 	// can replace or combine it. This check must follow driver resolution.
 	const bool bHasActiveFlowSettingsDriver = FlowOut.SettingsDrivers[0].bEnabled
@@ -900,14 +941,15 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 		// BehaviorFlow owns the reflected output-reference properties FlowAmount and
 		// FlowTraceLength. Demand only completed earlier-layer mask signals; unsupported or
 		// unavailable drivers retain the authored scalar rather than falling back to zero.
-		const FName DriverProperties[2] = { TEXT("FlowAmount"), TEXT("FlowTraceLength") };
-		for (int32 Slot = 0; Slot < 2; ++Slot)
+		const FName DriverProperties[3] = { TEXT("FlowAmount"), TEXT("FlowTraceLength"), TEXT("FlowSteps") };
+		for (int32 Slot = 0; Slot < 3; ++Slot)
 		{
 			const FMixtormatParameterBinding* Binding = LayerChild.ParameterBindings.FindByPredicate(
 				[&DriverProperties, Slot](const FMixtormatParameterBinding& Candidate)
 				{
 					return Candidate.DestinationOwner == EMixtormatParameterOwnerType::BehaviorFlow
 						&& Candidate.DestinationParameter == DriverProperties[Slot]
+						&& Candidate.ValueType == (Slot == 2 ? EMixtormatParameterValueType::Int : EMixtormatParameterValueType::Float)
 						&& Candidate.Driver.bEnabled
 						&& Candidate.Driver.SourceKind == EMixtormatDriverSourceKind::CombinedMask
 						&& Candidate.Driver.SourceLayerId.IsValid();
@@ -926,7 +968,11 @@ void GatherGeneratorBehaviorChild(FLayerRenderData& Data, const FMixtormatLayer&
 			}
 			if (!bEarlier) { continue; }
 			const FMixtormatParameterDriver& Authored = Binding->Driver;
+			FText TransferError;
+			if (!MixtormatParameterDrivers::ValidateTransfer(Authored, TransferError)) { continue; }
 			FScalarDriverRenderData& Driver = Out.FlowDrivers[Slot];
+			Driver.bUseTransferCurve = Authored.bUseTransferCurve;
+			Driver.TransferCurve = Authored.TransferCurve;
 			Driver.bEnabled = true;
 			Driver.SourceLayerId = Authored.SourceLayerId;
 			Driver.bInvert = Authored.bInvert;
