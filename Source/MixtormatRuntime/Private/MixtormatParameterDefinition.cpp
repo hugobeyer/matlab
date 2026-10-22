@@ -230,6 +230,14 @@ namespace
 			SkinDrift.HardMin = 0.0f;
 			SkinDrift.HardMax = 3.0f;
 			Add(ET::Surfacing, TEXT("MarbleDrift"), SkinDrift);
+			FMixtormatParameterContract SkinWarpScale;
+			SkinWarpScale.HardMin = 0.125f;
+			SkinWarpScale.HardMax = 8.0f;
+			Add(ET::Surfacing, TEXT("WarpScale"), SkinWarpScale);
+			FMixtormatParameterContract SkinPoreSize;
+			SkinPoreSize.HardMin = 0.25f;
+			SkinPoreSize.HardMax = 3.0f;
+			Add(ET::Surfacing, TEXT("PoreSize"), SkinPoreSize);
 			FMixtormatParameterContract SkinWarpLayers;
 			SkinWarpLayers.HardMin = 1.0f;
 			SkinWarpLayers.HardMax = float(FMixtormatSkin::MaxWarpLayers);

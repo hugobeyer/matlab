@@ -14,6 +14,7 @@ PREFIX = "Mixtormat.SurfaceOptics.v1/"
 SOURCE_TAG = "Mixtormat.SurfaceOptics.Source"
 STATE_TAG = "Mixtormat.SurfaceOptics.State"
 TEXTURES = ("DA_Optics", "DA_FuzzColorMap", "DA_Subsurface")
+SHARED_TEXTURES = ("DA_BaseColor", "DA_Normal", "DA_RAMH", "DA_Height")
 ENABLE = "DA_UseSurfaceOptics"
 RENDERER_WARNING = (
     "Combined fuzz + per-pixel MFP Diffusion requires Substrate Adaptive GBuffer on a "
@@ -242,6 +243,16 @@ def duplicate_master(source_path, destination_path):
     return duplicate
 
 
+def _require_shared_parameters(material):
+    # An optical upgrade must remain selectable by the live shared preview, not merely compile.
+    names = {str(name) for name in LIB.get_texture_parameter_names(material)}
+    missing = sorted(set(SHARED_TEXTURES) - names)
+    _require(not missing,
+             f"Shared master is missing texture parameters: {missing}. Preserve/wire the existing "
+             "BC/Normal/RAMH/Height contract on the duplicate before upgrading; custom bake "
+             "mappings do not supply the live preview contract. No replacement inputs are invented.")
+
+
 def _textures(paths):
     _require(set(paths) == set(TEXTURES), f"Provide exactly these texture paths: {TEXTURES}.")
     textures = {}
@@ -323,6 +334,7 @@ def _validate_state(material, state):
     _require(_snapshot(material, state["monitored"]) == state["snapshot"],
              "Graph/settings changed since upgrade. Refusing to overwrite artist edits or save "
              "unverified wiring. Inspect the duplicate; start from a fresh duplicate if needed.")
+    _require_shared_parameters(material)
     _textures(state["textures"])
 
 
@@ -336,6 +348,7 @@ def upgrade_duplicate(path, texture_paths, *, editor_changes_applied=False):
     _api()
     material = _duplicate(path)
     textures = _textures(texture_paths)
+    _require_shared_parameters(material)
     _open(material, editor_changes_applied)
     unreal.log_warning(RENDERER_WARNING)
     state = _state(material)

@@ -12,8 +12,11 @@
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 
 
 // The 3D preview viewport: mesh, quality, camera, lighting, displacement, debug modes.
@@ -1208,7 +1211,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 {
 	const bool bReusingViewport = !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid();
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
-
+	const FTextBlockStyle WarningStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Warning));
 
 	const TSharedRef<SMixtormatPreviewViewport> PreviewViewport = bReusingViewport
 		? PreviewViewports[0].ToSharedRef()
@@ -1320,11 +1325,38 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			BuildFloatingPanelStack()
 		]
 		+ SOverlay::Slot()
-		.HAlign(HAlign_Left)
+		.HAlign(HAlign_Fill)
 		.VAlign(VAlign_Top)
 		.Padding(Resolved.PreviewLayout.OverlayInset)
 		[
-			BuildPreviewOutputStrip()
+			SNew(SVerticalBox)
+			.Visibility(EVisibility::SelfHitTestInvisible)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				// Contract failures are actionable even without an authored optical bundle or
+				// selected module. Do not hide them with the optional output/hotkey overlays.
+				SNew(SMixtormatSurfaceBox)
+				.Visibility_Lambda([PreviewViewport]()
+				{
+					return PreviewViewport->GetPreviewMaterialWarning().IsEmpty()
+						? EVisibility::Collapsed : EVisibility::HitTestInvisible;
+				})
+				.Recipe_Lambda([]()
+				{
+					return Mixtormat::MakePreviewPlateRecipe(FMixtormatThemeStore::GetResolved());
+				})
+				.Padding(FMargin(Resolved.ContextLayout.HintKeycapPadding))
+				[
+					SNew(STextBlock)
+					.Text_Lambda([PreviewViewport]() { return PreviewViewport->GetPreviewMaterialWarning(); })
+					.TextStyle(&WarningStyle)
+					.AutoWrapText(true)
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
+			[
+				BuildPreviewOutputStrip()
+			]
 		]
 		// The contextual hint strip: its position is authored (CONTEXT tab: corners plus top/bottom
 		// center), hit-test-invisible, its own inset token so it does not move when a toolbar inset

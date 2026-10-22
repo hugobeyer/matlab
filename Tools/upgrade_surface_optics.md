@@ -205,8 +205,23 @@ Recipe `BakedOptics`, `BakedFuzzColorMap`, `BakedSubsurface` still reference the
 Custom BC/Normal/RAM/Height mappings are unchanged; optical names are reserved for their own maps.
 
 Lit preview uses **actual parameter declarations AND authored-state**, not non-null targets or
-an arbitrary MID enable value. Missing/incomplete support retains legacy fuzz and logs an explicit
-warning when authored optics cannot render. The Fuzz diagnostic graph explicitly reads Optics.G
+an arbitrary MID enable value. Default and explicitly selected masters use the same validation:
+no optical declarations retains legacy fuzz; an incomplete optical contract or missing shared
+BC/Normal/RAMH/Height inputs rejects the new preview request without selecting a substitute.
+A persistent viewport warning names the missing support and the upgrade/selection steps, even
+before authored optics exists and in data-channel views. It is independent of optional overlay
+visibility. Unloadable/invalid selections visibly explain that the previous preview is unchanged.
+Authored optics on a legacy master also logs the warning once. Raw library previews clear this
+layer-master warning. Complete declarations still do **not** certify wiring or renderer support.
+
+Successful, current-generation completion rebinds all maps and the authored enable together;
+stale callbacks remain rejected by request serial, MID identity and selected-master path.
+Switching into a data-channel view during an in-flight compose now defers its rebind until the
+successful completion, rather than interpreting the compositor's temporary `false` authored-state
+as an instruction to disable optics. Returning to Material can still restore the current lit MID
+immediately. No new compose, substitute shading path or authored-state inference is added.
+
+The Fuzz diagnostic graph explicitly reads Optics.G
 for authored data even if the selected lit master cannot render optics; it is a data inspection,
 not proof of lit-material support. Without authored data it uses the legacy scalar. F0 diagnostics
 continue to read RAM.A. No new standalone SSS diagnostic mode was added.
@@ -286,6 +301,10 @@ optics.upgrade_duplicate(destination, textures, editor_changes_applied=True)
 
 This opens/refreshes the duplicate's Material Editor. Refresh can discard unapplied editor-preview
 edits, which is why explicit acknowledgement is required. Do not edit the graph while it runs.
+The script first requires all four existing shared texture parameter names, so an optical-only
+upgrade cannot report success while still being unselectable by the live preview. This preflight
+also runs when verifying/reusing or saving an upgrade. It does not invent missing base inputs;
+wire those on the duplicate first. The preview separately checks global parameter associations.
 The script creates tagged nodes, verifies connections, asks Unreal's compiler for errors, and
 leaves the result **unsaved**. It never changes the source, referenced functions or existing instances.
 
@@ -336,8 +355,9 @@ are still required.
 Supported: one top-level, directly rooted Substrate Slab on an opaque, non-thin Surface material;
 no root/Slab subsurface profile and no Nanite override. The Slab must use either no SSS or existing
 profile-free Diffusion. The diffuse and F0 inputs must come directly from the same
-`MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0` helper. There must be one top-level
-`DA_RAMH` TextureSampleParameter2D for the shared sampling/UV configuration.
+`MaterialExpressionSubstrateMetalnessToDiffuseAlbedoF0` helper. The material must retain the shared `DA_BaseColor`, `DA_Normal`, `DA_RAMH`, `DA_Height`
+texture parameter names. There must be one top-level `DA_RAMH` TextureSampleParameter2D for the
+shared sampling/UV configuration.
 
 The script discovers actual input/output labels; only case/spacing normalization is allowed.
 It does **not** use invented `slab.fuzz_amount`, `slab.sss_mfp`, writable ExpressionInput or
@@ -348,6 +368,14 @@ The retained probe input must then disconnect successfully and leave no upstream
 catches failed isolation even when one upstream node feeds several pins. Failed or ambiguous
 readback aborts; there is no guessed-index fallback. This conservative
 inspection can be slow on large graphs. It has not been exercised in Unreal here.
+
+Live binding supplies canonical F0 as `DA_RAMH.a`. `DA_Optics.r` mirrors that same completed
+F0 (including IOR edits); the upgrade below uses that mirror for the metal-aware conversion.
+There is no missing `BindOutputs` F0 scalar to synthesize and no new F0 parameter is added.
+`DA_Optics.g/b/a` supplies fuzz amount/roughness/SSS amount, with straight tint and MFP in the
+other two maps. `DA_UseSurfaceOptics` becomes 1 only for a complete declared contract with a
+completed authored bundle; the same targets allocated with defaults leave the legacy branch on.
+Neither binding textures nor setting this scalar can add absent connections to a binary master.
 
 Generated wiring (`use = DA_UseSurfaceOptics`):
 

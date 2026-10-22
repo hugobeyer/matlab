@@ -749,6 +749,8 @@ void SMixtormatPreviewViewport::SetPreviewMaterial(UMaterialInterface* Material)
 	bMeasuringCompose = false;
 	bUsingLayerPreview = false;
 	bUsingDebugPreview = false;
+	PreviewMaterialWarning = FText::GetEmpty();
+	bReportedUnsupportedSurfaceOptics = false;
 	if (!PreviewMeshComponent)
 	{
 		return;
@@ -962,30 +964,41 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		: MasterSelection.LoadSynchronous();
 	if (!SelectedMaster || !SelectedMaster->GetMaterial())
 	{
+		PreviewMaterialWarning = FText::Format(NSLOCTEXT("MixtormatPreview", "MasterLoadFailed",
+			"Preview master could not load: {0}. Choose a valid Layer Preview Master in Editor Preferences > Plugins > Mixtormat > Preview, or clear it. The previous preview has not been updated."),
+			FText::FromString(MasterSelection.IsNull() ? FMixtormatPaths::MasterMaterialObjectPath() : SelectedPath.ToString()));
 		UE_LOG(LogMixtormat, Error, TEXT("Mixtormat preview master could not be loaded: %s. Choose a valid Layer Preview Master in Editor Preferences > Plugins > Mixtormat, or clear it to use the shipped master."),
 			MasterSelection.IsNull() ? *FMixtormatPaths::MasterMaterialObjectPath() : *SelectedPath.ToString());
 		return false;
 	}
-	if (!MasterSelection.IsNull())
+	// Default and explicit masters must satisfy the same shared contract. A legacy master with
+	// no optical declarations remains supported; a partial contract must not silently render.
+	TArray<FMaterialParameterInfo> Textures;
+	TArray<FGuid> Ids;
+	SelectedMaster->GetMaterial()->GetAllTextureParameterInfo(Textures, Ids);
+	bool bHasAnyOpticalParameter = false;
+	const bool bOpticalContract = FMixtormatBakeService::HasSurfaceOpticsParameters(
+		*SelectedMaster, bHasAnyOpticalParameter);
+	if (!Textures.Contains(FMaterialParameterInfo(TEXT("DA_BaseColor")))
+		|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Normal")))
+		|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_RAMH")))
+		|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Height"))))
 	{
-		// Live preview uses the shared names, not the bake dialog's arbitrary channel mapping.
-		TArray<FMaterialParameterInfo> Textures;
-		TArray<FGuid> Ids;
-		SelectedMaster->GetMaterial()->GetAllTextureParameterInfo(Textures, Ids);
-		bool bHasAnyOpticalParameter = false;
-		const bool bOpticalContract = FMixtormatBakeService::HasSurfaceOpticsParameters(
-			*SelectedMaster, bHasAnyOpticalParameter);
-		if (!Textures.Contains(FMaterialParameterInfo(TEXT("DA_BaseColor")))
-			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Normal")))
-			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_RAMH")))
-			|| !Textures.Contains(FMaterialParameterInfo(TEXT("DA_Height")))
-			|| (bHasAnyOpticalParameter && !bOpticalContract))
-		{
-			UE_LOG(LogMixtormat, Error, TEXT("Mixtormat Layer Preview Master '%s' does not declare the shared global DA_BaseColor/DA_Normal/DA_RAMH/DA_Height contract, or declares only part of the optical contract. Select the reviewed shared duplicate; custom bake mappings do not apply to live preview. No replacement master was selected."),
-				*SelectedPath.ToString());
-			return false;
-		}
+		PreviewMaterialWarning = NSLOCTEXT("MixtormatPreview", "MissingSharedContract",
+			"Preview master is missing global DA_BaseColor / DA_Normal / DA_RAMH / DA_Height inputs. Select a shared master in Editor Preferences > Plugins > Mixtormat > Preview > Layer Preview Master; custom bake mappings do not apply. The previous preview has not been updated.");
+		UE_LOG(LogMixtormat, Error, TEXT("%s: %s"), *SelectedMaster->GetPathName(), *PreviewMaterialWarning.ToString());
+		return false;
 	}
+	if (bHasAnyOpticalParameter && !bOpticalContract)
+	{
+		PreviewMaterialWarning = NSLOCTEXT("MixtormatPreview", "IncompleteOpticalContract",
+			"Preview master has an incomplete optical contract. Require global DA_Optics / DA_FuzzColorMap / DA_Subsurface and scalar DA_UseSurfaceOptics, wired to the shared graph. Follow Tools/upgrade_surface_optics.md and select the reviewed duplicate as Layer Preview Master. The previous preview has not been updated.");
+		UE_LOG(LogMixtormat, Error, TEXT("%s: %s"), *SelectedMaster->GetPathName(), *PreviewMaterialWarning.ToString());
+		return false;
+	}
+	const FText OpticalWarning = bOpticalContract ? FText::GetEmpty()
+		: NSLOCTEXT("MixtormatPreview", "LegacyOpticalContract",
+			"Selected preview master cannot consume IOR/F0, spatial fuzz or SSS maps; legacy shading/global fuzz remains. Follow Tools/upgrade_surface_optics.md to upgrade a shared duplicate, then select it in Editor Preferences > Plugins > Mixtormat > Preview > Layer Preview Master. Data channel views do not prove lit-material support.");
 	const bool bMasterChanged = LayerPreviewMaster.Get() != SelectedMaster;
 	if (bMasterChanged)
 	{
@@ -1027,6 +1040,8 @@ bool SMixtormatPreviewViewport::ComposeLayersWithDebug(
 		ApplyPresentationState();
 	}
 
+	// SetPreviewMaterial clears selection state, so publish this after any MID replacement.
+	PreviewMaterialWarning = OpticalWarning;
 	if (!PreviewMaterialInstance.IsValid())
 	{
 		return false;
@@ -1098,7 +1113,7 @@ void SMixtormatPreviewViewport::OnComposeCompleted(
 			&& (bHasAuthoredOptics || bHasAnyOpticalParameter);
 		if (bUnsupportedOptics && !bReportedUnsupportedSurfaceOptics)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Mixtormat preview: chosen master lacks the complete global DA_Optics, DA_FuzzColorMap, DA_Subsurface and DA_UseSurfaceOptics contract. Rendering legacy channels/global fuzz, not spatial optical F0/fuzz/SSS. Upgrade and explicitly select a reviewed duplicate; the master is unchanged."));
+			UE_LOG(LogMixtormat, Warning, TEXT("%s"), *PreviewMaterialWarning.ToString());
 		}
 		bReportedUnsupportedSurfaceOptics = bUnsupportedOptics;
 		CompositedFuzzInfluence = 0.0f;
@@ -1724,6 +1739,14 @@ void SMixtormatPreviewViewport::ApplyChannelPreview()
 		// Back in the material slot, so the strong hold is no longer needed.
 		RetainedPreviewMaterialInstance.Reset();
 		ApplyPresentationState();
+		return;
+	}
+
+	// Authored-state queries intentionally report false while composing. Leave the current
+	// presentation intact until OnComposeCompleted rebinds the requested channel from a
+	// successful result; toggling a channel must not temporarily disable optical data.
+	if (LayerCompositor && LayerCompositor->IsComposeInFlight())
+	{
 		return;
 	}
 

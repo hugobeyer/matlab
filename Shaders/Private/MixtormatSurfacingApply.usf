@@ -85,7 +85,8 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 		float4 SR = SkinRAM.Load(int3(P, 0));
 		float4 SO = SkinOptics.Load(int3(P, 0));
 		if (WriteRoughness != 0u) { R.r = MixChannel(R.r, SR.r, W); }
-		if (WriteAO != 0u) { R.g = MixChannel(R.g, SR.g, W); }
+		// Skin contributes local visibility; it must not erase upstream crevice occlusion.
+		if (WriteAO != 0u) { R.g = MixChannel(R.g, R.g * SR.g, W); }
 		// Skin has no metallic write flag; RAM.B is always preserved.
 		if (WriteF0 != 0u) { R.a = MixChannel(R.a, SR.a, W); O.r = MixChannel(O.r, SO.r, W); }
 		if (WriteFuzz != 0u)

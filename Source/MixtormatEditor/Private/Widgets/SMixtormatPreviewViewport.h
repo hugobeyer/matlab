@@ -216,6 +216,8 @@ public:
 	// What the viewport is showing right now: Material, a V-key channel (with the Shift+V hint),
 	// or the debug view a preview eye turned on.
 	FText GetPreviewModeLabel() const;
+	// Selection/contract failures stay visible even when a previous material remains on screen.
+	const FText& GetPreviewMaterialWarning() const { return PreviewMaterialWarning; }
 	void SetChannelPreview(EMixtormatChannelPreview NewMode);
 	void ResetChannelPreview();
 	void CycleChannelPreview();
@@ -353,6 +355,8 @@ private:
 	float DisplacementAmount = 1.0f;
 	FMixtormatFinalSettings FinalSettings;
 	float CompositedFuzzInfluence = 0.0f;
+
+	FText PreviewMaterialWarning;
 	bool bReportedUnsupportedSurfaceOptics = false;
 	float CameraDistance = MixtormatPreviewCamera::DistanceDefault;
 	float CameraYaw = MixtormatPreviewCamera::YawDefault;

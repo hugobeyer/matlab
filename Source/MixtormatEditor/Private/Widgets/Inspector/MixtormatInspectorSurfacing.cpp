@@ -66,13 +66,15 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(FoldWidth), SKIN_FLOAT(Direction)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Compression), SKIN_FLOAT(Tension)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Crossing), SKIN_FLOAT(TissueCoupling)));
-	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(MarbleDrift), SKIN_INT(WarpLayers)));
+	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(MarbleDrift), SKIN_FLOAT(WarpScale)));
+		AddSliderRow(Folds, SKIN_INT(WarpLayers));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(DirectionVariation), SKIN_FLOAT(Elongation)));
 	AddSliderRow(Folds, SKIN_FLOAT(Cellular));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(CurvatureRadius), SKIN_FLOAT(CurvatureStrength)));
 
 	const auto Micro = AddCard(Cards, LOCTEXT("SkinMicroCard", "MICRODETAIL"));
 	AddSliderRow(Micro, MixtormatRow::MakePair(SKIN_INT(DetailCells), SKIN_INT(PoreCells)));
+		AddSliderRow(Micro, SKIN_FLOAT(PoreSize));
 	AddSliderRow(Micro, MixtormatRow::MakePair(SKIN_FLOAT(PoreDepth), SKIN_FLOAT(PoreVariation)));
 	AddSliderRow(Micro, MixtormatRow::MakePair(SKIN_FLOAT(Grain), SKIN_INT(DetailTiling)));
 

@@ -57,6 +57,8 @@ namespace
 			SHADER_PARAMETER(FIntPoint, OutputSize)
 			SHADER_PARAMETER(FIntPoint, FinalOutputSize)
 			SHADER_PARAMETER(float, MarbleDrift)
+			SHADER_PARAMETER(float, WarpScale)
+			SHADER_PARAMETER(float, PoreSize)
 			SHADER_PARAMETER(int32, WarpLayers)
 			SHADER_PARAMETER(float, DirectionVariation)
 			SHADER_PARAMETER(float, Elongation)
@@ -66,8 +68,9 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TissueState)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedState)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, FoldState)
-			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, MicroState)
-			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutMicro)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, MicroState)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, ResolvedHeight)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutMicro)
 			SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutTissue)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSeed)
@@ -186,16 +189,35 @@ namespace
 	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinMicroCS,
 		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "MicroCS", SF_Compute);
 
+	class FMixtormatSkinResolveCS final : public FMixtormatSkinFieldCS
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatSkinResolveCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinResolveCS, FMixtormatSkinFieldCS);
+		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters,
+			FShaderCompilerEnvironment& OutEnvironment)
+		{
+			FMixtormatSkinFieldCS::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+			OutEnvironment.SetDefine(TEXT("SKIN_STAGE"), 4);
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatSkinResolveCS,
+		"/Plugin/Mixtormat/Private/MixtormatSkin.usf", "ResolveCS", SF_Compute);
+
 	class FMixtormatSkinSolveCS final : public FGlobalShader
 	{
 	public:
 		DECLARE_GLOBAL_SHADER(FMixtormatSkinSolveCS);
 		SHADER_USE_PARAMETER_STRUCT(FMixtormatSkinSolveCS, FGlobalShader);
-		class FInitialize : SHADER_PERMUTATION_BOOL("SKIN_INITIALIZE");
-		using FPermutationDomain = TShaderPermutationDomain<FInitialize>;
+		class FStage : SHADER_PERMUTATION_INT("SKIN_SOLVE_STAGE", 3);
+		using FPermutationDomain = TShaderPermutationDomain<FStage>;
 		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 			SHADER_PARAMETER(FIntPoint, OutputSize)
 			SHADER_PARAMETER(float, FoldRate)
+			SHADER_PARAMETER(uint32, HasPreviousFold)
+			SHADER_PARAMETER_SAMPLER(SamplerState, LinearWrapSampler)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutPreparedSeed)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutPreparedTissue)
 			SHADER_PARAMETER(float, Bending)
 			SHADER_PARAMETER(float, Support)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TissueState)
@@ -357,6 +379,8 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->OutputSize = Size;
 	P->FinalOutputSize = Size;
 	P->MarbleDrift = Skin.MarbleDrift;
+	P->WarpScale = Skin.WarpScale;
+	P->PoreSize = Skin.PoreSize;
 	P->WarpLayers = Skin.WarpLayers;
 	P->DirectionVariation = Skin.DirectionVariation;
 	P->Elongation = Skin.Elongation;
@@ -421,74 +445,110 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	{
 		P->RoughnessPoints[I] = Roughness.Points[I];
 	}
-	// Bound simulation memory independently of bake resolution, retaining the target aspect.
-	// Grid size is authored; reducing it intentionally removes unresolved simulated folds.
+	// Analytic support and folds retain output resolution. The solver stores only a correction;
+	// a low mechanics grid must never become the raster resolution of the authored surface.
 	const int32 MaxSolveSize = FMath::Clamp(Skin.SolverResolution,
 		FMixtormatSkin::MinSolverResolution, FMixtormatSkin::MaxSolverResolution);
 	const float SolveScale = FMath::Min(1.0f, float(MaxSolveSize) / float(FMath::Max(Size.X, Size.Y)));
 	const FIntPoint SolveSize(FMath::Max(1, FMath::RoundToInt(Size.X * SolveScale)),
 		FMath::Max(1, FMath::RoundToInt(Size.Y * SolveScale)));
-	const FIntVector SolveGroups(FMath::DivideAndRoundUp(SolveSize.X, 8), FMath::DivideAndRoundUp(SolveSize.Y, 8), 1);
-	const auto MakeState = [&Graph, SolveSize](const TCHAR* Name, EPixelFormat Format)
-	{
-		return Graph.CreateTexture(FRDGTextureDesc::Create2D(SolveSize, Format,
-			FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
-	};
-	FRDGTextureRef Tissue = MakeState(TEXT("Mixtormat.Skin.Tissue"), PF_A32B32G32R32F);
-	FRDGTextureRef Seed = MakeState(TEXT("Mixtormat.Skin.Seed"), PF_A32B32G32R32F);
+	FRDGTextureRef Tissue = Make(TEXT("Mixtormat.Skin.Tissue"), PF_A32B32G32R32F);
+	FRDGTextureRef Seed = Make(TEXT("Mixtormat.Skin.Seed"), PF_A32B32G32R32F);
 	{
 		TShaderMapRef<FMixtormatSkinTissueCS> TissueShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		auto* TissueParameters = Graph.AllocParameters<FMixtormatSkinTissueCS::FParameters>();
 		*TissueParameters = *P;
-		TissueParameters->OutputSize = SolveSize;
+		TissueParameters->OutputSize = Size;
 		TissueParameters->OutTissue = Graph.CreateUAV(Tissue);
 		ClearUnusedGraphResources(TissueShader, TissueParameters);
 		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Tissue"),
-			TissueShader, TissueParameters, SolveGroups);
+			TissueShader, TissueParameters, Groups);
 	}
 	P->TissueState = Tissue;
 	{
 		TShaderMapRef<FMixtormatSkinSeedCS> SeedShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		auto* SeedParameters = Graph.AllocParameters<FMixtormatSkinSeedCS::FParameters>();
 		*SeedParameters = *P;
-		SeedParameters->OutputSize = SolveSize;
+		SeedParameters->OutputSize = Size;
 		SeedParameters->OutSeed = Graph.CreateUAV(Seed);
 		ClearUnusedGraphResources(SeedShader, SeedParameters);
 		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Seed"),
-			SeedShader, SeedParameters, SolveGroups);
+			SeedShader, SeedParameters, Groups);
 	}
 	P->SeedState = Seed;
 	FRDGTextureRef PreviousFold = nullptr;
-	const int32 Iterations = FMath::Clamp(Skin.SolverIterations, 0, FMixtormatSkin::MaxSolverIterations);
-	// Normalize solver lengths to an authored fold wavelength. Local directors/loads still
-	// come from the placement-aware seed; this is not a surface-metric 3D mechanics solver.
+	int32 RemainingIterations = FMath::Clamp(Skin.SolverIterations, 0, FMixtormatSkin::MaxSolverIterations);
 	const FVector2f PlacementScale = P->GeneratorUVScale;
-	const float Rate = FMath::Max(1.0f, float(Skin.FoldCells)
+	const float AuthoredRate = float(Skin.FoldCells)
 		* FMath::Max(FMath::Abs(PlacementScale.X), FMath::Abs(PlacementScale.Y))
-		/ FMath::Sqrt(FMath::Max(Skin.Elongation, 1.0f)));
-	for (int32 Iteration = 0; Iteration <= Iterations; ++Iteration)
+		/ FMath::Sqrt(FMath::Max(Skin.Elongation, 1.0f));
+	const float Rate = FMath::Clamp(FMath::IsFinite(AuthoredRate) ? AuthoredRate : 1.0f,
+		1.0f, float(FMath::Max(SolveSize.X, SolveSize.Y)));
+	const int32 CoarseDimension = FMath::Clamp(FMath::RoundToInt(Rate * FMixtormatSkin::CoarseSamplesPerFold),
+		FMixtormatSkin::MinCoarseSolverResolution, FMixtormatSkin::MaxCoarseSolverResolution);
+	int32 LevelDimension = RemainingIterations > 0
+		? FMath::Min(CoarseDimension, FMath::Max(SolveSize.X, SolveSize.Y))
+		: FMath::Max(SolveSize.X, SolveSize.Y);
+	for (int32 Level = 0; ; ++Level)
 	{
-		FMixtormatSkinSolveCS::FPermutationDomain Permutation;
-		Permutation.Set<FMixtormatSkinSolveCS::FInitialize>(Iteration == 0);
-		TShaderMapRef<FMixtormatSkinSolveCS> SolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
-		auto* SolveParameters = Graph.AllocParameters<FMixtormatSkinSolveCS::FParameters>();
-		SolveParameters->OutputSize = SolveSize;
-		SolveParameters->FoldRate = FMath::Clamp(FMath::IsFinite(Rate) ? Rate : 1.0f,
-			1.0f, float(FMath::Max(SolveSize.X, SolveSize.Y)));
-		SolveParameters->Bending = Skin.Bending;
-		SolveParameters->Support = Skin.Support;
-		SolveParameters->TissueState = Tissue;
-		SolveParameters->SeedState = Seed;
-		SolveParameters->PreviousFold = PreviousFold;
-		FRDGTextureRef NextFold = MakeState(TEXT("Mixtormat.Skin.FoldIteration"), PF_R32_FLOAT);
-		SolveParameters->OutFold = Graph.CreateUAV(NextFold);
-		ClearUnusedGraphResources(SolveShader, SolveParameters);
-		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Relax.%d", Iteration),
-			SolveShader, SolveParameters, SolveGroups);
-		PreviousFold = NextFold;
+		const float LevelScale = FMath::Min(1.0f, float(LevelDimension) / float(FMath::Max(SolveSize.X, SolveSize.Y)));
+		const FIntPoint LevelSize(FMath::Max(1, FMath::RoundToInt(SolveSize.X * LevelScale)),
+			FMath::Max(1, FMath::RoundToInt(SolveSize.Y * LevelScale)));
+		const bool bFinest = LevelSize == SolveSize;
+		const int32 LevelIterations = bFinest ? RemainingIterations : (RemainingIterations + 1) / 2;
+		RemainingIterations -= LevelIterations;
+		const FIntVector LevelGroups(FMath::DivideAndRoundUp(LevelSize.X, 8), FMath::DivideAndRoundUp(LevelSize.Y, 8), 1);
+		const auto MakeLevel = [&Graph, LevelSize](const TCHAR* Name, EPixelFormat Format)
+		{
+			return Graph.CreateTexture(FRDGTextureDesc::Create2D(LevelSize, Format,
+				FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV), Name);
+		};
+		FRDGTextureRef LevelSeed = MakeLevel(TEXT("Mixtormat.Skin.LevelSeed"), PF_A32B32G32R32F);
+		FRDGTextureRef LevelTissue = MakeLevel(TEXT("Mixtormat.Skin.LevelTissue"), PF_A32B32G32R32F);
+		{
+			FMixtormatSkinSolveCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatSkinSolveCS::FStage>(0);
+			TShaderMapRef<FMixtormatSkinSolveCS> PrepareShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* PrepareParameters = Graph.AllocParameters<FMixtormatSkinSolveCS::FParameters>();
+			PrepareParameters->OutputSize = LevelSize;
+			PrepareParameters->SeedState = Seed;
+			PrepareParameters->TissueState = Tissue;
+			PrepareParameters->LinearWrapSampler = P->LinearWrapSampler;
+			PrepareParameters->OutPreparedSeed = Graph.CreateUAV(LevelSeed);
+			PrepareParameters->OutPreparedTissue = Graph.CreateUAV(LevelTissue);
+			ClearUnusedGraphResources(PrepareShader, PrepareParameters);
+			FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Prepare.L%d", Level),
+				PrepareShader, PrepareParameters, LevelGroups);
+		}
+		// Spend the largest steps on a coarse grid, then prolongate only the correction.
+		// This avoids the tiny h^4-limited progress of starting the entire budget at high resolution.
+		for (int32 Iteration = 0; Iteration <= LevelIterations; ++Iteration)
+		{
+			FMixtormatSkinSolveCS::FPermutationDomain Permutation;
+			Permutation.Set<FMixtormatSkinSolveCS::FStage>(Iteration == 0 ? 1 : 2);
+			TShaderMapRef<FMixtormatSkinSolveCS> SolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+			auto* SolveParameters = Graph.AllocParameters<FMixtormatSkinSolveCS::FParameters>();
+			SolveParameters->OutputSize = LevelSize;
+			SolveParameters->FoldRate = Rate;
+			SolveParameters->HasPreviousFold = PreviousFold ? 1u : 0u;
+			SolveParameters->LinearWrapSampler = P->LinearWrapSampler;
+			SolveParameters->Bending = Skin.Bending;
+			SolveParameters->Support = Skin.Support;
+			SolveParameters->TissueState = LevelTissue;
+			SolveParameters->SeedState = LevelSeed;
+			SolveParameters->PreviousFold = PreviousFold ? PreviousFold : SubstrateHeight;
+			FRDGTextureRef NextFold = MakeLevel(TEXT("Mixtormat.Skin.FoldCorrection"), PF_R32_FLOAT);
+			SolveParameters->OutFold = Graph.CreateUAV(NextFold);
+			ClearUnusedGraphResources(SolveShader, SolveParameters);
+			FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.Relax.L%d.I%d", Level, Iteration),
+				SolveShader, SolveParameters, LevelGroups);
+			PreviousFold = NextFold;
+		}
+		if (bFinest) { break; }
+		LevelDimension = FMath::Min(LevelDimension * 2, FMath::Max(SolveSize.X, SolveSize.Y));
 	}
 	P->FoldState = PreviousFold;
-	FRDGTextureRef Micro = Make(TEXT("Mixtormat.Skin.Micro"), PF_G32R32F);
+	FRDGTextureRef Micro = Make(TEXT("Mixtormat.Skin.Micro"), PF_A32B32G32R32F);
 	{
 		TShaderMapRef<FMixtormatSkinMicroCS> MicroShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 		auto* MicroParameters = Graph.AllocParameters<FMixtormatSkinMicroCS::FParameters>();
@@ -499,7 +559,16 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 			MicroShader, MicroParameters, Groups);
 	}
 	P->MicroState = Micro;
-	P->OutHeight = Graph.CreateUAV(Result.Height);
+	{
+		TShaderMapRef<FMixtormatSkinResolveCS> ResolveShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+		auto* ResolveParameters = Graph.AllocParameters<FMixtormatSkinResolveCS::FParameters>();
+		*ResolveParameters = *P;
+		ResolveParameters->OutHeight = Graph.CreateUAV(Result.Height);
+		ClearUnusedGraphResources(ResolveShader, ResolveParameters);
+		FComputeShaderUtils::AddPass(Graph, RDG_EVENT_NAME("Mixtormat.Skin.ResolveHeight"),
+			ResolveShader, ResolveParameters, Groups);
+	}
+	P->ResolvedHeight = Result.Height;
 	P->OutColor = Graph.CreateUAV(Result.Color);
 	P->OutRAM = Graph.CreateUAV(Result.RAM);
 	P->OutOptics = Graph.CreateUAV(Result.Optics);

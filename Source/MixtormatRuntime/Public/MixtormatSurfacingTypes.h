@@ -22,9 +22,12 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 {
 	GENERATED_BODY()
 
-	static constexpr int32 MaxSolverIterations = 128;
+	static constexpr int32 MaxSolverIterations = 512;
+	static constexpr int32 MinCoarseSolverResolution = 32;
+	static constexpr int32 MaxCoarseSolverResolution = 128;
+	static constexpr float CoarseSamplesPerFold = 4.0f;
 	static constexpr int32 MinSolverResolution = 64;
-	static constexpr int32 MaxSolverResolution = 512;
+	static constexpr int32 MaxSolverResolution = 2048;
 	static constexpr int32 MaxWarpLayers = 5;
 
 	FMixtormatSkin()
@@ -50,10 +53,10 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "16", Delta = "1", ToolTip = "Integer repeats of baked microdetail. This is not independent runtime detail mapping."))
 	int32 DetailTiling = 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "128", Delta = "1", ToolTip = "Iterations of compressed height-field film relaxation on a tissue foundation. Zero bypasses relaxation; not XPBD, full 3D mechanics or self-contact."))
-	int32 SolverIterations = 48;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "64", UIMax = "512", Delta = "1", ToolTip = "Maximum dimension of the tissue/solver grid; smaller outputs are not upscaled. Preserves output aspect ratio. Any integer from 64 to 512 is supported. More resolution needs more iterations to relax."))
-	int32 SolverResolution = 256;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "512", Delta = "1", ToolTip = "Total relaxation budget across coarse-to-fine grids. Coarse iterations change broad folds; fine iterations refine them. Zero retains analytic folds with no simulated correction. Not full 3D mechanics or self-contact."))
+	int32 SolverIterations = 128;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "64", UIMax = "2048", Delta = "1", ToolTip = "Maximum mechanics-grid dimension, capped by output resolution. Analytic tissue, fold seeds and pores always retain output resolution. Only simulated corrections are upsampled. Higher grids cost more GPU time and memory."))
+	int32 SolverResolution = 512;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Film bending resistance during height-field relaxation. Higher values resist tight bends."))
 	float Bending = 0.35f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Tissue foundation support during film relaxation. Higher values hold the film closer to its foundation."))
@@ -81,8 +84,10 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float Crossing = 0.65f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "How strongly tissue variation shapes folds."))
 	float TissueCoupling = 0.9f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Large-scale wandering of connected fold families through the tissue field."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Total layered drift travel in noise-cell spacings, independent of integration steps. Also controls bounded fold-phase wandering."))
 	float MarbleDrift = 1.15f;
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.125", UIMax = "8", Delta = "0.01", ToolTip = "Drift-noise lattice frequency multiplier, rounded to integer periods for tiling. Changes warp scale independently of drift amount; higher values make smaller features."))
+		float WarpScale = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "5", Delta = "1", ToolTip = "Number of layered domain warps shaping connected wandering fold families."))
 	int32 WarpLayers = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Local variation around the preferred fold direction, preserving connected fold families."))
@@ -96,7 +101,9 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float CurvatureRadius = 0.01f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "4", Delta = "0.01", ToolTip = "Curvature-driven fold response; not a physical strain measurement."))
 	float CurvatureStrength = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Pore relief depth."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.25", UIMax = "3", Delta = "0.01", ToolTip = "Pore radius multiplier, independent of pore cell density. Pixel filtering preserves pore area."))
+		float PoreSize = 1.0f;
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "4", Delta = "0.01", ToolTip = "Nonnegative pore relief depth multiplier. Values above the slider range are supported; size and density are independent."))
 	float PoreDepth = 0.65f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Variation between periodic pores."))
 	float PoreVariation = 0.5f;

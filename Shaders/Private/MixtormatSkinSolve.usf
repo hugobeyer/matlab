@@ -2,12 +2,15 @@
 // Quasi-static compressed-film height-field relaxation, not XPBD or a 3D tissue solver.
 #include "/Engine/Public/Platform.ush"
 
-#ifndef SKIN_INITIALIZE
-#define SKIN_INITIALIZE 0
+// 0 restrict full-resolution rest fields, 1 initialize/prolongate correction, 2 relax.
+#ifndef SKIN_SOLVE_STAGE
+#define SKIN_SOLVE_STAGE 2
 #endif
 
 int2 OutputSize;
 float FoldRate;
+uint HasPreviousFold;
+SamplerState LinearWrapSampler;
 // @param Bending saturates
 float Bending;
 // @param Support saturates
@@ -15,10 +18,16 @@ float Support;
 Texture2D<float4> TissueState;
 Texture2D<float4> SeedState;
 Texture2D<float> PreviousFold;
+#if SKIN_SOLVE_STAGE == 0
+RWTexture2D<float4> OutPreparedSeed;
+RWTexture2D<float4> OutPreparedTissue;
+#else
 RWTexture2D<float> OutFold;
+#endif
 
 // Length and residual height are both measured in fold wavelengths inside the solve.
-// Stored heights remain unscaled unit-UV relief; HeightScale and Amount belong downstream.
+// State stores SOLVED MINUS REST in UV relief. Full-resolution analytic rest is retained
+// downstream; coarse grids cannot replace its detail. HeightScale/units/Amount belong downstream.
 static const float SkinMinRigidity = 0.00001f;
 static const float SkinMaxRigidity = 0.0005f;
 static const float SkinMinFoundation = 0.05f;
@@ -40,7 +49,7 @@ float4 SkinSeed(int2 P)
 	return SeedState.Load(int3(SkinWrapPixel(P), 0));
 }
 
-#if !SKIN_INITIALIZE
+#if SKIN_SOLVE_STAGE == 2
 float SkinThickness(int2 P)
 {
 	return clamp(TissueState.Load(int3(SkinWrapPixel(P), 0)).a, 0.6f, SkinMaxThickness);
@@ -48,7 +57,8 @@ float SkinThickness(int2 P)
 
 float SkinPrevious(int2 P)
 {
-	return PreviousFold.Load(int3(SkinWrapPixel(P), 0)) * FoldRate;
+	int2 Q = SkinWrapPixel(P);
+	return (SeedState.Load(int3(Q, 0)).r + PreviousFold.Load(int3(Q, 0))) * FoldRate;
 }
 
 float SkinRigidity(int2 P)
@@ -81,10 +91,38 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 {
 	int2 P = int2(DTid.xy);
 	if (any(P >= OutputSize)) { return; }
-	float4 Seed = SkinSeed(P);
-#if SKIN_INITIALIZE
-	OutFold[P] = Seed.r;
+#if SKIN_SOLVE_STAGE == 0
+	float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	uint W, H;
+	SeedState.GetDimensions(W, H);
+	int2 SeedSize = int2(W, H);
+	float2 Source = UV * float2(SeedSize) - 0.5f;
+	int2 Base = int2(floor(Source));
+	float2 Blend = frac(Source);
+	float4 Rest = 0.0f;
+	float2 Director = 0.0f;
+	[unroll] for (int Y = 0; Y < 2; ++Y)
+	{
+		[unroll] for (int X = 0; X < 2; ++X)
+		{
+			int2 Q = (Base + int2(X, Y)) % SeedSize;
+			Q = (Q + SeedSize) % SeedSize;
+			float4 Sample = SeedState.Load(int3(Q, 0));
+			float Weight = (X == 0 ? 1.0f - Blend.x : Blend.x) * (Y == 0 ? 1.0f - Blend.y : Blend.y);
+			Rest.rgb += Sample.rgb * Weight;
+			Director += Weight * float2(cos(2.0f * Sample.a), sin(2.0f * Sample.a));
+		}
+	}
+	// Interpolate an unoriented director, never wrapped normal angles.
+	Rest.a = dot(Director, Director) > 1.0e-8f ? 0.5f * atan2(Director.y, Director.x) : 0.0f;
+	OutPreparedSeed[P] = Rest;
+	OutPreparedTissue[P] = TissueState.SampleLevel(LinearWrapSampler, UV, 0);
+#elif SKIN_SOLVE_STAGE == 1
+	float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	// A level starts at zero correction or prolongates the previous level's correction.
+	OutFold[P] = HasPreviousFold != 0u ? PreviousFold.SampleLevel(LinearWrapSampler, UV, 0) : 0.0f;
 #else
+	float4 Seed = SkinSeed(P);
 	float C = SkinPrevious(P);
 	float2 Spacing = FoldRate / float2(OutputSize);
 	float2 InvSpacing2 = float2(OutputSize.x > 1 ? 1.0f / (Spacing.x * Spacing.x) : 0.0f,
@@ -128,7 +166,7 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 	}
 	// Global Hessian row-sum bound, including rectangular spacing and maximum tissue rigidity.
 	// Every texel reads one immutable previous state; no UAV reads or order-dependent updates.
-	float Next = (C + SkinRelaxationSafety * Force / max(Bound, 1.0e-8f)) / FoldRate;
+	float Next = (C + SkinRelaxationSafety * Force / max(Bound, 1.0e-8f)) / FoldRate - Seed.r;
 	OutFold[P] = isfinite(Next) ? Next : PreviousFold.Load(int3(P, 0));
 #endif
 }

@@ -88,23 +88,34 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 `MixtormatGpuSurfacingPasses.cpp::AddSkinSurfacePasses` dispatches:
 
 1. `AnalysisCS`: completed upstream substrate curvature, full output resolution.
-2. `TissueCS` (`SKIN_STAGE=0`): elliptical fat support, layered five-step RK2 drift,
-   periodic coordinate offsets and independent positive thickness variation.
+2. `TissueCS` (`SKIN_STAGE=0`), full output resolution: elliptical fat support,
+   layered five-step RK2 drift, periodic offsets and independent positive thickness.
 3. `SeedCS` (`SKIN_STAGE=1`): generated-tissue Hessian plus upstream curvature;
    connected marble/cellular broad and crossing folds, signed valleys/shoulders,
    compression, crown stretching and destination-space normal directors.
-4. `MixtormatSkinSolve.usf`: seed-copy initialization then **0–128 actual relaxation
-   iterations**, each reading an immutable previous R32F fold texture. No procedural
-   noise is reevaluated inside an iteration. Zero iterations retains the analytic seed.
+4. `MixtormatSkinSolve.usf`: restrict full-resolution rest/directors to each mechanics
+   level; initialize/prolongate the correction; spend **0–512 total relaxation iterations**
+   from coarse to fine, each reading an immutable previous R32F correction. No procedural
+   noise is reevaluated inside iterations. Zero iterations returns zero correction.
 5. `MicroCS` (`SKIN_STAGE=3`): output-resolution medium/fine wrinkles, warped elliptical
-   pores and grain, cached once in RG32F. Medium/fine detail is strained, not simulated.
-6. `FieldCS` (`SKIN_STAGE=2`): fine-residual-only directional filtering, solved-height
-   geometric cavity/roughness, and the existing eight raw material/diagnostic outputs.
+   pores and grain, cached once in RGBA32F. Medium/fine detail is strained, not simulated.
+6. `ResolveCS` (`SKIN_STAGE=4`): fine-residual-only directional filtering and the final
+   signed Skin height (HeightScale once), written before material evaluation.
+7. `FieldCS` (`SKIN_STAGE=2`): seven material/diagnostic outputs, reading resolved relief.
+   Cavity AO uses eight wrapped horizon rays with five logarithmic distance samples each,
+   local tangent-plane correction and the shared height-to-normal metric. Curvature remains
+   a roughness/fuzz cue, not AO. Skin visibility multiplies incoming AO through the existing
+   single masked weight; neutral Skin AO cannot erase upstream crevice occlusion.
 
-Tissue/seed/solve grids preserve output aspect and never exceed `SolverResolution`
-(default 256, maximum 512 on the largest axis); they never upscale smaller outputs.
-The authored iteration budget is not a convergence guarantee. Higher solve resolution
-needs more iterations; unresolved broad folds are filtered rather than recovered later.
+Tissue and fold seeds use full output resolution, independently of `SolverResolution`.
+Only mechanics corrections use bounded grids (default maximum dimension 512, authored
+maximum 2048); aspect ratio is retained and smaller outputs are not upscaled. The coarsest
+level targets four samples per fold, bounded to 32–128 texels on the longest axis, then
+doubles toward the final grid. Half the remaining iteration budget is spent on each coarse
+level; the finest consumes the remainder. Default total budget is 128, hard maximum 512.
+This improves low-frequency progress over one fine-grid explicit solve; it is not a
+convergence guarantee. Correction prolongation is bilinear; final correction reconstruction
+is cubic B-spline. Full-resolution analytic folds/pores are never replaced by the grid.
 Microdetail uses full output resolution and independent `DetailTiling`.
 
 ### Relaxation model and bounds
@@ -132,6 +143,39 @@ do not constitute physically metric-correct skin mechanics. State lifetime is pe
 not persistent real-time dynamics. RDG owns transient reuse; every iteration has distinct
 logical output state and no read/write alias.
 
+### Shader controls and relief resolve
+
+- `WarpScale` is a float, default **1**, hard range **0.125–8**. It multiplies the
+  integer-rounded drift/phase-noise lattice frequencies, independently of `MarbleDrift`;
+  higher values make smaller-scale wandering without changing fold or tissue cell counts.
+- `MarbleDrift` budgets advection in noise-cell spacings: reference travel `0.34 * amount`,
+  divided across five RK2 steps and normalized geometric octave weights. `WarpLayers`
+  adds structure, not another full travel budget. Direct fold-phase noise uses bounded
+  `0.34 * amount / (1 + amount)` wandering instead of repeating unbounded advection.
+- `PoreSize` is a float, default **1**, hard range **0.25–3**. It multiplies ellipse
+  radii, independently of `PoreCells` density. Existing variation supplies ellipticity;
+  no extra stretch control is introduced. The warped pixel covariance filters both
+  ellipse axes with determinant-based area compensation and size-aware periodic support.
+- `PoreDepth` remains nonnegative with **no hard maximum**; its ergonomic slider is **0–4**.
+  Depth does not change pore size/density, and the pore diagnostic remains available.
+- GPU uniforms are exactly `float WarpScale` and `float PoreSize`. `MicroState` and
+  `OutMicro` use `float4` / `PF_A32B32G32R32F`: **R** = medium/fine wrinkle + grain UV
+  residual, **G** = pore mask, **B** = pore UV relief, **A** = zero. Only R receives the
+  directional wrinkle filter; B is added afterward, once. Field cavity uses R/B relief,
+  not G as painted occlusion; capillary generation and pore publication are preserved.
+- Full-resolution `TissueState.r` and `SeedState.r` retain analytic UV relief. Final
+  `FoldState` is **solved fold height minus the same sampled seed rest R**, in UV units,
+  on the final solve grid; zero iterations publishes zero correction. Resolve sums tissue,
+  full-resolution seed, periodic cubic B-spline correction, filtered R and unblurred B.
+  Four bilinear taps implement the positive-weight bicubic correction filter; analytic
+  seed detail is never upsampled from the solver grid or smoothed by this filter.
+- The prototype's amplitudes divided by its **3.4-unit** patch width are UV relief,
+  while canonical height uses `8 / MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES = 1/128` UV per
+  height unit. Resolve applies the inverse (**128**) exactly once with `HeightScale`;
+  this is a unit conversion, not arbitrary gain or 0–1 normalization. AO/geometry convert
+  resolved canonical height back to UV. Cached micro curvature and tissue Hessians already
+  use UV relief; the material `Fat` ratio stays `TissueState.r / SkinTissueRelief`.
+
 ### Fields, periodicity and optical relationships
 
 Relief retains the prototype's amplitudes divided by its 3.4-unit patch width; no automatic
@@ -143,9 +187,15 @@ compatible PreUV map; arbitrary noninteger scale cannot be promised seamless.
 
 Pigment and vascular fields coordinate albedo with RGB MFP (centimeters); thickness is a
 separate tissue field, not displacement used as optical depth. Absorption coefficients are
-art-directed rather than measured spectral skin data. Neither cavity nor AO is painted into
+art-directed rather than measured spectral skin data. Vasculature uses sparse jittered trees
+with bent trunks, tapered forks and attached side twigs, not zero-contours of lattice noise.
+Branch footprints and thickness-dependent subdermal blur preserve line area; a separate soft
+perfusion field supplies background blood concentration. These are procedural capillary
+clusters, not a solved anatomical vascular network. Neither cavity nor AO is painted into
 albedo. Set both `PigmentVariation` and `VascularAmount` to zero for uniform midpoint albedo.
-Cavity reads actual solved-height neighborhoods; fine cavity/filtering is approximate.
+AO reads the exact resolved Skin relief, including filtered microdetail. It is a local
+height-field visibility approximation, not ray tracing against the preview mesh or substrate.
+The separate curvature-based material cavity/filtering remains approximate.
 RAM.a remains F0; baked RAMH.a remains height. Fuzz/SSS share the existing Substrate master.
 GBuffer/platform support can still limit simultaneous fuzz and per-pixel diffusion SSS;
 no renderer settings are changed by this implementation.

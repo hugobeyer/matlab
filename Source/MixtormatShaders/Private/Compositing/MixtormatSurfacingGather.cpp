@@ -51,12 +51,14 @@ namespace MixtormatGpuCompositor
 		SANITIZE_SKIN_FLOAT(Crossing);
 		SANITIZE_SKIN_FLOAT(TissueCoupling);
 		SANITIZE_SKIN_FLOAT(MarbleDrift);
+				SANITIZE_SKIN_FLOAT(WarpScale);
 		SANITIZE_SKIN_FLOAT(DirectionVariation);
 		SANITIZE_SKIN_FLOAT(Elongation);
 		SANITIZE_SKIN_FLOAT(Cellular);
 		SANITIZE_SKIN_FLOAT(CurvatureRadius);
 		SANITIZE_SKIN_FLOAT(CurvatureStrength);
-		SANITIZE_SKIN_FLOAT(PoreDepth);
+		SANITIZE_SKIN_FLOAT(PoreSize);
+				SANITIZE_SKIN_FLOAT(PoreDepth);
 		SANITIZE_SKIN_FLOAT(PoreVariation);
 		SANITIZE_SKIN_FLOAT(Grain);
 		SANITIZE_SKIN_FLOAT(PigmentVariation);
