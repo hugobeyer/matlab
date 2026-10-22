@@ -454,6 +454,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 							[
 								SNew(SMixtormatBadge)
 								.Text_Lambda([this]() { return GetSelectedBadgeText(); })
+								.Visibility_Lambda([this]() { return GetSelectedBadgeText().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 							]
 						]
 					]

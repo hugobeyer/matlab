@@ -730,7 +730,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 	AddSliderRow(CurvatureRows, SNew(STextBlock)
 		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
 		.Text(LOCTEXT("GenCurvatureCurveLabel", "Response Curve")));
-	AddSliderRow(CurvatureRows, CurvatureCurveEditor);
+	AddSliderRow(CurvatureRows, WrapParameterControl(CurvatureCurveEditor,
+			MakeAddressResolver<FMixtormatGeneratedMask>(Gen, &FMixtormatGeneratedMask::CurvatureCurve)));
 
 	CurvatureCard->AddSlot().AutoHeight()
 	[
@@ -861,7 +862,8 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratedMaskControls()
 	AddSliderRow(HeightRows, SNew(STextBlock)
 		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
 		.Text(LOCTEXT("GenHeightCurveLabel", "Height Profile")));
-	AddSliderRow(HeightRows, HeightCurveEditor);
+	AddSliderRow(HeightRows, WrapParameterControl(HeightCurveEditor,
+			MakeAddressResolver<FMixtormatGeneratedMask>(Gen, &FMixtormatGeneratedMask::HeightCurve)));
 
 	HeightCard->AddSlot().AutoHeight()
 	[
@@ -1824,7 +1826,8 @@ void SMixtormat::AddMaskShapingRows(
 		.Text(LOCTEXT("MaskCurveBiasLabel", "Curve"))
 	];
 	CurveRows->AddSlot().AutoHeight()[CurveEditor];
-	AddSliderRow(TargetPanel, CurveRows);
+	AddSliderRow(TargetPanel, WrapParameterControl(CurveRows,
+		MakeAddressResolver<FMixtormatMaskShaping>(Resolve, &FMixtormatMaskShaping::CurveBias)));
 	AddSliderRow(TargetPanel, MakeMemberSlider<FMixtormatMaskShaping>(
 		LOCTEXT("MaskOffsetLabel", "Offset"), Resolve, &FMixtormatMaskShaping::Offset,
 		-1.0, 1.0, 0.0, 0.01,

@@ -609,14 +609,13 @@ TSharedRef<SWidget> SMixtormat::BuildParameterContextMenu(FMixtormatParameterAdd
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	MixtormatMenu::FBuilder Menu;
-	// One flat list, always the same five rows, greyed where they do not apply. Rows that appear
-	// and disappear with the parameter's state move the item under the cursor between two
-	// right-clicks on the same row, and hide the vocabulary from anyone who has not already
-	// referenced something.
-	Menu.SubMenu(LOCTEXT("ExposeParameterToGroup", "Expose to Group…"), nullptr,
+	// Group assignment starts at the exact member parameter, not a dump of reflected fields.
+	Menu.SubMenu(LOCTEXT("AssignParameterToGroup", "Assign to Group Control…"), MixtormatIcons::Folder(),
 		FOnGetContent::CreateSP(this, &SMixtormat::BuildExposeToGroupMenu, Target))
 		.Enabled(MixtormatGroupControls::FindTargetGroup({WorkingLayers, WorkingLayerGroups}, Target) != nullptr
-			&& Target.ValueType != EMixtormatParameterValueType::Bool && Target.ValueType != EMixtormatParameterValueType::Invalid)
+			&& (Target.ValueType == EMixtormatParameterValueType::Float || Target.ValueType == EMixtormatParameterValueType::Int
+				|| Target.ValueType == EMixtormatParameterValueType::Enum || Target.ValueType == EMixtormatParameterValueType::ScalarRamp
+				|| Target.ValueType == EMixtormatParameterValueType::ColorRamp))
 		.ToolTip(LOCTEXT("ExposeParameterToGroupHelp", "Create an independent group-owned value, or attach this internal parameter to a compatible group control. Instances and existing bindings must be resolved explicitly."));
 	Menu.Caption(LOCTEXT("ParameterReferenceCaption", "Parameter"))
 		.Item(

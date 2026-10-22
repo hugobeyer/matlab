@@ -5,14 +5,15 @@
 #include "MixtormatParameterDefinition.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
-#include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Atoms/MixtormatIcons.h"
+#include "UI/Parameters/SMixtormatParameterControl.h"
+#include "UI/Primitives/SMixtormatWellBox.h"
 #include "UI/Controls/SMixtormatColorRamp.h"
 #include "UI/Controls/SMixtormatScalarRamp.h"
-#include "UI/Controls/SMixtormatTextFieldGradient.h"
+
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
-#include "Widgets/Input/SComboButton.h"
-#include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -27,14 +28,7 @@ namespace MixtormatGroupUi
 		FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(Groups, GroupId);
 		return Group ? Group->Controls.FindByPredicate([Id](const FMixtormatGroupControl& Control) { return Control.ControlId == Id; }) : nullptr;
 	}
-	TSharedRef<SWidget> Button(const FText& Label, const FOnGetContent& Menu)
-	{
-		return SNew(SComboButton)
-			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))
-			.HasDownArrow(false).ContentPadding(FMargin(0.0f)).OnGetMenuContent(Menu)
-			.ButtonContent()[SNew(STextBlock).Text(Label)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))];
-	}
+
 	bool Eligible(EMixtormatParameterValueType Type)
 	{
 		return Type == EMixtormatParameterValueType::Float || Type == EMixtormatParameterValueType::Int
@@ -151,15 +145,24 @@ TSharedRef<SWidget> SMixtormat::BuildExposeToGroupMenu(FMixtormatParameterAddres
 	const bool bRead = MixtormatParameterBinding::TryReadLocalValue({WorkingLayers, WorkingLayerGroups}, Target, Probe.Value);
 	Probe.ColorDomainMin = Target.Owner == EMixtormatParameterOwnerType::HeightColorRamp ? -1.0f : 0.0f;
 	const bool bNew = bRead && MixtormatGroupControls::ValidateTarget({WorkingLayers, WorkingLayerGroups}, *Group, Probe, Target, Error);
-	Menu.Item(LOCTEXT("GroupExposeNew", "New Independent Control"), nullptr,
-		FSimpleDelegate::CreateLambda([this, GroupId, Target]() { AddGroupControl(GroupId, Target.ValueType, Target); }))
+	Menu.Caption(Group->DisplayName);
+	Menu.Item(LOCTEXT("GroupExposeNew", "New Control…"), MixtormatIcons::Add(),
+		FSimpleDelegate::CreateLambda([this, GroupId, Target]() { ShowGroupControlSetup(GroupId, FGuid(), Target); }))
 		.Enabled(bNew).ToolTip(bNew ? LOCTEXT("GroupExposeNewHint", "Copy the current authored value into a new group-owned control. The target's stored base remains unchanged.") : Error);
+	Menu.Separator().Caption(LOCTEXT("GroupAssignExisting", "Assign to Existing Control"));
 	for (const FMixtormatGroupControl& Control : Group->Controls)
 	{
 		FText Issue;
+		const bool bAttached = Control.Targets.ContainsByPredicate([&Target](const auto& Address) { return MixtormatGroupControls::SameTarget(Address, Target); });
 		const bool bCompatible = MixtormatGroupControls::ValidateTarget({WorkingLayers, WorkingLayerGroups}, *Group, Control, Target, Issue);
 		Menu.Item(Control.Label, nullptr, FSimpleDelegate::CreateLambda([this, GroupId, Id = Control.ControlId, Target]() { AttachGroupControlTarget(GroupId, Id, Target); }))
-			.Enabled(bCompatible).ToolTip(Issue);
+			.Checked(bAttached).Enabled(bCompatible && !bAttached).ToolTip(Issue);
+		if (bAttached)
+		{
+			Menu.Item(LOCTEXT("GroupUnassignParameter", "Detach from Group Control"), MixtormatIcons::VariableUnlink(),
+				FSimpleDelegate::CreateLambda([this, GroupId, Id = Control.ControlId, Target]()
+				{ EditGroupControl(GroupId, Id, [Target](auto& C) { C.Targets.RemoveAll([&Target](const auto& Address) { return MixtormatGroupControls::SameTarget(Address, Target); }); }); }));
+		}
 	}
 	return Menu.Build();
 }
@@ -183,6 +186,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupTargetPicker(FGuid GroupId, FGuid Id, 
 			Target.ValueType = MixtormatParameterBinding::ValueTypeForProperty(Property);
 			Target.TypeName = MixtormatParameterBinding::EnumTypeForProperty(Property);
 			if (!MixtormatGroupUi::Eligible(Target.ValueType) || (TypeFilter != INDEX_NONE && static_cast<int32>(Target.ValueType) != TypeFilter)) { continue; }
+			if (Existing && (Target.ValueType != Existing->Value.Type || (Target.ValueType == EMixtormatParameterValueType::Enum && Target.TypeName != Existing->Value.TypeName))) { continue; }
 			FMixtormatGroupControl Probe;
 			FText Error;
 			bool bAllowed = true;
@@ -191,11 +195,11 @@ TSharedRef<SWidget> SMixtormat::BuildGroupTargetPicker(FGuid GroupId, FGuid Id, 
 			if (!Existing) { Probe.ColorDomainMin = Owner == EMixtormatParameterOwnerType::HeightColorRamp ? -1.0f : 0.0f; }
 			bAllowed = bAllowed && MixtormatGroupControls::ValidateTarget({WorkingLayers, WorkingLayerGroups}, *Group, Probe, Target, Error);
 			if (Existing && Existing->Targets.ContainsByPredicate([&Target](const FMixtormatParameterAddress& Item) { return MixtormatGroupControls::SameTarget(Item, Target); })) { continue; }
-			Menu.Item(FText::Format(LOCTEXT("GroupTargetLabel", "{0} · {1} · {2}"), Name, FText::FromString(Struct->GetName()), Property->GetDisplayNameText()), nullptr,
+			Menu.Item(FText::Format(LOCTEXT("GroupTargetLabelCompact", "{0} · {1}"), Name, Property->GetDisplayNameText()), nullptr,
 				FSimpleDelegate::CreateLambda([this, GroupId, Id, Target]()
 				{
 					if (Id.IsValid()) { AttachGroupControlTarget(GroupId, Id, Target); }
-					else { AddGroupControl(GroupId, Target.ValueType, Target); }
+					else { ShowGroupControlSetup(GroupId, FGuid(), Target); }
 				})).Enabled(bAllowed).ToolTip(Error);
 		}
 	};
@@ -229,37 +233,33 @@ TSharedRef<SWidget> SMixtormat::BuildGroupTargetPicker(FGuid GroupId, FGuid Id, 
 	];
 }
 
-TSharedRef<SWidget> SMixtormat::BuildGroupControlAddMenu()
-{
-	MixtormatMenu::FBuilder Menu;
-	const FGuid GroupId = SelectedGroupId;
-	for (EMixtormatParameterValueType Type : {EMixtormatParameterValueType::Float, EMixtormatParameterValueType::Int, EMixtormatParameterValueType::ScalarRamp, EMixtormatParameterValueType::ColorRamp})
-	{
-		Menu.Item(StaticEnum<EMixtormatParameterValueType>()->GetDisplayNameTextByValue(static_cast<int64>(Type)), nullptr,
-			FSimpleDelegate::CreateLambda([this, GroupId, Type]() { AddGroupControl(GroupId, Type); }));
-	}
-	Menu.SubMenu(LOCTEXT("GroupAddEnumControl", "Enum from Member…"), nullptr,
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupTargetPicker, GroupId, FGuid(), static_cast<int32>(EMixtormatParameterValueType::Enum)));
-	Menu.SubMenu(LOCTEXT("GroupExposeMember", "Expose Member Parameter…"), nullptr,
-		FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupTargetPicker, GroupId, FGuid(), static_cast<int32>(INDEX_NONE)));
-	return Menu.Build();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildGroupControlsPanel()
 {
 	const TSharedRef<SWidget> Panel = SNew(SBox).Visibility_Lambda([this]() { return SelectedGroupId.IsValid() && SelectedGroupChildIndex == INDEX_NONE ? EVisibility::Visible : EVisibility::Collapsed; })
 	[
 		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()
+		+ SVerticalBox::Slot().AutoHeight().Padding(MixtormatTokens::PanelGutter, MixtormatTokens::RowGap)
 		[
-			SNew(SMixtormatHelp).Text(LOCTEXT("GroupControlsHelp", "Independent group-owned values. Attach compatible internal targets; removing a target restores its authored base. Controls cannot target other controls or instances."))
-			[MixtormatGroupUi::Button(LOCTEXT("GroupAddControl", "Add Control…"), FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupControlAddMenu))]
+			SNew(SMixtormatHelp).Text(LOCTEXT("GroupControlsHelp", "Create a group control with a label, type, default and scrub range. To connect a member, right-click its parameter → Assign to Group Control."))
+			[
+				SNew(SBox).HeightOverride(MixtormatTokens::ButtonHeight)
+				[
+					SNew(SButton)
+					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+					.OnClicked_Lambda([this]() { ShowGroupControlSetup(SelectedGroupId); return FReply::Handled(); })
+					[
+						SNew(STextBlock).Text(LOCTEXT("GroupAddControl", "Add Control…"))
+						.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+					]
+				]
+			]
 		]
 		+ SVerticalBox::Slot().FillHeight(1.0f)
 		[
 			SNew(SScrollBox).ScrollBarStyle(&FMixtormatStyle::Get().GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
 			.ScrollBarThickness(FVector2D(FMixtormatThemeStore::GetResolved().ShellLayout.ScrollbarThickness))
-			+ SScrollBox::Slot()[SAssignNew(GroupControlsBox, SVerticalBox)]
+			+ SScrollBox::Slot().Padding(MixtormatTokens::PanelGutter, MixtormatTokens::RowGap)[SAssignNew(GroupControlsBox, SVerticalBox)]
 		]
 	];
 	RebuildGroupControlsPanel();
@@ -273,18 +273,33 @@ void SMixtormat::RebuildGroupControlsPanel()
 	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, SelectedGroupId);
 	if (!Group) { return; }
 	const FGuid GroupId = Group->GroupId;
+	if (Group->Controls.IsEmpty())
+	{
+		GroupControlsBox->AddSlot().AutoHeight()
+		[
+			SNew(STextBlock).AutoWrapText(true)
+			.Text(LOCTEXT("GroupControlsEmpty", "No controls yet. Add a control here, or right-click a member parameter → Assign to Group Control."))
+			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		];
+	}
 	for (const FMixtormatGroupControl& Snapshot : Group->Controls)
 	{
 		const FGuid Id = Snapshot.ControlId;
 		const auto Read = [this, GroupId, Id]() { return MixtormatGroupUi::Find(WorkingLayerGroups, GroupId, Id); };
 		const auto Change = [this, GroupId, Id](const FMixtormatParameterValue& Value) { SetGroupControlValue(GroupId, Id, Value); };
 		const TSharedRef<SVerticalBox> Body = SNew(SVerticalBox);
-		Body->AddSlot().AutoHeight()[SNew(SMixtormatTextFieldGradient)[SNew(SEditableTextBox)
-			.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
-			.Text(Snapshot.Label).OnTextCommitted_Lambda([this, GroupId, Id](const FText& Text, ETextCommit::Type Commit)
-			{
-				if (Commit != ETextCommit::OnCleared && !Text.IsEmpty()) { EditGroupControl(GroupId, Id, [Text](FMixtormatGroupControl& Item) { Item.Label = Text; }); }
-			})]];
+		const bool bRamp = Snapshot.Value.Type == EMixtormatParameterValueType::ScalarRamp || Snapshot.Value.Type == EMixtormatParameterValueType::ColorRamp;
+		if (bRamp)
+		{
+			Body->AddSlot().AutoHeight()
+			[
+				SNew(SBox).MinDesiredHeight(MixtormatTokens::RowHeight).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock).Text(Snapshot.Label).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+				]
+			];
+		}
 		if (Snapshot.Value.Type == EMixtormatParameterValueType::Float || Snapshot.Value.Type == EMixtormatParameterValueType::Int)
 		{
 			const bool bInt = Snapshot.Value.Type == EMixtormatParameterValueType::Int;
@@ -308,7 +323,7 @@ void SMixtormat::RebuildGroupControlsPanel()
 			Body->AddSlot().AutoHeight()[MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([Read]()
 						{
 							const auto* C = Read(); const UEnum* Enum = C ? MixtormatGroupControls::FindEnumType(C->Value.TypeName) : nullptr;
-							return Enum ? Enum->GetDisplayNameTextByValue(C->Value.EnumValue) : LOCTEXT("GroupEnumMissing", "Enum type is missing or ambiguous.");
+							return Enum ? FText::Format(LOCTEXT("GroupEnumValueLabel", "{0} · {1}"), C->Label, Enum->GetDisplayNameTextByValue(C->Value.EnumValue)) : LOCTEXT("GroupEnumMissing", "Enum type is missing or ambiguous.");
 						}), FOnGetContent::CreateLambda([Read, Change]()
 			{
 				MixtormatMenu::FBuilder Menu;
@@ -340,8 +355,7 @@ void SMixtormat::RebuildGroupControlsPanel()
 				.OnBeginInteractiveEdit(this, &SMixtormat::BeginGroupControlEdit).OnEndInteractiveEdit(this, &SMixtormat::EndGroupControlEdit)
 				.OnChanged_Lambda([Read, Change](const FMixtormatColorRamp& Ramp) { if (const auto* C = Read()) { auto Value = C->Value; Value.ColorRampValue = Ramp; Change(Value); } })];
 		}
-		Body->AddSlot().AutoHeight()[SNew(STextBlock).AutoWrapText(true)
-			.Text_Lambda([this, GroupId, Id]()
+		const auto Issues = [this, GroupId, Id]()
 			{
 				const auto* C = MixtormatGroupUi::Find(WorkingLayerGroups, GroupId, Id);
 				const auto* G = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
@@ -350,43 +364,46 @@ void SMixtormat::RebuildGroupControlsPanel()
 				FText OwnError;
 				if (!MixtormatGroupControls::ValidateControl(*C, OwnError)) { Issues = OwnError.ToString() + TEXT("\n"); }
 				for (const auto& Target : C->Targets) { FText Error; if (!MixtormatGroupControls::ValidateTarget({WorkingLayers, WorkingLayerGroups}, *G, *C, Target, Error)) { Issues += Target.Parameter.ToString() + TEXT(": ") + Error.ToString() + TEXT("\n"); } }
-				return Issues.IsEmpty() ? FText::Format(LOCTEXT("GroupTargetCount", "{0} internal targets"), FText::AsNumber(C->Targets.Num())) : FText::FromString(Issues);
-			}).TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))];
-		GroupControlsBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::CardGap)
+				return FText::FromString(Issues);
+			};
+		TSharedRef<SWidget> ValueWidget = Body;
+		if (bRamp)
+		{
+			ValueWidget = SNew(SMixtormatWellBox)
+			[
+				SNew(SBox).Padding(MixtormatTokens::RowTextInset)[Body]
+			];
+		}
+		GroupControlsBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 		[
-			SNew(SMixtormatInspectorCard).Title(Snapshot.Label)
-			.HeaderAction(MixtormatGroupUi::Button(LOCTEXT("GroupControlActions", "Control…"), FOnGetContent::CreateLambda([this, GroupId, Id]()
-			{
-				MixtormatMenu::FBuilder Menu;
-				const auto* C = MixtormatGroupUi::Find(WorkingLayerGroups, GroupId, Id); if (!C) { return Menu.Build(); }
-				Menu.Item(LOCTEXT("GroupResetControl", "Reset Control"), nullptr, FSimpleDelegate::CreateLambda([this, GroupId, Id]()
-				{ if (const auto* Current = MixtormatGroupUi::Find(WorkingLayerGroups, GroupId, Id)) { const auto Default = Current->DefaultValue; SetGroupControlValue(GroupId, Id, Default); } }));
-				Menu.SubMenu(LOCTEXT("GroupAttachTarget", "Attach Target…"), nullptr, FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupTargetPicker, GroupId, Id, static_cast<int32>(INDEX_NONE)));
-				Menu.Item(LOCTEXT("GroupToggleControl", "Enabled"), nullptr, FSimpleDelegate::CreateLambda([this, GroupId, Id]() { EditGroupControl(GroupId, Id, [](FMixtormatGroupControl& Item) { Item.bEnabled = !Item.bEnabled; }); })).Checked(C->bEnabled);
-				for (const auto& Target : C->Targets)
-				{
-					Menu.Item(FText::Format(LOCTEXT("GroupDetachTarget", "Detach {0} · {1}"), FText::FromName(Target.Parameter), FText::FromString(Target.ChildId.ToString())), nullptr,
-						FSimpleDelegate::CreateLambda([this, GroupId, Id, Target]() { EditGroupControl(GroupId, Id, [Target](FMixtormatGroupControl& Item) { Item.Targets.RemoveAll([&Target](const auto& Address) { return MixtormatGroupControls::SameTarget(Address, Target); }); }); }));
-				}
-				for (int32 Direction : {-1, 1})
-				{
-					const auto* G = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-					const int32 Index = G->Controls.IndexOfByPredicate([Id](const auto& Item) { return Item.ControlId == Id; });
-					Menu.Item(Direction < 0 ? LOCTEXT("GroupControlUp", "Move Up") : LOCTEXT("GroupControlDown", "Move Down"), nullptr,
-						FSimpleDelegate::CreateLambda([this, GroupId, Id, Direction]()
-						{
-							auto* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId); if (!Group) { return; }
-							const int32 At = Group->Controls.IndexOfByPredicate([Id](const auto& Item) { return Item.ControlId == Id; });
-							if (At == INDEX_NONE || !Group->Controls.IsValidIndex(At + Direction)) { return; }
-							BeginGroupControlEdit(); Group->Controls.Swap(At, At + Direction); EndGroupControlEdit(); RebuildGroupControlsPanel();
-						})).Enabled(G->Controls.IsValidIndex(Index + Direction));
-				}
-				Menu.Item(LOCTEXT("GroupRemoveControl", "Remove Control"), nullptr, FSimpleDelegate::CreateLambda([this, GroupId, Id]()
-				{ auto* G = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId); if (!G) { return; } BeginGroupControlEdit(); G->Controls.RemoveAll([Id](const auto& Item) { return Item.ControlId == Id; }); EndGroupControlEdit(); RebuildGroupControlsPanel(); })).Destructive();
-				return Menu.Build();
-			})))
-			[Body]
+			SNew(SMixtormatParameterControl)
+			.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildGroupControlContextMenu, GroupId, Id))
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(SBox).IsEnabled_Lambda([Read]() { const auto* C = Read(); return C && C->bEnabled; })[ValueWidget]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(MixtormatTokens::RowLabelGap, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SBox).HeightOverride(MixtormatTokens::RowHeight).VAlign(VAlign_Center)
+					[
+						MixtormatRow::MakeCheckbox(TAttribute<ECheckBoxState>::CreateLambda([Read]()
+						{ const auto* C = Read(); return C && C->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+							FOnCheckStateChanged::CreateLambda([this, GroupId, Id](ECheckBoxState State)
+							{ EditGroupControl(GroupId, Id, [State](FMixtormatGroupControl& C) { C.bEnabled = State == ECheckBoxState::Checked; }); }),
+							TAttribute<FText>(LOCTEXT("GroupControlEnabledHint", "Enable or disable this group control. Disabled targets use their authored values.")))
+					]
+				]
+			]
 		];
+		GroupControlsBox->AddSlot().AutoHeight()
+		[
+			SNew(STextBlock).AutoWrapText(true).Text_Lambda(Issues)
+			.Visibility_Lambda([Issues]() { return Issues().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		];
+
 	}
 }
 #undef LOCTEXT_NAMESPACE

@@ -682,8 +682,9 @@ without launching another implementation agent.
 
 ### Delivered group-control behavior
 
-- Group selection exposes Add Control plus cards for independent float, integer, enum,
-  scalar-ramp and color-ramp values. Values are owned by the group, not aliases.
+- Group selection exposes Add Control plus compact wells for independent float, integer, enum,
+  scalar-ramp and color-ramp values. Values are owned by the group, not aliases. See §12 for
+  the revised creation, labeling and assignment interface.
 - Create a blank supported control or Expose Member Parameter; enum identity is taken from
   a real internal enum property. Parameter context menus also offer Expose to Group.
 - Attach multiple compatible member-layer or group-module targets to one control.
@@ -781,3 +782,46 @@ Remaining delivery and validation:
 - User-authored shipped recipe assets and their dependencies are still required.
 - Gallery entries currently use text cards; thumbnail generation/authoring is not implemented.
 - Build/editor acceptance requires explicit permission, not inferred from implementation approval.
+
+## 12. Group-control UI revision
+
+Replaces the initial card-per-control presentation and bare type menu:
+
+- One label inside each control well; no repeated card title or permanently visible rename field.
+- Unlabeled enable toggle at the right. Disabled controls retain their values and RMB actions.
+- RMB → Edit Label / Control Settings opens a draft popup, styled like the driver editor.
+- Add Control opens that popup with label/type/default and numeric scrub Min/Max. Create/Apply
+  commits one edit; Cancel/window close leaves the document unchanged. Settings preserve the
+  current value and connections; Reset uses the authored default.
+- The popup is an owned modal window so selecting type/enum/ramp-preset menus cannot dismiss
+  an uncommitted draft. It reuses `SMixtormatDriverPopover` with a dedicated shared width token.
+- Primary connection workflow: RMB the actual member parameter → Assign to Group Control →
+  New Control or an existing control. The same menu supports detaching the current assignment.
+- Creating from a parameter derives its label, type, value, range and ramp domain. Enum controls
+  require this path so the declared enum choices remain authoritative.
+- Root-network, generated-mask, mask-shaping, Height Remap, Height Color Ramp and HSV ramp
+  inspectors now expose their parameter context menus too. Empty-space RMB bubbles to the menu;
+  point RMB retains deletion behavior.
+- Counts/connections move to RMB. The optional Attach Target picker filters by type/enum identity
+  and no longer prints raw reflected struct names. Actual validation errors remain visible.
+- Fixed the group-selection header refresh and suppressed the empty selection badge.
+
+Files:
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGroupParameters.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGroupControlMenus.cpp`
+- `Source/MixtormatEditor/Private/UI/Parameters/SMixtormatGroupControlPopover.h`
+- `Source/MixtormatEditor/Private/UI/Parameters/SMixtormatGroupControlPopover.cpp`
+- `Source/MixtormatEditor/Private/UI/Parameters/SMixtormatDriverPopover.h`
+- `Source/MixtormatEditor/Private/UI/Parameters/SMixtormatDriverPopover.cpp`
+- `Source/MixtormatEditor/Private/Style/MixtormatDesignTokens.h`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat.h`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Parameters.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Inspector.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerHierarchy.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorMasks.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorIds.cpp`
+- `Source/MixtormatEditor/Private/UI/Controls/SMixtormatRampEditor.cpp`
+
+Validation: targeted source review only. No commands, builds, tests, diagnostics or Unreal launch.
+The compact rows and popup have not yet been visually or interactively verified in the editor.

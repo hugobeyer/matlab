@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Style/MixtormatDesignTokens.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -11,8 +12,9 @@
 class SMixtormatDriverPopover final : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMixtormatDriverPopover) {}
+	SLATE_BEGIN_ARGS(SMixtormatDriverPopover) : _Width(MixtormatTokens::DriverPopoverWidth) {}
 		SLATE_ARGUMENT(FText, Title)
+		SLATE_ARGUMENT(float, Width)
 		SLATE_DEFAULT_SLOT(FArguments, Content)
 	SLATE_END_ARGS()
 

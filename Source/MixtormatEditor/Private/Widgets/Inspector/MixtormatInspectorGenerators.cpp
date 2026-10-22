@@ -1143,7 +1143,8 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 			.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
 			.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
 
-		AddSliderRow(RadiusCard, RadiusRampWidget);
+		AddSliderRow(RadiusCard, WrapParameterControl(RadiusRampWidget,
+					MakeAddressResolver<FMixtormatRootNetwork>(Root, &FMixtormatRootNetwork::RadiusCurve)));
 	}
 
 	// Soil Burial Ramp Card
@@ -1282,7 +1283,8 @@ TSharedRef<SWidget> SMixtormat::BuildRootNetworkControls()
 			.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
 			.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
 
-		AddSliderRow(BurialCard, BurialRampWidget);
+		AddSliderRow(BurialCard, WrapParameterControl(BurialRampWidget,
+					MakeAddressResolver<FMixtormatRootNetwork>(Root, &FMixtormatRootNetwork::BurialCurve)));
 	}
 
 	// Root UV & Texturing Card
@@ -2806,7 +2808,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
 			LOCTEXT("HeightRemapInputMax", "Input Max"), Curve, &FMixtormatGeneratorHeightCurve::InputMax, 0.0, 2.0, 1.0, 0.01,
 			LOCTEXT("HeightRemapInputMaxHint", "Positive endpoint mapped to 1 before the curve. Zero maps positive input to the curve center. The pivot remains zero."))));
-	AddSliderRow(Panel, SNew(SMixtormatScalarRamp)
+	const TSharedRef<SWidget> CurveEditor = SNew(SMixtormatScalarRamp)
 		.IsEnabled_Lambda([this, Curve]() { return Curve() && !GroupControlValueFor(Curve(), FMixtormatGeneratorHeightCurve::StaticStruct(), TEXT("Curve")); })
 		.Ramp(TAttribute<FMixtormatScalarRamp>::CreateLambda([this, Curve]()
 		{
@@ -2835,7 +2837,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightCurveControls()
 				C->Curve = NewRamp;
 				RefreshLayeredPreview();
 			}
-		})));
+		}));
+	AddSliderRow(Panel, WrapParameterControl(CurveEditor,
+		MakeAddressResolver<FMixtormatGeneratorHeightCurve>(Curve, &FMixtormatGeneratorHeightCurve::Curve)));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		MakeMemberSlider<FMixtormatGeneratorHeightCurve>(
 			LOCTEXT("HeightRemapOffset", "Offset"), Curve, &FMixtormatGeneratorHeightCurve::Offset, -1.0, 1.0, 0.0, 0.01,
@@ -3241,7 +3245,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 
 	TSharedPtr<SMixtormatColorRamp> RampWidget;
 	const TSharedRef<SVerticalBox> RampCard = AddCard(Panel, LOCTEXT("ColorRampCardRamp", "RAMP"));
-	AddSliderRow(RampCard, SAssignNew(RampWidget, SMixtormatColorRamp)
+	const TSharedRef<SWidget> RampEditor = SAssignNew(RampWidget, SMixtormatColorRamp)
 		.IsEnabled_Lambda([this, Ramp]() { return Ramp() && !GroupControlValueFor(Ramp(), FMixtormatGeneratorHeightColorRamp::StaticStruct(), TEXT("Ramp")); })
 		.Ramp(TAttribute<FMixtormatColorRamp>::CreateLambda([this, Ramp]()
 		{
@@ -3262,7 +3266,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightColorRampControls()
 				R->SetUnitRamp(NewRamp);
 				RefreshLayeredPreview();
 			}
-		})));
+		}));
+	AddSliderRow(RampCard, WrapParameterControl(RampEditor,
+		MakeAddressResolver<FMixtormatGeneratorHeightColorRamp>(Ramp, &FMixtormatGeneratorHeightColorRamp::Ramp)));
 	AddSliderRow(RampCard, MixtormatRow::MakePair(
 		MakeMemberEnum<FMixtormatGeneratorHeightColorRamp, EMixtormatColorBlendMode>(
 			LOCTEXT("ColorRampBlendMode", "Blend Mode"), Ramp, &FMixtormatGeneratorHeightColorRamp::BlendMode,

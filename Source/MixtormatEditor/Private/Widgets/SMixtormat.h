@@ -807,7 +807,8 @@ private:
 	const FMixtormatParameterValue* GroupControlValueFor(const void* Owner, UScriptStruct* OwnerStruct, FName Parameter) const;
 	TSharedRef<SWidget> BuildGroupControlsPanel();
 	void RebuildGroupControlsPanel();
-	TSharedRef<SWidget> BuildGroupControlAddMenu();
+	void ShowGroupControlSetup(FGuid GroupId, FGuid ControlId = {}, FMixtormatParameterAddress InitialTarget = {}, bool bLabelOnly = false);
+	TSharedRef<SWidget> BuildGroupControlContextMenu(FGuid GroupId, FGuid ControlId);
 	TSharedRef<SWidget> BuildGroupTargetPicker(FGuid GroupId, FGuid ControlId, int32 TypeFilter = INDEX_NONE);
 	TSharedRef<SWidget> BuildExposeToGroupMenu(FMixtormatParameterAddress Target);
 	void AddGroupControl(FGuid GroupId, EMixtormatParameterValueType Type, FMixtormatParameterAddress InitialTarget = {});

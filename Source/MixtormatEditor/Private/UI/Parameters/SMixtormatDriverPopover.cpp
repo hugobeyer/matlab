@@ -15,11 +15,11 @@ void SMixtormatDriverPopover::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SMixtormatMenuPanel)
-		.MinWidth(MixtormatTokens::DriverPopoverWidth)
+		.MinWidth(InArgs._Width)
 		.Padding(FMargin(FMixtormatThemeStore::GetResolved().MenuLayout.PanelPadding))
 		[
 			SNew(SBox)
-			.WidthOverride(MixtormatTokens::DriverPopoverWidth)
+			.WidthOverride(InArgs._Width)
 			.MaxDesiredHeight(MixtormatTokens::ParameterPopoverMaxHeight)
 			[
 				SNew(SScrollBox)

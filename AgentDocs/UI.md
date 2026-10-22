@@ -242,6 +242,24 @@ parameters. Their editor ranges, reset defaults and optional clamps are authored
 `Feather` in `Config/MixtormatParameterAuthoring.json`; GPU Eikonal/Flow iteration
 execution retains a 512-pass safety maximum independently of editor settings.
 
+## Group controls
+
+- Group selection shows compact parameter wells, not a separate titled card per control.
+- Each control has one label inside its well and an unlabeled enable toggle on the right.
+- RMB on the control opens Edit Label, Control Settings, reset, connections, order and removal.
+- Add Control opens a draft popup using the driver-popover surface. Numeric controls expose
+  type, label, default and scrub Min/Max; creation/settings commit only on Create/Apply.
+- Connect from the member parameter: RMB → Assign to Group Control → New Control or an
+  existing control. New controls inherit the member's exact type, value and UI metadata.
+- Enum controls originate from a real enum parameter; no arbitrary enum identity is fabricated.
+- Scalar/color ramp consumers participate in the same parameter menu. RMB on a ramp point
+  still removes that point; RMB on empty ramp space opens the enclosing parameter menu.
+- Connection counts/details belong in RMB, not permanent inspector footers. Validation errors
+  remain visible. The optional Attach Target picker filters to the control's type.
+- UI ownership: `Widgets/Inspector/MixtormatInspectorGroupParameters.cpp`,
+  `MixtormatInspectorGroupControlMenus.cpp`, and `UI/Parameters/SMixtormatGroupControlPopover.*`.
+- These UI changes are source-reviewed only; no build or live interaction validation was run.
+
 ## Cards / rows / atoms
 
 - Rows: `UI/Rows/SMixtormatRow.*` (`MixtormatRow::MakePair`, `AddSliderRow`).

@@ -490,7 +490,8 @@ FReply SMixtormatRampEditorBase::OnMouseButtonDown(const FGeometry& Geometry, co
 			NotifyEdit(true);
 			OnEndInteractiveEdit.ExecuteIfBound();
 		}
-		return FReply::Handled();
+		// Keep point deletion; empty-space RMB belongs to the enclosing parameter's menu.
+		return Hit != INDEX_NONE ? FReply::Handled() : FReply::Unhandled();
 	}
 	if (Event.GetEffectingButton() != EKeys::LeftMouseButton) { return FReply::Unhandled(); }
 

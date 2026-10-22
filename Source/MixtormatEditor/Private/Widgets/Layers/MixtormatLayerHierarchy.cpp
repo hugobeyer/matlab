@@ -513,7 +513,6 @@ FReply SMixtormat::ToggleGroupExpanded(const FGuid GroupId)
 FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 {
 	SelectedGroupId = GroupId;
-	RebuildGroupControlsPanel();
 	// The header, not one of its shared children or a previously selected layer.
 	SelectedLayerIndex = INDEX_NONE;
 	bHasSelectedLayer = false;
@@ -526,6 +525,8 @@ FReply SMixtormat::SelectLayerGroup(const FGuid GroupId)
 	SelectionAnchorLayerId.Invalidate();
 	SelectedLayerChildIds.Reset();
 	SelectionAnchorLayerChildId.Invalidate();
+	SyncSelectedLayerControls();
+	RebuildGroupControlsPanel();
 	if (UpdateAutomaticFlowPreview()) { RefreshLayeredPreview(false); }
 	return FReply::Handled();
 }

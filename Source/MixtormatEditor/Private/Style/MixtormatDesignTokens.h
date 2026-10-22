@@ -441,6 +441,7 @@ namespace MixtormatTokens
 	constexpr float ParameterStateGap = 4.0f;
 	constexpr float ParameterStateSlotWidth = 12.0f;
 	constexpr float DriverPopoverWidth = 224.0f;
+	constexpr float GroupControlPopoverWidth = 360.0f;
 	constexpr float DriverPopoverInnerGap = 4.0f;
 	constexpr float DriverPopoverSectionGap = 6.0f;
 

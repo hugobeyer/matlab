@@ -757,7 +757,7 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 
 	const TSharedRef<SVerticalBox> Cards = Panel;
 	Panel = AddCard(Cards, LOCTEXT("HsvGrpColorRamp", "COLOR RAMP"));
-	AddSliderRow(Panel, SNew(SBox)
+	const TSharedRef<SWidget> HsvRampEditor = SNew(SBox)
 		.IsEnabled_Lambda([CanEditHsv]() { return CanEditHsv(); })
 		[
 			SNew(SMixtormatColorRamp)
@@ -796,7 +796,9 @@ TSharedRef<SWidget> SMixtormat::BuildHsvFilterControls()
 					RefreshLayeredPreview();
 				}
 			})
-		]);
+		];
+	AddSliderRow(Panel, WrapParameterControl(HsvRampEditor,
+		MakeAddressResolver<FMixtormatHsvIdFilter>(Hsv, &FMixtormatHsvIdFilter::ColorRamp)));
 
 	// The default black-to-white ramp stays inert while Tint Min and Tint Max are both zero.
 	// Set matching-colour stops to author a flat tint without a separate compatibility path.
