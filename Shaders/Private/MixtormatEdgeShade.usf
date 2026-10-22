@@ -5,6 +5,8 @@
 
 Texture2D<float2> EdgeField;
 Texture2D<float4> SourceRAM;
+Texture2D<float> GateMask;
+uint UseGateMask;
 RWTexture2D<float4> OutputRAM;
 
 int2 OutputSize;
@@ -39,5 +41,5 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		SourceRAM.Load(int3(Pixel, 0)),
 		Bevel,
 		EdgeRoughness,
-		EdgeRoughnessAmount);
+		EdgeRoughnessAmount * (UseGateMask != 0u ? saturate(GateMask.Load(int3(Pixel, 0))) : 1.0f));
 }

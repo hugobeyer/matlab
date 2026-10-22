@@ -1704,6 +1704,7 @@ namespace MixtormatGpuCompositor
 	// surface they modify does not exist until after it.
 	struct FPendingRampTilt
 	{
+		FRDGTextureRef GateMask = nullptr;
 		FRDGTextureRef Field = nullptr;
 		FRDGTextureRef EdgeField = nullptr;
 		FRDGTextureRef RegionIds = nullptr;

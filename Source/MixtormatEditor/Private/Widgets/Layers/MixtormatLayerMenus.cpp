@@ -411,12 +411,13 @@ void SMixtormat::AddSharedChildMenuItems(
 				return BuildMaskSourceMenuFor(Address);
 			}));
 	}
-	if (CanPasteAsGatingMask(Address))
+	if (Child && CanOwnScopedMasks(*Child))
 	{
 		Menu.Item(
 			LOCTEXT("PasteAsGatingMaskContext", "Paste as Gating Mask"),
 			MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda([this, Address]() { PasteAsGatingMask(Address); }));
+			FSimpleDelegate::CreateLambda([this, Address]() { PasteAsGatingMask(Address); }))
+			.Enabled(TAttribute<bool>::CreateLambda([this, Address]() { return CanPasteAsGatingMask(Address); }));
 	}
 	if (Child && Child->Type == EMixtormatLayerChildType::OutputReference && !bInstance)
 	{
@@ -898,6 +899,22 @@ TSharedRef<SWidget> SMixtormat::BuildLayerContextMenu(const int32 LayerIndex)
 			return WorkingLayers.IsValidIndex(LayerIndex)
 				&& CanPasteChild({EMixtormatChildOwnerType::Layer, WorkingLayers[LayerIndex].LayerId, FGuid()}, INDEX_NONE);
 		})).Shortcut(MixtormatLayerShortcuts::Label(MixtormatLayerShortcuts::EAction::Paste));
+
+	Menu.Item(
+		LOCTEXT("PasteAsGatingMaskContext", "Paste as Gating Mask"),
+		MixtormatIcons::Mask(),
+		FSimpleDelegate::CreateLambda([this, LayerIndex]()
+		{
+			if (WorkingLayers.IsValidIndex(LayerIndex))
+			{
+				PasteAsGatingMask({EMixtormatChildOwnerType::Layer, WorkingLayers[LayerIndex].LayerId, FGuid()});
+			}
+		}))
+		.Enabled(TAttribute<bool>::CreateLambda([this, LayerIndex]()
+		{
+			return WorkingLayers.IsValidIndex(LayerIndex)
+				&& CanPasteAsGatingMask({EMixtormatChildOwnerType::Layer, WorkingLayers[LayerIndex].LayerId, FGuid()});
+		}));
 
 	if (WorkingLayers.IsValidIndex(LayerIndex)
 		&& WorkingLayers[LayerIndex].Children.ContainsByPredicate([](const FMixtormatLayerChild& Child)

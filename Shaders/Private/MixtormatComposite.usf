@@ -51,7 +51,9 @@ SamplerState LinearWrapSampler;
 // variation read off it. Always bound -- a 1x1 dummy when the layer has no cluster filter --
 // because RDG validates every binding whether the branch below runs or not.
 Texture2D<uint> RegionIds;
+Texture2D<float> RegionTintMask;
 uint RegionTintEnabled;
+uint UseRegionTintMask;
 uint RegionSeed;
 #define MIXTORMAT_MAX_REGION_PALETTE 8
 float4 RegionPalette[MIXTORMAT_MAX_REGION_PALETTE];
@@ -372,7 +374,9 @@ float3 ApplyRegionVariation(float3 RGB, uint2 Pixel)
 	HSV.x = frac(HSV.x + lerp(RegionHueMin, RegionHueMax, HueT) * 0.5f + 1.0f);
 	HSV.y = saturate(HSV.y * lerp(RegionSatMin, RegionSatMax, SatT));
 	HSV.z = max(0.0f, HSV.z * lerp(RegionValMin, RegionValMax, ValT));
-	return saturate(HSVToRGB(HSV));
+	const float3 Result = saturate(HSVToRGB(HSV));
+	return UseRegionTintMask != 0u
+		? lerp(RGB, Result, saturate(RegionTintMask.Load(int3(Pixel, 0)))) : Result;
 }
 
 float3 AdjustHSV(float3 RGB)

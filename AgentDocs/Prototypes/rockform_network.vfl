@@ -1,0 +1,504 @@
+// STAGE 1 — Detail Wrangle (only once). Input 0: geometry supplying the bbox.
+// Builds a shared 3D fracture-surface network, not an already shaped rock.
+// Every interface appears ONCE, oriented from cell_a to cell_b; -1 means exterior.
+// View this stage in WIREFRAME to see the internal surfaces behind the bbox walls.
+// Connect this output to input 0 of rockform_cull; it sculpts its own formation.
+// A closed shape guide on its input 1 is optional (enable use_guide in the culler).
+// All geometry and rf_cell_sites use the same SOP coordinate space as input 0.
+//
+// Create spare parameters. Start with:
+// seed 17, columns 4, layers 6, depth_cells 3, jitter .45,
+// thickness_variation .5, layer_bias .65, tilt_degrees 8.
+// More columns/fewer layers produces upright separations; the reverse gives slabs.
+// This all-pairs prototype supports up to 256 cells; start below 100 interactively.
+
+function float net_random(int seed; int index; int stream)
+{
+    float value = rand(set(float(seed), float(index), float(stream)));
+    return value;
+}
+
+function vector net_area(vector polygon[])
+{
+    vector area = 0;
+    for (int k = 1; k < len(polygon) - 1; k++)
+        area += cross(polygon[k] - polygon[0], polygon[k + 1] - polygon[0]);
+    return area;
+}
+
+// Indexed clipping: calculate an intersection once per undirected edge.
+// The arrays remain flat polygon storage between cuts; tags hold neighboring cells.
+function void net_clip(
+    export vector vertices[];
+    export int counts[];
+    export int tags[];
+    vector n;
+    float d;
+    int neighbor;
+    float epsilon)
+{
+    if (len(vertices) == 0)
+        return;
+    float low_distance = 1e18;
+    float high_distance = -1e18;
+    foreach (vector p; vertices)
+    {
+        float projection = dot(p, n);
+        low_distance = min(low_distance, projection);
+        high_distance = max(high_distance, projection);
+    }
+    if (high_distance <= d + epsilon)
+        return;
+    if (low_distance >= d - epsilon)
+    {
+        resize(vertices, 0);
+        resize(counts, 0);
+        resize(tags, 0);
+        return;
+    }
+
+    vector points[] = {};
+    float distances[] = {};
+    int indices[] = {};
+    foreach (vector position; vertices)
+    {
+        vector p = position;
+        float distance_to_plane = dot(p, n) - d;
+        if (abs(distance_to_plane) <= epsilon)
+        {
+            p -= distance_to_plane * n;
+            distance_to_plane = 0;
+        }
+        int index = -1;
+        for (int j = 0; j < len(points); j++)
+        {
+            if (distance(points[j], p) <= epsilon)
+            {
+                index = j;
+                break;
+            }
+        }
+        if (index < 0)
+        {
+            index = len(points);
+            append(points, p);
+            append(distances, distance_to_plane);
+        }
+        append(indices, index);
+    }
+
+    vector result[] = {};
+    int result_counts[] = {};
+    int result_tags[] = {};
+    int cap[] = {};
+    int edge_low[] = {};
+    int edge_high[] = {};
+    int edge_hit[] = {};
+    int start = 0;
+    for (int face = 0; face < len(counts); face++)
+    {
+        int polygon[] = {};
+        for (int k = 0; k < counts[face]; k++)
+        {
+            int a = indices[start + k];
+            int b = indices[start + (k + 1) % counts[face]];
+            float da = distances[a];
+            float db = distances[b];
+            if (da <= 0)
+                append(polygon, a);
+            if (da == 0 && find(cap, a) < 0)
+                append(cap, a);
+            if ((da <= 0) != (db <= 0))
+            {
+                int hit = -1;
+                if (da == 0)
+                    hit = a;
+                else if (db == 0)
+                    hit = b;
+                else
+                {
+                    int lo = min(a, b);
+                    int hi = max(a, b);
+                    for (int edge = 0; edge < len(edge_low); edge++)
+                    {
+                        if (edge_low[edge] == lo && edge_high[edge] == hi)
+                        {
+                            hit = edge_hit[edge];
+                            break;
+                        }
+                    }
+                    if (hit < 0)
+                    {
+                        float t = distances[lo] / (distances[lo] - distances[hi]);
+                        vector p = lerp(points[lo], points[hi], t);
+                        p -= (dot(p, n) - d) * n;
+                        hit = len(points);
+                        append(points, p);
+                        append(distances, 0.0);
+                        append(edge_low, lo);
+                        append(edge_high, hi);
+                        append(edge_hit, hit);
+                    }
+                }
+                append(polygon, hit);
+                if (find(cap, hit) < 0)
+                    append(cap, hit);
+            }
+        }
+        int clean[] = {};
+        foreach (int index; polygon)
+        {
+            int count = len(clean);
+            if (count == 0)
+                append(clean, index);
+            else if (clean[count - 1] != index)
+                append(clean, index);
+        }
+        int count = len(clean);
+        if (count > 1)
+        {
+            if (clean[0] == clean[count - 1])
+                resize(clean, count - 1);
+        }
+        if (len(clean) >= 3)
+        {
+            append(result_counts, len(clean));
+            append(result_tags, tags[face]);
+            foreach (int index; clean)
+                append(result, points[index]);
+        }
+        start += counts[face];
+    }
+
+    if (len(cap) >= 3)
+    {
+        vector centroid = 0;
+        foreach (int index; cap)
+            centroid += points[index];
+        centroid /= len(cap);
+        vector reference = set(0, 1, 0);
+        if (abs(n.y) > .9)
+            reference = set(1, 0, 0);
+        vector u = normalize(cross(reference, n));
+        vector v = cross(n, u);
+        float angles[] = {};
+        foreach (int index; cap)
+        {
+            vector delta = points[index] - centroid;
+            append(angles, atan2(dot(delta, v), dot(delta, u)));
+        }
+        int order[] = argsort(angles);
+        append(result_counts, len(cap));
+        append(result_tags, neighbor);
+        foreach (int index; order)
+            append(result, points[cap[index]]);
+    }
+    vertices = result;
+    counts = result_counts;
+    tags = result_tags;
+}
+
+function vector net_position(vector p; vector size; vector center; float tilt)
+{
+    vector metric = p * size * .5;
+    return center + set(
+        metric.x * cos(tilt) - metric.y * sin(tilt),
+        metric.x * sin(tilt) + metric.y * cos(tilt),
+        metric.z
+    );
+}
+
+int source_points = npoints(0);
+int source_prims = nprimitives(0);
+if (source_points == 0)
+{
+    error("rockform_network: connect bounding geometry to input 0.");
+    return;
+}
+vector bmin, bmax;
+getbbox(0, bmin, bmax);
+vector size = bmax - bmin;
+vector center = (bmin + bmax) * .5;
+if (min(size.x, min(size.y, size.z)) <= 0)
+{
+    error("rockform_network: the input bbox must have nonzero size on all axes.");
+    return;
+}
+
+int seed = chi("seed");
+int columns = max(1, chi("columns"));
+int layers = max(1, chi("layers"));
+int depth_cells = max(1, chi("depth_cells"));
+if (float(columns) * float(layers) * float(depth_cells) > 256)
+{
+    error("rockform_network: columns * layers * depth_cells must not exceed 256.");
+    return;
+}
+int cell_count = columns * layers * depth_cells;
+float jitter = clamp(chf("jitter"), 0, .9);
+float variation = clamp(chf("thickness_variation"), 0, 1);
+float layer_bias = clamp(chf("layer_bias"), 0, 1);
+float tilt = radians(chf("tilt_degrees"));
+float epsilon = 2e-6;
+
+float heights[] = {};
+float total = 0;
+for (int layer = 0; layer < layers; layer++)
+{
+    float h = lerp(1.0, fit01(net_random(seed, layer, 1), .45, 1.55), variation);
+    append(heights, h);
+    total += h;
+}
+
+vector sites[] = {};
+vector output_sites[] = {};
+int active[] = {};
+float base_y = -1;
+for (int layer = 0; layer < layers; layer++)
+{
+    float height = 2 * heights[layer] / total;
+    for (int z = 0; z < depth_cells; z++)
+    {
+        for (int x = 0; x < columns; x++)
+        {
+            int id = len(sites);
+            float jx = fit01(net_random(seed, id, 2), -.5, .5) * jitter;
+            float jy = fit01(net_random(seed, id, 3), -.5, .5) * jitter * (1 - .9 * layer_bias);
+            float jz = fit01(net_random(seed, id, 4), -.5, .5) * jitter;
+            vector p = set(
+                -1 + 2 * (x + .5 + jx) / columns,
+                base_y + height * (.5 + jy),
+                -1 + 2 * (z + .5 + jz) / depth_cells
+            );
+            append(sites, p);
+            append(output_sites, net_position(p, size, center, tilt));
+            append(active, 1);
+        }
+    }
+    base_y += height;
+}
+
+// Weighted Voronoi bisectors give a complete, non-overlapping volumetric partition.
+// Jitter changes the fracture graph; layer bias favors aligned, shallow bedding cells.
+vector metric = size / max(size.x, max(size.y, size.z));
+metric.y *= lerp(1.0, 3.0, layer_bias);
+vector weights = metric * metric;
+vector box[] = {};
+int box_counts[] = {};
+int box_tags[] = {};
+int us[] = array(-1, 1, 1, -1);
+int vs[] = array(-1, -1, 1, 1);
+for (int axis = 0; axis < 3; axis++)
+{
+    int u = (axis + 1) % 3;
+    int v = (axis + 2) % 3;
+    for (int side = -1; side <= 1; side += 2)
+    {
+        append(box_counts, 4);
+        append(box_tags, -1);
+        for (int k = 0; k < 4; k++)
+        {
+            vector p = 0;
+            p[axis] = side;
+            p[u] = us[k];
+            p[v] = vs[k] * side;
+            append(box, p);
+        }
+    }
+}
+
+vector shared_positions[] = {};
+int face_vertices[] = {};
+int face_counts[] = {};
+int face_a[] = {};
+int face_b[] = {};
+for (int cell = 0; cell < cell_count; cell++)
+{
+    vector hull[] = box;
+    int counts[] = box_counts;
+    int neighbors[] = box_tags;
+    vector a = sites[cell];
+    for (int other = 0; other < cell_count; other++)
+    {
+        if (other == cell)
+            continue;
+        vector b = sites[other];
+        vector n = (b - a) * weights;
+        // Midpoint form avoids subtracting nearly equal squared distances.
+        float d = dot((a + b) * .5, n);
+        float magnitude = length(n);
+        if (magnitude <= 0)
+        {
+            error("rockform_network: coincident sites or a numerically collapsed metric.");
+            return;
+        }
+        net_clip(hull, counts, neighbors, n / magnitude, d / magnitude, other, epsilon);
+    }
+    if (len(counts) < 4)
+    {
+        // Every site is inside the bbox and its own cell. An empty hull is an
+        // error, not a reason to silently drop a rock while sliders are adjusted.
+        error("rockform_network: cell %d collapsed; reduce counts or extreme bbox proportions.", cell);
+        return;
+    }
+
+    int start = 0;
+    for (int face = 0; face < len(counts); face++)
+    {
+        int other = neighbors[face];
+        if (other >= 0 && cell > other)
+        {
+            start += counts[face];
+            continue;
+        }
+        int polygon[] = {};
+        for (int k = 0; k < counts[face]; k++)
+        {
+            vector p = hull[start + k];
+            int index = -1;
+            for (int j = 0; j < len(shared_positions); j++)
+            {
+                if (distance(shared_positions[j], p) <= epsilon * 4)
+                {
+                    index = j;
+                    break;
+                }
+            }
+            if (index < 0)
+            {
+                index = len(shared_positions);
+                append(shared_positions, p);
+            }
+            int count = len(polygon);
+            if (count == 0)
+                append(polygon, index);
+            else if (polygon[count - 1] != index)
+                append(polygon, index);
+        }
+        int count = len(polygon);
+        if (count > 1)
+        {
+            if (polygon[0] == polygon[count - 1])
+                resize(polygon, count - 1);
+        }
+        int seen[] = {};
+        vector positions[] = {};
+        foreach (int index; polygon)
+        {
+            if (find(seen, index) >= 0)
+            {
+                error("rockform_network: welding folded a face of cell %d; reduce counts or extreme proportions.", cell);
+                return;
+            }
+            append(seen, index);
+            append(positions, shared_positions[index]);
+        }
+        if (len(polygon) >= 3 && length(net_area(positions)) > epsilon * epsilon)
+        {
+            append(face_counts, len(polygon));
+            append(face_a, cell);
+            append(face_b, other);
+            foreach (int index; polygon)
+                append(face_vertices, index);
+        }
+        start += counts[face];
+    }
+}
+
+// Check the shared graph, including interfaces emitted by another cell. A face
+// lost to numerical collapse must report an error, not silently open a formation.
+for (int cell = 0; cell < cell_count; cell++)
+{
+    int edge_low[] = {};
+    int edge_high[] = {};
+    int edge_uses[] = {};
+    int edge_balance[] = {};
+    int cell_faces = 0;
+    int start = 0;
+    for (int face = 0; face < len(face_counts); face++)
+    {
+        int owner = face_a[face] == cell;
+        int adjacent = face_b[face] == cell;
+        if (owner || adjacent)
+        {
+            cell_faces++;
+            int direction = owner ? 1 : -1;
+            for (int k = 0; k < face_counts[face]; k++)
+            {
+                int a = face_vertices[start + k];
+                int b = face_vertices[start + (k + 1) % face_counts[face]];
+                int lo = min(a, b);
+                int hi = max(a, b);
+                int edge = -1;
+                for (int j = 0; j < len(edge_low); j++)
+                {
+                    if (edge_low[j] == lo && edge_high[j] == hi)
+                    {
+                        edge = j;
+                        break;
+                    }
+                }
+                if (edge < 0)
+                {
+                    edge = len(edge_low);
+                    append(edge_low, lo);
+                    append(edge_high, hi);
+                    append(edge_uses, 0);
+                    append(edge_balance, 0);
+                }
+                edge_uses[edge]++;
+                edge_balance[edge] += direction * (a < b ? 1 : -1);
+            }
+        }
+        start += face_counts[face];
+    }
+    if (cell_faces < 4)
+    {
+        error("rockform_network: cell %d is missing bounding surfaces.", cell);
+        return;
+    }
+    for (int edge = 0; edge < len(edge_low); edge++)
+    {
+        if (edge_uses[edge] != 2 || edge_balance[edge] != 0)
+        {
+            error("rockform_network: cell %d has an unmatched shared edge; reduce counts or extreme proportions.", cell);
+            return;
+        }
+    }
+}
+
+// The network, not a second hidden mesh, is the source of truth for stage 2.
+vector output_positions[] = {};
+int output_ids[] = {};
+foreach (vector p; shared_positions)
+{
+    vector q = net_position(p, size, center, tilt);
+    append(output_positions, q);
+    append(output_ids, addpoint(0, q));
+}
+int start = 0;
+for (int face = 0; face < len(face_counts); face++)
+{
+    vector polygon[] = {};
+    for (int k = 0; k < face_counts[face]; k++)
+        append(polygon, output_positions[face_vertices[start + k]]);
+    vector normal = normalize(net_area(polygon));
+    int prim = addprim(0, "poly");
+    for (int k = 0; k < face_counts[face]; k++)
+    {
+        addvertex(0, prim, output_ids[face_vertices[start + k]]);
+        setvertexattrib(0, "N", prim, k, normal, "set");
+    }
+    setprimattrib(0, "cell_a", prim, face_a[face], "set");
+    setprimattrib(0, "cell_b", prim, face_b[face], "set");
+    setprimgroup(0, "fracture_surfaces", prim, face_b[face] >= 0, "set");
+    setprimgroup(0, "bbox_boundary", prim, face_b[face] < 0, "set");
+    start += face_counts[face];
+}
+setdetailattrib(0, "rf_cell_sites", output_sites, "set");
+setdetailattrib(0, "rf_cell_active", active, "set");
+setdetailattrib(0, "rf_cell_count", cell_count, "set");
+for (int prim = 0; prim < source_prims; prim++)
+    removeprim(0, prim, 0);
+for (int point = 0; point < source_points; point++)
+    removepoint(0, point);

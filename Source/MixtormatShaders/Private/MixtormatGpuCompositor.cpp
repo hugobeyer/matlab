@@ -224,6 +224,7 @@ public:
 		// RegionIds is bound on every dispatch -- a 1x1 dummy when the layer has no cluster --
 		// because RDG validates the binding whether RegionTintEnabled takes the branch or not.
 		SHADER_PARAMETER(uint32, RegionTintEnabled)
+		SHADER_PARAMETER(uint32, UseRegionTintMask)
 		SHADER_PARAMETER(uint32, RegionSeed)
 		SHADER_PARAMETER_ARRAY(FVector4f, RegionPalette, [MaxRegionPalette])
 		SHADER_PARAMETER(int32, RegionPaletteCount)
@@ -236,6 +237,7 @@ public:
 		SHADER_PARAMETER(float, RegionValMin)
 		SHADER_PARAMETER(float, RegionValMax)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RegionTintMask)
 		SHADER_PARAMETER(uint32, RegionUVEnabled)
 		SHADER_PARAMETER(uint32, RegionUVSeed)
 		SHADER_PARAMETER(uint32, RegionUVOrthogonal)
@@ -1032,6 +1034,7 @@ namespace MixtormatGpuCompositor
 		// each claim the whole albedo, so the later row wins rather than the two
 		// silently averaging.
 		const FHsvIdFilterRenderData* ActiveHsv = nullptr;
+		int32 HsvSourceChildIndex = INDEX_NONE;
 		FRDGTextureRef HsvRegionIds = nullptr;
 		for (const FChildRenderData& Child : Layer.Children)
 		{
@@ -1044,6 +1047,7 @@ namespace MixtormatGpuCompositor
 				Layer, RegionIdMaps, Child, ProducerIndex))
 			{
 				ActiveHsv = &Child.HsvFilter;
+				HsvSourceChildIndex = Child.SourceChildIndex;
 				HsvRegionIds = Ids;
 			}
 		}
@@ -1196,6 +1200,13 @@ namespace MixtormatGpuCompositor
 		Parameters->GradeMask6 = GradeMasks[6];
 		Parameters->GradeMask7 = GradeMasks[7];
 		Parameters->RegionIds = HsvRegionIds ? HsvRegionIds : EmptyRegionIds;
+		const bool bHasHsvGate = ActiveHsv && Layer.Children.ContainsByPredicate(
+			[HsvSourceChildIndex](const FChildRenderData& Candidate)
+			{ return IsScopedMaskChild(Candidate, HsvSourceChildIndex); });
+		Parameters->UseRegionTintMask = bHasHsvGate ? 1u : 0u;
+		Parameters->RegionTintMask = bHasHsvGate
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, HsvSourceChildIndex, true)
+			: EmptyDriverSignal;
 		Parameters->RegionSeed = ActiveHsv ? ActiveHsv->Seed : 0u;
 		Parameters->RegionPaletteCount = ActiveHsv ? ActiveHsv->Palette.Num() : 0;
 		for (int32 ColorIndex = 0; ColorIndex < FMixtormatCompositeCS::MaxRegionPalette; ++ColorIndex)

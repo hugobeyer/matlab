@@ -84,6 +84,8 @@ float GapSoftness;
 float GapBiasPixels;
 float DistanceRangePixels;
 uint InvertDistance;
+uint UseGateMask;
+Texture2D<float> GateMask;
 RWTexture2D<float> OutputBoundary;
 RWTexture2D<float> OutputGap;
 RWTexture2D<float> OutputDistance;
@@ -451,9 +453,10 @@ void BoundaryResolveCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		}
 		if (InvertDistance != 0u) { NormalizedDistance = 1.0f - NormalizedDistance; }
 	}
-	OutputBoundary[Pixel] = Boundary;
-	OutputGap[Pixel] = Gap;
-	OutputDistance[Pixel] = NormalizedDistance;
+	const float Gate = UseGateMask != 0u ? saturate(GateMask.Load(int3(Pixel, 0))) : 1.0f;
+	OutputBoundary[Pixel] = Boundary * Gate;
+	OutputGap[Pixel] = Gap * Gate;
+	OutputDistance[Pixel] = NormalizedDistance * Gate;
 }
 
 // The signed boundary distance at one pixel, from its record.

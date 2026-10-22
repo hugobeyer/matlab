@@ -160,6 +160,18 @@ negative strength); ramp Weight, source selection and upstream Flow are unchange
   producer; shader maths is one `MixtormatShapeMask` in `MixtormatMaskOps.ush`.
 - Scoped masks: `MixtormatChildScope::CanOwnScopedMasks` (Runtime) gates who may
   own a scoped Mask child; gather and editor share it.
+- Layer and mask-capable module context menus expose **Paste as Gating Mask**.
+  It converts copyable scalar outputs (including Growth Coverage) into live masks;
+  layer destinations append an unscoped mask, module destinations append a scoped mask.
+  Source ordering and feedback checks still apply; ordinary Paste keeps the typed field.
+- HSV From IDs gates the last active filter's colour rewrite. Ramp and Relief From IDs
+  gate their complete height contribution; Relief also gates edge roughness. Normals
+  derive from the gated height. The published packed `Ramp` field stays raw.
+- Boundary From IDs gates its published Boundary, Gap and Distance masks after the
+  distance solve; the input IDs and distance analysis are unchanged.
+- These four owners reuse `AddScopedFeatureMask` with independent (white-starting) scopes.
+  No gate preserves the original output. Curvature remains a filter under a Mask.
+  Implementation is source-reviewed only; shader compilation/runtime are unverified.
 - Mask sources: Texture, Layer Values, appended inline `Noise` (`FMixtormatMaskLayer::Noise`,
   `UsesNoise()`), or a live published output. `MixtormatMaskGather` stores
   `FMaskRenderData.bNoise/Noise/SourceChildIndex` for the inline path and resolves published

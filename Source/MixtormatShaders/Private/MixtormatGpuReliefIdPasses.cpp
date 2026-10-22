@@ -18,6 +18,8 @@ public:
 		SHADER_PARAMETER(float, BevelVariation)
 		SHADER_PARAMETER(float, EdgeRoughness)
 		SHADER_PARAMETER(float, EdgeRoughnessAmount)
+		SHADER_PARAMETER(uint32, UseGateMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceRAM)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputRAM)
@@ -98,6 +100,8 @@ public:
 		SHADER_PARAMETER(float, BevelInsetPixels)
 		SHADER_PARAMETER(float, GapHeight)
 		SHADER_PARAMETER(float, FeatherGain)
+		SHADER_PARAMETER(uint32, UseGateMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, RampField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, EdgeField)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SourceHeight)
@@ -160,6 +164,8 @@ public:
 		SHADER_PARAMETER(float, GapBiasPixels)
 		SHADER_PARAMETER(float, DistanceRangePixels)
 		SHADER_PARAMETER(uint32, InvertDistance)
+		SHADER_PARAMETER(uint32, UseGateMask)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GateMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, RegionIds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, PreviousRecord)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutputBoundary)
@@ -549,6 +555,13 @@ namespace MixtormatGpuCompositor
 		Parameters->GapBiasPixels = Boundary.GapBiasPixels;
 		Parameters->DistanceRangePixels = Boundary.DistanceRangePixels;
 		Parameters->InvertDistance = Boundary.bInvertDistance ? 1u : 0u;
+		const bool bHasGate = Layer.Children.ContainsByPredicate([&Child](const FChildRenderData& Candidate)
+		{
+			return IsScopedMaskChild(Candidate, Child.SourceChildIndex);
+		});
+		Parameters->UseGateMask = bHasGate ? 1u : 0u;
+		Parameters->GateMask = bHasGate
+			? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true) : Ctx.EmptyDriverSignal;
 		Parameters->RegionIds = RegionIds;
 		Parameters->PreviousRecord = Record;
 		Parameters->OutputBoundary = GraphBuilder.CreateUAV(Outputs[0]);
@@ -734,6 +747,11 @@ namespace MixtormatGpuCompositor
 				Tilt.Field = RampField;
 				Tilt.EdgeField = EdgeField;
 				Tilt.RegionIds = RegionIds;
+				if (Layer.Children.ContainsByPredicate([&Child](const FChildRenderData& Candidate)
+					{ return IsScopedMaskChild(Candidate, Child.SourceChildIndex); }))
+				{
+					Tilt.GateMask = AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true);
+				}
 				// No tilt term: HeightAmount here is a per-region elevation range and rides
 				// CellHeightAmount, leaving the relief pass's tilt path -- which is Ramp From
 				// IDs' -- switched off. Ramp and Relief compose rather than overlap.
@@ -797,6 +815,11 @@ namespace MixtormatGpuCompositor
 			Tilt.EdgeField = Tilt.Field;
 			Tilt.HeightAmount = Ramp.HeightAmount;
 			Tilt.BlendMode = static_cast<uint32>(Ramp.BlendMode);
+			if (Layer.Children.ContainsByPredicate([&Child](const FChildRenderData& Candidate)
+				{ return IsScopedMaskChild(Candidate, Child.SourceChildIndex); }))
+			{
+				Tilt.GateMask = AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true);
+			}
 		}
 	}
 
@@ -868,6 +891,8 @@ namespace MixtormatGpuCompositor
 				TiltP->BevelInsetPixels = Tilt.BevelInsetPixels;
 				TiltP->GapHeight = Tilt.GapHeight;
 				TiltP->FeatherGain = Tilt.FeatherGain;
+				TiltP->UseGateMask = Tilt.GateMask ? 1u : 0u;
+				TiltP->GateMask = Tilt.GateMask ? Tilt.GateMask : Ctx.EmptyDriverSignal;
 				TiltP->RampField = Tilt.Field;
 				TiltP->EdgeField = Tilt.EdgeField ? Tilt.EdgeField : Tilt.Field;
 				TiltP->SourceHeight = HeightTargets[WriteIndex];
@@ -915,6 +940,8 @@ namespace MixtormatGpuCompositor
 				EdgeP->BevelVariation = Tilt.BevelVariation;
 				EdgeP->EdgeRoughness = Tilt.EdgeRoughness;
 				EdgeP->EdgeRoughnessAmount = Tilt.EdgeRoughnessAmount;
+				EdgeP->UseGateMask = Tilt.GateMask ? 1u : 0u;
+				EdgeP->GateMask = Tilt.GateMask ? Tilt.GateMask : Ctx.EmptyDriverSignal;
 				EdgeP->EdgeField = Tilt.EdgeField;
 				EdgeP->SourceRAM = OutputRAM[WriteIndex];
 				EdgeP->OutputRAM = GraphBuilder.CreateUAV(ShadeRAM);

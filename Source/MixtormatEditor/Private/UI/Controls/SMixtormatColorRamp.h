@@ -63,6 +63,8 @@ protected:
 	virtual int32 GetInterpolationCount() const override { return 3; }
 	virtual int32 GetInterpolation() const override { return static_cast<int32>(Ramp.Interpolation); }
 	virtual void SetInterpolation(int32 Index) override;
+		virtual bool SupportsHorizontalFlip() const override { return true; }
+		virtual void FlipHorizontally() override;
 	virtual FText GetInterpolationLabel(int32 Index) const override;
 	virtual const FSlateBrush* GetInterpolationIcon(int32 Index) const override;
 	virtual FVector2f GetMarkerScreenPosition(const FVector2D& Size, int32 Index) const override;

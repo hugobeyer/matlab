@@ -1,0 +1,1079 @@
+// Detail Wrangle — Run Over: Detail (only once).
+// Input 0 supplies the bounding box. No sphere, remesh, or Boolean SOP required.
+// Existing controls are retained.
+// Modes: 0 layered cliff, 1 upright slats, 2 jointed monolith, 3 stepped outcrop.
+// Start with mode 2, seed 17, layers 5, max_blocks 3, gap .018,
+// thickness_variation .75, stagger .12, chipping .45, taper .3, tilt_degrees -6.
+// Layers: mode 0, layers 7, max_blocks 3, tilt_degrees 12.
+// Slats: mode 1, layers 6, max_blocks 1, tilt_degrees -5.
+// Terraces: mode 3, layers 5, max_blocks 4, tilt_degrees 3.
+// Input proportions determine whether the result is a boulder, slab, or pillar.
+// Tilt can extend the result beyond the reference bounds.
+// Face kinds: 0 envelope, 1 bedding, 2 joint, 3 fracture, 4 erosion.
+// Internal tags encode kind + 5 * support-plane ID to keep face randomization
+// stable when another face appears/disappears. Exported face_kind stays 0..4.
+// Whole-facet relief: face_inset .22 = inward depth, face_offset .12 = outward depth.
+// These move supporting planes, NOT inset borders or decorative panels.
+// Crystal shaping: crystal_growth .4 adds coherently oriented cleavage facets.
+// Optional breakup: slat_offset .06, slat_rotation 3 (degrees).
+// All five controls default to zero; create their spare parameters after updating.
+// Slat transforms are artistic offsets, not collision-solved.
+
+function float rf_random(int seed; int index; int stream)
+{
+    float value = rand(set(float(seed), float(index), float(stream)));
+    return value;
+}
+
+function vector rf_area(vector points[])
+{
+    vector area = 0;
+    if (len(points) < 3)
+        return area;
+
+    // Relative coordinates avoid cancellation on small faces far from the origin.
+    for (int i = 1; i < len(points) - 1; i++)
+        area += cross(points[i] - points[0], points[i + 1] - points[0]);
+    return area;
+}
+
+function vector rf_range(vector vertices[]; vector normal)
+{
+    float low = 1e18;
+    float high = -1e18;
+    foreach (vector p; vertices)
+    {
+        float projection = dot(p, normal);
+        low = min(low, projection);
+        high = max(high, projection);
+    }
+    return set(low, high, 0);
+}
+
+// Each solid uses flat polygon storage, not reads of newly created geometry.
+// Keep dot(P, normal) <= offset; construct the missing cap with outward winding.
+function void rf_clip(
+    export vector vertices[];
+    export int counts[];
+    export int kinds[];
+    vector normal;
+    float offset;
+    int cap_kind;
+    float epsilon)
+{
+    if (len(vertices) == 0)
+        return;
+
+    float normal_length = length(normal);
+    if (normal_length <= epsilon)
+        return;
+
+    vector n = normal / normal_length;
+    float d = offset / normal_length;
+    vector bounds = rf_range(vertices, n);
+
+    if (bounds.y <= d + epsilon)
+        return;
+    if (bounds.x >= d - epsilon)
+    {
+        resize(vertices, 0);
+        resize(counts, 0);
+        resize(kinds, 0);
+        return;
+    }
+
+    // Classify each shared point once. Intersections are cached by undirected
+    // edge, so adjacent faces cannot calculate slightly different cut vertices.
+    vector points[] = {};
+    float distances[] = {};
+    int source_indices[] = {};
+    foreach (vector position; vertices)
+    {
+        vector p = position;
+        float signed_distance = dot(p, n) - d;
+        if (abs(signed_distance) <= epsilon)
+        {
+            p -= signed_distance * n;
+            signed_distance = 0;
+        }
+        int index = -1;
+        for (int j = 0; j < len(points); j++)
+        {
+            if (distance(points[j], p) <= epsilon)
+            {
+                index = j;
+                break;
+            }
+        }
+        if (index < 0)
+        {
+            index = len(points);
+            append(points, p);
+            append(distances, signed_distance);
+        }
+        append(source_indices, index);
+    }
+
+    vector result[] = {};
+    int result_counts[] = {};
+    int result_kinds[] = {};
+    int cap[] = {};
+    int edge_low[] = {};
+    int edge_high[] = {};
+    int edge_hit[] = {};
+    int start = 0;
+
+    for (int face = 0; face < len(counts); face++)
+    {
+        int count = counts[face];
+        int polygon[] = {};
+        for (int k = 0; k < count; k++)
+        {
+            int a = source_indices[start + k];
+            int b = source_indices[start + (k + 1) % count];
+            float da = distances[a];
+            float db = distances[b];
+            int inside_a = da <= 0;
+            int inside_b = db <= 0;
+            if (inside_a)
+                append(polygon, a);
+            if (da == 0 && find(cap, a) < 0)
+                append(cap, a);
+
+            if (inside_a != inside_b)
+            {
+                int hit = -1;
+                if (da == 0)
+                    hit = a;
+                else if (db == 0)
+                    hit = b;
+                else
+                {
+                    int low = min(a, b);
+                    int high = max(a, b);
+                    for (int edge = 0; edge < len(edge_low); edge++)
+                    {
+                        if (edge_low[edge] == low && edge_high[edge] == high)
+                        {
+                            hit = edge_hit[edge];
+                            break;
+                        }
+                    }
+                    if (hit < 0)
+                    {
+                        float t = distances[low] / (distances[low] - distances[high]);
+                        vector p = lerp(points[low], points[high], t);
+                        p -= (dot(p, n) - d) * n;
+                        hit = len(points);
+                        append(points, p);
+                        append(distances, 0.0);
+                        append(edge_low, low);
+                        append(edge_high, high);
+                        append(edge_hit, hit);
+                    }
+                }
+                append(polygon, hit);
+                if (find(cap, hit) < 0)
+                    append(cap, hit);
+            }
+        }
+
+        int clean[] = {};
+        foreach (int index; polygon)
+        {
+            int count_clean = len(clean);
+            if (count_clean == 0)
+                append(clean, index);
+            else if (clean[count_clean - 1] != index)
+                append(clean, index);
+        }
+        int count_clean = len(clean);
+        if (count_clean > 1)
+        {
+            if (clean[0] == clean[count_clean - 1])
+                resize(clean, count_clean - 1);
+        }
+        if (len(clean) >= 3)
+        {
+            append(result_counts, len(clean));
+            append(result_kinds, kinds[face]);
+            foreach (int index; clean)
+                append(result, points[index]);
+        }
+        start += count;
+    }
+
+    if (len(cap) >= 3)
+    {
+        vector centroid = 0;
+        foreach (int index; cap)
+            centroid += points[index];
+        centroid /= len(cap);
+        vector reference = set(0, 1, 0);
+        if (abs(n.y) > .9)
+            reference = set(1, 0, 0);
+        vector u = normalize(cross(reference, n));
+        vector v = cross(n, u);
+        float angles[] = {};
+        foreach (int index; cap)
+        {
+            vector delta = points[index] - centroid;
+            append(angles, atan2(dot(delta, v), dot(delta, u)));
+        }
+        int order[] = argsort(angles);
+        append(result_counts, len(cap));
+        append(result_kinds, cap_kind);
+        foreach (int index; order)
+            append(result, points[cap[index]]);
+    }
+
+    vertices = result;
+    counts = result_counts;
+    kinds = result_kinds;
+}
+
+// Sparse oblique cuts, not a uniform bevel around every slab.
+function void rf_chip(
+    export vector vertices[];
+    export int counts[];
+    export int kinds[];
+    int seed;
+    int key;
+    float strength;
+    float epsilon)
+{
+    if (strength <= 0 || len(vertices) == 0)
+        return;
+
+    // Fixed candidates fade in from zero depth instead of adding a full cut
+    // whenever ceil(strength * 7) crosses an integer.
+    int cuts = 7;
+    float progress = clamp(strength / .8, 0, 1);
+    for (int cut = 0; cut < cuts; cut++)
+    {
+        float activation = smooth(float(cut) / cuts, float(cut + 1) / cuts, progress);
+        if (activation <= 0)
+            continue;
+        int stream = 210 + cut * 5;
+        float side = rf_random(seed, key, stream) < .7 ? 1.0 : -1.0;
+        vector n = normalize(set(
+            fit01(rf_random(seed, key, stream + 1), -1.1, 1.1),
+            fit01(rf_random(seed, key, stream + 2), -1.5, 1.5),
+            side
+        ));
+        vector bounds = rf_range(vertices, n);
+        float bite = (bounds.y - bounds.x) * strength * activation * fit01(
+            rf_random(seed, key, stream + 3), .035, .19
+        );
+        rf_clip(vertices, counts, kinds, n, bounds.y - bite, 3 + 5 * (cut + 1), epsilon);
+    }
+}
+
+// Move whole supporting planes, then reconstruct their closed intersection.
+// Starting from a uniformly expanded copy guarantees containment of the new hull:
+// every target plane distance is <= its original distance * expansion.
+function void rf_facet_relief(
+    export vector vertices[];
+    export int counts[];
+    export int kinds[];
+    vector size;
+    int seed;
+    int key;
+    int mode;
+    float epsilon)
+{
+    float inward = clamp(chf("face_inset"), 0, .65);
+    float outward = clamp(chf("face_offset"), 0, .3);
+    float growth = clamp(chf("crystal_growth"), 0, 1);
+    if (len(vertices) == 0 || (inward == 0 && outward == 0 && growth == 0))
+        return;
+
+    vector metric[] = {};
+    vector interior = 0;
+    foreach (vector p; vertices)
+    {
+        vector q = p * size * .5;
+        append(metric, q);
+        interior += q;
+    }
+    interior /= len(metric);
+    vector xr = rf_range(metric, set(1, 0, 0));
+    vector yr = rf_range(metric, set(0, 1, 0));
+    vector zr = rf_range(metric, set(0, 0, 1));
+    float unit = max(xr.y - xr.x, max(yr.y - yr.x, zr.y - zr.x));
+    if (unit <= 0)
+        return;
+    for (int k = 0; k < len(metric); k++)
+        metric[k] = (metric[k] - interior) / unit;
+
+    // Use the volume centroid for plane offsets. A vertex average jumps when a
+    // tiny new face changes vertex multiplicities, despite continuous hull motion.
+    // The initial average is only a numerically stable tetrahedral reference.
+    float volume6 = 0;
+    vector moment = 0;
+    int volume_start = 0;
+    foreach (int count; counts)
+    {
+        vector a = metric[volume_start];
+        for (int k = 1; k < count - 1; k++)
+        {
+            vector b = metric[volume_start + k];
+            vector c = metric[volume_start + k + 1];
+            float tetra6 = dot(a, cross(b, c));
+            volume6 += tetra6;
+            moment += (a + b + c) * tetra6;
+        }
+        volume_start += count;
+    }
+    if (volume6 <= epsilon * epsilon * epsilon)
+        return;
+    vector volume_center = moment / (4.0 * volume6);
+    for (int k = 0; k < len(metric); k++)
+        metric[k] -= volume_center;
+    interior += volume_center * unit;
+
+    // One tilted growth axis for the formation, rather than unrelated point noise.
+    vector axis = set(
+        fit01(rf_random(seed, 0, 600), -.25, .25), 1,
+        fit01(rf_random(seed, 0, 601), -.25, .25)
+    );
+    if (mode == 1)
+        axis = set(axis.y, axis.x, axis.z);
+    axis = normalize(axis);
+
+    vector normals[] = {};
+    float offsets[] = {};
+    int tags[] = {};
+    float expansion = 1;
+    int start = 0;
+    for (int face = 0; face < len(counts); face++)
+    {
+        vector polygon[] = {};
+
+        for (int k = 0; k < counts[face]; k++)
+            append(polygon, metric[start + k]);
+        vector n = normalize(rf_area(polygon));
+        float room = dot(n, polygon[0]);
+        float ratio = 1;
+        int kind = kinds[face] % 5;
+        // Tag 43 is the paired core/flake contact plane, not an exposed scar.
+        int exposed = kind != 1 && kind != 2 && kinds[face] != 43;
+        if (exposed)
+        {
+            float field = fit01(rf_random(seed, key, 450 + kinds[face] * 4), -1.0, 1.0);
+            field = clamp(field * .8 + dot(n, axis) * growth * .2, -1, 1);
+            ratio += outward * max(field, 0.0) - inward * max(-field, 0.0);
+        }
+        append(normals, n);
+        append(offsets, room * ratio);
+        append(tags, kinds[face]);
+        expansion = max(expansion, ratio);
+        start += counts[face];
+    }
+
+    for (int k = 0; k < len(metric); k++)
+        metric[k] *= expansion;
+    for (int plane = 0; plane < len(normals); plane++)
+        rf_clip(metric, counts, kinds, normals[plane], offsets[plane], tags[plane], epsilon);
+
+    // Grow additional angled cleavage faces continuously from tangent planes.
+    // Their directions are shared; depths vary per piece to avoid repeated crystals.
+    if (growth > 0 && len(metric) > 0)
+    {
+        vector reference = set(0, 0, 1);
+        vector u = normalize(cross(axis, reference));
+        vector v = cross(axis, u);
+        float phase = rf_random(seed, 0, 602) * 6.28318530718;
+        for (int facet = 0; facet < 4; facet++)
+        {
+            float angle = phase + facet * 1.57079632679;
+            vector radial = u * cos(angle) + v * sin(angle);
+            float lean = fit01(rf_random(seed, facet, 603), -.3, .75);
+            vector n = normalize(radial + axis * lean);
+            vector bounds = rf_range(metric, n);
+            float bite = (bounds.y - bounds.x) * growth * fit01(
+                rf_random(seed, key, 610 + facet), .025, .12
+            );
+            bite = min(bite, max(0.0, bounds.y) * .35);
+            rf_clip(metric, counts, kinds, n, bounds.y - bite,
+                3 + 5 * (9 + facet), epsilon);
+        }
+    }
+
+    resize(vertices, len(metric));
+    for (int k = 0; k < len(metric); k++)
+        vertices[k] = (metric[k] * unit + interior) / (size * .5);
+}
+
+// All polygons use the same attribute/normal contract as the base faces.
+function void rf_write_face(
+    int point_ids[];
+    vector positions[];
+    int piece_id;
+    int layer_id;
+    int fragment;
+    int kind;
+    int surface_role)
+{
+    vector normal = normalize(rf_area(positions));
+    int prim = addprim(0, "poly");
+    for (int k = 0; k < len(point_ids); k++)
+    {
+        addvertex(0, prim, point_ids[k]);
+        setvertexattrib(0, "N", prim, k, normal, "set");
+    }
+    setprimattrib(0, "piece", prim, piece_id, "set");
+    setprimattrib(0, "layer", prim, layer_id, "set");
+    setprimattrib(0, "fragment", prim, fragment, "set");
+    setprimattrib(0, "face_kind", prim, kind, "set");
+    setprimattrib(0, "surface_role", prim, surface_role, "set");
+    setprimattrib(0, "name", prim, sprintf("slab_%d", piece_id), "set");
+    setprimgroup(0, "bedding", prim, kind == 1, "set");
+    setprimgroup(0, "joints", prim, kind == 2, "set");
+    setprimgroup(0, "fractures", prim, kind == 3, "set");
+    setprimgroup(0, "eroded", prim, kind == 4, "set");
+    setprimgroup(0, "face_panels", prim, surface_role == 1, "set");
+    setprimgroup(0, "panel_rims", prim, surface_role == 2, "set");
+}
+
+function int rf_emit(
+    vector vertices[];
+    int counts[];
+    int kinds[];
+    vector size;
+    vector center;
+    float tilt;
+    int mode;
+    int piece_id;
+    int layer_id;
+    int fragment;
+    vector slat_pivot;
+    vector slat_shift;
+    matrix3 slat_matrix;
+    float epsilon)
+{
+    if (len(counts) < 4)
+        return 0;
+
+    // Resolve shared indices before creating any geometry. A collapsed solid must
+    // not leave an open shell or orphan points in the output.
+    vector unique_positions[] = {};
+    int vertex_points[] = {};
+    vector world_positions[] = {};
+
+    foreach (vector position; vertices)
+    {
+        int match = -1;
+        for (int j = 0; j < len(unique_positions); j++)
+        {
+            if (distance(unique_positions[j], position) <= epsilon)
+            {
+                match = j;
+                break;
+            }
+        }
+        if (match < 0)
+        {
+            vector p = position * size * .5;
+            // Only output positions are transformed; welding and closure use the
+            // original coordinates, so rotating an elongated slat cannot change topology.
+            p = (p - slat_pivot) * slat_matrix + slat_pivot + slat_shift;
+            float x = p.x * cos(tilt) - p.y * sin(tilt);
+            float y = p.x * sin(tilt) + p.y * cos(tilt);
+            p = set(x, y, p.z);
+            if (mode == 1)
+                p = set(p.y, -p.x, p.z);
+            p += center;
+
+            match = len(unique_positions);
+            append(unique_positions, position);
+            append(world_positions, p);
+        }
+        append(vertex_points, match);
+    }
+
+    int clean_vertices[] = {};
+    int clean_counts[] = {};
+    int clean_kinds[] = {};
+    int edge_a[] = {};
+    int edge_b[] = {};
+    int edge_uses[] = {};
+    int edge_balance[] = {};
+    int start = 0;
+    for (int face = 0; face < len(counts); face++)
+    {
+        int corners[] = {};
+        for (int k = 0; k < counts[face]; k++)
+        {
+            int index = vertex_points[start + k];
+            int count = len(corners);
+            if (count == 0)
+                append(corners, index);
+            else if (corners[count - 1] != index)
+                append(corners, index);
+        }
+        int count = len(corners);
+        if (count > 1)
+        {
+            if (corners[0] == corners[count - 1])
+                resize(corners, count - 1);
+        }
+        vector polygon[] = {};
+        foreach (int index; corners)
+            append(polygon, unique_positions[index]);
+        if (length(rf_area(polygon)) <= epsilon * epsilon)
+        {
+            // A collapsing corner face need not invalidate the remaining solid.
+            // The complete boundary is still checked below after edge conformity.
+            start += counts[face];
+            continue;
+        }
+
+        // Caps can have a collinear vertex that an older face does not contain.
+        // Split both incident edges at the same vertices before checking closure;
+        // a harmless T-junction must not make a whole rock blink out.
+        int conforming[] = {};
+        for (int k = 0; k < len(corners); k++)
+        {
+            int a = corners[k];
+            int b = corners[(k + 1) % len(corners)];
+            vector edge = unique_positions[b] - unique_positions[a];
+            float edge_length2 = dot(edge, edge);
+            append(conforming, a);
+            if (edge_length2 <= epsilon * epsilon)
+                continue;
+            int splits[] = {};
+            float fractions[] = {};
+            for (int j = 0; j < len(unique_positions); j++)
+            {
+                // A thin face's own third corner is not an edge subdivision.
+                if (find(corners, j) >= 0)
+                    continue;
+                float t = dot(unique_positions[j] - unique_positions[a], edge) / edge_length2;
+                if (t <= 0 || t >= 1)
+                    continue;
+                vector projected = unique_positions[a] + t * edge;
+                if (distance(projected, unique_positions[j]) <= epsilon)
+                {
+                    append(splits, j);
+                    append(fractions, t);
+                }
+            }
+            int order[] = argsort(fractions);
+            foreach (int index; order)
+                append(conforming, splits[index]);
+        }
+        int unique_corners[] = {};
+        vector conformed_polygon[] = {};
+        foreach (int index; conforming)
+        {
+            if (find(unique_corners, index) >= 0)
+            {
+                setdetailattrib(0, "rockform_rejected_pieces", 1, "add");
+                return 0;
+            }
+            append(unique_corners, index);
+            append(conformed_polygon, unique_positions[index]);
+        }
+        if (length(rf_area(conformed_polygon)) <= epsilon * epsilon)
+        {
+            setdetailattrib(0, "rockform_rejected_pieces", 1, "add");
+            return 0;
+        }
+        corners = conforming;
+        append(clean_counts, len(corners));
+        append(clean_kinds, kinds[face]);
+        foreach (int index; corners)
+            append(clean_vertices, index);
+
+        // Every edge of a closed oriented solid must have two opposite uses.
+        for (int k = 0; k < len(corners); k++)
+        {
+            int a = corners[k];
+            int b = corners[(k + 1) % len(corners)];
+            int low = min(a, b);
+            int high = max(a, b);
+            int edge = -1;
+            for (int j = 0; j < len(edge_a); j++)
+            {
+                if (edge_a[j] == low && edge_b[j] == high)
+                {
+                    edge = j;
+                    break;
+                }
+            }
+            if (edge < 0)
+            {
+                edge = len(edge_a);
+                append(edge_a, low);
+                append(edge_b, high);
+                append(edge_uses, 0);
+                append(edge_balance, 0);
+            }
+            edge_uses[edge] += 1;
+            edge_balance[edge] += a < b ? 1 : -1;
+        }
+        start += counts[face];
+    }
+    if (len(clean_counts) < 4)
+        return 0;
+    for (int edge = 0; edge < len(edge_a); edge++)
+    {
+        if (edge_uses[edge] != 2 || edge_balance[edge] != 0)
+        {
+            setdetailattrib(0, "rockform_rejected_pieces", 1, "add");
+            return 0;
+        }
+    }
+
+    int point_ids[] = {};
+    foreach (vector p; world_positions)
+        append(point_ids, addpoint(0, p));
+
+    start = 0;
+    for (int face = 0; face < len(clean_counts); face++)
+    {
+        vector polygon[] = {};
+        int polygon_ids[] = {};
+        for (int k = 0; k < clean_counts[face]; k++)
+        {
+            int index = clean_vertices[start + k];
+            append(polygon, world_positions[index]);
+            append(polygon_ids, point_ids[index]);
+        }
+        rf_write_face(polygon_ids, polygon, piece_id, layer_id, fragment,
+            clean_kinds[face] % 5, 0);
+        start += clean_counts[face];
+    }
+    return 1;
+}
+
+// Shared finishing for all shape families; no surface displacement or triangle noise.
+function int rf_finish_cell(
+    vector source[];
+    int source_counts[];
+    int source_kinds[];
+    int seed;
+    int key;
+    float chipping;
+    float gap;
+    vector size;
+    vector center;
+    float tilt;
+    int mode;
+    int first_piece;
+    int layer;
+    float epsilon)
+{
+    if (len(source) == 0)
+        return 0;
+    vector cell[] = source;
+    int cell_counts[] = source_counts;
+    int cell_kinds[] = source_kinds;
+    vector flake[] = {};
+    int flake_counts[] = {};
+    int flake_kinds[] = {};
+    float onset = rf_random(seed, key, 100);
+    float peel_amount = smooth(onset, onset + .12, chipping * .9);
+    int peel = peel_amount > 0;
+    if (peel)
+    {
+        float side = rf_random(seed, key, 101) < .8 ? 1.0 : -1.0;
+        vector n = normalize(set(
+            fit01(rf_random(seed, key, 102), -.6, .6),
+            fit01(rf_random(seed, key, 103), -.85, .85),
+            side
+        ));
+        vector bounds = rf_range(cell, n);
+        float span = bounds.y - bounds.x;
+        float d = bounds.y - span * peel_amount * fit01(
+            rf_random(seed, key, 104), .12, .28
+        );
+        // Keep the seam inside the growing flake rather than removing a full gap
+        // the instant this fracture activates.
+        float seam = span * gap * .18 * peel_amount;
+        flake = cell;
+        flake_counts = cell_counts;
+        flake_kinds = cell_kinds;
+        // Protected paired interface: kind 3, support-plane ID 8.
+        rf_clip(cell, cell_counts, cell_kinds, n, d - seam, 43, epsilon);
+        rf_clip(flake, flake_counts, flake_kinds, -n, -d - seam, 43, epsilon);
+    }
+
+    rf_chip(cell, cell_counts, cell_kinds, seed, key, chipping, epsilon);
+    int keep_flake = peel && rf_random(seed, key, 105) < .6;
+    if (keep_flake)
+        rf_chip(flake, flake_counts, flake_kinds,
+            seed, key, chipping * .8 * peel_amount, epsilon);
+
+    rf_facet_relief(cell, cell_counts, cell_kinds, size, seed, key * 2, mode, epsilon);
+    if (keep_flake)
+        rf_facet_relief(flake, flake_counts, flake_kinds,
+            size, seed, key * 2 + 1, mode, epsilon);
+
+    float slat_offset = clamp(chf("slat_offset"), 0, .3);
+    float slat_rotation = clamp(chf("slat_rotation"), 0, 20);
+    vector pivot = 0;
+    vector shift = 0;
+    matrix3 rotation = ident();
+    if (slat_offset > 0 || slat_rotation > 0)
+    {
+        vector xr = rf_range(source, set(1, 0, 0));
+        vector yr = rf_range(source, set(0, 1, 0));
+        vector zr = rf_range(source, set(0, 0, 1));
+        vector low = set(xr.x, yr.x, zr.x) * size * .5;
+        vector high = set(xr.y, yr.y, zr.y) * size * .5;
+        pivot = (low + high) * .5;
+        vector span = high - low;
+        shift = set(
+            fit01(rf_random(seed, key, 500), -1.0, 1.0),
+            fit01(rf_random(seed, key, 501), -.15, .15),
+            fit01(rf_random(seed, key, 502), -1.0, 1.0)
+        ) * span * slat_offset;
+        rotate(rotation, radians(slat_rotation * fit01(
+            rf_random(seed, key, 503), -1.0, 1.0)), set(1, 0, 0));
+        rotate(rotation, radians(slat_rotation * fit01(
+            rf_random(seed, key, 504), -1.0, 1.0)), set(0, 1, 0));
+        rotate(rotation, radians(slat_rotation * fit01(
+            rf_random(seed, key, 505), -1.0, 1.0)), set(0, 0, 1));
+
+    }
+
+    int emitted = rf_emit(cell, cell_counts, cell_kinds,
+        size, center, tilt, mode, first_piece, layer, 0, pivot, shift, rotation, epsilon);
+    if (keep_flake)
+        emitted += rf_emit(flake, flake_counts, flake_kinds,
+            size, center, tilt, mode, first_piece + emitted, layer, 1,
+            pivot, shift, rotation, epsilon);
+    return emitted;
+}
+
+int mode = chi("mode");
+int seed = chi("seed");
+int layers = max(1, chi("layers"));
+int max_blocks = max(1, chi("max_blocks"));
+float gap = clamp(chf("gap"), 0, .45);
+float variation = clamp(chf("thickness_variation"), 0, 1);
+float stagger = clamp(chf("stagger"), 0, .5);
+float chipping = clamp(chf("chipping"), 0, .8);
+float taper = clamp(chf("taper"), 0, .8);
+float tilt = radians(chf("tilt_degrees"));
+
+int source_points = npoints(0);
+int source_prims = nprimitives(0);
+if (source_points == 0)
+    return;
+
+vector bmin, bmax;
+getbbox(0, bmin, bmax);
+vector center = (bmin + bmax) * .5;
+vector size = bmax - bmin;
+if (min(size.x, min(size.y, size.z)) <= 0)
+    return;
+if (mode == 1)
+    size = set(size.y, size.x, size.z);
+
+setdetailattrib(0, "rockform_rejected_pieces", 0, "set");
+
+// Normalized tolerance spans several float32 ULPs; 1e-7 was too close to
+// machine precision for repeated plane intersections and whole-piece checks.
+float epsilon = 2e-6;
+vector host[];
+int host_counts[];
+int host_kinds[];
+int us[] = array(-1, 1, 1, -1);
+int vs[] = array(-1, -1, 1, 1);
+for (int axis = 0; axis < 3; axis++)
+{
+    int u = (axis + 1) % 3;
+    int v = (axis + 2) % 3;
+    for (int side = -1; side <= 1; side += 2)
+    {
+        append(host_counts, 4);
+        append(host_kinds, 5 * (axis * 2 + (side + 1) / 2));
+        for (int k = 0; k < 4; k++)
+        {
+            vector p = 0;
+            p[axis] = side;
+            p[u] = us[k];
+            p[v] = vs[k] * side;
+            append(host, p);
+        }
+    }
+}
+
+// One shared outcrop envelope: fracture cells inherit the same large rock faces.
+// Directional planes produce an asymmetric crest instead of a stack of octagons.
+float phase = rf_random(seed, 0, 1) * 6.28318530718;
+vector lean = set(
+    fit01(rf_random(seed, 0, 2), -.35, .35), 0,
+    fit01(rf_random(seed, 0, 3), -.2, .2)
+) * stagger;
+for (int plane = 0; plane < 11; plane++)
+{
+    float angle = phase + 6.28318530718 * (
+        plane + fit01(rf_random(seed, plane, 4), -.18, .18)
+    ) / 11.0;
+    vector n = set(cos(angle), 0, sin(angle));
+    n.y = taper * fit01(rf_random(seed, plane, 5), .18, .6) - dot(n, lean);
+    float offset = fit01(rf_random(seed, plane, 6), .79, 1.07);
+    rf_clip(host, host_counts, host_kinds, n, offset, 5 * (6 + plane), epsilon);
+}
+for (int plane = 0; plane < 2; plane++)
+{
+    vector n = set(
+        fit01(rf_random(seed, plane, 7), -.7, .7),
+        1,
+        fit01(rf_random(seed, plane, 8), -.45, .45)
+    );
+    rf_clip(host, host_counts, host_kinds, n, .86, 5 * (17 + plane), epsilon);
+}
+
+float heights[];
+float total = 0;
+for (int layer = 0; layer < layers; layer++)
+{
+    float h = lerp(1.0, fit01(rf_random(seed, layer, 10), .35, 1.75), variation);
+    append(heights, h);
+    total += h;
+}
+for (int layer = 0; layer < layers; layer++)
+    heights[layer] *= 2.0 / total;
+
+// Shared boundary planes and shared seam widths: no independently rotated bricks.
+vector beds[];
+float bed_offsets[];
+float bed_gaps[];
+float cursor = -1;
+for (int boundary = 0; boundary <= layers; boundary++)
+{
+    float nearest_height = heights[max(0, boundary - 1)];
+    if (boundary < layers)
+        nearest_height = min(nearest_height, heights[boundary]);
+    float slope = nearest_height * variation * .08;
+    vector n = set(
+        fit01(rf_random(seed, boundary, 11), -slope, slope), 1,
+        fit01(rf_random(seed, boundary, 12), -slope, slope)
+    );
+    if (boundary == 0 || boundary == layers)
+        n = set(0, 1, 0);
+    append(beds, n);
+    append(bed_offsets, cursor);
+    float seam = nearest_height * gap * .5;
+    if (boundary == 0 || boundary == layers)
+        seam = 0;
+    append(bed_gaps, seam);
+    if (boundary < layers)
+        cursor += heights[boundary];
+}
+
+// A persistent family of inclined joints, with some terminating at bedding seams.
+float joint_weights[];
+float joint_total = 0;
+for (int block = 0; block < max_blocks; block++)
+{
+    float w = fit01(rf_random(seed, block, 20), .55, 1.45);
+    append(joint_weights, w);
+    joint_total += w;
+}
+vector joint_normals[];
+float joint_offsets[];
+cursor = -1;
+for (int joint = 0; joint < max_blocks - 1; joint++)
+{
+    cursor += 2 * joint_weights[joint] / joint_total;
+    vector n = set(
+        1,
+        fit01(rf_random(seed, joint, 21), -.3, .3) * (.3 + chipping),
+        fit01(rf_random(seed, joint, 22), -.35, .35)
+    );
+    append(joint_normals, n);
+    append(joint_offsets, cursor);
+}
+
+int piece_id = 0;
+
+if (mode == 2 || mode == 3)
+{
+    // Partition columns FIRST. Each column gets its own crest and interrupted
+    // cross-joints, so a horizontal crack never slices the entire formation.
+    vector remainder[] = host;
+    int remainder_counts[] = host_counts;
+    int remainder_kinds[] = host_kinds;
+    int dominant = min(max_blocks - 1,
+        int(floor(rf_random(seed, 0, 300) * max_blocks)));
+
+    for (int column_id = 0; column_id < max_blocks; column_id++)
+    {
+        vector column[] = remainder;
+        int column_counts[] = remainder_counts;
+        int column_kinds[] = remainder_kinds;
+        if (column_id < len(joint_normals))
+        {
+            vector n = joint_normals[column_id];
+            float d = joint_offsets[column_id];
+            float seam = gap / float(max_blocks);
+            rf_clip(column, column_counts, column_kinds,
+                n, d - seam, 2 + 5 * column_id, epsilon);
+            rf_clip(remainder, remainder_counts, remainder_kinds,
+                -n, -d - seam, 2 + 5 * column_id, epsilon);
+        }
+        if (len(column) == 0)
+            continue;
+
+        float distance_to_peak = float(abs(column_id - dominant)) /
+            float(max(1, max_blocks - 1));
+        float crest = lerp(.96, .08, pow(distance_to_peak, .65));
+        if (mode == 3)
+            crest = lerp(.82, -.48, distance_to_peak);
+        crest += fit01(rf_random(seed, column_id, 301), -.12, .08) * variation;
+        float roof_slope = mode == 2 ? .3 : .07;
+        vector roof = set(
+            fit01(rf_random(seed, column_id, 302), -roof_slope, roof_slope),
+            1,
+            fit01(rf_random(seed, column_id, 303), -roof_slope, roof_slope)
+        );
+        rf_clip(column, column_counts, column_kinds, roof, crest, 5 * 19, epsilon);
+        if (len(column) == 0)
+            continue;
+
+        vector column_remainder[] = column;
+        int column_remainder_counts[] = column_counts;
+        int column_remainder_kinds[] = column_kinds;
+        int boundary = 0;
+        while (boundary < layers)
+        {
+            int key = column_id * (layers + 1) + boundary;
+            int stride = 1;
+            if (mode == 2)
+                stride = 2 + int(floor(rf_random(seed, key, 304) * 2));
+            int upper = min(layers, boundary + stride);
+            float segment_height = bed_offsets[upper] - bed_offsets[boundary];
+            float local_slope = segment_height * .10 * variation;
+            vector upper_normal = set(
+                fit01(rf_random(seed, key, 305), -local_slope, local_slope),
+                1,
+                fit01(rf_random(seed, key, 306), -local_slope, local_slope)
+            );
+            float upper_offset = bed_offsets[upper];
+            float upper_gap = heights[upper - 1] * gap * .5;
+            if (upper == layers)
+            {
+                upper_normal = set(0, 1, 0);
+                upper_gap = 0;
+            }
+            else
+            {
+                // Independent seam heights break the staircase/grid silhouette.
+                float shift = fit01(rf_random(seed, key, 307), -.22, .22);
+                upper_offset += shift * min(heights[upper - 1], heights[upper]) * variation;
+            }
+
+            // Consume the remaining column, rather than independently slicing
+            // the full column. Even intersecting seam planes cannot overlap solids.
+            vector cell[] = column_remainder;
+            int cell_counts[] = column_remainder_counts;
+            int cell_kinds[] = column_remainder_kinds;
+            rf_clip(cell, cell_counts, cell_kinds,
+                upper_normal, upper_offset - upper_gap, 1 + 5 * upper, epsilon);
+            rf_clip(column_remainder, column_remainder_counts, column_remainder_kinds,
+                -upper_normal, -upper_offset - upper_gap, 1 + 5 * upper, epsilon);
+
+            if (len(cell) > 0)
+            {
+                // Selective front retreat makes ledges while retaining large faces.
+                vector front = set(
+                    fit01(rf_random(seed, key, 308), -.12, .12), -.25, 1
+                );
+                vector bounds = rf_range(cell, front);
+                float weakness = pow(rf_random(seed, key, 309), 2.0);
+                float retreat = (bounds.y - bounds.x) * weakness * stagger * .8;
+                rf_clip(cell, cell_counts, cell_kinds,
+                    front, bounds.y - retreat, 4, epsilon);
+                piece_id += rf_finish_cell(cell, cell_counts, cell_kinds,
+                    seed, key, chipping, gap, size, center, tilt, mode,
+                    piece_id, boundary, epsilon);
+            }
+            boundary = upper;
+        }
+    }
+}
+else
+for (int layer = 0; layer < layers; layer++)
+{
+    vector stratum[] = host;
+    int stratum_counts[] = host_counts;
+    int stratum_kinds[] = host_kinds;
+    rf_clip(stratum, stratum_counts, stratum_kinds,
+        -beds[layer], -bed_offsets[layer] - bed_gaps[layer], 1 + 5 * layer, epsilon);
+    rf_clip(stratum, stratum_counts, stratum_kinds,
+        beds[layer + 1], bed_offsets[layer + 1] - bed_gaps[layer + 1],
+        1 + 5 * (layer + 1), epsilon);
+    if (len(stratum) == 0)
+        continue;
+
+    // Weak beds retreat beneath stronger beds, forming actual overhangs/recesses.
+    float softness = pow(rf_random(seed, layer, 30), 1.6);
+    for (int side = -1; side <= 1; side += 2)
+    {
+        vector n = set(
+            fit01(rf_random(seed, layer, 31 + side), -.12, .12),
+            -.45 * softness,
+            side
+        );
+        vector bounds = rf_range(stratum, n);
+        float retreat = (bounds.y - bounds.x) * softness * (
+            stagger * .85 + chipping * .12
+        );
+        rf_clip(stratum, stratum_counts, stratum_kinds,
+            n, bounds.y - retreat, 4 + 5 * ((side + 1) / 2), epsilon);
+    }
+
+    vector active_normals[];
+    float active_offsets[];
+    for (int joint = 0; joint < len(joint_normals); joint++)
+    {
+        // Most joints persist; the remainder end at a bed instead of forming a grid.
+        if (rf_random(seed, joint, 40 + layer) > .82)
+            continue;
+        append(active_normals, joint_normals[joint]);
+        float step = fit01(rf_random(seed, joint, 80 + layer), -1, 1);
+        append(active_offsets, joint_offsets[joint] + step * stagger * .35);
+    }
+
+    // Sequentially partition the remaining volume, so oblique joints cannot overlap.
+    vector remainder[] = stratum;
+    int remainder_counts[] = stratum_counts;
+    int remainder_kinds[] = stratum_kinds;
+    int partitions = len(active_normals) + 1;
+    for (int block = 0; block < partitions; block++)
+    {
+        vector cell[] = remainder;
+        int cell_counts[] = remainder_counts;
+        int cell_kinds[] = remainder_kinds;
+        float joint_gap = gap / float(max_blocks);
+        if (block < len(active_normals))
+        {
+            vector n = active_normals[block];
+            float d = active_offsets[block];
+            rf_clip(cell, cell_counts, cell_kinds, n, d - joint_gap, 2 + 5 * block, epsilon);
+            rf_clip(remainder, remainder_counts, remainder_kinds,
+                -n, -d - joint_gap, 2 + 5 * block, epsilon);
+        }
+        if (len(cell) == 0)
+            continue;
+
+        int key = layer * (max_blocks + 1) + block;
+
+        piece_id += rf_finish_cell(cell, cell_counts, cell_kinds,
+            seed, key, chipping, gap, size, center, tilt, mode,
+            piece_id, layer, epsilon);
+    }
+}
+
+// Replace the reference in this SOP's output, not in the upstream geometry.
+setdetailattrib(0, "rockform_piece_count", piece_id, "set");
+for (int prim = 0; prim < source_prims; prim++)
+    removeprim(0, prim, 0);
+for (int point = 0; point < source_points; point++)
+    removepoint(0, point);

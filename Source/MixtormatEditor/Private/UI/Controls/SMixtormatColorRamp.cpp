@@ -333,6 +333,25 @@ namespace MixtormatColorRampPresets
 	}
 }
 
+void SMixtormatColorRamp::FlipHorizontally()
+{
+	OnBeginInteractiveEdit.ExecuteIfBound();
+	const float MirrorSum = DomainMin + DomainMax;
+	for (FMixtormatColorRampStop& Stop : Ramp.Stops)
+	{
+		Stop.X = MirrorSum - Stop.X;
+	}
+	Ramp.Stops.Sort([](const FMixtormatColorRampStop& A, const FMixtormatColorRampStop& B)
+	{
+		return A.X < B.X;
+	});
+	Ramp.Sanitize();
+	DragPoint = SelectedPoint = HoverPoint = INDEX_NONE;
+	NotifyEdit(true);
+	OnEndInteractiveEdit.ExecuteIfBound();
+	RebuildChrome();
+}
+
 void SMixtormatColorRamp::ApplyPreset(const int32 PresetIndex)
 {
 	const TArray<MixtormatColorRampPresets::FPreset> Presets = MixtormatColorRampPresets::All();

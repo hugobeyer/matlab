@@ -629,8 +629,16 @@ bool SMixtormat::CanPasteAsGatingMask(const FMixtormatChildAddress& Address) con
 	FMixtormatLayerChild Payload;
 	const TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	const int32 Anchor = ResolveChildIndexAt(Address);
-	if (!ResolveGatingMaskPayload(Payload)
-		|| !Container || !Container->IsValidIndex(Anchor) || (*Container)[Anchor].IsInstance()
+	if (!ResolveGatingMaskPayload(Payload) || !Container) { return false; }
+	if (!Address.ChildId.IsValid())
+	{
+		if (Address.OwnerType != EMixtormatChildOwnerType::Layer) { return false; }
+		Payload.ScopeOwnerChildId.Invalidate();
+		const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
+		return CanReadPublishedOutputAt(Scope, Payload, Address.OwnerId, Container->Num())
+			&& PublishedOutputPlacementsValid(Scope);
+	}
+	if (!Container->IsValidIndex(Anchor) || (*Container)[Anchor].IsInstance()
 		|| !CanOwnScopedMasks((*Container)[Anchor]) || !CanAddScopedChild(*Container, Anchor))
 	{
 		return false;
@@ -649,19 +657,20 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 	}
 	TArray<FMixtormatLayerChild>* Container = ResolveContainer(Address);
 	const int32 Anchor = ResolveChildIndexAt(Address);
-	// A duplicate, scoped under the row it was pasted on and placed at the end of that row's
-	// subtree -- a copied output keeps reading its source, which is published before the owner runs.
+	// Append a layer mask or a scoped gate at the end of the selected row's subtree.
+	// Copied outputs retain their live source address rather than copying the producer.
 	FMixtormatLayerChild Pasted;
 	if (!ResolveGatingMaskPayload(Pasted)) { return FReply::Unhandled(); }
 	Pasted.SourceLayerId = FGuid();
 	Pasted.SourceChildId = FGuid();
-	Pasted.ScopeOwnerChildId = (*Container)[Anchor].ChildId;
-	const int32 Insert = FindSubtreeEnd(*Container, Anchor);
+	const FGuid ScopeOwnerId = Address.ChildId.IsValid() ? (*Container)[Anchor].ChildId : FGuid();
+	Pasted.ScopeOwnerChildId = ScopeOwnerId;
+	const int32 Insert = Address.ChildId.IsValid() ? FindSubtreeEnd(*Container, Anchor) : Container->Num();
 	TArray<FMixtormatLayerChild> Copies;
 	Copies.Add(MoveTemp(Pasted));
 	const FMixtormatBindingScope Scope{WorkingLayers, WorkingLayerGroups};
 	Copies = CopyChildSubtree(MoveTemp(Copies), ChildClipboard.GetValue().Source.OwnerId, Address.OwnerId, &Scope);
-	Copies[0].ScopeOwnerChildId = (*Container)[Anchor].ChildId;
+	Copies[0].ScopeOwnerChildId = ScopeOwnerId;
 	Container->Insert(MoveTemp(Copies[0]), Insert);
 
 	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)

@@ -23,6 +23,8 @@ Texture2D<float2> RampField;
 // y is the producer's per-region random draw. Bound on every dispatch; UseEdge gates it.
 Texture2D<float2> EdgeField;
 Texture2D<float> SourceHeight;
+Texture2D<float> GateMask;
+uint UseGateMask;
 Texture2D<float4> PreviousNormal;
 // Bounded analysis roots, not raw identities; excludes pixels outside valid regions.
 Texture2D<uint> PatternRegionIds;
@@ -267,13 +269,15 @@ float PatternCellHeight(int2 P)
 // Evaluate the same local displacement at the centre and all normal taps.
 float ReliefDelta(int2 P)
 {
+	const float Gate = UseGateMask != 0u
+		? saturate(GateMask.Load(int3(RampWrapPixel(P), 0))) : 1.0f;
 	if (UseEdge == 0)
 	{
-		return RampDelta(P);
+		return RampDelta(P) * Gate;
 	}
 
-	// Signed displacement has no coverage floor or ceiling.
-	return PatternCellHeight(P) + PatternGapHeight(P) + PatternBevelDelta(P);
+	// Gate the complete delta, not the substrate or the region analysis.
+	return (PatternCellHeight(P) + PatternGapHeight(P) + PatternBevelDelta(P)) * Gate;
 }
 
 [numthreads(8, 8, 1)]
