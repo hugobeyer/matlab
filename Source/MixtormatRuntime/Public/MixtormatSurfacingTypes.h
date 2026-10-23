@@ -64,7 +64,9 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Contribution after child masks. Zero preserves every incoming channel exactly."))
 	float Amount = 1.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Signed gain on shallow surface relief. Zero removes Skin displacement, not its material response."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (DisplayName = "Auto Scale Height", ToolTip = "Calculate each relief band's depth from its cell spacing and placement scale. Height Scale remains an additional multiplier. Disable to use fixed relief amplitudes. UV-relative, not calibrated to mesh dimensions."))
+		bool bAutoScaleHeight = true;
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Signed relief multiplier, applied after automatic scaling when enabled. One keeps the calculated depth. Zero removes Skin displacement, not its material response."))
 	float HeightScale = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fullness of the periodic tissue lobes."))
 	float Fullness = 0.9f;

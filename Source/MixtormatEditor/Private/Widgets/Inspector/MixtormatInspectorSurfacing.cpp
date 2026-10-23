@@ -47,7 +47,13 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 #define SKIN_INT(Name) Integer(GET_MEMBER_NAME_CHECKED(FMixtormatSkin, Name), &FMixtormatSkin::Name)
 #define SKIN_WRITE(Name) Toggle(GET_MEMBER_NAME_CHECKED(FMixtormatSkin, Name), &FMixtormatSkin::Name)
 	const auto Surface = AddCard(Cards, LOCTEXT("SkinSurfaceCard", "SURFACE"));
-	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Amount), SKIN_FLOAT(HeightScale)));
+	AddSliderRow(Surface, SKIN_FLOAT(Amount));
+		AddSliderRow(Surface, MixtormatRow::MakePair(
+			MakeMemberToggle<FMixtormatSkin>(
+				Property(GET_MEMBER_NAME_CHECKED(FMixtormatSkin, bAutoScaleHeight))->GetDisplayNameText(),
+				Skin, &FMixtormatSkin::bAutoScaleHeight,
+				Property(GET_MEMBER_NAME_CHECKED(FMixtormatSkin, bAutoScaleHeight))->GetToolTipText()),
+			SKIN_FLOAT(HeightScale)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteHeight), SKIN_WRITE(bWriteColor)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteRoughness), SKIN_WRITE(bWriteAO)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteF0), SKIN_WRITE(bWriteFuzz)));

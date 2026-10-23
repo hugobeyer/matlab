@@ -1,8 +1,9 @@
-"""Inspect/upgrade a DUPLICATE Mixtormat shared master in Unreal Editor 5.8.
+"""Add optical nodes to the shipping Mixtormat shared master in Unreal Editor 5.8.
 
-No work runs on import. Execute this file in Unreal to open the upgrade dialog.
-Only save_upgrade() saves, after explicit confirmation in the interactive workflow.
-No source master, settings, functions or instances are edited.
+No work runs on import. Execute this file, confirm once, and the existing plugin
+master is upgraded and saved with neutral default maps beside it. No bake required.
+No renderer settings, referenced functions or material-instance parents are edited.
+The explicit duplicate_master()/upgrade_duplicate() API remains available separately.
 """
 
 import json
@@ -14,9 +15,19 @@ LIB = unreal.MaterialEditingLibrary
 PREFIX = "Mixtormat.SurfaceOptics.v1/"
 SOURCE_TAG = "Mixtormat.SurfaceOptics.Source"
 STATE_TAG = "Mixtormat.SurfaceOptics.State"
+# Match FMixtormatPaths::MasterMaterialObjectPath(); keep the shipping asset identity.
+SHIPPING_MASTER = "/Mixtormat/Materials/M_Mixtormat_Substrate"
 TEXTURES = ("DA_Optics", "DA_FuzzColorMap", "DA_Subsurface")
 SHARED_TEXTURES = ("DA_BaseColor", "DA_Normal", "DA_RAMH", "DA_Height")
 ENABLE = "DA_UseSurfaceOptics"
+NEUTRAL_TAG = "Mixtormat.SurfaceOptics.NeutralDefault"
+# Match MixtormatSurfaceOptics in MixtormatGpuCompositor.h. These are inactive
+# compiler defaults, not authored Skin maps; live composition supplies the real fields.
+NEUTRAL_DEFAULTS = {
+    "DA_Optics": (0.04, 0.0, 0.5, 0.0),
+    "DA_FuzzColorMap": (1.0, 1.0, 1.0, 0.0),
+    "DA_Subsurface": (0.0, 0.0, 0.0, 0.0),
+}
 RENDERER_WARNING = (
     "Combined fuzz + per-pixel MFP Diffusion requires Substrate Adaptive GBuffer on a "
     "supported platform/rendering path. Blendable GBuffer prioritizes Fuzz over SSS and "
@@ -28,7 +39,7 @@ RENDERER_WARNING = (
 
 def _require(condition, message):
     if not condition:
-        raise RuntimeError("Mixtormat optical upgrade: " + message + " Nothing saved by this call.")
+        raise RuntimeError("Mixtormat optical upgrade: " + message)
 
 
 def _assets():
@@ -158,10 +169,10 @@ def _links(material, node):
 
 def _open(material, editor_changes_applied):
     _require(editor_changes_applied,
-             "Apply and close any edits in the DUPLICATE material editor first, then explicitly "
+             "Apply and close any edits in the target material editor first, then explicitly "
              "pass editor_changes_applied=True. Refresh discards unapplied editor-preview edits.")
     editors = unreal.get_editor_subsystem(unreal.AssetEditorSubsystem)
-    _require(editors.open_editor_for_assets([material]), "Could not open the duplicate material editor.")
+    _require(editors.open_editor_for_assets([material]), "Could not open the target material editor.")
     LIB.refresh_material_editor(material)
 
 
@@ -272,6 +283,58 @@ def _textures(paths):
     return textures
 
 
+def _neutral_marker(parameter):
+    return json.dumps({"version": 1, "parameter": parameter,
+                       "rgba": NEUTRAL_DEFAULTS[parameter]}, sort_keys=True)
+
+
+def create_neutral_defaults(destination_path, parameters=TEXTURES):
+    """Create/reuse owned neutral float textures beside the target material; never save."""
+    _require(destination_path.startswith(("/Game/", "/Mixtormat/")) and "." not in destination_path,
+             "Destination must be a /Mixtormat/Folder/Asset or /Game/Folder/Asset package path.")
+    _require(set(parameters) <= set(TEXTURES), "Unknown neutral texture parameter.")
+    folder, name = destination_path.rsplit("/", 1)
+    _require(bool(name), "Missing destination asset name.")
+    paths = {parameter: f"{folder}/T_{name}_Default_{parameter.removeprefix('DA_')}"
+             for parameter in parameters}
+    assets = _assets()
+    # Check every collision before creating anything. Never overwrite an unrelated texture.
+    for parameter, path in paths.items():
+        if assets.does_asset_exist(path):
+            texture = assets.load_asset(path)
+            _require(isinstance(texture, unreal.Texture2D)
+                     and assets.get_metadata_tag(texture, NEUTRAL_TAG) == _neutral_marker(parameter),
+                     f"Neutral default destination is already occupied: {path}. Choose a new duplicate path.")
+
+    missing = {parameter: path for parameter, path in paths.items() if not assets.does_asset_exist(path)}
+    if missing:
+        world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        _require(world is not None, "Open an editor level before creating neutral default maps.")
+        for parameter, path in missing.items():
+            color = unreal.LinearColor(*NEUTRAL_DEFAULTS[parameter])
+            target = unreal.RenderingLibrary.create_render_target2d(
+                world, width=4, height=4, format=unreal.TextureRenderTargetFormat.RTF_RGBA32F,
+                clear_color=color)
+            _require(target is not None, f"Could not create neutral render target for {parameter}.")
+            try:
+                unreal.RenderingLibrary.clear_render_target2d(world, target, color)
+                texture = unreal.RenderingLibrary.render_target_create_static_texture2d_editor_only(
+                    target, name=path, compression_settings=unreal.TextureCompressionSettings.TC_HDR_F32,
+                    mip_settings=unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS)
+                _require(isinstance(texture, unreal.Texture2D), f"Could not create neutral texture: {path}.")
+                _require(texture.get_path_name().split(".")[0] == path,
+                         f"Unreal created a different texture path: {texture.get_path_name()}. Nothing saved.")
+                texture.set_editor_property("srgb", False)
+                texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_HDR_F32)
+                texture.set_editor_property("compression_no_alpha", False)
+                texture.set_editor_property("virtual_texture_streaming", False)
+                assets.set_metadata_tag(texture, NEUTRAL_TAG, _neutral_marker(parameter))
+                unreal.log(f"Created UNSAVED neutral compiler default: {path}")
+            finally:
+                unreal.RenderingLibrary.release_render_target2d(target)
+    return paths
+
+
 def _snapshot(material, monitored_names):
     nodes = _nodes(material)
     snapshot = {"nodes": {}, "all_nodes": {name: node.get_class().get_name() for name, node in nodes.items()}}
@@ -340,6 +403,22 @@ def _validate_state(material, state):
 
 
 def upgrade_duplicate(path, texture_paths, *, editor_changes_applied=False):
+    """Explicit optional duplicate workflow; never edits an unmarked original."""
+    _api()
+    return _upgrade_material(_duplicate(path), texture_paths, editor_changes_applied=editor_changes_applied)
+
+
+def upgrade_master(*, editor_changes_applied=False):
+    """Upgrade the canonical shipping master in place, using neutral defaults; leave unsaved."""
+    _require(editor_changes_applied, "Apply and close Material Editor edits before upgrading the master.")
+    _api()
+    material = _material(SHIPPING_MASTER)
+    _require_shared_parameters(material)
+    paths = create_neutral_defaults(SHIPPING_MASTER)
+    return _upgrade_material(material, paths, editor_changes_applied=True)
+
+
+def _upgrade_material(material, texture_paths, *, editor_changes_applied=False):
     """Upgrade in memory; reruns verify/reuse tagged nodes and may update default textures.
 
     F0 = lerp(legacy F0, lerp(Optics.R, existing BaseColor, existing Metallic), enable).
@@ -347,7 +426,6 @@ def upgrade_duplicate(path, texture_paths, *, editor_changes_applied=False):
     SSS uses effective MFP = Subsurface.RGB * Optics.A in cm (not a coverage opacity).
     """
     _api()
-    material = _duplicate(path)
     textures = _textures(texture_paths)
     _require_shared_parameters(material)
     _open(material, editor_changes_applied)
@@ -372,7 +450,7 @@ def upgrade_duplicate(path, texture_paths, *, editor_changes_applied=False):
                 node.set_editor_property("texture", original_texture)
             LIB.refresh_material_editor(material)
             raise
-        unreal.log("Verified/reused tagged optical nodes; updated defaults. UNSAVED; source unchanged.")
+        unreal.log("Verified/reused tagged optical nodes; updated defaults. Target remains UNSAVED.")
         return material
 
     nodes = _nodes(material)
@@ -555,114 +633,62 @@ def upgrade_duplicate(path, texture_paths, *, editor_changes_applied=False):
             _require(_snapshot(material, before["nodes"]) == before, "Rollback readback differs from the original duplicate.")
         except Exception as restore_error:
             raise RuntimeError(f"{error}\nRollback also failed: {restore_error}\n"
-                               "DO NOT SAVE the duplicate. Discard unsaved changes/start a new destination.") from error
+                               "DO NOT SAVE the target material. Discard unsaved changes and reload it from disk.") from error
         raise
     unreal.log("Optical graph upgraded and compiler returned no errors. UNSAVED. "
-               "Inspect the duplicate and call save_upgrade() explicitly; no master replacement performed.")
+               "Call save_upgrade() to persist the target and generated neutral defaults.")
     return material
 
 
 def save_upgrade(path, *, editor_changes_applied=False):
-    """Explicit opt-in save of ONLY the marked duplicate, after graph readback + compilation."""
+    """Save the shipping master or a marked duplicate, plus owned neutral defaults."""
     _api()
-    material = _duplicate(path)
+    material = _material(path) if path.split(".")[0] == SHIPPING_MASTER else _duplicate(path)
     _open(material, editor_changes_applied)
     _validate_state(material, _state(material))
     _compile(material)
     unreal.log_warning(RENDERER_WARNING)
-    _require(_assets().save_loaded_asset(material, only_if_is_dirty=False), "Saving the duplicate failed.")
-    unreal.log(f"Saved duplicate only: {material.get_path_name()}. "
-               "Original master, project settings and all material parents are unchanged.")
+    # Save generated dependencies first, never the caller's supplied authored bake textures.
+    for parameter, path in _state(material)["textures"].items():
+        texture = _assets().load_asset(path)
+        if _assets().get_metadata_tag(texture, NEUTRAL_TAG) == _neutral_marker(parameter):
+            _require(_assets().save_loaded_asset(texture, only_if_is_dirty=False),
+                     f"Saving neutral default failed: {path}. Target material was not saved.")
+    _require(_assets().save_loaded_asset(material, only_if_is_dirty=False), "Saving the target material failed.")
+    unreal.log(f"Saved optical nodes and neutral defaults: {material.get_path_name()}. "
+               "Project settings and material-instance parents are unchanged.")
     return material
 
 
-_interactive_options_type = None
-
-
 def run_interactive():
-    """Pick assets, upgrade a duplicate, and ask separately before saving it."""
-    global _interactive_options_type
-    if _interactive_options_type is None:
-        @unreal.uclass()
-        class MixtormatOpticsUpgradeOptions(unreal.Object):
-            master = unreal.uproperty(unreal.Material, meta={
-                "Category": "Master", "DisplayName": "Source Master (unchanged)"})
-            destination = unreal.uproperty(str, meta={
-                "Category": "Master", "DisplayName": "Duplicate Package Path"})
-            optics = unreal.uproperty(unreal.Texture2D, meta={
-                "Category": "Baked Optical Maps", "DisplayName": "Optics (F0, Fuzz, Roughness, SSS)"})
-            fuzz_color = unreal.uproperty(unreal.Texture2D, meta={
-                "Category": "Baked Optical Maps", "DisplayName": "Fuzz Color"})
-            subsurface = unreal.uproperty(unreal.Texture2D, meta={
-                "Category": "Baked Optical Maps", "DisplayName": "Subsurface (MFP in cm)"})
-            editor_changes_applied = unreal.uproperty(bool, meta={
-                "Category": "Confirm", "DisplayName": "I Applied and Closed Material Editor Edits"})
-
-        _interactive_options_type = MixtormatOpticsUpgradeOptions
-
-    options = unreal.new_object(_interactive_options_type)
-    selected = [asset for asset in unreal.EditorUtilityLibrary.get_selected_assets()
-                if isinstance(asset, unreal.Material)]
-    if len(selected) == 1:
-        options.set_editor_property("master", selected[0])
-    options.set_editor_property("destination", "/Game/MixtormatOptics/M_Mixtormat_SurfaceOptics")
-    options.set_editor_property("editor_changes_applied", False)
-
-    while unreal.EditorDialog.show_object_details_view(
-            "Add Mixtormat Optical Nodes - Choose Master and Three Baked Maps", options):
-        try:
-            source = options.get_editor_property("master")
-            _require(isinstance(source, unreal.Material), "Choose your source Substrate master.")
-            paths = {}
-            for parameter, field in zip(TEXTURES, ("optics", "fuzz_color", "subsurface")):
-                texture = options.get_editor_property(field)
-                _require(isinstance(texture, unreal.Texture2D),
-                         f"Choose the baked {parameter} texture. If you have no optical maps yet, "
-                         "bake once in Mixtormat using the current Default master first.")
-                paths[parameter] = texture.get_path_name()
-            _require(options.get_editor_property("editor_changes_applied"),
-                     "Apply and close pending Material Editor edits, then tick the confirmation.")
-            destination = options.get_editor_property("destination").strip()
-            _api()
-            _require_shared_parameters(source)
-            _textures(paths)
-        except Exception as error:
-            unreal.log_error(str(error))
-            unreal.EditorDialog.show_message("Mixtormat - Check Upgrade Inputs", str(error), unreal.AppMsgType.OK)
-            continue
-
-        try:
-            duplicate_master(source.get_path_name(), destination)
-            material = upgrade_duplicate(destination, paths, editor_changes_applied=True)
-        except Exception as error:
-            unreal.log_error(str(error))
-            unreal.EditorDialog.show_message("Mixtormat - Upgrade Stopped", str(error), unreal.AppMsgType.OK)
-            return None
-
-        save = unreal.EditorDialog.show_message(
-            "Mixtormat - Nodes Added and Wired",
-            f"Optical nodes were added/verified on:\n{material.get_path_name()}\n\n"
-            "Unreal reported no compiler errors. Visual quality and renderer support are not verified.\n"
-            "Your original master and renderer settings are unchanged.\n\n"
-            "Save this upgraded duplicate now?",
-            unreal.AppMsgType.YES_NO, default_value=unreal.AppReturnType.NO)
-        if save == unreal.AppReturnType.YES:
-            try:
-                save_upgrade(destination, editor_changes_applied=True)
-            except Exception as error:
-                unreal.log_error(str(error))
-                unreal.EditorDialog.show_message("Mixtormat - Save Failed", str(error), unreal.AppMsgType.OK)
-                return material
-
+    """One confirmation: add/wire/save nodes on the existing shipping master."""
+    confirmed = unreal.EditorDialog.show_message(
+        "Add Optical Nodes to Mixtormat Master",
+        f"This adds and wires the optical nodes directly on:\n{SHIPPING_MASTER}\n\n"
+        "Creates neutral default textures beside it in the plugin and saves these assets.\n"
+        "No duplicate, bake, asset selection or renderer-setting change.\n\n"
+        "Apply and close any Material Editor edits first.\n"
+        "Continue and save the updated plugin master?",
+        unreal.AppMsgType.YES_NO, default_value=unreal.AppReturnType.NO)
+    if confirmed != unreal.AppReturnType.YES:
+        return None
+    try:
+        upgrade_master(editor_changes_applied=True)
+        material = save_upgrade(SHIPPING_MASTER, editor_changes_applied=True)
+    except Exception as error:
+        unreal.log_error(str(error))
         unreal.EditorDialog.show_message(
-            "Mixtormat - Select the Upgraded Master",
-            f"Use {destination} as your shared master.\n\n"
-            "Live preview: Editor Preferences > Plugins > Mixtormat > Preview > Layer Preview Master.\n"
-            "Baking: choose the same material as the Custom master.\n\n"
-            "These selections were not changed automatically.\n\n" + RENDERER_WARNING,
-            unreal.AppMsgType.OK)
-        return material
-    return None
+            "Mixtormat - Upgrade Stopped",
+            str(error) + "\n\nDo not Save All after a failed upgrade. Check the Output Log; "
+            "discard unsaved graph changes before retrying.", unreal.AppMsgType.OK)
+        return None
+    unreal.EditorDialog.show_message(
+        "Mixtormat - Master Updated",
+        f"Optical nodes and neutral defaults saved in the plugin:\n{material.get_path_name()}\n\n"
+        "The existing shared master now contains the optical wiring. No reparenting is needed.\n\n"
+        + RENDERER_WARNING,
+        unreal.AppMsgType.OK)
+    return material
 
 
 if __name__ == "__main__":

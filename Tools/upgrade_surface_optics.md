@@ -230,16 +230,25 @@ continue to read RAM.A. No new standalone SSS diagnostic mode was added.
 The binary master was not inspected. Until the user runs the script and explicitly selects a
 reviewed duplicate, the existing selected master does not gain per-pixel optical rendering.
 
-## Safe Python workflow
+## One-time shipping master upgrade
 
-**One-run dialog:** select the source base Material in the Content Browser, then use Unreal's
-**Execute Python Script** action to run `Tools/upgrade_surface_optics.py`. Choose the three
-baked optical maps in the asset pickers, confirm Material Editor edits are applied/closed,
-and press OK. The script adds/wires nodes on a duplicate and separately asks before saving.
-If no optical maps exist yet, bake once using Mixtormat's current Default master first.
-The source master, preview/bake selections and renderer settings remain unchanged.
-Importing the module still does nothing; `optics.run_interactive()` opens the same dialog.
-The interactive entry point has not been executed or visually verified by the agent.
+Apply and close Material Editor edits. Use Unreal's **Execute Python Script** action to run
+`Tools/upgrade_surface_optics.py`, then confirm **Yes**. This adds/wires optical nodes directly
+on `/Mixtormat/Materials/M_Mixtormat_Substrate`, creates neutral float defaults beside that
+master under `/Mixtormat/Materials/`, and saves the master plus those generated textures.
+No bake, asset picker, `/Game/` destination, duplicate, master replacement or reparenting is
+required. The existing shared master identity stays the same for shipping, preview and baking.
+Renderer/project settings and referenced material functions remain unchanged.
+Reruns verify/reuse tagged nodes rather than append a second network. Failed graph edits
+attempt rollback; if that fails, do not save the master—discard unsaved changes and reload.
+Imports still do nothing. Console callers can use `optics.upgrade_master(editor_changes_applied=True)`
+(unsaved), followed by `optics.save_upgrade(optics.SHIPPING_MASTER, editor_changes_applied=True)`.
+The agent has not run this script or accessed/saved any binary assets.
+
+## Optional duplicate workflow (advanced)
+
+The older explicit duplicate API below remains available for experimentation. It is not used
+by Execute Python Script or required for the shipping master upgrade.
 
 Enable Unreal's Python Editor Script Plugin and Editor Scripting support as needed. This is an
 interactive **Unreal Editor 5.8 Python** script, not a commandlet or external Python program.
@@ -276,9 +285,21 @@ are checked across texture, scalar, vector and static-switch parameters before c
 ### 2. Supply valid linear float default maps
 
 The upgrader needs real Texture2D defaults so the material compiler can validate the samplers.
-It does not create placeholder assets or silently pick arbitrary engine textures.
+The interactive dialog explicitly creates missing neutral compiler defaults beside the duplicate.
+It clears 4x4 RGBA32F render targets and converts them to linear HDR F32 Texture2D assets,
+retaining alpha, without virtual streaming or mipmaps. Values match `MixtormatSurfaceOptics`:
+Optics `(0.04, 0, 0.5, 0)`, FuzzColor `(1, 1, 1, 0)`, Subsurface `(0, 0, 0, 0)`.
+These are inactive defaults, not authored Skin textures; live composition replaces the bindings.
+Creation never overwrites an unrelated asset; reruns reuse only matching ownership-tagged defaults.
+`save_upgrade()` saves those owned dependencies before the duplicate, after explicit consent.
+A failed save can leave some defaults saved; the original master is never modified.
 
-Bootstrap with a user-run bake using the current **Default** master. All optical textures still
+For console use, after choosing `destination`:
+```python
+textures = optics.create_neutral_defaults(destination)
+```
+
+Alternatively, use a user-run bake with the current **Default** master. All optical textures still
 export, while the result visibly warns that this legacy parent cannot render them. There is no
 requirement to replace/reparent it before baking. Custom mode remains available with the four
 existing mappings. The parent compositor must first supply initialized optical outputs, even for
@@ -333,8 +354,9 @@ legacy/global fuzz and masked spatial fuzz/SSS. Then:
 optics.save_upgrade(destination, editor_changes_applied=True)
 ```
 
-This rechecks the recorded graph, texture contract and compiler errors before saving **only the
-duplicate**. Shader compile success does not validate renderer capability or the final look.
+This rechecks the recorded graph, texture contract and compiler errors before saving the
+**duplicate and its script-generated neutral defaults**. Supplied authored textures are not saved.
+Shader compile success does not validate renderer capability or the final look.
 Project autosave/manual Save All is outside this script's control; do not save a failed duplicate.
 
 Selecting this material is a **separate user decision**:
