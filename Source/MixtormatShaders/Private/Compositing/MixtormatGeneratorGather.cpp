@@ -384,7 +384,7 @@ namespace MixtormatGpuCompositor
 			// Include output controls in the final-field identity; chemistry has a separate key.
 			FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 			Out.FieldKey = MixtormatComposeHash::Combine(
-				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737347723134ull) | 1ull;
+				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737347723135ull) | 1ull;
 
 			MixtormatComposeHash::FHasher SimulationHasher;
 			SimulationHasher.SkipTopLevel = {

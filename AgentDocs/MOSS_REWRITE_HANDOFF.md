@@ -4,6 +4,8 @@
 - Biological Eden expansion replaces Gray-Scott. Habitat-gated (cavity/AO/slope/moisture).
 - Age-driven cushion bulge + downslope droop with lip pile-up.
 - Fixed ClumpDensity attenuation bug, fixed ShootDensity resolution dependence.
+- Microshoots now use three tapered leaf blades per tuft, with midrib relief and lifted tips. Density sets spacing, Length sets relief height, and Fiber Thickness sets bounded blade width. Droop biases mature leaf orientation toward Gravity Angle.
+- Projected pixel footprints broaden blade/midrib profiles with area compensation; unresolved tuft frequencies fade. This is heightfield relief, not overlapping leaf geometry. Final-field cache version advanced; compilation and visual validation remain user-run.
 
 ## Runtime: `Source/MixtormatRuntime/Public/MixtormatGeneratorTypes.h`
 Removed: Feed, Kill, DiffusionA, DiffusionB, TimeStep, BiomassAccumulation, SeedHabitatWeight, SeedNoiseWeight, SeedMaskWeight, SeedThreshold, bNormalizeSeedWeights, bConstrainGrowthToHabitat, BoundaryThreshold, ColonyConnectivity, Weight, Adhesion, GravityInfluence.

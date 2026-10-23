@@ -348,25 +348,57 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float ShootFreq = lerp(24.0f, 96.0f, saturate(ShootDensity));
 	int ShootDim = max(1, int(round(ShootFreq)));
 	float2 ShootUV = UV * float(ShootDim); int2 ShootCell = int2(floor(ShootUV));
-	float MinShootDist = 1000.0f;
+	// Estimate placed pixel coverage in cell units, including upstream UV deformation.
+	float2 DX = TorusDelta(UV, MixtormatGeneratorUV(DestinationUV + float2(Texel.x, 0))) * float(ShootDim);
+	float2 DY = TorusDelta(UV, MixtormatGeneratorUV(DestinationUV + float2(0, Texel.y))) * float(ShootDim);
+	float Footprint = max(length(DX + DY), length(DX - DY));
+	float DetailAA = 1.0f - smoothstep(0.35f, 0.9f, Footprint);
+	float ShootProfile = 0.0f;
+	float2 Gravity = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
+	float Lean = saturate(Droop) * saturate(ColonyAge);
+	// Bounded width keeps the 3x3 neighbourhood sufficient even for broad tufts.
+	float Thickness = max(FiberThickness, 0.0f);
+	float WidthScale = lerp(MOSS_SHOOT_RADIUS_RANGE.x, MOSS_SHOOT_RADIUS_RANGE.y,
+		Thickness / (1.0f + Thickness));
 	[unroll] for (int sy = -1; sy <= 1; ++sy) [unroll] for (int sx = -1; sx <= 1; ++sx)
 	{
-		int2 Cell = ShootCell + int2(sx, sy); int2 Wrapped = (Cell % ShootDim + ShootDim) % ShootDim;
-		float2 Jitter = Random22(Wrapped, 606u); float2 Center = (float2(Wrapped) + Jitter) / float(ShootDim);
-		MinShootDist = min(MinShootDist, length(TorusDelta(UV, Center)));
+		int2 Cell = ShootCell + int2(sx, sy);
+		int2 Wrapped = (Cell % ShootDim + ShootDim) % ShootDim;
+		// Unwrapped cell positions retain distinct periodic images on small lattices.
+		float2 Root = float2(Cell) + Random22(Wrapped, 606u);
+		float2 Offset = ShootUV - Root;
+		[unroll] for (int Leaf = 0; Leaf < 3; ++Leaf)
+		{
+			uint Salt = 707u + uint(Leaf) * 131u;
+			float2 Variation = Random22(Wrapped, Salt);
+			float Angle = 6.283185307f * (Variation.x + float(Leaf) / 3.0f);
+			float2 Axis = float2(cos(Angle), sin(Angle));
+			Axis = normalize(Axis + Gravity * (0.5f * Lean));
+			float2 Across = float2(-Axis.y, Axis.x);
+			float Length = lerp(0.32f, 0.65f, Variation.y);
+			float U = dot(Offset, Axis) / Length;
+			float T = saturate(U);
+			float Bend = (Variation.x - 0.5f) * Length * T * (1.0f - T);
+			float V = dot(Offset, Across) - Bend;
+			float Width = max(1.0e-6f, WidthScale * Length * sin(3.141592654f * T));
+			float Variance = (pow(dot(Across, DX), 2.0f) + pow(dot(Across, DY), 2.0f)) / 12.0f;
+			float FilteredWidth = sqrt(Width * Width + Variance);
+			float Blade = exp(-0.5f * V * V / (FilteredWidth * FilteredWidth)) * Width / FilteredWidth;
+			float RibWidth = Width * 0.2f;
+			float RibVariance = RibWidth * RibWidth + Variance + 1.0e-12f;
+			float Midrib = exp(-0.5f * V * V / RibVariance) * RibWidth * rsqrt(RibVariance);
+			float Envelope = smoothstep(0.0f, 0.2f, U) * (1.0f - smoothstep(0.75f, 1.0f, U));
+			float Curl = lerp(0.5f, 1.0f, T * T) * lerp(0.7f, 1.0f, Variation.y);
+			ShootProfile = max(ShootProfile, (Blade * 0.75f + Midrib * 0.25f) * Envelope * Curl);
+		}
 	}
-	float ShootNormDist = MinShootDist * float(ShootDim);
-	float Thickness = max(FiberThickness, 0.0f);
-	float ShootRadius = lerp(MOSS_SHOOT_RADIUS_RANGE.x, MOSS_SHOOT_RADIUS_RANGE.y, Thickness);
-	float TipSharpness = 2.0f / (1.0f + Thickness);
-	float ShootProfile = pow(saturate(1.0f - ShootNormDist / ShootRadius), TipSharpness);
-	float Fibers = TileNoise(UV * 16.0f, ShootDim, 707u) * 0.25f;
+	ShootProfile *= DetailAA;
 	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
 	// Spacing controls the boundary fade, not shoot amplitude. Denser shoots stay tall.
 	float EdgeFade = smoothstep(0.0f, 1.0f / float(ShootDim), InteriorDistance);
 	float ShootHeightBudget = MOSS_SHOOT_RELIEF_FRACTION
 		* (max(CushionHeight, 0.0f) + max(MatureHeight, 0.0f) * ColonyAge) * EdgeFade;
-	float MicroRelief = (ShootProfile * 0.8f + Fibers * 0.2f) * ShootLength * ShootHeightBudget * saturate(ColonyAge * 2.0f);
+	float MicroRelief = ShootProfile * ShootLength * ShootHeightBudget * saturate(ColonyAge * 2.0f);
 	MicroRelief *= lerp(0.75f, 1.0f, Hab.a);
 	float CombinedHeight = (Meso + MicroRelief) * ColonyMask;
 	OutGrowthHeight[Pixel] = CombinedHeight;

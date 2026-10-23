@@ -3098,13 +3098,13 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			LOCTEXT("MossClumpDensityHint", "Surface clumps across one tile. Changes spacing without reducing relief at higher density. Rounded for tiling; zero disables clump detail.")),
 		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
 			Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
-				LOCTEXT("MossShootDensityHint", "Density of high-frequency organic microshoots. Inactive while Shoot Length is zero."))]));
+				LOCTEXT("MossShootDensityHint", "Spacing of three-leaf tufts across the tile. Higher values create smaller, denser tufts; unresolved detail fades. Inactive while Shoot Length is zero."))]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossShootLength", "Shoot Length"), &FMixtormatMoss::ShootLength, 0, 1, .01,
 			LOCTEXT("MossShootLengthHint", "Shoot height relative to Cushion Height and age-weighted Mature Height. Independent of shoot spacing; fades at colony boundaries.")),
 		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
 			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
-				LOCTEXT("MossFiberThicknessHint", "Shoot radius relative to spacing, from narrow tips to broad tufts, with softer profiles as thickness rises. Inactive while Shoot Length is zero."))]));
+				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
 
 	// Physical Behavior
 	Panel = AddCard(Cards, LOCTEXT("MossPhysics", "PHYSICAL BEHAVIOR"));
