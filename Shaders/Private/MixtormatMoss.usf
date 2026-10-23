@@ -253,7 +253,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float B = Random21(Pixel, 808u) * Activation;
 	bool Active = B >= MOSS_ACTIVE_B;
 	uint Label = Active ? uint(Pixel.y * SimulationSize.x + Pixel.x) + 1u : 0u;
-	OutActivationHabitat[Pixel] = float4(Activation, Habitat, Boundary, 0.0f);
+	OutActivationHabitat[Pixel] = float4(Activation, Habitat, 1.0f, 0.0f);
 	OutChemical[Pixel] = float2(1.0f, B);
 	OutGrowthState[Pixel] = float4(Active ? 0.0f : -1.0f, float(Label), 0.0f, 0.0f);
 }
