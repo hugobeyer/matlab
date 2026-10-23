@@ -125,8 +125,7 @@ int DetailCells;
 int PoreCells;
 // @param DetailTiling
 int DetailTiling;
-// @param bAutoScaleHeight
-uint bAutoScaleHeight;
+
 // @param HeightScale
 float HeightScale;
 // @param Fullness
@@ -248,8 +247,8 @@ float SkinNoise(float2 UV, float Frequency, uint Salt, float Footprint)
 	return MixtormatNoiseValueD(frac(UV) * float(P), P, Seed + Salt).x * AA;
 }
 
-// Reference relief-to-width proportions. Automatic scaling applies these per feature
-// spacing instead of per tile; HeightScale remains a separate artist multiplier.
+// Reference patch spans 3.4 units. Keep its relief-to-width proportions in the unit UV tile;
+// HeightScale remains the artist's gain, not an implicit normalization to full displacement.
 static const float SkinReferencePatchWidth = 3.4f;
 static const float SkinTissueRelief = 0.065f / SkinReferencePatchWidth;
 static const float SkinFoldRelief = 0.027f / SkinReferencePatchWidth;
@@ -259,19 +258,7 @@ static const float SkinPoreRelief = 0.001f / SkinReferencePatchWidth;
 static const float SkinGrainRelief = 0.00032f / SkinReferencePatchWidth;
 static const float SkinFineFrequencyRatio = 240.0f / 96.0f;
 
-float SkinReliefScale(float Period)
-{
-	// A uniform band gain avoids introducing height variation from the drift Jacobian.
-	// Use the narrower authored spacing for anisotropic placement; no mesh metric exists here.
-	float PlacementRate = max(abs(GeneratorUVScale.x), abs(GeneratorUVScale.y));
-	// Features larger than the UV tile retain the reference depth rather than diverging.
-		return bAutoScaleHeight != 0u ? rcp(max(Period * PlacementRate, 1.0f)) : 1.0f;
-}
 
-float SkinTissueAmplitude()
-{
-	return SkinTissueRelief * SkinReliefScale(float(TissueCells));
-}
 static const float SkinPigmentBasePeriod = 22.0f;
 static const int SkinDriftSteps = 5;
 static const float SkinDriftTravel = 0.34f;
@@ -669,7 +656,7 @@ void TissueCS(uint3 DTid : SV_DispatchThreadID)
 		+ 0.22f * SkinFat(Q, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
 	float Thickness = max(0.2f, 1.0f + 0.4f * max(ThicknessVariation, 0.0f)
 		* SkinNoise(Q, max(1.0f, round(float(TissueCells) * 0.61f)), 173u, FP));
-	float Height = SkinTissueAmplitude() * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * Fat * Thickness;
+	float Height = SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * Fat * Thickness;
 	// R: unit destination-UV relief. GB: PERIODIC displacement relative to SkinPlacedUV.
 	// A: positive, neutral-at-one thickness factor. Never HeightScale or Amount here.
 	OutTissue[Pixel] = float4(SkinFinite(Height), Q - P, Thickness);
@@ -694,7 +681,7 @@ float3 SkinTissueHessian(float2 UV, FSkinFrame F)
 	float3 K = float3((R - C) + (L - C), (T - C) + (B - C), 0.25f * ((RT - LT) - (RB - LB)))
 		/ float3(E.x * E.x, E.y * E.y, E.x * E.y);
 	// ONE scalar normalization preserves destination-space Hessian eigendirections.
-	K /= max(SkinTissueAmplitude() * 0.5f * dot(Rate, Rate), 1.0e-6f);
+	K /= max(SkinTissueRelief * 0.5f * dot(Rate, Rate), 1.0e-6f);
 	return all(isfinite(K)) ? K : 0.0f;
 }
 
@@ -732,7 +719,7 @@ void SeedCS(uint3 DTid : SV_DispatchThreadID)
 	}
 	float CrownRelax = 1.0f / (1.0f + 2.5f * Stretch);
 	// Medium detail belongs exclusively to MicroCS, not the broad/cross-fold solver rest.
-	float Residual = Tissue.a * Load * CrownRelax * SkinFoldRelief * SkinReliefScale(float(FoldCells)) * FoldDepth
+	float Residual = Tissue.a * Load * CrownRelax * SkinFoldRelief * FoldDepth
 		* (Broad.x + max(Crossing, 0.0f) * Cross.x);
 	// A fold normal is a covector: destination normal = J^T * authored/warped normal.
 	// The Jacobian includes placement, lifted PreUV and sampled periodic drift; no inverse.
@@ -797,15 +784,13 @@ float4 SkinFineResidual(float2 UV)
 	float2 PDY = F.DY + Gain * float2(dot(NX.yz, F.DY), dot(NY.yz, F.DY));
 	float2 PoreTangent = SkinAxis(Tangent + Gain * float2(dot(NX.yz, Tangent), dot(NY.yz, Tangent)));
 	float2 Pore = SkinPores(PoreUV, PorePeriod, PDX, PDY, PoreTangent, Strain.g, Strain.b);
-	float MicroGrain = SkinReliefScale(DetailPeriod * 2.0f) * SkinNoise(F.Q, DetailPeriod * 2.0f, 607u, F.FP)
-		+ 0.5f * SkinReliefScale(DetailPeriod * 4.0f) * SkinNoise(F.Q, DetailPeriod * 4.0f, 659u, F.FP);
-	float Height = (SkinWrinkleRelief * SkinReliefScale(DetailPeriod) * Medium
-		+ SkinFineRelief * SkinReliefScale(round(DetailPeriod * SkinFineFrequencyRatio)) * Fine) * Thickness
+	float MicroGrain = SkinNoise(F.Q, DetailPeriod * 2.0f, 607u, F.FP)
+		+ 0.5f * SkinNoise(F.Q, DetailPeriod * 4.0f, 659u, F.FP);
+	float Height = (SkinWrinkleRelief * Medium + SkinFineRelief * Fine) * Thickness
 		+ SkinGrainRelief * Grain * MicroGrain;
 	// Pore relief is already footprint-filtered and strain-adjusted. Resolve must not
 	// run it through the directional wrinkle filter or apply a second relief scaling.
-	float PoreHeight = SkinPoreRelief * SkinReliefScale(PorePeriod)
-			* (bAutoScaleHeight != 0u ? PoreSize : 1.0f) * PoreDepth * (0.25f * Pore.y - Pore.x)
+	float PoreHeight = SkinPoreRelief * PoreDepth * (0.25f * Pore.y - Pore.x)
 		/ (1.0f + 0.5f * max(Strain.b, 0.0f));
 	return float4(Height, Pore.x, PoreHeight, 0.0f);
 }
@@ -1123,7 +1108,7 @@ void FieldCS(uint3 DTid : SV_DispatchThreadID)
 	float3 Albedo = max(0.0f, lerp(MidColor, VariedColor, Pigment)) * exp(-BloodAbsorption);
 	float3 LocalMFP = SkinFiniteRGB(MeanFreePath) * Thickness / (1.0f + PigmentAbsorption + BloodAbsorption);
 	// TissueState remains UV relief: do not apply the resolved-height conversion to this ratio.
-	float Fat = Tissue.r / max(SkinTissueAmplitude(), 1.0e-6f);
+	float Fat = Tissue.r / SkinTissueRelief;
 	float Roughness = MixtormatEvalSignedScalarRamp(saturate(0.5f + Fat), RoughnessCount,
 		RoughnessInterpolation, RoughnessPoints) + CavityRoughness * (Cavity - 0.35f * Convex)
 		+ 0.045f * max(TissueCoupling, 0.0f) * (Strain.g - Strain.b)

@@ -89,8 +89,7 @@ namespace
 			SHADER_PARAMETER(int32, DetailCells)
 			SHADER_PARAMETER(int32, PoreCells)
 			SHADER_PARAMETER(int32, DetailTiling)
-			SHADER_PARAMETER(uint32, bAutoScaleHeight)
-						SHADER_PARAMETER(float, HeightScale)
+			SHADER_PARAMETER(float, HeightScale)
 			SHADER_PARAMETER(float, Fullness)
 			SHADER_PARAMETER(float, Softness)
 			SHADER_PARAMETER(float, Compression)
@@ -406,8 +405,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->DetailCells = Skin.DetailCells;
 	P->PoreCells = Skin.PoreCells;
 	P->DetailTiling = Skin.DetailTiling;
-	P->bAutoScaleHeight = Skin.bAutoScaleHeight ? 1u : 0u;
-		P->HeightScale = Skin.HeightScale;
+	P->HeightScale = Skin.HeightScale;
 	P->Fullness = Skin.Fullness;
 	P->Softness = Skin.Softness;
 	P->Compression = Skin.Compression;

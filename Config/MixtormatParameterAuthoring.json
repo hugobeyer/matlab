@@ -1,4 +1,28 @@
 {
+	"Layer Surface Optics":
+	{
+		"Layer.SSSAmount":
+		{
+			"default": 1,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Layer.FuzzAmount":
+		{
+			"default": 0,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		},
+		"Layer.FuzzRoughness":
+		{
+			"default": 0.5,
+			"uiMin": 0,
+			"uiMax": 1,
+			"snap": 0.01
+		}
+	},
 	"Blur":
 	{
 		"Blur.Radius":

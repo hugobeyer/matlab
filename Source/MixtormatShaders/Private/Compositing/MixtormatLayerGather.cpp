@@ -271,6 +271,25 @@ void GatherLayerFields(FLayerRenderData& Data, const FMixtormatLayer& Layer,
 	Data.bOverrideBaseColor = Layer.bOverrideBaseColor;
 	Data.bOverrideRoughness = Layer.bOverrideRoughness;
 	Data.bOverrideMetallic = Layer.bOverrideMetallic;
+		Data.bOverrideSSS = Layer.bOverrideSSS && !bNormalOnly;
+		Data.bOverrideFuzz = Layer.bOverrideFuzz && !bNormalOnly;
+		const auto OpticalValue = [](float Value, float Default)
+		{
+			return FMath::IsFinite(Value) ? FMath::Max(Value, 0.0f) : Default;
+		};
+		const FMixtormatLayer OpticalDefaults;
+		Data.AuthoredOptics = FVector4f(0.0f,
+			FMath::Clamp(OpticalValue(Layer.FuzzAmount, OpticalDefaults.FuzzAmount), 0.0f, 1.0f),
+			FMath::Clamp(OpticalValue(Layer.FuzzRoughness, OpticalDefaults.FuzzRoughness), 0.0f, 1.0f),
+			FMath::Clamp(OpticalValue(Layer.SSSAmount, OpticalDefaults.SSSAmount), 0.0f, 1.0f));
+		Data.AuthoredFuzzColor = FVector4f(
+			OpticalValue(Layer.FuzzColor.R, OpticalDefaults.FuzzColor.R),
+			OpticalValue(Layer.FuzzColor.G, OpticalDefaults.FuzzColor.G),
+			OpticalValue(Layer.FuzzColor.B, OpticalDefaults.FuzzColor.B), 0.0f);
+		Data.AuthoredSubsurface = FVector4f(
+			OpticalValue(Layer.MeanFreePath.R, OpticalDefaults.MeanFreePath.R),
+			OpticalValue(Layer.MeanFreePath.G, OpticalDefaults.MeanFreePath.G),
+			OpticalValue(Layer.MeanFreePath.B, OpticalDefaults.MeanFreePath.B), 0.0f);
 	Data.bCoat = Layer.CompositionMode == EMixtormatCompositionMode::Coat;
 	Data.bFill = Layer.Type == EMixtormatLayerType::Fill;
 	Data.bFillPassThrough = Layer.Type == EMixtormatLayerType::Fill && Layer.bFillPassThrough;

@@ -48,6 +48,9 @@ namespace
 			Add(ET::Layer, TEXT("NormalInfluence"), {});
 			Add(ET::Layer, TEXT("HeightInfluence"), {});
 			Add(ET::Layer, TEXT("IOR"), {});
+						Add(ET::Layer, TEXT("SSSAmount"), Saturated());
+						Add(ET::Layer, TEXT("FuzzAmount"), Saturated());
+						Add(ET::Layer, TEXT("FuzzRoughness"), Saturated());
 
 			// ---- Breakup.
 			// Scale's upper bound is the derived cell-count budget, not taste.

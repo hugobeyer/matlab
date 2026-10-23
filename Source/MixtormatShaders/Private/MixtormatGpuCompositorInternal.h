@@ -1486,6 +1486,11 @@ namespace MixtormatGpuCompositor
 		bool bOverrideBaseColor = false;
 		bool bOverrideRoughness = false;
 		bool bOverrideMetallic = false;
+		bool bOverrideSSS = false;
+		bool bOverrideFuzz = false;
+		FVector4f AuthoredOptics = FVector4f(0, 0, 0, 0);
+		FVector4f AuthoredFuzzColor = FVector4f(0, 0, 0, 0);
+		FVector4f AuthoredSubsurface = FVector4f(0, 0, 0, 0);
 		bool bCoat = false;
 		bool bFill = false;
 		bool bFillPassThrough = false;

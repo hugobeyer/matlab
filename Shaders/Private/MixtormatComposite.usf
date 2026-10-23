@@ -30,6 +30,13 @@ Texture2D<float4> PreviousSubsurface;
 Texture2D<float4> CompositedRAM;
 Texture2D<float> OpticalCoverage;
 uint HasSurfaceOptics;
+uint OverrideSSS;
+uint OverrideFuzz;
+uint WriteSSS;
+uint WriteFuzz;
+float4 AuthoredOptics;
+float4 AuthoredFuzzColor;
+float4 AuthoredSubsurface;
 uint ResolveMaterialValues;
 uint RotateOpticalOutput;
 float4 DefaultOptics;
@@ -972,12 +979,25 @@ void ResolveLayerInputCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		ResolvedRAM.b = lerp(SourceRAM.b, FillMetallic, OverrideMetallic);
 	}
 	Optics.r = ResolvedRAM.a;
+	float4 FuzzTint = HasSurfaceOptics != 0
+		? float4(LayerFuzzColor.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultFuzzColor;
+	float4 Subsurface = HasSurfaceOptics != 0
+		? float4(LayerSubsurface.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultSubsurface;
+	// Seed optical channels before ordered modules, without changing F0 or RAM semantics.
+	if (OverrideFuzz != 0)
+	{
+		Optics.gb = AuthoredOptics.gb;
+		FuzzTint = AuthoredFuzzColor;
+	}
+	if (OverrideSSS != 0)
+	{
+		Optics.a = AuthoredOptics.a;
+		Subsurface = AuthoredSubsurface;
+	}
 	OutputRAM[Pixel] = ResolvedRAM;
 	OutputOptics[Pixel] = Optics;
-	OutputFuzzColor[Pixel] = HasSurfaceOptics != 0
-		? float4(LayerFuzzColor.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultFuzzColor;
-	OutputSubsurface[Pixel] = HasSurfaceOptics != 0
-		? float4(LayerSubsurface.SampleLevel(LinearWrapSampler, SourceUV, 0.0f).rgb, 0.0f) : DefaultSubsurface;
+	OutputFuzzColor[Pixel] = FuzzTint;
+	OutputSubsurface[Pixel] = Subsurface;
 	// A layer with no height of its own (a fill, or a surface without RAMH) contributes its
 	// constant height, so generators on it start from the same value the composite would use.
 	// The constant is a level, not a feature, so tiling leaves it alone.
@@ -1421,13 +1441,16 @@ void CompositeOpticsCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const int2 Pixel = int2(DispatchThreadId.xy);
 	if (any(Pixel >= OutputSize)) { return; }
 	const float Alpha = OpticalCoverage.Load(int3(Pixel, 0));
-	float4 Optics = lerp(PreviousOptics.Load(int3(Pixel, 0)), LayerOptics.Load(int3(Pixel, 0)), Alpha);
+	const float FuzzAlpha = WriteFuzz != 0 ? Alpha : 0.0f;
+	const float SSSAlpha = WriteSSS != 0 ? Alpha : 0.0f;
+	float4 Optics = lerp(PreviousOptics.Load(int3(Pixel, 0)), LayerOptics.Load(int3(Pixel, 0)),
+		float4(Alpha, FuzzAlpha, FuzzAlpha, SSSAlpha));
 	Optics.r = CompositedRAM.Load(int3(Pixel, 0)).a;
 	OutputOptics[Pixel] = Optics;
 	OutputFuzzColor[Pixel] = float4(lerp(PreviousFuzzColor.Load(int3(Pixel, 0)).rgb,
-		LayerFuzzColor.Load(int3(Pixel, 0)).rgb, Alpha), 0.0f);
+		LayerFuzzColor.Load(int3(Pixel, 0)).rgb, FuzzAlpha), 0.0f);
 	OutputSubsurface[Pixel] = float4(lerp(PreviousSubsurface.Load(int3(Pixel, 0)).rgb,
-		LayerSubsurface.Load(int3(Pixel, 0)).rgb, Alpha), 0.0f);
+		LayerSubsurface.Load(int3(Pixel, 0)).rgb, SSSAlpha), 0.0f);
 }
 
 // Exact integer quarter-turn, matching MixtormatRotateOutput.usf. Also used without

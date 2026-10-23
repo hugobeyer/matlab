@@ -1676,6 +1676,7 @@ private:
 	// The Surface Adjustments body, as titled cards. Extracted from the inline tree it used to
 	// be: one column of thirteen sliders with no structure, which is what the cards are for.
 	TSharedRef<SWidget> BuildSurfaceAdjustmentCards();
+		TSharedRef<SWidget> BuildLayerOpticsControls();
 
 	// Appends the Feature, Curvature and Surface Mask cards. Appends rather than returns,
 	// because these are siblings of the cards above them now rather than a group of their own.

@@ -65,7 +65,7 @@ namespace MixtormatPresetUi
 		AddField(LOCTEXT("TypedPresetDescription", "Description (optional)"), &FEntry::Description);
 		Menu.Widget(SNew(STextBlock).Text_Lambda([State]() { return State->Error; }).AutoWrapText(true)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel"))));
-		Menu.Caption(LOCTEXT("TypedPresetCommitHelp", "Enter to save. Existing user names/files are never overwritten."));
+		Menu.Caption(LOCTEXT("TypedPresetCommitHelp", "Enter to save as a new preset. Choose a unique name."));
 		return Menu.Build();
 	}
 }
@@ -142,9 +142,33 @@ TSharedRef<SWidget> SMixtormat::BuildModulePresetMenu()
 	FText Error;
 	MixtormatPresetStore::ListModules(Expected, Presets, Error);
 	if (!Error.IsEmpty()) { Menu.Caption(Error); }
+	Menu.SubMenu(LOCTEXT("OverwriteModulePreset", "Overwrite Preset…"), nullptr,
+		FOnGetContent::CreateLambda([this, Address, Presets]()
+		{
+			MixtormatMenu::FBuilder OverwriteMenu;
+			OverwriteMenu.Caption(LOCTEXT("OverwriteModuleHeading", "REPLACE WITH CURRENT SETTINGS"));
+			for (const MixtormatPresetStore::FModulePreset& Preset : Presets)
+			{
+				OverwriteMenu.Item(FText::FromString(Preset.Name), nullptr,
+					FSimpleDelegate::CreateLambda([this, Address, Preset]()
+					{
+						const FMixtormatLayerChild* Source = ResolveChildAt(Address);
+						if (!Source) { WorkingStatusText = LOCTEXT("PresetSourceGone", "The source module no longer exists.").ToString(); return; }
+						MixtormatPresetStore::FModulePreset Current;
+						FText Issue;
+						if (!MixtormatPresetStore::CaptureModule(*Source, Current, Issue)
+							|| !MixtormatPresetStore::OverwriteModule(Preset, Current, Issue))
+						{ WorkingStatusText = Issue.ToString(); return; }
+						WorkingStatusText = FString::Printf(TEXT("Overwrote preset %s"), *Preset.Name);
+					})).ToolTip(LOCTEXT("OverwriteModuleEntryHelp", "Replace this preset with the current module settings. Saved in your user preset library."));
+			}
+			return OverwriteMenu.Build();
+		})).Enabled(bEditable && !Presets.IsEmpty()).ToolTip(bEditable
+			? LOCTEXT("OverwriteModulePresetHelp", "Replace any listed preset, including built-in looks, with current settings.") : Restriction);
+	Menu.Separator();
 	for (const MixtormatPresetStore::FModulePreset& Preset : Presets)
 	{
-		const FText Label = FText::FromString(Preset.Name + (Preset.bShipped ? TEXT(" · Shipped") : FString()));
+		const FText Label = FText::FromString(Preset.Name);
 		Menu.Item(Label, nullptr, FSimpleDelegate::CreateLambda([this, Address, Preset]()
 		{
 			MixtormatPresetStore::FModulePreset Loaded = Preset;

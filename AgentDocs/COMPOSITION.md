@@ -62,6 +62,21 @@ Surface IDs feature source chips (Primary / Secondary) use full-width rows so
 long options such as Normal Flatness remain readable at the authored Inspector
 width; producer math and feature enumeration are unchanged.
 
+## Layer surface optics
+
+Material and Fill layers expose optional SSS and fuzz in **Surface Optics**. Both are off
+by default. SSS authors amount and RGB mean free path in centimeters; fuzz authors amount,
+roughness and linear tint. `AddLayerInputPass` resolves these values before ordered modules,
+so Skin can subsequently modify them. Pass Through bypasses authored overrides, and Normal
+Detail disables them. Controls remain visible but disabled when unavailable.
+
+`CompositeOpticsCS` uses the material pass's coverage (including masks and opacity) with
+independent SSS/fuzz write gates. A layer without an optical source, override or corresponding
+Surfacing writer preserves that channel from below. An enabled zero amount explicitly clears
+it within coverage. Source composition optics remain available when overrides are disabled.
+These channels use the existing optical targets, shared Substrate binding and bake outputs;
+no new render passes or project-setting changes are introduced.
+
 ## Entry points
 
 | Thing | File |

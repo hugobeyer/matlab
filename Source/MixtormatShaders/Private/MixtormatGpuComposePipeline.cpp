@@ -1341,7 +1341,8 @@ namespace MixtormatGpuCompositor
 						const bool bPrepareSurface = !LayerCtx.PendingBreakups.IsEmpty()
 							|| !Layer.SurfaceBlurs.IsEmpty();
 						if (!bLoggedOpticalBlurLimit && !Layer.SurfaceBlurs.IsEmpty()
-							&& (Layer.bHasSurfaceOptics || LayerCtx.bSurfacingFuzz || LayerCtx.bSurfacingSSS
+							&& (Layer.bHasSurfaceOptics || Layer.bOverrideFuzz || Layer.bOverrideSSS
+														|| LayerCtx.bSurfacingFuzz || LayerCtx.bSurfacingSSS
 								|| (Layer.bFillPassThrough && Ctx.bHasSurfaceOptics)))
 						{
 							bLoggedOpticalBlurLimit = true;
@@ -1474,7 +1475,8 @@ namespace MixtormatGpuCompositor
 						// never target allocation or whether a deliberately authored amount is zero.
 						if (Layer.bEnabled && Layer.Opacity > 0.0f && (!Layer.bNormalOnly || Layer.bFillPassThrough))
 						{
-							Ctx.bHasSurfaceOptics |= (!Layer.bFillPassThrough && Layer.bHasSurfaceOptics)
+							Ctx.bHasSurfaceOptics |= (!Layer.bFillPassThrough
+															&& (Layer.bHasSurfaceOptics || Layer.bOverrideFuzz || Layer.bOverrideSSS))
 								|| (LayerCtx.bSurfacingF0 && Layer.F0Influence > 0.0f)
 								|| LayerCtx.bSurfacingFuzz || LayerCtx.bSurfacingSSS;
 						}

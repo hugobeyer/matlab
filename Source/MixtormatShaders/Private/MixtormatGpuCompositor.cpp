@@ -298,6 +298,11 @@ public:
 		SHADER_PARAMETER(uint32, HasPackedHeight)
 		SHADER_PARAMETER(float, ConstantHeight)
 		SHADER_PARAMETER(uint32, HasSurfaceOptics)
+		SHADER_PARAMETER(uint32, OverrideSSS)
+		SHADER_PARAMETER(uint32, OverrideFuzz)
+		SHADER_PARAMETER(FVector4f, AuthoredOptics)
+		SHADER_PARAMETER(FVector4f, AuthoredFuzzColor)
+		SHADER_PARAMETER(FVector4f, AuthoredSubsurface)
 		SHADER_PARAMETER(uint32, ResolveMaterialValues)
 		SHADER_PARAMETER(uint32, UseSourceF0)
 		SHADER_PARAMETER(uint32, OverrideBaseColor)
@@ -437,6 +442,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, OpticalCoverage)
+		SHADER_PARAMETER(uint32, WriteFuzz)
+		SHADER_PARAMETER(uint32, WriteSSS)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, CompositedRAM)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerOptics)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, LayerFuzzColor)
@@ -770,6 +777,11 @@ namespace MixtormatGpuCompositor
 		Parameters->HasPackedHeight = Layer.bHasPackedHeight ? 1u : 0u;
 		Parameters->ConstantHeight = Layer.ConstantHeight;
 		Parameters->HasSurfaceOptics = Layer.bHasSurfaceOptics ? 1u : 0u;
+				Parameters->OverrideSSS = Layer.bOverrideSSS && !Layer.bFillPassThrough ? 1u : 0u;
+				Parameters->OverrideFuzz = Layer.bOverrideFuzz && !Layer.bFillPassThrough ? 1u : 0u;
+				Parameters->AuthoredOptics = Layer.AuthoredOptics;
+				Parameters->AuthoredFuzzColor = Layer.AuthoredFuzzColor;
+				Parameters->AuthoredSubsurface = Layer.AuthoredSubsurface;
 		Parameters->ResolveMaterialValues = HasOrderedSurfacing(Layer) ? 1u : 0u;
 		Parameters->UseSourceF0 = Layer.bUseSourceF0 ? 1u : 0u;
 		Parameters->OverrideBaseColor = Layer.bOverrideBaseColor && !LayerCtx.ReferencedColor ? 1u : 0u;
@@ -1414,6 +1426,10 @@ namespace MixtormatGpuCompositor
 		auto* Optical = GraphBuilder.AllocParameters<FMixtormatCompositeOpticsCS::FParameters>();
 		Optical->OutputSize = Request.Resolution;
 		Optical->OpticalCoverage = OpticalCoverage;
+				Optical->WriteFuzz = Layer.bFillPassThrough || Layer.bHasSurfaceOptics
+					|| Layer.bOverrideFuzz || LayerCtx.bSurfacingFuzz ? 1u : 0u;
+				Optical->WriteSSS = Layer.bFillPassThrough || Layer.bHasSurfaceOptics
+					|| Layer.bOverrideSSS || LayerCtx.bSurfacingSSS ? 1u : 0u;
 		Optical->CompositedRAM = OutputRAM[WriteIndex];
 		Optical->LayerOptics = LayerCtx.LayerInputOptics;
 		Optical->LayerFuzzColor = LayerCtx.LayerInputFuzzColor;

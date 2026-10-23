@@ -446,6 +446,27 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface", meta = (EditCondition = "bOverrideMetallic", UIMin = "0.0", UIMax = "1.0"))
 	float Metallic = 0.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (DisplayName = "Enable SSS", ToolTip = "Author subsurface scattering for this layer. When disabled, retain source or underlying SSS. Layer masks and opacity control coverage."))
+	bool bOverrideSSS = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Subsurface scattering amount. Zero explicitly removes SSS within this layer's coverage."))
+	float SSSAmount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "10", Delta = "0.01", ToolTip = "RGB mean free path in centimeters, not surface color. Larger values scatter light farther."))
+	FLinearColor MeanFreePath = FLinearColor(0.1f, 0.1f, 0.1f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (DisplayName = "Enable Fuzz", ToolTip = "Author fuzz for this layer. When disabled, retain source or underlying fuzz. Layer masks and opacity control coverage."))
+	bool bOverrideFuzz = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fuzz shading amount, not geometric hair. Zero explicitly removes fuzz within this layer's coverage."))
+	float FuzzAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Roughness of the fuzz shading lobe."))
+	float FuzzRoughness = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Linear RGB tint of the fuzz shading lobe."))
+	FLinearColor FuzzColor = FLinearColor::White;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "1.0", UIMax = "8.0", Delta = "1.0"))
 	float Tiling = 1.0f;
 

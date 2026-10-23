@@ -147,9 +147,9 @@ namespace MixtormatPresetStore
 			{ if (!Info.Dependencies.Contains(Path)) { return Fail(Error, TEXT("Undeclared asset dependency: ") + Path.ToString()); } }
 			return true;
 		}
-		bool Write(const FString& Filename, const TSharedRef<FJsonObject>& Json, FText& Error)
+		bool Write(const FString& Filename, const TSharedRef<FJsonObject>& Json, FText& Error, bool bOverwrite = false)
 		{
-			if (FPaths::GetExtension(Filename).ToLower() != TEXT("json") || IFileManager::Get().FileExists(*Filename))
+			if (FPaths::GetExtension(Filename).ToLower() != TEXT("json") || (!bOverwrite && IFileManager::Get().FileExists(*Filename)))
 			{ return Fail(Error, TEXT("Choose a new .json filename. Existing presets are never overwritten.")); }
 			FString Text;
 			if (!FJsonSerializer::Serialize(Json, TJsonWriterFactory<>::Create(&Text)) || FTCHARToUTF8(*Text).Length() > MaxBytes)
@@ -157,7 +157,7 @@ namespace MixtormatPresetStore
 			const FString Temporary = Filename + TEXT(".") + FGuid::NewGuid().ToString(EGuidFormats::Digits) + TEXT(".tmp");
 			if (!FFileHelper::SaveStringToFile(Text, *Temporary, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 			{ return Fail(Error, TEXT("Cannot write preset temporary file.")); }
-			if (!IFileManager::Get().Move(*Filename, *Temporary, false, false))
+			if (!IFileManager::Get().Move(*Filename, *Temporary, bOverwrite, false))
 			{
 				IFileManager::Get().Delete(*Temporary);
 				return Fail(Error, TEXT("Cannot publish preset. Destination may exist or be read-only."));
@@ -273,7 +273,7 @@ namespace MixtormatPresetStore
 		Destination = MoveTemp(Copy);
 		return true;
 	}
-	bool ExportModule(const FString& Filename, const FModulePreset& Preset, FText& Error)
+	static bool WriteModule(const FString& Filename, const FModulePreset& Preset, FText& Error, bool bOverwrite)
 	{
 		if (!Documents::ValidInfo(Preset, Error)) { return false; }
 		FStructProperty* Property = Documents::ModuleProperty(Preset.Settings);
@@ -286,7 +286,41 @@ namespace MixtormatPresetStore
 		TSharedRef<FJsonObject> Json = Documents::Envelope(Preset, TEXT("Modules"), Assets);
 		Json->SetNumberField(TEXT("childType"), static_cast<int32>(Preset.Settings.Type));
 		Json->SetObjectField(TEXT("payload"), Payload);
-		return Documents::Write(Filename, Json, Error);
+		return Documents::Write(Filename, Json, Error, bOverwrite);
+	}
+	bool ExportModule(const FString& Filename, const FModulePreset& Preset, FText& Error)
+	{
+		return WriteModule(Filename, Preset, Error, false);
+	}
+	bool OverwriteModule(const FModulePreset& Target, const FModulePreset& Current, FText& Error)
+	{
+		if (!IsModuleCompatible(Target.Settings, Current.Settings))
+		{ return Documents::Fail(Error, TEXT("Cannot overwrite a different module subtype.")); }
+		FModulePreset Replacement = Current;
+		Replacement.Name = Target.Name;
+		Replacement.Category = Target.Category;
+		Replacement.Description = Target.Description;
+		const FString Root = Documents::UserDirectory(TEXT("Modules"));
+		if (!IFileManager::Get().MakeDirectory(*Root, true))
+		{ return Documents::Fail(Error, TEXT("Cannot create user preset directory.")); }
+		// Built-in and plugin presets are replaced in the user library, never in the install.
+		FString Filename = FPaths::Combine(Root, Replacement.Id.ToString(EGuidFormats::Digits) + TEXT(".json"));
+		TArray<FString> Files;
+		IFileManager::Get().FindFiles(Files, *FPaths::Combine(Root, TEXT("*.json")), true, false);
+		for (const FString& File : Files)
+		{
+			FModulePreset Existing;
+			FText Issue;
+			const FString Path = FPaths::Combine(Root, File);
+			if (LoadModule(Path, Existing, Issue) && Existing.Name.Equals(Target.Name, ESearchCase::IgnoreCase)
+				&& IsModuleCompatible(Existing.Settings, Target.Settings))
+			{
+				Replacement.Id = Existing.Id;
+				Filename = Path;
+				break;
+			}
+		}
+		return WriteModule(Filename, Replacement, Error, true);
 	}
 	bool LoadModule(const FString& Filename, FModulePreset& OutPreset, FText& Error)
 	{
@@ -311,11 +345,28 @@ namespace MixtormatPresetStore
 	{
 		TArray<FModulePreset> Presets;
 		const bool bClean = Documents::List(TEXT("Modules"), Presets, Error, LoadModule);
+		// User entries take precedence over matching plugin entries of the same subtype.
+		TArray<FModulePreset> Visible;
+		for (const FModulePreset& Preset : Presets)
+		{
+			const bool bOverridden = Preset.bShipped && Presets.ContainsByPredicate([&Preset](const FModulePreset& Other)
+			{
+				return !Other.bShipped && Other.Name.Equals(Preset.Name, ESearchCase::IgnoreCase)
+					&& IsModuleCompatible(Other.Settings, Preset.Settings);
+			});
+			if (!bOverridden) { Visible.Add(Preset); }
+		}
+		Presets = MoveTemp(Visible);
 		if (Child.Type == EMixtormatLayerChildType::Surfacing
 			&& Child.Surfacing.Type == EMixtormatSurfacingType::Skin)
 		{
 			for (const FMixtormatSkinPreset& SkinPreset : MixtormatSurfacing::GetSkinPresets())
 			{
+				if (Presets.ContainsByPredicate([&](const FModulePreset& Existing)
+				{
+					return Existing.Name.Equals(SkinPreset.Name.ToString(), ESearchCase::IgnoreCase)
+						&& IsModuleCompatible(Existing.Settings, Child);
+				})) { continue; }
 				FModulePreset& Preset = Presets.AddDefaulted_GetRef();
 				Preset.Name = SkinPreset.Name.ToString();
 				Preset.Description = SkinPreset.Description.ToString();

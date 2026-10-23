@@ -52,6 +52,7 @@ namespace MixtormatPresetStore
 	bool ApplyModule(const FModulePreset& Preset, FMixtormatLayerChild& Destination, FText& Error);
 	bool IsModuleCompatible(const FMixtormatLayerChild& A, const FMixtormatLayerChild& B);
 	bool SaveModule(const FModulePreset& Preset, FText& Error);
+		bool OverwriteModule(const FModulePreset& Target, const FModulePreset& Current, FText& Error);
 	bool LoadModule(const FString& Filename, FModulePreset& OutPreset, FText& Error);
 	bool ListModules(const FMixtormatLayerChild& Child, TArray<FModulePreset>& OutPresets, FText& Error);
 	bool ImportModule(const FString& Filename, const FMixtormatLayerChild& Expected, FText& Error);

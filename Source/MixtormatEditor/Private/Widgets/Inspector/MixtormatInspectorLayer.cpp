@@ -10,6 +10,7 @@
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Rows/SMixtormatRow.h"
+#include "UObject/UnrealType.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
 
@@ -64,6 +65,97 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRotationMenu()
 			}));
 	}
 	return Menu.Build();
+}
+
+TSharedRef<SWidget> SMixtormat::BuildLayerOpticsControls()
+{
+	const auto Layer = [this]() -> FMixtormatLayer*
+	{
+		return WorkingLayers.IsValidIndex(SelectedLayerIndex) ? &WorkingLayers[SelectedLayerIndex] : nullptr;
+	};
+	const FMixtormatLayer Defaults;
+	const auto Property = [](FName Name) { return FMixtormatLayer::StaticStruct()->FindPropertyByName(Name); };
+	const auto Scalar = [this, Layer, Property, Defaults](FName Name, float FMixtormatLayer::* Member)
+	{
+		const FProperty* P = Property(Name);
+		return MakeMemberSlider<FMixtormatLayer>(P->GetDisplayNameText(), Layer, Member,
+			FCString::Atod(*P->GetMetaData(TEXT("UIMin"))), FCString::Atod(*P->GetMetaData(TEXT("UIMax"))),
+			Defaults.*Member, FCString::Atod(*P->GetMetaData(TEXT("Delta"))), P->GetToolTipText());
+	};
+	const auto Toggle = [this, Layer, Property](FName Name, bool FMixtormatLayer::* Member)
+	{
+		const FProperty* P = Property(Name);
+		return MakeMemberToggle<FMixtormatLayer>(P->GetDisplayNameText(), Layer, Member, P->GetToolTipText());
+	};
+	TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox)
+		.IsEnabled_Lambda([Layer]()
+		{
+			const auto* L = Layer();
+			return L && L->ChannelMode != EMixtormatLayerChannelMode::NormalDetail
+				&& !(L->Type == EMixtormatLayerType::Fill && L->bFillPassThrough);
+		});
+	const auto SSS = AddCard(Panel, LOCTEXT("LayerSSSCard", "SUBSURFACE"));
+	AddSliderRow(SSS, Toggle(TEXT("bOverrideSSS"), &FMixtormatLayer::bOverrideSSS));
+	TSharedRef<SVerticalBox> SSSValues = SNew(SVerticalBox).IsEnabled_Lambda([Layer]() { return Layer() && Layer()->bOverrideSSS; });
+	SSS->AddSlot().AutoHeight()[SSSValues];
+	AddSliderRow(SSSValues, Scalar(TEXT("SSSAmount"), &FMixtormatLayer::SSSAmount));
+	const auto MFP = [this, Layer, Defaults, Property](const FText& Label, float FLinearColor::* Component)
+	{
+		const FProperty* P = Property(TEXT("MeanFreePath"));
+		const double Default = Defaults.MeanFreePath.*Component;
+		return MakeSlider(Label, TAttribute<double>::CreateLambda([Layer, Component, Default]()
+			{ return Layer() ? static_cast<double>(Layer()->MeanFreePath.*Component) : Default; }),
+			FCString::Atod(*P->GetMetaData(TEXT("UIMin"))), FCString::Atod(*P->GetMetaData(TEXT("UIMax"))),
+			Default, FCString::Atod(*P->GetMetaData(TEXT("Delta"))), false,
+			FMixtormatOnSliderValueChanged::CreateLambda([this, Layer, Component](double Value)
+			{
+				if (auto* L = Layer(); L && FMath::IsFinite(Value))
+				{ L->MeanFreePath.*Component = FMath::Max(0.0f, static_cast<float>(Value)); RefreshLayeredPreview(); }
+			}), FSimpleDelegate::CreateLambda([this, Layer, Component, Default]()
+			{
+				if (auto* L = Layer()) { L->MeanFreePath.*Component = static_cast<float>(Default); RefreshLayeredPreview(); }
+			}), P->GetToolTipText());
+	};
+	AddSliderRow(SSSValues, MFP(LOCTEXT("LayerMFPR", "Mean Free Path R (cm)"), &FLinearColor::R));
+	AddSliderRow(SSSValues, MFP(LOCTEXT("LayerMFPG", "Mean Free Path G (cm)"), &FLinearColor::G));
+	AddSliderRow(SSSValues, MFP(LOCTEXT("LayerMFPB", "Mean Free Path B (cm)"), &FLinearColor::B));
+	const auto Fuzz = AddCard(Panel, LOCTEXT("LayerFuzzCard", "FUZZ"));
+	AddSliderRow(Fuzz, Toggle(TEXT("bOverrideFuzz"), &FMixtormatLayer::bOverrideFuzz));
+	TSharedRef<SVerticalBox> FuzzValues = SNew(SVerticalBox).IsEnabled_Lambda([Layer]() { return Layer() && Layer()->bOverrideFuzz; });
+	Fuzz->AddSlot().AutoHeight()[FuzzValues];
+	AddSliderRow(FuzzValues, MixtormatRow::MakePair(Scalar(TEXT("FuzzAmount"), &FMixtormatLayer::FuzzAmount),
+		Scalar(TEXT("FuzzRoughness"), &FMixtormatLayer::FuzzRoughness)));
+	AddSliderRow(FuzzValues, MixtormatRow::MakeTrailing(LOCTEXT("LayerFuzzTint", "Tint"),
+		SNew(SButton)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
+		.OnClicked_Lambda([this, Layer]()
+		{
+			if (!Layer()) { return FReply::Handled(); }
+			const FGuid Id = Layer()->LayerId;
+			const FLinearColor Original = Layer()->FuzzColor;
+			const TWeakPtr<SMixtormat> WeakThis = SharedThis(this);
+			const auto Apply = [WeakThis, Id](FLinearColor Color)
+			{
+				if (const auto Widget = WeakThis.Pin())
+				{
+					if (auto* L = Widget->WorkingLayers.FindByPredicate([Id](const FMixtormatLayer& Value) { return Value.LayerId == Id; }))
+					{ Color.A = 1.0f; L->FuzzColor = Color; Widget->RefreshLayeredPreview(); }
+				}
+			};
+			LastHistoryRecordTime = 0.0;
+			FColorPickerArgs Args;
+			Args.bUseAlpha = false;
+			Args.InitialColor = Original;
+			Args.OnColorCommitted = FOnLinearColorValueChanged::CreateLambda(Apply);
+			Args.OnColorPickerCancelled = FOnColorPickerCancelled::CreateLambda([Apply, Original](FLinearColor) { Apply(Original); });
+			OpenColorPicker(Args);
+			return FReply::Handled();
+		})
+		[
+			SNew(SColorBlock).Size(FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize))
+			.Color_Lambda([Layer, Defaults]() { return Layer() ? Layer()->FuzzColor : Defaults.FuzzColor; })
+		], Property(TEXT("FuzzColor"))->GetToolTipText()));
+	return Panel;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildSurfaceAdjustmentCards()

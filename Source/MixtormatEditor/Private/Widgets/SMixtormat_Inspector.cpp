@@ -848,6 +848,13 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 						]
 						+ SVerticalBox::Slot().AutoHeight()
 						[
+							SNew(SMixtormatInspectorGroup)
+							.Title(LOCTEXT("LayerOpticsHeading", "SURFACE OPTICS"))
+							.InitiallyExpanded(false)
+							[BuildLayerOpticsControls()]
+						]
+						+ SVerticalBox::Slot().AutoHeight()
+						[
 							BuildHeightBlendControls()
 						]
 					]

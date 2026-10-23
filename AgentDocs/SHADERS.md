@@ -187,20 +187,13 @@ logical output state and no read/write alias.
   full-resolution seed, periodic cubic B-spline correction, filtered R and unblurred B.
   Four bilinear taps implement the positive-weight bicubic correction filter; analytic
   seed detail is never upsampled from the solver grid or smoothed by this filter.
-- `bAutoScaleHeight` defaults on and is exposed beside `HeightScale`. Each band's reference
-  relief-to-width ratio is divided by its authored period times the maximum absolute placement
-  scale (rate floored at one per tile): tissue, broad/cross folds, medium/fine wrinkles,
-    and each grain octave independently.
-  Pore relief also follows `PoreSize`. This is UV-relative sizing, not physical mesh calibration;
-  local drift/PreUV distortion does not change the uniform band amplitude. Off retains fixed
-  amplitudes. Tissue Hessian and material Fat normalization use the same calculated tissue
-  amplitude. Seed rest is scaled before solving, so correction and rest retain matching units.
+
 - The prototype's amplitudes divided by its **3.4-unit** patch width are UV relief,
   while canonical height uses `8 / MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES = 1/128` UV per
   height unit. Resolve applies the inverse (**128**) exactly once with `HeightScale`;
   this is a unit conversion, not arbitrary gain or 0–1 normalization. AO/geometry convert
   resolved canonical height back to UV. Cached micro curvature and tissue Hessians already
-  use UV relief; the material `Fat` ratio uses `TissueState.r / SkinTissueAmplitude()`.
+  use UV relief; the material `Fat` ratio stays `TissueState.r / SkinTissueRelief`.
 
 ### Fields, periodicity and optical relationships
 
