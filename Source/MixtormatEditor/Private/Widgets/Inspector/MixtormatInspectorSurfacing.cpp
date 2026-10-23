@@ -48,6 +48,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 #define SKIN_WRITE(Name) Toggle(GET_MEMBER_NAME_CHECKED(FMixtormatSkin, Name), &FMixtormatSkin::Name)
 	const auto Surface = AddCard(Cards, LOCTEXT("SkinSurfaceCard", "SURFACE"));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Amount), SKIN_FLOAT(HeightScale)));
+	AddSliderRow(Surface, SKIN_FLOAT(SurfaceTiling));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteHeight), SKIN_WRITE(bWriteColor)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteRoughness), SKIN_WRITE(bWriteAO)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteF0), SKIN_WRITE(bWriteFuzz)));
@@ -56,6 +57,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	const auto Tissue = AddCard(Cards, LOCTEXT("SkinTissueCard", "TISSUE"));
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_INT(Seed), SKIN_INT(TissueCells)));
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_FLOAT(Fullness), SKIN_FLOAT(Softness)));
+	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_FLOAT(GravityBulge), SKIN_FLOAT(GravityAngle)));
 
 	const auto Solver = AddCard(Cards, LOCTEXT("SkinSolverCard", "FILM RELAXATION"));
 	AddSliderRow(Solver, MixtormatRow::MakePair(SKIN_INT(SolverIterations), SKIN_INT(SolverResolution)));
@@ -103,6 +105,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Albedo, WrapParameterControl(AlbedoEditor,
 		MakeAddressResolver<FMixtormatSkin>(Skin, &FMixtormatSkin::AlbedoRamp)));
 	AddSliderRow(Albedo, MixtormatRow::MakePair(SKIN_FLOAT(PigmentVariation), SKIN_FLOAT(VascularAmount)));
+	AddSliderRow(Albedo, MixtormatRow::MakePair(SKIN_FLOAT(VascularScale), SKIN_FLOAT(VascularDensity)));
 	AddSliderRow(Albedo, SKIN_FLOAT(ThicknessVariation));
 
 	const auto Roughness = AddCard(Cards, LOCTEXT("SkinRoughnessCard", "ROUGHNESS & CAVITY"));
@@ -140,7 +143,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	const auto Fuzz = AddCard(Cards, LOCTEXT("SkinFuzzCard", "FUZZ"));
 	AddSliderRow(Fuzz, MixtormatRow::MakePair(SKIN_FLOAT(FuzzAmount), SKIN_FLOAT(FuzzRoughness)));
 	AddSliderRow(Fuzz, MixtormatRow::MakeTrailing(LOCTEXT("SkinFuzzColor", "Tint"),
-		SNew(SButton)
+		WrapParameterControl(SNew(SButton)
 		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 		.OnClicked_Lambda([this, Skin]()
 		{
@@ -175,7 +178,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 			SNew(SColorBlock)
 			.Size(FVector2D(FMixtormatThemeStore::GetResolved().ControlLayout.IconBrushSize))
 			.Color_Lambda([Skin, Defaults]() { return Skin() ? Skin()->FuzzColor : Defaults.FuzzColor; })
-		], Property(TEXT("FuzzColor"))->GetToolTipText()));
+		], MakeAddressResolver<FMixtormatSkin>(Skin, &FMixtormatSkin::FuzzColor)), Property(TEXT("FuzzColor"))->GetToolTipText()));
 
 	const auto Subsurface = AddCard(Cards, LOCTEXT("SkinSubsurfaceCard", "SUBSURFACE"));
 	AddSliderRow(Subsurface, SKIN_FLOAT(SSSAmount));

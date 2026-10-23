@@ -88,7 +88,12 @@ namespace
 			SHADER_PARAMETER(int32, FoldCells)
 			SHADER_PARAMETER(int32, DetailCells)
 			SHADER_PARAMETER(int32, PoreCells)
+			SHADER_PARAMETER(float, SurfaceTiling)
 			SHADER_PARAMETER(int32, DetailTiling)
+			SHADER_PARAMETER(float, VascularScale)
+			SHADER_PARAMETER(float, VascularDensity)
+			SHADER_PARAMETER(float, GravityBulge)
+			SHADER_PARAMETER(float, GravityAngle)
 			SHADER_PARAMETER(float, HeightScale)
 			SHADER_PARAMETER(float, Fullness)
 			SHADER_PARAMETER(float, Softness)
@@ -404,7 +409,12 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->FoldCells = Skin.FoldCells;
 	P->DetailCells = Skin.DetailCells;
 	P->PoreCells = Skin.PoreCells;
+	P->SurfaceTiling = Skin.SurfaceTiling;
 	P->DetailTiling = Skin.DetailTiling;
+	P->VascularScale = Skin.VascularScale;
+	P->VascularDensity = Skin.VascularDensity;
+	P->GravityBulge = Skin.GravityBulge;
+	P->GravityAngle = Skin.GravityAngle;
 	P->HeightScale = Skin.HeightScale;
 	P->Fullness = Skin.Fullness;
 	P->Softness = Skin.Softness;

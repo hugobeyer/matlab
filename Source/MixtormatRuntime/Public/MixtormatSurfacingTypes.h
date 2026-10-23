@@ -50,6 +50,9 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	int32 DetailCells = 96;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "256", Delta = "1", ToolTip = "Periodic pore cells per detail repeat."))
 	int32 PoreCells = 125;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.25", UIMax = "4", Delta = "0.01", ToolTip = "Global tiling for all Skin features."))
+	float SurfaceTiling = 1.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "16", Delta = "1", ToolTip = "Integer repeats of baked microdetail. This is not independent runtime detail mapping."))
 	int32 DetailTiling = 1;
 
@@ -61,6 +64,10 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float Bending = 0.35f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Tissue foundation support during film relaxation. Higher values hold the film closer to its foundation."))
 	float Support = 0.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Gravity fat bulge — tissue sags and thickens downslope."))
+	float GravityBulge = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (Units = "deg", UIMin = "-180", UIMax = "180", Delta = "0.1", ToolTip = "Gravity direction in degrees."))
+	float GravityAngle = -90.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Contribution after child masks. Zero preserves every incoming channel exactly."))
 	float Amount = 1.0f;
@@ -68,7 +75,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float HeightScale = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fullness of the periodic tissue lobes."))
 	float Fullness = 0.9f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Softness of tissue and fold transitions."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Tissue lobe softness (radius falloff)."))
 	float Softness = 0.55f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Authored compression response; curvature is a geometric cue, not measured strain."))
 	float Compression = 0.75f;
@@ -92,7 +99,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	int32 WarpLayers = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Local variation around the preferred fold direction, preserving connected fold families."))
 	float DirectionVariation = 0.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "8", Delta = "0.01", ToolTip = "Elongation of fold families along their preferred direction. One is isotropic."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "8", Delta = "0.01", ToolTip = "Fold stretch along preferred direction. 1 = isotropic."))
 	float Elongation = 3.8f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Cellular breakup mixed into the connected fold pattern. Zero retains only wandering fold families."))
 	float Cellular = 0.12f;
@@ -115,6 +122,10 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float ThicknessVariation = 0.4f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Vascular absorption contribution linked to tissue thickness and pigmentation. Zero removes vascular absorption."))
 	float VascularAmount = 0.12f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.25", UIMax = "4", Delta = "0.01", ToolTip = "Vessel width scale."))
+	float VascularScale = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Vessel density."))
+	float VascularDensity = 0.6f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Cavity occlusion contribution."))
 	float CavityAO = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Additional roughness in cavities."))

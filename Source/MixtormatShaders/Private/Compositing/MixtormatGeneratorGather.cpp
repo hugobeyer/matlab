@@ -313,12 +313,7 @@ namespace MixtormatGpuCompositor
 		// Artist maxima belong to the UI. Retain finite values and valid simulation dimensions/rates.
 		S.GrowthIterations = FMath::Max(S.GrowthIterations, 0);
 		S.SimulationResolution = FMath::Max(S.SimulationResolution, 1);
-		S.Feed = FMath::Max(Finite(S.Feed, Defaults.Feed), 0.0f);
-		S.Kill = FMath::Max(Finite(S.Kill, Defaults.Kill), 0.0f);
-		S.DiffusionA = FMath::Max(Finite(S.DiffusionA, Defaults.DiffusionA), 0.0f);
-		S.DiffusionB = FMath::Max(Finite(S.DiffusionB, Defaults.DiffusionB), 0.0f);
-		S.TimeStep = FMath::Max(Finite(S.TimeStep, Defaults.TimeStep), 0.0f);
-		S.BoundaryThreshold = Finite(S.BoundaryThreshold, Defaults.BoundaryThreshold);
+
 		S.Preview = static_cast<EMixtormatMossPreview>(FMath::Clamp(static_cast<int32>(S.Preview),
 			static_cast<int32>(EMixtormatMossPreview::Moss), static_cast<int32>(EMixtormatMossPreview::Biomass)));
 		S.CavityAttraction = Finite(S.CavityAttraction, Defaults.CavityAttraction);
@@ -329,25 +324,20 @@ namespace MixtormatGpuCompositor
 		S.ExposureTolerance = Finite(S.ExposureTolerance, Defaults.ExposureTolerance);
 		S.ColonyDensity = FMath::Max(S.ColonyDensity, 1);
 		S.GrowthSpread = Finite(S.GrowthSpread, Defaults.GrowthSpread);
-		S.ColonyConnectivity = Finite(S.ColonyConnectivity, Defaults.ColonyConnectivity);
+
 		S.Coverage = Finite(S.Coverage, Defaults.Coverage);
 		S.CushionSize = Finite(S.CushionSize, Defaults.CushionSize);
 		S.CushionHeight = Finite(S.CushionHeight, Defaults.CushionHeight);
-		S.BiomassAccumulation = FMath::Max(Finite(S.BiomassAccumulation, Defaults.BiomassAccumulation), 0.0f);
+
 		S.MatureHeight = Finite(S.MatureHeight, Defaults.MatureHeight);
 		S.ClumpDensity = Finite(S.ClumpDensity, Defaults.ClumpDensity);
 		S.ShootDensity = Finite(S.ShootDensity, Defaults.ShootDensity);
 		S.ShootLength = Finite(S.ShootLength, Defaults.ShootLength);
 		S.FiberThickness = Finite(S.FiberThickness, Defaults.FiberThickness);
-		S.Weight = Finite(S.Weight, Defaults.Weight);
-		S.Adhesion = Finite(S.Adhesion, Defaults.Adhesion);
-		S.GravityInfluence = Finite(S.GravityInfluence, Defaults.GravityInfluence);
+
 		S.Droop = Finite(S.Droop, Defaults.Droop);
 		S.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
-		S.SeedHabitatWeight = Finite(S.SeedHabitatWeight, Defaults.SeedHabitatWeight);
-		S.SeedNoiseWeight = Finite(S.SeedNoiseWeight, Defaults.SeedNoiseWeight);
-		S.SeedMaskWeight = Finite(S.SeedMaskWeight, Defaults.SeedMaskWeight);
-		S.SeedThreshold = Finite(S.SeedThreshold, Defaults.SeedThreshold);
+
 		S.SeedMaskTiling = FMath::Max(S.SeedMaskTiling, 1);
 		// Same direct-texture/asset precedence as Peeling. Resolve before hashing so the
 		// live asset texture, streaming state and reimports participate in both cache keys.
@@ -400,7 +390,7 @@ namespace MixtormatGpuCompositor
 			SimulationHasher.SkipTopLevel = {
 				TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionSize"),
 				TEXT("CushionHeight"), TEXT("MatureHeight"), TEXT("ClumpDensity"), TEXT("ShootDensity"), TEXT("ShootLength"),
-				TEXT("FiberThickness"), TEXT("Weight"), TEXT("Adhesion"), TEXT("GravityInfluence"),
+				TEXT("FiberThickness"),
 				TEXT("Droop"), TEXT("Preview")};
 			SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 			// Placement is already covered by the current-layer dependency hash.

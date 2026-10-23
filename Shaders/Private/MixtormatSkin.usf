@@ -123,8 +123,14 @@ int FoldCells;
 int DetailCells;
 // @param PoreCells
 int PoreCells;
+// @param SurfaceTiling
+float SurfaceTiling;
 // @param DetailTiling
 int DetailTiling;
+// @param VascularScale
+float VascularScale;
+// @param VascularDensity
+float VascularDensity;
 
 // @param HeightScale
 float HeightScale;
@@ -154,6 +160,10 @@ float PoreSize;
 float PoreDepth;
 // @param PoreVariation
 float PoreVariation;
+// @param GravityBulge
+float GravityBulge;
+// @param GravityAngle
+float GravityAngle;
 // @param Grain
 float Grain;
 // @param PigmentVariation
@@ -211,12 +221,10 @@ float3 SkinFiniteRGB(float3 V)
 
 float2 SkinPlacedUV(float2 UV)
 {
-	// GeneratorLayer is bound to 0: reuse ONLY the canonical lifted PreUV sampler here.
-	// Apply the shared orientation without frac so explicit footprints keep winding, even
-	// under strong tiling. Wrapping is performed by periodic lattices, not a rotated UV seam.
 	float2 P = MixtormatGeneratorUV(UV);
-	return (0.5f + mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV,
+	float2 Placed = (0.5f + mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV,
 		GeneratorUVRotation), P - 0.5f)) * GeneratorUVScale + GeneratorUVOffset;
+	return Placed * max(SurfaceTiling, 0.01f);
 }
 
 float SkinFootprint(float2 DX, float2 DY)
@@ -657,6 +665,16 @@ void TissueCS(uint3 DTid : SV_DispatchThreadID)
 	float Thickness = max(0.2f, 1.0f + 0.4f * max(ThicknessVariation, 0.0f)
 		* SkinNoise(Q, max(1.0f, round(float(TissueCells) * 0.61f)), 173u, FP));
 	float Height = SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * Fat * Thickness;
+	// Gravity fat bulge: tissue thickens downslope
+	if (GravityBulge > 0.001f)
+	{
+		float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
+		float2 Grad = float2(TissueState.SampleLevel(LinearWrapSampler, UV + float2(E.x,0),0).r - TissueState.SampleLevel(LinearWrapSampler, UV - float2(E.x,0),0).r,
+			TissueState.SampleLevel(LinearWrapSampler, UV + float2(0,E.y),0).r - TissueState.SampleLevel(LinearWrapSampler, UV - float2(0,E.y),0).r) / (2.0f * E.x);
+		float Downslope = dot(normalize(Grad + 1e-4f), GravDir);
+		Height *= 1.0f + GravityBulge * saturate(Downslope * 0.5f + 0.5f) * 0.6f;
+		Thickness *= 1.0f + GravityBulge * saturate(Downslope * 0.5f + 0.5f) * 0.4f;
+	}
 	// R: unit destination-UV relief. GB: PERIODIC displacement relative to SkinPlacedUV.
 	// A: positive, neutral-at-one thickness factor. Never HeightScale or Amount here.
 	OutTissue[Pixel] = float4(SkinFinite(Height), Q - P, Thickness);
@@ -728,7 +746,8 @@ void SeedCS(uint3 DTid : SV_DispatchThreadID)
 	float Confidence = Anisotropy / (abs(K.x + K.y) + Anisotropy + 1.0e-6f)
 		* smoothstep(0.002f, 0.04f, Anisotropy);
 	float2 MeasuredDirector = Deviator / max(Anisotropy, 1.0e-6f);
-	float2 Blended = lerp(Director, MeasuredDirector, saturate(Confidence * max(Coupling, max(CurvatureStrength, 0.0f))));
+	float CurvatureCoupling = saturate(Analysis.w) * max(CurvatureStrength, 0.0f);
+	float2 Blended = lerp(Director, MeasuredDirector, saturate(Confidence * max(Coupling, CurvatureCoupling)));
 	// At isotropy or opposing directors retain the authored normal, never atan2(0,0).
 	if (dot(Blended, Blended) < 1.0e-8f) { Blended = Director; }
 	float NormalAngle = 0.5f * atan2(Blended.y, Blended.x);
@@ -770,10 +789,14 @@ float4 SkinFineResidual(float2 UV)
 	float MediumGain = max(0.0f, lerp(1.0f, 0.3f + 1.35f * Strain.g + 0.55f * BroadCue, Coupling));
 	float CrownRelax = 1.0f / (1.0f + 2.5f * max(Strain.b, 0.0f));
 	Medium *= max(Strain.g, 0.0f) * CrownRelax * MediumGain;
-	float Fine = SkinCellNetwork(F.Q, round(DetailPeriod * SkinFineFrequencyRatio),
-		FoldWidth * 0.5f, F.DX, F.DY, Tangent, NetworkStretch, 431u, NetworkGradient).x
-		* max(Strain.g, 0.0f) * CrownRelax
-		* max(0.0f, 0.5f + 0.5f * max(Crossing, 0.0f));
+	float Fine = 0.0f;
+	if (Cellular > 0.01f)
+	{
+		Fine = SkinCellNetwork(F.Q, round(DetailPeriod * SkinFineFrequencyRatio),
+			FoldWidth * 0.5f, F.DX, F.DY, Tangent, NetworkStretch, 431u, NetworkGradient).x
+			* max(Strain.g, 0.0f) * CrownRelax
+			* max(0.0f, 0.5f + 0.5f * max(Crossing, 0.0f)) * saturate(Cellular * 2.0f);
+	}
 	// Periodic pore-domain distortion, with its Jacobian included in the footprint.
 	float DistortPeriod = max(1.0f, round(PorePeriod * 0.23f));
 	float3 NX = SkinNoiseD(F.Q, DistortPeriod, 547u, F.FP);
@@ -950,9 +973,8 @@ float2 SkinGeometry(float2 UV, float Center, float2 E, out float2 Slope)
 	return float2(max(Bend, 0.0f), max(-Bend, 0.0f)) / (0.08f + abs(Bend));
 }
 
-static const float SkinVesselCoreWidth = 0.014f;
-static const float SkinVesselDiffusionWidth = 0.025f;
-static const float SkinVesselDensity = 0.6f;
+static const float SkinVesselCoreWidthBase = 0.014f;
+static const float SkinVesselDiffusionWidthBase = 0.025f;
 static const float SkinVesselContrast = 0.35f;
 
 float SkinVesselRandom(uint Hash, uint Salt)
@@ -976,7 +998,7 @@ float SkinVesselBranch(float2 P, float2 Start, float2 End, float Bend, float Wid
 	float Distance = (dot(P - Start, Normal) - Offset) * rsqrt(1.0f + CurveSlope * CurveSlope);
 	float Core = Width * lerp(1.0f, 0.35f, T);
 	// Approximate subdermal diffusion and pixel integration separately; preserve line area.
-	float Diffusion = SkinVesselDiffusionWidth * Thickness;
+	float Diffusion = SkinVesselDiffusionWidthBase * max(VascularScale, 0.1f) * Thickness;
 	float2 Footprint = float2(dot(Gradient, DX), dot(Gradient, DY));
 	float Variance = Core * Core + Diffusion * Diffusion + dot(Footprint, Footprint) / 12.0f;
 	float Profile = exp(-0.5f * Distance * Distance / Variance) * Core * rsqrt(Variance);
@@ -1002,7 +1024,7 @@ float SkinVascular(FSkinFrame F, float Thickness, float CompressionResponse, flo
 		{
 			int2 Cell = Base + int2(X, Y);
 			uint Hash = MixtormatCellHash(Cell, Period, Seed + 947u);
-			if (SkinVesselRandom(Hash, 13u) > SkinVesselDensity) { continue; }
+			if (SkinVesselRandom(Hash, 13u) > saturate(VascularDensity)) { continue; }
 			float2 P = Q - MixtormatCellPoint(Cell, Period, Seed + 947u, 0.7f);
 			float Support = 1.0f - smoothstep(0.8f, 0.95f, length(P));
 			if (Support <= 0.0f) { continue; }
@@ -1011,7 +1033,7 @@ float SkinVascular(FSkinFrame F, float Thickness, float CompressionResponse, flo
 			float2 Across = float2(-Axis.y, Axis.x);
 			float2 Root = -Axis * lerp(0.18f, 0.29f, SkinVesselRandom(Hash, 47u));
 			float2 Fork = Axis * lerp(0.08f, 0.18f, SkinVesselRandom(Hash, 59u));
-			float Width = SkinVesselCoreWidth * lerp(0.65f, 1.35f, SkinVesselRandom(Hash, 71u));
+			float Width = SkinVesselCoreWidthBase * max(VascularScale, 0.1f) * lerp(0.65f, 1.35f, SkinVesselRandom(Hash, 71u));
 			float TrunkBend = 0.04f * (2.0f * SkinVesselRandom(Hash, 83u) - 1.0f);
 			float Tree = SkinVesselBranch(P, Root, Fork, TrunkBend, Width, Thickness, DX, DY);
 			[unroll] for (int Branch = 0; Branch < 2; ++Branch)
@@ -1067,12 +1089,10 @@ void FieldCS(uint3 DTid : SV_DispatchThreadID)
 		+ MicroState.SampleLevel(LinearWrapSampler, UV - 1.5f * Across, 0).rb;
 	float Base = SkinSolvedHeight(UV);
 
-	uint W, H;
-	FoldState.GetDimensions(W, H);
 	float2 FoldGradient;
 	SkinMarblePhase(F.Q, max(float(FoldCells), 1.0f), SkinAuthoredAxis(), 211u, F.FP, FoldGradient);
 	float DestinationRate = length(float2(dot(FoldGradient, F.JX), dot(FoldGradient, F.JY)));
-	float2 Probe = max(1.0f / float2(W, H), 0.35f / max(DestinationRate, 1.0f));
+	float2 Probe = max(1.0f / float2(OutputSize), 0.35f / max(DestinationRate, 1.0f));
 	float2 Slope, CoarseSlope;
 	float2 Geometry = SkinGeometry(UV, Base, Probe, Slope);
 	float2 Coarse = SkinGeometry(UV, Base, min(3.0f * Probe, 0.5f), CoarseSlope);

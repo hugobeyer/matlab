@@ -2962,18 +2962,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
 		LOCTEXT("MossSimulationResolution", "Simulation Resolution"), Moss, &FMixtormatMoss::SimulationResolution, 64, 2048, Defaults.SimulationResolution,
 		LOCTEXT("MossSimulationResolutionHint", "Maximum simulation-grid dimension, preserving aspect ratio independently of output resolution.")));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossFeed", "Feed"), &FMixtormatMoss::Feed, 0, .1, .001,
-			LOCTEXT("MossFeedHint", "Raw chemical A feed rate for the reaction-diffusion simulation.")),
-		Slider(LOCTEXT("MossKill", "Kill"), &FMixtormatMoss::Kill, 0, .1, .001,
-			LOCTEXT("MossKillHint", "Raw chemical B kill rate for the reaction-diffusion simulation."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossDiffusionA", "Diffusion A"), &FMixtormatMoss::DiffusionA, 0, .25, .001,
-			LOCTEXT("MossDiffusionAHint", "Raw chemical A diffusion coefficient before Growth Spread's 0.5..1.5 speed scale.")),
-		Slider(LOCTEXT("MossDiffusionB", "Diffusion B"), &FMixtormatMoss::DiffusionB, 0, .25, .001,
-			LOCTEXT("MossDiffusionBHint", "Raw chemical B diffusion coefficient before Growth Spread and Connectivity scaling."))));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossTimeStep", "Time Step"), &FMixtormatMoss::TimeStep, .05, 1, .01,
-		LOCTEXT("MossTimeStepHint", "Time step per growth iteration.")));
+
 
 	// Seeding
 	Panel = AddCard(Cards, LOCTEXT("MossSeeding", "SEEDING"));
@@ -3060,20 +3049,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossSeedMaskInvert", "Seed Invert"), Moss,
 				&FMixtormatMoss::bSeedMaskInvert,
 				LOCTEXT("MossSeedMaskInvertHint", "Inverts the Seed Mask before weighting and thresholding the initial chemical B seeds.")))]);
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossSeedHabitatWeight", "Habitat"), &FMixtormatMoss::SeedHabitatWeight, 0, 4, .01,
-			LOCTEXT("MossSeedHabitatWeightHint", "Weights the existing cavity/shelter and habitat activation when seeding chemical B. Habitat 1, Noise 0 and no Seed Mask preserve the original cavity activation. Seed inputs never clip grown moss.")),
-		Slider(LOCTEXT("MossSeedNoiseWeight", "Noise"), &FMixtormatMoss::SeedNoiseWeight, 0, 4, .01,
-			LOCTEXT("MossSeedNoiseWeightHint", "Weights built-in periodic fractal inoculation controlled by the existing Colony Density and Seed. For noise-only seeding, set Habitat 0 and Noise 1 with no Seed Mask (or Mask 0). This initializes chemical B without clipping grown moss."))));
-	AddSliderRow(Panel, SNew(SBox).IsEnabled_Lambda(HasSeedMask)[
-		Slider(LOCTEXT("MossSeedMaskWeight", "Mask"), &FMixtormatMoss::SeedMaskWeight, 0, 4, .01,
-			LOCTEXT("MossSeedMaskWeightHint", "Weights the selected Mask asset or direct texture when initializing chemical B. Set Habitat 0, Noise 0 and Mask 1 for mask-only seeding. An absent mask contributes zero weight without changing the stored value. This never clips grown moss."))]);
-	AddSliderRow(Panel, MixtormatRow::MakeHairline());
-	AddSliderRow(Panel, MakeMemberToggle<FMixtormatMoss>(
-		LOCTEXT("MossNormalizeSeedWeights", "Normalize Weights"), Moss, &FMixtormatMoss::bNormalizeSeedWeights,
-		LOCTEXT("MossNormalizeSeedWeightsHint", "Normalizes contributing seed weights; an absent mask contributes zero weight. This affects only chemical B initialization, independently of scoped masks.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossSeedThreshold", "Threshold"), &FMixtormatMoss::SeedThreshold, 0, 1, .01,
-		LOCTEXT("MossSeedThresholdHint", "Threshold applied to the combined seed inputs when initializing chemical B. It never clips grown output and is independent of scoped masks.")));
+
 
 	// Habitat
 	Panel = AddCard(Cards, LOCTEXT("MossHabitat", "HABITAT"));
@@ -3092,13 +3068,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			LOCTEXT("MossGravityAngleHint", "Projected gravity direction in UV space (-90 = downward).")),
 		Slider(LOCTEXT("MossExposure", "Exposure Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
 			LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks."))));
-	AddSliderRow(Panel, MixtormatRow::MakeTrailing(LOCTEXT("MossConstrainGrowthToHabitat", "Constrain Growth to Habitat"), MixtormatRow::MakeCheckbox(
-		TAttribute<ECheckBoxState>::CreateLambda([Moss]() { const auto* M = Moss(); return M && M->bConstrainGrowthToHabitat ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
-		FOnCheckStateChanged::CreateLambda([this, Moss](ECheckBoxState State) { if (auto* M = Moss()) { M->bConstrainGrowthToHabitat = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
-		LOCTEXT("MossConstrainGrowthToHabitatHint", "Confines growth to habitat values at or above Boundary Threshold; disabled permits growth beyond favorable habitat.")));
-	AddSliderRow(Panel, SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->bConstrainGrowthToHabitat; })[
-		Slider(LOCTEXT("MossBoundaryThreshold", "Boundary Threshold"), &FMixtormatMoss::BoundaryThreshold, 0, 1, .01,
-			LOCTEXT("MossBoundaryThresholdHint", "Minimum habitat value permitting growth when Constrain Growth to Habitat is enabled."))]);
+
 
 	// Growth
 	Panel = AddCard(Cards, LOCTEXT("MossGrowth", "GROWTH"));
@@ -3107,16 +3077,12 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		LOCTEXT("MossColonyDensityHint", "Periodic fractal inoculation frequency across the substrate, not a count of colony center sites.")));
 	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
 		LOCTEXT("MossSeed", "Seed"), Moss, &FMixtormatMoss::Seed, 0, 99999, Defaults.Seed));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossSpread", "Growth Spread"), &FMixtormatMoss::GrowthSpread, 0, 1, .01,
-			LOCTEXT("MossSpreadHint", "Sets the diffusion speed scale from 0.5 to 1.5 over the 0..1 control.")),
-		Slider(LOCTEXT("MossConnectivity", "Connectivity"), &FMixtormatMoss::ColonyConnectivity, 0, 1, .01,
-			LOCTEXT("MossConnectivityHint", "Scales chemical B's diffusion ratio from 0.75 to 1.25 over the 0..1 control."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossSpread", "Growth Spread"), &FMixtormatMoss::GrowthSpread, 0, 1, .01,
+		LOCTEXT("MossSpreadHint", "Habitat-gated expansion speed; higher spreads faster into favorable cavity/AO areas.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
 		LOCTEXT("MossCoverageHint", "Overall moss abundance and coverage threshold.")));
 
-	AddSliderRow(Panel, Slider(LOCTEXT("MossBiomassAccumulation", "Biomass Accumulation"), &FMixtormatMoss::BiomassAccumulation, 0, .1, .001,
-		LOCTEXT("MossBiomassAccumulationHint", "Buildup rate per simulation-time unit under sustained chemical B activity. More iterations build older colonies toward full biomass; new growth starts empty. Zero disables buildup without changing chemistry. Dormant biomass is retained.")));
+
 
 	// Structure
 	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
@@ -3142,16 +3108,8 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 
 	// Physical Behavior
 	Panel = AddCard(Cards, LOCTEXT("MossPhysics", "PHYSICAL BEHAVIOR"));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossWeight", "Weight"), &FMixtormatMoss::Weight, 0, 1, .01,
-			LOCTEXT("MossWeightHint", "Colony mass accumulation factor.")),
-		Slider(LOCTEXT("MossAdhesion", "Adhesion"), &FMixtormatMoss::Adhesion, 0, 1, .01,
-			LOCTEXT("MossAdhesionHint", "Continuously resists gravitational sag instead of switching gravity off below a load threshold."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossGravityInfluence", "Gravity Influence"), &FMixtormatMoss::GravityInfluence, 0, 1, .01,
-			LOCTEXT("MossGravityInfluenceHint", "Downward gravitational pull on steep and inclined surfaces.")),
-		Slider(LOCTEXT("MossDroop", "Droop"), &FMixtormatMoss::Droop, 0, 1, .01,
-			LOCTEXT("MossDroopHint", "Amount of gravitational sag along Gravity Angle on sloped substrate. Scales with Weight and Gravity Influence; Adhesion continuously resists it."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossDroop", "Droop"), &FMixtormatMoss::Droop, 0, 1, .01,
+		LOCTEXT("MossDroopHint", "Downslope sag of cushions along Gravity Angle; stronger on steep slopes.")));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)

@@ -464,8 +464,6 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Roughness of the fuzz shading lobe."))
 	float FuzzRoughness = 0.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surface Optics", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Linear RGB tint of the fuzz shading lobe."))
-	FLinearColor FuzzColor = FLinearColor::White;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjustments", meta = (UIMin = "1.0", UIMax = "8.0", Delta = "1.0"))
 	float Tiling = 1.0f;
@@ -762,7 +760,7 @@ struct MIXTORMATRUNTIME_API FMixtormatLayer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (UIMin = "0.0", UIMax = "1.0"))
 	float FuzzInfluence = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Channel Influence", meta = (ToolTip = "Linear RGB fuzz tint shared by the layer optical override and legacy fuzz influence."))
 	FLinearColor FuzzColor = FLinearColor::White;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generated Features")

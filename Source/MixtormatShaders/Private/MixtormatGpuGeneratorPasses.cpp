@@ -334,13 +334,7 @@ public:
 		SHADER_PARAMETER(uint32, GrowthIterations)
 		SHADER_PARAMETER(uint32, IterationIndex)
 		SHADER_PARAMETER(uint32, Preview)
-		SHADER_PARAMETER(float, Feed)
-		SHADER_PARAMETER(float, Kill)
-		SHADER_PARAMETER(float, DiffusionA)
-		SHADER_PARAMETER(float, DiffusionB)
-		SHADER_PARAMETER(float, TimeStep)
-		SHADER_PARAMETER(uint32, bConstrainGrowthToHabitat)
-		SHADER_PARAMETER(float, BoundaryThreshold)
+
 		SHADER_PARAMETER(int32, HeightJump)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, HeightSeeds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthInteriorDistance)
@@ -365,30 +359,24 @@ public:
 		SHADER_PARAMETER(float, SurfaceAnglePreference)
 		SHADER_PARAMETER(float, GravityAngle)
 		SHADER_PARAMETER(float, ExposureTolerance)
-		SHADER_PARAMETER(float, SeedHabitatWeight)
-		SHADER_PARAMETER(float, SeedNoiseWeight)
-		SHADER_PARAMETER(float, SeedMaskWeight)
-		SHADER_PARAMETER(float, SeedThreshold)
-		SHADER_PARAMETER(uint32, bNormalizeSeedWeights)
+
 		SHADER_PARAMETER(float, SeedMaskTiling)
 		SHADER_PARAMETER(uint32, bSeedMaskInvert)
 		SHADER_PARAMETER(uint32, HasSeedMask)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedMask)
 		SHADER_PARAMETER(int32, ColonyDensity)
 		SHADER_PARAMETER(float, GrowthSpread)
-		SHADER_PARAMETER(float, ColonyConnectivity)
+
 		SHADER_PARAMETER(float, Coverage)
 		SHADER_PARAMETER(float, CushionSize)
 		SHADER_PARAMETER(float, CushionHeight)
-		SHADER_PARAMETER(float, BiomassAccumulation)
+
 		SHADER_PARAMETER(float, MatureHeight)
 		SHADER_PARAMETER(float, ClumpDensity)
 		SHADER_PARAMETER(float, ShootDensity)
 		SHADER_PARAMETER(float, ShootLength)
 		SHADER_PARAMETER(float, FiberThickness)
-		SHADER_PARAMETER(float, Weight)
-		SHADER_PARAMETER(float, Adhesion)
-		SHADER_PARAMETER(float, GravityInfluence)
+
 		SHADER_PARAMETER(float, Droop)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
@@ -4059,13 +4047,7 @@ namespace
 					P->GrowthIterations = static_cast<uint32>(Settings.GrowthIterations);
 					P->IterationIndex = Iteration;
 					P->Preview = static_cast<uint32>(Settings.Preview);
-					P->Feed = Settings.Feed;
-					P->Kill = Settings.Kill;
-					P->DiffusionA = Settings.DiffusionA;
-					P->DiffusionB = Settings.DiffusionB;
-					P->TimeStep = Settings.TimeStep;
-					P->bConstrainGrowthToHabitat = Settings.bConstrainGrowthToHabitat ? 1u : 0u;
-					P->BoundaryThreshold = Settings.BoundaryThreshold;
+
 					P->HeightJump = static_cast<int32>(Iteration);
 					P->Seed = static_cast<uint32>(Settings.Seed);
 					// Shared signed-height assembly owns normalization/scale, once, downstream.
@@ -4077,29 +4059,23 @@ namespace
 					P->SurfaceAnglePreference = Settings.SurfaceAnglePreference;
 					P->GravityAngle = Settings.GravityAngle;
 					P->ExposureTolerance = Settings.ExposureTolerance;
-					P->SeedHabitatWeight = Settings.SeedHabitatWeight;
-					P->SeedNoiseWeight = Settings.SeedNoiseWeight;
-					P->SeedMaskWeight = Data.SeedMask.IsValid() ? Settings.SeedMaskWeight : 0.0f;
-					P->SeedThreshold = Settings.SeedThreshold;
-					P->bNormalizeSeedWeights = Settings.bNormalizeSeedWeights ? 1u : 0u;
+
 					P->SeedMaskTiling = static_cast<float>(Settings.SeedMaskTiling);
 					P->bSeedMaskInvert = Settings.bSeedMaskInvert ? 1u : 0u;
 					P->HasSeedMask = Data.SeedMask.IsValid() ? 1u : 0u;
 					P->ColonyDensity = Settings.ColonyDensity;
 					P->GrowthSpread = Settings.GrowthSpread;
-					P->ColonyConnectivity = Settings.ColonyConnectivity;
+
 					P->Coverage = Settings.Coverage;
 					P->CushionSize = Settings.CushionSize;
 					P->CushionHeight = Settings.CushionHeight;
-					P->BiomassAccumulation = Settings.BiomassAccumulation;
+
 					P->MatureHeight = Settings.MatureHeight;
 					P->ClumpDensity = Settings.ClumpDensity;
 					P->ShootDensity = Settings.ShootDensity;
 					P->ShootLength = Settings.ShootLength;
 					P->FiberThickness = Settings.FiberThickness;
-					P->Weight = Settings.Weight;
-					P->Adhesion = Settings.Adhesion;
-					P->GravityInfluence = Settings.GravityInfluence;
+
 					P->Droop = Settings.Droop;
 
 					P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
