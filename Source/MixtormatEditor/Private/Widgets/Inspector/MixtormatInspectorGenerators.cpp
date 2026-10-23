@@ -2971,7 +2971,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		const FMixtormatMoss* M = Moss();
 		return M && (M->SeedMask.ToSoftObjectPath().IsValid() || M->SeedMaskTexture.ToSoftObjectPath().IsValid());
 	};
-	const FText SeedMaskHint = LOCTEXT("MossSeedMaskHint", "Choose a Mask asset or texture to seed chemical B at initialization. Mask assets use their current texture, including later texture edits. None clears both references. Seeding never clips grown moss; scoped masks independently gate the finished result.");
+	const FText SeedMaskHint = LOCTEXT("MossSeedMaskHint", "Seeds moss where the mask is white. Growth spreads beyond the mask via habitat. To clip final moss to a mask, add a scoped Mask child instead.");
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("MossSeedMask", "Seed Mask"),
 		SNew(SMixtormatChip)
@@ -3045,10 +3045,10 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		MixtormatRow::MakePair(
 			MakeMemberSliderInt<FMixtormatMoss>(LOCTEXT("MossSeedMaskTiling", "Seed Tiling"), Moss,
 				&FMixtormatMoss::SeedMaskTiling, 1, 16, Defaults.SeedMaskTiling,
-				LOCTEXT("MossSeedMaskTilingHint", "Repeats the Seed Mask across the substrate for initialization only.")),
+				LOCTEXT("MossSeedMaskTilingHint", "Repeats the Seed Mask for seeding only. Growth is not clipped to the mask.")),
 			MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossSeedMaskInvert", "Seed Invert"), Moss,
 				&FMixtormatMoss::bSeedMaskInvert,
-				LOCTEXT("MossSeedMaskInvertHint", "Inverts the Seed Mask before weighting and thresholding the initial chemical B seeds.")))]);
+				LOCTEXT("MossSeedMaskInvertHint", "Inverts the Seed Mask for seeding. White still seeds moss.")))]);
 
 
 	// Habitat
@@ -3063,11 +3063,8 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			LOCTEXT("MossMoistureHint", "Base moisture availability and accumulation potential.")),
 		Slider(LOCTEXT("MossAnglePref", "Surface Angle"), &FMixtormatMoss::SurfaceAnglePreference, 0, 1, .01,
 			LOCTEXT("MossAnglePrefHint", "Surface angle preference (0 = any slope, 1 = flat horizontal upward surfaces only)."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossGravityAngle", "Gravity Angle"), &FMixtormatMoss::GravityAngle, -180, 180, 1.0,
-			LOCTEXT("MossGravityAngleHint", "Projected gravity direction in UV space (-90 = downward).")),
-		Slider(LOCTEXT("MossExposure", "Exposure Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
-			LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks."))));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossExposure", "Exposure Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
+		LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks.")));
 
 
 	// Growth
@@ -3081,14 +3078,19 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		LOCTEXT("MossSpreadHint", "Habitat-gated expansion speed; higher spreads faster into favorable cavity/AO areas.")));
 	AddSliderRow(Panel, Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
 		LOCTEXT("MossCoverageHint", "Overall moss abundance and coverage threshold.")));
+	AddSliderRow(Panel, Slider(LOCTEXT("MossCompetition", "Competition"), &FMixtormatMoss::Competition, 0, 1, .01,
+		LOCTEXT("MossCompetitionHint", "Inter-colony contact inhibition. Foreign colonies pinch the shared front, forming seams; zero merges freely.")));
 
 
 
 	// Structure
 	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatMoss>(
+		LOCTEXT("MossCushionMode", "Cushion Solver"), Moss, &FMixtormatMoss::CushionMode,
+		LOCTEXT("MossCushionModeHint", "Deposition: simulated thickness reacting to substrate height/moisture. SDF Inflation: legacy Jump-Flood dome from the grown footprint.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.02, 0.3, .005,
-			LOCTEXT("MossCushionSizeHint", "Inflation diameter and smoothing scale inside the grown footprint. Broad interiors reach full height; narrow patches remain lower. Does not expand coverage or bridge gaps.")),
+			LOCTEXT("MossCushionSizeHint", "Deposition: lateral creep scale of simulated thickness. SDF Inflation: inflation diameter/smoothing scale. Does not expand coverage.")),
 		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .001,
 			LOCTEXT("MossCushionHeightHint", "Base height of the smoothed, footprint-shaped cushion before biomass buildup, coverage and output scaling. Fine clumps only add shallow surface detail."))));
 	AddSliderRow(Panel, Slider(LOCTEXT("MossMatureHeight", "Mature Height"), &FMixtormatMoss::MatureHeight, 0, 1, .001,
@@ -3106,10 +3108,13 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
 				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
 
-	// Physical Behavior
-	Panel = AddCard(Cards, LOCTEXT("MossPhysics", "PHYSICAL BEHAVIOR"));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossDroop", "Droop"), &FMixtormatMoss::Droop, 0, 1, .01,
-		LOCTEXT("MossDroopHint", "Downslope sag of cushions along Gravity Angle; stronger on steep slopes.")));
+	// Body (mush)
+	Panel = AddCard(Cards, LOCTEXT("MossBody", "BODY (MUSH)"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossSoftness", "Softness"), &FMixtormatMoss::Softness, 0, 1, .01,
+			LOCTEXT("MossSoftnessHint", "Mushiness: isotropic squash, flattened crown, merged lobes, limp shoots and a wet rim. No gravity direction.")), 
+		Slider(LOCTEXT("MossPlumpness", "Plumpness"), &FMixtormatMoss::Plumpness, 0, 1, .01,
+			LOCTEXT("MossPlumpnessHint", "Turgor swelling from the solver moisture field. Wet moss plumps up; dry moss shrinks and goes limp."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)

@@ -326,7 +326,7 @@ class FMixtormatMossCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 10);
+	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 12);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -335,7 +335,10 @@ public:
 		SHADER_PARAMETER(uint32, IterationIndex)
 		SHADER_PARAMETER(uint32, Preview)
 
+		SHADER_PARAMETER(uint32, CushionMode)
 		SHADER_PARAMETER(int32, HeightJump)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, MossThickness)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutMossThickness)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, HeightSeeds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthInteriorDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, CushionInflation)
@@ -357,7 +360,7 @@ public:
 		SHADER_PARAMETER(float, OcclusionInfluence)
 		SHADER_PARAMETER(float, Moisture)
 		SHADER_PARAMETER(float, SurfaceAnglePreference)
-		SHADER_PARAMETER(float, GravityAngle)
+		SHADER_PARAMETER(float, Competition)
 		SHADER_PARAMETER(float, ExposureTolerance)
 
 		SHADER_PARAMETER(float, SeedMaskTiling)
@@ -377,7 +380,8 @@ public:
 		SHADER_PARAMETER(float, ShootLength)
 		SHADER_PARAMETER(float, FiberThickness)
 
-		SHADER_PARAMETER(float, Droop)
+		SHADER_PARAMETER(float, Softness)
+		SHADER_PARAMETER(float, Plumpness)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Chemical)
@@ -3986,6 +3990,10 @@ namespace
 				};
 				FRDGTextureRef HabitatColony = MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.Moss.HabitatColony"));
 				FRDGTextureRef MesoHeight = MakeTexture(Size, PF_R32_FLOAT, TEXT("Mixtormat.Moss.MesoHeight"));
+				FRDGTextureRef Thickness[2] = {
+					MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Thickness.Ping")),
+					MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Thickness.Pong"))};
+				int32 CurrentThickness = 0;
 				FRDGTextureRef HeightSeeds[2] = {
 					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Ping")),
 					MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Pong"))};
@@ -3993,6 +4001,9 @@ namespace
 				FRDGTextureRef RawInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Raw"));
 				FRDGTextureRef SmoothInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Smooth"));
 				int32 CurrentHeightSeeds = 0;
+				// Substrate is needed by height-coupled moisture (Stage 4) and
+				// thickness slump (Stage 7) even on a simulation-cache hit.
+				FRDGTextureRef SubstrateAlways = ResolveSubstrateHeight(Ctx, LayerCtx, RunningHeight, BelowHeight);
 
 				// A separate cache retains chemicals across output remaps, previews and relief edits.
 				// Resolution here is the request resolution, as required by the shared node-cache LRU.
@@ -4020,7 +4031,7 @@ namespace
 				}
 				else
 				{
-					Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, RunningHeight, BelowHeight);
+					Substrate = SubstrateAlways;
 					SeedMaskTexture = Data.SeedMask.IsValid()
 						? RegisterTexture(GraphBuilder, Ctx.RegisteredTextures, Data.SeedMask, TEXT("Mixtormat.Moss.SeedMask"))
 						: Ctx.EmptyDriverSignal;
@@ -4048,7 +4059,6 @@ namespace
 					P->IterationIndex = Iteration;
 					P->Preview = static_cast<uint32>(Settings.Preview);
 
-					P->HeightJump = static_cast<int32>(Iteration);
 					P->Seed = static_cast<uint32>(Settings.Seed);
 					// Shared signed-height assembly owns normalization/scale, once, downstream.
 					P->HeightScale = 1.0f;
@@ -4057,7 +4067,7 @@ namespace
 					P->OcclusionInfluence = Settings.OcclusionInfluence;
 					P->Moisture = Settings.Moisture;
 					P->SurfaceAnglePreference = Settings.SurfaceAnglePreference;
-					P->GravityAngle = Settings.GravityAngle;
+					P->Competition = Settings.Competition;
 					P->ExposureTolerance = Settings.ExposureTolerance;
 
 					P->SeedMaskTiling = static_cast<float>(Settings.SeedMaskTiling);
@@ -4067,6 +4077,8 @@ namespace
 					P->GrowthSpread = Settings.GrowthSpread;
 
 					P->Coverage = Settings.Coverage;
+					P->CushionMode = static_cast<uint32>(Settings.CushionMode);
+					P->HeightJump = static_cast<int32>(Iteration);
 					P->CushionSize = Settings.CushionSize;
 					P->CushionHeight = Settings.CushionHeight;
 
@@ -4076,7 +4088,8 @@ namespace
 					P->ShootLength = Settings.ShootLength;
 					P->FiberThickness = Settings.FiberThickness;
 
-					P->Droop = Settings.Droop;
+					P->Softness = Settings.Softness;
+					P->Plumpness = Settings.Plumpness;
 
 					P->LinearWrapSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 					// Bind only this stage's reads/writes. No texture aliases an SRV and UAV in a step.
@@ -4098,6 +4111,7 @@ namespace
 						P->Chemical = Chemicals[Current];
 						P->GrowthState = States[Current];
 						P->ActivationHabitat = ActivationHabitat;
+						P->SubstrateHeight = SubstrateAlways;
 						P->OutChemical = GraphBuilder.CreateUAV(Chemicals[1 - Current]);
 						P->OutGrowthState = GraphBuilder.CreateUAV(States[1 - Current]);
 					}
@@ -4113,11 +4127,12 @@ namespace
 					}
 					else if (Stage == 2)
 					{
+						P->MossThickness = Thickness[CurrentThickness];
 						P->CushionInflation = SmoothInflation;
+						P->GrowthInteriorDistance = InteriorDistance;
 						P->GrowthState = States[Current];
 						P->SubstrateAnalysis = SubstrateAnalysis;
 						P->HabitatColony = HabitatColony;
-						P->GrowthInteriorDistance = InteriorDistance;
 						P->OutMesoHeight = GraphBuilder.CreateUAV(MesoHeight);
 					}
 					else if (Stage == 3)
@@ -4129,20 +4144,36 @@ namespace
 						P->GrowthAge = Outputs[2];
 						P->HabitatColony = HabitatColony;
 						P->MesoCushionHeight = MesoHeight;
+						P->MossThickness = Thickness[CurrentThickness];
 						P->GrowthInteriorDistance = InteriorDistance;
 						P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
 					}
 					else if (Stage == 6)
 					{
 						P->Chemical = Chemicals[Current];
-						P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[CurrentHeightSeeds]);
+						P->GrowthState = States[Current];
+						P->OutMossThickness = GraphBuilder.CreateUAV(Thickness[CurrentThickness]);
 					}
 					else if (Stage == 7)
+					{
+						P->Chemical = Chemicals[Current];
+						P->GrowthState = States[Current];
+						P->ActivationHabitat = ActivationHabitat;
+						P->SubstrateHeight = SubstrateAlways;
+						P->MossThickness = Thickness[CurrentThickness];
+						P->OutMossThickness = GraphBuilder.CreateUAV(Thickness[1 - CurrentThickness]);
+					}
+					else if (Stage == 8)
+					{
+						P->Chemical = Chemicals[Current];
+						P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[CurrentHeightSeeds]);
+					}
+					else if (Stage == 9)
 					{
 						P->HeightSeeds = HeightSeeds[CurrentHeightSeeds];
 						P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[1 - CurrentHeightSeeds]);
 					}
-					else if (Stage == 8)
+					else if (Stage == 10)
 					{
 						P->Chemical = Chemicals[Current];
 						P->GrowthState = States[Current];
@@ -4150,7 +4181,7 @@ namespace
 						P->OutGrowthInteriorDistance = GraphBuilder.CreateUAV(InteriorDistance);
 						P->OutCushionInflation = GraphBuilder.CreateUAV(RawInflation);
 					}
-					else if (Stage == 9)
+					else if (Stage == 11)
 					{
 						P->CushionInflation = RawInflation;
 						P->GrowthInteriorDistance = InteriorDistance;
@@ -4189,21 +4220,33 @@ namespace
 						Ctx.PendingNodeEntries.Add(Entry);
 					}
 				}
+				if (Settings.CushionMode == EMixtormatMossCushionMode::SdfInflation)
 				{
 					RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.HeightFootprint");
-					DispatchStage(6);
+					DispatchStage(8);
 					const int32 InitialJump = static_cast<int32>(FMath::RoundUpToPowerOfTwo(
 						static_cast<uint32>(FMath::Max(SimulationSize.X, SimulationSize.Y)))) / 2;
 					for (int32 Jump = InitialJump; Jump > 0; Jump /= 2)
 					{
-						DispatchStage(7, static_cast<uint32>(Jump));
+						DispatchStage(9, static_cast<uint32>(Jump));
 						CurrentHeightSeeds = 1 - CurrentHeightSeeds;
 					}
-					// One extra unit-step refinement reduces jump-flood error at narrow colony necks.
-					DispatchStage(7, 1u);
+					DispatchStage(9, 1u);
 					CurrentHeightSeeds = 1 - CurrentHeightSeeds;
-					DispatchStage(8);
-					DispatchStage(9);
+					DispatchStage(10);
+					DispatchStage(11);
+				}
+				else
+				{
+					RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.ThicknessDeposition");
+					DispatchStage(6);
+					// Deposition PDE steps: logistic growth + creep + repose slump.
+					constexpr int32 DepositionSteps = 64;
+					for (int32 Step = 0; Step < DepositionSteps; ++Step)
+					{
+						DispatchStage(7, static_cast<uint32>(Step));
+						CurrentThickness = 1 - CurrentThickness;
+					}
 				}
 				DispatchStage(5);
 				DispatchStage(2);

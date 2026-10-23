@@ -414,6 +414,14 @@ enum class EMixtormatMossPreview : uint8
 		Biomass = 6 UMETA(DisplayName = "Biomass")
 };
 
+// Cushion bulk solver: simulated deposition thickness, or legacy SDF inflation.
+UENUM(BlueprintType)
+enum class EMixtormatMossCushionMode : uint8
+{
+	Deposition = 0 UMETA(DisplayName = "Deposition (Height-Coupled)"),
+	SdfInflation = 1 UMETA(DisplayName = "SDF Inflation (Legacy)")
+};
+
 // Substrate-aware biological moss colonization and cushion synthesis.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatMoss
@@ -438,7 +446,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 
 	// Maximum simulation-grid dimension, preserving aspect ratio independently of output resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Simulation", meta = (ClampMin = "1", UIMin = "64", UIMax = "2048"))
-	int32 SimulationResolution = 256;
+	int32 SimulationResolution = 512;
 
 	// --- Seeding ---
 
@@ -473,9 +481,9 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float SurfaceAnglePreference = 0.35f;
 
-	// Direction of gravity in texture UV space (degrees, -90 = downward in UV space).
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (UIMin = "-180.0", UIMax = "180.0", Delta = "1.0"))
-	float GravityAngle = -90.0f;
+	// Inter-colony contact inhibition: foreign neighbours slow the growth front and pinch seams.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Competition = 0.65f;
 
 	// Tolerance to exposed convex ridges and high peaks (0 = avoids exposure strictly, 1 = tolerates exposure).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -502,7 +510,11 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	int32 Seed = 1337;
 
 	// --- Structure (Meso Cushions & Micro Shoots) ---
-	// Footprint inflation diameter and smoothing scale, independent of fine clump frequency.
+	// Deposition: simulated thickness PDE. SDF Inflation: legacy Jump-Flood dome.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure")
+	EMixtormatMossCushionMode CushionMode = EMixtormatMossCushionMode::Deposition;
+
+	// Deposition: lateral creep scale. SDF: inflation diameter/smoothing scale.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.000001", UIMin = "0.02", UIMax = "0.3", Delta = "0.005"))
 	float CushionSize = 0.12f;
 
@@ -530,9 +542,13 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float FiberThickness = 0.35f;
 
-	// Gravitational sag along gravity direction; stronger on steep slopes.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Physics", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float Droop = 0.35f;
+	// Mushiness: isotropic squash, flattened crown, merged soft lobes. No directional gravity term.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Body", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Softness = 0.65f;
+
+	// Turgor swelling driven by the solver moisture field: wet biomass plumps, dry biomass shrinks.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Body", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float Plumpness = 0.55f;
 };
 
 // Fungal hyphal network with primary, secondary, and tertiary microfilament hierarchy.
