@@ -61,6 +61,13 @@ card shows a read-only gate source label and hides Texture/Noise/Layer Values se
 context Source switching is reserved for unlinked masks, preventing loss of the
 original named output. Standalone masks keep the normal source selector.
 
+Ramp preset menus offer **Overwrite Preset…** for saved user ramps, including Skin's
+albedo ramp. Overwrites preserve the preset ID and write without deleting the old file
+first. Saving a compatible module preset with an existing user name replaces that preset;
+module **Overwrite Preset…** also supports user-library overrides of built-in looks.
+Artist-facing ramp, module and recipe menus do not expose JSON import/export. Developer
+serialization/import/export APIs remain in the preset store.
+
 Scalar curve toolbars now share interpolation, frame, reset, **horizontal Flip** and
 an inline Invert toggle. Flip reflects authored point X positions across the curve's
 own input domain (including signed Height Remap), while Invert uses the existing

@@ -3,9 +3,7 @@
 #include "UI/Controls/SMixtormatRampEditor.h"
 
 #include "Framework/Application/SlateApplication.h"
-#include "DesktopPlatformModule.h"
-#include "IDesktopPlatform.h"
-#include "Misc/Paths.h"
+
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SComboButton.h"
@@ -25,6 +23,7 @@ TSharedRef<SWidget> SMixtormatRampEditorBase::BuildSavePresetMenu()
 {
 	MixtormatMenu::FBuilder Menu;
 	Menu.Caption(NSLOCTEXT("Mixtormat", "RampPresetName", "NAME — ENTER TO SAVE"));
+	Menu.Caption(NSLOCTEXT("Mixtormat", "RampPresetSaveHelp", "An existing name replaces the saved ramp of this type."));
 	Menu.Widget(SNew(STextBlock)
 		.Text_Lambda([this]() { return PresetError; })
 		.Visibility_Lambda([this]() { return PresetError.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
@@ -60,6 +59,26 @@ TSharedRef<SWidget> SMixtormatRampEditorBase::BuildUserPresetMenu()
 	TArray<MixtormatPresetStore::FRampPreset> Presets;
 	FText Error;
 	if (!MixtormatPresetStore::ListRamps(Current.Kind, Presets, Error)) { Menu.Caption(Error); }
+	Menu.SubMenu(NSLOCTEXT("Mixtormat", "OverwriteRampPreset", "Overwrite Preset…"), nullptr,
+		FOnGetContent::CreateLambda([this, Presets]()
+		{
+			MixtormatMenu::FBuilder OverwriteMenu;
+			OverwriteMenu.Caption(NSLOCTEXT("Mixtormat", "OverwriteRampHeading", "REPLACE WITH CURRENT RAMP"));
+			for (const MixtormatPresetStore::FRampPreset& Preset : Presets)
+			{
+				OverwriteMenu.Item(FText::FromString(Preset.Name), nullptr,
+					FSimpleDelegate::CreateLambda([this, Preset]()
+					{
+						MixtormatPresetStore::FRampPreset Replacement = CapturePreset();
+						Replacement.Id = Preset.Id;
+						Replacement.Name = Preset.Name;
+						PresetError = FText::GetEmpty();
+						MixtormatPresetStore::SaveRamp(Replacement, PresetError);
+					})).ToolTip(NSLOCTEXT("Mixtormat", "OverwriteRampEntryHelp", "Replace this user preset with the current ramp, including its X domain, values and interpolation."));
+			}
+			return OverwriteMenu.Build();
+		})).Enabled(!Presets.IsEmpty());
+	Menu.Separator();
 	for (const MixtormatPresetStore::FRampPreset& Preset : Presets)
 	{
 		const bool bExactDomain = Preset.DomainMin == DomainMin && Preset.DomainMax == DomainMax;
@@ -82,41 +101,6 @@ TSharedRef<SWidget> SMixtormatRampEditorBase::BuildUserPresetMenu()
 	return Menu.Build();
 }
 
-void SMixtormatRampEditorBase::ImportUserPreset()
-{
-	IDesktopPlatform* Platform = FDesktopPlatformModule::Get();
-	if (!Platform)
-	{
-		PresetError = NSLOCTEXT("Mixtormat", "RampDialogUnavailable", "File dialogs are unavailable on this platform.");
-		return;
-	}
-	TArray<FString> Files;
-	if (!Platform->OpenFileDialog(FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
-		NSLOCTEXT("Mixtormat", "ImportRampTitle", "Import Ramp Preset").ToString(),
-		FPaths::ProjectDir(), FString(), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files) || Files.Num() != 1) { return; }
-	MixtormatPresetStore::FRampPreset Imported;
-	PresetError = FText::GetEmpty();
-	MixtormatPresetStore::ImportRamp(Files[0], CapturePreset().Kind, Imported, PresetError);
-}
-
-void SMixtormatRampEditorBase::ExportUserPreset()
-{
-	IDesktopPlatform* Platform = FDesktopPlatformModule::Get();
-	if (!Platform)
-	{
-		PresetError = NSLOCTEXT("Mixtormat", "RampDialogUnavailable", "File dialogs are unavailable on this platform.");
-		return;
-	}
-	TArray<FString> Files;
-	if (!Platform->SaveFileDialog(FSlateApplication::Get().FindBestParentWindowHandleForDialogs(AsShared()),
-		NSLOCTEXT("Mixtormat", "ExportRampTitle", "Export Ramp Preset").ToString(),
-		FPaths::ProjectDir(), TEXT("Ramp.json"), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files) || Files.Num() != 1) { return; }
-	MixtormatPresetStore::FRampPreset Preset = CapturePreset();
-	Preset.Id = FGuid::NewGuid();
-	Preset.Name = FPaths::GetBaseFilename(Files[0]);
-	PresetError = FText::GetEmpty();
-	MixtormatPresetStore::ExportRamp(Files[0], Preset, PresetError);
-}
 
 void SMixtormatRampEditorBase::Construct(const FArguments& InArgs)
 {
@@ -199,7 +183,7 @@ void SMixtormatRampEditorBase::BuildLayout()
 		.Text_Lambda([this]()
 				{
 					return PresetError.IsEmpty()
-						? NSLOCTEXT("Mixtormat", "RampUserPresetHelp", "Save, import or export ramp presets. Different X domains require an explicit remap.")
+						? NSLOCTEXT("Mixtormat", "RampUserPresetHelp", "Save, overwrite or apply user ramp presets. Applying a different X domain requires an explicit remap.")
 						: PresetError;
 				})
 		[

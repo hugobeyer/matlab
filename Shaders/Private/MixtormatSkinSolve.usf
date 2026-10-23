@@ -142,10 +142,10 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 	float Thickness = SkinThickness(P);
 	// Safety only: unclamped authored values cannot destabilize the relaxation.
 	float Foundation = lerp(SkinMinFoundation, SkinMaxFoundation, clamp(Support, 0.0f, 4.0f));
-	// Gravity hold: thick tissue in low/rest-depressed areas resists the
-	// foundation pull, so sag stays pooled instead of relaxing flat.
+	// The foundation targets the seeded rest shape, not zero height. Strengthen it
+	// in thick/depressed regions so bending cannot flatten away their authored sag.
 	float HoldCue = saturate((Thickness - 1.0f) + saturate(-Seed.r * FoldRate));
-	Foundation *= 1.0f - clamp(GravityHold, 0.0f, 2.0f) * 0.35f * HoldCue;
+	Foundation *= 1.0f + clamp(GravityHold, 0.0f, 2.0f) * HoldCue;
 	float Force = -Foundation * Thickness * (C - Seed.r * FoldRate);
 	float Moment = SkinMoment(P, BendingInvSpacing2);
 	// Variable rigidity belongs INSIDE the second Laplacian (gradient of .5*B*(Delta h)^2).

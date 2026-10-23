@@ -831,7 +831,7 @@ private:
 	FReply InsertRecipe(const FString& Filename);
 	TSharedRef<SWidget> BuildRecipeGalleryActions();
 	TSharedRef<SWidget> BuildRecipeEntryMenu(FString Filename);
-	void ImportRecipeJson();
+
 	// Editor-only tagging: the compositor never reads a group's colour, so this asks for no
 	// recomposite -- only a rebuild of the rows that draw it.
 	FReply SetLayerGroupAccentColor(FGuid GroupId, FLinearColor AccentColor);

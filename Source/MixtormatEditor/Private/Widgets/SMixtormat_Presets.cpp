@@ -1,5 +1,6 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 #include "Widgets/SMixtormat.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Services/MixtormatPresetStore.h"
 #include "Services/MixtormatRecipeService.h"
 #include "Style/MixtormatStyle.h"
@@ -7,9 +8,7 @@
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
-#include "DesktopPlatformModule.h"
-#include "IDesktopPlatform.h"
-#include "Misc/Paths.h"
+
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -19,23 +18,9 @@
 
 namespace MixtormatPresetUi
 {
-	bool ChooseJson(const TSharedRef<SWidget>& Parent, bool bSave, FString& OutFilename)
-	{
-		IDesktopPlatform* Platform = FDesktopPlatformModule::Get();
-		if (!Platform) { return false; }
-		TArray<FString> Files;
-		const void* Window = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(Parent);
-		const FString Title = bSave ? LOCTEXT("ExportTypedPresetTitle", "Export Preset JSON").ToString() : LOCTEXT("ImportTypedPresetTitle", "Import Preset JSON").ToString();
-		const bool bChosen = bSave
-			? Platform->SaveFileDialog(Window, Title, FPaths::ProjectDir(), TEXT("Preset.json"), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files)
-			: Platform->OpenFileDialog(Window, Title, FPaths::ProjectDir(), FString(), TEXT("JSON (*.json)|*.json"), EFileDialogFlags::None, Files);
-		if (!bChosen || Files.Num() != 1) { return false; }
-		OutFilename = Files[0];
-		return true;
-	}
 
 	TSharedRef<SWidget> NameMenu(const FString& InitialName,
-		TFunction<bool(const FString&, const FString&, const FString&, FText&)> Save)
+		TFunction<bool(const FString&, const FString&, const FString&, FText&)> Save, bool bOverwriteSameName = false)
 	{
 		struct FEntry { FString Name, Category, Description; FText Error; };
 		const TSharedRef<FEntry> State = MakeShared<FEntry>();
@@ -65,7 +50,9 @@ namespace MixtormatPresetUi
 		AddField(LOCTEXT("TypedPresetDescription", "Description (optional)"), &FEntry::Description);
 		Menu.Widget(SNew(STextBlock).Text_Lambda([State]() { return State->Error; }).AutoWrapText(true)
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel"))));
-		Menu.Caption(LOCTEXT("TypedPresetCommitHelp", "Enter to save as a new preset. Choose a unique name."));
+		Menu.Caption(bOverwriteSameName
+			? LOCTEXT("ModulePresetCommitHelp", "Enter to save. An existing name replaces the compatible user module preset.")
+			: LOCTEXT("TypedPresetCommitHelp", "Enter to save as a new preset. Choose a unique name."));
 		return Menu.Build();
 	}
 }
@@ -110,7 +97,7 @@ TSharedRef<SWidget> SMixtormat::BuildModulePresetMenu()
 					if (!MixtormatPresetStore::CaptureModule(*Source, Preset, Error)) { return false; }
 					Preset.Name = Name; Preset.Category = Category; Preset.Description = Description;
 					return MixtormatPresetStore::SaveModule(Preset, Error);
-				});
+				}, true);
 		})).Enabled(bEditable).ToolTip(bEditable
 				? LOCTEXT("SaveModulePresetHelp", "Save local parameter settings only. Connections, bindings and scoped child modules are not copied.") : Restriction);
 	// No user-facing JSON import/export: preset files are developer-only (store API).
@@ -239,22 +226,11 @@ FReply SMixtormat::InsertRecipe(const FString& Filename)
 	return FReply::Handled();
 }
 
-void SMixtormat::ImportRecipeJson()
-{
-	FString Filename;
-	if (!MixtormatPresetUi::ChooseJson(AsShared(), false, Filename)) { return; }
-	FText Error;
-	if (!MixtormatPresetStore::ImportRecipe(Filename, Error)) { WorkingStatusText = Error.ToString(); return; }
-	RefreshRecipeGallery();
-	WorkingStatusText = LOCTEXT("RecipeImported", "Imported user recipe").ToString();
-}
 
 TSharedRef<SWidget> SMixtormat::BuildRecipeGalleryActions()
 {
 	MixtormatMenu::FBuilder Menu;
-	Menu.Item(LOCTEXT("RecipeImport", "Import Recipe JSON…"), nullptr, FSimpleDelegate::CreateSP(this, &SMixtormat::ImportRecipeJson))
-		.Enabled(FDesktopPlatformModule::Get() != nullptr)
-		.ToolTip(LOCTEXT("RecipeImportHint", "Validate and save a new user recipe. Outside references and missing assets are rejected. Requires platform file dialogs."));
+
 	Menu.Item(LOCTEXT("RecipeRefresh", "Refresh Recipes"), nullptr, FSimpleDelegate::CreateSP(this, &SMixtormat::RefreshRecipeGallery));
 	return Menu.Build();
 }
@@ -282,16 +258,7 @@ TSharedRef<SWidget> SMixtormat::BuildRecipeEntryMenu(FString Filename)
 					RefreshRecipeGallery(); return true;
 				});
 		}));
-	Menu.Item(LOCTEXT("ExportRecipeJson", "Export JSON…"), nullptr,
-		FSimpleDelegate::CreateLambda([this, Recipe]()
-		{
-			FString Destination;
-			if (!MixtormatPresetUi::ChooseJson(AsShared(), true, Destination)) { return; }
-			FText Issue;
-			WorkingStatusText = MixtormatPresetStore::ExportRecipe(Destination, Recipe, Issue)
-				? LOCTEXT("RecipeExported", "Exported recipe JSON").ToString() : Issue.ToString();
-		})).Enabled(FDesktopPlatformModule::Get() != nullptr)
-		.ToolTip(LOCTEXT("RecipeExportHint", "Export to a new JSON file. Referenced assets are not embedded. Shipped entries are never changed. Requires platform file dialogs."));
+
 	Menu.Caption(LOCTEXT("RecipeAssets", "REFERENCED ASSETS — NOT EMBEDDED"));
 	for (const FSoftObjectPath& Asset : Recipe.Dependencies) { Menu.Caption(FText::FromString(Asset.ToString())); }
 	return Menu.Build();

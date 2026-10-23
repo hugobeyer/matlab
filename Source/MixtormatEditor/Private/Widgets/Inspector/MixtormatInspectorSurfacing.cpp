@@ -50,6 +50,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Amount), SKIN_FLOAT(HeightScale)));
 	AddSliderRow(Surface, SKIN_FLOAT(SurfaceTiling));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Direction), SKIN_FLOAT(Elongation)));
+	AddSliderRow(Surface, SKIN_FLOAT(DirectionVariation));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteHeight), SKIN_WRITE(bWriteColor)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteRoughness), SKIN_WRITE(bWriteAO)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteF0), SKIN_WRITE(bWriteFuzz)));
@@ -67,12 +68,11 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 
 	const auto Folds = AddCard(Cards, LOCTEXT("SkinFoldsCard", "FOLDS & RESPONSE"));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_INT(FoldCells), SKIN_FLOAT(FoldDepth)));
-	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(FoldWidth), SKIN_FLOAT(Direction)));
+	AddSliderRow(Folds, SKIN_FLOAT(FoldWidth));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Compression), SKIN_FLOAT(Tension)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(Crossing), SKIN_FLOAT(TissueCoupling)));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(MarbleDrift), SKIN_FLOAT(WarpScale)));
-		AddSliderRow(Folds, SKIN_INT(WarpLayers));
-	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(DirectionVariation), SKIN_FLOAT(Elongation)));
+	AddSliderRow(Folds, SKIN_INT(WarpLayers));
 	AddSliderRow(Folds, SKIN_FLOAT(Cellular));
 	AddSliderRow(Folds, MixtormatRow::MakePair(SKIN_FLOAT(CurvatureRadius), SKIN_FLOAT(CurvatureStrength)));
 

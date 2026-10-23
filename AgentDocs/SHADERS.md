@@ -113,9 +113,11 @@ only where GPU-dangerous (`SolverIterations` dispatch budget, `SolverResolution`
 allocation, `WarpLayers` shader loop, true divisors floored in contracts, pore
 support and solver rigidity/foundation safety clamps in-shader). Resolve applies a
 shared soft-capped micro budget (fine + pores) over the tissue/fold base. Tissue fat
-is multi-scale (half-frequency strokes carry the silhouette), stretched along
-gravity/`Elongation`, pooled downslope by `GravityBulge`, and modulated by upstream
-substrate curvature (`CurvatureStrength` × `TissueCoupling`). Solver strain includes
+is multi-scale (half-frequency strokes carry the silhouette). Cell-local ellipses follow
+`Direction`/`Elongation` (displayed as Stretch), with a gravity bias and downslope pooling
+from `GravityBulge`. Stretch narrows ellipse support rather than scaling absolute UVs,
+so the periodic lattice stays intact. Upstream substrate curvature modulates tissue
+(`CurvatureStrength` × `TissueCoupling`). Solver strain includes
 dynamic feedback from the current solved slope. Defaults retuned for 2048 output
 (`TissueCells` 4, `DetailCells` 64, `PoreCells` 96, `GravityBulge` 0.35).
 
@@ -137,10 +139,27 @@ biases the networks along that tangent under compression, relaxing toward isotro
 stretch. Cell centres remain fixed and periodic; no locally rotated absolute-UV lattice is
 introduced. Crease filtering uses the local metric and projected edge gradient; rapid
 spatial changes of the metric are not integrated analytically.
-Pore axes retain cell randomness with at most 35% strain-director bias. Tensile strain adds
-bounded aspect-ratio stretch while preserving ellipse area; the neighbour search includes
-that enlarged support. The additional pore warp also transforms the strain tangent.
+Pore axes retain cell randomness at neutral Stretch; increasing Stretch aligns them with
+the shared direction field and elongates the ellipses. Tensile strain adds further
+area-preserving stretch; the existing bounded neighbour search includes enlarged support
+up to its GPU safety cap. The additional pore warp also transforms the tangent.
 Pores are not forced onto crease junctions. Roughness compensation remains unchanged.
+
+`DirectionVariation` drives a periodic two-band scalar phase potential and its analytic
+gradient, at a broad scale derived from `TissueCells`. Tissue, pores and pigment use its
+local tangent; fold phases add the same potential without spatially varying/quantizing
+the integer wavevector. This is phase-gradient directionality, not UV advection.
+It works with `MarbleDrift = 0`; the existing optional drift and pore distortion remain
+separate. Direction, Stretch and Direction Variation appear together in SURFACE.
+Pigment combines broad tissue-scale blotches with three independent fine bands, filtered
+along the local direction. `PigmentVariation` controls ramp-coordinate contrast and
+thickness-linked chromophore absorption; zero retains the ramp midpoint and disables
+pigment absorption without disabling vascular absorption.
+
+`GravityHold` strengthens the positive foundation spring in thick tissue and seeded
+depressions. The spring targets the seeded rest shape, not zero height; reducing its
+strength would let bending flatten the shape more readily. The increased stiffness is
+included in the relaxation step bound. This control needs nonzero solver iterations.
 
 ### Relaxation model and bounds
 

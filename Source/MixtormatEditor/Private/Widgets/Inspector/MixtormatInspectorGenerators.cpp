@@ -3108,6 +3108,31 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
 				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
 
+	Panel = AddCard(Cards, LOCTEXT("MossColorRampCard", "COLOR RAMP"));
+	const TSharedRef<SWidget> ColorRampEditor = SNew(SMixtormatColorRamp)
+		.IsEnabled_Lambda([this, Moss]() { return Moss() && !IsSelectedChildInstance()
+			&& !GroupControlValueFor(Moss(), FMixtormatMoss::StaticStruct(), TEXT("ColorRamp")); })
+		.Ramp_Lambda([this, Moss, Defaults]()
+		{
+			if (const auto* Value = GroupControlValueFor(Moss(), FMixtormatMoss::StaticStruct(), TEXT("ColorRamp")))
+			{ return Value->ColorRampValue; }
+			return Moss() ? Moss()->ColorRamp : Defaults.ColorRamp;
+		})
+		.DomainMin(0.0f).DomainMax(1.0f)
+		.OnChanged_Lambda([this, Moss](const FMixtormatColorRamp& Ramp)
+		{
+			if (auto* M = Moss(); M && !IsSelectedChildInstance()
+				&& !GroupControlValueFor(M, FMixtormatMoss::StaticStruct(), TEXT("ColorRamp")))
+			{
+				M->ColorRamp = Ramp;
+				RefreshLayeredPreview();
+			}
+		})
+		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
+		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
+	AddSliderRow(Panel, WrapParameterControl(ColorRampEditor,
+		MakeAddressResolver<FMixtormatMoss>(Moss, &FMixtormatMoss::ColorRamp)));
+
 	// Material (Surfacing response)
 	Panel = AddCard(Cards, LOCTEXT("MossMaterial", "MATERIAL"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -3136,7 +3161,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)
-		.Title(LOCTEXT("MossHeading", "MOSS")).PresetAction(MakeModulePresetButton())
+		.Title(LOCTEXT("MossHeading", "SURFACING · MOSS")).PresetAction(MakeModulePresetButton())
 		.InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[

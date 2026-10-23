@@ -99,8 +99,7 @@ protected:
 		virtual void ApplyStoredPreset(const MixtormatPresetStore::FRampPreset& Preset, bool bRemapDomain) = 0;
 		TSharedRef<SWidget> BuildUserPresetMenu();
 		TSharedRef<SWidget> BuildSavePresetMenu();
-		void ImportUserPreset();
-		void ExportUserPreset();
+
 		FText PresetError;
 
 		// Horizontal reflection is independent of scalar semantic inversion.

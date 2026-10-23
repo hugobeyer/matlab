@@ -228,6 +228,7 @@
 // since the layer scrollbox defaults to Visible.
 bool SMixtormat::HasSelectedChildInspector() const
 {
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
 	return GetSelectedLayerEffect()
 		|| GetSelectedGeneratedMask()
 		|| GetSelectedLayerMask()
@@ -249,7 +250,7 @@ bool SMixtormat::HasSelectedChildInspector() const
 		// claim the inspector, or it would show the layer's own sections instead and read as a
 		// broken selection.
 		|| HasSelectedGenerator()
-				|| GetSelectedSkin()
+		|| (Child && Child->Type == EMixtormatLayerChildType::Surfacing)
 		|| GetSelectedBooleanStack()
 		|| HasSelectedOutputReference()
 		// Generator-layer sublayers: each owns its own panel, so each must claim the inspector.

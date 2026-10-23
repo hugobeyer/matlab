@@ -199,7 +199,7 @@ namespace MixtormatPresetStore
 		}
 	}
 
-	bool ExportRamp(const FString& Filename, const FRampPreset& Preset, FText& OutError)
+	static bool WriteRamp(const FString& Filename, const FRampPreset& Preset, FText& OutError, bool bOverwrite)
 	{
 		OutError = FText::GetEmpty();
 		if (!Private::Validate(Preset, OutError)) { return false; }
@@ -207,7 +207,7 @@ namespace MixtormatPresetStore
 		{
 			return Private::Fail(OutError, LOCTEXT("Extension", "Choose a .json destination."));
 		}
-		if (IFileManager::Get().FileExists(*Filename))
+		if (!bOverwrite && IFileManager::Get().FileExists(*Filename))
 		{
 			return Private::Fail(OutError, LOCTEXT("Exists", "A preset already exists at that path. Choose a new destination."));
 		}
@@ -249,12 +249,17 @@ namespace MixtormatPresetStore
 		{
 			return Private::Fail(OutError, LOCTEXT("Write", "Cannot write preset temporary file."));
 		}
-		if (!IFileManager::Get().Move(*Filename, *Temporary, false, false))
+		if (!IFileManager::Get().Move(*Filename, *Temporary, bOverwrite, false))
 		{
 			IFileManager::Get().Delete(*Temporary);
 			return Private::Fail(OutError, LOCTEXT("Publish", "Cannot publish preset JSON; destination may exist or be read-only."));
 		}
 		return true;
+	}
+
+	bool ExportRamp(const FString& Filename, const FRampPreset& Preset, FText& OutError)
+	{
+		return WriteRamp(Filename, Preset, OutError, false);
 	}
 
 	bool SaveRamp(const FRampPreset& Preset, FText& OutError)
@@ -276,8 +281,7 @@ namespace MixtormatPresetStore
 				FRampPreset Replacement = Preset;
 				Replacement.Id = Entry.Id;
 				const FString Path = FPaths::Combine(Private::Directory(), Entry.Id.ToString(EGuidFormats::Digits) + TEXT(".json"));
-				IFileManager::Get().Delete(*Path, false, true);
-				return ExportRamp(Path, Replacement, OutError);
+				return WriteRamp(Path, Replacement, OutError, true);
 			}
 		}
 		return ExportRamp(FPaths::Combine(Private::Directory(), Preset.Id.ToString(EGuidFormats::Digits) + TEXT(".json")), Preset, OutError);

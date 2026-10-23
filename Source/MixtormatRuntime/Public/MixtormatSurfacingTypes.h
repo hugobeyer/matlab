@@ -70,7 +70,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float GravityBulge = 0.35f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (Units = "deg", UIMin = "-180", UIMax = "180", Delta = "0.1", ToolTip = "Gravity direction in degrees."))
 	float GravityAngle = -90.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "How strongly deep/thick areas hold tissue against relaxation. Higher values keep sag pooled in crevices and depressions."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Anchors thick tissue and seeded depressions against relaxation. Higher values retain their rest shape instead of letting bending flatten it. Requires nonzero Solver Iterations."))
 	float GravityHold = 0.5f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Contribution after child masks. Zero preserves every incoming channel exactly."))
@@ -89,7 +89,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float FoldDepth = 0.8f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.005", UIMax = "1", Delta = "0.001", ToolTip = "Fold width relative to cell spacing."))
 	float FoldWidth = 0.14f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (Units = "deg", UIMin = "-180", UIMax = "180", Delta = "0.1", ToolTip = "Preferred fold direction in degrees; periodic construction preserves tile boundaries."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (Units = "deg", UIMin = "-180", UIMax = "180", Delta = "0.1", ToolTip = "Shared direction for folds, tissue, pores and pigment. Stretch controls alignment; Direction Variation adds smooth phase-driven turns without UV warping."))
 	float Direction = -10.3f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Crossing-fold contribution."))
 	float Crossing = 0.65f;
@@ -101,9 +101,9 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 		float WarpScale = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "5", Delta = "1", ToolTip = "Number of layered domain warps shaping connected wandering fold families."))
 	int32 WarpLayers = 3;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Local variation around the preferred fold direction, preserving connected fold families."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Smooth random turns of the shared direction field, driven by a periodic phase gradient. Works with Marble Drift at zero; Tissue Cells controls the broad variation scale."))
 	float DirectionVariation = 0.5f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.25", UIMax = "24", Delta = "0.01", ToolTip = "Stretch along preferred/gravity direction for folds, tissue and pores. 1 = isotropic."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (DisplayName = "Stretch", UIMin = "1", UIMax = "24", Delta = "0.01", ToolTip = "Shared directional elongation of folds, tissue, pores and pigment. 1 disables added stretch; larger values align features with Direction and its local variation. Gravity can also bias tissue alignment."))
 	float Elongation = 4.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "2", Delta = "0.01", ToolTip = "Cellular breakup mixed into the connected fold pattern. Zero retains only wandering fold families."))
 	float Cellular = 0.12f;
@@ -120,7 +120,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	float PoreVariation = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Fine surface grain amount."))
 	float Grain = 0.3f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Multiscale pigment variation linked to tissue thickness and absorption. Zero removes pigment variation, not separately controlled vascular absorption."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Strength of broad blotches and fine pigment, ramp contrast and thickness-linked absorption. Stretch follows the shared direction field. Zero uses the ramp midpoint without pigment absorption; vascular absorption stays independent."))
 	float PigmentVariation = 0.35f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0", UIMax = "3", Delta = "0.01", ToolTip = "Tissue thickness variation linking pigment and vascular absorption to the tissue field. Not geometric self-contact."))
 	float ThicknessVariation = 0.5f;

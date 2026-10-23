@@ -1006,6 +1006,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget 
 		.Enabled(bCanAdd)
 		.ToolTip(bCanAdd ? LOCTEXT("AddSkinHint", "Curvature-driven tissue, folds and material response. Gates are authored as child masks.")
 			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
+	Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Surfacing(),
+		FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Moss); }))
+		.Enabled(bCanAdd)
+		.ToolTip(bCanAdd ? LOCTEXT("AddMossHint", "Habitat-driven moss growth, relief and material response. Gates are authored as child masks.")
+			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
 	return Menu.Build();
 }
 
@@ -1308,9 +1313,7 @@ TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget
 			CreateChild(Target, EMixtormatChildCreation::RootNetwork);
 		}))
 		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Moss); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
+
 	Menu.Item(LOCTEXT("AddMyceliumChild", "Mycelium"), MixtormatIcons::Generator(),
 		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Mycelium); }))
 		.Enabled(bCanAdd).ToolTip(Reason);

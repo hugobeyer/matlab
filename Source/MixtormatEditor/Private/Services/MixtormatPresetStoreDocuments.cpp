@@ -419,17 +419,19 @@ namespace MixtormatPresetStore
 	}
 	bool SaveModule(const FModulePreset& Preset, FText& Error)
 	{
-		// Saving over a created preset replaces it instead of failing on the name.
+		Error = FText::GetEmpty();
+		if (!Documents::ValidInfo(Preset, Error)) { return false; }
+		// A bad library entry must not prevent replacing a valid compatible user preset.
 		TArray<FModulePreset> Existing;
 		FText ListError;
-		if (ListModules(Preset.Settings, Existing, ListError))
+		ListModules(Preset.Settings, Existing, ListError);
+		for (const FModulePreset& Entry : Existing)
 		{
-			for (const FModulePreset& Entry : Existing)
+			if (!Entry.bShipped && !Entry.bBuiltIn && Entry.Name.Equals(Preset.Name, ESearchCase::IgnoreCase))
 			{
-				if (!Entry.bBuiltIn && Entry.Name.Equals(Preset.Name, ESearchCase::IgnoreCase))
-				{
-					return OverwriteModule(Entry, Preset, Error);
-				}
+				FModulePreset Replacement = Preset;
+				Replacement.Id = Entry.Id;
+				return WriteModule(Entry.Filename, Replacement, Error, true);
 			}
 		}
 		return Documents::Save(TEXT("Modules"), Preset, Error, ExportModule);
