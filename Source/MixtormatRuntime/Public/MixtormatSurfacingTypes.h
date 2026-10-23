@@ -50,7 +50,7 @@ struct MIXTORMATRUNTIME_API FMixtormatSkin
 	int32 DetailCells = 96;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "256", Delta = "1", ToolTip = "Periodic pore cells per detail repeat."))
 	int32 PoreCells = 125;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "0.25", UIMax = "4", Delta = "0.01", ToolTip = "Global tiling for all Skin features."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "4", Delta = "1", ToolTip = "Whole repeats shared by all Skin features. Rounded to at least one repeat for seamless tiling; height gain is unchanged. Fractional layer UV scales or nonperiodic upstream inputs can still cause seams."))
 	float SurfaceTiling = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Skin", meta = (UIMin = "1", UIMax = "16", Delta = "1", ToolTip = "Integer repeats of baked microdetail. This is not independent runtime detail mapping."))

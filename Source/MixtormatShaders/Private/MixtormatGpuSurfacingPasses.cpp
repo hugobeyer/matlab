@@ -409,7 +409,9 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->FoldCells = Skin.FoldCells;
 	P->DetailCells = Skin.DetailCells;
 	P->PoreCells = Skin.PoreCells;
-	P->SurfaceTiling = Skin.SurfaceTiling;
+	// Fractional domain repeats cannot close on the destination tile.
+	P->SurfaceTiling = FMath::Max(1.0f, FMath::RoundToFloat(
+		FMath::IsFinite(Skin.SurfaceTiling) ? Skin.SurfaceTiling : Defaults.SurfaceTiling));
 	P->DetailTiling = Skin.DetailTiling;
 	P->VascularScale = Skin.VascularScale;
 	P->VascularDensity = Skin.VascularDensity;
@@ -488,7 +490,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->SeedState = Seed;
 	FRDGTextureRef PreviousFold = nullptr;
 	int32 RemainingIterations = FMath::Clamp(Skin.SolverIterations, 0, FMixtormatSkin::MaxSolverIterations);
-	const FVector2f PlacementScale = P->GeneratorUVScale;
+	const FVector2f PlacementScale = P->GeneratorUVScale * P->SurfaceTiling;
 	const float AuthoredRate = float(Skin.FoldCells)
 		* FMath::Max(FMath::Abs(PlacementScale.X), FMath::Abs(PlacementScale.Y))
 		/ FMath::Sqrt(FMath::Max(Skin.Elongation, 1.0f));

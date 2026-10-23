@@ -93,7 +93,9 @@ RWTexture2D<float2> OutCushionInflation;
 static const float MOSS_ACTIVE_B = 0.1f;
 static const float MOSS_EMPTY_B = 0.001f;
 static const uint MOSS_CLUMP_SALT = 909u;
-static const float MOSS_CLUMP_RELIEF_FRACTION = 0.15f;
+static const float MOSS_CLUMP_RELIEF_FRACTION = 0.5f;
+static const float MOSS_SHOOT_RELIEF_FRACTION = 0.5f;
+static const float2 MOSS_SHOOT_RADIUS_RANGE = float2(0.12f, 0.65f);
 static const float MOSS_COARSE_RELIEF_FRACTION = 0.1f;
 static const float MOSS_SMOOTH_RADIUS_FRACTION = 0.5f;
 static const float2 MOSS_INOCULATION_GATE_RANGE = float2(0.05f, 0.35f);
@@ -236,14 +238,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Habitat = Moisture;
 	Habitat += CavityAttraction * Cavity * (0.5f + 0.5f * Moisture);
 	Habitat += OcclusionInfluence * Shelter * 0.75f;
-	Habitat -= (1.0f - ExposureTolerance) * Exposure * 0.5f;
-	Habitat -= SurfaceAnglePreference * pow(Slope, 1.4f) * 1.2f;
 	Habitat += 0.25f * saturate(GravAlign) * Slope * Cavity * Moisture;
-	Habitat = saturate(Habitat);
+	// Attenuate suitability rather than subtracting through a hard zero cutoff.
+	float HabitatPenalty = (1.0f - saturate(ExposureTolerance)) * Exposure * 0.5f
+		+ max(SurfaceAnglePreference, 0.0f) * pow(Slope, 1.4f) * 1.2f;
+	Habitat = saturate(Habitat) * exp(-HabitatPenalty);
 	int Period = max(ColonyDensity, 1);
 	float Inoculation = TileNoise(UV, Period, 101u) * 0.57f + TileNoise(UV, Period * 2, 202u) * 0.29f + TileNoise(UV, Period * 4, 303u) * 0.14f;
 	float Patches = smoothstep(0.58f, 0.68f, Inoculation);
-	float HabitatGate = smoothstep(MOSS_INOCULATION_GATE_RANGE.x, MOSS_INOCULATION_GATE_RANGE.y, Habitat);
+	float HabitatGate = Habitat;
 	float SeedHabitat = saturate(CavityAttraction * Cavity + OcclusionInfluence * Shelter);
 	float SeedGate = smoothstep(MOSS_INOCULATION_GATE_RANGE.x, MOSS_INOCULATION_GATE_RANGE.y, SeedHabitat);
 	float HabitatSeed = Patches * SeedGate * HabitatGate;
@@ -271,24 +274,27 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 DestinationUV = (float2(Pixel) + 0.5f) * Texel;
 	float2 UV = MixtormatGeneratorUV(DestinationUV);
 	float4 Sub = SubstrateAnalysis.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
-	float Slope = Sub.b; float GravAlign = Sub.a;
+	float Slope = Sub.b;
 	float4 Hab = HabitatColony.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 	float ColonyMask = Hab.r; float ColonyAge = Hab.g;
 	if (ColonyMask <= 0.001f) { OutMesoHeight[Pixel] = 0.0f; return; }
 	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
 	float TargetSize = max(CushionSize, 1e-6f);
-	// Age-driven bulge: older cores swell more; droop scales with maturity
-	float AgeBulge = lerp(1.0f, 1.0f + MatureHeight / max(CushionHeight, 1e-4f), saturate(ColonyAge * 1.2f));
-	float SagAmount = Slope * Droop * TargetSize * (0.3f + 0.7f * ColonyAge) * 0.5f;
-	// Droop warps the cushion dome itself (not just noise)
-	float2 DisplacedUV = UV - GravDir * SagAmount;
-	float2 Inflation = CushionInflation.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
-	float Biomass = GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z;
+	float Biomass = saturate(GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).z);
+	float2 LocalInflation = CushionInflation.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
+	float Interior = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0));
+	// Keep the backtrace inside the grown footprint. Mature bulk carries more load.
+	float Load = saturate(Slope * max(Droop, 0.0f)) * Biomass;
+	float SagAmount = Load * min(TargetSize, Interior) * MOSS_SMOOTH_RADIUS_FRACTION;
+	float2 SourceUV = WrapUV(DestinationUV - GravDir * SagAmount);
+	float2 DisplacedUV = MixtormatGeneratorUV(SourceUV);
+	float2 Inflation = CushionInflation.SampleLevel(LinearWrapSampler, SourceUV, 0);
+	// Local biomass prevents transported mature relief from thickening a fresh fringe.
 	float MatureProfile = min(Inflation.y, Inflation.x * Biomass);
-	float BulkHeight = (CushionHeight * Inflation.x + MatureHeight * MatureProfile) * AgeBulge;
-	// Downslope lip pile-up: thicker where gravity pushes
-	float DownslopePile = saturate(GravAlign * Slope * Droop * 0.5f) * BulkHeight * 0.25f;
-	BulkHeight += DownslopePile;
+	float BulkHeight = CushionHeight * Inflation.x + MatureHeight * MatureProfile;
+	// Positive upstream-to-local profile difference forms a heavier downstream lip.
+	float Pile = max(Inflation.x - LocalInflation.x, 0.0f) * Load;
+	BulkHeight += Pile * (max(CushionHeight, 0.0f) + max(MatureHeight, 0.0f) * Biomass);
 	int CushionDim = max(1, int(round(1.0f / TargetSize)));
 	float2 Warp = CurlDomainWarp(DisplacedUV, CushionDim, 404u) * 0.25f;
 	float2 WarpedUV = DisplacedUV + Warp / float(CushionDim);
@@ -298,10 +304,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		int ClumpDim = max(1, int(round(ClumpDensity)));
 		float Clumps = MossCellDome(DisplacedUV, ClumpDim, MOSS_CLUMP_SALT);
-		// FIX: clump relief no longer killed by high density; use coverage-aware budget
-		float ClumpPresence = saturate(ClumpDensity / 64.0f);
-		float RelativeSpacing = saturate(float(ClumpDim) * TargetSize);
-		Detail += MOSS_CLUMP_RELIEF_FRACTION * ClumpPresence * RelativeSpacing * (Clumps - 0.5f);
+		// Density owns spacing, not a second attenuation of the relief amplitude.
+		float ClumpPresence = saturate(ClumpDensity);
+		// Mature lobes broaden and lift instead of merely increasing fine contrast.
+		float FatClumps = lerp(Clumps, sqrt(max(Clumps, 0.0f)), Biomass);
+		Detail += MOSS_CLUMP_RELIEF_FRACTION * ClumpPresence * (FatClumps - 0.5f);
+		BulkHeight += max(MatureHeight, 0.0f) * MatureProfile
+			* ClumpPresence * FatClumps * MOSS_CLUMP_RELIEF_FRACTION;
 	}
 	float MesoHeight = BulkHeight * (1.0f + Detail);
 	OutMesoHeight[Pixel] = MesoHeight;
@@ -347,12 +356,16 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		MinShootDist = min(MinShootDist, length(TorusDelta(UV, Center)));
 	}
 	float ShootNormDist = MinShootDist * float(ShootDim);
-	float TipSharpness = 2.0f / (1.0f + max(FiberThickness, 0.0f));
-	float ShootProfile = pow(saturate(1.0f - ShootNormDist), TipSharpness);
+	float Thickness = max(FiberThickness, 0.0f);
+	float ShootRadius = lerp(MOSS_SHOOT_RADIUS_RANGE.x, MOSS_SHOOT_RADIUS_RANGE.y, Thickness);
+	float TipSharpness = 2.0f / (1.0f + Thickness);
+	float ShootProfile = pow(saturate(1.0f - ShootNormDist / ShootRadius), TipSharpness);
 	float Fibers = TileNoise(UV * 16.0f, ShootDim, 707u) * 0.25f;
 	float InteriorDistance = max(0.0f, GrowthInteriorDistance.SampleLevel(LinearWrapSampler, DestinationUV, 0));
-	// FIX: shoot budget uses UV-space spacing, not OutputSize
-	float ShootHeightBudget = min(InteriorDistance, 1.0f / float(ShootDim));
+	// Spacing controls the boundary fade, not shoot amplitude. Denser shoots stay tall.
+	float EdgeFade = smoothstep(0.0f, 1.0f / float(ShootDim), InteriorDistance);
+	float ShootHeightBudget = MOSS_SHOOT_RELIEF_FRACTION
+		* (max(CushionHeight, 0.0f) + max(MatureHeight, 0.0f) * ColonyAge) * EdgeFade;
 	float MicroRelief = (ShootProfile * 0.8f + Fibers * 0.2f) * ShootLength * ShootHeightBudget * saturate(ColonyAge * 2.0f);
 	MicroRelief *= lerp(0.75f, 1.0f, Hab.a);
 	float CombinedHeight = (Meso + MicroRelief) * ColonyMask;
@@ -501,7 +514,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	OutGrowthInteriorDistance[Pixel] = InteriorDistance;
 	float Radius = 0.5f * max(CushionSize, 1e-6f);
 	float T = saturate(InteriorDistance / Radius);
-	float Profile = sqrt(max(0.0f, T * (2.0f - T)));
+	// Zero first/second derivative at the substrate and crown; the former circular
+	// section had an infinite boundary slope, producing a wall beneath soft detail.
+	float Profile = T * T * T * (T * (T * 6.0f - 15.0f) + 10.0f);
 	float Biomass = GrowthState.Load(int3(Pixel, 0)).z;
 	OutCushionInflation[Pixel] = float2(Profile, Profile * Biomass);
 }

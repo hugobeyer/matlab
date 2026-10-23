@@ -222,9 +222,10 @@ float3 SkinFiniteRGB(float3 V)
 float2 SkinPlacedUV(float2 UV)
 {
 	float2 P = MixtormatGeneratorUV(UV);
-	float2 Placed = (0.5f + mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV,
-		GeneratorUVRotation), P - 0.5f)) * GeneratorUVScale + GeneratorUVOffset;
-	return Placed * max(SurfaceTiling, 0.01f);
+	// SurfaceTiling is a whole repeat, shared by tissue, drift, folds and material detail.
+	// Keep coordinates lifted: frac here would corrupt finite-difference footprints.
+	return ((0.5f + mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV,
+		GeneratorUVRotation), P - 0.5f)) * GeneratorUVScale + GeneratorUVOffset) * SurfaceTiling;
 }
 
 float SkinFootprint(float2 DX, float2 DY)

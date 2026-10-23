@@ -384,7 +384,7 @@ namespace MixtormatGpuCompositor
 			// Include output controls in the final-field identity; chemistry has a separate key.
 			FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 			Out.FieldKey = MixtormatComposeHash::Combine(
-				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737347723131ull) | 1ull;
+				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737347723134ull) | 1ull;
 
 			MixtormatComposeHash::FHasher SimulationHasher;
 			SimulationHasher.SkipTopLevel = {
@@ -395,7 +395,7 @@ namespace MixtormatGpuCompositor
 			SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 			// Placement is already covered by the current-layer dependency hash.
 			Out.SimulationKey = MixtormatComposeHash::Combine(
-				MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737353696d36ull) | 1ull;
+				MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737353696d37ull) | 1ull;
 		}
 		break;
 	}
