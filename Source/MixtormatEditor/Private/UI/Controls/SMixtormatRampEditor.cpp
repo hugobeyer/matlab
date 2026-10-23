@@ -51,16 +51,10 @@ TSharedRef<SWidget> SMixtormatRampEditorBase::BuildUserPresetMenu()
 {
 	MixtormatMenu::FBuilder Menu;
 	Menu.Caption(NSLOCTEXT("Mixtormat", "UserRampPresetsHeading", "USER RAMP PRESETS"));
-	const bool bHasDialogs = FDesktopPlatformModule::Get() != nullptr;
 	if (!PresetError.IsEmpty()) { Menu.Caption(PresetError); }
 	Menu.SubMenu(NSLOCTEXT("Mixtormat", "SaveRampPreset", "Save Preset…"), nullptr,
 		FOnGetContent::CreateSP(this, &SMixtormatRampEditorBase::BuildSavePresetMenu));
-	Menu.Item(NSLOCTEXT("Mixtormat", "ImportRampPreset", "Import JSON…"), nullptr,
-		FSimpleDelegate::CreateSP(this, &SMixtormatRampEditorBase::ImportUserPreset))
-				.Enabled(bHasDialogs).ToolTip(NSLOCTEXT("Mixtormat", "RampImportHelp", "Import a JSON preset of this ramp type. Requires platform file dialogs."));
-	Menu.Item(NSLOCTEXT("Mixtormat", "ExportRampPreset", "Export Current Ramp…"), nullptr,
-		FSimpleDelegate::CreateSP(this, &SMixtormatRampEditorBase::ExportUserPreset))
-				.Enabled(bHasDialogs).ToolTip(NSLOCTEXT("Mixtormat", "RampExportHelp", "Export the current ramp to a new JSON file. Existing files are never overwritten. Requires platform file dialogs."));
+	// No user-facing JSON import/export: preset files are developer-only (store API).
 	Menu.Separator();
 	const MixtormatPresetStore::FRampPreset Current = CapturePreset();
 	TArray<MixtormatPresetStore::FRampPreset> Presets;

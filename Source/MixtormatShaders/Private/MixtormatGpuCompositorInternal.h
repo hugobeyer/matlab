@@ -1084,7 +1084,6 @@ namespace MixtormatGpuCompositor
 		FBooleanOpsRenderData BooleanOps;
 		FRootNetworkRenderData RootNetwork;
 		FScalesRenderData Scales;
-		FMossRenderData Moss;
 		FMyceliumRenderData Mycelium;
 	};
 
@@ -1323,6 +1322,7 @@ namespace MixtormatGpuCompositor
 		FIdGroupRenderData IdGroup;
 		FGeneratorRenderData Generator;
 				FMixtormatSurfacing Surfacing;
+		FMossRenderData Moss;
 		FBooleanStackRenderData Boolean;
 		FGeneratorHeightBlendRenderData HeightBlend;
 		FGeneratorHeightCurveRenderData HeightCurve;

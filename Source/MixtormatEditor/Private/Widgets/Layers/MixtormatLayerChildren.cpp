@@ -850,7 +850,6 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::RockFormation: return EMixtormatChildCreation::RockFormation;
 		case EMixtormatGeneratorType::Pebbles:       return EMixtormatChildCreation::Pebbles;
 		case EMixtormatGeneratorType::RootNetwork:   return EMixtormatChildCreation::RootNetwork;
-	case EMixtormatGeneratorType::Moss:          return EMixtormatChildCreation::Moss;
 	case EMixtormatGeneratorType::Mycelium:      return EMixtormatChildCreation::Mycelium;
 	case EMixtormatGeneratorType::Scales:        return EMixtormatChildCreation::Scales;
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
@@ -883,7 +882,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RootNetwork:     return EMixtormatLayerChildType::Generator;
-	case EMixtormatChildCreation::Moss:            return EMixtormatLayerChildType::Generator;
+	case EMixtormatChildCreation::Moss:            return EMixtormatLayerChildType::Surfacing;
 	case EMixtormatChildCreation::Mycelium:        return EMixtormatLayerChildType::Generator;
 	case EMixtormatChildCreation::Scales:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
@@ -964,7 +963,7 @@ namespace MixtormatLayersPrivate
 			Child.Generator.Type = EMixtormatGeneratorType::Pebbles;
 			break;
 		case EMixtormatChildCreation::Moss:
-			Child.Generator.Type = EMixtormatGeneratorType::Moss;
+			Child.Surfacing.Type = EMixtormatSurfacingType::Moss;
 			break;
 		case EMixtormatChildCreation::Mycelium:
 			Child.Generator.Type = EMixtormatGeneratorType::Mycelium;
@@ -1479,7 +1478,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 
 	if (Child.Type == EMixtormatLayerChildType::Surfacing)
 	{
-		return LOCTEXT("SkinChildName", "Skin");
+		return Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+			? LOCTEXT("MossChildName", "Moss") : LOCTEXT("SkinChildName", "Skin");
 	}
 
 	if (Child.Type == EMixtormatLayerChildType::Mask && Child.Mask.UsesNoise())
@@ -1587,8 +1587,6 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 			return LOCTEXT("RockFormationChildName", "Rock Formation");
 		case EMixtormatGeneratorType::Pebbles:
 			return LOCTEXT("PebblesChildName", "Pebbles");
-		case EMixtormatGeneratorType::Moss:
-			return LOCTEXT("MossChildName", "Moss");
 		case EMixtormatGeneratorType::Mycelium:
 			return LOCTEXT("MyceliumChildName", "Mycelium");
 		case EMixtormatGeneratorType::Scales:
@@ -2297,14 +2295,14 @@ const FMixtormatScales* SMixtormat::GetSelectedScales() const
 
 FMixtormatMoss* SMixtormat::GetSelectedMoss()
 {
-	FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && Generator->Type == EMixtormatGeneratorType::Moss ? &Generator->Moss : nullptr;
+	return const_cast<FMixtormatMoss*>(static_cast<const SMixtormat*>(this)->GetSelectedMoss());
 }
 
 const FMixtormatMoss* SMixtormat::GetSelectedMoss() const
 {
-	const FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && Generator->Type == EMixtormatGeneratorType::Moss ? &Generator->Moss : nullptr;
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Surfacing
+		&& Child->Surfacing.Type == EMixtormatSurfacingType::Moss ? &Child->Surfacing.Moss : nullptr;
 }
 
 FMixtormatMycelium* SMixtormat::GetSelectedMycelium()

@@ -114,8 +114,6 @@ namespace MixtormatRecipeService
 			for (int32 ChildIndex = 0; ChildIndex < Children.Num(); ++ChildIndex)
 			{
 				const FMixtormatLayerChild& Child = Children[ChildIndex];
-				if (Child.Type == EMixtormatLayerChildType::HeightPush || Child.Type == EMixtormatLayerChildType::StructuralWarp)
-				{ Issues.AddUnique(TEXT("A recipe contains a retired module type with no authored execution payload.")); }
 				if (Child.ScopeOwnerChildId.IsValid() && (!Owned.Contains(Child.ScopeOwnerChildId)
 									|| Children.IndexOfByPredicate([&Child](const FMixtormatLayerChild& Candidate) { return Candidate.ChildId == Child.ScopeOwnerChildId; }) >= ChildIndex))
 				{ Issues.AddUnique(TEXT("Scoped parent is missing, outside its container or self-referencing.")); }

@@ -209,7 +209,6 @@ namespace
 			Add(ET::Generator, TEXT("FilamentWidth"), FilamentWidth);
 
 			// Only true runtime/dispatch/divisor safety bounds live here; UI/JSON authoring owns clamping.
-			Add(ET::Surfacing, TEXT("Amount"), Saturated());
 			FMixtormatParameterContract SkinIterations;
 			SkinIterations.HardMin = 0.0f;
 			SkinIterations.HardMax = float(FMixtormatSkin::MaxSolverIterations);
@@ -222,16 +221,14 @@ namespace
 			SkinWarpLayers.HardMin = 0.0f;
 			SkinWarpLayers.HardMax = float(FMixtormatSkin::MaxWarpLayers);
 			Add(ET::Surfacing, TEXT("WarpLayers"), SkinWarpLayers);
-			FMixtormatParameterContract PositivePeriod;
-			PositivePeriod.HardMin = 1.0f;
-			for (const TCHAR* Name : {TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"),
-				TEXT("PoreCells"), TEXT("DetailTiling"), TEXT("Elongation"), TEXT("IOR")})
-			{
-				Add(ET::Surfacing, Name, PositivePeriod);
-			}
+			// Only GPU-dangerous bounds stay hard: dispatch/alloc budgets above, the
+			// WarpLayers shader loop, and true divisors (floored, never artist-clamped).
+			// Cell counts are guarded in-shader by SkinLatticePeriod; pore support is
+			// clamped in-shader. Everything else is finite-only and passes through.
 			FMixtormatParameterContract SkinDivisor;
 			SkinDivisor.HardMin = DivisorFloor;
-			for (const TCHAR* Name : {TEXT("WarpScale"), TEXT("PoreSize"), TEXT("FoldWidth"), TEXT("CurvatureRadius")})
+			for (const TCHAR* Name : {TEXT("WarpScale"), TEXT("PoreSize"), TEXT("FoldWidth"), TEXT("CurvatureRadius"),
+				TEXT("Elongation")})
 			{
 				Add(ET::Surfacing, Name, SkinDivisor);
 			}
@@ -241,7 +238,10 @@ namespace
 				TEXT("Cellular"), TEXT("CurvatureStrength"), TEXT("PoreDepth"), TEXT("PoreVariation"),
 				TEXT("Grain"), TEXT("PigmentVariation"), TEXT("ThicknessVariation"), TEXT("VascularAmount"),
 				TEXT("CavityAO"), TEXT("CavityRoughness"), TEXT("FuzzAmount"), TEXT("FuzzRoughness"),
-				TEXT("SSSAmount"), TEXT("Bending"), TEXT("Support")})
+				TEXT("SSSAmount"), TEXT("Bending"), TEXT("Support"), TEXT("SurfaceTiling"),
+				TEXT("GravityBulge"), TEXT("GravityAngle"), TEXT("GravityHold"), TEXT("VascularScale"), TEXT("VascularDensity"),
+				TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"), TEXT("PoreCells"),
+				TEXT("DetailTiling"), TEXT("IOR"), TEXT("Amount")})
 			{
 				Add(ET::Surfacing, Name, {});
 			}
@@ -385,15 +385,22 @@ namespace
 		else if (Owner == EMixtormatParameterOwnerType::Surfacing)
 		{
 			static const FMixtormatSkin Defaults;
+			static const FMixtormatMoss MossDefaults;
 			const FProperty* Property = FMixtormatSkin::StaticStruct()->FindPropertyByName(Parameter);
+			const void* DefaultsPtr = &Defaults;
+			if (!Property)
+			{
+				Property = FMixtormatMoss::StaticStruct()->FindPropertyByName(Parameter);
+				DefaultsPtr = &MossDefaults;
+			}
 			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
 			{
-				Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+				Result.Value = *Float->ContainerPtrToValuePtr<float>(DefaultsPtr);
 				Result.bFound = true;
 			}
 			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
 			{
-				Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+				Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(DefaultsPtr));
 				Result.bFound = true;
 			}
 		}

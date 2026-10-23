@@ -3108,6 +3108,24 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
 				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
 
+	// Material (Surfacing response)
+	Panel = AddCard(Cards, LOCTEXT("MossMaterial", "MATERIAL"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossAmount", "Amount"), &FMixtormatMoss::Amount, 0, 2, .01,
+			LOCTEXT("MossAmountHint", "Surfacing contribution after child masks.")),
+		Slider(LOCTEXT("MossNormalStrength", "Normal Strength"), &FMixtormatMoss::NormalStrength, 0, 3, .01,
+			LOCTEXT("MossNormalStrengthHint", "Tufted arc-blade detail normal strength. Normals only; does not change height."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossDryRoughness", "Dry Roughness"), &FMixtormatMoss::DryRoughness, 0, 1, .01,
+			LOCTEXT("MossDryRoughnessHint", "Roughness where the solver moisture field is dry.")),
+		Slider(LOCTEXT("MossWetRoughness", "Wet Roughness"), &FMixtormatMoss::WetRoughness, 0, 1, .01,
+			LOCTEXT("MossWetRoughnessHint", "Roughness where the solver moisture field is wet; wet moss also darkens."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteColor", "Write Color"), Moss, &FMixtormatMoss::bWriteColor,
+			LOCTEXT("MossWriteColorHint", "Write age/moisture color ramp to albedo.")),
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteNormal", "Write Normal"), Moss, &FMixtormatMoss::bWriteNormal,
+			LOCTEXT("MossWriteNormalHint", "Write tufted leaf detail normals (Surfacing only)."))));
+
 	// Body (mush)
 	Panel = AddCard(Cards, LOCTEXT("MossBody", "BODY (MUSH)"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
@@ -3122,11 +3140,11 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		.InitiallyExpanded(true)
 		.HeaderAction(SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, FMixtormatThemeStore::GetResolved().ControlLayout.InspectorFeatureButtonGap, 0)[
-				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Generator;
-					Probe.Generator.Type = EMixtormatGeneratorType::Moss; return GetChildPreviewOutputSet(Probe); }())]
+				MakeChildOutputPreviewButton([]() { FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Surfacing;
+					Probe.Surfacing.Type = EMixtormatSurfacingType::Moss; return GetChildPreviewOutputSet(Probe); }())]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[MixtormatRow::MakeCheckbox(
-				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* G = GetSelectedGenerator(); return G && G->bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
-				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* G = GetSelectedGenerator()) { G->bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])
+				TAttribute<ECheckBoxState>::CreateLambda([this]() { const auto* C = ResolveChildAt(GetSelectedChildAddress()); return C && C->Surfacing.bEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
+				FOnCheckStateChanged::CreateLambda([this](ECheckBoxState State) { if (auto* C = ResolveChildAt(GetSelectedChildAddress())) { C->Surfacing.bEnabled = State == ECheckBoxState::Checked; RefreshLayeredPreview(); RebuildLayerList(); } }))])
 		[Cards]];
 }
 

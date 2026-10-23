@@ -4,6 +4,41 @@
 
 namespace MixtormatSurfacing
 {
+	TConstArrayView<FMixtormatMossPreset> GetMossPresets()
+	{
+		static const TArray<FMixtormatMossPreset> Presets = []()
+		{
+			TArray<FMixtormatMossPreset> Built;
+			Built.SetNum(5);
+			auto Ramp = [](FMixtormatMoss& M, FLinearColor A, FLinearColor B, FLinearColor C)
+			{
+				M.ColorRamp.Stops = {{0.0f, A}, {0.5f, B}, {1.0f, C}};
+			};
+			Built[0].Name = NSLOCTEXT("MixtormatSurfacing", "MossLushWet", "Lush Wet");
+			Built[0].Description = NSLOCTEXT("MixtormatSurfacing", "MossLushWetHelp", "Deep green saturated cushions, dark wet base, low wet roughness.");
+			{ FMixtormatMoss& M = Built[0].Settings; M.Moisture = 0.85f; M.WetRoughness = 0.35f; M.DryRoughness = 0.9f;
+			  Ramp(M, FLinearColor(0.03f,0.09f,0.02f,1), FLinearColor(0.08f,0.24f,0.05f,1), FLinearColor(0.30f,0.52f,0.12f,1)); }
+			Built[1].Name = NSLOCTEXT("MixtormatSurfacing", "MossDryPale", "Dry Pale");
+			Built[1].Description = NSLOCTEXT("MixtormatSurfacing", "MossDryPaleHelp", "Yellow-green desiccated moss, matte and thin.");
+			{ FMixtormatMoss& M = Built[1].Settings; M.Moisture = 0.25f; M.WetRoughness = 0.7f; M.DryRoughness = 1.0f; M.CushionHeight = 0.02f;
+			  Ramp(M, FLinearColor(0.14f,0.16f,0.05f,1), FLinearColor(0.32f,0.38f,0.12f,1), FLinearColor(0.58f,0.62f,0.25f,1)); }
+			Built[2].Name = NSLOCTEXT("MixtormatSurfacing", "MossForestFloor", "Forest Floor");
+			Built[2].Description = NSLOCTEXT("MixtormatSurfacing", "MossForestFloorHelp", "Olive-brown mixed colonies with decaying old growth.");
+			{ FMixtormatMoss& M = Built[2].Settings; M.Moisture = 0.6f; M.Coverage = 0.65f;
+			  Ramp(M, FLinearColor(0.10f,0.10f,0.03f,1), FLinearColor(0.22f,0.26f,0.08f,1), FLinearColor(0.42f,0.40f,0.16f,1)); }
+			Built[3].Name = NSLOCTEXT("MixtormatSurfacing", "MossAlpine", "Alpine Cushion");
+			Built[3].Description = NSLOCTEXT("MixtormatSurfacing", "MossAlpineHelp", "Compact blue-green cushions, dense fine shoots.");
+			{ FMixtormatMoss& M = Built[3].Settings; M.Moisture = 0.5f; M.ClumpDensity = 48.0f; M.ShootDensity = 0.85f; M.CushionHeight = 0.025f;
+			  Ramp(M, FLinearColor(0.04f,0.12f,0.08f,1), FLinearColor(0.10f,0.30f,0.18f,1), FLinearColor(0.28f,0.55f,0.35f,1)); }
+			Built[4].Name = NSLOCTEXT("MixtormatSurfacing", "MossDecaying", "Decaying");
+			Built[4].Description = NSLOCTEXT("MixtormatSurfacing", "MossDecayingHelp", "Brown-tipped old colonies over a dark base.");
+			{ FMixtormatMoss& M = Built[4].Settings; M.Moisture = 0.4f; M.GrowthIterations = 700;
+			  Ramp(M, FLinearColor(0.09f,0.07f,0.03f,1), FLinearColor(0.20f,0.22f,0.07f,1), FLinearColor(0.45f,0.32f,0.14f,1)); }
+			return Built;
+		}();
+		return MakeArrayView(Presets);
+	}
+
 	TConstArrayView<FMixtormatSkinPreset> GetSkinPresets()
 	{
 		static const TArray<FMixtormatSkinPreset> Presets = []()
@@ -69,11 +104,11 @@ namespace MixtormatSurfacing
 			R.DirectionVariation = 0.8f;
 			R.Elongation = 2.5f;
 			R.Cellular = 0.35f;
-			R.DetailCells = 144;
-			R.PoreCells = 150;
+			R.DetailCells = 96;
+			R.PoreCells = 110;
 			R.PoreDepth = 0.75f;
 			R.PoreVariation = 0.8f;
-			R.Grain = 0.85f;
+			R.Grain = 0.5f;
 			R.PigmentVariation = 0.25f;
 			R.ThicknessVariation = 0.55f;
 			R.VascularAmount = 0.08f;
@@ -133,7 +168,7 @@ namespace MixtormatSurfacing
 			P.DirectionVariation = 0.4f;
 			P.Elongation = 3.2f;
 			P.Cellular = 0.18f;
-			P.DetailCells = 128;
+			P.DetailCells = 96;
 			P.PoreCells = 92;
 			P.PoreDepth = 1.0f;
 			P.PoreVariation = 0.85f;
@@ -158,8 +193,8 @@ namespace MixtormatSurfacing
 			H.FoldWidth = 0.12f;
 			H.Crossing = 0.45f;
 			H.TissueCoupling = 0.65f;
-			H.DetailCells = 128;
-			H.PoreCells = 145;
+			H.DetailCells = 96;
+			H.PoreCells = 120;
 			H.PoreDepth = 0.35f;
 			H.Grain = 0.22f;
 			H.PigmentVariation = 0.18f;
@@ -191,6 +226,16 @@ namespace MixtormatSurfacing
 			{FName(TEXT("Compression")), NSLOCTEXT("MixtormatSurfacing", "Compression", "Compression Response"), K::Scalar01},
 			{FName(TEXT("SSS")), NSLOCTEXT("MixtormatSurfacing", "SSS", "Mean Free Path (cm)"), K::Color, false}
 		};
+		static const FMixtormatSurfacingOutput MossOutputs[] = {
+			{FName(TEXT("Height")), NSLOCTEXT("MixtormatSurfacing", "MossHeight", "Height"), K::ScalarSigned},
+			{FName(TEXT("Color")), NSLOCTEXT("MixtormatSurfacing", "MossColor", "Albedo"), K::Color},
+			{FName(TEXT("Roughness")), NSLOCTEXT("MixtormatSurfacing", "MossRoughness", "Roughness"), K::Scalar01},
+			{FName(TEXT("Normal")), NSLOCTEXT("MixtormatSurfacing", "MossNormal", "Detail Normal"), K::Color},
+			{FName(TEXT("GrowthCoverage")), NSLOCTEXT("MixtormatSurfacing", "MossCoverage", "Growth Coverage"), K::Scalar01},
+			{FName(TEXT("GrowthAge")), NSLOCTEXT("MixtormatSurfacing", "MossAge", "Growth Age"), K::Scalar01},
+			{FName(TEXT("RegionIds")), NSLOCTEXT("MixtormatSurfacing", "MossIds", "Colony IDs"), K::RegionIds},
+		};
+		if (Type == EMixtormatSurfacingType::Moss) { return MakeArrayView(MossOutputs); }
 		return Type == EMixtormatSurfacingType::Skin
 			? MakeArrayView(SkinOutputs) : TConstArrayView<FMixtormatSurfacingOutput>();
 	}

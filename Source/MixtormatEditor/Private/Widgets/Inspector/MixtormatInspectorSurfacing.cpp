@@ -49,6 +49,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	const auto Surface = AddCard(Cards, LOCTEXT("SkinSurfaceCard", "SURFACE"));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Amount), SKIN_FLOAT(HeightScale)));
 	AddSliderRow(Surface, SKIN_FLOAT(SurfaceTiling));
+	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_FLOAT(Direction), SKIN_FLOAT(Elongation)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteHeight), SKIN_WRITE(bWriteColor)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteRoughness), SKIN_WRITE(bWriteAO)));
 	AddSliderRow(Surface, MixtormatRow::MakePair(SKIN_WRITE(bWriteF0), SKIN_WRITE(bWriteFuzz)));
@@ -58,6 +59,7 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_INT(Seed), SKIN_INT(TissueCells)));
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_FLOAT(Fullness), SKIN_FLOAT(Softness)));
 	AddSliderRow(Tissue, MixtormatRow::MakePair(SKIN_FLOAT(GravityBulge), SKIN_FLOAT(GravityAngle)));
+	AddSliderRow(Tissue, SKIN_FLOAT(GravityHold));
 
 	const auto Solver = AddCard(Cards, LOCTEXT("SkinSolverCard", "FILM RELAXATION"));
 	AddSliderRow(Solver, MixtormatRow::MakePair(SKIN_INT(SolverIterations), SKIN_INT(SolverResolution)));

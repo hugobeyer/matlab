@@ -22,6 +22,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Subsurface = nullptr; // RGB mean free path in cm, alpha 0 (not albedo).
 		FRDGTextureRef Pores = nullptr;       // Unit scalar pore cavity diagnostic.
 		FRDGTextureRef Compression = nullptr; // Unit scalar curvature-driven compression cue.
+		FRDGTextureRef DetailNormal = nullptr; // Tangent-space detail normal (encoded RGB), unrelated to height. Surfacing only.
 	};
 
 	// Child.Surfacing must be the instance/binding-resolved, gather-sanitized Runtime payload.

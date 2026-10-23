@@ -93,8 +93,7 @@ namespace
 			return Child.Type == EMixtormatLayerChildType::Behavior
 				&& Child.Behavior.Type == EMixtormatBehaviorType::Feather;
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
-		case EMixtormatParameterOwnerType::Surfacing: return Child.Type == EMixtormatLayerChildType::Surfacing
-			&& Child.Surfacing.Type == EMixtormatSurfacingType::Skin;
+		case EMixtormatParameterOwnerType::Surfacing: return Child.Type == EMixtormatLayerChildType::Surfacing;
 				case EMixtormatParameterOwnerType::Boolean: return Child.Type == EMixtormatLayerChildType::Boolean;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
@@ -138,10 +137,6 @@ namespace
 		case EMixtormatGeneratorType::Noise:
 			View.ConstData = &Generator.Noise;
 			View.Struct = FMixtormatNoise::StaticStruct();
-			break;
-		case EMixtormatGeneratorType::Moss:
-			View.ConstData = &Generator.Moss;
-			View.Struct = FMixtormatMoss::StaticStruct();
 			break;
 		case EMixtormatGeneratorType::Mycelium:
 			View.ConstData = &Generator.Mycelium;
@@ -201,7 +196,8 @@ namespace
 		case EMixtormatParameterOwnerType::Mask: View.ConstData = &Child.Mask; break;
 		case EMixtormatParameterOwnerType::MaskNoise: View.ConstData = &Child.Mask.Noise; break;
 		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
-		case EMixtormatParameterOwnerType::Surfacing: View.ConstData = &Child.Surfacing.Skin; break;
+		case EMixtormatParameterOwnerType::Surfacing: View.ConstData = Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+			? static_cast<const void*>(&Child.Surfacing.Moss) : static_cast<const void*>(&Child.Surfacing.Skin); break;
 		case EMixtormatParameterOwnerType::Boolean: View.ConstData = &Child.Boolean; break;
 		case EMixtormatParameterOwnerType::Generated: View.ConstData = &Child.Generated; break;
 		case EMixtormatParameterOwnerType::Craquelure: View.ConstData = &Child.Craquelure; break;
@@ -240,6 +236,10 @@ namespace
 		if (View.ConstData && !Structs.IsEmpty())
 		{
 			View.Struct = Structs[0];
+		}
+		if (Owner == EMixtormatParameterOwnerType::Surfacing && Child.Surfacing.Type == EMixtormatSurfacingType::Moss)
+		{
+			View.Struct = FMixtormatMoss::StaticStruct();
 		}
 		return View;
 	}
@@ -646,7 +646,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Mask: return { FMixtormatMaskLayer::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskNoise: return { FMixtormatNoise::StaticStruct() };
 		case EMixtormatParameterOwnerType::Effect: return { FMixtormatLayerEffect::StaticStruct() };
-		case EMixtormatParameterOwnerType::Surfacing: return { FMixtormatSkin::StaticStruct() };
+		case EMixtormatParameterOwnerType::Surfacing: return { FMixtormatSkin::StaticStruct(), FMixtormatMoss::StaticStruct() };
 		case EMixtormatParameterOwnerType::Boolean: return { FMixtormatBooleanStack::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
 		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };
@@ -676,7 +676,7 @@ namespace MixtormatParameterBinding
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
 				FMixtormatCliffStrata::StaticStruct(), FMixtormatNoise::StaticStruct(),
 				FMixtormatRootNetwork::StaticStruct(), FMixtormatScales::StaticStruct(),
-				FMixtormatMoss::StaticStruct(), FMixtormatMycelium::StaticStruct(), FMixtormatBooleanOps::StaticStruct() };
+				FMixtormatMycelium::StaticStruct(), FMixtormatBooleanOps::StaticStruct() };
 		default: return {};
 		}
 	}

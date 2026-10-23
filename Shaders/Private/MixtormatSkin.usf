@@ -180,6 +180,8 @@ float FuzzAmount;
 float FuzzRoughness;
 // @param SSSAmount
 float SSSAmount;
+// @param NormalStrength
+float NormalStrength;
 // @param FuzzColor
 float3 FuzzColor;
 // @param MeanFreePath
@@ -211,6 +213,7 @@ RWTexture2D<float4> OutFuzzColor;
 RWTexture2D<float4> OutSubsurface;
 RWTexture2D<float> OutPores;
 RWTexture2D<float> OutCompression;
+RWTexture2D<float4> OutDetailNormal;
 #endif
 
 float SkinFinite(float V) { return isfinite(V) ? V : 0.0f; }
@@ -661,20 +664,36 @@ void TissueCS(uint3 DTid : SV_DispatchThreadID)
 	DX = dot(XP, XP) > dot(XM, XM) ? XP : XM;
 	DY = dot(YP, YP) > dot(YM, YM) ? YP : YM;
 	FP = SkinFootprint(DX, DY);
-	float Fat = 0.78f * SkinFat(Q, float(TissueCells), FP, 101u)
-		+ 0.22f * SkinFat(Q, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
+	// Gravity stretch: elongate the fat domain along gravity before sampling,
+	// so lobes become long strokes instead of round bumps.
+	float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
+	float GravStretch = 1.0f + max(GravityBulge, 0.0f) * 1.5f + max(Elongation - 1.0f, 0.0f) * 0.15f;
+	float2 QFat = Q - GravDir * (dot(Q - 0.5f, GravDir) * (1.0f - 1.0f / GravStretch));
+	// Multi-scale fat: large strokes (half frequency) carry the silhouette,
+	// primary cells add body, fine cells only modulate.
+	float Fat = 0.42f * SkinFat(QFat, max(1.0f, round(float(TissueCells) * 0.5f)), FP, 89u)
+		+ 0.40f * SkinFat(QFat, float(TissueCells), FP, 101u)
+		+ 0.18f * SkinFat(QFat, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
+	// Upstream composite drives tissue: curved substrate thickens and raises
+	// fat locally instead of the tissue ignoring the height below.
+	float4 Substrate = SubstrateAnalysis.SampleLevel(LinearWrapSampler, UV, 0);
+	float SubstrateCue = saturate(length(Substrate.xyz) * 0.5f) * saturate(Substrate.w)
+		* max(CurvatureStrength, 0.0f) * max(TissueCoupling, 0.0f);
 	float Thickness = max(0.2f, 1.0f + 0.4f * max(ThicknessVariation, 0.0f)
 		* SkinNoise(Q, max(1.0f, round(float(TissueCells) * 0.61f)), 173u, FP));
+	Thickness *= 1.0f + 0.6f * SubstrateCue;
+	Fat *= 0.8f + 0.45f * SubstrateCue;
 	float Height = SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * Fat * Thickness;
-	// Gravity fat bulge: advect tissue downslope and thicken
+	// Gravity bulge: tissue transported downslope thickens where it pools.
 	if (GravityBulge > 0.001f)
 	{
-		float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
 		float Sag = GravityBulge * 0.15f / max(float(TissueCells), 1.0f);
-		float FatSag = 0.78f * SkinFat(Q + GravDir * Sag, float(TissueCells), FP, 101u)
-			+ 0.22f * SkinFat(Q + GravDir * Sag, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
-		Height = lerp(Height, SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * FatSag * Thickness, GravityBulge * 0.7f);
-		Thickness *= 1.0f + GravityBulge * 0.3f * saturate(FatSag);
+		float FatDown = 0.42f * SkinFat(QFat + GravDir * Sag, max(1.0f, round(float(TissueCells) * 0.5f)), FP, 89u)
+			+ 0.40f * SkinFat(QFat + GravDir * Sag, float(TissueCells), FP, 101u)
+			+ 0.18f * SkinFat(QFat + GravDir * Sag, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
+		float Pooling = saturate(FatDown - Fat);
+		Height += SkinTissueRelief * max(Fullness, 0.0f) * Pooling * GravityBulge * 0.8f * Thickness;
+		Thickness *= 1.0f + GravityBulge * 0.45f * Pooling;
 	}
 	// R: unit destination-UV relief. GB: PERIODIC displacement relative to SkinPlacedUV.
 	// A: positive, neutral-at-one thickness factor. Never HeightScale or Amount here.
@@ -810,8 +829,9 @@ float4 SkinFineResidual(float2 UV)
 	float2 Pore = SkinPores(PoreUV, PorePeriod, PDX, PDY, PoreTangent, Strain.g, Strain.b);
 	float MicroGrain = SkinNoise(F.Q, DetailPeriod * 2.0f, 607u, F.FP)
 		+ 0.5f * SkinNoise(F.Q, DetailPeriod * 4.0f, 659u, F.FP);
+	// Octaves are energy-normalized (1 + 0.5 would stack to 1.5x at full res).
 	float Height = (SkinWrinkleRelief * Medium + SkinFineRelief * Fine) * Thickness
-		+ SkinGrainRelief * Grain * MicroGrain;
+		+ SkinGrainRelief * Grain * MicroGrain * 0.667f;
 	// Pore relief is already footprint-filtered and strain-adjusted. Resolve must not
 	// run it through the directional wrinkle filter or apply a second relief scaling.
 	float PoreHeight = SkinPoreRelief * PoreDepth * (0.25f * Pore.y - Pore.x)
@@ -922,9 +942,15 @@ void ResolveCS(uint3 DTid : SV_DispatchThreadID)
 		+ 0.35f * saturate(Strain.g) * (Fine - Low);
 	float Base = TissueState.SampleLevel(LinearWrapSampler, UV, 0).r
 		+ Strain.r + SkinFoldCorrection(UV);
+	// Band budget: micro bands share one capped budget instead of stacking at
+	// full amplitude on top of tissue+folds. Soft saturation keeps large
+	// authored pore/fine gains from turning into uniform bump at 2048.
+	float MicroTotal = FineHeight * 0.55f + Micro.b * 0.75f;
+	float MicroCap = max(SkinWrinkleRelief * 2.0f, 1e-6f);
+	MicroTotal = MicroTotal / (1.0f + abs(MicroTotal) / MicroCap);
 	// Convert UV relief to canonical height ONCE, after adding the unblurred pores.
 	// The solver and all cached analytic relief remain in UV units, without 0-1 normalization.
-	OutHeight[Pixel] = SkinFinite((Base + FineHeight + Micro.b) * HeightScale * SkinUVToHeight);
+	OutHeight[Pixel] = SkinFinite((Base + MicroTotal) * HeightScale * SkinUVToHeight);
 }
 #else
 static const int SkinAODirections = 8;
@@ -1145,6 +1171,9 @@ void FieldCS(uint3 DTid : SV_DispatchThreadID)
 	OutFuzzColor[Pixel] = float4(SkinFiniteRGB(FuzzColor), 1.0f);
 	// Preserve the helper contract: RGB are untone-mapped distances, independent of SSSAmount.
 	OutSubsurface[Pixel] = float4(SkinFiniteRGB(LocalMFP), 0.0f);
+	// Detail normal from cached micro relief only (not the resolved height).
+	float3 DetailN = normalize(float3(-MicroBend * max(NormalStrength, 0.0f) * 8.0f, 1.0f));
+	OutDetailNormal[Pixel] = float4(DetailN * 0.5f + 0.5f, 1.0f);
 	OutPores[Pixel] = Fine.g;
 	OutCompression[Pixel] = saturate(Strain.g);
 }

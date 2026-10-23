@@ -326,7 +326,7 @@ class FMixtormatMossCS final : public FGlobalShader
 public:
 	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
-	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 12);
+	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 13);
 	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
@@ -382,6 +382,18 @@ public:
 
 		SHADER_PARAMETER(float, Softness)
 		SHADER_PARAMETER(float, Plumpness)
+		SHADER_PARAMETER(float, DryRoughness)
+		SHADER_PARAMETER(float, WetRoughness)
+		SHADER_PARAMETER(float, NormalStrength)
+		SHADER_PARAMETER(uint32, ColorRampCount)
+		SHADER_PARAMETER(uint32, ColorRampInterpolation)
+		SHADER_PARAMETER_ARRAY(FVector4f, ColorRampPositions, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER_ARRAY(FVector4f, ColorRampColors, [FMixtormatColorRamp::MaxStops])
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<uint>, GrowthIds)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutMossColor)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutMossRAM)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutMossNormal)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutMossRoughness)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SubstrateHeight)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SubstrateAnalysis)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, Chemical)
@@ -3934,18 +3946,20 @@ namespace
 	}
 
 	FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
-		const FLayerRenderData& Layer, const FGeneratorPassInput& Child, FRDGTextureRef RunningHeight,
-		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle)
+		const FLayerRenderData& Layer, const FChildRenderData& Child, FRDGTextureRef RunningHeight,
+		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle, FRDGTextureRef PreUV = nullptr)
 	{
 		FRDGBuilder& GraphBuilder = Ctx.GraphBuilder;
-		const FMossRenderData& Data = Child.Generator.Moss;
+		const FMossRenderData& Data = Child.Moss;
 		const FMixtormatMoss& Settings = Data.Settings;
 		const FIntPoint Size = Ctx.Request.Resolution;
-		constexpr int32 SlotCount = 4;
+		constexpr int32 SlotCount = 8;
 		FRDGTextureRef Outputs[SlotCount] = {};
 		static const TCHAR* Names[SlotCount] = {
 			TEXT("Mixtormat.Moss.Height"), TEXT("Mixtormat.Moss.Coverage"),
-			TEXT("Mixtormat.Moss.Age"), TEXT("Mixtormat.Moss.Ids")};
+			TEXT("Mixtormat.Moss.Age"), TEXT("Mixtormat.Moss.Ids"),
+			TEXT("Mixtormat.Moss.Color"), TEXT("Mixtormat.Moss.RAM"),
+			TEXT("Mixtormat.Moss.Normal"), TEXT("Mixtormat.Moss.Roughness")};
 		if (const auto* Memo = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex))
 		{
 			for (int32 Index = 0; Index < SlotCount; ++Index) { Outputs[Index] = (*Memo)[Index]; }
@@ -3953,7 +3967,7 @@ namespace
 		else
 		{
 			FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
-			const uint64 Key = Cache && !Child.PreUV && Data.FieldKey
+			const uint64 Key = Cache && !PreUV && Data.FieldKey
 				? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f737352444731ull) : 0;
 			const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 			bool bComplete = Hit.IsValid();
@@ -3970,7 +3984,8 @@ namespace
 			}
 			else
 			{
-				const EPixelFormat Formats[SlotCount] = {PF_R32_FLOAT, PF_R16F, PF_R16F, PF_R32_UINT};
+				const EPixelFormat Formats[SlotCount] = {PF_R32_FLOAT, PF_R16F, PF_R16F, PF_R32_UINT,
+					PF_FloatRGBA, PF_FloatRGBA, PF_FloatRGBA, PF_R16F};
 				for (int32 Index = 0; Index < SlotCount; ++Index)
 				{
 					Outputs[Index] = GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(Size, Formats[Index],
@@ -4008,7 +4023,7 @@ namespace
 				// A separate cache retains chemicals across output remaps, previews and relief edits.
 				// Resolution here is the request resolution, as required by the shared node-cache LRU.
 				constexpr int32 SimulationSlotCount = 4;
-				const uint64 SimulationKey = Cache && !Child.PreUV ? Data.SimulationKey : 0;
+				const uint64 SimulationKey = Cache && !PreUV ? Data.SimulationKey : 0;
 				const auto SimulationHit = SimulationKey ? Cache->Find(SimulationKey, Size)
 					: TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 				bool bSimulationComplete = SimulationHit.IsValid();
@@ -4052,7 +4067,7 @@ namespace
 					Permutation.Set<FMixtormatMossCS::FStage>(Stage);
 					TShaderMapRef<FMixtormatMossCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 					auto* P = GraphBuilder.AllocParameters<FMixtormatMossCS::FParameters>();
-					FillGeneratorPlacement(P, Layer, Child.PreUV, Ctx.EmptyPatternUV);
+					FillGeneratorPlacement(P, Layer, PreUV, Ctx.EmptyPatternUV);
 					P->OutputSize = Size;
 					P->SimulationSize = SimulationSize;
 					P->GrowthIterations = static_cast<uint32>(Settings.GrowthIterations);
@@ -4077,6 +4092,19 @@ namespace
 					P->GrowthSpread = Settings.GrowthSpread;
 
 					P->Coverage = Settings.Coverage;
+					P->DryRoughness = Settings.DryRoughness;
+					P->WetRoughness = Settings.WetRoughness;
+					P->NormalStrength = Settings.NormalStrength;
+					{
+						const auto Ramp = MixtormatColorRampMath::PrepareGpuPayload(Settings.ColorRamp);
+						P->ColorRampCount = Ramp.StopCount;
+						P->ColorRampInterpolation = Ramp.Interpolation;
+						for (int32 I = 0; I < FMixtormatColorRamp::MaxStops; ++I)
+						{
+							P->ColorRampPositions[I] = FVector4f(Ramp.Positions[I], 0.0f, 0.0f, 0.0f);
+							P->ColorRampColors[I] = Ramp.Colors[I];
+						}
+					}
 					P->CushionMode = static_cast<uint32>(Settings.CushionMode);
 					P->HeightJump = static_cast<int32>(Iteration);
 					P->CushionSize = Settings.CushionSize;
@@ -4187,9 +4215,20 @@ namespace
 						P->GrowthInteriorDistance = InteriorDistance;
 						P->OutCushionInflation = GraphBuilder.CreateUAV(SmoothInflation);
 					}
+					else if (Stage == 12)
+					{
+						P->GrowthState = States[Current];
+						P->GrowthCoverage = Outputs[1];
+						P->GrowthAge = Outputs[2];
+						P->GrowthIds = Outputs[3];
+						P->OutMossColor = GraphBuilder.CreateUAV(Outputs[4]);
+						P->OutMossRAM = GraphBuilder.CreateUAV(Outputs[5]);
+						P->OutMossNormal = GraphBuilder.CreateUAV(Outputs[6]);
+						P->OutMossRoughness = GraphBuilder.CreateUAV(Outputs[7]);
+					}
 
 					ClearUnusedGraphResources(Shader, P);
-					const bool bSimulationStage = Stage == 0 || Stage == 1 || Stage == 4 || Stage >= 6;
+					const bool bSimulationStage = Stage == 0 || Stage == 1 || Stage == 4 || (Stage >= 6 && Stage <= 11);
 					FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Moss.S%d.I%u.L%d.C%d",
 						Stage, Iteration, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P,
 						bSimulationStage ? SimulationPixels : Pixels);
@@ -4251,6 +4290,7 @@ namespace
 				DispatchStage(5);
 				DispatchStage(2);
 				DispatchStage(3);
+				DispatchStage(12);
 
 				if (Key)
 				{
@@ -5150,6 +5190,61 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		PublishSurfacingFields(Ctx, LayerCtx, Layer, Child, Raw, Gate, Before, LocalHeight, AncestorAmount);
 		return LocalHeight;
 	};
+	TFunction<FRDGTextureRef(const FChildRenderData&, FRDGTextureRef, FRDGTextureRef, FRDGTextureRef, float)> EvaluateMoss;
+	EvaluateMoss = [&](const FChildRenderData& Child, FRDGTextureRef LocalHeight,
+		FRDGTextureRef UpstreamDelta, FRDGTextureRef ParentGate, float AncestorAmount)
+	{
+		if (!Child.Surfacing.bEnabled || Child.Surfacing.Type != EMixtormatSurfacingType::Moss
+			|| EvaluatedSkin.Contains(Child.SourceChildIndex)) { return LocalHeight; }
+		EvaluatedSkin.Add(Child.SourceChildIndex);
+		if (!LayerCtx.LayerInputBC || !LayerCtx.LayerInputRAM) { AddLayerInputPass(Ctx, LayerCtx, Layer); }
+		const FMixtormatMoss& Mo = Child.Surfacing.Moss;
+		if (Mo.Amount * AncestorAmount > 0.0f && Mo.bWriteColor) { FlushPendingColorRamps(); }
+		FRDGTextureRef Gate = AddSurfacingGatePass(Ctx, ParentGate, ScopeGate(Child.SourceChildIndex));
+		FRDGTextureRef RawHeight = AddMossPasses(Ctx, LayerCtx, Layer, Child, LocalHeight,
+			LayerCtx.LayerIndex > 0 ? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr,
+			nullptr, LayerCtx.ReferencedUV);
+		if (!RawHeight) { return LocalHeight; }
+		const auto* Fields = LayerCtx.GeneratorFields.Find(Child.SourceChildIndex);
+		if (!Fields || Fields->Num() < 8) { return LocalHeight; }
+		const bool bRawPreview = Mo.Preview != EMixtormatMossPreview::Moss;
+		FSurfacingFields Raw;
+		Raw.Height = AddSignedGeneratorHeightPasses(Ctx.GraphBuilder, RawHeight, Size,
+			bRawPreview ? false : Mo.bNormalizeHeight, bRawPreview ? 1.0f : Mo.HeightScale,
+			0.0f, false, nullptr, TEXT("Mixtormat.Moss.SignedHeight"));
+		Raw.Color = (*Fields)[4];
+		Raw.RAM = (*Fields)[5];
+		Raw.DetailNormal = (*Fields)[6];
+		Raw.Optics = (*Fields)[4];
+		Raw.FuzzColor = (*Fields)[4];
+		Raw.Subsurface = (*Fields)[4];
+		const FRDGTextureRef Before = LocalHeight;
+		LocalHeight = ApplySurfacingFields(Ctx, LayerCtx, Child, Raw, Gate, LocalHeight, AncestorAmount);
+		LocalHeight = EvaluateSkinChildren(Child.SourceChildIndex, LocalHeight, UpstreamDelta, Gate, Mo.Amount * AncestorAmount);
+		// Publish Moss surfacing outputs (Height/Color/Roughness/Normal + growth fields).
+		const auto Publish = [&](FName Name, EMixtormatPublishedFieldKind Kind, FRDGTextureRef Tex)
+		{
+			if (Tex) { Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Name),
+				FPublishedField{Kind, Tex, nullptr, nullptr, false}); }
+		};
+		Publish(FName(TEXT("Height")), EMixtormatPublishedFieldKind::ScalarSigned, Raw.Height);
+		Publish(FName(TEXT("Color")), EMixtormatPublishedFieldKind::Color, (*Fields)[4]);
+		Publish(FName(TEXT("Roughness")), EMixtormatPublishedFieldKind::Scalar01, (*Fields)[7]);
+		Publish(FName(TEXT("Normal")), EMixtormatPublishedFieldKind::Color, (*Fields)[6]);
+		Publish(FName(TEXT("GrowthCoverage")), EMixtormatPublishedFieldKind::Scalar01, (*Fields)[1]);
+		Publish(FName(TEXT("GrowthAge")), EMixtormatPublishedFieldKind::Scalar01, (*Fields)[2]);
+		Publish(FName(TEXT("RegionIds")), EMixtormatPublishedFieldKind::RegionIds, (*Fields)[3]);
+		Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GrowthCoverage"))), (*Fields)[1]);
+		Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GrowthAge"))), (*Fields)[2]);
+		return LocalHeight;
+	};
+	const auto EvaluateSurfacing = [&](const FChildRenderData& Child, FRDGTextureRef LocalHeight,
+		FRDGTextureRef UpstreamDelta, FRDGTextureRef ParentGate, float AncestorAmount)
+	{
+		return Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+			? EvaluateMoss(Child, LocalHeight, UpstreamDelta, ParentGate, AncestorAmount)
+			: EvaluateSkin(Child, LocalHeight, UpstreamDelta, ParentGate, AncestorAmount);
+	};
 
 	// Capture owned ramps at their authored position relative to Skin, even though their
 	// completed generator scope is evaluated before the flat list reaches the child rows.
@@ -5543,12 +5638,12 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				if (HeightBlendOperandIndices.Contains(Child.SourceChildIndex))
 				{
 					// Publish the isolated operand; Height Blend owns its eventual height contribution.
-					EvaluateSkin(Child, BooleanNeutralHeight, RunningHeight, nullptr, 1.0f);
+					EvaluateSurfacing(Child, BooleanNeutralHeight, RunningHeight, nullptr, 1.0f);
 				}
 				else
 				{
 					const FRDGTextureRef Before = RunningHeight;
-					RunningHeight = EvaluateSkin(Child, RunningHeight, nullptr, nullptr, 1.0f);
+					RunningHeight = EvaluateSurfacing(Child, RunningHeight, nullptr, nullptr, 1.0f);
 					bActualHeightAuthored |= RunningHeight != Before;
 				}
 			}
@@ -5608,11 +5703,6 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			break;
 		case EMixtormatGeneratorType::CliffStrata:
 			AddCliffStrataPasses(Ctx, LayerCtx, Layer, Input, &Module);
-			break;
-		case EMixtormatGeneratorType::Moss:
-			AddMossPasses(Ctx, LayerCtx, Layer, Input, OperandRunningHeight,
-				(LayerCtx.LayerIndex > 0) ? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr,
-				&Module);
 			break;
 		case EMixtormatGeneratorType::Mycelium:
 			AddMyceliumPasses(Ctx, LayerCtx, Layer, Input, OperandRunningHeight,
@@ -5775,8 +5865,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 				&& HasScopedGeneratorMasks(Layer, Child.SourceChildIndex)
 					? AddScopedFeatureMask(Ctx, LayerCtx, Layer, Child.SourceChildIndex, true)
 					: nullptr;
-			const bool bRawMossPreview = Child.Generator.Type == EMixtormatGeneratorType::Moss
-				&& Child.Generator.Moss.Settings.Preview != EMixtormatMossPreview::Moss;
+			const bool bRawMossPreview = false;
 			Module.Height = AddSignedGeneratorHeightPasses(
 				Ctx.GraphBuilder, Module.Height, Size,
 				bRawMossPreview ? false : Child.Generator.bNormalizeHeight,
@@ -5907,8 +5996,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		for (const TPair<FName, FRDGTextureRef>& Mask : Module.NamedMasks)
 		{
 			Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key), Mask.Value);
-			if (Child.Generator.Type == EMixtormatGeneratorType::Moss
-				|| Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
+			if (Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
 			{
 				Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Mask.Key),
 					FPublishedField{EMixtormatPublishedFieldKind::Scalar01, Mask.Value, nullptr, nullptr, false});

@@ -126,18 +126,14 @@ enum class EMixtormatLayerChildType : uint8
 	HeightBlend UMETA(DisplayName = "Height Blend"),
 	HeightCurve UMETA(DisplayName = "Height Remap"),
 	HeightColorRamp UMETA(DisplayName = "Color Ramp"),
-	// DEPRECATED authoring tags. Their values are append-only and must never move, reorder
-	// or be removed: EMixtormatLayerChildType is serialized by value, so renumbering silently
-	// retypes every child in every saved asset. HeightPush is now a Behavior of type Push and
-	// StructuralWarp is a Behavior of type Warp; both are unreachable from authoring, gather
-	// and execution, and their payload structs are gone.
-	HeightPush UMETA(DisplayName = "Height Push", Deprecated = "Use EMixtormatLayerChildType::Behavior"),
-	StructuralWarp UMETA(DisplayName = "Structural Warp", Deprecated = "Use EMixtormatLayerChildType::Behavior"),
+	// Values are append-only and serialized by value: Behavior, Boolean and Surfacing keep
+	// explicit values so saved assets survive the removal of the retired HeightPush /
+	// StructuralWarp tags that sat above this line.
 	// Appended: a Generator child that rewrites an earlier Generator's own output.
 	// This is the one and only structural authoring path.
-	Behavior UMETA(DisplayName = "Behavior"),
-	Boolean UMETA(DisplayName = "Boolean"),
-	Surfacing UMETA(DisplayName = "Surfacing")
+	Behavior = 24 UMETA(DisplayName = "Behavior"),
+	Boolean = 25 UMETA(DisplayName = "Boolean"),
+	Surfacing = 26 UMETA(DisplayName = "Surfacing")
 };
 
 UENUM(BlueprintType)

@@ -263,8 +263,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
-		else if (Child.Generator.Type == EMixtormatGeneratorType::Moss
-			|| Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
+		else if (Child.Generator.Type == EMixtormatGeneratorType::Mycelium)
 		{
 			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
 				false, true, false, NAME_None});

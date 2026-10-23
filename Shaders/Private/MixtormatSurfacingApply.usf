@@ -36,8 +36,14 @@ uint WriteAO;
 uint WriteF0;
 uint WriteFuzz;
 uint WriteSSS;
+uint WriteNormal;
+uint HasPreviousNormal;
+float NormalStrength;
 Texture2D<float> RunningHeight;
 Texture2D<float> SkinHeight;
+Texture2D<float4> PreviousNormal;
+Texture2D<float4> DetailNormal;
+RWTexture2D<float4> OutNormal;
 Texture2D<float4> PreviousColor;
 Texture2D<float4> PreviousRAM;
 Texture2D<float4> PreviousOptics;
@@ -72,6 +78,19 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 	float4 O = PreviousOptics.Load(int3(P, 0));
 	float4 F = PreviousFuzzColor.Load(int3(P, 0));
 	float4 S = PreviousSubsurface.Load(int3(P, 0));
+	// Detail normal unrelated to height: reorient over the incoming normal.
+	float3 BaseN = HasPreviousNormal != 0u ? PreviousNormal.Load(int3(P, 0)).rgb * 2.0f - 1.0f : float3(0, 0, 1);
+	if (WriteNormal != 0u)
+	{
+		float W0 = SurfaceWeight(P);
+		if (W0 > 0.0f)
+		{
+			float3 DN = DetailNormal.Load(int3(P, 0)).rgb * 2.0f - 1.0f;
+			DN.xy *= NormalStrength * W0;
+			float3 Blended = normalize(float3(BaseN.xy + DN.xy, BaseN.z * max(DN.z, 0.05f)));
+			BaseN = normalize(lerp(BaseN, Blended, W0));
+		}
+	}
 	float W = SurfaceWeight(P);
 	if (W > 0.0f)
 	{
@@ -101,6 +120,7 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 			S = float4(MixRGB(S.rgb, SkinSubsurface.Load(int3(P, 0)).rgb, W), S.a);
 		}
 	}
+	OutNormal[P] = float4(BaseN * 0.5f + 0.5f, 1.0f);
 	OutHeight[P] = H;
 	OutColor[P] = C;
 	OutRAM[P] = R;

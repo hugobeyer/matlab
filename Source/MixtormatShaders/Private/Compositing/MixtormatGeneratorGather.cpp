@@ -303,105 +303,6 @@ namespace MixtormatGpuCompositor
 		Out.HeightToUV = FMath::Max(Out.HeightToUV, 0.00001f);
 		break;
 	}
-	case EMixtormatGeneratorType::Moss:
-	{
-		FMossRenderData& Out = ChildData.Generator.Moss;
-		Out.Settings = Generator.Moss;
-		FMixtormatMoss& S = Out.Settings;
-		const FMixtormatMoss Defaults;
-		const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
-		// Artist maxima belong to the UI. Retain finite values and valid simulation dimensions/rates.
-		S.GrowthIterations = FMath::Max(S.GrowthIterations, 0);
-		S.SimulationResolution = FMath::Max(S.SimulationResolution, 1);
-
-		S.Preview = static_cast<EMixtormatMossPreview>(FMath::Clamp(static_cast<int32>(S.Preview),
-			static_cast<int32>(EMixtormatMossPreview::Moss), static_cast<int32>(EMixtormatMossPreview::Biomass)));
-		S.CushionMode = static_cast<EMixtormatMossCushionMode>(FMath::Clamp(static_cast<int32>(S.CushionMode),
-			static_cast<int32>(EMixtormatMossCushionMode::Deposition), static_cast<int32>(EMixtormatMossCushionMode::SdfInflation)));
-		S.CavityAttraction = Finite(S.CavityAttraction, Defaults.CavityAttraction);
-		S.OcclusionInfluence = Finite(S.OcclusionInfluence, Defaults.OcclusionInfluence);
-		S.Moisture = Finite(S.Moisture, Defaults.Moisture);
-		S.SurfaceAnglePreference = Finite(S.SurfaceAnglePreference, Defaults.SurfaceAnglePreference);
-		S.Competition = Finite(S.Competition, Defaults.Competition);
-		S.ExposureTolerance = Finite(S.ExposureTolerance, Defaults.ExposureTolerance);
-		S.ColonyDensity = FMath::Max(S.ColonyDensity, 1);
-		S.GrowthSpread = Finite(S.GrowthSpread, Defaults.GrowthSpread);
-
-		S.Coverage = Finite(S.Coverage, Defaults.Coverage);
-		S.CushionSize = Finite(S.CushionSize, Defaults.CushionSize);
-		S.CushionHeight = Finite(S.CushionHeight, Defaults.CushionHeight);
-
-		S.MatureHeight = Finite(S.MatureHeight, Defaults.MatureHeight);
-		S.ClumpDensity = Finite(S.ClumpDensity, Defaults.ClumpDensity);
-		S.ShootDensity = Finite(S.ShootDensity, Defaults.ShootDensity);
-		S.ShootLength = Finite(S.ShootLength, Defaults.ShootLength);
-		S.FiberThickness = Finite(S.FiberThickness, Defaults.FiberThickness);
-
-		S.Softness = Finite(S.Softness, Defaults.Softness);
-		S.Plumpness = Finite(S.Plumpness, Defaults.Plumpness);
-		S.HeightScale = Finite(S.HeightScale, Defaults.HeightScale);
-
-		S.SeedMaskTiling = FMath::Max(S.SeedMaskTiling, 1);
-		// Same direct-texture/asset precedence as Peeling. Resolve before hashing so the
-		// live asset texture, streaming state and reimports participate in both cache keys.
-		UTexture2D* SeedTexture = S.SeedMaskTexture.LoadSynchronous();
-		if (!SeedTexture)
-		{
-			if (const UMixtormatMask* Mask = S.SeedMask.LoadSynchronous())
-			{
-				SeedTexture = Mask->MaskTexture.Get();
-			}
-		}
-		if (SeedTexture)
-		{
-			Out.SeedMask = GetTextureRHI(SeedTexture);
-		}
-		ChildData.Generator.bNormalizeHeight = S.bNormalizeHeight;
-		ChildData.Generator.HeightScale = S.HeightScale;
-		if (bCacheLayers)
-		{
-			MixtormatComposeHash::FHasher DependencyHasher;
-			DependencyHasher.Value(static_cast<uint64>(LayerIndex));
-			DependencyHasher.Value(static_cast<uint64>(SourceChildIndex));
-			// Full reflection includes referenced assets affecting the composed substrate below.
-			for (int32 BelowLayerIndex = 0; BelowLayerIndex < LayerIndex; ++BelowLayerIndex)
-			{
-				DependencyHasher.Struct(FMixtormatLayer::StaticStruct(), &EffectiveLayers[BelowLayerIndex]);
-			}
-			// Include current-layer maps and placement, but never this Moss child's own settings.
-			DependencyHasher.SkipTopLevel = {GET_MEMBER_NAME_CHECKED(FMixtormatLayer, Children)};
-			DependencyHasher.Struct(FMixtormatLayer::StaticStruct(), &Layer);
-			// SkipTopLevel persists across Struct calls; children must be reflected in full.
-			DependencyHasher.SkipTopLevel.Reset();
-			for (int32 ChildIndex = 0; ChildIndex < Layer.Children.Num(); ++ChildIndex)
-			{
-				if (ChildIndex != SourceChildIndex)
-				{
-					// Conservative: scope effects can occur anywhere; later children may cause cache misses.
-					DependencyHasher.Struct(FMixtormatLayerChild::StaticStruct(), &Layer.Children[ChildIndex]);
-				}
-			}
-			const uint64 DependencyKey = DependencyHasher.Get();
-
-			MixtormatComposeHash::FHasher FieldHasher;
-			// Include output controls in the final-field identity; chemistry has a separate key.
-			FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
-			Out.FieldKey = MixtormatComposeHash::Combine(
-				MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657032ull) | 1ull;
-
-			MixtormatComposeHash::FHasher SimulationHasher;
-			SimulationHasher.SkipTopLevel = {
-				TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionMode"), TEXT("CushionSize"),
-				TEXT("CushionHeight"), TEXT("MatureHeight"), TEXT("ClumpDensity"), TEXT("ShootDensity"), TEXT("ShootLength"),
-				TEXT("FiberThickness"),
-				TEXT("Softness"), TEXT("Plumpness"), TEXT("Preview")};
-			SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
-			// Placement is already covered by the current-layer dependency hash.
-			Out.SimulationKey = MixtormatComposeHash::Combine(
-				MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657033ull) | 1ull;
-		}
-		break;
-	}
 	case EMixtormatGeneratorType::Mycelium:
 	{
 		FMyceliumRenderData& Out = ChildData.Generator.Mycelium;
@@ -605,13 +506,6 @@ namespace MixtormatGpuCompositor
 			{
 				ChildData.Generator.CliffStrata.FieldKey = MixtormatComposeHash::Combine(
 					ChildData.Generator.CliffStrata.FieldKey, PlacementKey) | 1ull;
-			}
-			break;
-		case EMixtormatGeneratorType::Moss:
-			if (ChildData.Generator.Moss.FieldKey != 0)
-			{
-				ChildData.Generator.Moss.FieldKey = MixtormatComposeHash::Combine(
-					ChildData.Generator.Moss.FieldKey, PlacementKey) | 1ull;
 			}
 			break;
 		case EMixtormatGeneratorType::Mycelium:

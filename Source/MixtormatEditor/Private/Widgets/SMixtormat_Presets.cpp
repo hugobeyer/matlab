@@ -113,30 +113,7 @@ TSharedRef<SWidget> SMixtormat::BuildModulePresetMenu()
 				});
 		})).Enabled(bEditable).ToolTip(bEditable
 				? LOCTEXT("SaveModulePresetHelp", "Save local parameter settings only. Connections, bindings and scoped child modules are not copied.") : Restriction);
-	const bool bDialogs = FDesktopPlatformModule::Get() != nullptr;
-	Menu.Item(LOCTEXT("ImportModulePreset", "Import JSON…"), nullptr,
-		FSimpleDelegate::CreateLambda([this, Expected]()
-		{
-			FString Filename;
-			if (!MixtormatPresetUi::ChooseJson(AsShared(), false, Filename)) { return; }
-			FText Error;
-			WorkingStatusText = MixtormatPresetStore::ImportModule(Filename, Expected, Error)
-				? LOCTEXT("ModulePresetImported", "Imported module preset").ToString() : Error.ToString();
-		})).Enabled(bDialogs).ToolTip(LOCTEXT("ModuleImportHelp", "Import compatible JSON as a new user preset. Requires platform file dialogs; does not edit the module."));
-	Menu.Item(LOCTEXT("ExportModulePreset", "Export Current JSON…"), nullptr,
-		FSimpleDelegate::CreateLambda([this, Address]()
-		{
-			const FMixtormatLayerChild* Source = ResolveChildAt(Address);
-			MixtormatPresetStore::FModulePreset Preset;
-			FText Error;
-			if (!Source) { WorkingStatusText = LOCTEXT("PresetSourceGone", "The source module no longer exists.").ToString(); return; }
-						if (!MixtormatPresetStore::CaptureModule(*Source, Preset, Error)) { WorkingStatusText = Error.ToString(); return; }
-			FString Filename;
-			if (!MixtormatPresetUi::ChooseJson(AsShared(), true, Filename)) { return; }
-			Preset.Name = FPaths::GetBaseFilename(Filename);
-			WorkingStatusText = MixtormatPresetStore::ExportModule(Filename, Preset, Error)
-				? LOCTEXT("ModulePresetExported", "Exported module preset").ToString() : Error.ToString();
-		})).Enabled(bDialogs && bEditable).ToolTip(LOCTEXT("ModuleExportHelp", "Export this module's local parameter settings to a new JSON file. Instances must be edited at their source. Requires platform file dialogs."));
+	// No user-facing JSON import/export: preset files are developer-only (store API).
 	Menu.Separator();
 	TArray<MixtormatPresetStore::FModulePreset> Presets;
 	FText Error;

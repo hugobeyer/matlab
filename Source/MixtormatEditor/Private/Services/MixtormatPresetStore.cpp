@@ -268,11 +268,16 @@ namespace MixtormatPresetStore
 		TArray<FRampPreset> Existing;
 		FText ListingError;
 		ListRamps(Preset.Kind, Existing, ListingError);
+		// Saving over a created preset replaces it (same id/file), never duplicates.
 		for (const FRampPreset& Entry : Existing)
 		{
 			if (Entry.Name.Equals(Preset.Name, ESearchCase::IgnoreCase))
 			{
-				return Private::Fail(OutError, LOCTEXT("NameExists", "That ramp preset name already exists. Choose another name."));
+				FRampPreset Replacement = Preset;
+				Replacement.Id = Entry.Id;
+				const FString Path = FPaths::Combine(Private::Directory(), Entry.Id.ToString(EGuidFormats::Digits) + TEXT(".json"));
+				IFileManager::Get().Delete(*Path, false, true);
+				return ExportRamp(Path, Replacement, OutError);
 			}
 		}
 		return ExportRamp(FPaths::Combine(Private::Directory(), Preset.Id.ToString(EGuidFormats::Digits) + TEXT(".json")), Preset, OutError);

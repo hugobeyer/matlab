@@ -266,6 +266,18 @@ namespace MixtormatPresetStore
 			Skin.bWriteFuzz = Original.bWriteFuzz;
 			Skin.bWriteSSS = Original.bWriteSSS;
 		}
+		if (Destination.Type == EMixtormatLayerChildType::Surfacing
+			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Moss)
+		{
+			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
+			FMixtormatMoss& Moss = Copy.Surfacing.Moss;
+			const FMixtormatMoss& Original = Destination.Surfacing.Moss;
+			Moss.Amount = Original.Amount;
+			Moss.bWriteHeight = Original.bWriteHeight;
+			Moss.bWriteColor = Original.bWriteColor;
+			Moss.bWriteRoughness = Original.bWriteRoughness;
+			Moss.bWriteNormal = Original.bWriteNormal;
+		}
 		TArray<FSoftObjectPath> Assets;
 		Documents::GatherAssets(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Copy), Assets);
 		if (!Documents::CheckAssets(Assets, Error)
@@ -379,11 +391,49 @@ namespace MixtormatPresetStore
 			}
 			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
 		}
+		if (Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Moss)
+		{
+			for (const FMixtormatMossPreset& MossPreset : MixtormatSurfacing::GetMossPresets())
+			{
+				if (Presets.ContainsByPredicate([&](const FModulePreset& Existing)
+				{
+					return Existing.Name.Equals(MossPreset.Name.ToString(), ESearchCase::IgnoreCase)
+						&& IsModuleCompatible(Existing.Settings, Child);
+				})) { continue; }
+				FModulePreset& Preset = Presets.AddDefaulted_GetRef();
+				Preset.Name = MossPreset.Name.ToString();
+				Preset.Description = MossPreset.Description.ToString();
+				Preset.Category = TEXT("Moss");
+				Preset.bShipped = true;
+				Preset.bBuiltIn = true;
+				Preset.Settings.Type = EMixtormatLayerChildType::Surfacing;
+				Preset.Settings.Surfacing.Type = EMixtormatSurfacingType::Moss;
+				Preset.Settings.Surfacing.Moss = MossPreset.Settings;
+			}
+			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
+		}
 		Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
 		OutPresets = MoveTemp(Presets);
 		return bClean;
 	}
-	bool SaveModule(const FModulePreset& Preset, FText& Error) { return Documents::Save(TEXT("Modules"), Preset, Error, ExportModule); }
+	bool SaveModule(const FModulePreset& Preset, FText& Error)
+	{
+		// Saving over a created preset replaces it instead of failing on the name.
+		TArray<FModulePreset> Existing;
+		FText ListError;
+		if (ListModules(Preset.Settings, Existing, ListError))
+		{
+			for (const FModulePreset& Entry : Existing)
+			{
+				if (!Entry.bBuiltIn && Entry.Name.Equals(Preset.Name, ESearchCase::IgnoreCase))
+				{
+					return OverwriteModule(Entry, Preset, Error);
+				}
+			}
+		}
+		return Documents::Save(TEXT("Modules"), Preset, Error, ExportModule);
+	}
 	bool ImportModule(const FString& Filename, const FMixtormatLayerChild& Expected, FText& Error)
 	{
 		FModulePreset Preset;

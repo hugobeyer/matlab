@@ -108,6 +108,17 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
    a roughness/fuzz cue, not AO. Skin visibility multiplies incoming AO through the existing
    single masked weight; neutral Skin AO cannot erase upstream crevice occlusion.
 
+Binding policy: Skin authoring ranges are wide and finite-only; hard clamps remain
+only where GPU-dangerous (`SolverIterations` dispatch budget, `SolverResolution`
+allocation, `WarpLayers` shader loop, true divisors floored in contracts, pore
+support and solver rigidity/foundation safety clamps in-shader). Resolve applies a
+shared soft-capped micro budget (fine + pores) over the tissue/fold base. Tissue fat
+is multi-scale (half-frequency strokes carry the silhouette), stretched along
+gravity/`Elongation`, pooled downslope by `GravityBulge`, and modulated by upstream
+substrate curvature (`CurvatureStrength` × `TissueCoupling`). Solver strain includes
+dynamic feedback from the current solved slope. Defaults retuned for 2048 output
+(`TissueCells` 4, `DetailCells` 64, `PoreCells` 96, `GravityBulge` 0.35).
+
 Tissue and fold seeds use full output resolution, independently of `SolverResolution`.
 Only mechanics corrections use bounded grids (default maximum dimension 512, authored
 maximum 2048); aspect ratio is retained and smaller outputs are not upscaled. The coarsest

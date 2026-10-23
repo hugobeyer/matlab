@@ -15,6 +15,8 @@ SamplerState LinearWrapSampler;
 float Bending;
 // @param Support
 float Support;
+// @param GravityHold
+float GravityHold;
 Texture2D<float4> TissueState;
 Texture2D<float4> SeedState;
 Texture2D<float> PreviousFold;
@@ -63,7 +65,8 @@ float SkinPrevious(int2 P)
 float SkinRigidity(int2 P)
 {
 	float Thickness = SkinThickness(P);
-	return lerp(SkinMinRigidity, SkinMaxRigidity, max(Bending, 0.0f))
+	// Safety only: keep rigidity finite/positive for any authored Bending.
+	return lerp(SkinMinRigidity, SkinMaxRigidity, clamp(Bending, 0.0f, 4.0f))
 		* Thickness * Thickness * Thickness;
 }
 
@@ -137,7 +140,12 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 		OutputSize.y > 1 ? 1.0f / (Spacing.y * Spacing.y) : 0.0f);
 	float2 BendingInvSpacing2 = min(InvSpacing2, SkinMaxBendingInvSpacing2.xx);
 	float Thickness = SkinThickness(P);
-	float Foundation = lerp(SkinMinFoundation, SkinMaxFoundation, max(Support, 0.0f));
+	// Safety only: unclamped authored values cannot destabilize the relaxation.
+	float Foundation = lerp(SkinMinFoundation, SkinMaxFoundation, clamp(Support, 0.0f, 4.0f));
+	// Gravity hold: thick tissue in low/rest-depressed areas resists the
+	// foundation pull, so sag stays pooled instead of relaxing flat.
+	float HoldCue = saturate((Thickness - 1.0f) + saturate(-Seed.r * FoldRate));
+	Foundation *= 1.0f - clamp(GravityHold, 0.0f, 2.0f) * 0.35f * HoldCue;
 	float Force = -Foundation * Thickness * (C - Seed.r * FoldRate);
 	float Moment = SkinMoment(P, BendingInvSpacing2);
 	// Variable rigidity belongs INSIDE the second Laplacian (gradient of .5*B*(Delta h)^2).
@@ -161,8 +169,12 @@ void MainCS(uint3 DTid : SV_DispatchThreadID)
 			float InvDistance = rsqrt(dot(Delta, Delta));
 			float2 Edge = Delta * InvDistance;
 			float4 NeighborSeed = SkinSeed(P + Offset);
-			float Strain = 0.5f * (SkinRestStrain(Seed, Edge) + SkinRestStrain(NeighborSeed, Edge));
 			float Slope = (SkinPrevious(P + Offset) - C) * InvDistance;
+			// Dynamic strain feedback: authored rest strain plus the strain the
+			// current solved slope is actually producing, so compression grows
+			// where folds deepen and relaxes where the film flattens.
+			float Strain = 0.5f * (SkinRestStrain(Seed, Edge) + SkinRestStrain(NeighborSeed, Edge))
+				+ clamp(Slope * 0.35f, -0.4f, 0.8f);
 			float Weight = (X != 0 && Y != 0) ? 0.25f : 0.5f;
 			float Membrane = Weight * 0.5f * (Thickness + SkinThickness(P + Offset));
 			// dE/ds for E=.5*s^2-.5*(1+2*e)*log(1+s^2).

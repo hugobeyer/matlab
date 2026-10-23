@@ -115,6 +115,7 @@ namespace
 			SHADER_PARAMETER(float, FuzzAmount)
 			SHADER_PARAMETER(float, FuzzRoughness)
 			SHADER_PARAMETER(float, SSSAmount)
+			SHADER_PARAMETER(float, NormalStrength)
 			SHADER_PARAMETER(FVector3f, FuzzColor)
 			SHADER_PARAMETER(FVector3f, MeanFreePath)
 			SHADER_PARAMETER(uint32, AlbedoCount)
@@ -132,6 +133,7 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutSubsurface)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutPores)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutCompression)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutDetailNormal)
 		END_SHADER_PARAMETER_STRUCT()
 
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -225,6 +227,7 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutPreparedTissue)
 			SHADER_PARAMETER(float, Bending)
 			SHADER_PARAMETER(float, Support)
+			SHADER_PARAMETER(float, GravityHold)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, TissueState)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SeedState)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, PreviousFold)
@@ -262,6 +265,12 @@ namespace
 			SHADER_PARAMETER(uint32, WriteF0)
 			SHADER_PARAMETER(uint32, WriteFuzz)
 			SHADER_PARAMETER(uint32, WriteSSS)
+			SHADER_PARAMETER(uint32, WriteNormal)
+			SHADER_PARAMETER(uint32, HasPreviousNormal)
+			SHADER_PARAMETER(float, NormalStrength)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousNormal)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, DetailNormal)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutNormal)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, RunningHeight)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SkinHeight)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, PreviousColor)
@@ -378,6 +387,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	Result.Subsurface = Make(TEXT("Mixtormat.Skin.Subsurface"), PF_A32B32G32R32F);
 	Result.Pores = Make(TEXT("Mixtormat.Skin.Pores"), PF_R32_FLOAT);
 	Result.Compression = Make(TEXT("Mixtormat.Skin.Compression"), PF_R32_FLOAT);
+	Result.DetailNormal = Make(TEXT("Mixtormat.Skin.DetailNormal"), PF_FloatRGBA);
 
 	TShaderMapRef<FMixtormatSkinFieldCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
 	auto* P = Graph.AllocParameters<FMixtormatSkinFieldCS::FParameters>();
@@ -438,6 +448,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->FuzzAmount = Skin.FuzzAmount;
 	P->FuzzRoughness = Skin.FuzzRoughness;
 	P->SSSAmount = Skin.SSSAmount;
+	P->NormalStrength = Skin.bWriteNormal ? Skin.NormalStrength : 0.0f;
 	P->FuzzColor = PhysicalRGB(Skin.FuzzColor, Defaults.FuzzColor);
 	P->MeanFreePath = PhysicalRGB(Skin.MeanFreePath, Defaults.MeanFreePath);
 
@@ -546,6 +557,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 			SolveParameters->LinearWrapSampler = P->LinearWrapSampler;
 			SolveParameters->Bending = Skin.Bending;
 			SolveParameters->Support = Skin.Support;
+			SolveParameters->GravityHold = Skin.GravityHold;
 			SolveParameters->TissueState = LevelTissue;
 			SolveParameters->SeedState = LevelSeed;
 			SolveParameters->PreviousFold = PreviousFold ? PreviousFold : SubstrateHeight;
@@ -588,6 +600,7 @@ FSurfacingFields AddSkinSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->OutSubsurface = Graph.CreateUAV(Result.Subsurface);
 	P->OutPores = Graph.CreateUAV(Result.Pores);
 	P->OutCompression = Graph.CreateUAV(Result.Compression);
+	P->OutDetailNormal = Graph.CreateUAV(Result.DetailNormal);
 	ClearUnusedGraphResources(Shader, P);
 	FComputeShaderUtils::AddPass(Graph,
 		RDG_EVENT_NAME("Mixtormat.Skin.Fields.L%d.C%d", LayerCtx.LayerIndex, Child.SourceChildIndex),
@@ -614,11 +627,21 @@ FRDGTextureRef ApplySurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLay
 	const FChildRenderData& Child, const FSurfacingFields& Fields, FRDGTextureRef Gate,
 	FRDGTextureRef RunningHeight, float AncestorAmount)
 {
+	const bool bMoss = Child.Surfacing.Type == EMixtormatSurfacingType::Moss;
 	const FMixtormatSkin& S = Child.Surfacing.Skin;
-	const float Amount = S.Amount * AncestorAmount;
-	const bool bHeight = S.bWriteHeight && S.HeightScale != 0.0f;
+	const FMixtormatMoss& Mo = Child.Surfacing.Moss;
+	const float Amount = (bMoss ? Mo.Amount : S.Amount) * AncestorAmount;
+	const bool bHeight = bMoss ? (Mo.bWriteHeight && Mo.HeightScale != 0.0f) : (S.bWriteHeight && S.HeightScale != 0.0f);
+	const bool wColor = bMoss ? Mo.bWriteColor : S.bWriteColor;
+	const bool wRough = bMoss ? Mo.bWriteRoughness : S.bWriteRoughness;
+	const bool wAO = bMoss ? false : S.bWriteAO;
+	const bool wF0 = bMoss ? false : S.bWriteF0;
+	const bool wFuzz = bMoss ? false : S.bWriteFuzz;
+	const bool wSSS = bMoss ? false : S.bWriteSSS;
+	const bool wNormal = Fields.DetailNormal && (bMoss ? Mo.bWriteNormal : S.bWriteNormal);
+	const float NormalStrength = bMoss ? Mo.NormalStrength : S.NormalStrength;
 	if (!Fields.Height || Amount <= 0.0f
-		|| !(bHeight || S.bWriteColor || S.bWriteRoughness || S.bWriteAO || S.bWriteF0 || S.bWriteFuzz || S.bWriteSSS))
+		|| !(bHeight || wColor || wRough || wAO || wF0 || wFuzz || wSSS || wNormal))
 	{
 		return RunningHeight;
 	}
@@ -641,12 +664,19 @@ FRDGTextureRef ApplySurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLay
 	P->HasGate = Gate ? 1u : 0u;
 	P->Gate = Gate ? Gate : Ctx.EmptyDriverSignal;
 	P->WriteHeight = bHeight;
-	P->WriteColor = S.bWriteColor;
-	P->WriteRoughness = S.bWriteRoughness;
-	P->WriteAO = S.bWriteAO;
-	P->WriteF0 = S.bWriteF0;
-	P->WriteFuzz = S.bWriteFuzz;
-	P->WriteSSS = S.bWriteSSS;
+	P->WriteColor = wColor;
+	P->WriteRoughness = wRough;
+	P->WriteAO = wAO;
+	P->WriteF0 = wF0;
+	P->WriteFuzz = wFuzz;
+	P->WriteSSS = wSSS;
+	P->WriteNormal = wNormal;
+	P->HasPreviousNormal = LayerCtx.LayerInputN ? 1u : 0u;
+	P->NormalStrength = NormalStrength;
+	P->PreviousNormal = LayerCtx.LayerInputN ? LayerCtx.LayerInputN : Ctx.EmptyDriverSignal;
+	P->DetailNormal = Fields.DetailNormal ? Fields.DetailNormal : Ctx.EmptyDriverSignal;
+	FRDGTextureRef N = MakeSurfaceTexture(Ctx, PF_FloatRGBA, TEXT("Mixtormat.Surfacing.AppliedNormal"));
+	P->OutNormal = Ctx.GraphBuilder.CreateUAV(N);
 	P->RunningHeight = RunningHeight;
 	P->SkinHeight = Fields.Height;
 	P->PreviousColor = LayerCtx.LayerInputBC;
@@ -666,16 +696,17 @@ FRDGTextureRef ApplySurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLay
 	P->OutFuzzColor = Ctx.GraphBuilder.CreateUAV(F);
 	P->OutSubsurface = Ctx.GraphBuilder.CreateUAV(M);
 	DispatchSurface(Ctx, P, 1);
-	if (S.bWriteColor) { LayerCtx.LayerInputBC = C; LayerCtx.bSurfacingColor = true; }
-	if (S.bWriteRoughness || S.bWriteAO || S.bWriteF0) { LayerCtx.LayerInputRAM = R; }
-	if (S.bWriteF0 || S.bWriteFuzz || S.bWriteSSS) { LayerCtx.LayerInputOptics = O; }
-	if (S.bWriteFuzz) { LayerCtx.LayerInputFuzzColor = F; }
-	if (S.bWriteSSS) { LayerCtx.LayerInputSubsurface = M; }
-	LayerCtx.bSurfacingRoughness |= S.bWriteRoughness;
-	LayerCtx.bSurfacingAO |= S.bWriteAO;
-	LayerCtx.bSurfacingF0 |= S.bWriteF0;
-	LayerCtx.bSurfacingFuzz |= S.bWriteFuzz;
-	LayerCtx.bSurfacingSSS |= S.bWriteSSS;
+	if (wColor) { LayerCtx.LayerInputBC = C; LayerCtx.bSurfacingColor = true; }
+	if (wRough || wAO || wF0) { LayerCtx.LayerInputRAM = R; }
+	if (wF0 || wFuzz || wSSS) { LayerCtx.LayerInputOptics = O; }
+	if (wFuzz) { LayerCtx.LayerInputFuzzColor = F; }
+	if (wSSS) { LayerCtx.LayerInputSubsurface = M; }
+	if (wNormal) { LayerCtx.LayerInputN = N; }
+	LayerCtx.bSurfacingRoughness |= wRough;
+	LayerCtx.bSurfacingAO |= wAO;
+	LayerCtx.bSurfacingF0 |= wF0;
+	LayerCtx.bSurfacingFuzz |= wFuzz;
+	LayerCtx.bSurfacingSSS |= wSSS;
 	return bHeight ? H : RunningHeight;
 }
 

@@ -70,12 +70,10 @@ namespace MixtormatOutputReferences
 				&& OutputName == FName(TEXT("Value"))
 				&& NoiseValueKind(Generator.Noise.NoiseType) == EMixtormatPublishedFieldKind::ScalarSigned;
 		case EMixtormatPublishedFieldKind::Scalar01:
-			return (Generator.Type == EMixtormatGeneratorType::Moss
-				|| Generator.Type == EMixtormatGeneratorType::Mycelium)
+			return Generator.Type == EMixtormatGeneratorType::Mycelium
 				&& (OutputName == FName(TEXT("GrowthCoverage")) || OutputName == FName(TEXT("GrowthAge")));
 		case EMixtormatPublishedFieldKind::RegionIds:
-			return (Generator.Type == EMixtormatGeneratorType::Moss
-				|| Generator.Type == EMixtormatGeneratorType::Mycelium)
+			return Generator.Type == EMixtormatGeneratorType::Mycelium
 				&& OutputName == FName(TEXT("RegionIds"));
 		case EMixtormatPublishedFieldKind::Flow:
 			if (Generator.Type == EMixtormatGeneratorType::Cracks

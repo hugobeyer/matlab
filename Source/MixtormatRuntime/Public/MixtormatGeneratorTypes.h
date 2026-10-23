@@ -33,7 +33,6 @@ enum class EMixtormatGeneratorType : uint8
 	BooleanOps UMETA(DisplayName = "Boolean Ops"),
 	RootNetwork UMETA(DisplayName = "Root Network"),
 	Scales UMETA(DisplayName = "Scales"),
-	Moss UMETA(DisplayName = "Moss"),
 	Mycelium UMETA(DisplayName = "Mycelium")
 };
 
@@ -549,6 +548,38 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// Turgor swelling driven by the solver moisture field: wet biomass plumps, dry biomass shrinks.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Body", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Plumpness = 0.55f;
+
+	// --- Surfacing material response (Moss is a Surfacing type) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "2", Delta = "0.01"))
+	float Amount = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material")
+	bool bWriteHeight = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material")
+	bool bWriteColor = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material")
+	bool bWriteRoughness = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material")
+	bool bWriteNormal = true;
+	// Age/moisture color ramp: young bright tips to old dark wet base.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material")
+	FMixtormatColorRamp ColorRamp;
+	// Dry moss is near-matte; solver moisture lowers roughness and darkens color.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01"))
+	float DryRoughness = 0.95f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01"))
+	float WetRoughness = 0.45f;
+	// Strength of the tufted arc-blade detail normal (normals only, no height).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "3", Delta = "0.01"))
+	float NormalStrength = 1.0f;
+
+	FMixtormatMoss()
+	{
+		ColorRamp.Stops = {
+			{0.0f, FLinearColor(0.08f, 0.14f, 0.03f, 1.0f)},
+			{0.5f, FLinearColor(0.16f, 0.32f, 0.07f, 1.0f)},
+			{1.0f, FLinearColor(0.45f, 0.62f, 0.18f, 1.0f)}
+		};
+	}
 };
 
 // Fungal hyphal network with primary, secondary, and tertiary microfilament hierarchy.
@@ -1822,9 +1853,6 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Scales"))
 	FMixtormatScales Scales;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Moss"))
-	FMixtormatMoss Moss;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Mycelium"))
 	FMixtormatMycelium Mycelium;
