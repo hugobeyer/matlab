@@ -665,15 +665,15 @@ void TissueCS(uint3 DTid : SV_DispatchThreadID)
 	float Thickness = max(0.2f, 1.0f + 0.4f * max(ThicknessVariation, 0.0f)
 		* SkinNoise(Q, max(1.0f, round(float(TissueCells) * 0.61f)), 173u, FP));
 	float Height = SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * Fat * Thickness;
-	// Gravity fat bulge: tissue thickens downslope
+	// Gravity fat bulge: advect tissue downslope and thicken
 	if (GravityBulge > 0.001f)
 	{
 		float2 GravDir = float2(cos(radians(GravityAngle)), sin(radians(GravityAngle)));
-		float2 Grad = float2(TissueState.SampleLevel(LinearWrapSampler, UV + float2(E.x,0),0).r - TissueState.SampleLevel(LinearWrapSampler, UV - float2(E.x,0),0).r,
-			TissueState.SampleLevel(LinearWrapSampler, UV + float2(0,E.y),0).r - TissueState.SampleLevel(LinearWrapSampler, UV - float2(0,E.y),0).r) / (2.0f * E.x);
-		float Downslope = dot(normalize(Grad + 1e-4f), GravDir);
-		Height *= 1.0f + GravityBulge * saturate(Downslope * 0.5f + 0.5f) * 0.6f;
-		Thickness *= 1.0f + GravityBulge * saturate(Downslope * 0.5f + 0.5f) * 0.4f;
+		float Sag = GravityBulge * 0.15f / max(float(TissueCells), 1.0f);
+		float FatSag = 0.78f * SkinFat(Q + GravDir * Sag, float(TissueCells), FP, 101u)
+			+ 0.22f * SkinFat(Q + GravDir * Sag, max(1.0f, round(float(TissueCells) * 1.83f)), FP, 137u);
+		Height = lerp(Height, SkinTissueRelief * max(Fullness, 0.0f) * max(0.1f, lerp(0.55f, 1.0f, Softness)) * FatSag * Thickness, GravityBulge * 0.7f);
+		Thickness *= 1.0f + GravityBulge * 0.3f * saturate(FatSag);
 	}
 	// R: unit destination-UV relief. GB: PERIODIC displacement relative to SkinPlacedUV.
 	// A: positive, neutral-at-one thickness factor. Never HeightScale or Amount here.
