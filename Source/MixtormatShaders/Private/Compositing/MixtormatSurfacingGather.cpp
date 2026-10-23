@@ -95,7 +95,7 @@ namespace MixtormatGpuCompositor
 				MixtormatComposeHash::FHasher FieldHasher;
 				FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.FieldKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657032ull) | 1ull;
+					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657034ull) | 1ull;
 				MixtormatComposeHash::FHasher SimulationHasher;
 				SimulationHasher.SkipTopLevel = {
 					TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionMode"), TEXT("CushionSize"),

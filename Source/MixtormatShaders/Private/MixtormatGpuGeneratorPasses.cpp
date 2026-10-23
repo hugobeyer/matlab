@@ -4217,6 +4217,7 @@ namespace
 					}
 					else if (Stage == 12)
 					{
+						P->MesoCushionHeight = MesoHeight;
 						P->GrowthState = States[Current];
 						P->GrowthCoverage = Outputs[1];
 						P->GrowthAge = Outputs[2];

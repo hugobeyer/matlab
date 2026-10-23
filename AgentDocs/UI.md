@@ -61,6 +61,10 @@ card shows a read-only gate source label and hides Texture/Noise/Layer Values se
 context Source switching is reserved for unlinked masks, preventing loss of the
 original named output. Standalone masks keep the normal source selector.
 
+Surfacing children, including Moss, exclusively own the child inspector while selected;
+the parent layer's Fill, Channel Influence and Composition sections remain available only
+on layer selection. Moss is listed under Surfacing and has a bound-aware COLOR RAMP card.
+
 Ramp preset menus offer **Overwrite Preset…** for saved user ramps, including Skin's
 albedo ramp. Overwrites preserve the preset ID and write without deleting the old file
 first. Saving a compatible module preset with an existing user name replaces that preset;

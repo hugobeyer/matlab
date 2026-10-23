@@ -3100,10 +3100,10 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 			LOCTEXT("MossClumpDensityHint", "Surface clumps across one tile. Changes spacing without reducing relief at higher density. Rounded for tiling; zero disables clump detail.")),
 		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
 			Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
-				LOCTEXT("MossShootDensityHint", "Spacing of three-leaf tufts across the tile. Higher values create smaller, denser tufts; unresolved detail fades. Inactive while Shoot Length is zero."))]));
+				LOCTEXT("MossShootDensityHint", "Density of micro leaf tufts following the cushion slope and growth front. Higher values make finer, denser leaves; unresolved relief and normals fade. Inactive while Shoot Length is zero."))]));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossShootLength", "Shoot Length"), &FMixtormatMoss::ShootLength, 0, 1, .01,
-			LOCTEXT("MossShootLengthHint", "Shoot height relative to Cushion Height and age-weighted Mature Height. Independent of shoot spacing; fades at colony boundaries.")),
+			LOCTEXT("MossShootLengthHint", "Shallow microshoot relief and leaf-normal prominence. Cushion Height and Mature Height still own the bulk; shoot relief fades at colony boundaries.")),
 		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
 			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
 				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
@@ -3139,7 +3139,7 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		Slider(LOCTEXT("MossAmount", "Amount"), &FMixtormatMoss::Amount, 0, 2, .01,
 			LOCTEXT("MossAmountHint", "Surfacing contribution after child masks.")),
 		Slider(LOCTEXT("MossNormalStrength", "Normal Strength"), &FMixtormatMoss::NormalStrength, 0, 3, .01,
-			LOCTEXT("MossNormalStrengthHint", "Tufted arc-blade detail normal strength. Normals only; does not change height."))));
+			LOCTEXT("MossNormalStrengthHint", "Micro leaf-normal strength. Tufts follow the solved clump slope and growth-age front; pixel filtering fades unresolved blades. This control does not change height."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossDryRoughness", "Dry Roughness"), &FMixtormatMoss::DryRoughness, 0, 1, .01,
 			LOCTEXT("MossDryRoughnessHint", "Roughness where the solver moisture field is dry.")),

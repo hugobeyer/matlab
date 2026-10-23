@@ -529,11 +529,11 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1024.0", Delta = "0.01"))
 	float ClumpDensity = 32.0f;
 
-	// Density of high-frequency organic microshoots.
+	// Density of micro tufts (128-512 per tile), aligned by cushion slope and growth age.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ShootDensity = 0.70f;
 
-	// Height and prominence of microshoots.
+	// Shallow microshoot relief and leaf-normal prominence, independent of cushion bulk.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float ShootLength = 0.40f;
 
@@ -568,7 +568,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	float DryRoughness = 0.95f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01"))
 	float WetRoughness = 0.45f;
-	// Strength of the tufted arc-blade detail normal (normals only, no height).
+	// Strength of micro leaf normals aligned by cushion slope and growth-front direction.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "3", Delta = "0.01"))
 	float NormalStrength = 1.0f;
 
