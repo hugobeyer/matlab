@@ -216,11 +216,11 @@ struct MIXTORMATRUNTIME_API FMixtormatRust
 	float Buildup = 0.04f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Clustered shedding removes deposit and visible oxide but leaves the metal-loss footprint intact."))
 	float Flaking = 0.15f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0.5", UIMax = "8", Delta = "0.1", ToolTip = "Relative cluster size. Larger values create fewer, broader clusters; periodic counts are rounded."))
-	float FeatureSize = 2.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0.01", UIMax = "8", Delta = "0.01", ToolTip = "Relative cluster size; smaller values produce finer corrosion. Slider range is not a binding limit. The magnitude sets periodic spacing; zero reaches the unresolved-detail limit. Not centimeters."))
+	float FeatureSize = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "-1", UIMax = "1", Delta = "0.01", ToolTip = "Positive values favor geometric depressions; negative values favor ridges. Not alloy, coating damage, humidity or world gravity."))
 	float SurfaceBias = 0.3f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Correlated cluster, deposit and mineral-palette variation. No illumination is baked into pigment."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Continuous multiscale variation in cluster shape, spacing, local orientation, deposit and pigment. Zero removes added domain distortion and pigment contrast; no illumination is baked into color."))
 	float Variation = 0.65f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rust", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
 	int32 Seed = 19;

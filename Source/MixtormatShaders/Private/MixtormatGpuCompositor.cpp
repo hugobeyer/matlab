@@ -1876,8 +1876,8 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
 	// Optical transport, effective Surfacing inputs and full-precision physical channels.
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x4F70746963733031ull);
-	// Moss cover maturation, bounded canopy lift and footprint-scaled leaf relief.
-	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x5375726648303035ull);
+	// Shared Noise morphology for Rust/Moss, stable Moss activation and contact competition.
+	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x5375726648303036ull);
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, static_cast<uint64>(bFinalAutoRemapHeight));
 
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)

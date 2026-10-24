@@ -3,11 +3,12 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
 
 int2 OutputSize;
 uint Seed;
 uint Structure;
-int ClusterPeriod;
+float ClusterPeriod;
 // @param Coverage saturates
 float Coverage;
 // @param PitDepth
@@ -36,34 +37,32 @@ RWTexture2D<float4> OutColor;
 RWTexture2D<float4> OutRAM;
 RWTexture2D<float4> OutOptics;
 
-uint RustHash(uint V)
+static const int RUST_NOISE_OCTAVES = 4;
+static const float RUST_NOISE_ROUGHNESS = 0.55f;
+static const float RUST_NOISE_LACUNARITY = 2.0f;
+static const float2 RUST_NOISE_AA_RANGE = float2(0.35f, 0.9f);
+
+// Reuse Noise's periodic gradient lattice and octave contract. Filter each octave,
+// retaining the full normalization so unresolved detail tends to its mean, not a new look.
+float RustNoise(float2 UV, float Period, uint Salt, float FootprintUV)
 {
-	V ^= V >> 16u; V *= 0x7feb352du; V ^= V >> 15u; V *= 0x846ca68bu;
-	return V ^ (V >> 16u);
-}
-float3 RustRandom(int2 Cell, int Period, uint Salt)
-{
-	int2 C = (Cell % Period + Period) % Period;
-	uint H = RustHash(uint(C.x) ^ RustHash(uint(C.y) + Seed) ^ Salt);
-	return float3(H & 65535u, RustHash(H) & 65535u, RustHash(H + 1u) & 65535u) / 65536.0f;
-}
-// Cellular distance, plate seam distance and stable owner pigment. No pixel-index seeds.
-float4 RustCell(float2 UV, int Period, uint Salt)
-{
-	float2 Q = UV * float(Period);
-	int2 Base = int2(floor(Q));
-	float First = 10.0f, Second = 10.0f;
-	float2 Owner = 0;
-	[unroll] for (int Y = -1; Y <= 1; ++Y) [unroll] for (int X = -1; X <= 1; ++X)
+	float Value = 0.0f, Weight = 1.0f, WeightSum = 0.0f;
+	[unroll] for (int Octave = 0; Octave < RUST_NOISE_OCTAVES; ++Octave)
 	{
-		int2 Cell = Base + int2(X,Y);
-		float3 R = RustRandom(Cell, Period, Salt);
-		float2 D = Q - (float2(Cell) + 0.5f + (R.xy - 0.5f) * 0.7f);
-		float Dist = dot(D,D);
-		if (Dist < First) { Second = First; First = Dist; Owner = R.yz; }
-		else Second = min(Second, Dist);
+		int P = MixtormatNoiseOctavePeriod(Period);
+		float Resolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y,
+			FootprintUV * Period);
+		if (P > 0 && Resolved > 0.0f)
+		{
+			Value += MixtormatPeriodicNoiseD(UV * float(P), P,
+				Seed ^ (Salt + uint(Octave) * 0x2545F491u)).x
+				* MIXTORMAT_NOISE_SQRT2 * Weight * Resolved;
+		}
+		WeightSum += Weight;
+		Weight *= RUST_NOISE_ROUGHNESS;
+		Period *= RUST_NOISE_LACUNARITY;
 	}
-	return float4(sqrt(First), sqrt(Second) - sqrt(First), Owner);
+	return Value / WeightSum;
 }
 float2 RustUV(float2 UV)
 {
@@ -76,34 +75,49 @@ float2 RustUV(float2 UV)
 // Flaking=1 removes all oxide/products without changing the attack or loss fields.
 float4 RustFields(float2 UV, float Bias, float Footprint)
 {
-	float4 Parent = RustCell(UV, ClusterPeriod, 17u);
-	float4 Plate = RustCell(UV, ClusterPeriod * 3, 83u);
-	float4 Grain = RustCell(UV, ClusterPeriod * 12, 191u);
-	float GrainResolved = 1.0f - smoothstep(0.35f, 1.2f, Footprint * 12.0f);
-	float PlateResolved = 1.0f - smoothstep(0.35f, 1.2f, Footprint * 3.0f);
-	float AttackDistance = Parent.x + (Plate.x - 0.4f) * 0.28f * PlateResolved;
-	float Radius = lerp(-0.18f, 1.5f, Coverage) + Bias * 0.18f;
-	float AA = max(Footprint * 0.45f, 0.015f);
-	float Attack = Coverage <= 0 ? 0 : (Coverage >= 1 ? 1 : 1 - smoothstep(Radius-AA, Radius+AA, AttackDistance));
-	// Fixed pit profiles: changing coverage reveals features, never rescales surviving depth.
-	float Basin = pow(saturate(1.0f - Parent.x), 1.5f);
-	float Pits = lerp(0.5f, pow(saturate(1.0f - Plate.x), 2.0f), PlateResolved);
+	float FootprintUV = Footprint / max(ClusterPeriod, 1.0f);
+	float Broad = RustNoise(UV, ClusterPeriod, 17u, FootprintUV);
+	float2 Drift = float2(RustNoise(UV, ClusterPeriod, 43u, FootprintUV),
+		RustNoise(UV, ClusterPeriod, 61u, FootprintUV));
+	// Continuous domain deformation varies spacing, shape and local orientation together.
+	// Variation is not clamped to the inspector's suggested interval.
+	float2 Q = UV + Drift * Variation / max(ClusterPeriod, 1.0f);
+	float DetailFootprint = FootprintUV * (1.0f + abs(Variation) * 4.0f);
+	float Meso = RustNoise(Q, ClusterPeriod * 3.0f, 83u, DetailFootprint);
+	float Fine = RustNoise(Q, ClusterPeriod * 12.0f, 191u, DetailFootprint);
+	float AttackField = 0.5f + Broad * 0.65f + Meso * 0.25f + Bias * 0.18f;
+	float AA = max(Footprint * 0.45f, 0.025f);
+	float Threshold = 1.0f - Coverage;
+	float Attack = Coverage <= 0 ? 0 : (Coverage >= 1 ? 1 : smoothstep(Threshold-AA, Threshold+AA, AttackField));
+	// Coverage reveals fixed profiles; shedding never changes consumed metal.
+	float Basin = saturate(0.5f + Broad);
+	float Pits = saturate(0.5f + Meso);
 	float Loss = Attack * PitDepth * (0.18f + 0.48f * Basin + 0.34f * Pits);
-	float Survives = Flaking <= 0 ? 1 : (Flaking >= 1 ? 0 : smoothstep(Flaking-.035f, Flaking+.035f, Plate.w));
-	float Seam = lerp(1.0f, smoothstep(0.012f, 0.065f, Plate.y), PlateResolved);
-	float Aggregate = lerp(0.55f, pow(saturate(1.0f - Grain.x), 2.0f), GrainResolved);
+	float RetentionField = 0.5f + RustNoise(Q, ClusterPeriod * 2.0f, 227u, DetailFootprint);
+	float Survives = Flaking <= 0 ? 1 : (Flaking >= 1 ? 0 : smoothstep(Flaking-AA, Flaking+AA, RetentionField));
+	float Aggregate = saturate(0.5f + Fine + Meso * 0.25f);
+	float Seam = 1.0f;
 	float Deposit = 0.4f + 0.35f * Basin;
 	if (Structure == 1u) Deposit *= 0.55f + 0.85f * Aggregate;
 	if (Structure == 2u)
 	{
-		float Terraces = 0.3f + 0.35f * smoothstep(.25f,.29f,Plate.z) + 0.35f * smoothstep(.65f,.69f,Plate.z);
-		Deposit = lerp(Deposit, Terraces * Seam, PlateResolved);
+		int PlatePeriod = MixtormatNoiseOctavePeriod(ClusterPeriod * 3.0f);
+		float PlateResolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y,
+			DetailFootprint * ClusterPeriod * 3.0f);
+		if (PlatePeriod > 0 && PlateResolved > 0.0f)
+		{
+			FMixtormatNoiseWorley Plate = MixtormatNoiseV2Worley(Q, PlatePeriod, Seed ^ 83u, 1.0f, 0);
+			Seam = lerp(1.0f, smoothstep(0.012f, 0.065f, Plate.F2 - Plate.F1), PlateResolved);
+		}
+		float Terraces = 0.3f + 0.35f * smoothstep(0.25f,0.35f,Pits)
+			+ 0.35f * smoothstep(0.65f,0.75f,Pits);
+		Deposit = Terraces * Seam;
 	}
-	Deposit *= lerp(1.0f, 0.65f + 0.7f * Parent.w, Variation);
+	Deposit *= 1.0f + Variation * Broad * 0.7f;
 	float Retained = Attack * Survives * Buildup * saturate(Deposit);
 	float Oxide = Attack * Survives * (Structure == 2u ? lerp(.35f,1.0f,Seam) : 1.0f);
-	float Pigment = saturate(.5f + Variation * ((Parent.w-.5f)*.75f
-		+ (Plate.z-.5f)*.55f*PlateResolved + (Aggregate-.5f)*.35f));
+	// Never color a whole Voronoi owner: continuous multiscale pigment crosses cell borders.
+	float Pigment = saturate(0.5f + Variation * (Broad * 0.75f + Meso * 0.55f + Fine * 0.2f));
 	return float4(Retained - Loss, Oxide, Pigment, Aggregate);
 }
 

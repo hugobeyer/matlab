@@ -450,11 +450,11 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// --- Simulation ---
 	// Colony-front growth iterations; zero keeps procedural/mask initialization.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Simulation", meta = (ClampMin = "0", UIMin = "0", UIMax = "2048"))
-	int32 GrowthIterations = 448;
+	int32 GrowthIterations = 64;
 
 	// Maximum simulation-grid dimension, preserving aspect ratio independently of output resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Simulation", meta = (ClampMin = "1", UIMin = "64", UIMax = "2048"))
-	int32 SimulationResolution = 512;
+	int32 SimulationResolution = 1024;
 
 	// --- Seeding ---
 
@@ -489,7 +489,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Habitat", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float SurfaceAnglePreference = 0.35f;
 
-	// Inter-colony contact inhibition: foreign neighbours slow the growth front and pinch seams.
+	// Persistent contact inhibition: foreign neighbours reduce front growth, cover and biomass.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
 	float Competition = 0.65f;
 
@@ -502,7 +502,7 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// --- Growth ---
 	// Periodic parent-colony cells across the tile. Connected lobes share a stable colony ID.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "1", UIMin = "1", UIMax = "32"))
-	int32 ColonyDensity = 8;
+	int32 ColonyDensity = 20;
 
 	// Sets the diffusion speed scale from 0.5 to 1.5 over the 0..1 control.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Growth", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
@@ -520,15 +520,15 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 	// --- Structure (Meso Cushions & Micro Shoots) ---
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ToolTip = "Attached shoot architecture, independent of the cushion solver. Height-field approximation, not separate leaf geometry."))
 		EMixtormatMossForm GrowthForm = EMixtormatMossForm::Cushion;
-		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (UIMin = "1", UIMax = "8", Delta = "0.1", ToolTip = "Relative tuft and leaf scale. Larger leaves use fewer tufts; colony spacing and bulk remain independent."))
-		float LeafScale = 3.0f;
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (UIMin = "0.1", UIMax = "8", Delta = "0.05", ToolTip = "Relative tuft and leaf scale. Smaller values produce finer shoots, not smaller colonies. Unresolved relief fades; slider bounds do not clamp bindings."))
+		float LeafScale = 1.25f;
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Reversible leaf opening and curl. Independent of habitat moisture, growth history and damage."))
 		float Hydration = 0.6f;
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Effective surface wet sheen; not tissue hydration or a separate water-film renderer."))
 		float SurfaceWetness = 0.25f;
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Artistic wet darkening. Zero leaves pigment unchanged by surface water."))
 		float WetDarkening = 0.25f;
-		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Stable parent-colony palette and roughness variation, not baked illumination."))
+		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Continuous broad and fine pigment/roughness variation using the shared Noise generator. Colony IDs never form flat color blocks; not baked illumination."))
 		float ColonyVariation = 0.55f;
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Material", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Correlated shoot and visible-leaf pigment variation. Hidden leaves do not contribute."))
 		float LeafVariation = 0.45f;
@@ -542,20 +542,20 @@ struct MIXTORMATRUNTIME_API FMixtormatMoss
 
 	// Deposition: lateral creep scale. SDF: inflation diameter/smoothing scale.
 	// Both modes: maximum opposing-bank canopy support span in destination UV.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.000001", UIMin = "0.02", UIMax = "0.3", Delta = "0.005"))
-	float CushionSize = 0.12f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.000001", UIMin = "0.005", UIMax = "0.15", Delta = "0.001"))
+	float CushionSize = 0.045f;
 
 	// Native footprint-driven bulk height before coverage, normalization and Height Scale.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
-	float CushionHeight = 0.036f;
+	float CushionHeight = 0.18f;
 
 	// Extra footprint-driven bulk at full biomass, before coverage and output scaling.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.001"))
-	float MatureHeight = 0.05f;
+	float MatureHeight = 0.12f;
 
 	// Shallow detail cells across one tile; rounded for tiling. Zero disables clump detail.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1024.0", Delta = "0.01"))
-	float ClumpDensity = 32.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "256.0", Delta = "1"))
+	float ClumpDensity = 64.0f;
 
 	// Tuft frequency (128-512 divided by LeafScale), aligned by cushion slope and growth age.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Moss|Structure", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))

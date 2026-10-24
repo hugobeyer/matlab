@@ -19,21 +19,21 @@ namespace MixtormatSurfacing
 			Built[2].Name = NSLOCTEXT("MixtormatSurfacing", "RustPits", "Localized Attack");
 			Built[2].Description = NSLOCTEXT("MixtormatSurfacing", "RustPitsHelp", "Deep coalescing pits with little retained product; loss is independent of oxide coverage.");
 			{ auto& R = Built[2].Settings; R.Coverage = .38f; R.PitDepth = .1f; R.Buildup = .006f;
-			  R.FeatureSize = 1.2f; R.SurfaceBias = .65f; R.Flaking = .65f; R.Seed = 37; }
+			  R.FeatureSize = .75f; R.SurfaceBias = .65f; R.Flaking = .65f; R.Seed = 37; }
 			Built[3].Name = NSLOCTEXT("MixtormatSurfacing", "RustCrust", "Compact Crust");
 			Built[3].Description = NSLOCTEXT("MixtormatSurfacing", "RustCrustHelp", "Broad dark plates with mineral seams and restrained shedding.");
 			{ auto& R = Built[3].Settings; R.Structure = EMixtormatRustStructure::Layered; R.Coverage = .82f;
-			  R.FeatureSize = 3.5f; R.PitDepth = .035f; R.Buildup = .07f; R.Flaking = .08f; R.Roughness = .9f;
+			  R.FeatureSize = 2.5f; R.PitDepth = .035f; R.Buildup = .07f; R.Flaking = .08f; R.Roughness = .9f;
 			  R.ColorRamp.Stops = {{0, FLinearColor(.025f,.012f,.008f,1)}, {.5f, FLinearColor(.11f,.035f,.016f,1)}, {1, FLinearColor(.34f,.10f,.025f,1)}}; }
 			Built[4].Name = NSLOCTEXT("MixtormatSurfacing", "RustBuildup", "Granular Buildup");
 			Built[4].Description = NSLOCTEXT("MixtormatSurfacing", "RustBuildupHelp", "Raised ochre aggregate with shallow attack; demonstrates independent buildup.");
 			{ auto& R = Built[4].Settings; R.Coverage = .72f; R.PitDepth = .006f; R.Buildup = .12f;
-			  R.Flaking = 0; R.FeatureSize = 2.5f; R.Variation = .9f; R.Roughness = .94f;
+			  R.Flaking = 0; R.FeatureSize = .9f; R.Variation = .9f; R.Roughness = .94f;
 			  R.ColorRamp.Stops = {{0, FLinearColor(.08f,.025f,.01f,1)}, {.5f, FLinearColor(.32f,.10f,.02f,1)}, {1, FLinearColor(.6f,.28f,.065f,1)}}; }
 			Built[5].Name = NSLOCTEXT("MixtormatSurfacing", "RustLayers", "Layered Accumulation");
 			Built[5].Description = NSLOCTEXT("MixtormatSurfacing", "RustLayersHelp", "Terraced attached plates and irregular surviving edges above recessed metal.");
 			{ auto& R = Built[5].Settings; R.Structure = EMixtormatRustStructure::Layered; R.Coverage = .85f;
-			  R.PitDepth = .055f; R.Buildup = .14f; R.Flaking = .35f; R.FeatureSize = 4; R.Variation = .85f; R.Seed = 71; }
+			  R.PitDepth = .055f; R.Buildup = .14f; R.Flaking = .35f; R.FeatureSize = 2.2f; R.Variation = .85f; R.Seed = 71; }
 			Built[6].Name = NSLOCTEXT("MixtormatSurfacing", "RustShed", "After Shedding");
 			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "RustShedHelp", "Sparse retained plate islands over the same deep attack footprint; shedding does not heal pits.");
 			Built[6].Settings = Built[5].Settings;
@@ -55,65 +55,79 @@ namespace MixtormatSurfacing
 			Built[0].Name = NSLOCTEXT("MixtormatSurfacing", "MossLushWet", "Lush Wet");
 			Built[0].Description = NSLOCTEXT("MixtormatSurfacing", "MossLushWetHelp", "Deep green saturated cushions, dark wet base, low wet roughness.");
 			{ FMixtormatMoss& M = Built[0].Settings; M.Moisture = 0.85f; M.WetRoughness = 0.35f; M.DryRoughness = 0.9f;
-						  M.Hydration = 0.95f; M.SurfaceWetness = 0.85f; M.Plumpness = 0.8f; M.LeafScale = 3.5f;
-						  M.ColonyDensity = 6; M.Coverage = 0.75f; M.TipColor = 0.55f; M.ColonyVariation = 0.65f;
+						  M.Hydration = 0.95f; M.SurfaceWetness = 0.65f; M.Plumpness = 0.8f; M.LeafScale = 1.2f;
+			  M.ColonyDensity = 24; M.GrowthIterations = 96; M.Coverage = 0.75f; M.Seed = 1337;
+			  M.CushionHeight = 0.2f; M.MatureHeight = 0.14f; M.CushionSize = 0.04f;
+			  M.ClumpDensity = 80; M.TipColor = 0.3f; M.ColonyVariation = 0.65f;
 			  Ramp(M, FLinearColor(0.03f,0.09f,0.02f,1), FLinearColor(0.08f,0.24f,0.05f,1), FLinearColor(0.30f,0.52f,0.12f,1)); }
 			Built[1].Name = NSLOCTEXT("MixtormatSurfacing", "MossDryPale", "Dry Pale");
 			Built[1].Description = NSLOCTEXT("MixtormatSurfacing", "MossDryPaleHelp", "Yellow-green desiccated moss, matte and thin.");
-			{ FMixtormatMoss& M = Built[1].Settings; M.Moisture = 0.25f; M.WetRoughness = 0.7f; M.DryRoughness = 1.0f; M.CushionHeight = 0.02f;
+			{ FMixtormatMoss& M = Built[1].Settings; M.Moisture = 0.25f; M.WetRoughness = 0.7f; M.DryRoughness = 1.0f;
+						  M.CushionHeight = 0.08f; M.MatureHeight = 0.04f; M.CushionSize = 0.03f;
+						  M.ColonyDensity = 28; M.GrowthIterations = 48; M.Seed = 1429;
 						  M.Hydration = 0.12f; M.SurfaceWetness = 0; M.Damage = 0.12f; M.Plumpness = 0.2f;
-						  M.LeafScale = 4; M.ShootLength = 0.65f; M.LeafVariation = 0.8f; M.TipColor = 0.12f;
+						  M.LeafScale = 1.1f; M.ShootLength = 0.45f; M.LeafVariation = 0.65f; M.TipColor = 0.12f;
 			  Ramp(M, FLinearColor(0.14f,0.16f,0.05f,1), FLinearColor(0.32f,0.38f,0.12f,1), FLinearColor(0.58f,0.62f,0.25f,1)); }
 			Built[2].Name = NSLOCTEXT("MixtormatSurfacing", "MossForestFloor", "Forest Floor");
 			Built[2].Description = NSLOCTEXT("MixtormatSurfacing", "MossForestFloorHelp", "Olive-brown mixed colonies with decaying old growth.");
 			{ FMixtormatMoss& M = Built[2].Settings; M.Moisture = 0.6f; M.Coverage = 0.65f;
-						  M.GrowthForm = EMixtormatMossForm::CreepingMat; M.LeafScale = 5; M.Damage = 0.25f;
-						  M.ColonyVariation = 0.85f; M.LeafVariation = 0.7f; M.CushionHeight = 0.014f; M.MatureHeight = 0.02f;
+						  M.GrowthForm = EMixtormatMossForm::CreepingMat; M.LeafScale = 1.6f; M.Damage = 0.15f;
+			  M.ColonyDensity = 18; M.GrowthIterations = 112; M.Seed = 1531; M.Competition = 0.3f;
+			  M.ColonyVariation = 0.65f; M.LeafVariation = 0.6f; M.CushionHeight = 0.07f; M.MatureHeight = 0.06f;
 			  Ramp(M, FLinearColor(0.10f,0.10f,0.03f,1), FLinearColor(0.22f,0.26f,0.08f,1), FLinearColor(0.42f,0.40f,0.16f,1)); }
 			Built[3].Name = NSLOCTEXT("MixtormatSurfacing", "MossAlpine", "Alpine Cushion");
 			Built[3].Description = NSLOCTEXT("MixtormatSurfacing", "MossAlpineHelp", "Compact blue-green cushions, dense fine shoots.");
-			{ FMixtormatMoss& M = Built[3].Settings; M.Moisture = 0.5f; M.ClumpDensity = 48.0f; M.ShootDensity = 0.85f; M.CushionHeight = 0.025f;
-						  M.CushionMode = EMixtormatMossCushionMode::SdfInflation; M.ColonyDensity = 5; M.Competition = 0.9f;
-						  M.LeafScale = 2.5f; M.Softness = 0.25f; M.SurfaceWetness = 0.08f; M.TipColor = 0.55f;
-			  Ramp(M, FLinearColor(0.04f,0.12f,0.08f,1), FLinearColor(0.10f,0.30f,0.18f,1), FLinearColor(0.28f,0.55f,0.35f,1)); }
+			{ FMixtormatMoss& M = Built[3].Settings; M.Moisture = 0.5f; M.ClumpDensity = 96.0f; M.ShootDensity = 0.85f;
+			  M.CushionHeight = 0.16f; M.MatureHeight = 0.08f; M.CushionSize = 0.025f;
+			  M.CushionMode = EMixtormatMossCushionMode::SdfInflation; M.ColonyDensity = 28; M.Competition = 0.9f;
+			  M.GrowthIterations = 40; M.Seed = 1613; M.LeafScale = 1.0f; M.Softness = 0.25f;
+			  M.SurfaceWetness = 0.08f; M.TipColor = 0.25f;
+			  Ramp(M, FLinearColor(0.025f,0.06f,0.025f,1), FLinearColor(0.09f,0.19f,0.055f,1), FLinearColor(0.24f,0.34f,0.12f,1)); }
 			Built[4].Name = NSLOCTEXT("MixtormatSurfacing", "MossDecaying", "Decaying");
 			Built[4].Description = NSLOCTEXT("MixtormatSurfacing", "MossDecayingHelp", "Brown-tipped old colonies over a dark base.");
-			{ FMixtormatMoss& M = Built[4].Settings; M.Moisture = 0.4f; M.GrowthIterations = 700;
+			{ FMixtormatMoss& M = Built[4].Settings; M.Moisture = 0.4f; M.GrowthIterations = 128; M.ColonyDensity = 22; M.Seed = 1721;
+						  M.CushionHeight = 0.09f; M.MatureHeight = 0.06f; M.CushionSize = 0.035f;
 						  M.GrowthForm = EMixtormatMossForm::SweptTuft; M.Damage = 0.75f; M.Hydration = 0.25f;
-						  M.SurfaceWetness = 0.08f; M.TipColor = 0.08f; M.ColonyVariation = 0.9f; M.LeafScale = 5;
+						  M.SurfaceWetness = 0.08f; M.TipColor = 0.08f; M.ColonyVariation = 0.7f; M.LeafScale = 1.5f;
 			  Ramp(M, FLinearColor(0.09f,0.07f,0.03f,1), FLinearColor(0.20f,0.22f,0.07f,1), FLinearColor(0.45f,0.32f,0.14f,1)); }
 			Built[5].Name = NSLOCTEXT("MixtormatSurfacing", "MossRockCushion", "Rock Cushion");
 			Built[5].Description = NSLOCTEXT("MixtormatSurfacing", "MossRockCushionHelp", "Separated firm cushions with radial rosettes and dry gold-green tips.");
 			{ FMixtormatMoss& M = Built[5].Settings; M.CushionMode = EMixtormatMossCushionMode::SdfInflation;
-			  M.ColonyDensity = 4; M.Coverage = 0.4f; M.Competition = 0.95f; M.GrowthSpread = 0.25f;
-			  M.Softness = 0.2f; M.LeafScale = 4; M.Hydration = 0.4f; M.SurfaceWetness = 0.05f;
-			  M.TipColor = 0.75f; M.ShootLength = 0.6f;
+			  M.ColonyDensity = 24; M.Coverage = 0.4f; M.Competition = 0.95f; M.GrowthSpread = 0.25f;
+			  M.GrowthIterations = 48; M.Seed = 1811; M.CushionSize = 0.025f;
+			  M.CushionHeight = 0.22f; M.MatureHeight = 0.1f; M.ClumpDensity = 80;
+			  M.Softness = 0.2f; M.LeafScale = 1.1f; M.Hydration = 0.4f; M.SurfaceWetness = 0.05f;
+			  M.TipColor = 0.3f; M.ShootLength = 0.5f;
 			  Ramp(M, FLinearColor(.045f,.075f,.018f,1), FLinearColor(.16f,.25f,.045f,1), FLinearColor(.48f,.50f,.12f,1)); }
 			Built[6].Name = NSLOCTEXT("MixtormatSurfacing", "MossForestPillow", "Forest Pillow");
-			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "MossForestPillowHelp", "Broad soft colonies, plump radial shoots and warm new-growth tips.");
-			{ FMixtormatMoss& M = Built[6].Settings; M.ColonyDensity = 4; M.Coverage = 0.8f;
-			  M.CushionSize = 0.2f; M.CushionHeight = 0.055f; M.MatureHeight = 0.07f; M.Softness = 0.85f;
-			  M.Hydration = 0.85f; M.Plumpness = 0.85f; M.LeafScale = 4; M.ColonyVariation = 0.7f;
-			  M.TipColor = 0.65f; M.SurfaceWetness = 0.35f; }
+			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "MossForestPillowHelp", "Small merging pillows with varied crowns, fine radial shoots and warm new-growth tips.");
+			{ FMixtormatMoss& M = Built[6].Settings; M.ColonyDensity = 18; M.Coverage = 0.8f; M.GrowthIterations = 80; M.Seed = 1907;
+			  M.CushionSize = 0.055f; M.CushionHeight = 0.28f; M.MatureHeight = 0.18f; M.Softness = 0.85f;
+			  M.ClumpDensity = 56; M.Hydration = 0.85f; M.Plumpness = 0.85f; M.LeafScale = 1.35f;
+			  M.ColonyVariation = 0.6f; M.TipColor = 0.35f; M.SurfaceWetness = 0.35f; }
 			Built[7].Name = NSLOCTEXT("MixtormatSurfacing", "MossSweptTuft", "Swept Tuft");
 			Built[7].Description = NSLOCTEXT("MixtormatSurfacing", "MossSweptTuftHelp", "Open fans of long tapered leaves following local growth and cushion flow.");
 			{ FMixtormatMoss& M = Built[7].Settings; M.GrowthForm = EMixtormatMossForm::SweptTuft;
-			  M.LeafScale = 6; M.ShootDensity = 0.4f; M.ShootLength = 0.85f; M.FiberThickness = 0.28f;
-			  M.Hydration = 0.7f; M.CushionHeight = 0.025f; M.LeafVariation = 0.8f; M.TipColor = 0.6f;
+			  M.LeafScale = 1.8f; M.ShootDensity = 0.65f; M.ShootLength = 0.75f; M.FiberThickness = 0.28f;
+			  M.ColonyDensity = 20; M.GrowthIterations = 72; M.Seed = 2017;
+			  M.Hydration = 0.7f; M.CushionHeight = 0.12f; M.MatureHeight = 0.08f;
+			  M.LeafVariation = 0.65f; M.TipColor = 0.3f;
 			  Ramp(M, FLinearColor(.035f,.07f,.025f,1), FLinearColor(.09f,.24f,.08f,1), FLinearColor(.34f,.5f,.16f,1)); }
 			Built[8].Name = NSLOCTEXT("MixtormatSurfacing", "MossCreepingCarpet", "Creeping Carpet");
 			Built[8].Description = NSLOCTEXT("MixtormatSurfacing", "MossCreepingCarpetHelp", "Low spreading mats with alternate leaves, restrained bulk and varied olive shoots.");
 			{ FMixtormatMoss& M = Built[8].Settings; M.GrowthForm = EMixtormatMossForm::CreepingMat;
-			  M.LeafScale = 6; M.Coverage = 0.8f; M.GrowthSpread = 0.8f; M.Competition = 0.25f;
-			  M.CushionHeight = 0.008f; M.MatureHeight = 0.012f; M.ShootLength = 0.5f;
-			  M.FiberThickness = 0.65f; M.ColonyVariation = 0.8f; M.Hydration = 0.8f;
+			  M.LeafScale = 1.7f; M.Coverage = 0.8f; M.GrowthSpread = 0.8f; M.Competition = 0.25f;
+			  M.ColonyDensity = 24; M.GrowthIterations = 112; M.Seed = 2111; M.CushionSize = 0.035f;
+			  M.CushionHeight = 0.045f; M.MatureHeight = 0.035f; M.ShootLength = 0.5f;
+			  M.FiberThickness = 0.45f; M.ColonyVariation = 0.6f; M.Hydration = 0.8f;
 			  Ramp(M, FLinearColor(.06f,.08f,.02f,1), FLinearColor(.18f,.27f,.06f,1), FLinearColor(.4f,.49f,.15f,1)); }
 			Built[9].Name = NSLOCTEXT("MixtormatSurfacing", "MossFeatherWeft", "Feather Weft");
 			Built[9].Description = NSLOCTEXT("MixtormatSurfacing", "MossFeatherWeftHelp", "Paired tapering fronds over a shallow connected bed; no detached geometry.");
 			{ FMixtormatMoss& M = Built[9].Settings; M.GrowthForm = EMixtormatMossForm::Feather;
-			  M.LeafScale = 8; M.ShootDensity = 0.35f; M.ShootLength = 0.7f; M.FiberThickness = 0.55f;
-			  M.CushionHeight = 0.012f; M.MatureHeight = 0.018f; M.Coverage = 0.7f;
-			  M.Hydration = 0.9f; M.LeafVariation = 0.7f; M.TipColor = 0.7f; M.SurfaceWetness = 0.4f;
+			  M.LeafScale = 2.0f; M.ShootDensity = 0.65f; M.ShootLength = 0.65f; M.FiberThickness = 0.4f;
+			  M.ColonyDensity = 22; M.GrowthIterations = 96; M.Seed = 2203; M.Competition = 0.35f;
+			  M.CushionHeight = 0.06f; M.MatureHeight = 0.05f; M.Coverage = 0.7f;
+			  M.Hydration = 0.9f; M.LeafVariation = 0.6f; M.TipColor = 0.3f; M.SurfaceWetness = 0.4f;
 			  Ramp(M, FLinearColor(.025f,.08f,.045f,1), FLinearColor(.07f,.25f,.12f,1), FLinearColor(.3f,.52f,.21f,1)); }
 			return Built;
 		}();

@@ -13,6 +13,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatHeightNormal.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
 
 // Fourteen stages; stages 2/3 additionally specialize by MOSS_SDF_CUSHION:
 // 0 analysis, 1 seed, 2 meso, 3 height/preview,
@@ -127,7 +128,9 @@ RWTexture2D<float2> OutHeightSeeds;
 RWTexture2D<float> OutGrowthInteriorDistance;
 RWTexture2D<float2> OutCushionInflation;
 
-static const float MOSS_ACTIVE_B = 0.1f;
+// Chemical is RG16F: use an exactly representable activation value. 0.1 rounds
+// below its float32 comparison threshold and newly colonized cells stop spreading.
+static const float MOSS_ACTIVE_B = 0.125f;
 static const float MOSS_EMPTY_B = 0.001f;
 static const uint MOSS_CLUMP_SALT = 909u;
 static const float MOSS_CLUMP_RELIEF_FRACTION = 0.5f;
@@ -136,7 +139,10 @@ static const float2 MOSS_SHOOT_FREQUENCY_RANGE = float2(128.0f, 512.0f);
 static const float2 MOSS_SHOOT_RADIUS_RANGE = float2(0.12f, 0.65f);
 static const float2 MOSS_SHOOT_AA_RANGE = float2(0.35f, 0.9f);
 static const float MOSS_SHOOT_FLOW_PROBE = 0.125f;
-static const float MOSS_SHOOT_FLOW_JITTER = 0.35f;
+static const float MOSS_SHOOT_FLOW_JITTER = 1.2f;
+static const int MOSS_VARIATION_OCTAVES = 3;
+static const float MOSS_VARIATION_ROUGHNESS = 0.55f;
+static const float MOSS_VARIATION_LACUNARITY = 2.0f;
 static const float MOSS_COARSE_RELIEF_FRACTION = 0.1f;
 static const float MOSS_SMOOTH_RADIUS_FRACTION = 0.5f;
 static const float MOSS_COLONY_CORE_RADIUS = 0.24f;
@@ -168,14 +174,16 @@ float2 Random22(int2 p, uint salt)
 }
 float TileNoise(float2 uv, int period, uint salt)
 {
-	float2 p = frac(uv) * float(period); int2 c = int2(floor(p)); float2 f = frac(p);
-	f = f * f * (3.0f - 2.0f * f);
-	int2 c00 = (c % period + period) % period;
-	int2 c10 = ((c + int2(1, 0)) % period + period) % period;
-	int2 c01 = ((c + int2(0, 1)) % period + period) % period;
-	int2 c11 = ((c + int2(1, 1)) % period + period) % period;
-	float v00 = Random21(c00, salt), v10 = Random21(c10, salt), v01 = Random21(c01, salt), v11 = Random21(c11, salt);
-	return lerp(lerp(v00, v10, f.x), lerp(v01, v11, f.x), f.y);
+	// Reuse the Noise generator's periodic, derivative-continuous value lattice.
+	return 0.5f + 0.5f * MixtormatNoiseValueD(uv * float(period), period, Seed ^ salt).x;
+}
+float MossVariation(float2 UV, int Period, uint Salt)
+{
+	float Value;
+	float2 Gradient;
+	MixtormatNoiseFbm(UV, float(Period), MOSS_VARIATION_OCTAVES,
+		MOSS_VARIATION_ROUGHNESS, MOSS_VARIATION_LACUNARITY, Seed ^ Salt, Value, Gradient);
+	return Value;
 }
 float2 CurlDomainWarp(float2 uv, int period, uint salt)
 {
@@ -188,16 +196,10 @@ float2 CurlDomainWarp(float2 uv, int period, uint salt)
 }
 float MossCellDome(float2 UV, int Period, uint Salt)
 {
-	int2 BaseCell = int2(floor(UV * float(Period))); float MinDistance = 1.0f;
-	[unroll] for (int Y = -1; Y <= 1; ++Y) [unroll] for (int X = -1; X <= 1; ++X)
-	{
-		int2 Cell = BaseCell + int2(X, Y);
-		int2 Wrapped = (Cell % Period + Period) % Period;
-		float2 Center = (float2(Wrapped) + Random22(Wrapped, Salt)) / float(Period);
-		MinDistance = min(MinDistance, length(TorusDelta(UV, Center)));
-	}
-	float Radius = MinDistance * float(Period);
-	return sqrt(max(0.0f, 1.0f - Radius * Radius));
+	FMixtormatNoiseWorley Cells = MixtormatNoiseV2Worley(UV, Period, Seed ^ Salt, 1.0f, 0);
+	// A smooth dome reaches zero before the next cushion; the former unit-radius
+	// nearest-cell dome stayed high across most boundaries and read as a flat bed.
+	return 1.0f - smoothstep(0.0f, 0.85f, Cells.F1);
 }
 int2 WrapSimulationPixel(int2 Pixel) { return (Pixel % SimulationSize + SimulationSize) % SimulationSize; }
 float MossCoverageThreshold() { return lerp(0.22f, 0.06f, Coverage); }
@@ -389,7 +391,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (ClumpDensity > 0.0f)
 	{
 		int ClumpDim = max(1, int(round(ClumpDensity)));
-		float Clumps = MossCellDome(UV, ClumpDim, MOSS_CLUMP_SALT);
+		float Clumps = MossCellDome(WarpedUV, ClumpDim, MOSS_CLUMP_SALT);
 		float ClumpPresence = saturate(ClumpDensity);
 		// Soft lobes merge and slump instead of staying hard beads.
 		float FatClumps = lerp(Clumps, sqrt(max(Clumps, 0.0f)), saturate(Biomass + Softness * 0.5f));
@@ -410,7 +412,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 int MossShootPeriod()
 {
 	return max(1, int(round(lerp(MOSS_SHOOT_FREQUENCY_RANGE.x,
-		MOSS_SHOOT_FREQUENCY_RANGE.y, saturate(ShootDensity)) / max(LeafScale, 1.0f))));
+		MOSS_SHOOT_FREQUENCY_RANGE.y, saturate(ShootDensity)) / max(abs(LeafScale), 1.0e-6f))));
 }
 
 // The slope is the actual solved/meso cushion, not a random painted orientation.
@@ -444,7 +446,7 @@ float MossTuftAngle(float3 Flow, float Random)
 	float Angle = atan2(Flow.y, Flow.x);
 	float Jitter = (Random - 0.5f) * MOSS_SHOOT_FLOW_JITTER;
 	float2 Direction = lerp(float2(cos(RandomAngle), sin(RandomAngle)),
-		float2(cos(Angle + Jitter), sin(Angle + Jitter)), saturate(Flow.z * 4.0f));
+		float2(cos(Angle + Jitter), sin(Angle + Jitter)), 0.75f * saturate(Flow.z * 4.0f));
 	return dot(Direction, Direction) > 1.0e-8f ? atan2(Direction.y, Direction.x) : RandomAngle;
 }
 #include "/Plugin/Mixtormat/Private/MixtormatMossLeaves.ush"
@@ -535,20 +537,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Diffused = lerp(Center.x, WeightedSum / WeightTotal, lerp(0.25f, 0.55f, Pooling));
 	float Uptake = PreviousState.z * 0.025f * step(MOSS_ACTIVE_B, Center.y);
 	float LocalMoisture = saturate(lerp(Diffused, Supply, 0.06f + 0.10f * Moisture + 0.15f * Pooling * Moisture) - Uptake);
-	if (Center.y >= MOSS_ACTIVE_B)
-	{
-		float Grow = 1.0f - exp(-0.028f * (0.25f + 0.75f * LocalMoisture) * (0.40f + 0.60f * LocalHabitat));
-		float Biomass = saturate(PreviousState.z + (1.0f - PreviousState.z) * Grow - (1.0f - LocalMoisture) * 0.002f * PreviousState.z);
-		// Activation is retained separately for diagnostics. Established cover must
-		// mature too: freezing Center.y permanently etched the initial seed outline
-		// inside later growth and fed those false boundaries into both cushion solvers.
-		float EstablishedCover = lerp(Center.y, 1.0f, Grow);
-		OutChemical[Pixel] = float2(LocalMoisture, EstablishedCover);
-		OutGrowthState[Pixel] = float4(PreviousState.x, PreviousState.y, Biomass, LocalMoisture);
-		return;
-	}
 	const int2 Offsets[8] = { int2(1,0),int2(-1,0),int2(0,1),int2(0,-1),int2(1,1),int2(-1,1),int2(1,-1),int2(-1,-1) };
-	uint FirstRoot = 0u; bool bForeignContact = false;
+	bool Established = Center.y >= MOSS_ACTIVE_B;
+	uint FirstRoot = Established ? uint(max(PreviousState.y, 0.0f)) : 0u;
+	bool bForeignContact = false;
 	[unroll] for (int Tap = 0; Tap < 8; ++Tap)
 	{
 		int2 Neighbor = WrapSimulationPixel(Pixel + Offsets[Tap]);
@@ -557,7 +549,30 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		if (Root == 0u) continue;
 		if (FirstRoot == 0u) FirstRoot = Root; else if (Root != FirstRoot) bForeignContact = true;
 	}
-	float SeamPinch = lerp(1.0f, 0.30f, Competition * (bForeignContact ? 1.0f : 0.0f));
+	float Contact = bForeignContact ? saturate(Competition) : 0.0f;
+	if (Established)
+	{
+		float Grow = 1.0f - exp(-0.028f * (0.25f + 0.75f * LocalMoisture) * (0.40f + 0.60f * LocalHabitat));
+		// Competition reduces carrying capacity after contact too. It must not
+		// disappear the instant a front cell activates or as iterations increase.
+		float Capacity = 1.0f - Contact;
+		float Biomass = saturate(PreviousState.z + (Capacity - PreviousState.z) * Grow
+			- (1.0f - LocalMoisture) * 0.002f * PreviousState.z);
+		float CoverTarget = lerp(1.0f, MOSS_ACTIVE_B, Contact);
+		float EstablishedCover = max(MOSS_ACTIVE_B, lerp(Center.y, CoverTarget, Grow));
+		OutChemical[Pixel] = float2(LocalMoisture, EstablishedCover);
+		OutGrowthState[Pixel] = float4(PreviousState.x, PreviousState.y, Biomass, LocalMoisture);
+		return;
+	}
+	// A stable contact resistance cannot be defeated by retrying a fresh random
+	// roll hundreds of times. At zero, fronts remain free to merge.
+	if (bForeignContact && Random21(Pixel, 12347u) < Contact)
+	{
+		OutChemical[Pixel] = float2(LocalMoisture, Center.y);
+		OutGrowthState[Pixel] = float4(PreviousState.xyz, LocalMoisture);
+		return;
+	}
+	float SeamPinch = 1.0f - Contact;
 	float BestScore = 0.0f; uint BestRoot = 0u;
 	[unroll] for (int Tap = 0; Tap < 8; ++Tap)
 	{
@@ -570,7 +585,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float Maturity = saturate(1.0f - max(NeighborState.x, 0.0f) / (float(GrowthIterations) + 1.0f));
 		float Pressure = (0.30f + 0.70f * NeighborState.z) * (0.45f + 0.55f * Maturity) * (0.40f + 0.60f * saturate(NeighborState.w));
 		float Chance = saturate((0.20f + 0.80f * LocalHabitat) * (0.35f + 0.65f * LocalMoisture)
-			* lerp(0.30f, 1.0f, GrowthSpread) * (0.35f + 0.65f * Pressure) / StepCost * SeamPinch + 0.03f);
+			* lerp(0.30f, 1.0f, GrowthSpread) * (0.35f + 0.65f * Pressure) / StepCost + 0.03f) * SeamPinch;
 		float Roll = Random21(Pixel + int2(IterationIndex * 7919, 0), 12345u + uint(Tap));
 		if (Roll > Chance) continue;
 		float Score = Pressure * (0.50f + 0.50f * LocalHabitat);
@@ -852,22 +867,24 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 UV = MixtormatGeneratorUV(DestinationUV);
 	float CoverageValue = GrowthCoverage.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
 	float Age = GrowthAge.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0);
-	uint ColonyId = GrowthIds.Load(int3(Pixel, 0));
-	float MoistureField = saturate(GrowthState.SampleLevel(LinearWrapSampler, WrapUV(DestinationUV), 0).w);
-	float IdHash = Random21(int2(int(ColonyId % 4096u), int(ColonyId / 4096u)), 991u);
+	// Ownership is a discrete simulation diagnostic, not a pigment region. Sampling
+	// its hash produced hard color blocks, especially when a seed mask filled the tile.
+	float ColonyPigment = MossVariation(UV, max(ColonyDensity, 1), 991u);
+	float FinePigment = MossVariation(UV, max(ColonyDensity * 3, 1), 997u);
+	float TissueDamage = saturate(0.5f + MossVariation(UV, max(ColonyDensity * 2, 1), 1009u));
 	FMossLeafSurface Leaf = (FMossLeafSurface)0;
 	if (CoverageValue > MOSS_EMPTY_B && ShootLength > 0.0f) Leaf = MossLeafSurface(DestinationUV);
 	// Pigment is hierarchical, not illumination. Maturity does not globally kill living tips.
-	float RampX = saturate(0.45f + (IdHash - 0.5f) * ColonyVariation
+	float RampX = saturate(0.45f + (ColonyPigment * 0.65f + FinePigment * 0.25f) * ColonyVariation
 		+ Leaf.Variation * LeafVariation + Leaf.Tip * TipColor - 0.08f * Age);
 	float3 Color = MixtormatEvalColorRamp(RampX, ColorRampCount, ColorRampInterpolation,
 		ColorRampPositions, ColorRampColors).rgb;
-	float Damaged = saturate(Leaf.Damaged + Damage * (1.0f - Leaf.Coverage) * IdHash);
+	float Damaged = saturate(Leaf.Damaged + Damage * (1.0f - Leaf.Coverage) * TissueDamage);
 	float3 DeadColor = dot(Color, float3(0.2126f, 0.7152f, 0.0722f)) * float3(0.85f, 0.55f, 0.22f);
 	Color = lerp(Color, DeadColor, Damaged);
 	Color *= 1.0f - saturate(WetDarkening) * saturate(SurfaceWetness);
 	float Roughness = saturate(lerp(DryRoughness, WetRoughness, saturate(SurfaceWetness))
-		+ (IdHash - 0.5f) * 0.16f * ColonyVariation + Leaf.Variation * 0.12f * LeafVariation + Damaged * 0.12f);
+		+ ColonyPigment * 0.16f * ColonyVariation + Leaf.Variation * 0.12f * LeafVariation + Damaged * 0.12f);
 	OutMossColor[Pixel] = float4(max(Color, 0.0f), 1.0f);
 	OutMossRAM[Pixel] = float4(Roughness, 1.0f, 0.0f, 0.04f);
 	OutMossRoughness[Pixel] = Roughness;

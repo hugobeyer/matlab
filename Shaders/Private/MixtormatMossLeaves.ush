@@ -25,21 +25,29 @@ FMossLeafSurface MossLeafPoint(float2 Q, int Period, float3 Flow)
 	{
 		int2 Cell = Base + int2(X, Y);
 		int2 Wrapped = (Cell % Period + Period) % Period;
-		float2 Tuft = Random22(Wrapped, 606u);
-		float2 Root = float2(Cell) + 0.5f + (Tuft - 0.5f) * 0.7f;
+		float2 Cluster = Random22(Wrapped, 606u);
+		float ClusterGrowth = TileNoise((float2(Wrapped) + 0.5f) / float(Period),
+			max(1, int(round(float(Period) / 8.0f))), 613u);
+		// Nearby shoots share a patch-scale growth cue but retain their own posture.
+		// Root jitter plus maximum leaf reach stays inside the existing 3x3 search.
+		[unroll] for (uint Shoot = 0u; Shoot < 2u; ++Shoot)
+		{
+		float2 Tuft = Random22(Wrapped, 619u + Shoot * 137u);
+		float2 Root = float2(Cell) + 0.5f + (Cluster - 0.5f) * 0.4f + (Tuft - 0.5f) * 0.25f;
 		if (length(Q - Root) > 1.0f) continue;
-		float Angle = MossTuftAngle(Flow, Tuft.x);
+		float TuftScale = lerp(0.65f, 1.05f, saturate(ClusterGrowth * 0.65f + Tuft.y * 0.35f));
+		float Angle = MossTuftAngle(Flow, frac(Cluster.x + (Tuft.x - 0.5f) * 0.5f));
 		float2 Stem = float2(cos(Angle), sin(Angle));
 		
 		float Damaged = smoothstep(1.0f - saturate(Damage), 1.02f - saturate(Damage), Tuft.y);
 		[loop] for (uint Leaf = 0u; Leaf < Count; ++Leaf)
 		{
-			float2 Vary = Random22(Wrapped, 707u + Leaf * 131u);
+			float2 Vary = Random22(Wrapped, 707u + Leaf * 131u + Shoot * 1543u);
 			float Slot = float(Leaf) / max(float(Count - 1u), 1.0f);
 			float Fan = Slot * 2.0f - 1.0f;
 			float2 Attach = Root;
 			float LeafAngle = Angle;
-			float Length = lerp(0.38f, 0.64f, Vary.y);
+			float Length = lerp(0.38f, 0.64f, Vary.y) * TuftScale;
 			if (GrowthForm == 0u)
 			{
 				LeafAngle += float(Leaf) * 2.39996323f;
@@ -50,7 +58,7 @@ FMossLeafSurface MossLeafPoint(float2 Q, int Period, float3 Flow)
 			{
 				float Row = floor(float(Leaf) * 0.5f) / max(floor(float(Count) * 0.5f), 1.0f);
 				float Sign = (Leaf & 1u) == 0u ? -1.0f : 1.0f;
-				Attach += Stem * (Row - 0.5f) * 0.65f;
+				Attach += Stem * (Row - 0.5f) * 0.4f * TuftScale;
 				LeafAngle += Sign * (GrowthForm == 3u ? 1.05f : 0.7f);
 				Length *= GrowthForm == 3u ? lerp(0.72f, 0.30f, Row) : 0.65f;
 			}
@@ -73,9 +81,9 @@ FMossLeafSurface MossLeafPoint(float2 Q, int Period, float3 Flow)
 			// nonzero cut-off that becomes an embossed silhouette in height normals.
 			float Attachment = Arch * saturate(1.0f - AcrossU * AcrossU);
 			float H = (0.18f + 0.5f * Arch + 0.14f * Keel + Curl * U * U) * Attachment
-				* lerp(0.65f, 1.0f, Vary.y) * lerp(1.0f, 0.3f, Damaged);
+				* TuftScale * lerp(0.65f, 1.0f, Vary.y) * lerp(1.0f, 0.3f, Damaged);
 			if (GrowthForm == 2u || GrowthForm == 3u) H *= 0.65f;
-			uint Id = Hash21(Wrapped, 1777u + Leaf * 131u);
+			uint Id = Hash21(Wrapped, 1777u + Leaf * 131u + Shoot * 1543u);
 			if (H < R.Height || (H == R.Height && Id >= BestId)) continue;
 			BestId = Id;
 			R.Height = H;
@@ -87,6 +95,7 @@ FMossLeafSurface MossLeafPoint(float2 Q, int Period, float3 Flow)
 			// bend MUST NOT be emitted again as detail normals.
 			R.ResidualSlope = Across * sin(18.84955592f * AcrossU + Vary.x * 6.283185307f)
 				* 0.12f * Arch * (1.0f - AcrossU * AcrossU);
+		}
 		}
 	}
 	return R;
@@ -102,6 +111,9 @@ FMossLeafSurface MossLeafSurface(float2 DestinationUV)
 	float2 JX = DX / (Texel.x * float(Period)), JY = DY / (Texel.y * float(Period));
 	float3 Flow = MossShootFlow(DestinationUV, JX, JY);
 	FMossLeafSurface R = (FMossLeafSurface)0;
+	float Footprint = max(length(DX + DY), length(DX - DY));
+	float Resolved = 1.0f - smoothstep(MOSS_SHOOT_AA_RANGE.x, MOSS_SHOOT_AA_RANGE.y, Footprint);
+	if (Resolved <= 0.0f) return R;
 	const float2 Samples[4] = {float2(-0.25f,-0.25f), float2(0.25f,-0.25f), float2(-0.25f,0.25f), float2(0.25f,0.25f)};
 	[unroll] for (int I = 0; I < 4; ++I)
 	{
@@ -113,8 +125,6 @@ FMossLeafSurface MossLeafSurface(float2 DestinationUV)
 		R.Damaged += S.Damaged * 0.25f;
 		R.ResidualSlope += S.ResidualSlope * 0.25f;
 	}
-	float Footprint = max(length(DX + DY), length(DX - DY));
-	float Resolved = 1.0f - smoothstep(MOSS_SHOOT_AA_RANGE.x, MOSS_SHOOT_AA_RANGE.y, Footprint);
 	R.Height *= Resolved;
 	R.Tip *= Resolved;
 	R.Variation *= Resolved;

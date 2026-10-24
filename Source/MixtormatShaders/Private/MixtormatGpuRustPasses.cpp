@@ -20,7 +20,7 @@ namespace
 			SHADER_PARAMETER(FIntPoint, OutputSize)
 			SHADER_PARAMETER(uint32, Seed)
 			SHADER_PARAMETER(uint32, Structure)
-			SHADER_PARAMETER(int32, ClusterPeriod)
+			SHADER_PARAMETER(float, ClusterPeriod)
 			SHADER_PARAMETER(float, Coverage)
 			SHADER_PARAMETER(float, PitDepth)
 			SHADER_PARAMETER(float, Buildup)
@@ -85,7 +85,9 @@ FSurfacingFields AddRustSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->OutputSize = Size;
 	P->Seed = static_cast<uint32>(R.Seed);
 	P->Structure = static_cast<uint32>(R.Structure);
-	P->ClusterPeriod = FMath::Max(1, FMath::RoundToInt(24.0f / R.FeatureSize));
+	// Preserve the binding value. Only protect division; unresolvable noise octaves
+		// are filtered in the shared Noise lattice, not clamped back to a larger feature.
+		P->ClusterPeriod = FMath::Max(1.0f, 24.0f / FMath::Max(FMath::Abs(R.FeatureSize), UE_SMALL_NUMBER));
 	P->Coverage = R.Coverage;
 	P->PitDepth = R.PitDepth;
 	P->Buildup = R.Buildup;

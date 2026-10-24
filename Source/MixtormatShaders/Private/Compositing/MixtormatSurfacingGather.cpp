@@ -62,14 +62,14 @@ namespace MixtormatGpuCompositor
 			S.WetRoughness = Finite(S.WetRoughness, MossDefaults.WetRoughness);
 			S.NormalStrength = Finite(S.NormalStrength, MossDefaults.NormalStrength);
 			S.GrowthForm = static_cast<EMixtormatMossForm>(FMath::Clamp(static_cast<int32>(S.GrowthForm), 0, 3));
-			S.LeafScale = FMath::Clamp(Finite(S.LeafScale, MossDefaults.LeafScale), 1.0f, 8.0f);
-			S.Hydration = FMath::Clamp(Finite(S.Hydration, MossDefaults.Hydration), 0.0f, 1.0f);
-			S.SurfaceWetness = FMath::Clamp(Finite(S.SurfaceWetness, MossDefaults.SurfaceWetness), 0.0f, 1.0f);
-			S.WetDarkening = FMath::Clamp(Finite(S.WetDarkening, MossDefaults.WetDarkening), 0.0f, 1.0f);
-			S.ColonyVariation = FMath::Clamp(Finite(S.ColonyVariation, MossDefaults.ColonyVariation), 0.0f, 1.0f);
-			S.LeafVariation = FMath::Clamp(Finite(S.LeafVariation, MossDefaults.LeafVariation), 0.0f, 1.0f);
-			S.TipColor = FMath::Clamp(Finite(S.TipColor, MossDefaults.TipColor), 0.0f, 1.0f);
-			S.Damage = FMath::Clamp(Finite(S.Damage, MossDefaults.Damage), 0.0f, 1.0f);
+			S.LeafScale = Finite(S.LeafScale, MossDefaults.LeafScale);
+			S.Hydration = Finite(S.Hydration, MossDefaults.Hydration);
+			S.SurfaceWetness = Finite(S.SurfaceWetness, MossDefaults.SurfaceWetness);
+			S.WetDarkening = Finite(S.WetDarkening, MossDefaults.WetDarkening);
+			S.ColonyVariation = Finite(S.ColonyVariation, MossDefaults.ColonyVariation);
+			S.LeafVariation = Finite(S.LeafVariation, MossDefaults.LeafVariation);
+			S.TipColor = Finite(S.TipColor, MossDefaults.TipColor);
+			S.Damage = Finite(S.Damage, MossDefaults.Damage);
 			S.SeedMaskTiling = FMath::Max(S.SeedMaskTiling, 1);
 			S.ColorRamp.Sanitize();
 			Child.Surfacing.Moss = S;
@@ -101,11 +101,11 @@ namespace MixtormatGpuCompositor
 					}
 				}
 				const uint64 DependencyKey = DependencyHasher.Get();
-				// Maturing cover, varied seed architecture and footprint-scaled leaf relief.
+				// Half-float-safe growth, persistent competition and shared Noise morphology.
 				MixtormatComposeHash::FHasher FieldHasher;
 				FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.FieldKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657037ull) | 1ull;
+					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657038ull) | 1ull;
 				MixtormatComposeHash::FHasher SimulationHasher;
 				SimulationHasher.SkipTopLevel = {
 					TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionMode"), TEXT("CushionSize"),
@@ -117,38 +117,29 @@ namespace MixtormatGpuCompositor
 										TEXT("WetDarkening"), TEXT("ColonyVariation"), TEXT("LeafVariation"), TEXT("TipColor"), TEXT("Damage")};
 				SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.SimulationKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657036ull) | 1ull;
+					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657037ull) | 1ull;
 			}
 			return;
 		}
 		if (Child.Surfacing.Type == EMixtormatSurfacingType::Rust)
-					{
-						FMixtormatRust& R = Child.Surfacing.Rust;
-						const FMixtormatRust Defaults;
-						const auto Bounded = [](float V, float D, float Min, float Max)
-						{ return FMath::Clamp(FMath::IsFinite(V) ? V : D, Min, Max); };
-						R.Amount = Bounded(R.Amount, Defaults.Amount, 0, 1);
-						R.Coverage = Bounded(R.Coverage, Defaults.Coverage, 0, 1);
-						R.Structure = static_cast<EMixtormatRustStructure>(FMath::Clamp(static_cast<int32>(R.Structure), 0, 2));
-						R.PitDepth = Bounded(R.PitDepth, Defaults.PitDepth, 0, 1);
-						R.Buildup = Bounded(R.Buildup, Defaults.Buildup, 0, 1);
-						R.Flaking = Bounded(R.Flaking, Defaults.Flaking, 0, 1);
-						R.FeatureSize = Bounded(R.FeatureSize, Defaults.FeatureSize, .5f, 8);
-						R.SurfaceBias = Bounded(R.SurfaceBias, Defaults.SurfaceBias, -1, 1);
-						R.Variation = Bounded(R.Variation, Defaults.Variation, 0, 1);
-						R.HeightScale = Bounded(R.HeightScale, Defaults.HeightScale, -4, 4);
-						R.Roughness = Bounded(R.Roughness, Defaults.Roughness, 0, 1);
-						for (auto& Stop : R.ColorRamp.Stops)
-						{
-							Stop.X = Bounded(Stop.X, 0, 0, 1);
-							Stop.Color.R = Bounded(Stop.Color.R, Defaults.ColorRamp.Stops[0].Color.R, 0, 1);
-							Stop.Color.G = Bounded(Stop.Color.G, Defaults.ColorRamp.Stops[0].Color.G, 0, 1);
-							Stop.Color.B = Bounded(Stop.Color.B, Defaults.ColorRamp.Stops[0].Color.B, 0, 1);
-							Stop.Color.A = 1;
-						}
-						R.ColorRamp.Sanitize();
-						return;
-					}
+		{
+			FMixtormatRust& R = Child.Surfacing.Rust;
+			const FMixtormatRust Defaults;
+			// Slider ranges are authoring guidance, never limits on resolved bindings.
+			const auto Finite = [](float V, float D) { return FMath::IsFinite(V) ? V : D; };
+			R.Amount = Finite(R.Amount, Defaults.Amount);
+			R.Coverage = Finite(R.Coverage, Defaults.Coverage);
+			R.PitDepth = Finite(R.PitDepth, Defaults.PitDepth);
+			R.Buildup = Finite(R.Buildup, Defaults.Buildup);
+			R.Flaking = Finite(R.Flaking, Defaults.Flaking);
+			R.FeatureSize = Finite(R.FeatureSize, Defaults.FeatureSize);
+			R.SurfaceBias = Finite(R.SurfaceBias, Defaults.SurfaceBias);
+			R.Variation = Finite(R.Variation, Defaults.Variation);
+			R.HeightScale = Finite(R.HeightScale, Defaults.HeightScale);
+			R.Roughness = Finite(R.Roughness, Defaults.Roughness);
+			R.ColorRamp.Sanitize();
+			return;
+		}
 					FMixtormatSkin& Skin = Child.Surfacing.Skin;
 		const FMixtormatSkin Defaults;
 
