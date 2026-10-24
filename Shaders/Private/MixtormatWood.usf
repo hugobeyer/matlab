@@ -7,7 +7,13 @@ int2 OutputSize;
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
-uint Mode, Species, Cut, Figure, Prep, Finish, Seed;
+uint Mode;
+uint Species;
+uint Cut;
+uint Figure;
+uint Prep;
+uint Finish;
+uint Seed;
 // @param HeightScale
 float HeightScale;
 // @param RingScale
@@ -61,14 +67,21 @@ float ApplicationTexture;
 float ApplicationAngle;
 // @param Wear saturates
 float Wear;
-uint ColorCount, ColorInterpolation;
+uint ColorCount;
+uint ColorInterpolation;
 float4 ColorPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 float4 ColorColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 Texture2D<float> SubstrateHeight;
-Texture2D<float4> InputColor, InputRAM, InputOptics;
+Texture2D<float4> InputColor;
+Texture2D<float4> InputRAM;
+Texture2D<float4> InputOptics;
 SamplerState LinearWrapSampler;
 RWTexture2D<float> OutHeight;
-RWTexture2D<float4> OutColor, OutRAM, OutOptics, OutDiagnostics, OutFlow;
+RWTexture2D<float4> OutColor;
+RWTexture2D<float4> OutRAM;
+RWTexture2D<float4> OutOptics;
+RWTexture2D<float4> OutDiagnostics;
+RWTexture2D<float4> OutFlow;
 
 static const float WOOD_TAU = 6.28318530718f;
 static const float WOOD_F0 = 0.04f;
@@ -570,9 +583,19 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 // Publication is gated once, after descendants complete. No material inputs are mutated here.
 float Amount;
 uint HasGate;
-Texture2D<float> Gate, BeforeHeight, AfterHeight;
-Texture2D<float4> CompletedRAM, RawDiagnostics, RawFlow;
-RWTexture2D<float> OutHeightDelta, OutRoughness, OutPores, OutLatewood, OutRays, OutCoat, OutFlowValidity;
+Texture2D<float> Gate;
+Texture2D<float> BeforeHeight;
+Texture2D<float> AfterHeight;
+Texture2D<float4> CompletedRAM;
+Texture2D<float4> RawDiagnostics;
+Texture2D<float4> RawFlow;
+RWTexture2D<float> OutHeightDelta;
+RWTexture2D<float> OutRoughness;
+RWTexture2D<float> OutPores;
+RWTexture2D<float> OutLatewood;
+RWTexture2D<float> OutRays;
+RWTexture2D<float> OutCoat;
+RWTexture2D<float> OutFlowValidity;
 RWTexture2D<float4> OutPublishedFlow;
 [numthreads(8, 8, 1)]
 void MainCS(uint3 Id : SV_DispatchThreadID)

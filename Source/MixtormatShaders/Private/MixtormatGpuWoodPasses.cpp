@@ -79,6 +79,27 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutOptics)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutDiagnostics)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutFlow)
+		END_SHADER_PARAMETER_STRUCT()
+		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+		{
+			// Stage 0 only; stage 1 is FMixtormatWoodPublishCS.
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5)
+				&& Parameters.PermutationId == 0;
+		}
+	};
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatWoodCS, "/Plugin/Mixtormat/Private/MixtormatWood.usf", "MainCS", SF_Compute);
+
+	// Separate class/struct for stage 1: sharing one struct across disjoint
+	// stage declarations trips the D3D root-parameter minifier assert.
+	class FMixtormatWoodPublishCS final : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FMixtormatWoodPublishCS);
+		SHADER_USE_PARAMETER_STRUCT(FMixtormatWoodPublishCS, FGlobalShader);
+		class FStage : SHADER_PERMUTATION_INT("WOOD_STAGE", 2);
+		using FPermutationDomain = TShaderPermutationDomain<FStage>;
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER(FIntPoint, OutputSize)
 			SHADER_PARAMETER(float, Amount)
 			SHADER_PARAMETER(uint32, HasGate)
 			SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, Gate)
@@ -98,10 +119,12 @@ namespace
 		END_SHADER_PARAMETER_STRUCT()
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+			// Stage 1 only; stage 0 is FMixtormatWoodCS.
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5)
+				&& Parameters.PermutationId == 1;
 		}
 	};
-	IMPLEMENT_GLOBAL_SHADER(FMixtormatWoodCS, "/Plugin/Mixtormat/Private/MixtormatWood.usf", "MainCS", SF_Compute);
+	IMPLEMENT_GLOBAL_SHADER(FMixtormatWoodPublishCS, "/Plugin/Mixtormat/Private/MixtormatWood.usf", "MainCS", SF_Compute);
 
 	FRDGTextureRef WoodTexture(FMixtormatComposeContext& Ctx, EPixelFormat Format, const TCHAR* Name)
 	{
@@ -117,6 +140,17 @@ namespace
 		P->OutputSize = Ctx.Request.Resolution;
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Wood.Stage%d.C%d", Stage, ChildIndex), Shader, P,
+			FIntVector(FMath::DivideAndRoundUp(P->OutputSize.X, 8), FMath::DivideAndRoundUp(P->OutputSize.Y, 8), 1));
+	}
+
+	void DispatchWoodPublish(FMixtormatComposeContext& Ctx, FMixtormatWoodPublishCS::FParameters* P, int32 ChildIndex)
+	{
+		FMixtormatWoodPublishCS::FPermutationDomain Permutation;
+		Permutation.Set<FMixtormatWoodPublishCS::FStage>(1);
+		TShaderMapRef<FMixtormatWoodPublishCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
+		P->OutputSize = Ctx.Request.Resolution;
+		ClearUnusedGraphResources(Shader, P);
+		FComputeShaderUtils::AddPass(Ctx.GraphBuilder, RDG_EVENT_NAME("Mixtormat.Wood.Publish.C%d", ChildIndex), Shader, P,
 			FIntVector(FMath::DivideAndRoundUp(P->OutputSize.X, 8), FMath::DivideAndRoundUp(P->OutputSize.Y, 8), 1));
 	}
 }
@@ -197,7 +231,7 @@ void PublishWoodFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext
 	for (FRDGTextureRef& Scalar : Scalars) { Scalar = WoodTexture(Ctx, PF_R32_FLOAT, TEXT("Mixtormat.Wood.Diagnostic")); }
 	FRDGTextureRef Flow = WoodTexture(Ctx, GetPublishedFieldFormat(EMixtormatPublishedFieldKind::Flow), TEXT("Mixtormat.Wood.PublishedFlow"));
 	FRDGTextureRef Validity = WoodTexture(Ctx, PF_R16F, TEXT("Mixtormat.Wood.FlowValidity"));
-	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatWoodCS::FParameters>();
+	auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatWoodPublishCS::FParameters>();
 	P->Amount = Child.Surfacing.Wood.Amount * AncestorAmount;
 	P->HasGate = Gate ? 1u : 0u;
 	P->Gate = Gate ? Gate : Ctx.EmptyDriverSignal;
@@ -214,7 +248,7 @@ void PublishWoodFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext
 	P->OutCoat = Ctx.GraphBuilder.CreateUAV(Scalars[5]);
 	P->OutPublishedFlow = Ctx.GraphBuilder.CreateUAV(Flow);
 	P->OutFlowValidity = Ctx.GraphBuilder.CreateUAV(Validity);
-	DispatchWood(Ctx, P, 1, Child.SourceChildIndex);
+	DispatchWoodPublish(Ctx, P, Child.SourceChildIndex);
 	const auto Publish = [&](FName Name, EMixtormatPublishedFieldKind Kind, FRDGTextureRef Texture)
 	{
 		Ctx.PublishedFieldOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, Name),

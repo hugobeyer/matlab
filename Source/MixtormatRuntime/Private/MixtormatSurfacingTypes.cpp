@@ -149,7 +149,7 @@ namespace MixtormatSurfacing
 		static const TArray<FMixtormatSkinPreset> Presets = []()
 		{
 			TArray<FMixtormatSkinPreset> Built;
-			Built.SetNum(15);
+			Built.SetNum(16);
 
 			FMixtormatSkinPreset& Elephant = Built[0];
 			Elephant.Name = NSLOCTEXT("MixtormatSurfacing", "SkinElephant", "Elephant");
@@ -636,6 +636,32 @@ namespace MixtormatSurfacing
 				{0.5f, FLinearColor(0.12f, 0.25f, 0.065f, 1.0f)},
 				{1.0f, FLinearColor(0.42f, 0.5f, 0.16f, 1.0f)}};
 			WA.RoughnessRamp.Points = {{0.0f, 0.44f}, {0.5f, 0.3f}, {1.0f, 0.22f}};
+
+			FMixtormatSkinPreset& Freckled = Built[15];
+			Freckled.Name = NSLOCTEXT("MixtormatSurfacing", "SkinFreckled", "Freckled");
+			Freckled.Description = NSLOCTEXT("MixtormatSurfacing", "SkinFreckledHelp", "Light-toned skin with dense fine pigment breakup reading as freckles, shallow folds and a light natural sheen. Pigment only; no added relief spots.");
+			FMixtormatSkin& FK = Freckled.Settings;
+			FK.Seed = 181;
+			FK.TissueCells = 5;
+			FK.FoldCells = 16;
+			FK.Fullness = 0.18f;
+			FK.Softness = 0.7f;
+			FK.FoldDepth = 0.14f;
+			FK.PoreCells = 150;
+			FK.PoreSize = 0.7f;
+			FK.PoreDepth = 0.2f;
+			FK.Grain = 0.14f;
+			FK.PigmentVariation = 0.85f;
+			FK.ThicknessVariation = 0.2f;
+			FK.VascularAmount = 0.06f;
+			FK.RednessAmount = 0.1f;
+			FK.OilAmount = 0.14f;
+			FK.Dryness = 0.02f;
+			FK.AlbedoRamp.Stops = {
+				{0.0f, FLinearColor(0.30f, 0.14f, 0.08f, 1.0f)},
+				{0.5f, FLinearColor(0.58f, 0.36f, 0.24f, 1.0f)},
+				{1.0f, FLinearColor(0.74f, 0.54f, 0.40f, 1.0f)}};
+			FK.RoughnessRamp.Points = {{0.0f, 0.52f}, {0.5f, 0.4f}, {1.0f, 0.32f}};
 			return Built;
 		}();
 		return MakeArrayView(Presets);
@@ -656,7 +682,7 @@ namespace MixtormatSurfacing
 		static const TArray<FMixtormatWoodPreset> Presets = []()
 		{
 			TArray<FMixtormatWoodPreset> Built;
-			Built.SetNum(9);
+			Built.SetNum(10);
 
 			// 0. Quarter-Sawn White Oak
 			FMixtormatWoodPreset& QSOak = Built[0];
@@ -724,7 +750,8 @@ namespace MixtormatSurfacing
 				W.WetOut = 0.48f;
 				W.TintAmount = 0.55f;
 				W.FinishTint = FLinearColor(0.15f, 0.065f, 0.03f, 1.0f);
-				W.FilmBuild = 0.02f;
+				// Pigment stain pools in pores (DepressionFill) but builds no film: FilmBuild stays zero.
+				W.FilmBuild = 0.0f;
 				W.DepressionFill = 0.42f;
 				W.Sheen = 0.62f;
 				W.ColorRamp.Stops = {
@@ -765,8 +792,9 @@ namespace MixtormatSurfacing
 				W.WetOut = 0.72f;
 				W.TintAmount = 0.42f;
 				W.FinishTint = FLinearColor(0.58f, 0.28f, 0.05f, 1.0f);
+				// Dissolved dye builds no film: FilmBuild/DepressionFill stay zero; gloss comes from a paired Film Coating pass.
 				W.FilmBuild = 0.0f;
-				W.DepressionFill = 0.78f;
+				W.DepressionFill = 0.0f;
 				W.Sheen = 0.86f;
 				W.ColorRamp.Stops = {
 					{0.0f, FLinearColor(0.32f, 0.19f, 0.09f, 1.0f)},
@@ -955,6 +983,227 @@ namespace MixtormatSurfacing
 				W.ApplicationTexture = 0.14f;
 				W.ApplicationAngle = 0.0f;
 				W.Wear = 0.35f;
+			}
+
+			// 9. End-Grain Cherry Butcher Block
+			FMixtormatWoodPreset& EndGrainCherry = Built[9];
+			EndGrainCherry.Name = NSLOCTEXT("MixtormatSurfacing", "WoodEndGrainCherry", "End-Grain Cherry Butcher Block");
+			EndGrainCherry.Description = NSLOCTEXT("MixtormatSurfacing", "WoodEndGrainCherryHelp", "Cross-cut Cherry end grain: concentric growth rings with open axial vessel cross-sections, sanded smooth and sealed with wiped oil.");
+			{
+				FMixtormatWood& W = EndGrainCherry.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Cherry;
+				W.Cut = EMixtormatWoodCut::EndGrain;
+				W.PithOffset = 0.5f;
+				W.CutTilt = 0.0f;
+				W.RingScale = 6.0f;
+				W.LatewoodRatio = 0.3f;
+				W.LatewoodSharpness = 0.5f;
+				W.RingWobble = 0.2f;
+				W.PoreDepth = 0.03f;
+				W.PoreDensity = 0.7f;
+				W.RayAmount = 0.25f;
+				W.Prep = EMixtormatWoodPrep::Sanded;
+				W.PrepIntensity = 0.12f;
+				W.Roughness = 0.48f;
+				W.Finish = EMixtormatWoodFinish::WipedOil;
+				W.FinishAmount = 0.8f;
+				W.WetOut = 0.55f;
+				W.TintAmount = 0.1f;
+				W.FinishTint = FLinearColor(0.22f, 0.11f, 0.05f, 1.0f);
+				W.FilmBuild = 0.01f;
+				W.DepressionFill = 0.3f;
+				W.Sheen = 0.58f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.20f, 0.08f, 0.035f, 1.0f)},
+					{0.38f, FLinearColor(0.42f, 0.20f, 0.10f, 1.0f)},
+					{0.72f, FLinearColor(0.60f, 0.34f, 0.19f, 1.0f)},
+					{1.0f, FLinearColor(0.74f, 0.50f, 0.32f, 1.0f)}};
+			}
+
+			// Append-only species looks. The original nine settings/names/order remain intact.
+			// Palettes and relative dimensions are artist approximations, not measured samples.
+			const auto AppendSpecies = [&Built](const FText& Name, const FText& Description,
+				EMixtormatWoodSpecies Species, EMixtormatWoodCut Cut,
+				FLinearColor Dark, FLinearColor Body, FLinearColor Light) -> FMixtormatWood&
+			{
+				FMixtormatWoodPreset& Preset = Built.AddDefaulted_GetRef();
+				Preset.Name = Name;
+				Preset.Description = Description;
+				FMixtormatWood& W = Preset.Settings;
+				W.Species = Species;
+				W.Cut = Cut;
+				W.Finish = EMixtormatWoodFinish::Bare;
+				W.FinishAmount = 0.0f;
+				W.PrepIntensity = 0.12f;
+				W.ColorRamp.Stops = {{0.0f, Dark}, {0.5f, Body}, {1.0f, Light}};
+				return W;
+			};
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodWhiteOakProfile", "White Oak · Heartwood Profile"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodWhiteOakProfileHelp", "Bare quarter-sawn White Oak profile: ring-porous vessels, partly occluded earlywood lumens, radial latewood tracts and broad rays. Occlusion and palette are artistic heartwood approximations, not permeability or universal species values."),
+					EMixtormatWoodSpecies::WhiteOak, EMixtormatWoodCut::QuarterSawn,
+					FLinearColor(0.13f, 0.08f, 0.04f, 1), FLinearColor(0.42f, 0.30f, 0.17f, 1), FLinearColor(0.70f, 0.56f, 0.37f, 1));
+				W.RingScale = 7.0f; W.LatewoodRatio = 0.42f; W.LatewoodSharpness = 0.65f;
+				W.PithOffset = 0.55f; W.CutTilt = 3.0f;
+				W.PoreDepth = 0.035f; W.PoreDensity = 0.78f; W.RayAmount = 0.85f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodRedOakProfile", "Red Oak · Open Pore Profile"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodRedOakProfileHelp", "Bare plain-sawn Red Oak profile with larger open earlywood lumens, radial latewood tracts and broad rays narrower than the White Oak profile. Editable warm palette; anatomical dimensions are artistic."),
+					EMixtormatWoodSpecies::RedOak, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.16f, 0.07f, 0.035f, 1), FLinearColor(0.47f, 0.27f, 0.15f, 1), FLinearColor(0.75f, 0.53f, 0.34f, 1));
+				W.RingScale = 6.0f; W.LatewoodRatio = 0.38f; W.LatewoodSharpness = 0.65f;
+				W.PithOffset = 0.40f; W.CutTilt = 10.0f;
+				W.PoreDepth = 0.045f; W.PoreDensity = 0.82f; W.RayAmount = 0.60f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodAshProfile", "Ash · Open Grain"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodAshProfileHelp", "Bare ring-porous Ash: prominent earlywood pores, dispersed smaller latewood vessels and fine rays rather than oak-like broad ray fleck. Palette and relative pore dimensions are editable artistic approximations."),
+					EMixtormatWoodSpecies::Ash, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.18f, 0.12f, 0.06f, 1), FLinearColor(0.55f, 0.42f, 0.26f, 1), FLinearColor(0.83f, 0.72f, 0.51f, 1));
+				W.RingScale = 6.5f; W.LatewoodRatio = 0.32f; W.LatewoodSharpness = 0.70f;
+				W.PoreDepth = 0.040f; W.PoreDensity = 0.82f; W.RayAmount = 0.32f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodElmProfile", "Elm · Tangential Vessel Bands"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodElmProfileHelp", "Bare ring-porous Elm: large earlywood pores followed by small latewood vessels clustered in wavy tangential bands, not oak/chestnut radial tracts. End-Grain exposes the band arrangement. Artistic dimensions and editable palette."),
+					EMixtormatWoodSpecies::Elm, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.14f, 0.075f, 0.035f, 1), FLinearColor(0.43f, 0.27f, 0.13f, 1), FLinearColor(0.72f, 0.53f, 0.30f, 1));
+				W.RingScale = 6.0f; W.LatewoodRatio = 0.34f; W.LatewoodSharpness = 0.60f;
+				W.PoreDepth = 0.035f; W.PoreDensity = 0.90f; W.RayAmount = 0.35f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodChestnutProfile", "Chestnut · Radial Tracts"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodChestnutProfileHelp", "Bare ring-porous Chestnut with large earlywood pores and radial latewood vessel tracts. Fine rays deliberately omit the broad oak-like ray fleck. Relative anatomy and editable golden-brown palette are artist approximations."),
+					EMixtormatWoodSpecies::Chestnut, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.16f, 0.075f, 0.025f, 1), FLinearColor(0.46f, 0.27f, 0.10f, 1), FLinearColor(0.76f, 0.53f, 0.27f, 1));
+				W.RingScale = 5.5f; W.LatewoodRatio = 0.35f; W.LatewoodSharpness = 0.70f;
+				W.PoreDepth = 0.040f; W.PoreDensity = 0.82f; W.RayAmount = 0.20f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodBlackWalnutProfile", "Black Walnut · Gradual Pore Taper"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodBlackWalnutProfileHelp", "Bare Black Walnut with a gradual semi-ring-porous vessel size/density taper and modest rays. Editable dark heartwood palette; neither color nor relative pore size is a measured species standard."),
+					EMixtormatWoodSpecies::BlackWalnut, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.045f, 0.022f, 0.012f, 1), FLinearColor(0.20f, 0.105f, 0.055f, 1), FLinearColor(0.43f, 0.27f, 0.15f, 1));
+				W.RingScale = 6.5f; W.LatewoodRatio = 0.28f; W.LatewoodSharpness = 0.35f;
+				W.PoreDepth = 0.025f; W.PoreDensity = 0.75f; W.RayAmount = 0.35f; W.Roughness = 0.52f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodHickoryProfile", "Hickory · Ring-Biased Carya"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodHickoryProfileHelp", "Bare Hickory profile with a pronounced earlywood vessel zone, tapered smaller latewood pores and fine rays. Carya varies from ring- to semi-ring-porous; this is one artistic ring-biased sample, not a genus-wide rule."),
+					EMixtormatWoodSpecies::Hickory, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.12f, 0.055f, 0.022f, 1), FLinearColor(0.48f, 0.31f, 0.16f, 1), FLinearColor(0.82f, 0.67f, 0.44f, 1));
+				W.RingScale = 5.8f; W.LatewoodRatio = 0.40f; W.LatewoodSharpness = 0.60f;
+				W.PoreDepth = 0.035f; W.PoreDensity = 0.78f; W.RayAmount = 0.25f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodPecanProfile", "Pecan · Gradual Carya"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodPecanProfileHelp", "Bare Pecan profile with more gradual vessel taper and more persistent latewood pores than the Hickory preset. Carya anatomy varies; this editable sample is an artistic interpretation, not a universal hickory/pecan distinction."),
+					EMixtormatWoodSpecies::Pecan, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.13f, 0.060f, 0.028f, 1), FLinearColor(0.44f, 0.25f, 0.12f, 1), FLinearColor(0.75f, 0.54f, 0.31f, 1));
+				W.RingScale = 6.8f; W.LatewoodRatio = 0.35f; W.LatewoodSharpness = 0.48f;
+				W.PoreDepth = 0.028f; W.PoreDensity = 0.80f; W.RayAmount = 0.30f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodTeakProfile", "Teak · Ring-Porous"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodTeakProfileHelp", "Bare Teak represented as ring-porous: large earlywood vessels, smaller latewood pores and modest rays. Editable honey-brown palette. No oil chemistry, durability or physical absorption is inferred from the species."),
+					EMixtormatWoodSpecies::Teak, EMixtormatWoodCut::RiftSawn,
+					FLinearColor(0.12f, 0.065f, 0.020f, 1), FLinearColor(0.40f, 0.24f, 0.075f, 1), FLinearColor(0.68f, 0.47f, 0.21f, 1));
+				W.RingScale = 5.8f; W.LatewoodRatio = 0.32f; W.LatewoodSharpness = 0.65f;
+				W.PoreDepth = 0.033f; W.PoreDensity = 0.70f; W.RayAmount = 0.40f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodBeechProfile", "Beech · Broad Ray Fleck"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodBeechProfileHelp", "Bare quarter-sawn Beech: fine diffuse vessels and conspicuous broad rays. Pale rose-tan palette and relative ray dimensions are editable artistic approximations."),
+					EMixtormatWoodSpecies::Beech, EMixtormatWoodCut::QuarterSawn,
+					FLinearColor(0.25f, 0.13f, 0.075f, 1), FLinearColor(0.62f, 0.43f, 0.27f, 1), FLinearColor(0.86f, 0.69f, 0.47f, 1));
+				W.RingScale = 7.8f; W.LatewoodRatio = 0.18f; W.LatewoodSharpness = 0.70f;
+				W.PoreDepth = 0.010f; W.PoreDensity = 0.82f; W.RayAmount = 0.72f; W.CutTilt = 3.0f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodCherryProfile", "Cherry · Fine Semi-Ring-Porous"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodCherryProfileHelp", "Bare Cherry with a subtle semi-ring-porous vessel size/density gradient and fine rays, rather than uniformly diffuse pores. Warm reddish palette is an editable artistic look, not a simulation of time-dependent darkening."),
+					EMixtormatWoodSpecies::Cherry, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.17f, 0.055f, 0.025f, 1), FLinearColor(0.48f, 0.20f, 0.085f, 1), FLinearColor(0.77f, 0.43f, 0.22f, 1));
+				W.RingScale = 7.0f; W.LatewoodRatio = 0.20f; W.LatewoodSharpness = 0.45f;
+				W.PoreDepth = 0.012f; W.PoreDensity = 0.75f; W.RayAmount = 0.32f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodBirchProfile", "Birch · Fine Diffuse Grain"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodBirchProfileHelp", "Bare Birch: dense fine diffuse vessels, short fine rays and subdued ring contrast. Editable pale palette; no automatic curly, quilted or birdseye figure is coupled to species."),
+					EMixtormatWoodSpecies::Birch, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.26f, 0.16f, 0.08f, 1), FLinearColor(0.65f, 0.50f, 0.32f, 1), FLinearColor(0.90f, 0.79f, 0.57f, 1));
+				W.RingScale = 8.5f; W.LatewoodRatio = 0.16f; W.LatewoodSharpness = 0.60f;
+				W.PoreDepth = 0.009f; W.PoreDensity = 0.85f; W.RayAmount = 0.23f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodMahoganyProfile", "Mahogany · Ribbon Figure"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodMahoganyProfileHelp", "Bare quarter-sawn Mahogany with medium diffuse vessels and modest rays. This preset separately selects Interlocked figure; selecting the species alone never forces ribbon figure. Palette and relative anatomy are artistic."),
+					EMixtormatWoodSpecies::Mahogany, EMixtormatWoodCut::QuarterSawn,
+					FLinearColor(0.10f, 0.025f, 0.012f, 1), FLinearColor(0.35f, 0.10f, 0.045f, 1), FLinearColor(0.65f, 0.29f, 0.13f, 1));
+				W.RingScale = 5.5f; W.LatewoodRatio = 0.24f; W.LatewoodSharpness = 0.35f;
+				W.PoreDepth = 0.024f; W.PoreDensity = 0.68f; W.RayAmount = 0.40f;
+				W.Figure = EMixtormatWoodFigure::Interlocked; W.FigureAmount = 0.45f; W.FigureScale = 1.7f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodRosewoodProfile", "Rosewood · Coarse Diffuse Grain"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodRosewoodProfileHelp", "Bare Rosewood profile: coarser, less numerous diffuse vessels and fine rays, with an editable dark reddish palette. Interlocked figure is a separate preset choice. A broad artistic profile, not a claim covering every commercial rosewood."),
+					EMixtormatWoodSpecies::Rosewood, EMixtormatWoodCut::QuarterSawn,
+					FLinearColor(0.022f, 0.009f, 0.008f, 1), FLinearColor(0.13f, 0.035f, 0.025f, 1), FLinearColor(0.36f, 0.14f, 0.075f, 1));
+				W.RingScale = 5.0f; W.LatewoodRatio = 0.22f; W.LatewoodSharpness = 0.40f;
+				W.PoreDepth = 0.035f; W.PoreDensity = 0.70f; W.RayAmount = 0.30f;
+				W.Figure = EMixtormatWoodFigure::Interlocked; W.FigureAmount = 0.25f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodDouglasFirProfile", "Douglas Fir · Fine Canals"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodDouglasFirProfileHelp", "Bare quarter-sawn Douglas Fir: strong latewood/tracheid contrast, fine rays and sparse small normal axial/radial resin canals. No vessel pores. Canal sizes/densities and palette are artistic, not resin chemistry or physical measurements."),
+					EMixtormatWoodSpecies::DouglasFir, EMixtormatWoodCut::QuarterSawn,
+					FLinearColor(0.19f, 0.065f, 0.020f, 1), FLinearColor(0.57f, 0.28f, 0.10f, 1), FLinearColor(0.86f, 0.61f, 0.31f, 1));
+				W.RingScale = 9.0f; W.LatewoodRatio = 0.32f; W.LatewoodSharpness = 0.88f;
+				W.PoreDepth = 0.018f; W.PoreDensity = 0.55f; W.RayAmount = 0.15f; W.CutTilt = 3.0f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodLarchProfile", "Larch · Dense Latewood"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodLarchProfileHelp", "Bare Larch: pronounced latewood bands and tracheid relief with small normal axial/radial resin canals. No vessel pores. The canal population differs artistically from the Pine and Douglas Fir profiles; palette remains editable."),
+					EMixtormatWoodSpecies::Larch, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.18f, 0.06f, 0.020f, 1), FLinearColor(0.53f, 0.24f, 0.075f, 1), FLinearColor(0.83f, 0.55f, 0.25f, 1));
+				W.RingScale = 7.0f; W.LatewoodRatio = 0.38f; W.LatewoodSharpness = 0.80f;
+				W.PoreDepth = 0.022f; W.PoreDensity = 0.65f; W.RayAmount = 0.18f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodCedarProfile", "Cedar · Canal-Free Grain"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodCedarProfileHelp", "Bare canal-free Cedar profile: subdued rings, fine rays and tracheid relief, with neither vessel pores nor normal resin canals. Increasing Pore Density does not invent canals. Broad artistic profile with an editable reddish palette; traumatic canals are not simulated."),
+					EMixtormatWoodSpecies::Cedar, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.12f, 0.035f, 0.015f, 1), FLinearColor(0.37f, 0.14f, 0.055f, 1), FLinearColor(0.68f, 0.36f, 0.16f, 1));
+				W.RingScale = 6.0f; W.LatewoodRatio = 0.22f; W.LatewoodSharpness = 0.40f;
+				W.PoreDepth = 0.022f; W.PoreDensity = 0.0f; W.RayAmount = 0.12f; W.Roughness = 0.62f;
+			}
+			{
+				FMixtormatWood& W = AppendSpecies(
+					NSLOCTEXT("MixtormatSurfacing", "WoodCypressProfile", "Cypress · Canal-Free Rings"),
+					NSLOCTEXT("MixtormatSurfacing", "WoodCypressProfileHelp", "Bare canal-free Cypress profile with stronger ring/tracheid contrast and somewhat broader rays than the Cedar profile. Neither vessels nor normal resin canals are generated. Editable pale honey palette; relative anatomy is artistic."),
+					EMixtormatWoodSpecies::Cypress, EMixtormatWoodCut::PlainSawn,
+					FLinearColor(0.16f, 0.10f, 0.035f, 1), FLinearColor(0.49f, 0.35f, 0.15f, 1), FLinearColor(0.79f, 0.64f, 0.36f, 1));
+				W.RingScale = 7.0f; W.LatewoodRatio = 0.28f; W.LatewoodSharpness = 0.58f;
+				W.PoreDepth = 0.025f; W.PoreDensity = 0.0f; W.RayAmount = 0.18f; W.Roughness = 0.60f;
 			}
 
 			return Built;
