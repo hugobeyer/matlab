@@ -399,3 +399,28 @@ Owner visual checks (not run):
    rim and seam aliasing. Check substrate detail, final normals and layer ordering.
 
 No commands, builds, tests, diagnostics, installs or Unreal launches were run.
+
+## Rewrite — Noise-module ferrous corrosion (2026-10-24)
+
+`Shaders/Private/MixtormatRust.usf` rewritten on the shared Noise module
+(`MixtormatNoiseFbm/Billow/Ridged`, `MixtormatNoiseV2Worley/Curl`,
+`MixtormatNoiseValueD`); custom `RustNoiseD/RustSingleNoise` lattice code removed.
+Same shader parameters, outputs, presets and controls; no C++ or runtime change.
+
+- Colonies: two-level curl warp + FBM susceptibility + Worley nuclei,
+  freckle satellites and ridged filiform creep at borders.
+- Loss: pit mouths coalesce through the F1/F2 saddle and a broad erosion
+  valley inside dense colonies; irregular floors, steep finite walls.
+- Product: Granular = billow mounds + Worley nodule domes + powder grain
+  relief; Layered = flat plates, tier steps, footprint-scaled seams,
+  one-sided lift, lower scale bed; Smooth = thin mottled film.
+- Pigment: near-black pit cores, dark body, red-brown patches, sparse
+  orange bloom on rims/crests, two-octave powder jitter, color-only stain
+  halo beyond the relief footprint. Roughness follows pits/bloom/grain.
+- Still excluded: coating breach (09), wet crevice (10), runoff transport
+  (12), physical units, independent pit/grain/plate scale controls.
+
+Owner visual checks (not run): board 03/06 Granular at 2K grazing light;
+05 with Buildup=0 for merged cavities; 07/08 Layered Flaking sweep;
+02 Smooth halo without relief; 13–16 FeatureSize×Coverage grid;
+3×3 tiling and 1K/2K/4K stability. Shader compilation remains unverified.

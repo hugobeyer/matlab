@@ -321,7 +321,7 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.25", UIMax = "8", Delta = "0.05", ToolTip = "Spatial frequency of figure waves, blisters, or birdseye dimples."))
 	float FigureScale = 1.5f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Subsurface fiber-tilt reflectance modulation (chatoyance) driven by the 3D fiber inclination angle."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Fiber-inclination modulation of the wood color ramp. Static chatoyance approximation, not view-dependent fiber scattering."))
 	float Chatoyance = 0.45f;
 
 	// --- Preparation & Aging ---
@@ -357,10 +357,10 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Colorant tint for Dissolved Dye, Pigment Stain, Pore Filler, or toned Film Coating."))
 	FLinearColor FinishTint = FLinearColor(0.18f, 0.09f, 0.04f, 1.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Calibrated coating thickness budget added above the substrate. Independent of input height min/max; oil can have low non-zero build."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Relative coating thickness budget, independent of input height min/max (not millimeters). Used by Wiped Oil, Film Coating and Wax; dye/stain do not build a film. Pore Filler uses depression capacity."))
 	float FilmBuild = 0.01f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Capillary depression and open-pore leveling capacity against the local upper surface envelope."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Bias deposition toward local depressions. Pore Filler fills a fraction of available capacity; film deposition stays within Film Build. Local approximation, not a volume-conserving leveling solve."))
 	float DepressionFill = 0.35f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Target finish sheen (0 = dead-flat matte, 1 = high-gloss polished film), independent of film build and wax amount."))
@@ -372,7 +372,7 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "360", Delta = "1", ToolTip = "Brush or wiping direction in degrees for coating application marks."))
 	float ApplicationAngle = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "High-point and edge coating abrasion. Removes coating thickness first and restores underlying substrate color, roughness, and relief at breakthrough."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "High-point coating abrasion inferred from local relief, not object edges. Removes deposited material; full wear restores the incoming substrate. Absorbed oil/dye treatment remains."))
 	float Wear = 0.0f;
 
 	// --- Channels ---
@@ -382,7 +382,7 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	bool bWriteColor = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood")
 	bool bWriteRoughness = true;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Wood and finish write dielectric optics (metallic zero, F0 from bare wood or coating sheen)."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Full Wood writes dielectric optics (metallic zero, F0 0.04). Finish-only blends coating optics over incoming material. Sheen controls roughness, not F0."))
 	bool bWriteMaterial = true;
 
 	FMixtormatWood()
@@ -508,6 +508,8 @@ namespace MixtormatSurfacing
 {
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatRustPreset> GetRustPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatWoodPreset> GetWoodPresets();
+	// Shared by dispatch/remap eligibility and channel application; dye/stain add no relief.
+	MIXTORMATRUNTIME_API bool WoodWritesHeight(const FMixtormatWood& Wood);
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSkinPreset> GetSkinPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatMossPreset> GetMossPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSurfacingOutput> GetOutputs(EMixtormatSurfacingType Type);

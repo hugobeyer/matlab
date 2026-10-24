@@ -1,5 +1,9 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
-// Analytic ferrous corrosion. Relative units; no hidden steel or inferred coating breach.
+// Analytic ferrous corrosion on the shared Noise module. Relative units;
+// no hidden steel, inferred coating breach, wetness or runoff transport.
+// One correlated colony field drives loss, retained product and pigment:
+// channels are never independently randomized. Coverage only reveals the
+// fixed spatial profile; shedding never restores consumed metal.
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
@@ -37,95 +41,76 @@ RWTexture2D<float4> OutColor;
 RWTexture2D<float4> OutRAM;
 RWTexture2D<float4> OutOptics;
 
-static const int RUST_NOISE_OCTAVES = 4;
-static const float RUST_NOISE_ROUGHNESS = 0.55f;
-static const float RUST_NOISE_LACUNARITY = 2.0f;
-static const float2 RUST_NOISE_AA_RANGE = float2(0.35f, 0.9f);
-
-// Relative morphology, not millimeters: pit walls/rims share the same cell-distance profile.
+// Morphology ratios to ClusterPeriod. Pit radius is in pit-cell widths.
 static const float RUST_PIT_PERIOD_RATIO = 3.2f;
-static const float2 RUST_PIT_RADIUS_RANGE = float2(0.22f, 0.42f);
-static const float RUST_PIT_WALL_RATIO = 0.18f;
-static const float RUST_PIT_RIM_RATIO = 0.28f;
-static const float RUST_PIT_BOUNDARY_VARIATION = 0.18f;
-static const float RUST_PIT_FLOOR_RELIEF = 0.12f;
-static const float RUST_PIT_MICRO_DEPTH = 0.12f;
-static const float RUST_PIT_RIM_DEPOSIT = 0.18f;
-// Leave room within Buildup for edge lift; exposed lower scale remains below the top plate.
-static const float2 RUST_LOWER_SCALE_HEIGHT = float2(0.10f, 0.22f);
-static const float2 RUST_UPPER_SCALE_HEIGHT = float2(0.38f, 0.68f);
-static const float RUST_SCALE_LIFT_BUDGET = 0.28f;
-// Positions in the existing artist-authored ramp, never baked lighting or replacement RGB colors.
-static const float RUST_PIGMENT_DARK = 0.18f;
-static const float RUST_PIGMENT_BODY = 0.24f;
-static const float RUST_PIGMENT_RED = 0.48f;
-static const float RUST_PIGMENT_BLOOM = 0.84f;
+static const float2 RUST_PIT_RADIUS_RANGE = float2(0.24f, 0.44f);
+static const float RUST_PIT_WALL_RATIO = 0.16f;
+static const float RUST_LOWER_SCALE_HEIGHT = 0.16f;
+static const float2 RUST_UPPER_SCALE_HEIGHT = float2(0.40f, 0.70f);
+static const float RUST_SCALE_LIFT_BUDGET = 0.26f;
+// Ramp coordinates, not baked RGB: authored palettes stay authoritative.
+static const float RUST_PIGMENT_DARK = 0.10f;
+static const float RUST_PIGMENT_BODY = 0.30f;
+static const float RUST_PIGMENT_RED = 0.55f;
+static const float RUST_PIGMENT_BLOOM = 0.90f;
 
-// Reuse Noise's periodic gradient lattice and octave contract. Filter each octave,
-// retaining the full normalization so unresolved detail tends to its mean, not a new look.
-// Returns float3(Value, dValue/dU, dValue/dV) in UV space so domain warps can propagate
-// their exact 2x2 Jacobian into downstream filter footprints.
-float3 RustNoiseD(float2 UV, float Period, uint Salt, float FootprintUV)
+// 1 when a lattice of this period is resolved at this pixel footprint,
+// fading to 0 so unresolved detail collapses to its mean, not sparkle.
+float RustResolved(float Period, float FootprintUV)
 {
-	float Value = 0.0f, Weight = 1.0f, WeightSum = 0.0f;
-	float2 Grad = float2(0.0f, 0.0f);
-	[unroll] for (int Octave = 0; Octave < RUST_NOISE_OCTAVES; ++Octave)
-	{
-		int P = MixtormatNoiseOctavePeriod(Period);
-		float Resolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y,
-			FootprintUV * Period);
-		if (P > 0 && Resolved > 0.0f)
-		{
-			float3 N = MixtormatPeriodicNoiseD(UV * float(P), P,
-				Seed ^ (Salt + uint(Octave) * 0x2545F491u));
-			float Scale = MIXTORMAT_NOISE_SQRT2 * Weight * Resolved;
-			Value += N.x * Scale;
-			Grad += N.yz * (float(P) * Scale);
-		}
-		WeightSum += Weight;
-		Weight *= RUST_NOISE_ROUGHNESS;
-		Period *= RUST_NOISE_LACUNARITY;
-	}
-	return float3(Value, Grad) / WeightSum;
+	return 1.0f - smoothstep(0.30f, 0.85f, FootprintUV * max(Period, 1.0f));
 }
 
-float RustNoise(float2 UV, float Period, uint Salt, float FootprintUV)
+float RustFbm(float2 UV, float Period, int Octaves, uint Salt, float FootprintUV)
 {
-	return RustNoiseD(UV, Period, Salt, FootprintUV).x;
+	float Value; float2 Grad;
+	MixtormatNoiseFbm(UV, max(Period, 1.0f), Octaves, 0.55f, 2.0f,
+		Seed ^ Salt, Value, Grad);
+	return Value * RustResolved(Period, FootprintUV);
 }
 
-// Single-octave filtered periodic gradient noise for fast micro-detail and directional warps.
-float RustSingleNoise(float2 UV, float Period, uint Salt, float FootprintUV)
+float RustBillow(float2 UV, float Period, int Octaves, uint Salt, float FootprintUV)
+{
+	float Value; float2 Grad;
+	MixtormatNoiseBillow(UV, max(Period, 1.0f), Octaves, 0.55f, 2.0f,
+		Seed ^ Salt, Value, Grad);
+	return lerp(0.5f, Value, RustResolved(Period, FootprintUV));
+}
+
+float RustRidged(float2 UV, float Period, int Octaves, uint Salt, float FootprintUV)
+{
+	float Value; float2 Grad;
+	MixtormatNoiseRidged(UV, max(Period, 1.0f), Octaves, 0.55f, 2.0f,
+		Seed ^ Salt, Value, Grad);
+	return lerp(0.5f, Value, RustResolved(Period, FootprintUV));
+}
+
+// Value-noise grain in [-1,1]; used for powder jitter in pigment/relief.
+float RustGrain(float2 UV, float Period, uint Salt, float FootprintUV)
 {
 	int P = MixtormatNoiseOctavePeriod(Period);
-	float Resolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y,
-		FootprintUV * Period);
-	if (P <= 0 || Resolved <= 0.0f)
-	{
-		return 0.0f;
-	}
-	return MixtormatPeriodicNoiseD(UV * float(P), P, Seed ^ Salt).x * MIXTORMAT_NOISE_SQRT2 * Resolved;
+	if (P <= 0) { return 0.0f; }
+	return MixtormatNoiseValueD(UV * float(P), P, Seed ^ Salt).x
+		* RustResolved(Period, FootprintUV);
 }
 
-// Filtered periodic Worley evaluation: returns float4(F1, F2, EdgeDistance = F2 - F1, CellRand01)
-// plus outputs the cell center offset (sample - feature point) in OutDelta for asymmetric plate tilt.
-float4 RustWorley(float2 UV, float Period, uint Salt, float Jitter, float FootprintUV, out float2 OutDelta)
+// Filtered Worley: float4(F1, F2, Edge=F2-F1, CellRand01), plus the
+// sample-minus-feature delta for asymmetric plate tilt.
+float4 RustWorley(float2 UV, float Period, uint Salt, float Jitter,
+	float FootprintUV, out float2 OutDelta)
 {
 	OutDelta = float2(0.0f, 0.0f);
 	int P = MixtormatNoiseOctavePeriod(Period);
-	float Resolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y,
-		FootprintUV * Period);
+	float Resolved = RustResolved(Period, FootprintUV);
 	if (P <= 0 || Resolved <= 0.0f)
 	{
-		return float4(0.5f, 0.75f, 0.25f, 0.5f);
+		return float4(0.48f, 0.78f, 0.30f, 0.5f);
 	}
 	FMixtormatNoiseWorley W = MixtormatNoiseV2Worley(UV, P, Seed ^ Salt, Jitter, 0);
-	OutDelta = (W.Direction * W.F1) * Resolved;
+	OutDelta = W.Direction * W.F1 * Resolved;
 	float CellRand = float(MixtormatHashU(W.CellId ^ (Seed + Salt * 0x9E3779B9u)) & 0xFFFFu) / 65535.0f;
-	float F1 = lerp(0.5f, W.F1, Resolved);
-	float F2 = lerp(0.75f, W.F2, Resolved);
-	float Edge = lerp(0.25f, saturate(W.F2 - W.F1), Resolved);
-	return float4(F1, F2, Edge, lerp(0.5f, CellRand, Resolved));
+	return float4(lerp(0.48f, W.F1, Resolved), lerp(0.78f, W.F2, Resolved),
+		lerp(0.30f, saturate(W.F2 - W.F1), Resolved), lerp(0.5f, CellRand, Resolved));
 }
 
 float2 RustUV(float2 UV)
@@ -135,11 +120,9 @@ float2 RustUV(float2 UV)
 		GeneratorUVRotation), P - 0.5f)) * GeneratorUVScale + GeneratorUVOffset;
 }
 
-// Multi-scale isotropic substrate crevice & ridge sensor.
-// Evaluates height differences across three feature-coupled rings (micro-scratch,
-// meso-groove/rib, macro-pocket) using 8 rotated taps per ring to prevent 4-tap axis ghosting.
-// For SurfaceBias > 0, captures both the crevice floor/walls AND a smooth shoulder bleed halo
-// so corrosion spreads organically across crack/groove lips instead of being repelled by a negative moat.
+// Multi-scale isotropic substrate crevice & ridge sensor (unchanged):
+// 8 taps on three feature-coupled rings. Positive SurfaceBias favours
+// crevice floors/walls plus a shoulder halo; negative favours crests.
 // Strictly invariant to adding a constant offset to SubstrateHeight.
 float SampleSubstrateBias(float2 UV, float2 Texel, float BasePeriod)
 {
@@ -152,24 +135,17 @@ float SampleSubstrateBias(float2 UV, float2 Texel, float BasePeriod)
 	{
 		return 0.0f;
 	}
-
 	const float2 Dirs[8] =
 	{
-		float2( 1.0f,  0.0f),
-		float2(-1.0f,  0.0f),
-		float2( 0.0f,  1.0f),
-		float2( 0.0f, -1.0f),
-		float2( 0.70710678f,  0.70710678f),
-		float2(-0.70710678f,  0.70710678f),
-		float2( 0.70710678f, -0.70710678f),
-		float2(-0.70710678f, -0.70710678f)
+		float2( 1.0f,  0.0f), float2(-1.0f,  0.0f),
+		float2( 0.0f,  1.0f), float2( 0.0f, -1.0f),
+		float2( 0.70710678f,  0.70710678f), float2(-0.70710678f,  0.70710678f),
+		float2( 0.70710678f, -0.70710678f), float2(-0.70710678f, -0.70710678f)
 	};
-
 	float InvPeriod = 1.0f / max(BasePeriod, 1.0f);
 	float2 R0 = max(Texel * 1.5f, max((0.14f * InvPeriod).xx, float2(0.0015f, 0.0015f)));
 	float2 R1 = max(Texel * 4.0f, max((0.45f * InvPeriod).xx, float2(0.0050f, 0.0050f)));
 	float2 R2 = max(Texel * 10.0f, max((1.15f * InvPeriod).xx, float2(0.0140f, 0.0140f)));
-
 	float Sum0 = 0.0f, Sum1 = 0.0f, Sum2 = 0.0f;
 	float Min0 = H0, Min1 = H0, Min2 = H0;
 	float Max0 = H0, Max1 = H0, Max2 = H0;
@@ -189,275 +165,214 @@ float SampleSubstrateBias(float2 UV, float2 Texel, float BasePeriod)
 	{
 		return 0.0f;
 	}
-
 	if (SurfaceBias > 0.0f)
 	{
-		// Crevice floor/wall recess + shoulder bleed halo around nearby cracks/grooves.
 		float Floor0 = max(0.0f, Mean0 - H0) + 0.35f * max(0.0f, Max0 - H0);
 		float Floor1 = max(0.0f, Mean1 - H0) + 0.35f * max(0.0f, Max1 - H0);
 		float Floor2 = max(0.0f, Mean2 - H0) + 0.30f * max(0.0f, Max2 - H0);
-
 		float Shoulder0 = max(0.0f, Mean0 - Min0) * 0.48f;
 		float Shoulder1 = max(0.0f, Mean1 - Min1) * 0.42f;
 		float Shoulder2 = max(0.0f, Mean2 - Min2) * 0.28f;
-
 		float Crevice0 = tanh(max(Floor0, Shoulder0) * 58.0f);
 		float Crevice1 = tanh(max(Floor1, Shoulder1) * 40.0f);
 		float Crevice2 = tanh(max(Floor2, Shoulder2) * 24.0f);
 		float Crevice = saturate(Crevice0 * 0.36f + Crevice1 * 0.42f + Crevice2 * 0.22f);
-
-		// Map [0..1] crevice affinity so strong positive SurfaceBias focuses initiation into
-		// crevices and their shoulders while pulling corrosion back from flat uncreviced expanses.
 		return (Crevice * 1.45f - 0.32f * SurfaceBias) * SurfaceBias;
 	}
 	else
 	{
-		// Convex ridge, rib crest, and sharp crack/edge lip affinity when SurfaceBias < 0.
 		float Crest0 = max(0.0f, H0 - Mean0) + 0.40f * max(0.0f, H0 - Min0);
 		float Crest1 = max(0.0f, H0 - Mean1) + 0.35f * max(0.0f, H0 - Min1);
 		float Crest2 = max(0.0f, H0 - Mean2) + 0.25f * max(0.0f, H0 - Min2);
-
 		float Ridge0 = tanh(Crest0 * 58.0f);
 		float Ridge1 = tanh(Crest1 * 40.0f);
 		float Ridge2 = tanh(Crest2 * 24.0f);
 		float Ridge = saturate(Ridge0 * 0.36f + Ridge1 * 0.42f + Ridge2 * 0.22f);
-
 		float Strength = -SurfaceBias;
 		return (Ridge * 1.45f - 0.32f * Strength) * Strength;
 	}
 }
 
-// Loss and retained product have separate lifetimes. Buildup=0 still permits thin oxide;
-// Flaking=1 removes all oxide/products without changing the attack or loss fields.
-// Coverage reveals fixed spatial profiles: pit depth, deposit profile, flake retention, and
-// pigment never depend on Coverage/Threshold, so increasing Coverage expands the footprint
-// without deepening or renormalizing already-covered features.
-// Returns float4(SignedHeightDelta, VisibleOxideCoverage, RampPigment01, LocalRoughnessDelta).
-float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
+// Returns float4(SignedHeightDelta, VisibleOxideCoverage, RampPigment01,
+// LocalRoughnessDelta). Loss and retained product have separate lifetimes:
+// Buildup=0 still permits thin oxide; Flaking=1 removes oxide/product
+// without changing attack or loss. Coverage never renormalizes depth.
+float4 RustFields(float2 UV, float FootprintUV, float Bias)
 {
 	float BasePeriod = max(ClusterPeriod, 1.0f);
-	float FootprintUV = Footprint / BasePeriod;
-	float Var = Variation;
+	float Var = saturate(Variation);
 
-	// 1. Hierarchical domain warp: macro susceptibility drift + meso colony distortion,
-	// propagating the exact 2x2 analytic Jacobian dQ/dUV onto the pixel step vectors (DX, DY).
+	// 1. Correlated colony organization on the Noise module: curl warp,
+	// macro susceptibility, colony cells, satellite freckles, tendril creep.
 	float MacroPeriod = max(2.0f, round(pow(BasePeriod, 0.55f) * 0.85f));
-	float MacroWarpScale = 0.28f * Var / MacroPeriod;
-	float ColonyWarpScale = 0.55f * Var / BasePeriod;
+	float2 Q = UV + MixtormatNoiseV2Curl(UV, int(MacroPeriod), 2, 0.5f, 2.0f,
+		Seed ^ 19u, float2(0.0f, 0.0f), 0.0f, 0.60f * Var) / MacroPeriod;
+	Q += MixtormatNoiseV2Curl(Q, int(BasePeriod), 2, 0.5f, 2.0f,
+		Seed ^ 43u, float2(0.0f, 0.0f), 0.0f, 0.45f * Var) / BasePeriod;
 
-	float3 MacroDriftU = RustNoiseD(UV, MacroPeriod, 19u, FootprintUV);
-	float3 MacroDriftV = RustNoiseD(UV, MacroPeriod, 37u, FootprintUV);
-	float3 ColonyDriftU = RustNoiseD(UV, BasePeriod, 43u, FootprintUV);
-	float3 ColonyDriftV = RustNoiseD(UV, BasePeriod, 61u, FootprintUV);
-
-	float2 MacroDrift = float2(MacroDriftU.x, MacroDriftV.x);
-	float2 ColonyDrift = float2(ColonyDriftU.x, ColonyDriftV.x);
-
-	float2 QMacro = UV + MacroDrift * MacroWarpScale;
-	float2 Q = QMacro + ColonyDrift * ColonyWarpScale;
-
-	// Exact 2x2 Jacobian J = I + d(MacroWarp)/dUV + d(ColonyWarp)/dUV applied to DX and DY.
-	float2 GradQu = float2(1.0f, 0.0f) + MacroDriftU.yz * MacroWarpScale + ColonyDriftU.yz * ColonyWarpScale;
-	float2 GradQv = float2(0.0f, 1.0f) + MacroDriftV.yz * MacroWarpScale + ColonyDriftV.yz * ColonyWarpScale;
-	float2 DX_Q = float2(dot(GradQu, DX), dot(GradQv, DX));
-	float2 DY_Q = float2(dot(GradQu, DY), dot(GradQv, DY));
-	float2 DX_Macro = DX + float2(dot(MacroDriftU.yz, DX), dot(MacroDriftV.yz, DX)) * MacroWarpScale;
-	float2 DY_Macro = DY + float2(dot(MacroDriftU.yz, DY), dot(MacroDriftV.yz, DY)) * MacroWarpScale;
-
-	float MacroFootprint = max(FootprintUV, max(length(DX_Macro + DY_Macro), length(DX_Macro - DY_Macro)));
-	float DetailFootprint = max(FootprintUV, max(length(DX_Q + DY_Q), length(DX_Q - DY_Q)));
-
-	// 2. Correlated multi-scale susceptibility and colony nucleation.
-	// MacroZone groups attack into broader corroded regions; ColonyFBM and ColonyCells form
-	// coalescing corrosion islands, while FreckleCells add pinpoint satellite initiation sites.
-	float MacroZone = RustNoise(QMacro, MacroPeriod, 11u, MacroFootprint);
-	float Broad = RustNoise(Q, BasePeriod * 0.85f, 17u, DetailFootprint);
-	float Meso = RustNoise(Q, BasePeriod * 2.5f, 83u, DetailFootprint);
-	float Fine = RustNoise(Q, BasePeriod * 8.0f, 191u, DetailFootprint);
-	float Micro = RustSingleNoise(Q, BasePeriod * 22.0f, 313u, DetailFootprint);
+	float Macro = RustFbm(Q, MacroPeriod, 3, 11u, FootprintUV);
+	float Broad = RustFbm(Q, BasePeriod * 0.85f, 4, 17u, FootprintUV);
+	float Meso = RustFbm(Q, BasePeriod * 2.5f, 3, 83u, FootprintUV);
+	float Fine = RustFbm(Q, BasePeriod * 8.0f, 3, 191u, FootprintUV);
+	// Ridged crests read as filiform creep along colony borders.
+	float Creep = RustRidged(Q, BasePeriod * 3.0f, 3, 271u, FootprintUV);
 
 	float2 ColonyDelta;
-	float4 ColonyCell = RustWorley(Q, BasePeriod * 1.15f, 101u, 0.9f, DetailFootprint, ColonyDelta);
+	float4 ColonyCell = RustWorley(Q, BasePeriod * 1.15f, 101u, 0.9f, FootprintUV, ColonyDelta);
 	float ColonyNucleus = saturate(1.0f - ColonyCell.x * 1.15f);
-
-	float2 PitDelta;
-	float4 PitCell = RustWorley(Q, BasePeriod * RUST_PIT_PERIOD_RATIO, 149u, 0.95f, DetailFootprint, PitDelta);
-
-	// Pinpoint satellite freckling & filiform creep around colony borders.
 	float2 FreckleDelta;
-	float4 FreckleCell = RustWorley(Q, BasePeriod * 7.5f, 199u, 1.0f, DetailFootprint, FreckleDelta);
-	float FreckleSpatter = saturate(1.0f - FreckleCell.x * 1.65f) * smoothstep(0.35f, 0.85f, FreckleCell.w);
+	float4 FreckleCell = RustWorley(Q, BasePeriod * 7.5f, 199u, 1.0f, FootprintUV, FreckleDelta);
+	float Freckle = saturate(1.0f - FreckleCell.x * 1.65f)
+		* smoothstep(0.35f, 0.85f, FreckleCell.w);
 
-	// Combine regional envelope, colony bodies, satellite freckles, and substrate crevice bias.
-	float RegionalSusceptibility = 0.5f
-		+ MacroZone * 0.34f
-		+ Broad * 0.38f
-		+ Meso * 0.22f
-		+ (ColonyNucleus - 0.35f) * 0.24f
-		+ (FreckleSpatter - 0.15f) * 0.14f * (0.35f + 0.65f * saturate(Var));
+	float Susceptibility = 0.5f + Macro * 0.34f + Broad * 0.38f + Meso * 0.22f
+		+ (ColonyNucleus - 0.35f) * 0.24f + (Freckle - 0.15f) * 0.14f * (0.35f + 0.65f * Var)
+		+ (Creep - 0.55f) * 0.10f * Var;
+	float AttackField = saturate(Susceptibility
+		+ Bias * (0.52f + 0.28f * saturate(0.5f + Broad)) + Fine * 0.08f * Var);
 
-	float BiasInfluence = Bias * (0.52f + 0.28f * saturate(0.5f + Broad));
-	float AttackField = saturate(RegionalSusceptibility + BiasInfluence + Fine * 0.08f * saturate(Var));
-
-	float AA = max(DetailFootprint * BasePeriod * 0.38f, 0.018f);
+	float AA = max(FootprintUV * BasePeriod * 0.38f, 0.018f);
 	float Threshold = 1.0f - Coverage;
 	float Attack = Coverage <= 0.0f ? 0.0f
 		: (Coverage >= 1.0f ? 1.0f : smoothstep(Threshold - AA, Threshold + AA, AttackField));
-
-	// Fixed spatial colony core intensity (strictly independent of Coverage/Threshold so changing
-	// Coverage never alters surviving pit depth, deposit buildup, or flake retention).
+	// Thin stain halo beyond the relief footprint: color only, no height.
+	float Halo = Coverage <= 0.0f ? 0.0f : saturate(
+		smoothstep(Threshold - AA * 3.0f, Threshold + AA, AttackField) - Attack);
 	float ColonyCore = smoothstep(0.22f, 0.82f, AttackField);
-	float Basin = saturate(0.5f + Broad);
-	float Pits = saturate(0.5f + Meso);
 
-	// 3. Localized metal loss: finite mouths and steep walls, not a recession floor over
-	// the entire attack mask. Coverage reveals a fixed profile; shedding cannot restore metal.
+	// 2. Coalesced metal loss. Neighbouring pit mouths merge through the
+	// F1/F2 saddle, and a broad erosion valley links dense clusters, so
+	// loss reads as connected cavities, not isolated circular craters.
+	float2 PitDelta;
+	float4 PitCell = RustWorley(Q, BasePeriod * RUST_PIT_PERIOD_RATIO, 149u, 0.95f, FootprintUV, PitDelta);
 	float PitRadius = lerp(RUST_PIT_RADIUS_RANGE.x, RUST_PIT_RADIUS_RANGE.y, PitCell.w)
-		* (1.0f + RUST_PIT_BOUNDARY_VARIATION * Var * Fine);
-	float PitEdge = PitCell.x - PitRadius;
-	float PitAA = DetailFootprint * BasePeriod * RUST_PIT_PERIOD_RATIO;
-	float PitWallWidth = max(PitRadius * RUST_PIT_WALL_RATIO, PitAA);
-	float PitResolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y, PitAA);
-	float PitMouth = (1.0f - smoothstep(-PitWallWidth, PitWallWidth, PitEdge)) * PitResolved;
-	float PitFloor = saturate(1.0f - RUST_PIT_FLOOR_RELIEF * (0.5f + Fine));
-	float PrimaryPitBowl = PitMouth * PitFloor * lerp(0.45f, 1.0f, PitCell.w);
-	float MicroPitBowl = pow(FreckleSpatter, 1.8f) * RUST_PIT_MICRO_DEPTH;
-	float PitLocalization = saturate(max(PrimaryPitBowl, MicroPitBowl));
+		* (1.0f + 0.18f * Var * Fine);
+	float PitWall = max(PitRadius * RUST_PIT_WALL_RATIO,
+		FootprintUV * BasePeriod * RUST_PIT_PERIOD_RATIO);
+	float Mouth = 1.0f - smoothstep(PitRadius - PitWall, PitRadius + PitWall, PitCell.x);
+	float Saddle = (1.0f - smoothstep(0.02f, 0.30f, PitCell.z)) * Mouth;
+	float Valley = smoothstep(0.58f, 0.92f, 0.5f + Meso * 0.65f + Broad * 0.25f)
+		* ColonyCore * 0.55f;
+	float PitShape = saturate(max(Mouth * lerp(0.50f, 1.0f, PitCell.w) + Saddle * 0.55f, Valley));
+	PitShape = pow(PitShape, 1.30f);
+	float FloorRelief = 0.84f + 0.28f * Fine + 0.10f * RustGrain(Q, BasePeriod * 18.0f, 307u, FootprintUV);
+	float PitLocalization = saturate(PitShape * FloorRelief
+		+ pow(Freckle, 1.8f) * 0.12f);
 	float Loss = Attack * PitDepth * PitLocalization;
-
-	// Broken product rings follow actual pit mouths, not a contour of the attack noise.
-	float PitRimWidth = max(PitRadius * RUST_PIT_RIM_RATIO, PitAA);
-	float PitRim = smoothstep(-PitWallWidth, 0.0f, PitEdge)
-		* (1.0f - smoothstep(0.0f, PitRimWidth, PitEdge)) * PitResolved
+	// Broken product ring on the actual pit mouth, not a noise contour.
+	float PitRim = smoothstep(PitRadius - PitWall, PitRadius, PitCell.x)
+		* (1.0f - smoothstep(PitRadius, PitRadius + max(PitRadius * 0.30f, PitWall), PitCell.x))
 		* smoothstep(0.25f, 0.75f, saturate(0.5f + Meso));
 
-	// 4. Structure-specific deposit envelope, delamination plates, and shedding (Flaking).
+	// 3. Structure-specific retained product.
 	float Deposit = 0.0f;
 	float RetentionField = 0.5f;
-	float PlateCrackSeam = 1.0f;
+	float PlateSeam = 1.0f;
 	float PlateEdgeLift = 0.0f;
-	float PlateTier = 0.5f;
-	float NoduleCrest = 0.0f;
 	float LowerDeposit = 0.0f;
-	float LowerRetentionField = 0.0f;
-
-	float GranularAggregate = saturate(0.5f + Fine * 0.65f + Micro * 0.35f + (FreckleSpatter - 0.25f) * 0.45f);
+	float LowerRetention = 0.0f;
+	float NoduleCrest = 0.0f;
+	float GrainAggregate = saturate(0.5f + Fine * 0.6f
+		+ RustGrain(Q, BasePeriod * 26.0f, 313u, FootprintUV) * 0.35f);
 
 	if (Structure == 0u)
 	{
-		// Smooth: thin discoloration & coherent low-relief ferric film with subtle mottled variation.
-		Deposit = (0.35f + 0.45f * Basin + 0.20f * Pits)
-			* (1.0f + 0.35f * Var * Broad);
-		RetentionField = saturate(0.52f + 0.38f * RustNoise(Q, BasePeriod * 1.8f, 227u, DetailFootprint)
+		// Smooth: coherent low ferric film, mottled, almost no relief.
+		Deposit = 0.16f + 0.10f * saturate(0.5f + Broad);
+		RetentionField = saturate(0.52f
+			+ 0.38f * RustFbm(Q, BasePeriod * 1.8f, 3, 227u, FootprintUV)
 			+ 0.20f * (ColonyCore - 0.5f));
 	}
 	else if (Structure == 1u)
 	{
-		// Granular: clumped nodular oxyhydroxide pustules, coarse crusty mounds, and sandy aggregates.
+		// Granular: billow mounds + Worley nodule domes + sandy aggregate.
 		float2 NoduleDelta;
-		float4 NoduleCell = RustWorley(Q + ColonyDrift * (0.4f / BasePeriod), BasePeriod * 4.5f, 251u, 0.95f, DetailFootprint, NoduleDelta);
-		float CoarseNodule = smoothstep(0.68f, 0.08f, NoduleCell.x) * (0.45f + 0.55f * NoduleCell.w);
-		float FineNodule = pow(FreckleSpatter, 1.25f);
-		NoduleCrest = saturate(CoarseNodule * 0.70f + FineNodule * 0.45f + max(Fine, 0.0f) * 0.35f);
-
-		float MoundEnvelope = 0.42f + 0.58f * saturate(0.5f + Broad + Meso * 0.4f);
-		Deposit = MoundEnvelope * (0.42f + 0.78f * NoduleCrest + 0.38f * GranularAggregate)
-			* (1.0f + Var * 0.55f * Basin);
-
-		// Granular shedding crumbles unstable outer/loose clusters first while preserving consolidated scab cores.
+		float4 NoduleCell = RustWorley(Q, BasePeriod * 4.5f, 251u, 0.95f, FootprintUV, NoduleDelta);
+		float Dome = smoothstep(0.78f, 0.12f, NoduleCell.x) * (0.45f + 0.55f * NoduleCell.w);
+		float BillowMound = RustBillow(Q, BasePeriod * 3.5f, 3, 263u, FootprintUV);
+		NoduleCrest = saturate(Dome * 0.75f + pow(BillowMound, 1.6f) * 0.55f
+			+ pow(Freckle, 1.25f) * 0.35f);
+		float MoundEnvelope = 0.40f + 0.60f * saturate(0.5f + Broad + Meso * 0.4f);
+		Deposit = MoundEnvelope * (0.30f + 0.85f * NoduleCrest + 0.35f * GrainAggregate)
+			* (1.0f + Var * 0.45f * saturate(0.5f + Broad));
 		RetentionField = saturate(0.48f
-			+ 0.36f * RustNoise(Q, BasePeriod * 2.0f, 227u, DetailFootprint)
-			+ 0.24f * (CoarseNodule - 0.35f)
-			+ 0.16f * (ColonyCore - 0.45f));
+			+ 0.36f * RustFbm(Q, BasePeriod * 2.0f, 3, 227u, FootprintUV)
+			+ 0.24f * (Dome - 0.35f) + 0.16f * (ColonyCore - 0.45f));
 	}
 	else
 	{
-		// Layered: brittle polygonal scale plates with ordered elevation tiers, sharp fracture seams,
-		// asymmetric curled edge lift, and plate-coherent spalling/delamination.
-		float2 PlateWarp = float2(
-			RustSingleNoise(Q, BasePeriod * 4.0f, 269u, DetailFootprint),
-			RustSingleNoise(Q, BasePeriod * 4.0f, 281u, DetailFootprint)) * (0.14f / BasePeriod);
+		// Layered: flat-topped Worley plates, tier steps, fracture seams,
+		// one-sided edge lift, and a lower scale bed under the top plates.
 		float2 PlateDelta;
-		float4 Plate = RustWorley(Q + PlateWarp, BasePeriod * 2.6f, 83u, 0.88f, DetailFootprint, PlateDelta);
-
-		// Sub-plate secondary fracture network for smaller internal chips and terraced steps.
-		float2 SubPlateDelta;
-		float4 SubPlate = RustWorley(Q - PlateWarp * 0.6f, BasePeriod * 5.8f, 173u, 0.85f, DetailFootprint, SubPlateDelta);
-
-		PlateTier = Plate.w;
-		// Sharp fracture seam between adjacent scale plates (0 in crack, 1 inside plate).
-		float PrimarySeam = smoothstep(0.008f, 0.055f, Plate.z);
-		float SecondarySeam = lerp(1.0f, smoothstep(0.010f, 0.050f, SubPlate.z), 0.45f);
-		PlateCrackSeam = PrimarySeam * SecondarySeam;
-
-		// Asymmetric edge lift: each plate curls upward along one persistent tilt direction near its border
-		// rather than lifting its entire perimeter into a crater rim.
+		float4 Plate = RustWorley(Q, BasePeriod * 2.6f, 83u, 0.88f, FootprintUV, PlateDelta);
+		float2 SubDelta;
+		float4 SubPlate = RustWorley(Q, BasePeriod * 5.8f, 173u, 0.85f, FootprintUV, SubDelta);
+		float SeamWidth = max(0.012f, FootprintUV * BasePeriod * 1.2f);
+		PlateSeam = smoothstep(SeamWidth, SeamWidth * 4.0f, Plate.z)
+			* lerp(1.0f, smoothstep(SeamWidth, SeamWidth * 4.0f, SubPlate.z), 0.45f);
 		float TiltAngle = frac(Plate.w * 7.13f + 0.17f) * 6.2831853f;
 		float2 TiltDir = float2(cos(TiltAngle), sin(TiltAngle));
-		float AsymmetricProj = saturate(dot(-PlateDelta, TiltDir) * 1.85f + 0.15f);
-		float BorderBand = (1.0f - smoothstep(0.03f, 0.22f, Plate.z)) * PrimarySeam;
-		PlateEdgeLift = BorderBand * AsymmetricProj * (0.35f + 0.65f * saturate(Flaking) + 0.35f * saturate(Var));
-
-		// Two retained envelopes: an upper plate can peel away without erasing the lower
-		// scale bed. Lift uses reserved height headroom instead of clipping every tall plate flat.
-		LowerDeposit = lerp(RUST_LOWER_SCALE_HEIGHT.x, RUST_LOWER_SCALE_HEIGHT.y, SubPlate.w);
-		float StrataStep = lerp(RUST_UPPER_SCALE_HEIGHT.x, RUST_UPPER_SCALE_HEIGHT.y, PlateTier);
-		Deposit = saturate(StrataStep + PlateEdgeLift * RUST_SCALE_LIFT_BUDGET);
-		LowerRetentionField = lerp(0.35f, 0.95f, SubPlate.w);
-
-		// Plate-coherent retention: whole scale plates and fractured edge chips delaminate together.
-		float PlateRetention = 0.62f * Plate.w + 0.23f * SubPlate.w
-			+ 0.15f * (0.5f + RustSingleNoise(Q, BasePeriod * 1.5f, 227u, DetailFootprint));
-		RetentionField = saturate(PlateRetention * smoothstep(0.004f, 0.035f, Plate.z));
+		float BorderBand = 1.0f - smoothstep(0.03f, 0.22f, Plate.z);
+		PlateEdgeLift = BorderBand * saturate(dot(-PlateDelta, TiltDir) * 1.85f + 0.15f)
+			* (0.35f + 0.65f * saturate(Flaking) + 0.35f * Var);
+		Deposit = saturate(lerp(RUST_UPPER_SCALE_HEIGHT.x, RUST_UPPER_SCALE_HEIGHT.y, Plate.w)
+			+ PlateEdgeLift * RUST_SCALE_LIFT_BUDGET);
+		LowerDeposit = RUST_LOWER_SCALE_HEIGHT * (0.6f + 0.7f * SubPlate.w);
+		LowerRetention = lerp(0.35f, 0.95f, SubPlate.w);
+		RetentionField = saturate((0.62f * Plate.w + 0.23f * SubPlate.w
+			+ 0.15f * (0.5f + RustFbm(Q, BasePeriod * 1.5f, 2, 227u, FootprintUV)))
+			* smoothstep(SeamWidth * 0.5f, SeamWidth * 3.0f, Plate.z));
 	}
 
 	float Survives = Flaking <= 0.0f ? 1.0f
 		: (Flaking >= 1.0f ? 0.0f : smoothstep(Flaking - AA, Flaking + AA, RetentionField));
-
 	float TopPresence = Survives;
 	float LowerSurvives = 0.0f;
 	if (Structure == 2u)
 	{
-		TopPresence *= PlateCrackSeam;
+		TopPresence *= PlateSeam;
 		LowerSurvives = Flaking <= 0.0f ? 1.0f
-			: (Flaking >= 1.0f ? 0.0f : smoothstep(Flaking - AA, Flaking + AA, LowerRetentionField));
+			: (Flaking >= 1.0f ? 0.0f : smoothstep(Flaking - AA, Flaking + AA, LowerRetention));
 	}
 	else
 	{
-		// Keep granular relief out of the deepest pit floors; retained product can form
-		// a broken mouth rim without turning every corroded pixel into a raised bead.
-		Deposit = Deposit * (1.0f - PitMouth) + PitRim * RUST_PIT_RIM_DEPOSIT;
+		// Product stays out of deep pit floors; it rings the mouth instead.
+		Deposit = Deposit * (1.0f - Mouth * PitShape) + PitRim * 0.18f;
 	}
-	float ExposedLowerScale = (1.0f - TopPresence) * LowerSurvives;
-	float Retained = Attack * Buildup
-		* (TopPresence * saturate(Deposit) + ExposedLowerScale * LowerDeposit);
+	float ExposedLower = (1.0f - TopPresence) * LowerSurvives;
+	// Powder grain rides the retained product, filtered by RustGrain AA.
+	float PowderRelief = RustGrain(Q, BasePeriod * 34.0f, 331u, FootprintUV)
+		* 0.055f * (Structure == 1u ? 1.0f : 0.45f);
+	float Retained = Attack * Buildup * saturate(
+		TopPresence * saturate(Deposit) + ExposedLower * LowerDeposit + PowderRelief);
 
-	// The material follows the same retained envelopes. Thin oxide still exists at Buildup=0;
-	// Flaking=1 removes both scale layers/residue but leaves the original metal loss intact.
-	float VisibleRetention = TopPresence + ExposedLowerScale;
-	float SpalledPitResidue = saturate(1.0f - Flaking) * (1.0f - VisibleRetention)
+	float VisibleRetention = TopPresence + ExposedLower;
+	float PitResidue = saturate(1.0f - Flaking) * (1.0f - VisibleRetention)
 		* smoothstep(0.25f, 0.75f, PitLocalization) * saturate(PitDepth * 18.0f) * 0.42f;
-	float Oxide = saturate(Attack * (VisibleRetention + SpalledPitResidue));
+	float Oxide = saturate(Attack * (VisibleRetention + PitResidue) + Halo * 0.32f);
 
-	// 5. Dark consolidated oxide -> red-brown patches -> sparse orange blooms. Spot masks
-	// share colony organization, but are not the height field or a baked cavity shadow.
-	float OxidationSpots = smoothstep(0.38f, 0.72f,
-		saturate(0.5f + MacroZone * 0.45f + Broad * 0.55f + (ColonyCell.w - 0.5f) * 0.35f));
-	float OrangeBloom = smoothstep(0.58f, 0.85f,
+	// 4. Pigment zones sharing colony organization: near-black pit cores,
+	// dark body, red-brown patches, sparse orange bloom on crests/rims,
+	// plus fine powder jitter. No baked light, shadow or highlight.
+	float RedPatches = smoothstep(0.38f, 0.72f,
+		saturate(0.5f + Macro * 0.45f + Broad * 0.55f + (ColonyCell.w - 0.5f) * 0.35f));
+	float BloomMask = smoothstep(0.60f, 0.86f,
 		saturate(0.5f + Meso * 0.65f + (ColonyCell.w - 0.5f) * 0.30f))
-		* saturate(PitRim + NoduleCrest * 0.45f + PlateEdgeLift * 0.35f) * TopPresence;
-	float Pigment = lerp(RUST_PIGMENT_DARK, RUST_PIGMENT_RED, OxidationSpots);
-	Pigment = lerp(Pigment, RUST_PIGMENT_BLOOM, OrangeBloom);
+		* saturate(PitRim + NoduleCrest * 0.50f + PlateEdgeLift * 0.35f
+			+ pow(Freckle, 1.5f) * 0.30f) * max(TopPresence, Halo);
+	float Pigment = lerp(RUST_PIGMENT_DARK, RUST_PIGMENT_RED, RedPatches);
+	Pigment = lerp(Pigment, RUST_PIGMENT_BLOOM, BloomMask);
 	Pigment = lerp(Pigment, RUST_PIGMENT_DARK,
-		saturate(ExposedLowerScale + PitLocalization * 0.45f));
-	float MineralGrain = Fine * 0.08f + Micro * 0.04f;
-	Pigment = saturate(lerp(RUST_PIGMENT_BODY, Pigment + MineralGrain, saturate(Var)));
+		saturate(PitLocalization * 0.55f + ExposedLower * 0.7f + (1.0f - PlateSeam) * 0.6f));
+	float GrainJitter = RustGrain(Q, BasePeriod * 30.0f, 349u, FootprintUV) * 0.07f
+		+ RustGrain(Q, BasePeriod * 72.0f, 367u, FootprintUV) * 0.04f;
+	Pigment = saturate(lerp(RUST_PIGMENT_BODY, Pigment + GrainJitter, Var));
+	Pigment = lerp(Pigment, RUST_PIGMENT_RED, Halo * 0.45f);
 
-	// Microstructure roughness modulation around the artist's Roughness value.
-	float RoughnessMod = (GranularAggregate - 0.5f) * 0.22f
-		+ NoduleCrest * 0.12f
-		+ PitLocalization * 0.10f
-		- (Structure == 2u ? PlateCrackSeam * 0.08f : 0.0f);
+	// 5. Unresolved microstructure folds into roughness, not sparkle.
+	float RoughnessMod = GrainAggregate * 0.10f + NoduleCrest * 0.14f
+		+ PitLocalization * 0.16f + BloomMask * 0.10f
+		+ (1.0f - PlateSeam) * 0.08f - (Structure == 2u ? TopPresence * 0.03f : 0.0f);
 
 	return float4(Retained - Loss, Oxide, Pigment, RoughnessMod);
 }
@@ -472,21 +387,21 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 	float2 Q = RustUV(UV);
 	float2 DX = RustUV(UV+float2(Texel.x,0))-Q;
 	float2 DY = RustUV(UV+float2(0,Texel.y))-Q;
-	float Footprint = max(length(DX+DY),length(DX-DY)) * float(ClusterPeriod);
-	// Immutable multi-scale substrate sampling. A geometric cue only; strictly height-offset invariant.
+	float FootprintUV = max(length(DX), length(DY));
 	float Bias = SampleSubstrateBias(UV, Texel, ClusterPeriod);
 	float Height = 0, Cover = 0, Rough = 0;
 	float3 Color = 0;
 	const float2 Samples[4] = {float2(-.25f,-.25f),float2(.25f,-.25f),float2(-.25f,.25f),float2(.25f,.25f)};
 	[unroll] for (int I=0; I<4; ++I)
 	{
-		float4 F = RustFields(Q+DX*Samples[I].x+DY*Samples[I].y, DX, DY, Bias, Footprint);
+		float4 F = RustFields(Q+DX*Samples[I].x+DY*Samples[I].y, FootprintUV, Bias);
 		Height += F.x * .25f;
 		Cover += F.y * .25f;
 		Color += MixtormatEvalColorRamp(F.z, ColorCount, ColorInterpolation, ColorPositions, ColorColors).rgb * F.y * .25f;
 		Rough += saturate(Roughness + Variation * F.w) * F.y * .25f;
 	}
-	// Unpremultiply only material fields. The signed relief is NEVER divided by coverage.
+	// Unpremultiply only material fields. Signed relief is never
+	// divided by coverage, so Coverage cannot renormalize depth.
 	OutHeight[P] = Height * HeightScale;
 	OutCoverage[P] = Cover;
 	OutColor[P] = float4(Cover > 0 ? Color / Cover : 0, 1);

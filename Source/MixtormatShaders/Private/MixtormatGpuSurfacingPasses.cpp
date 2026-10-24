@@ -1162,7 +1162,7 @@ FRDGTextureRef ApplySurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLay
 		|| (W.Finish != EMixtormatWoodFinish::Bare && W.FinishAmount > 0.0f);
 	const float Amount = (bWood ? W.Amount : (bRust ? Ru.Amount : (bMoss ? Mo.Amount : S.Amount))) * AncestorAmount;
 	const bool bRustActive = !bRust || Ru.Coverage > 0.0f;
-	const bool bHeight = bWood ? (bWoodActive && W.bWriteHeight && W.HeightScale != 0.0f) : (bRust
+	const bool bHeight = bWood ? MixtormatSurfacing::WoodWritesHeight(W) : (bRust
 		? (Ru.bWriteHeight && bRustActive && Ru.HeightScale != 0.0f && (Ru.PitDepth != 0.0f || Ru.Buildup != 0.0f))
 		: (bMoss ? (Mo.bWriteHeight && Mo.HeightScale != 0.0f) : (S.bWriteHeight && S.HeightScale != 0.0f)));
 	const bool wColor = bWood ? (bWoodActive && W.bWriteColor)

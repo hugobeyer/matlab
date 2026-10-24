@@ -1,3 +1,142 @@
+# Wood implementation status — source handoff
+
+## Implemented in source (not runtime-validated)
+
+- Existing species only: Oak `0`, Maple `1`, Pine `2`; no species enum values changed.
+- All four existing cuts, five figure modes, four preparations and seven finish modes have shader paths.
+- Figures remain independent of species. All nine existing presets are selectable through the module preset store.
+- Wood creation, inspector, parameter ownership, gather, GPU pass, channel application and typed publication are implemented.
+- Full Wood generates relative signed relief, color, roughness and dielectric optics. Finish-only reads immutable incoming height/color/material inputs; it does not regenerate grain.
+- Published outputs retain existing names: Height, Color, Roughness, PoreMask, LatewoodMask, RayMask, CoatThickness and FlowDirection.
+- Material flags and Amount/scoped masks are applied once by the shared surfacing apply path. Zero Amount and inactive finish-only passes preserve incoming channel pointers.
+- `MixtormatSurfacing::WoodWritesHeight` is the shared Wood eligibility predicate; dye/stain, zero build and fully worn finish-only film do not trigger height remapping.
+- Repaired the duplicated Surfacing case and dangling Rust condition in the pre-existing Wood parameter-owner switch.
+
+## Pending integration/runtime evidence
+
+**The two excluded dispatch files have NOT been edited by the Wood owner.** Apply the seven minimal edits below before claiming Wood renders end-to-end. Main agent owns those files and concurrent Moss changes.
+
+No build, diagnostics, tests, Unreal launch, GPU timing or visual/seam validation was run. Changes were checked by targeted source reads/searches only. Existing serialized enums and other surfacing behavior are preserved by Wood-only branches.
+
+Not implemented: the remaining species roadmap (ash/elm/chestnut, walnut, Carya/teak, beech/cherry/birch, mahogany/rosewood, Douglas fir/larch, cedar/cypress). The current model only defines Oak/Maple/Pine. Do not mark that roadmap complete.
+
+## Approximation boundaries
+
+- Anatomy uses a 3D log slice; translated log sections are blended at tile edges for periodicity. This is not one physically seamless infinite log.
+- Species profiles, ray/vessel dimensions, colors and finish responses are artistic, not measured botanical/product fits.
+- Chatoyance is static fiber-inclination color modulation, not a view-dependent scattering lobe.
+- Film Build is in relative height units. Film deposition is locally budget-bounded, not a global volume-conserving leveling solve. Filler uses depression capacity.
+- Finish-only infers geometric depressions, not pores/earlywood/fiber direction. Its anatomy masks and fiber-flow validity are zero.
+- Oil/dye treatment survives coating wear. Dye and pigment stain add no film; use a subsequent Film Coating instance. Existing preset parameter values are preserved; descriptions now state this ordering.
+- Coating is a single-surface approximation: no retained second optical interface or coating provenance. Sheen affects roughness; dielectric F0 is independent of sheen.
+- CoatThickness reports remaining relative coat before HeightScale, saturated to the existing Scalar01 output contract. It is a diagnostic, independent of channel write flags.
+- Application angle uses a nearest integer lattice direction for periodic brush marks. No object-edge inference or boundary-edge wear is invented.
+
+## Exact excluded-file handoff
+
+Apply these edits by the shown symbol/context, not line number; preserve the main agent's Moss changes. Both files already have access to `MixtormatSurfacing` through the existing Runtime headers.
+
+### `Source/MixtormatShaders/Private/MixtormatGpuGeneratorPasses.cpp`
+
+1. In the `HeightBlendOperandIndices` scan, prepend Wood to the existing prior-surfacing height predicate:
+
+```diff
+- && (Prior.Surfacing.Type == EMixtormatSurfacingType::Rust
++ && (Prior.Surfacing.Type == EMixtormatSurfacingType::Wood
++     ? MixtormatSurfacing::WoodWritesHeight(Prior.Surfacing.Wood)
++     : Prior.Surfacing.Type == EMixtormatSurfacingType::Rust
+```
+
+2. In `EvaluateSkin`, allow Wood alongside Skin/Rust (Moss keeps its own evaluator):
+
+```diff
+  if (!Child.Surfacing.bEnabled || (Child.Surfacing.Type != EMixtormatSurfacingType::Skin
+-     && Child.Surfacing.Type != EMixtormatSurfacingType::Rust)
++     && Child.Surfacing.Type != EMixtormatSurfacingType::Rust
++     && Child.Surfacing.Type != EMixtormatSurfacingType::Wood)
+```
+
+3. Immediately after `const bool bRust` in that evaluator, replace the following amount/flush statements with:
+
+```cpp
+const bool bWood = Child.Surfacing.Type == EMixtormatSurfacingType::Wood;
+const FMixtormatWood& Wood = Child.Surfacing.Wood;
+const float EffectiveAmount = (bWood ? Wood.Amount
+    : (bRust ? Child.Surfacing.Rust.Amount : Child.Surfacing.Skin.Amount)) * AncestorAmount;
+const bool bWritesColor = bWood
+    ? Wood.bWriteColor && (Wood.Mode == EMixtormatWoodMode::FullWood
+        || (Wood.Finish != EMixtormatWoodFinish::Bare && Wood.FinishAmount > 0.0f))
+    : (bRust ? Child.Surfacing.Rust.bWriteColor : Child.Surfacing.Skin.bWriteColor);
+if (EffectiveAmount > 0.0f && bWritesColor) { FlushPendingColorRamps(); }
+```
+
+4. In the same evaluator, prepend the dedicated raw producer:
+
+```diff
+- const FSurfacingFields Raw = bRust
++ const FSurfacingFields Raw = bWood
++     ? AddWoodSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)
++     : bRust
+      ? AddRustSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)
+      : AddSkinSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV);
+```
+
+Keep the existing `ApplySurfacingFields`, descendant evaluation and `PublishSurfacingFields` calls. They now route Wood correctly. No change to `EvaluateSurfacing`'s Moss/other dispatch is needed.
+
+5. In `MaybeRemapFirstLayerSubstrate`, prepend Wood eligibility; retain existing Rust/Moss/Skin expressions:
+
+```diff
+- const bool bWritesHeight = Child.Surfacing.Type == EMixtormatSurfacingType::Rust
++ const bool bWritesHeight = Child.Surfacing.Type == EMixtormatSurfacingType::Wood
++     ? (AncestorAmount > 0.0f && MixtormatSurfacing::WoodWritesHeight(Child.Surfacing.Wood))
++     : Child.Surfacing.Type == EMixtormatSurfacingType::Rust
+```
+
+### `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`
+
+6. In `HeightRemapBoundary`'s ancestor loop, prepend Wood Amount:
+
+```diff
+- const float ParentAmt = Parent->Surfacing.Type == EMixtormatSurfacingType::Rust
++ const float ParentAmt = Parent->Surfacing.Type == EMixtormatSurfacingType::Wood
++     ? Parent->Surfacing.Wood.Amount
++     : Parent->Surfacing.Type == EMixtormatSurfacingType::Rust
+```
+
+7. In the same child predicate, insert immediately before the existing Rust branch:
+
+```cpp
+if (Child.Surfacing.Type == EMixtormatSurfacingType::Wood)
+{
+    return MixtormatSurfacing::WoodWritesHeight(Child.Surfacing.Wood);
+}
+```
+
+## Wood-owner changed paths
+
+Paths below are relative to the `Mixtormat` project root. The two excluded files above are not part of this list.
+
+- `Shaders/Private/MixtormatWood.usf` (new)
+- `Source/MixtormatShaders/Private/MixtormatGpuWoodPasses.cpp` (new)
+- `Source/MixtormatShaders/Private/MixtormatGpuSurfacingPasses.h`
+- `Source/MixtormatShaders/Private/MixtormatGpuSurfacingPasses.cpp`
+- `Source/MixtormatShaders/Private/Compositing/MixtormatSurfacingGather.cpp`
+- `Source/MixtormatRuntime/Public/MixtormatSurfacingTypes.h`
+- `Source/MixtormatRuntime/Private/MixtormatSurfacingTypes.cpp`
+- `Source/MixtormatRuntime/Private/MixtormatParameterBinding.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Inspector/MixtormatInspectorWood.cpp` (new)
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat.h`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Inspector.cpp`
+- `Source/MixtormatEditor/Private/Widgets/SMixtormat_Parameters.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerChildren.cpp`
+- `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatLayerMenus.cpp` (Wood menu item only)
+- `Source/MixtormatEditor/Private/Widgets/Layers/MixtormatSurfacingCapabilities.h`
+- `Source/MixtormatEditor/Private/Services/MixtormatPresetStoreDocuments.cpp`
+- `Source/MixtormatEditor/Private/UI/Parameters/MixtormatShaderParamScanner.cpp`
+- `auditdocs/wooddocs/woodfinishessurfacing.md`
+
+---
+
 # Recommended design
 
 **Build one repeatable Wood Finish module with finish-family presets. Internally, separate substrate treatment, deposited material, pore filling, and the outer coating.**

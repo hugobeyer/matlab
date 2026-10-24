@@ -632,6 +632,16 @@ namespace MixtormatSurfacing
 		return MakeArrayView(Presets);
 	}
 
+	bool WoodWritesHeight(const FMixtormatWood& Wood)
+	{
+		if (!Wood.bWriteHeight || Wood.Amount <= 0.0f || Wood.HeightScale == 0.0f) { return false; }
+		if (Wood.Mode == EMixtormatWoodMode::FullWood) { return true; }
+		if (Wood.FinishAmount <= 0.0f || Wood.Wear >= 1.0f) { return false; }
+		if (Wood.Finish == EMixtormatWoodFinish::PoreFiller) { return Wood.DepressionFill > 0.0f; }
+		return Wood.FilmBuild > 0.0f && (Wood.Finish == EMixtormatWoodFinish::WipedOil
+			|| Wood.Finish == EMixtormatWoodFinish::FilmCoating || Wood.Finish == EMixtormatWoodFinish::Wax);
+	}
+
 	TConstArrayView<FMixtormatWoodPreset> GetWoodPresets()
 	{
 		static const TArray<FMixtormatWoodPreset> Presets = []()
@@ -682,7 +692,7 @@ namespace MixtormatSurfacing
 			// 1. Plain-Sawn Red Oak
 			FMixtormatWoodPreset& PSOak = Built[1];
 			PSOak.Name = NSLOCTEXT("MixtormatSurfacing", "WoodPSOak", "Plain-Sawn Red Oak");
-			PSOak.Description = NSLOCTEXT("MixtormatSurfacing", "WoodPSOakHelp", "Tangential plain-sawn Red Oak with parabolic cathedral arches, open earlywood pores, short dark vertical ray spindles, pigment stain pooled in pores, and satin film build.");
+			PSOak.Description = NSLOCTEXT("MixtormatSurfacing", "WoodPSOakHelp", "Tangential plain-sawn Red Oak with parabolic cathedral arches, open earlywood pores, short dark vertical ray spindles, pigment stain pooled in pores. Add a separate Finish Pass for a satin film.");
 			{
 				FMixtormatWood& W = PSOak.Settings;
 				W.Mode = EMixtormatWoodMode::FullWood;
@@ -718,7 +728,7 @@ namespace MixtormatSurfacing
 			// 2. Curly Fiddleback Maple
 			FMixtormatWoodPreset& CurlyMaple = Built[2];
 			CurlyMaple.Name = NSLOCTEXT("MixtormatSurfacing", "WoodCurlyMaple", "Curly Fiddleback Maple");
-			CurlyMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodCurlyMapleHelp", "Diffuse-porous quarter-sawn Maple with tight sinusoidal fiddleback curl, subsurface fiber-tilt chatoyance, amber dissolved dye, and high-gloss luthier film coat.");
+			CurlyMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodCurlyMapleHelp", "Diffuse-porous quarter-sawn Maple with tight sinusoidal fiddleback curl, subsurface fiber-tilt chatoyance, and amber dissolved dye. Add a separate Film Coating pass for a high-gloss luthier finish.");
 			{
 				FMixtormatWood& W = CurlyMaple.Settings;
 				W.Mode = EMixtormatWoodMode::FullWood;
@@ -759,7 +769,7 @@ namespace MixtormatSurfacing
 			// 3. Quilted Bigleaf Maple
 			FMixtormatWoodPreset& QuiltMaple = Built[3];
 			QuiltMaple.Name = NSLOCTEXT("MixtormatSurfacing", "WoodQuiltMaple", "Quilted Bigleaf Maple");
-			QuiltMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodQuiltMapleHelp", "Tangential Bigleaf Maple with blistered biaxial quilted figure, deep chatoyant pillows, warm honey dye, and levelled high-gloss finish.");
+			QuiltMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodQuiltMapleHelp", "Tangential Bigleaf Maple with blistered biaxial quilted figure, static fiber-tilt color modulation, and a honey-tinted high-gloss film.");
 			{
 				FMixtormatWood& W = QuiltMaple.Settings;
 				W.Mode = EMixtormatWoodMode::FullWood;
@@ -979,7 +989,7 @@ namespace MixtormatSurfacing
 			{FName(TEXT("PoreMask")), NSLOCTEXT("MixtormatSurfacing", "WoodPoreMask", "Pores & Canals"), K::Scalar01},
 			{FName(TEXT("LatewoodMask")), NSLOCTEXT("MixtormatSurfacing", "WoodLatewoodMask", "Latewood Rings"), K::Scalar01},
 			{FName(TEXT("RayMask")), NSLOCTEXT("MixtormatSurfacing", "WoodRayMask", "Medullary Rays"), K::Scalar01},
-			{FName(TEXT("CoatThickness")), NSLOCTEXT("MixtormatSurfacing", "WoodCoatThickness", "Coat Thickness"), K::Scalar01},
+			{FName(TEXT("CoatThickness")), NSLOCTEXT("MixtormatSurfacing", "WoodCoatThickness", "Coat Thickness (Relative, 0–1)"), K::Scalar01},
 			{FName(TEXT("FlowDirection")), NSLOCTEXT("MixtormatSurfacing", "WoodFlow", "Fiber Flow"), K::Flow},
 		};
 		if (Type == EMixtormatSurfacingType::Wood) { return MakeArrayView(WoodOutputs); }

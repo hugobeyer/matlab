@@ -205,12 +205,20 @@ WoodSample LogSample(float2 UV, float Footprint)
 	float RaySheet = 1.0f - smoothstep(RayWidth, RayWidth + AngularAA, AngularDistance);
 	float RayEnds = smoothstep(0.35f, 0.7f, WoodNoise(float2(floor(Theta * RayFrequency), Q.z * 18.0f / max(abs(RayScale), 0.0001f))));
 	W.Rays = RaySheet * RayEnds * saturate(RayAmount) * Resolved(RayFrequency, Footprint);
+		if (Species == 2u)
+		{
+			float CanalZ = abs(frac(Q.z * 24.0f + 0.5f) - 0.5f);
+			float Canal = 1.0f - smoothstep(0.035f, 0.035f + max(0.01f, Footprint * 24.0f), CanalZ);
+			float Present = WoodHash(int2(floor(Theta * RayFrequency), floor(Q.z * 24.0f)), 173u) < saturate(PoreDensity) * 0.2f ? 1.0f : 0.0f;
+			W.Pores = max(W.Pores, RaySheet * Canal * Present * Resolved(max(RayFrequency, 24.0f), Footprint));
+		}
 	float Fibers = sin(WOOD_TAU * (Q.x * 210.0f + 0.15f * sin(Q.z * 15.0f))) * Resolved(210.0f, Footprint);
 	W.Luster = dot(Slope, Across) / (1.0f + length(Slope));
 	W.Flow = Cut == 3u ? Slope : float2(-dot(Slope, Across), 1.0f);
 	W.Tone = saturate(0.72f - W.Latewood * (Species == 1u ? 0.14f : 0.42f)
 		- W.Pores * 0.32f + W.Rays * 0.22f + Fibers * 0.025f + saturate(Chatoyance) * W.Luster * 0.15f);
 	W.Height = WOOD_RING_RELIEF * (W.Latewood - 0.5f) - max(0.0f, PoreDepth) * W.Pores;
+		if (Species == 2u) { W.Height -= max(0.0f, PoreDepth) * 0.1f * saturate(Fibers) * (1.0f - W.Latewood); }
 	float PrepStrength = saturate(PrepIntensity);
 	if (Prep == 0u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.25f; }
 	if (Prep == 1u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.1f; }
@@ -246,7 +254,7 @@ WoodSample SampleWood(float2 UV, float Footprint)
 float SurfaceAt(float2 UV, float Footprint)
 {
 	float H = SubstrateHeight.SampleLevel(LinearWrapSampler, UV, 0);
-	if (Mode == 0u) { H += SampleWood(MixtormatGeneratorUV(UV), Footprint).Height * HeightScale; }
+	if (Mode == 0u) { H += SampleWood(MixtormatGeneratorUV(UV), Footprint).Height; }
 	return H;
 }
 
@@ -279,7 +287,7 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 	float Strength = Finish == 0u ? 0.0f : saturate(FinishAmount);
 	if (Strength > 0.0f)
 	{
-		float BaseH = SubstrateHeight.Load(int3(P, 0)) + Height;
+		float BaseH = SubstrateHeight.Load(int3(P, 0)) + W.Height;
 		float Envelope = BaseH;
 		float2 Tap = max(WOOD_ENVELOPE_RADIUS.xx, 1.0f / float2(OutputSize));
 		Envelope = max(Envelope, SurfaceAt(UV + float2(Tap.x, 0), Footprint));
