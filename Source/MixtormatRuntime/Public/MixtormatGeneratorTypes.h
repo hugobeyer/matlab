@@ -23,9 +23,9 @@ enum class EMixtormatGeneratorType : uint8
 	// Slot 1 was Fracture. Cracks replaces it in place; Config/DefaultMixtormat.ini carries the
 	// name redirect, so a saved Fracture child loads as Cracks at its defaults.
 	Cracks = 1 UMETA(DisplayName = "Cracks"),
-	// Appended: serialized by value.
-	RockFormation UMETA(DisplayName = "Rock Formation"),
-	Pebbles UMETA(DisplayName = "Pebbles"),
+	// Zero initialization selects the default generator; subsequent serialized values stay unchanged.
+	RockFormation = 0 UMETA(DisplayName = "Rock Formation"),
+	Pebbles = 3 UMETA(DisplayName = "Pebbles"),
 	CliffStrata UMETA(DisplayName = "Cliff Strata"),
 	// Appended: a plain field producer. It publishes Value / Gradient / IDs and decides nothing
 	// about what they mean -- height, roughness, mask and the rest are downstream decisions.
