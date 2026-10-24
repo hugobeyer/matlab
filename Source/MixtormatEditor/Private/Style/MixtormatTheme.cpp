@@ -1065,6 +1065,7 @@ namespace Mixtormat
 		Clamp01(TEXT("Button.SeparatorOpacity"), InOutTheme.Button.SeparatorOpacity);
 				Clamp01(TEXT("Button.TextOpacity"), InOutTheme.Button.TextOpacity);
 						Clamp01(TEXT("ControlLayout.DisabledLabelOpacity"), InOutTheme.ControlLayout.DisabledLabelOpacity);
+								Clamp01(TEXT("ControlLayout.TabInactiveOpacity"), InOutTheme.ControlLayout.TabInactiveOpacity);
 			Clamp01(TEXT("ControlLayout.ScalarRampBorderOpacity"), InOutTheme.ControlLayout.ScalarRampBorderOpacity);
 			Clamp01(TEXT("ControlLayout.ScalarRampGridOpacity"), InOutTheme.ControlLayout.ScalarRampGridOpacity);
 			Clamp01(TEXT("ControlLayout.ScalarRampGridMajorOpacity"), InOutTheme.ControlLayout.ScalarRampGridMajorOpacity);
@@ -1129,6 +1130,10 @@ namespace Mixtormat
 		ClampMin(TEXT("ControlLayout.ScalarRampToolbarGroupGap"), InOutTheme.ControlLayout.ScalarRampToolbarGroupGap, 0.0f);
 		ClampMin(TEXT("ControlLayout.ScalarRampHeight"), InOutTheme.ControlLayout.ScalarRampHeight, 1.0f);
 		ClampMin(TEXT("ControlLayout.ColorRampHeight"), InOutTheme.ControlLayout.ColorRampHeight, 1.0f);
+		ClampMin(TEXT("ControlLayout.ColorRampStopLabelGap"), InOutTheme.ControlLayout.ColorRampStopLabelGap, 0.0f);
+		ClampMin(TEXT("ControlLayout.ColorRampStopSwatchWidth"), InOutTheme.ControlLayout.ColorRampStopSwatchWidth, 1.0f);
+		ClampMin(TEXT("ControlLayout.ColorRampStopSwatchHeight"), InOutTheme.ControlLayout.ColorRampStopSwatchHeight, 1.0f);
+		ClampMin(TEXT("ControlLayout.ColorRampChromeGap"), InOutTheme.ControlLayout.ColorRampChromeGap, 0.0f);
 		ClampMin(TEXT("ControlLayout.HairlineThickness"), InOutTheme.ControlLayout.HairlineThickness, 0.0f);
 		ClampMin(TEXT("ControlLayout.ModifiedStripeWidth"), InOutTheme.ControlLayout.ModifiedStripeWidth, 0.0f);
 		ClampMin(TEXT("ControlLayout.BadgeCornerRadius"), InOutTheme.ControlLayout.BadgeCornerRadius, 0.0f);

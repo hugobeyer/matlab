@@ -52,14 +52,14 @@ void SMixtormat::RebuildRecipeGallery()
 		if (!RecipeSearchText.IsEmpty() && !(Entry->Name + TEXT(" ") + Entry->Category + TEXT(" ") + Entry->Description).Contains(RecipeSearchText)) { continue; }
 		++Visible;
 		const FString Filename = Entry->Filename;
-		const FText Origin = Entry->bShipped ? LOCTEXT("ShippedRecipeBadge", "Shipped · Read-only") : LOCTEXT("UserRecipeBadge", "User Recipe");
+		const FText Origin = Entry->bShipped ? LOCTEXT("ShippedRecipeBadge", "Plugin Recipe") : LOCTEXT("UserRecipeBadge", "User Recipe");
 		RecipeListBox->AddSlot().AutoHeight()
 		.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().GalleryLayout.TileGap)
 		[
 			SNew(SBox).MinDesiredHeight(FMixtormatThemeStore::GetResolved().ShellLayout.LibraryRowHeight)
 			[
 				SNew(SMixtormatSurfaceCard)
-				.DisplayName(FText::Format(LOCTEXT("RecipeCardHelp", "{0}\n{1}\nClick to insert an editable group; right-click for details and export."), FText::FromString(Entry->Name), Origin))
+				.DisplayName(FText::Format(LOCTEXT("RecipeCardHelp", "{0}\n{1}\nClick to insert an editable group; right-click to save a project copy or update from the selected group. Plugin updates require developer mode."), FText::FromString(Entry->Name), Origin))
 				.AllowSurfaceDrag(false)
 				.OnSelected(FOnMixtormatSurfaceSelected::CreateLambda([this, Filename](FText, FSoftObjectPath) { return InsertRecipe(Filename); }))
 				.OnGetContextMenu(FOnGetContent::CreateSP(this, &SMixtormat::BuildRecipeEntryMenu, Filename))
@@ -92,7 +92,7 @@ void SMixtormat::RebuildRecipeGallery()
 	}
 	if (Visible == 0)
 	{
-		AddText(LOCTEXT("RecipesEmpty", "No matching recipes. Right-click a group → Create Recipe, or import JSON from the Recipes menu."));
+		AddText(LOCTEXT("RecipesEmpty", "No matching recipes. Adjust the search/category filter, or right-click a group → Create Recipe."));
 	}
 }
 
@@ -101,7 +101,7 @@ TSharedRef<SWidget> SMixtormat::BuildRecipeGallery()
 	const TSharedRef<SVerticalBox> Panel = SNew(SVerticalBox);
 	Panel->AddSlot().AutoHeight()
 	[
-		SNew(SMixtormatHelp).Text(LOCTEXT("RecipeGalleryHelp", "Editable group recipes, not live composition references. Shipped entries are read-only; referenced assets must be installed."))
+		SNew(SMixtormatHelp).Text(LOCTEXT("RecipeGalleryHelp", "Editable group recipes, not live composition references. User recipes are saved in project Content. Plugin entries are read-only outside developer mode; referenced assets must be installed."))
 		[
 			SNew(SComboButton)
 			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.InspectorHeaderButton")))

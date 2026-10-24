@@ -539,6 +539,8 @@ TSharedRef<SWidget> SMixtormat::MakeSlider(
 		.ToolTip(ToolTip)
 		.OnValueChanged(OnValueChanged)
 		.OnReset(BoundedReset)
+		.OnContextChanged(FMixtormatOnSliderContextChanged::CreateSP(this, &SMixtormat::OnSliderContextChanged))
+		.OnFeedback(FMixtormatOnSliderFeedback::CreateSP(this, &SMixtormat::ShowPreviewFeedback))
 		// The slider reports its own scrub rather than relying on the global mouse-capture
 		// check, which cannot tell a value drag from a viewport orbit or a splitter drag.
 		.OnBeginDrag(FSimpleDelegate::CreateLambda([this]()

@@ -6,6 +6,7 @@
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Rows/SMixtormatRow.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -90,7 +91,7 @@ TSharedRef<SWidget> SMixtormat::BuildProceduralPeelControls()
 						SNew(SButton)
 						.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 						.Text(LOCTEXT("PPeelSeedMaskClear", "None"))
-						.ToolTipText(LOCTEXT("PPeelSeedMaskClearHint", "Clear the Seed Mask. No external mask contributes to seeding."))
+						.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("PPeelSeedMaskClearHint", "Clear the Seed Mask. No external mask contributes to seeding.")))
 						.OnClicked_Lambda([this]()
 						{
 							if (FMixtormatLayerEffect* E = GetSelectedProceduralPeel())

@@ -5,12 +5,14 @@
 #include "MixtormatGroupControls.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatStyle.h"
+#include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatColorRamp.h"
 #include "UI/Controls/SMixtormatScalarRamp.h"
 #include "UI/Controls/SMixtormatSlider.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
+#include "UI/Parameters/MixtormatParameterPresentation.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -32,7 +34,7 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 	const TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
 	Rows->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 	[
-		MixtormatRow::MakeDropdown(LOCTEXT("GroupControlLabelField", "Label"),
+		MixtormatParameterPresentation::MakeRow(LOCTEXT("GroupControlLabelField", "Label"),
 			SNew(SMixtormatTextFieldGradient)
 			[
 				SNew(SEditableTextBox)
@@ -47,7 +49,7 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 	{
 		Rows->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::RowGap)
 		[
-			MixtormatRow::MakeDropdown(LOCTEXT("GroupControlTypeField", "Type"),
+			MixtormatParameterPresentation::MakeRow(LOCTEXT("GroupControlTypeField", "Type"),
 				SNew(SBox).IsEnabled(!bTypeLocked)
 				[
 					MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
@@ -63,6 +65,7 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 			SNew(STextBlock).AutoWrapText(true)
 			.Text(LOCTEXT("GroupControlConnectHint", "Connect from the parameter itself: right-click a parameter inside this group → Assign to Group Control."))
 			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.OverflowPolicy(ETextOverflowPolicy::Clip)
 		];
 	}
 	Rows->AddSlot().AutoHeight()
@@ -70,10 +73,13 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 		SNew(STextBlock).AutoWrapText(true).Text_Lambda([this]() { return Error; })
 		.Visibility_Lambda([this]() { return Error.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 		.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+		.OverflowPolicy(ETextOverflowPolicy::Clip)
+		.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
+		.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Error))
 	];
 	Rows->AddSlot().AutoHeight().Padding(0.0f, MixtormatTokens::DialogActionsTopMargin, 0.0f, 0.0f)
 	[
-		SNew(SBox).HeightOverride(MixtormatTokens::ButtonHeight)
+		SNew(SBox).MinDesiredHeight(MixtormatTokens::ButtonHeight)
 		[
 			MixtormatRow::MakePair(
 				SNew(SButton)
@@ -167,11 +173,12 @@ void SMixtormatGroupControlPopover::RebuildValueFields()
 			}));
 		AddRow(SNew(STextBlock).AutoWrapText(true)
 			.Text(LOCTEXT("GroupControlRangeHint", "Min / Max set the scrub range. Typed values still use the target's hard limits. Default is used by Reset."))
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel"))));
+			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.OverflowPolicy(ETextOverflowPolicy::Clip));
 	}
 	else if (Draft.Value.Type == EMixtormatParameterValueType::Enum)
 	{
-		AddRow(MixtormatRow::MakeDropdown(LOCTEXT("GroupControlDefault", "Default"),
+		AddRow(MixtormatParameterPresentation::MakeRow(LOCTEXT("GroupControlDefault", "Default"),
 			MixtormatRow::MakeChip(TAttribute<FText>::CreateLambda([this]()
 			{
 				const UEnum* Enum = MixtormatGroupControls::FindEnumType(Draft.Value.TypeName);

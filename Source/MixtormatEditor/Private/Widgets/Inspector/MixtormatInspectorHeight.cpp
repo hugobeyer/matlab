@@ -7,6 +7,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Rows/SMixtormatRow.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -76,7 +77,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::ContactAO; })
-			.ToolTipText(LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan"))
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("PreviewContactAO", "Preview Contact AO coverage in unlit dark red and cyan")))
 			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::ContactAO); }));
 	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOAmount", "Amount"), &FMixtormatLayer::HeightContactAOAmount, 0.0f, 1.0f, 0.01f, 0.0f));
 	AddSliderRow(ContactAO, NumericRow(LOCTEXT("HeightContactAOWidth", "Width"), &FMixtormatLayer::HeightContactAOWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
@@ -91,7 +92,7 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::BorderNormal; })
-			.ToolTipText(LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan"))
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("PreviewBorderNormal", "Preview Border Normal coverage in unlit dark red and cyan")))
 			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::BorderNormal); }));
 	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderLift", "Lift"), &FMixtormatLayer::HeightBorderLift, -1.0f, 1.0f, 0.005f, 0.0f));
 	AddSliderRow(BorderNormal, NumericRow(LOCTEXT("HeightBorderWidth", "Width"), &FMixtormatLayer::HeightBorderWidth, 0.0001f, 1.0f, 0.005f, 0.05f));
@@ -210,9 +211,9 @@ TSharedRef<SWidget> SMixtormat::BuildHeightBlendControls()
 						? EVisibility::Visible
 						: EVisibility::Collapsed;
 				})
-				.ToolTipText(LOCTEXT(
+				.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT(
 					"InvertBaseHeightHint",
-					"Invert the accumulated height from layers below before comparing it with this layer."))
+					"Invert the accumulated height from layers below before comparing it with this layer.")))
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 				[
 					MixtormatRow::MakeTrailing(

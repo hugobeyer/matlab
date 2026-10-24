@@ -11,6 +11,7 @@
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "UI/Parameters/MixtormatParameterAuthoring.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatThemeStore.h"
 
 #define LOCTEXT_NAMESPACE "SMixtormat"
@@ -1952,7 +1953,7 @@ TSharedRef<SWidget> SMixtormat::BuildMaskBar()
 						SNew(STextBlock)
 						.Text(LOCTEXT("MaskGalleryHeading", "MASKS"))
 						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.GroupButtonText")))
-						.ToolTipText(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT"))
+						.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("MaskBarHeading", "MASKS · SELECT, THEN RMB A LAYER OR EFFECT")))
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()

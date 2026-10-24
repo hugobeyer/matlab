@@ -16,6 +16,7 @@
 #include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Parameters/SMixtormatDriverPopover.h"
 #include "UI/Parameters/SMixtormatParameterControl.h"
+#include "UI/Parameters/MixtormatParameterPresentation.h"
 #include "UI/Parameters/MixtormatShaderParamScanner.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -953,10 +954,7 @@ namespace
 
 	TSharedRef<SWidget> InfoRow(const FText& Label, const FText& Value, const FText& ToolTip = FText::GetEmpty())
 	{
-		return MixtormatRow::Make(
-			Label,
-			SNew(STextBlock).Text(Value),
-			ToolTip);
+		return MixtormatParameterPresentation::MakeInfoRow(Label, Value, ToolTip);
 	}
 }
 
@@ -1161,10 +1159,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterInfoPanelWidth)
-				[
-					Rows
-				]
+				MixtormatParameterPresentation::MakeScrollableContent(Rows,
+					FMixtormatThemeStore::GetResolved().ControlLayout.ParameterInfoPanelWidth)
 			]);
 	return Menu.Build();
 }
@@ -1247,10 +1243,8 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterRangePanelWidth)
-				[
-					Rows
-				]
+				MixtormatParameterPresentation::MakeScrollableContent(Rows,
+					FMixtormatThemeStore::GetResolved().ControlLayout.ParameterRangePanelWidth)
 			]);
 	return Menu.Build();
 }
@@ -1332,7 +1326,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 			.AutoHeight()
 			.Padding(0.0f, 0.0f, 0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap)
 			[
-				MixtormatRow::Make(Label, SNew(STextBlock).Text(Value))
+				MixtormatParameterPresentation::MakeInfoRow(Label, Value)
 			];
 	};
 	// Numeric authoring row. The value reads back live from the pending entry, so a drag shows
@@ -1601,10 +1595,8 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
 				FMixtormatThemeStore::GetResolved().ControlLayout.DriverPopoverInnerGap))
 			[
-				SNew(SBox).WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.ParameterAuthoringPanelWidth)
-				[
-					Rows
-				]
+				MixtormatParameterPresentation::MakeScrollableContent(Rows,
+					FMixtormatThemeStore::GetResolved().ControlLayout.ParameterAuthoringPanelWidth)
 			]);
 	return Menu.Build();
 }

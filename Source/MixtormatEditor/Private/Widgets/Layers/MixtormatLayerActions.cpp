@@ -15,6 +15,33 @@
 
 using namespace MixtormatLayersPrivate;
 
+void SMixtormat::ShowQuickControlsAddedFeedback(const FMixtormatChildAddress& Address)
+{
+	if (!bQuickControlsOpen) { return; }
+	const FMixtormatLayerChild* Child = ResolveChildAt(Address);
+	if (!Child) { return; }
+	FText OwnerName;
+	if (Child->ScopeOwnerChildId.IsValid())
+	{
+		const FMixtormatLayerChild* Owner = ResolveChildAt(
+			{Address.OwnerType, Address.OwnerId, Child->ScopeOwnerChildId});
+		if (Owner) { OwnerName = GetLayerChildName(*Owner); }
+	}
+	else if (Address.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, Address.OwnerId);
+		if (Group) { OwnerName = Group->DisplayName; }
+	}
+	else
+	{
+		const FMixtormatLayer* Layer = WorkingLayers.FindByPredicate(
+			[&Address](const FMixtormatLayer& Candidate) { return Candidate.LayerId == Address.OwnerId; });
+		if (Layer) { OwnerName = Layer->DisplayName; }
+	}
+	ShowPreviewFeedback(FText::Format(LOCTEXT("QuickChildAddedFeedback", "Added {0} · {1}"),
+		GetLayerChildName(*Child), OwnerName));
+}
+
 void SMixtormat::InitializeNewLayer(
 	FMixtormatLayer& Layer, const EMixtormatLayerType LayerType, const int32 LayerNumber) const
 {
@@ -916,6 +943,7 @@ FReply SMixtormat::AssignMaskToLayer(const int32 LayerIndex, const FSoftObjectPa
 	Child.DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
 	ApplyLinkDefaults(Child, Layer.LayerId);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
@@ -961,6 +989,8 @@ FReply SMixtormat::AddMaskFilterToLayerChild(
 	}
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(WorkingLayers[LayerIndex].Children[InsertAt]);
 	ApplyLinkDefaults(WorkingLayers[LayerIndex].Children[InsertAt], WorkingLayers[LayerIndex].LayerId);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, WorkingLayers[LayerIndex].LayerId,
+		WorkingLayers[LayerIndex].Children[InsertAt].ChildId});
 
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1007,6 +1037,7 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	ScopedMask.Mask = MoveTemp(NewMask);
 	Layer.Children.Insert(MoveTemp(ScopedMask), InsertAt);
 	ApplyLinkDefaults(Layer.Children[InsertAt], Layer.LayerId);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.Children[InsertAt].ChildId});
 
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
@@ -1463,6 +1494,7 @@ FReply SMixtormat::AddEffectToLayer(const int32 LayerIndex, const FSoftObjectPat
 
 	// The database speaks per family; an asset child's family is the asset's type.
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -1649,6 +1681,7 @@ FReply SMixtormat::AddMaskFilterToGroupChild(
 	}
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Group->Children[InsertAt]);
 	ApplyLinkDefaults(Group->Children[InsertAt], GroupId);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Group, GroupId, Group->Children[InsertAt].ChildId});
 	// The insert index, not the appended default: a filter lands inside its owner's subtree, which
 	// is nowhere near the end of the stack.
 	FinishGroupChildEdit(GroupId, InsertAt);
@@ -1697,6 +1730,7 @@ FReply SMixtormat::AddMaskToGroup(const FGuid GroupId, const FSoftObjectPath Mas
 		if (Child->DisplayName.IsEmpty())
 			Child->DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
 		MixtormatParameterAuthoring::ApplyAuthoringDefaults(*Child);
+		ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Group, GroupId, Child->ChildId});
 		FinishGroupChildEdit(GroupId);
 	}
 	return FReply::Handled();
@@ -2128,6 +2162,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 			return FReply::Handled();
 		}
 		ApplyLinkDefaults((*Children)[CreatedIndex], Owner.OwnerId);
+		ShowQuickControlsAddedFeedback({Owner.OwnerType, Owner.OwnerId, (*Children)[CreatedIndex].ChildId});
 		if (Target.IsGroup())
 		{
 			FinishGroupChildEdit(Target.GroupId, CreatedIndex);
@@ -2152,6 +2187,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		{
 			ApplyChildCreationDefaults(*Child, Kind);
 			ApplyLinkDefaults(*Child, Target.GroupId);
+			ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Group, Target.GroupId, Child->ChildId});
 			FinishGroupChildEdit(Target.GroupId);
 		}
 		if (Kind == EMixtormatChildCreation::NoiseMask) { LastHistoryRecordTime = 0.0; }
@@ -2171,6 +2207,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		Layer.Children[CreatedIndex].DisplayName = MakeGenericMaskName(WorkingLayers, WorkingLayerGroups);
 	}
 	ApplyLinkDefaults(Layer.Children[CreatedIndex], Layer.LayerId);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.Children[CreatedIndex].ChildId});
 	SetLayerExpanded(Target.LayerIndex, true);
 	SelectWorkingChild(Target.LayerIndex, CreatedIndex);
 	RefreshLayeredPreview();
@@ -2332,6 +2369,7 @@ FReply SMixtormat::AddCraquelureToLayer(const int32 LayerIndex)
 	FMixtormatLayerChild& Child = Layer.Children.AddDefaulted_GetRef();
 	Child.Type = EMixtormatLayerChildType::Craquelure;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedMaskIndex = Layer.Children.Num() - 1;
 	SelectedEffectIndex = INDEX_NONE;
@@ -2467,6 +2505,7 @@ FReply SMixtormat::AddStainToLayer(
 	Child.Effect.ProceduralType = EMixtormatEffectType::Stain;
 	Child.Effect.StainMode = Mode;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2491,6 +2530,7 @@ FReply SMixtormat::AddRunoffToLayer(const int32 LayerIndex)
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Runoff;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2513,6 +2553,7 @@ FReply SMixtormat::AddErosionToLayer(const int32 LayerIndex)
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Erosion;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2535,6 +2576,7 @@ FReply SMixtormat::AddBreakupToLayer(const int32 LayerIndex)
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Breakup;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2557,6 +2599,7 @@ FReply SMixtormat::AddWornEdgesToLayer(const int32 LayerIndex)
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::WornEdges;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2579,6 +2622,7 @@ FReply SMixtormat::AddGradeToLayer(const int32 LayerIndex)
 	Child.Type = EMixtormatLayerChildType::Effect;
 	Child.Effect.ProceduralType = EMixtormatEffectType::Grade;
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Child);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Child.ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = Layer.Children.Num() - 1;
 	SelectedMaskIndex = INDEX_NONE;
@@ -2624,6 +2668,7 @@ FReply SMixtormat::AddFlowWarpToLayer(
 		Layer.Children.Insert(MakeFlowWarpPrototype(), InsertAt);
 	}
 	MixtormatParameterAuthoring::ApplyAuthoringDefaults(Layer.Children[InsertAt]);
+	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.Children[InsertAt].ChildId});
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = InsertAt;
 	SelectedMaskIndex = INDEX_NONE;

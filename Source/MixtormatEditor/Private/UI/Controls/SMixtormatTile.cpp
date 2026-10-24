@@ -8,6 +8,7 @@
 #include "Style/MixtormatRecipes.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Primitives/MixtormatSurfacePainter.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
@@ -25,7 +26,7 @@ void SMixtormatTile::Construct(const FArguments& InArgs)
 
 	if (InArgs._ToolTip.IsSet())
 	{
-		SetToolTipText(InArgs._ToolTip);
+		SetToolTip(SMixtormatHelp::MakeStyledToolTip(InArgs._ToolTip));
 	}
 
 	CaptionTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(

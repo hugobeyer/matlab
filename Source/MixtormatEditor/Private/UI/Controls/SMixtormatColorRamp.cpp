@@ -6,6 +6,7 @@
 #include "MixtormatColorRampMath.h"
 #include "Rendering/DrawElements.h"
 #include "Style/MixtormatThemeStore.h"
+#include "Style/MixtormatTypography.h"
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Controls/SMixtormatSlider.h"
@@ -461,15 +462,21 @@ FText SMixtormatColorRamp::GetPresetName(const int32 PresetIndex)
 
 TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
 {
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const auto& Layout = Resolved.ControlLayout;
+	const FTextBlockStyle LabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 	return SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, Layout.ColorRampStopLabelGap, 0.0f)
 		[
-			SNew(STextBlock).Text(FText::FromString(TEXT("Stop")))
-			.ColorAndOpacity(FSlateColor(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted)))
+			SNew(STextBlock).Text(NSLOCTEXT("SMixtormat", "ColorRampStopLabel", "Stop"))
+			.Font(LabelStyle.Font)
+			.ColorAndOpacity(LabelStyle.ColorAndOpacity)
 		]
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 8.0f, 0.0f)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, Layout.ScalarRampToolbarGroupGap, 0.0f)
 		[
-			SNew(SBox).WidthOverride(22.0f).HeightOverride(16.0f)
+			SNew(SBox).WidthOverride(Layout.ColorRampStopSwatchWidth).HeightOverride(Layout.ColorRampStopSwatchHeight)
 			[
 				SNew(SButton)
 				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
@@ -485,7 +492,7 @@ TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
 							? Ramp.Stops[SelectedPoint].Color : FLinearColor::Black;
 					})
 					.ShowBackgroundForAlpha(false)
-					.Size(FVector2D(22.0, 16.0))
+					.Size(FVector2D(Layout.ColorRampStopSwatchWidth, Layout.ColorRampStopSwatchHeight))
 				]
 			]
 		]
@@ -533,7 +540,8 @@ void SMixtormatColorRamp::RebuildChrome()
 {
 	if (!ChromeBox.IsValid()) { return; }
 	ChromeBox->ClearChildren();
-	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)[BuildSelectedStopRow()];
+	ChromeBox->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
+			FMixtormatThemeStore::GetResolved().ControlLayout.ColorRampChromeGap)[BuildSelectedStopRow()];
 }
 
 void SMixtormatColorRamp::OpenStopPicker(const int32 StopIndex)

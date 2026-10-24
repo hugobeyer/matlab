@@ -57,7 +57,13 @@ namespace MixtormatPresetStore
 	bool ListModules(const FMixtormatLayerChild& Child, TArray<FModulePreset>& OutPresets, FText& Error);
 	bool ImportModule(const FString& Filename, const FMixtormatLayerChild& Expected, FText& Error);
 	bool ExportModule(const FString& Filename, const FModulePreset& Preset, FText& Error);
-	bool SaveRecipe(const FRecipePreset& Preset, FText& Error);
+	enum class ERecipeSaveDestination : uint8 { Project, Plugin };
+	// Plugin returns an empty path if Mixtormat is unavailable; querying does not grant write access.
+	FString GetRecipeDirectory(ERecipeSaveDestination Destination);
+	// Explicit updates require the existing name, ID and filename in the destination; never create.
+	// Plugin saves require developer metadata mode. Asset checks are local, not a packaging guarantee.
+	bool SaveRecipe(const FRecipePreset& Preset, FText& Error,
+		ERecipeSaveDestination Destination = ERecipeSaveDestination::Project, bool bOverwrite = false);
 	bool LoadRecipe(const FString& Filename, FRecipePreset& OutPreset, FText& Error);
 	bool ListRecipes(TArray<FRecipePreset>& OutPresets, FText& Error);
 	bool ImportRecipe(const FString& Filename, FText& Error);

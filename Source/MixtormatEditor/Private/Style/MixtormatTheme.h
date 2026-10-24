@@ -677,6 +677,13 @@ namespace Mixtormat
 		float ScalarRampPointSize = 7.0f;
 		float ScalarRampToolbarGroupGap = 8.0f;
 		float ColorRampHeight = 56.0f;
+		// Stop-row geometry is independent of the larger inspector swatch and its label gap.
+		float ColorRampStopLabelGap = 6.0f;
+		float ColorRampStopSwatchWidth = 22.0f;
+		float ColorRampStopSwatchHeight = 16.0f;
+		float ColorRampChromeGap = 2.0f;
+		// Underlined tabs retain their neutral white foreground; only its coverage changes.
+		float TabInactiveOpacity = 0.55f;
 		float HairlineThickness = 1.0f;
 		float ModifiedStripeWidth = 2.0f;
 		float ModifiedStripeOpacity = 0.8f;

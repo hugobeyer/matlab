@@ -10,7 +10,7 @@
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "Style/MixtormatTypography.h"
 #include "Widgets/SNullWidget.h"
-#include "Widgets/SToolTip.h"
+
 #include "Widgets/Layout/SScrollBox.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 
@@ -421,7 +421,7 @@ TSharedRef<SWidget> SMixtormat::BuildGeneratorDisclosure(const FMixtormatChildAd
 	{ return SNullWidget::NullWidget; }
 	return SNew(SMixtormatLayerIcon)
 		.MaxSize(FMixtormatThemeStore::GetResolved().LayerLayout.ChildRowHeight)
-		.ToolTipText(ToolTip.IsEmpty() ? LOCTEXT("GeneratorDisclosure", "Show or hide this generator's displayed children.") : ToolTip)
+		.ToolTip(SMixtormatHelp::MakeStyledToolTip(ToolTip.IsEmpty() ? LOCTEXT("GeneratorDisclosure", "Show or hide this generator's displayed children.") : ToolTip))
 		.Icon_Lambda([this, Address]()
 		{
 			return CollapsedGeneratorAddresses.Contains(Address) ? MixtormatIcons::ChevronRight() : MixtormatIcons::ChevronDown();
@@ -852,7 +852,7 @@ TSharedRef<SWidget> SMixtormat::BuildInstanceBanner()
 		return SNew(SButton)
 			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 			.ContentPadding(FMixtormatThemeStore::GetResolved().ControlLayout.RowGap)
-			.ToolTipText(Hint)
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(Hint))
 			.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
 			[
 				SNew(STextBlock)
@@ -1200,26 +1200,15 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 		MakeShared<FAssetThumbnail>(FAssetData(Texture), Size, Size, ThumbnailPool);
 	LayerThumbnails.Add(Thumbnail);
 
-	return SNew(SToolTip)
-		.BorderImage(FMixtormatStyle::Get().GetBrush(TEXT("Mixtormat.Panel")))
+	const float PreviewSize = FMath::Min(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize,
+		FMath::Max(1.0f, MixtormatTokens::HelpMaxWidth - 2.0f * MixtormatTokens::HelpPadding));
+	return SMixtormatHelp::MakeStyledToolTip(FText::FromString(MaskPath.GetAssetName()),
+		SNew(SBox)
+		.WidthOverride(PreviewSize)
+		.HeightOverride(PreviewSize)
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SBox)
-				.WidthOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize)
-				.HeightOverride(FMixtormatThemeStore::GetResolved().GalleryLayout.TileSize)
-				[
-					Thumbnail->MakeThumbnailWidget()
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, FMixtormatThemeStore::GetResolved().ControlLayout.RowGap, 0.0f, 0.0f)
-			[
-				SNew(STextBlock)
-				.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.LayerName")))
-				.Text(FText::FromString(MaskPath.GetAssetName()))
-			]
-		];
+			Thumbnail->MakeThumbnailWidget()
+		]);
 }
 
 bool SMixtormat::IsGroupChildEnabled(const FMixtormatLayerChild& Child)

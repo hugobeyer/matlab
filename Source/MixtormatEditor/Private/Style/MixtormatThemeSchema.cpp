@@ -442,6 +442,11 @@ void AddIconRole(
 		NUM("ControlLayout.ScalarRampPointSize", Controls, "Layout", "Scalar Ramp Point Size", ControlLayout.ScalarRampPointSize, 2, 16, .5, 1, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.ScalarRampToolbarGroupGap", Controls, "Layout", "Scalar Ramp Toolbar Group Gap", ControlLayout.ScalarRampToolbarGroupGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ColorRampHeight", Controls, "Layout", "Color Ramp Height", ControlLayout.ColorRampHeight, 24, 128, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorRampStopLabelGap", Controls, "Layout", "Color Ramp Stop Label Gap", ControlLayout.ColorRampStopLabelGap, 0, 32, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorRampStopSwatchWidth", Controls, "Layout", "Color Ramp Stop Swatch Width", ControlLayout.ColorRampStopSwatchWidth, 1, 240, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorRampStopSwatchHeight", Controls, "Layout", "Color Ramp Stop Swatch Height", ControlLayout.ColorRampStopSwatchHeight, 1, 64, 1, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.ColorRampChromeGap", Controls, "Layout", "Color Ramp Chrome Gap", ControlLayout.ColorRampChromeGap, 0, 24, .5, 1, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.TabInactiveOpacity", Controls, "Layout", "Inactive Tab Opacity", ControlLayout.TabInactiveOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.HairlineThickness", Controls, "Layout", "Hairline Thickness", ControlLayout.HairlineThickness, 0, 4, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.ModifiedStripeWidth", Controls, "Layout", "Modified Stripe Width", ControlLayout.ModifiedStripeWidth, 0, 8, .05, 2, EMixtormatThemeRefreshMode::Paint);
 		NUM("ControlLayout.ModifiedStripeOpacity", Controls, "Layout", "Modified Stripe Opacity", ControlLayout.ModifiedStripeOpacity, 0, 1, .01, 2, EMixtormatThemeRefreshMode::Paint);

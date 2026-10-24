@@ -33,11 +33,9 @@ void SMixtormatParameterControl::Construct(const FArguments& InArgs)
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(MixtormatTokens::ParameterStateGap, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(MixtormatTokens::ParameterStateSlotWidth)
-				.HAlign(HAlign_Center)
+				.Padding(FMargin(MixtormatTokens::ParameterStateGap, 0.0f, 0.0f, 0.0f))
 				// Collapsed, not hidden: a parameter with nothing on it must give the width
 				// back. A hollow dot on all ~118 rows is noise, and reserving its 12px so it
 				// could appear on hover would ripple the whole column as the cursor ran down
@@ -46,15 +44,20 @@ void SMixtormatParameterControl::Construct(const FArguments& InArgs)
 				.Visibility(TAttribute<EVisibility>::CreateSP(
 					this, &SMixtormatParameterControl::GetStateVisibility))
 				[
-					SAssignNew(DriverAnchor, SMixtormatPopupAnchor)
-					.OnGetMenuContent(InArgs._OnGetDriverContent)
+					SNew(SBox)
+					.WidthOverride(MixtormatTokens::ParameterStateSlotWidth)
+					.HAlign(HAlign_Center)
 					[
-						SNew(SMixtormatStatusDot)
-						.Size(FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize)
-						.BrushName(TAttribute<FName>::CreateSP(
-							this, &SMixtormatParameterControl::GetStateBrushName))
-						.ToolTip(TAttribute<FText>::CreateSP(this, &SMixtormatParameterControl::GetStateToolTip))
-						.OnClicked(FSimpleDelegate::CreateSP(this, &SMixtormatParameterControl::OpenDriverPopover))
+						SAssignNew(DriverAnchor, SMixtormatPopupAnchor)
+						.OnGetMenuContent(InArgs._OnGetDriverContent)
+						[
+							SNew(SMixtormatStatusDot)
+							.Size(FMixtormatThemeStore::GetResolved().ControlLayout.StatusDotSize)
+							.BrushName(TAttribute<FName>::CreateSP(
+								this, &SMixtormatParameterControl::GetStateBrushName))
+							.ToolTip(TAttribute<FText>::CreateSP(this, &SMixtormatParameterControl::GetStateToolTip))
+							.OnClicked(FSimpleDelegate::CreateSP(this, &SMixtormatParameterControl::OpenDriverPopover))
+						]
 					]
 				]
 			]

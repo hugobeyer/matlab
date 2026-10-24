@@ -39,6 +39,8 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 	OnReset = InArgs._OnReset;
 	OnBeginDrag = InArgs._OnBeginDrag;
 	OnEndDrag = InArgs._OnEndDrag;
+	OnContextChanged = InArgs._OnContextChanged;
+	OnFeedback = InArgs._OnFeedback;
 	EntrySession = MakeShared<FMixtormatEntryCommit>();
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 	ControlLabelTextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
@@ -77,6 +79,47 @@ void SMixtormatSlider::Construct(const FArguments& InArgs)
 			.OnTextCommitted(this, &SMixtormatSlider::HandleTextCommitted)
 		]
 	];
+}
+
+void SMixtormatSlider::NotifyContextChanged()
+{
+	OnContextChanged.ExecuteIfBound(SharedThis(this));
+}
+
+void SMixtormatSlider::OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
+	NotifyContextChanged();
+}
+
+void SMixtormatSlider::OnMouseLeave(const FPointerEvent& MouseEvent)
+{
+	SCompoundWidget::OnMouseLeave(MouseEvent);
+	NotifyContextChanged();
+}
+
+FText SMixtormatSlider::GetInteractionHint() const
+{
+	if (bEditing)
+	{
+		return LOCTEXT("SliderEntryGuidance", "Enter / Tab: Accept · Esc / RMB: Cancel");
+	}
+	if (bDragging)
+	{
+		return DeltaAttribute.Get(0.0) > 0.0
+			? LOCTEXT("SliderScrubSnapGuidance", "Shift: Fine · Ctrl+Shift: Finer · Ctrl: Snap")
+			: LOCTEXT("SliderScrubGuidance", "Shift: Fine · Ctrl+Shift: Finer");
+	}
+	return LOCTEXT("SliderHoverGuidance", "Drag: Adjust · Click: Type · MMB / Backspace: Reset");
+}
+
+void SMixtormatSlider::ReportValueChange(const double PreviousValue)
+{
+	if (GetValue() != PreviousValue)
+	{
+		OnFeedback.ExecuteIfBound(FText::Format(LOCTEXT("SliderValueFeedback", "{0} · {1}"),
+			LabelAttribute.Get(), FText::FromString(FormatValue(GetValue()))));
+	}
 }
 
 double SMixtormatSlider::GetValue() const
@@ -125,6 +168,7 @@ void SMixtormatSlider::BeginTextEntry()
 		return;
 	}
 	bEditing = true;
+	NotifyContextChanged();
 	EntryWidget->SetVisibility(EVisibility::Visible);
 	EntryWidget->SetText(FText::FromString(FormatValue(GetValue())));
 	FSlateApplication::Get().SetKeyboardFocus(EntryWidget, EFocusCause::SetDirectly);
@@ -146,6 +190,7 @@ void SMixtormatSlider::EndTextEntry()
 		return;
 	}
 	bEditing = false;
+	NotifyContextChanged();
 	if (EntryWidget.IsValid())
 	{
 		EntryWidget->SetVisibility(EVisibility::Collapsed);
@@ -169,7 +214,9 @@ void SMixtormatSlider::HandleTextCommitted(const FText& Text, const ETextCommit:
 	double Parsed = 0.0;
 	if (LexTryParseString(Parsed, *Text.ToString()))
 	{
+		const double PreviousValue = GetValue();
 		CommitValue(Parsed, false);
+		ReportValueChange(PreviousValue);
 	}
 
 	// Enter normally clears keyboard focus after SEditableTextBox commits. In an application-menu
@@ -228,6 +275,7 @@ FReply SMixtormatSlider::OnMouseButtonDown(const FGeometry& MyGeometry, const FP
 	bPushedHigh = false;
 	DragTravel = 0.0f;
 	LastDragScreenX = static_cast<float>(MouseEvent.GetScreenSpacePosition().X);
+	NotifyContextChanged();
 
 	// Capturing is what makes the owner's interactive-edit check see the scrub, so undo history
 	// is deferred and previews are rate-limited. The cursor stays the real, visible one: it is
@@ -401,10 +449,12 @@ void SMixtormatSlider::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEv
 	if (bDragging && bMovedPastThreshold)
 	{
 		FinishDragRange();
+		ReportValueChange(DragStartValue);
 		OnEndDrag.ExecuteIfBound();
 	}
 	bDragging = false;
 	bMovedPastThreshold = false;
+	NotifyContextChanged();
 	SCompoundWidget::OnMouseCaptureLost(CaptureLostEvent);
 }
 
@@ -419,6 +469,7 @@ FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& 
 	if (bMovedPastThreshold)
 	{
 		FinishDragRange();
+		ReportValueChange(DragStartValue);
 		OnEndDrag.ExecuteIfBound();
 	}
 	else
@@ -427,6 +478,7 @@ FReply SMixtormatSlider::OnMouseButtonUp(const FGeometry&, const FPointerEvent& 
 		BeginTextEntry();
 	}
 	bMovedPastThreshold = false;
+	NotifyContextChanged();
 	return FReply::Handled().ReleaseMouseCapture();
 }
 

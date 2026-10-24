@@ -243,7 +243,14 @@ namespace
 				TEXT("SSSAmount"), TEXT("Bending"), TEXT("Support"), TEXT("SurfaceTiling"),
 				TEXT("GravityBulge"), TEXT("GravityAngle"), TEXT("GravityHold"), TEXT("VascularScale"), TEXT("VascularDensity"),
 				TEXT("TissueCells"), TEXT("FoldCells"), TEXT("DetailCells"), TEXT("PoreCells"),
-				TEXT("DetailTiling"), TEXT("IOR"), TEXT("Amount")})
+				TEXT("DetailTiling"), TEXT("IOR"), TEXT("Amount"),
+				TEXT("CavityAttraction"), TEXT("OcclusionInfluence"), TEXT("Moisture"),
+				TEXT("SurfaceAnglePreference"), TEXT("SlopeAngle"), TEXT("Competition"),
+				TEXT("ExposureTolerance"), TEXT("ColonyDensity"), TEXT("GrowthSpread"),
+				TEXT("Coverage"), TEXT("Splatter"), TEXT("CushionSize"), TEXT("ShootDensity"),
+				TEXT("ShootLength"), TEXT("FiberThickness"), TEXT("Hydration"),
+				TEXT("SurfaceWetness"), TEXT("WetDarkening"), TEXT("ColonyVariation"),
+				TEXT("LeafVariation"), TEXT("TipColor"), TEXT("Damage"), TEXT("Plumpness")})
 			{
 				Add(ET::Surfacing, Name, {});
 			}

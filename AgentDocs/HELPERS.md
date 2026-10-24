@@ -10,9 +10,12 @@ plus the TODO lists for mapping and architecture work on top of it.
 - Tooltips name the key as a sentence suffix: `"Collapse or expand the material
   and mask galleries (G)."` — action first, key in parentheses, period last.
 - Menus advertise keys with `.Shortcut(LOCTEXT(..., "F2"))` on the row.
-- V/W/E now use transient top-center viewport feedback, not `WorkingStatusText`.
-  Repeated actions replace/restart the label; 1.4s hold + 0.5s fade. Existing PreviewLabel
-  typography, preview plate and padding are reused; H/Space hides optional feedback.
+- V/W/E use transient top-center viewport feedback, not `WorkingStatusText`.
+  Q mesh/light/reset choices, successful additions/output copies and shared-slider results
+  reuse it. Repeated actions replace/restart the label; 1.4s hold + 0.5s fade. PreviewLabel,
+  preview plate and padding are reused; H/Space hides optional feedback.
+  Active slider guidance hides the center label; changed values report once on release,
+  capture loss or accepted type-in, never per mouse move. Existing status writes are preserved.
   F moves the camera and Z updates displacement; existing preview actions are preserved.
 - Aliases are not advertised: `F12` works but menus say `F2`; `Ctrl+Shift+Z`
   is named in the Redo tooltip only because it is a second redo path.
@@ -36,7 +39,9 @@ plus the TODO lists for mapping and architecture work on top of it.
 | Legacy native tooltips | `.ToolTipText(...)` / `SetToolTipText(...)` | Forbidden for new Mixtormat code. Migrate existing sites to styled help; do not repeat the native pattern. |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
 | Status bar | `WorkingStatusText` | Document/operation status; V/W/E feedback does not overwrite it. |
-| Transient mode feedback | `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback`, `ShowPreviewFeedback` | Top-center channel or module/output label; off/unavailable/reset messages; one active timer, no queued messages. |
+| Transient mode/action feedback | `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback`, `ShowPreviewFeedback` | Modes, Q choices/successful edits and slider results; one active timer, no queued messages. Suppressed during active slider interaction. |
+| Interaction guidance | `SMixtormat_PreviewHints.cpp::GetInteractionHint` | Active slider → open Q/control → selection hints. Passive card hover and weak slider ownership; `HelpDelay` settling, no widget-tree scan. |
+| Slider context signals | `SMixtormatSlider`, `SMixtormat::MakeSlider` | Existing mouse/entry owners report hover, scrub and type-in. Snap guidance uses the live positive delta; successful value changes report once. |
 | Empty states | Text blocks in panels | e.g. "No global variables yet.", "No layer selected". |
 | Entry-commit rules | `UI/Controls/MixtormatEntryCommit.h` | Enter/Tab/click-away accept; Escape/right-click cancel — documented in the header. |
 
@@ -132,8 +137,12 @@ table in as surfaces land; add a "Help text" section to the mandated
 
 See [context-help-q-plan.md](../auditdocs/workspace-layout/context-help-q-plan.md) for
 source-checked Q capabilities and staged integration with corner hints/top-center feedback.
-Q already has contextual Actions. Rich interaction-aware guidance and captured action targets
-are proposals, not completed features; retain existing gesture/focus behavior.
+Increment 1 adds settled Q-card guidance, shared-slider hover/scrub/type-in guidance and
+mesh/light/action/result feedback. The original Q focus gates, gestures, card geometry and
+nested-menu behavior remain; proximity dismissal also pauses during slider interactions.
+Creation feedback names the actual inserted child's scope owner; this is not target snapshotting.
+Captured action identities, stable disabled entries/reasons, viewport manipulation and drag
+contexts remain planned. Owner runtime checks are listed in the plan; none have been run.
 
 ## TODOs — architecture
 
@@ -145,10 +154,9 @@ are proposals, not completed features; retain existing gesture/focus behavior.
   `G`/`I`/`F2` need workspace focus. Decide whether all workspace-level keys
   move to the preprocessor, or none. `Tab` is the counter-example: it must stay
   viewport-scoped, so the split is likely permanent.
-- **No contextual help overlay.** "Overlay text with context" today means
-  tooltips plus the status bar. If a hover/help overlay is wanted (e.g. a
-  viewport-key cheat sheet), extend `SMixtormatHelp` rather than inventing a
-  second tooltip system.
+- **Contextual help uses existing surfaces.** Q cards and shared sliders now report to the
+  corner strip; results reuse the top-center label. Specific explanations remain in
+  `SMixtormatHelp`. Do not add another tooltip/overlay system for the remaining contexts.
 - **Viewport shortcuts lack a consolidated help surface.** The implemented `Q` marking menu
   could also advertise `F`/`H`/`Z`/`V`; that help extension remains a proposal.
   Its delivery history is archived in `AgentDocs/old_docs/viewport-quick-controls-plan.md`.

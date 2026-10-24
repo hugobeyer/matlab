@@ -1,6 +1,7 @@
 # Mixtormat FAB Release — Evidence and Exact Paths
 
-Checked 2026-10-23 by targeted source/config reads. No packaging or runtime validation.
+Targeted source/config reads; recipe storage/workflow updated 2026-10-24.
+No packaging or runtime validation.
 Git stays private; exclusion from a release is not a request to delete repository files.
 See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_AUDIT.md).
 
@@ -42,20 +43,31 @@ See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_
   `Source/MixtormatEditor/Private/Widgets/SMixtormat_Library.cpp::BuildBottomLibrary`.
   Materials/Masks/Recipes use persisted `GalleryColumnWeights.X/Y/Z`.
 - `Source/MixtormatEditor/Private/Widgets/SMixtormat_Recipes.cpp`: recipe cards,
-  search/category filters and shipped read-only versus user labels.
+  search/category filters and plugin versus user labels.
 - `Source/MixtormatEditor/Private/Widgets/SMixtormat_Presets.cpp`: insertion,
-  Refresh Recipes, Save User Copy and referenced-asset details. Insertion appends an
-  independent editable group; document/global settings remain unchanged.
+  Refresh Recipes, Save User Copy, Update from Selected Group and referenced-asset details.
+  Create Recipe also offers Publish Plugin Recipe. Insertion appends an independent
+  editable group; document/global settings remain unchanged.
 - `Source/MixtormatEditor/Private/Services/MixtormatRecipeService.*`: group/layer
   capture, strict dependency-closure validation and insertion preparation.
 - `Source/MixtormatEditor/Private/Services/MixtormatPresetStoreDocuments.cpp`:
-  shipped recipe lookup is `Resources/Presets/Recipes`; recipe files are JSON.
-- Retain intended shipped recipe JSON and every referenced asset during curation.
-  Assets are not embedded in recipes. This check does not establish which recipes ship today.
+  plugin recipes: `<Plugin>/Resources/Presets/Recipes/*.json`;
+  user recipes: `<Project>/Content/Mixtormat/Presets/Recipes/*.json`.
+  These are JSON files, not Content Browser assets. Ramp/module paths are unchanged.
+- Plugin publish/update requires `Mixtormat.Developer.ParameterMeta`; project save is the default.
+  Updates require confirmation and matching destination/name/ID/filename; metadata is retained.
+- Old `Saved/Mixtormat/Presets/Recipes` JSON remains untouched but is no longer listed.
+  Explicitly relocate wanted recipes to the project folder; no migration or fallback was added.
+- Owner decision: ship **all developer-authored recipes**, not a curated subset.
+  Retain their complete asset dependency closure. Assets are referenced, not embedded.
+- Publishing rejects direct/resolved paths outside `/Mixtormat/`, `/Engine/`, `/Script/`.
+  Transitive dependencies and actual package inclusion still require owner checks.
+  This source review does not establish which recipe files currently exist.
 - Owner smoke checks: save a group recipe, search/filter it, insert twice, verify independent
-  groups/internal links and unchanged globals; check user copies and missing-asset errors.
-- Artist menus omit JSON import/export. Card/empty-state help still mentioning those actions
-  is stale copy to fix separately, not a missing feature to reintroduce.
+  groups/internal links and unchanged globals; check project copies and missing-asset errors.
+  Check confirmed updates, retained metadata/identity and developer-gated plugin writes.
+- Artist menus omit JSON import/export. Card/empty-state help now describes Save User Copy,
+  filtering and Create Recipe instead. Gallery restore help includes Recipes (2026-10-24).
 
 ## Filter gaps / limits
 - Explicit includes for both Config JSON files were added on 2026-10-24.
@@ -78,17 +90,18 @@ Do not assume BuildPlugin output must contain no `Binaries/` at all: generated p
 artifacts differ from local development outputs. Check current FAB code-plugin submission
 requirements before final staging. Do not manually zip the entire working tree.
 
-## Content — owner decision and dependency check pending
+## Content — all developer recipes ship; dependency check pending
 `AGENTS.md` excludes Content and binary assets from agent inspection. Previous counts
 (871 Content files, six HDRs) and candidate existence were not revalidated.
-Historical candidates, **not an approved manifest**:
+Historical extra-demo candidates, **not a limit on shipped recipes or an approved manifest**:
 - `Content/Examples/MxT_Peeled_Worned_Wall_Sample.uasset`.
 - `Content/Effects/Peeling/DA_Peeling_Standard_01.uasset`.
 - `Content/Effects/Stain/DA_Stain.uasset`.
 
-Select a small demo set, then check dependencies in Unreal before excluding anything.
+Ship every developer-authored recipe and check its full dependency closure in Unreal
+before excluding anything. A small extra demo set is optional, not a recipe limit.
 Keep required plugin preview/runtime materials, meshes, textures, masks and referenced assets,
-not just the visible demo files. Regenerate sample thumbnails after curation if needed.
+not just visible demo files. Regenerate sample thumbnails after curation if needed.
 A separate demo-project download is an option, not a completed task.
 
 ## Unverified historical claims

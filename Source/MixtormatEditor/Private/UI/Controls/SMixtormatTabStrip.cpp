@@ -125,7 +125,8 @@ namespace
 							{
 								return bSelected.Get(false)
 									? FSlateColor::UseForeground()
-									: FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.55f));
+									: FSlateColor(FLinearColor::White.CopyWithNewOpacity(
+																			FMixtormatThemeStore::GetResolved().ControlLayout.TabInactiveOpacity));
 							})
 							.Text(Label)
 							.Justification(ETextJustify::Center)

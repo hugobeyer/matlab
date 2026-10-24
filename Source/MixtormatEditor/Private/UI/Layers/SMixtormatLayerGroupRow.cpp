@@ -10,6 +10,7 @@
 #include "UI/Atoms/SMixtormatIconButton.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Framework/Application/SlateApplication.h"
@@ -84,9 +85,9 @@ void SMixtormatLayerGroupRow::Construct(const FArguments& InArgs)
 						SNew(SMixtormatLayerIcon)
 						.bVisibility(true)
 						.bOn(bGroupEnabled)
-						.ToolTipText(LOCTEXT(
+						.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT(
 							"GroupEyeHint",
-							"Show or hide every layer in this group. Each layer keeps its own visibility."))
+							"Show or hide every layer in this group. Each layer keeps its own visibility.")))
 						.OnClicked(OnToggleEnabled)
 					]
 

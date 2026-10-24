@@ -7,6 +7,7 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Menus/SMixtormatMenuItem.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBox.h"
@@ -168,7 +169,7 @@ namespace MixtormatMenu
 				[
 					SNew(SMixtormatMenuItem)
 					.Label(Entry.Label)
-					.ToolTipText(Entry.ToolTip)
+					.ToolTip(SMixtormatHelp::MakeStyledToolTip(Entry.ToolTip))
 					.Shortcut(Entry.Shortcut)
 					.Icon(Entry.Icon)
 					.bChecked(Entry.bChecked)

@@ -495,21 +495,36 @@ recipe cards and shipped/user labels. Recipes capture a group and its layers;
 insertion creates an independent editable group, not a live composition reference.
 
 `Widgets/SMixtormat_Presets.cpp` owns insertion and menus: the RECIPES header offers
-Refresh Recipes only; card RMB offers Insert Editable Group, Save User Copy and
-referenced-asset details. Card click also inserts. Insertion appends and selects a new
-group, requires an open/created material and leaves document/global settings unchanged. Shipped recipe
-files are read-only; user copies are separate. Assets are referenced, not embedded.
+Refresh Recipes only; card RMB offers Insert Editable Group, Save User Copy,
+Update from Selected Group and referenced-asset details. Card click also inserts.
+Insertion appends and selects a new group, requires an open/created material and
+leaves document/global settings unchanged. Assets are referenced, not embedded.
+
+Create Recipe saves to the project by default and offers **Publish Plugin Recipe…**
+only when `Mixtormat.Developer.ParameterMeta` is enabled (otherwise disabled).
+Updates capture the selected group and use the shared confirmation dialog, naming
+both source group and destination file. They preserve recipe name/category/description,
+ID and filename; a missing, changed-identity or ambiguous target is rejected, not created.
+Plugin updates require the same developer gate; ordinary users can save separate copies.
 
 `Services/MixtormatRecipeService.*` owns capture, strict dependency-closure validation
-and insertion preparation. `Services/MixtormatPresetStoreDocuments.cpp` loads shipped
-recipes from `Resources/Presets/Recipes` and provides recipe persistence. Shipping
-actual recipe files and their asset dependencies still needs a package-manifest check.
+and insertion preparation. `Services/MixtormatPresetStoreDocuments.cpp` owns persistence:
+- Developer recipes: `<Plugin>/Resources/Presets/Recipes/*.json`; ship all authored recipes.
+- User recipes: `<Project>/Content/Mixtormat/Presets/Recipes/*.json`.
+- These are JSON documents, not Content Browser `.uasset` entries.
+- Ramp/module presets retain their existing Saved-based storage.
+- Earlier `Saved/Mixtormat/Presets/Recipes` files are untouched and no longer listed;
+  explicitly relocate wanted recipe JSON to the project recipe folder. No automatic migration.
+
+Plugin publishing checks direct asset paths and resolved targets against `/Mixtormat/`,
+`/Engine/` and `/Script/`, and rejects project/other-plugin references. It does not check
+transitive package dependencies or prove packaged availability. Ship every recipe's full
+asset dependency closure and verify it in a clean project. Source-only change; no runtime test.
 
 Artist menus do not expose JSON import/export; developer serialization APIs remain.
-Remaining code-copy issues (not changed by this docs audit):
-- `SMixtormat_Recipes.cpp`: `RecipeCardHelp` promises export; `RecipesEmpty` suggests JSON import.
-  Neither action exists in the artist menus.
-- `SMixtormat_Shell.cpp`: `RestoreGalleryStyledHint` names materials and masks, omitting recipes.
+Help copy corrected 2026-10-24: recipe cards name Save User Copy, the empty state points
+to filters/Create Recipe, and gallery restore help includes Recipes. The welcome guide
+names Q for geometry and V/W/E for previews; reset help names Shift+V.
 Source-reviewed only; interaction and asset/package availability remain unverified.
 The left rail has its own `NavigationRail` icon role (18px glyph, 24px shipped target),
 independent of toolbar sizing. It overlays the full-width left page's leading

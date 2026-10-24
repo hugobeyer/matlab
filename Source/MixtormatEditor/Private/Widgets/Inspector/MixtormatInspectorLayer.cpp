@@ -5,6 +5,7 @@
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
@@ -284,7 +285,7 @@ void SMixtormat::AddGeneratedFeatureCards(const TSharedRef<SVerticalBox>& Panel)
 			})
 			.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
 			.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::GeneratedFeature; })
-			.ToolTipText(LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan"))
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("PreviewGeneratedFeature", "Preview the cavity-to-convex feature mask in unlit dark red and cyan")))
 			.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::GeneratedFeature); }));
 
 	AddSliderRow(Masks, MakeMemberSlider<FMixtormatLayer>(
@@ -353,7 +354,7 @@ TSharedRef<SWidget> SMixtormat::BuildChannelInfluenceControls()
 			SNew(SButton)
 			.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 			.ContentPadding(2.0f)
-			.ToolTipText(LOCTEXT("FuzzColorHint", "Fuzz Color (DA_FuzzColor). No positive fuzz influence leaves the master's color unchanged."))
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("FuzzColorHint", "Fuzz Color (DA_FuzzColor). No positive fuzz influence leaves the master's color unchanged.")))
 			.OnClicked_Lambda([this]()
 			{
 				if (!WorkingLayers.IsValidIndex(SelectedLayerIndex))

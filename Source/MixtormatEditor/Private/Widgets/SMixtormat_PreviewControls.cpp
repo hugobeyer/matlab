@@ -34,6 +34,36 @@
 
 namespace
 {
+	// Reports hover only; child controls retain all focus, capture and button handling.
+	class SMixtormatQuickControlsContext : public SCompoundWidget
+	{
+	public:
+		SLATE_BEGIN_ARGS(SMixtormatQuickControlsContext) {}
+			SLATE_DEFAULT_SLOT(FArguments, Content)
+			SLATE_EVENT(FSimpleDelegate, OnEnter)
+			SLATE_EVENT(FSimpleDelegate, OnLeave)
+		SLATE_END_ARGS()
+
+		void Construct(const FArguments& InArgs)
+		{
+			OnEnter = InArgs._OnEnter;
+			OnLeave = InArgs._OnLeave;
+			ChildSlot[InArgs._Content.Widget];
+		}
+		virtual void OnMouseEnter(const FGeometry& Geometry, const FPointerEvent& Event) override
+		{
+			SCompoundWidget::OnMouseEnter(Geometry, Event);
+			OnEnter.ExecuteIfBound();
+		}
+		virtual void OnMouseLeave(const FPointerEvent& Event) override
+		{
+			SCompoundWidget::OnMouseLeave(Event);
+			OnLeave.ExecuteIfBound();
+		}
+	private:
+		FSimpleDelegate OnEnter;
+		FSimpleDelegate OnLeave;
+	};
 	class SMixtormatQuickControlsGuide final : public SLeafWidget
 	{
 	public:
@@ -604,11 +634,12 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 			TAttribute<bool>::CreateLambda([this, Preset]() { return StudioLighting == Preset; }),
 			true,
 			ToolTip,
-			FOnCheckStateChanged::CreateLambda([this, Preset, Layout](ECheckBoxState)
+			FOnCheckStateChanged::CreateLambda([this, Preset, Layout, ToolTip](ECheckBoxState)
 							{
 								SetStudioLighting(Preset);
 								if (Layout == EPreviewControlLayout::Grid)
 								{
+									ShowPreviewFeedback(FText::Format(LOCTEXT("QuickLightingFeedback", "Lighting · {0}"), ToolTip));
 									CloseQuickControls();
 								}
 							}),
@@ -640,7 +671,15 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewLightingControls(const EPreviewContr
 				SNew(SButton)
 				.ButtonStyle(&GetPreviewOverlayButtonStyle())
 				.ContentPadding(FMargin(FMixtormatThemeStore::GetResolved().PreviewLayout.TogglePadding))
-				.OnClicked(this, &SMixtormat::ResetPreviewCameraAndLighting)
+				.OnClicked_Lambda([this, Layout]()
+				{
+					const FReply Reply = ResetPreviewCameraAndLighting();
+					if (Layout == EPreviewControlLayout::Grid)
+					{
+						ShowPreviewFeedback(LOCTEXT("QuickCameraLightingReset", "Camera and lighting reset"));
+					}
+					return Reply;
+				})
 				[
 					MakeRailGlyph(MixtormatIcons::Refresh(), TAttribute<FSlateColor>::CreateLambda([this]()
 					{
@@ -699,11 +738,17 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewGeometryControls(const EPreviewContr
 				}
 				return ToolTip;
 			}),
-			FOnCheckStateChanged::CreateLambda([this, MeshType, Layout](ECheckBoxState)
+			FOnCheckStateChanged::CreateLambda([this, MeshType, Layout, ToolTip](ECheckBoxState)
 							{
 								SetPreviewMesh(MeshType);
 								if (Layout == EPreviewControlLayout::Grid)
 								{
+									const FText MeshLabel = MeshType == EMixtormatPreviewMesh::Plane
+										? (PlaneOrientation == EMixtormatPlaneOrientation::VerticalX
+											? LOCTEXT("PlanePreviewVerticalX", "Plane — Vertical +X (2)")
+											: LOCTEXT("PlanePreviewHorizontal", "Plane — Horizontal (2)"))
+										: ToolTip;
+									ShowPreviewFeedback(FText::Format(LOCTEXT("QuickGeometryFeedback", "Geometry · {0}"), MeshLabel));
 									CloseQuickControls();
 								}
 							}),
@@ -853,7 +898,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewOutputControls()
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
 			SNew(SMixtormatHelp)
-			.Text(LOCTEXT("ClearDebugPreviewHint", "Return to the original PBR material (V)"))
+			.Text(LOCTEXT("ClearDebugPreviewHint", "Return to the original PBR material (Shift+V)"))
 			.Visibility_Lambda([this]()
 			{
 				return DebugPreviewMode == EMixtormatDebugPreviewMode::None
@@ -940,11 +985,19 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 				-Axis * Remaining * MixtormatTokens::QuickControlsRevealDistance));
 		});
 	};
-	const auto MakeCard = [this, Reveal](const FText& Title, const TSharedRef<SWidget>& Content, const FVector2D& Axis)
+	const auto WithContext = [this](const EQuickControlsHint Hint, const TSharedRef<SWidget>& Content)
 	{
-		const TSharedRef<SMixtormatInspectorCard> Card = SNew(SMixtormatInspectorCard)
-			.Title(Title)
+		return SNew(SMixtormatQuickControlsContext)
+			.OnEnter(FSimpleDelegate::CreateSP(this, &SMixtormat::SetQuickControlsHint, Hint, true))
+			.OnLeave(FSimpleDelegate::CreateSP(this, &SMixtormat::SetQuickControlsHint, Hint, false))
 			[Content];
+	};
+	const auto MakeCard = [Reveal, WithContext](const FText& Title, const TSharedRef<SWidget>& Content,
+		const FVector2D& Axis, const EQuickControlsHint Hint)
+	{
+		const TSharedRef<SWidget> Card = WithContext(Hint, SNew(SMixtormatInspectorCard)
+			.Title(Title)
+			[Content]);
 		Card->SetRenderTransform(Reveal(Axis));
 		return Card;
 	};
@@ -1037,7 +1090,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			.Visibility(EVisibility::SelfHitTestInvisible)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
 			[
-				MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(-1.0, -1.0))
+				MakeCard(LOCTEXT("QuickControlsRender", "RENDER"), RenderRows, FVector2D(-1.0, -1.0), EQuickControlsHint::Render)
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
@@ -1046,7 +1099,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
 			[
-				MakeCard(LOCTEXT("QuickControlsComposition", "COMPOSITION"), CompositionRows, FVector2D(1.0, -1.0))
+				MakeCard(LOCTEXT("QuickControlsComposition", "COMPOSITION"), CompositionRows, FVector2D(1.0, -1.0), EQuickControlsHint::Composition)
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
@@ -1055,7 +1108,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			.Visibility(EVisibility::SelfHitTestInvisible)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				MakeCard(LOCTEXT("QuickControlsLighting", "LIGHTING"), LightingRows, FVector2D(-1.0, 0.0))
+				MakeCard(LOCTEXT("QuickControlsLighting", "LIGHTING"), LightingRows, FVector2D(-1.0, 0.0), EQuickControlsHint::Lighting)
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 			[
@@ -1065,7 +1118,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				MakeCard(LOCTEXT("QuickControlsGeometry", "GEOMETRY"), GeometryRows, FVector2D(1.0, 0.0))
+				MakeCard(LOCTEXT("QuickControlsGeometry", "GEOMETRY"), GeometryRows, FVector2D(1.0, 0.0), EQuickControlsHint::Geometry)
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
@@ -1074,7 +1127,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 			SNew(SBox)
 			.MinDesiredWidth(PreviewMetrics.QuickControlsActionsWidth)
 			[
-				ActionsCombo
+				WithContext(EQuickControlsHint::Actions, ActionsCombo)
 			]
 		];
 	// Keep card sizing independent of the viewport-wide backdrop.
@@ -1096,7 +1149,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 				QuickControlsPosition -= QuickControlsSize * 0.5;
 				bQuickControlsNeedsCentre = false;
 			}
-			// Clamped like the floating panels: a Tab near an edge must not put controls offscreen.
+			// Clamped like the floating panels: Q near an edge must not put controls offscreen.
 			QuickControlsPosition.X = FMath::Clamp(QuickControlsPosition.X, 0.0,
 				FMath::Max(0.0, Bounds.X - QuickControlsSize.X));
 			QuickControlsPosition.Y = FMath::Clamp(QuickControlsPosition.Y, 0.0,
@@ -1148,7 +1201,7 @@ void SMixtormat::ToggleQuickControls()
 	}
 	const FVector2D Local = GetPreviewViewportLocalPosition(FSlateApplication::Get().GetCursorPos());
 	const FVector2D Bounds = GetPreviewViewportBounds();
-	// The pointer has to be over exposed viewport content: a Tab while it sits on a floating panel
+	// The pointer has to be over exposed viewport content: Q while it sits on a floating panel
 	// belongs to that panel, not to the viewport underneath.
 	if (Local.X < 0.0 || Local.Y < 0.0 || Local.X > Bounds.X || Local.Y > Bounds.Y)
 	{
@@ -1161,6 +1214,8 @@ void SMixtormat::ToggleQuickControls()
 	QuickControlsPosition = Local;
 	bQuickControlsNeedsCentre = true;
 	bQuickControlsOpen = true;
+	QuickControlsHint = EQuickControlsHint::None;
+	HintSlider.Reset();
 	// A single timer handles reveal and proximity until the menu closes.
 	QuickControlsReveal = 0.0f;
 	QuickControlsBackdropOpacity = 0.0f;
@@ -1181,7 +1236,8 @@ void SMixtormat::ToggleQuickControls()
 			QuickControlsReveal = FMath::Min(1.0f,
 				QuickControlsReveal + DeltaTime / MixtormatTokens::QuickControlsRevealSeconds);
 			float ProximityOpacity = 1.0f;
-			if (!bQuickControlsNeedsCentre && !bQuickControlsActionMenuOpen && !bQuickControlsFinalMenuOpen)
+			if (!bQuickControlsNeedsCentre && !bQuickControlsActionMenuOpen && !bQuickControlsFinalMenuOpen
+							&& !IsHintInteractionActive())
 			{
 				const FVector2D Cursor = GetPreviewViewportLocalPosition(FSlateApplication::Get().GetCursorPos());
 				const FVector2D Nearest(
@@ -1213,6 +1269,8 @@ void SMixtormat::ToggleQuickControls()
 void SMixtormat::CloseQuickControls()
 {
 	bQuickControlsOpen = false;
+	QuickControlsHint = EQuickControlsHint::None;
+	if (!IsHintInteractionActive()) { HintSlider.Reset(); }
 	if (bQuickControlsActionMenuOpen || bQuickControlsFinalMenuOpen)
 	{
 		FSlateApplication::Get().DismissAllMenus();

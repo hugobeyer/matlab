@@ -70,6 +70,100 @@ namespace Mixtormat
 	}
 }
 
+void SMixtormat::OnSliderContextChanged(TSharedRef<SMixtormatSlider> Slider)
+{
+	const TSharedPtr<SMixtormatSlider> Current = HintSlider.Pin();
+	if (Current.IsValid() && Current != Slider && Current->IsInteracting())
+	{
+		return;
+	}
+	if (!Slider->IsInteracting() && (!Slider->IsHovered() || !Slider->IsEnabled()))
+	{
+		if (Current == Slider) { HintSlider.Reset(); }
+	}
+	else
+	{
+		if (Current != Slider)
+		{
+			HintSliderHoveredAt = FSlateApplication::Get().GetCurrentTime();
+			RegisterActiveTimer(MixtormatTokens::HelpDelay,
+				FWidgetActiveTimerDelegate::CreateLambda([this](double, float)
+				{
+					Invalidate(EInvalidateWidgetReason::Layout);
+					return EActiveTimerReturnType::Stop;
+				}));
+		}
+		HintSlider = Slider;
+	}
+	Invalidate(EInvalidateWidgetReason::Layout);
+}
+
+bool SMixtormat::IsHintInteractionActive() const
+{
+	const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin();
+	return Slider.IsValid() && Slider->IsInteracting();
+}
+
+bool SMixtormat::HasInteractionHint() const
+{
+	const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin();
+	return bQuickControlsOpen || (Slider.IsValid()
+		&& (Slider->IsInteracting() || (Slider->IsHovered() && Slider->IsEnabled())));
+}
+
+void SMixtormat::SetQuickControlsHint(const EQuickControlsHint Hint, const bool bHovered)
+{
+	if (bHovered)
+	{
+		QuickControlsHint = Hint;
+		QuickControlsHintHoveredAt = FSlateApplication::Get().GetCurrentTime();
+	}
+	else if (QuickControlsHint == Hint)
+	{
+		QuickControlsHint = EQuickControlsHint::None;
+	}
+	Invalidate(EInvalidateWidgetReason::Layout);
+}
+
+FText SMixtormat::GetInteractionHint() const
+{
+	const double Now = FSlateApplication::Get().GetCurrentTime();
+	if (const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin())
+	{
+		if (Slider->IsInteracting()) { return Slider->GetInteractionHint(); }
+		if (Slider->IsHovered() && Slider->IsEnabled())
+		{
+			return Now - HintSliderHoveredAt >= MixtormatTokens::HelpDelay
+				? Slider->GetInteractionHint() : FText::GetEmpty();
+		}
+	}
+	if (!bQuickControlsOpen) { return FText::GetEmpty(); }
+	if (bQuickControlsActionMenuOpen)
+	{
+		return LOCTEXT("HintQuickActionsMenu", "Choose an available action");
+	}
+	if (bQuickControlsFinalMenuOpen)
+	{
+		return LOCTEXT("HintQuickFinalMenu", "Adjust final composition");
+	}
+	if (Now - QuickControlsHintHoveredAt < MixtormatTokens::HelpDelay) { return FText::GetEmpty(); }
+	switch (QuickControlsHint)
+	{
+	case EQuickControlsHint::Render:
+		return LOCTEXT("HintQuickRender", "Choose AA and lighting quality · Drag: Render scale");
+	case EQuickControlsHint::Composition:
+		return LOCTEXT("HintQuickComposition", "Adjust AO, height remapping and displacement");
+	case EQuickControlsHint::Lighting:
+		return LOCTEXT("HintQuickLighting", "Click: Choose lighting · Reset: Camera and lighting");
+	case EQuickControlsHint::Geometry:
+		return LOCTEXT("HintQuickGeometry", "Click: Choose mesh · Selected plane: Flip");
+	case EQuickControlsHint::Actions:
+		return LOCTEXT("HintQuickActions", "Click: Open available actions");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
 void SMixtormat::ShowPreviewFeedback(const FText& Text)
 {
 	PreviewFeedbackText = Text;
@@ -107,7 +201,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewFeedback()
 	return SNew(SMixtormatSurfaceBox)
 		.Visibility_Lambda([this]()
 		{
-			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f
+			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f && !IsHintInteractionActive()
 				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 		})
 		.RenderOpacity_Lambda([this]() { return PreviewFeedbackOpacity; })
@@ -130,7 +224,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
 
 	// Read live selection/preview state; do not advertise unavailable hotkeys.
-	const auto bQuickControls = [this]() { return bQuickControlsOpen; };
+	// An input owner takes precedence over selection hints, including outside Q.
+		const auto bQuickControls = [this]() { return HasInteractionHint(); };
 	const auto bChannelView = [this]()
 	{
 		return !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
@@ -212,12 +307,26 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 
 	const TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
 
-	// -- Quick controls open: the only pair on screen.
-	const TAttribute<EVisibility> QuickControlsVis = TAttribute<EVisibility>::CreateLambda([bQuickControls]()
+	// Entry owns Escape while typing; never advertise menu dismissal during an edit.
+	const TAttribute<EVisibility> QuickControlsVis = TAttribute<EVisibility>::CreateLambda([this]()
 	{
-		return bQuickControls() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		return bQuickControlsOpen && !IsHintInteractionActive()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
-	AddPair(*Row, LOCTEXT("HintEsc", "Esc"), LOCTEXT("HintCloseQuickControls", "Close quick controls"), QuickControlsVis);
+	AddPair(*Row, LOCTEXT("HintQuickCloseKeys", "Q / Esc"), LOCTEXT("HintQuickClose", "Close menu"), QuickControlsVis);
+	const TAttribute<EVisibility> InteractionVis = TAttribute<EVisibility>::CreateLambda([this]()
+	{
+		return !GetInteractionHint().IsEmpty() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	});
+	AddGap(*Row, TAttribute<EVisibility>::CreateLambda([this]()
+	{
+		return bQuickControlsOpen && !IsHintInteractionActive() && !GetInteractionHint().IsEmpty()
+			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	}));
+	AddPair(*Row, FText::GetEmpty(), TAttribute<FText>::CreateLambda([this]()
+	{
+		return GetInteractionHint();
+	}), InteractionVis);
 
 	// -- 5 shares the marking-menu's document-wide 90-degree UV rotation toggle.
 	const TAttribute<EVisibility> UvRotationVis = TAttribute<EVisibility>::CreateLambda(

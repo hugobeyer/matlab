@@ -6,8 +6,12 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
+#include "UI/Containers/SMixtormatMenuPanel.h"
+#include "UI/Parameters/MixtormatParameterPresentation.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
 #include "UI/Menus/SMixtormatHelp.h"
+#include "UI/Parameters/MixtormatParameterUiMeta.h"
+#include "Widgets/Dialogs/SMixtormatActionDialog.h"
 
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -20,7 +24,8 @@ namespace MixtormatPresetUi
 {
 
 	TSharedRef<SWidget> NameMenu(const FString& InitialName,
-		TFunction<bool(const FString&, const FString&, const FString&, FText&)> Save, bool bOverwriteSameName = false)
+		TFunction<bool(const FString&, const FString&, const FString&, FText&)> Save, bool bOverwriteSameName = false,
+		const FText& Heading = FText::GetEmpty())
 	{
 		struct FEntry { FString Name, Category, Description; FText Error; };
 		const TSharedRef<FEntry> State = MakeShared<FEntry>();
@@ -31,11 +36,29 @@ namespace MixtormatPresetUi
 			if (Save(State->Name.TrimStartAndEnd(), State->Category.TrimStartAndEnd(), State->Description, State->Error))
 			{ FSlateApplication::Get().DismissAllMenus(); }
 		};
-		MixtormatMenu::FBuilder Menu;
-		Menu.Caption(LOCTEXT("PresetNameEntryHeading", "SAVE USER PRESET"));
-		const auto AddField = [&Menu, State, Commit](const FText& Hint, FString FEntry::* Member)
+		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+		const TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+		const auto AddCaption = [&Rows, &Resolved](const FText& Text)
 		{
-			Menu.Widget(SNew(SMixtormatTextFieldGradient)
+			const FTextBlockStyle CaptionStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+				Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Caption),
+				Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+			Rows->AddSlot().AutoHeight()
+				.Padding(FMargin(Resolved.MenuLayout.ItemInset, Resolved.MenuLayout.CaptionInsetAbove,
+					Resolved.MenuLayout.ItemInset, Resolved.MenuLayout.CaptionInsetBelow))
+				[
+					SNew(STextBlock).Text(Text)
+					.Font(CaptionStyle.Font).ColorAndOpacity(CaptionStyle.ColorAndOpacity)
+					.AutoWrapText(true)
+					.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
+				];
+		};
+		AddCaption(Heading.IsEmpty() ? LOCTEXT("PresetNameEntryHeading", "SAVE USER PRESET") : Heading);
+		const auto AddField = [&Rows, State, Commit](const FText& Hint, FString FEntry::* Member)
+		{
+			Rows->AddSlot().AutoHeight()
+			[
+				SNew(SMixtormatTextFieldGradient)
 			[
 				SNew(SEditableTextBox)
 				.Style(&FMixtormatStyle::Get().GetWidgetStyle<FEditableTextBoxStyle>(TEXT("Mixtormat.TextField")))
@@ -43,17 +66,30 @@ namespace MixtormatPresetUi
 				.Text(FText::FromString(State.Get().*Member))
 				.OnTextChanged_Lambda([State, Member](const FText& Text) { State.Get().*Member = Text.ToString(); })
 				.OnTextCommitted_Lambda([Commit](const FText&, ETextCommit::Type Type) { if (Type == ETextCommit::OnEnter) { Commit(); } })
-			]);
+				]
+			];
 		};
 		AddField(LOCTEXT("TypedPresetName", "Name"), &FEntry::Name);
 		AddField(LOCTEXT("TypedPresetCategory", "Category (optional)"), &FEntry::Category);
 		AddField(LOCTEXT("TypedPresetDescription", "Description (optional)"), &FEntry::Description);
-		Menu.Widget(SNew(STextBlock).Text_Lambda([State]() { return State->Error; }).AutoWrapText(true)
-			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel"))));
-		Menu.Caption(bOverwriteSameName
+		Rows->AddSlot().AutoHeight()
+		[
+			SNew(STextBlock).Text_Lambda([State]() { return State->Error; }).AutoWrapText(true)
+			.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+			.OverflowPolicy(ETextOverflowPolicy::Clip)
+			.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
+			.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Error))
+		];
+		AddCaption(bOverwriteSameName
 			? LOCTEXT("ModulePresetCommitHelp", "Enter to save. An existing name replaces the compatible user module preset.")
 			: LOCTEXT("TypedPresetCommitHelp", "Enter to save as a new preset. Choose a unique name."));
-		return Menu.Build();
+		return SNew(SMixtormatMenuPanel)
+			.MinWidth(Resolved.MenuLayout.Width)
+			.Padding(FMargin(Resolved.MenuLayout.PanelPadding))
+			[
+				MixtormatParameterPresentation::MakeScrollableContent(Rows,
+					Resolved.MenuLayout.Width - Resolved.MenuLayout.PanelPadding * 2.0f)
+			];
 	}
 }
 
@@ -173,7 +209,7 @@ TSharedRef<SWidget> SMixtormat::BuildRecipeCaptureMenu(const FGuid GroupId)
 	if (Snapshot.Dependencies.IsEmpty()) { Menu.Caption(LOCTEXT("RecipeNoAssets", "No asset dependencies.")); }
 	for (const FSoftObjectPath& Asset : Snapshot.Dependencies) { Menu.Caption(FText::FromString(Asset.ToString())); }
 	Menu.Caption(LOCTEXT("RecipeGlobalContract", "Captures only this group. Destination global/final settings are not imported."));
-		Menu.Caption(LOCTEXT("RecipeLabelContract", "Names are saved as displayed text, not live localization/string-table links."));
+	Menu.Caption(LOCTEXT("RecipeLabelContract", "Names are saved as displayed text, not live localization/string-table links."));
 	Menu.Widget(MixtormatPresetUi::NameMenu(Snapshot.Name,
 		[this, Snapshot](const FString& Name, const FString& Category, const FString& Description, FText& Issue)
 		{
@@ -181,10 +217,26 @@ TSharedRef<SWidget> SMixtormat::BuildRecipeCaptureMenu(const FGuid GroupId)
 			MixtormatPresetStore::FRecipePreset Recipe = Snapshot;
 			Recipe.Name = Name; Recipe.Category = Category; Recipe.Description = Description;
 			if (!MixtormatPresetStore::SaveRecipe(Recipe, Issue)) { return false; }
-			WorkingStatusText = FString::Printf(TEXT("Saved recipe %s"), *Recipe.Name);
+			WorkingStatusText = FString::Printf(TEXT("Saved project recipe %s"), *Recipe.Name);
 			RefreshRecipeGallery();
 			return true;
-		}));
+		}, false, LOCTEXT("SaveProjectRecipeHeading", "SAVE PROJECT RECIPE")));
+	Menu.Separator();
+	Menu.SubMenu(LOCTEXT("PublishPluginRecipe", "Publish Plugin Recipe…"), nullptr,
+		FOnGetContent::CreateLambda([this, Snapshot]()
+		{
+			return MixtormatPresetUi::NameMenu(Snapshot.Name,
+				[this, Snapshot](const FString& Name, const FString& Category, const FString& Description, FText& Issue)
+				{
+					MixtormatPresetStore::FRecipePreset Recipe = Snapshot;
+					Recipe.Name = Name; Recipe.Category = Category; Recipe.Description = Description;
+					if (!MixtormatPresetStore::SaveRecipe(Recipe, Issue, MixtormatPresetStore::ERecipeSaveDestination::Plugin)) { return false; }
+					WorkingStatusText = FString::Printf(TEXT("Published plugin recipe %s"), *Recipe.Name);
+					RefreshRecipeGallery();
+					return true;
+				}, false, LOCTEXT("PublishPluginRecipeHeading", "PUBLISH PLUGIN RECIPE"));
+		})).Enabled(MixtormatParameterUi::IsDeveloperMetaEnabled())
+		.ToolTip(LOCTEXT("PublishPluginRecipeHelp", "Developer mode only. Save this group snapshot in the plugin recipe library for distribution. Referenced assets are not embedded; package dependencies must still be checked."));
 	return Menu.Build();
 }
 
@@ -256,8 +308,37 @@ TSharedRef<SWidget> SMixtormat::BuildRecipeEntryMenu(FString Filename)
 					Recipe.bShipped = false;
 					if (!MixtormatPresetStore::SaveRecipe(Recipe, Issue)) { return false; }
 					RefreshRecipeGallery(); return true;
-				});
-		}));
+				}, false, LOCTEXT("SaveProjectRecipeHeading", "SAVE PROJECT RECIPE"));
+		})).ToolTip(LOCTEXT("RecipeProjectCopyHelp", "Save a separate recipe in this project's Content/Mixtormat/Presets/Recipes folder."));
+
+	const FGuid SourceGroupId = SelectedGroupId;
+	const bool bCanUpdate = bHasWorkingMaterial && SourceGroupId.IsValid()
+		&& (!Recipe.bShipped || MixtormatParameterUi::IsDeveloperMetaEnabled());
+	Menu.Item(LOCTEXT("UpdateRecipeFromGroup", "Update from Selected Group…"), nullptr,
+		FSimpleDelegate::CreateLambda([this, Recipe, SourceGroupId]()
+		{
+			MixtormatPresetStore::FRecipePreset Replacement;
+			FText Issue;
+			if (!MixtormatRecipeService::Capture(WorkingLayers, WorkingLayerGroups, SourceGroupId, Replacement, Issue))
+			{ WorkingStatusText = Issue.ToString(); return; }
+			const FText Message = FText::Format(
+				LOCTEXT("ConfirmRecipeUpdate", "Replace recipe '{0}' with group '{1}'?\n\nName, category and description stay unchanged. This replaces the saved recipe file and cannot be undone in the material.\n\nDestination: {2}"),
+				FText::FromString(Recipe.Name), FText::FromString(Replacement.Name), FText::FromString(Recipe.Filename));
+			if (!ShowMixtormatActionDialog(AsShared(), LOCTEXT("UpdateRecipeTitle", "Update Recipe"), Message,
+				LOCTEXT("UpdateRecipeConfirm", "Update Recipe"), LOCTEXT("UpdateRecipeCancel", "Cancel"))) { return; }
+			Replacement.Id = Recipe.Id;
+			Replacement.Filename = Recipe.Filename;
+			Replacement.Name = Recipe.Name;
+			Replacement.Category = Recipe.Category;
+			Replacement.Description = Recipe.Description;
+			const auto Destination = Recipe.bShipped ? MixtormatPresetStore::ERecipeSaveDestination::Plugin
+				: MixtormatPresetStore::ERecipeSaveDestination::Project;
+			if (!MixtormatPresetStore::SaveRecipe(Replacement, Issue, Destination, true))
+			{ WorkingStatusText = Issue.ToString(); return; }
+			WorkingStatusText = FString::Printf(TEXT("Updated recipe %s"), *Recipe.Name);
+			RefreshRecipeGallery();
+		})).Enabled(bCanUpdate)
+		.ToolTip(LOCTEXT("UpdateRecipeFromGroupHelp", "Select a group to replace this saved recipe after confirmation. Metadata is retained. Updating plugin recipes requires developer mode."));
 
 	Menu.Caption(LOCTEXT("RecipeAssets", "REFERENCED ASSETS — NOT EMBEDDED"));
 	for (const FSoftObjectPath& Asset : Recipe.Dependencies) { Menu.Caption(FText::FromString(Asset.ToString())); }

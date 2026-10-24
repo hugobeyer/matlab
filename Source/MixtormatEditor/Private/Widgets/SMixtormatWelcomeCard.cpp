@@ -355,8 +355,8 @@ TSharedRef<SWidget> SMixtormatWelcomeCard::BuildGuideContent(int32 TopicIndex)
 		Points = {
 			{ LOCTEXT("GuidePreviewP1Title", "Orbit & Navigation"), LOCTEXT("GuidePreviewP1Desc", "Hold Left Mouse Button and drag in the viewport to orbit around the 3D preview model.") },
 			{ LOCTEXT("GuidePreviewP2Title", "Lighting Rotation"), LOCTEXT("GuidePreviewP2Desc", "Hold Right Mouse Button and drag horizontally to rotate the HDRI environment lighting around the asset.") },
-			{ LOCTEXT("GuidePreviewP3Title", "Preview Geometry"), LOCTEXT("GuidePreviewP3Desc", "Switch between Sphere, Plane, Cube, and Cylinder models from the Viewport options cluster.") },
-			{ LOCTEXT("GuidePreviewP4Title", "Channel Isolation"), LOCTEXT("GuidePreviewP4Desc", "Use the Output strip at the top-left or press Tab to open quick controls and inspect Base Color, Normal, Roughness, Height, or Mask channels directly.") }
+			{ LOCTEXT("GuidePreviewP3Title", "Preview Geometry"), LOCTEXT("GuidePreviewP3Desc", "Press Q over the viewport and use Geometry to select Sphere, Plane, Cube, or Cylinder.") },
+			{ LOCTEXT("GuidePreviewP4Title", "Channel Isolation"), LOCTEXT("GuidePreviewP4Desc", "Press V to cycle material channels and Shift+V to return to Material. Use W/E for eligible mask/Flow outputs on the selected module, or choose an output in the viewport Output strip.") }
 		};
 		break;
 

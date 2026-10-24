@@ -704,7 +704,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringPage()
 					[
 						// The action returns FReply; the tab's delegate takes void.
 						SNew(SMixtormatHelp)
-						.Text(LOCTEXT("RestoreGalleryStyledHint", "Open the material and mask gallery (G)."))
+						.Text(LOCTEXT("RestoreGalleryStyledHint", "Open the Materials, Masks and Recipes gallery (G)."))
 						[
 							SNew(SMixtormatGalleryTab)
 							.OnActivated(FSimpleDelegate::CreateLambda([this]() { ToggleBottomLibraryCollapsed(); }))

@@ -103,12 +103,27 @@ void SMixtormatHelp::OpenHelp(const uint64 Request)
 	}
 }
 
-TSharedRef<IToolTip> SMixtormatHelp::MakeStyledToolTip(const TAttribute<FText>& Text)
+TSharedRef<IToolTip> SMixtormatHelp::MakeStyledToolTip(const TAttribute<FText>& Text,
+	const TSharedPtr<SWidget>& Preview)
 {
 	const auto& Resolved = FMixtormatThemeStore::GetResolved();
 	const FTextBlockStyle Style = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	TSharedRef<SVerticalBox> Content = SNew(SVerticalBox);
+	if (Preview.IsValid())
+	{
+		Content->AddSlot().AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, Resolved.ControlLayout.RowGap)
+		[
+			Preview.ToSharedRef()
+		];
+	}
+	Content->AddSlot().AutoHeight()
+	[
+		SNew(STextBlock).Font(Style.Font).ColorAndOpacity(Style.ColorAndOpacity)
+		.Text(Text).AutoWrapText(true)
+	];
 	return SNew(SToolTip)
 		.BorderImage(FCoreStyle::Get().GetBrush(TEXT("NoBorder")))
 		[
@@ -117,8 +132,7 @@ TSharedRef<IToolTip> SMixtormatHelp::MakeStyledToolTip(const TAttribute<FText>& 
 				SNew(SMixtormatMenuPanel)
 				.Padding(FMargin(MixtormatTokens::HelpPadding))
 				[
-					SNew(STextBlock).Font(Style.Font).ColorAndOpacity(Style.ColorAndOpacity)
-					.Text(Text).AutoWrapText(true)
+					Content
 				]
 			]
 		];

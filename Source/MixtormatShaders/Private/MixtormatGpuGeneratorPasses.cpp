@@ -428,6 +428,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
 			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, OperandRunningHeight);
 			break;
+		case EMixtormatGeneratorType::StrataCarver:
+			break;
 		}
 		if (Child.Generator.Type == EMixtormatGeneratorType::BooleanOps
 			|| (!Module.Height && Child.Generator.Type != EMixtormatGeneratorType::Noise

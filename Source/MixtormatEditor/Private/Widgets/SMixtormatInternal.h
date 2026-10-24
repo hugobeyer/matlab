@@ -72,6 +72,7 @@
 #include "UI/Layers/SMixtormatLayerContainer.h"
 #include "UI/Layers/SMixtormatLayerGroupRow.h"
 #include "UI/Layers/SMixtormatLayerRow.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Primitives/SMixtormatGradientBox.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "UI/Containers/SMixtormatInspectorGroup.h"
@@ -130,9 +131,9 @@ namespace MixtormatUI
 		return SNew(SBorder)
 			.Padding(GalleryLayout.OwnershipBadgePadding)
 			.BorderImage(Style.GetBrush(TEXT("Mixtormat.ThumbnailBackground")))
-			.ToolTipText(bIsUserAsset
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(bIsUserAsset
 				? LOCTEXT("UserLibraryAssetBadge", "User material")
-				: LOCTEXT("BuiltInLibraryAssetBadge", "Built-in Mixtormat material"))
+				: LOCTEXT("BuiltInLibraryAssetBadge", "Built-in Mixtormat material")))
 			[
 				SNew(SBox)
 				.WidthOverride(GalleryLayout.OwnershipBadgeSize)

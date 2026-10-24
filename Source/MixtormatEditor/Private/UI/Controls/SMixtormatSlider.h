@@ -9,8 +9,11 @@
 
 class SEditableTextBox;
 class FMixtormatEntryCommit;
+class SMixtormatSlider;
 
 DECLARE_DELEGATE_OneParam(FMixtormatOnSliderValueChanged, double);
+DECLARE_DELEGATE_OneParam(FMixtormatOnSliderContextChanged, TSharedRef<SMixtormatSlider>);
+DECLARE_DELEGATE_OneParam(FMixtormatOnSliderFeedback, const FText&);
 
 // Soft-range policy handed through the row helpers: whether dragging past an end may grow
 // the range, and the legal bounds that growth stops at.
@@ -85,6 +88,8 @@ public:
 		// for its duration.
 		SLATE_EVENT(FSimpleDelegate, OnBeginDrag)
 		SLATE_EVENT(FSimpleDelegate, OnEndDrag)
+		SLATE_EVENT(FMixtormatOnSliderContextChanged, OnContextChanged)
+		SLATE_EVENT(FMixtormatOnSliderFeedback, OnFeedback)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -92,6 +97,10 @@ public:
 	// Also invoked by the owner's hover + Backspace handler, so the binding registry keeps
 	// working for converted rows.
 	void ResetToDefault();
+	bool IsInteracting() const { return bDragging || bEditing; }
+	FText GetInteractionHint() const;
+	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
 
 
 	virtual int32 OnPaint(
@@ -126,6 +135,8 @@ private:
 	void BeginTextEntry();
 	void EndTextEntry();
 	void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitType);
+	void NotifyContextChanged();
+	void ReportValueChange(double PreviousValue);
 
 
 	TAttribute<FText> LabelAttribute;
@@ -155,6 +166,8 @@ private:
 	FSimpleDelegate OnReset;
 	FSimpleDelegate OnBeginDrag;
 	FSimpleDelegate OnEndDrag;
+	FMixtormatOnSliderContextChanged OnContextChanged;
+	FMixtormatOnSliderFeedback OnFeedback;
 
 	FTextBlockStyle ControlLabelTextStyle;
 	FTextBlockStyle DisabledControlLabelTextStyle;

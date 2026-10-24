@@ -9,6 +9,7 @@
 #include "UI/Atoms/SMixtormatBadge.h"
 #include "UI/Layers/SMixtormatLayerIcon.h"
 #include "UI/Layers/SMixtormatLayerSurface.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
 
 #include "Widgets/Input/SMenuAnchor.h"
@@ -107,7 +108,7 @@ void SMixtormatLayerChildRow::Construct(const FArguments& InArgs)
 						.bVisibility(true)
 						.bOn(InArgs._bActive)
 						.bActive(InArgs._bPreviewing)
-						.ToolTipText(LOCTEXT("ChildToggleHint", "Enable or disable this child."))
+						.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("ChildToggleHint", "Enable or disable this child.")))
 						.OnClicked(InArgs._OnToggleActive)
 					]
 

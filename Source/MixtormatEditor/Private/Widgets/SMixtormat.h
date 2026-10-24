@@ -1637,6 +1637,12 @@ private:
 	TSharedRef<SWidget> BuildPreviewHintStrip();
 	TSharedRef<SWidget> BuildPreviewFeedback();
 	void ShowPreviewFeedback(const FText& Text);
+	void OnSliderContextChanged(TSharedRef<SMixtormatSlider> Slider);
+	bool IsHintInteractionActive() const;
+	bool HasInteractionHint() const;
+	FText GetInteractionHint() const;
+	TWeakPtr<SMixtormatSlider> HintSlider;
+	double HintSliderHoveredAt = 0.0;
 	EActiveTimerReturnType TickPreviewFeedback(double CurrentTime, float DeltaTime);
 	FText PreviewFeedbackText;
 	double PreviewFeedbackStartedAt = 0.0;
@@ -1663,6 +1669,11 @@ private:
 		TSharedRef<SWidget> BuildQuickControlsActionsMenu();
 	void ToggleQuickControls();
 	void CloseQuickControls();
+	void ShowQuickControlsAddedFeedback(const FMixtormatChildAddress& Address);
+	enum class EQuickControlsHint : uint8 { None, Render, Composition, Lighting, Geometry, Actions };
+	void SetQuickControlsHint(EQuickControlsHint Hint, bool bHovered);
+	EQuickControlsHint QuickControlsHint = EQuickControlsHint::None;
+	double QuickControlsHintHoveredAt = 0.0;
 	// How a group's buttons are laid out: the viewport's rails stack them down an edge, GLOBAL's
 	// cards run them inline, and the quick-controls popup grids them as a palette of choices.
 	enum class EPreviewControlLayout : uint8 { Rail, Inline, Grid };

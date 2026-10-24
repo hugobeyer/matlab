@@ -169,7 +169,6 @@ namespace MixtormatShaderParamScanner
 			TEXT("MixtormatCliffStrata.usf"),
 			TEXT("MixtormatScales.usf"),
 			TEXT("MixtormatNoise.usf"),
-			TEXT("MixtormatMoss.usf"),
 			TEXT("MixtormatMycelium.usf"),
 		};
 		static const TCHAR* const BehaviorFlowSettingsShaders[] =
@@ -221,6 +220,7 @@ namespace MixtormatShaderParamScanner
 				Tag.Owner = ShaderName == TEXT("MixtormatRust.usf") ? EMixtormatParameterOwnerType::Rust
 									: (ShaderName == TEXT("MixtormatSkin.usf")
 					|| ShaderName == TEXT("MixtormatSkinSolve.usf")
+					|| ShaderName == TEXT("MixtormatMoss.usf")
 					|| ShaderName == TEXT("MixtormatSurfacingApply.usf"))
 					? EMixtormatParameterOwnerType::Surfacing
 					: ShaderName == TEXT("MixtormatComposite.usf")

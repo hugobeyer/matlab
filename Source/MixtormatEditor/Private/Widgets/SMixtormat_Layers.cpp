@@ -288,7 +288,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerStackPanel()
 							.ButtonStyle(&Style.GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
 							.Text(LOCTEXT("CreateWorkingMaterial", "Create Material"))
 							.IsEnabled_Lambda([this]() { return SelectedPreviewMaterial.IsValid(); })
-							.ToolTipText(LOCTEXT("CreateWorkingMaterialHint", "Select a saved library surface first, then create a nondestructive layered recipe."))
+							.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("CreateWorkingMaterialHint", "Select a saved library surface first, then create a nondestructive layered recipe.")))
 							.OnClicked(this, &SMixtormat::StartNewMaterial)
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)

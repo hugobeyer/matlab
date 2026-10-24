@@ -115,6 +115,11 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					if (!bHasWorkingMaterial)
 					{
 						StartNewMaterialWith(EMixtormatLayerType::Fill);
+						if (WorkingLayers.IsValidIndex(SelectedLayerIndex))
+						{
+							ShowPreviewFeedback(FText::Format(LOCTEXT("QuickLayerAddedFeedback", "Added {0}"),
+								WorkingLayers[SelectedLayerIndex].DisplayName));
+						}
 						return;
 					}
 					// AddWorkingLayer appends. Insert once here, as the positioned surface drop does,
@@ -126,6 +131,8 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					WorkingLayers.Insert(MoveTemp(Layer), Slot);
 					MixtormatUI::RemapHeightReferencesAfterInsert(WorkingLayers, Slot);
 					WorkingLayers[Slot].GroupId = ResolveGroupMembershipAt(Slot);
+					ShowPreviewFeedback(FText::Format(LOCTEXT("QuickLayerAddedFeedback", "Added {0}"),
+						WorkingLayers[Slot].DisplayName));
 					MixtormatLayerGroups::ValidateGroups(WorkingLayers, WorkingLayerGroups);
 					SoloLayerIndex = INDEX_NONE;
 					SelectedLayerIndex = Slot;
@@ -144,7 +151,22 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					RebuildMaskList();
 				}));
 			Menu.Item(LOCTEXT("QuickAddMaterial", "Material"), MixtormatIcons::LayerMaterial(),
-				FSimpleDelegate::CreateLambda([this]() { AddLayerOrStartMaterial(EMixtormatLayerType::Material); }))
+				FSimpleDelegate::CreateLambda([this]()
+								{
+									const int32 PreviousCount = WorkingLayers.Num();
+									const bool bHadMaterial = bHasWorkingMaterial;
+									AddLayerOrStartMaterial(EMixtormatLayerType::Material);
+									if (bHasWorkingMaterial && (!bHadMaterial || WorkingLayers.Num() > PreviousCount)
+										&& WorkingLayers.IsValidIndex(SelectedLayerIndex))
+									{
+										ShowPreviewFeedback(FText::Format(LOCTEXT("QuickLayerAddedFeedback", "Added {0}"),
+											WorkingLayers[SelectedLayerIndex].DisplayName));
+									}
+									else
+									{
+										ShowPreviewFeedback(LOCTEXT("QuickMaterialUnavailable", "Material unavailable · Select a library surface"));
+									}
+								}))
 				.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
 			Menu.SubMenu(LOCTEXT("QuickAddEffects", "Effects"), MixtormatIcons::Effect(),
 				FOnGetContent::CreateLambda([this]() { return BuildAddEffectMenu(SelectedLayerIndex); }))

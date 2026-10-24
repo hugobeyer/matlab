@@ -255,8 +255,9 @@ void SMixtormat::CopyChildOutput(const FMixtormatChildAddress& Address, const FN
 	Clipboard.PublishedOutput = OutputName;
 	ChildClipboardScopedRows.Reset();
 	ChildClipboard = MoveTemp(Clipboard);
-	WorkingStatusText = FText::Format(
-		LOCTEXT("ChildOutputCopied", "{0} output copied"), Output->Label).ToString();
+	const FText Feedback = FText::Format(LOCTEXT("ChildOutputCopied", "{0} output copied"), Output->Label);
+	WorkingStatusText = Feedback.ToString();
+	if (bQuickControlsOpen) { ShowPreviewFeedback(Feedback); }
 }
 
 bool SMixtormat::ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) const
@@ -672,6 +673,7 @@ FReply SMixtormat::PasteAsGatingMask(const FMixtormatChildAddress& Address)
 	Copies = CopyChildSubtree(MoveTemp(Copies), ChildClipboard.GetValue().Source.OwnerId, Address.OwnerId, &Scope);
 	Copies[0].ScopeOwnerChildId = ScopeOwnerId;
 	Container->Insert(MoveTemp(Copies[0]), Insert);
+	ShowQuickControlsAddedFeedback({Address.OwnerType, Address.OwnerId, (*Container)[Insert].ChildId});
 
 	if (Address.OwnerType == EMixtormatChildOwnerType::Layer)
 	{

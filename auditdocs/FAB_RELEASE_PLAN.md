@@ -25,13 +25,18 @@ See [exact paths and packaging caveats](FAB_RELEASE_DETAIL.md).
 - [x] Gallery has Materials, Masks and Recipes columns with persisted resize weights.
 - [x] Recipes column supports search/categories and shipped/user recipe entries.
 - [x] Group/layer capture, closure validation and editable-group insertion exist in source.
-- [x] Menus provide refresh, insertion, user copies and referenced-asset details.
-- [ ] Verify intended shipped recipes in `Resources/Presets/Recipes` reach the package.
-- [ ] Include all referenced assets; recipes reference assets rather than embedding them.
+- [x] Menus provide refresh, insertion, project copies and confirmed updates from a selected group.
+- [x] Create Recipe offers developer-gated Publish Plugin Recipe; plugin updates use the same gate.
+- [x] User recipes save under project `Content/Mixtormat/Presets/Recipes`, not Saved.
+- [x] Plugin publishing rejects direct/resolved asset references outside Mixtormat/Engine/Script.
+- [ ] Ship **all developer-authored recipes** in plugin `Resources/Presets/Recipes`.
+- [ ] Verify full asset dependency closure and packaged availability; JSON does not embed assets.
+- [ ] Explicitly relocate any wanted old Saved recipe JSON; no automatic migration/fallback.
 - [ ] Owner smoke check: create/save group recipe → find in gallery → insert twice;
   confirm independent editable groups, preserved internal links and unchanged global settings.
-- [ ] Check shipped read-only entries, user copies and missing-dependency errors.
-- [ ] Correct stale recipe help mentioning JSON import/export; current menus omit these actions.
+- [ ] Check project copies, confirmed updates, developer-only publishing and missing-asset errors.
+- [ ] Confirm plugin writes are blocked outside developer mode; recipe updates retain identity.
+- [x] Recipe help now matches Save User Copy/Create Recipe; removed unsupported import/export claims.
 
 Implementation map and behavior: `AgentDocs/UI.md` → Layer/group recipes — Gallery column.
 These are static source findings, not runtime test results.
@@ -49,8 +54,8 @@ These are static source findings, not runtime test results.
 - Corrected architecture's obsolete Generator-layer description and stale file-map offsets.
 - Bake service declares 10 outputs, including three optical textures; include these in smoke checks.
 - Missing authoring JSON defaults resolve through reflected defaults; Mask.TilingY is not a proven bug.
-- Recipe help still mentions unavailable import/export; gallery restore help omits Recipes.
-  These are copy issues, not reasons to reintroduce menu actions.
+- Recipe/gallery help corrected; welcome and reset help now name Q and Shift+V correctly.
+  Wording only; no menu actions were added or restored.
 - Moss and GPU-pass internals are being rewritten. Reconcile their docs after the work lands;
   this review does not certify those implementations or their existing documentation.
 - File splits remain optional maintenance, not FAB blockers.
@@ -62,8 +67,9 @@ These are static source findings, not runtime test results.
    Trace wrappers before replacing tooltip calls; preserve focus, drag and dismissal behavior.
 1. **Confirm package inputs.** Ensure both Config JSON files reach the built package;
    explicit filter includes are added; verify the built artifact when packaging.
-2. **Choose sample content.** Pick 2–3 materials and a sample mesh, then retain their
-   full dependency closure, including required preview/runtime assets. Do not prune blindly.
+2. **Retain recipe content.** Ship all developer-authored recipes and their full asset
+   dependency closure, plus required preview/runtime assets. Extra demo selection is optional;
+   do not impose the old 2–3-material limit on recipe dependencies or prune blindly.
 3. **Review resources/notices.** Retain registered SVGs, brand art and any required notices.
 
    Do not delete apparently unused resources without approval and a reference check.
@@ -79,7 +85,7 @@ These are static source findings, not runtime test results.
 - [ ] Hover help/popovers/dialogs follow shared styling; owner checks clipping, focus and dismissal.
 - [ ] Artifact contains needed Config JSON, SVGs, shader/source files and applicable notices.
 - [ ] No developer docs, prototypes, metadata, caches or raw import sources leak into it.
-- [ ] Curated Content includes all dependencies; no stale sample thumbnails.
+- [ ] All developer recipe JSON and full content dependencies ship; no stale sample thumbnails.
 - [ ] Clean-project and packaged-game checks pass; relevant log warnings are reviewed.
 - [ ] Bake produces all 10 expected outputs; optical-master support/warnings are checked.
 - [ ] FAB submission requirements and final archive layout are checked against current guidance.

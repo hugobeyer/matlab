@@ -9,6 +9,7 @@
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Rows/SMixtormatRow.h"
 #include "Widgets/Images/SImage.h"
 
@@ -660,7 +661,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 									SNew(SButton)
 									.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
 									.ContentPadding(2.0f)
-									.ToolTipText(LOCTEXT("OpenFillColorPicker", "Open the color picker"))
+									.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("OpenFillColorPicker", "Open the color picker")))
 									.OnClicked_Lambda([this]() { return OpenFillColorPicker(SelectedLayerIndex); })
 									[
 										SNew(SColorBlock)

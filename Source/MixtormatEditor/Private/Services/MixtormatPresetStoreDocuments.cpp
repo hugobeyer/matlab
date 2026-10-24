@@ -3,6 +3,7 @@
 #include "Services/MixtormatPresetJson.h"
 #include "Services/MixtormatRecipeService.h"
 #include "MixtormatSurfacingTypes.h"
+#include "UI/Parameters/MixtormatParameterUiMeta.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -11,6 +12,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 
 namespace MixtormatPresetStore
@@ -23,11 +25,26 @@ namespace MixtormatPresetStore
 		constexpr int32 MaxMetadata = 4096;
 
 		bool Fail(FText& Error, const FString& Message) { Error = FText::FromString(Message); return false; }
-		FString UserDirectory(const TCHAR* Kind) { return FPaths::Combine(GetUserPresetDirectory(), Kind); }
+		FString UserDirectory(const TCHAR* Kind)
+		{
+			return FCString::Strcmp(Kind, TEXT("Recipes")) == 0
+				? GetRecipeDirectory(ERecipeSaveDestination::Project)
+				: FPaths::Combine(GetUserPresetDirectory(), Kind);
+		}
 		FString ShippedDirectory(const TCHAR* Kind)
 		{
 			const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("Mixtormat"));
 			return Plugin ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources/Presets"), Kind) : FString();
+		}
+		bool SamePath(const FString& A, const FString& B)
+		{
+			if (A.IsEmpty() || B.IsEmpty()) { return false; }
+			FString FullA = FPaths::ConvertRelativePathToFull(A);
+			FString FullB = FPaths::ConvertRelativePathToFull(B);
+			FPaths::NormalizeFilename(FullA);
+			FPaths::NormalizeFilename(FullB);
+			return FPaths::CollapseRelativeDirectories(FullA) && FPaths::CollapseRelativeDirectories(FullB)
+				&& FullA == FullB;
 		}
 		bool ValidInfo(const FDocumentInfo& Info, FText& Error)
 		{
@@ -81,6 +98,31 @@ namespace MixtormatPresetStore
 				if (!Path.IsValid() || !Path.TryLoad()) { Missing += TEXT("\n") + Path.ToString(); }
 			}
 			return Missing.IsEmpty() || Fail(Error, TEXT("Missing referenced assets (not embedded in JSON):") + Missing);
+		}
+		bool CheckPluginRecipeAssets(const TArray<FSoftObjectPath>& Assets, FText& Error)
+		{
+			const auto IsAllowedPackage = [](const FString& Package)
+			{
+				return Package.StartsWith(TEXT("/Mixtormat/"), ESearchCase::CaseSensitive)
+					|| Package.StartsWith(TEXT("/Engine/"), ESearchCase::CaseSensitive)
+					|| Package.StartsWith(TEXT("/Script/"), ESearchCase::CaseSensitive);
+			};
+			// Direct references and their locally resolved targets only. This does not inspect
+			// transitive package dependencies or guarantee assets are included in a distribution.
+			for (const FSoftObjectPath& Path : Assets)
+			{
+				if (!Path.IsValid() || !IsAllowedPackage(Path.GetLongPackageName()))
+				{
+					return Fail(Error, TEXT("Plugin recipes may reference only /Mixtormat, /Engine or /Script assets: ") + Path.ToString());
+				}
+				const UObject* Asset = Path.TryLoad();
+				if (!Asset) { return Fail(Error, TEXT("Cannot load plugin recipe dependency locally: ") + Path.ToString()); }
+				if (!IsAllowedPackage(Asset->GetOutermost()->GetName()))
+				{
+					return Fail(Error, TEXT("Plugin recipe dependency resolves outside /Mixtormat, /Engine or /Script: ") + Path.ToString());
+				}
+			}
+			return true;
 		}
 		TSharedRef<FJsonObject> Envelope(const FDocumentInfo& Info, const TCHAR* Kind, const TArray<FSoftObjectPath>& Assets)
 		{
@@ -212,6 +254,19 @@ namespace MixtormatPresetStore
 				{ return Fail(Error, TEXT("That preset name already exists. Choose a different name.")); }
 			}
 			return Exporter(FPaths::Combine(Root, Preset.Id.ToString(EGuidFormats::Digits) + TEXT(".json")), Preset, Error);
+		}
+	}
+
+	FString GetRecipeDirectory(ERecipeSaveDestination Destination)
+	{
+		switch (Destination)
+		{
+		case ERecipeSaveDestination::Project:
+			return FPaths::Combine(FPaths::ProjectContentDir(), TEXT("Mixtormat/Presets/Recipes"));
+		case ERecipeSaveDestination::Plugin:
+			return Documents::ShippedDirectory(TEXT("Recipes"));
+		default:
+			return FString();
 		}
 	}
 
@@ -481,7 +536,8 @@ namespace MixtormatPresetStore
 		Preset.Id = FGuid::NewGuid();
 		return SaveModule(Preset, Error);
 	}
-	bool ExportRecipe(const FString& Filename, const FRecipePreset& Preset, FText& Error)
+	static bool WriteRecipe(const FString& Filename, const FRecipePreset& Preset, FText& Error,
+		bool bOverwrite, bool bPlugin)
 	{
 		if (!Documents::ValidInfo(Preset, Error) || !MixtormatRecipeService::Validate(Preset, Error)) { return false; }
 		if (!MixtormatPresetJson::ValidateAssetClasses(FMixtormatLayerGroup::StaticStruct(), &Preset.Group, Error)) { return false; }
@@ -501,10 +557,15 @@ namespace MixtormatPresetStore
 			Layers.Add(MakeShared<FJsonValueObject>(Json));
 			Documents::GatherAssets(FMixtormatLayer::StaticStruct(), &Layer, Assets);
 		}
+		if (bPlugin && !Documents::CheckPluginRecipeAssets(Assets, Error)) { return false; }
 		TSharedRef<FJsonObject> Json = Documents::Envelope(Preset, TEXT("Recipes"), Assets);
 		Json->SetObjectField(TEXT("group"), Group);
 		Json->SetArrayField(TEXT("layers"), Layers);
-		return Documents::Write(Filename, Json, Error);
+		return Documents::Write(Filename, Json, Error, bOverwrite);
+	}
+	bool ExportRecipe(const FString& Filename, const FRecipePreset& Preset, FText& Error)
+	{
+		return WriteRecipe(Filename, Preset, Error, false, false);
 	}
 	bool LoadRecipe(const FString& Filename, FRecipePreset& OutPreset, FText& Error)
 	{
@@ -527,10 +588,50 @@ namespace MixtormatPresetStore
 			Documents::GatherAssets(FMixtormatLayer::StaticStruct(), &Layer, Assets);
 		}
 		if (!Documents::CheckDeclarations(Preset, Assets, Error) || !MixtormatRecipeService::Validate(Preset, Error)) { return false; }
+		Preset.bShipped = Documents::SamePath(FPaths::GetPath(Filename), GetRecipeDirectory(ERecipeSaveDestination::Plugin));
 		OutPreset = MoveTemp(Preset);
 		return true;
 	}
-	bool SaveRecipe(const FRecipePreset& Preset, FText& Error) { return Documents::Save(TEXT("Recipes"), Preset, Error, ExportRecipe); }
+	bool SaveRecipe(const FRecipePreset& Preset, FText& Error, ERecipeSaveDestination Destination, bool bOverwrite)
+	{
+		Error = FText::GetEmpty();
+		const bool bPlugin = Destination == ERecipeSaveDestination::Plugin;
+		if (bPlugin && !MixtormatParameterUi::IsDeveloperMetaEnabled())
+		{ return Documents::Fail(Error, TEXT("Publishing plugin recipes requires developer metadata mode.")); }
+		if (!Documents::ValidInfo(Preset, Error)) { return false; }
+		const FString Root = GetRecipeDirectory(Destination);
+		if (Root.IsEmpty()) { return Documents::Fail(Error, TEXT("Recipe destination is unavailable.")); }
+		if (!IFileManager::Get().MakeDirectory(*Root, true))
+		{ return Documents::Fail(Error, TEXT("Cannot create recipe destination directory.")); }
+
+		FRecipePreset Replacement = Preset;
+		FString Filename = FPaths::Combine(Root, Preset.Id.ToString(EGuidFormats::Digits) + TEXT(".json"));
+		bool bFound = false;
+		TArray<FString> Files;
+		IFileManager::Get().FindFiles(Files, *FPaths::Combine(Root, TEXT("*.json")), true, false);
+		// Read envelopes only: updating a recipe must not require its old assets to load.
+		for (const FString& File : Files)
+		{
+			FDocumentInfo Existing;
+			TSharedPtr<FJsonObject> Json;
+			FText Issue;
+			const FString Path = FPaths::Combine(Root, File);
+			if (!Documents::ReadEnvelope(Path, TEXT("Recipes"), Existing, Json, Issue)
+				|| !Existing.Name.Equals(Preset.Name, ESearchCase::IgnoreCase)) { continue; }
+			if (bFound)
+			{ return Documents::Fail(Error, TEXT("Multiple recipes have that name in the destination. Update is ambiguous.")); }
+			if (bOverwrite && (Existing.Id != Preset.Id || !Documents::SamePath(Path, Preset.Filename)))
+			{ return Documents::Fail(Error, TEXT("Recipe update target changed. Refresh Recipes and try again.")); }
+			bFound = true;
+			Replacement.Id = Existing.Id;
+			Filename = Path;
+		}
+		if (bFound && !bOverwrite)
+		{ return Documents::Fail(Error, TEXT("That recipe name already exists. Choose a different name or explicitly overwrite it.")); }
+		if (bOverwrite && !bFound)
+		{ return Documents::Fail(Error, TEXT("Recipe update target no longer exists. Refresh Recipes and try again.")); }
+		return WriteRecipe(Filename, Replacement, Error, bOverwrite, bPlugin);
+	}
 	bool ListRecipes(TArray<FRecipePreset>& OutPresets, FText& Error) { return Documents::List(TEXT("Recipes"), OutPresets, Error, LoadRecipe); }
 	bool ImportRecipe(const FString& Filename, FText& Error)
 	{

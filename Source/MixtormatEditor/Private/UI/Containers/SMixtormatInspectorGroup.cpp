@@ -229,7 +229,7 @@ void SMixtormatInspectorGroup::Construct(const FArguments& InArgs)
 			SNew(SMixtormatIconButton)
 			.Icon(MixtormatIcons::Refresh())
 			.Size(FMixtormatThemeStore::GetResolved().ControlLayout.IconButtonSize)
-			.ToolTipText(LOCTEXT("ResetGroup", "Reset this group to its defaults"))
+			.ToolTip(LOCTEXT("ResetGroup", "Reset this group to its defaults"))
 			.OnClicked(InArgs._OnReset)
 		];
 	}

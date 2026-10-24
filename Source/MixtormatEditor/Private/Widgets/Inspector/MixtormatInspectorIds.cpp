@@ -9,6 +9,7 @@
 #include "UI/Controls/SMixtormatColorRamp.h"
 #include "UI/Controls/SMixtormatTextFieldGradient.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "UI/Atoms/SMixtormatChip.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
@@ -459,7 +460,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				})
 				.bOn_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
 				.bActive_Lambda([this]() { return DebugPreviewMode == EMixtormatDebugPreviewMode::LayerMask; })
-				.ToolTipText(LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan"))
+				.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("PreviewColorId", "Preview this selection in unlit dark red and cyan")))
 				.OnClicked_Lambda([this]() { ToggleFeaturePreview(EMixtormatDebugPreviewMode::LayerMask); }));
 	AddSliderRow(Panel, MixtormatRow::MakeDropdown(
 		LOCTEXT("IdSelectionMode", "Mode"),
@@ -569,7 +570,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 		.AllowedClass(UTexture2D::StaticClass())
 		.DisplayThumbnail(false)
 		.AllowClear(true)
-		.ToolTipText(LOCTEXT("IdTextureHint", "The ID map. Import it with sRGB off and compression set to an uncompressed format: both settings move the colours the map stores, and a selection is a comparison against a colour picked out of them. DXT in particular invents intermediate values along every ID boundary."))
+		.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("IdTextureHint", "The ID map. Import it with sRGB off and compression set to an uncompressed format: both settings move the colours the map stores, and a selection is a comparison against a colour picked out of them. DXT in particular invents intermediate values along every ID boundary.")))
 		.ObjectPath_Lambda([this]()
 		{
 			const FMixtormatColorIdMask* C = GetSelectedColorId();
@@ -609,7 +610,7 @@ TSharedRef<SWidget> SMixtormat::BuildColorIdControls()
 				[
 					SNew(SButton)
 					.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-					.ToolTipText(LOCTEXT("IdSwatchHint", "The colour to select. Pick it out of the ID map with the eyedropper in the colour window."))
+					.ToolTip(SMixtormatHelp::MakeStyledToolTip(LOCTEXT("IdSwatchHint", "The colour to select. Pick it out of the ID map with the eyedropper in the colour window.")))
 					.OnClicked_Lambda([this, ColorIndex]() { return OpenColorIdPicker(ColorIndex); })
 					[
 						SNew(SColorBlock)
@@ -1259,7 +1260,7 @@ TSharedRef<SWidget> SMixtormat::BuildPatternIdControls()
 		})
 		[
 			SNew(SBox)
-			.ToolTipText(LegacyHint)
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(LegacyHint))
 			[
 				LegacyContainer
 			]
