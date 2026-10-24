@@ -9,7 +9,7 @@ lesson is why this set exists).
 
 - Wrapper API — widgets call this: `UI/Atoms/MixtormatIcons.h` / `.cpp`
 - Brush registration: `Style/MixtormatStyle.cpp` — `SetSvgIcon` / `SetPngIcon` / `SetBrandArtwork`
-- Art: `Resources/Icons/*.png` — historical inventory; current registrations are owned SVGs.
+- Art: `Resources/Icons/*.svg` — owned glyphs; PNG filenames below are historical inventory.
 - Brand art: `Resources/Icons/mixtormat-icon.svg`, `mixtormat-logo.svg` — vector, ratio-locked.
 - Per-role sizing/opacity: `EMixtormatIconRole` + `FMixtormatIconStyle` (`MixtormatTheme.h`).
 - Ramp toolbar plates: `FMixtormatScalarRampButtonTheme` via `SMixtormatIconButton`.
@@ -18,8 +18,8 @@ lesson is why this set exists).
 ## Rules
 
 - Widgets use `MixtormatIcons::Name()`; never `GetBrush(TEXT("Mixtormat.Icon..."))`.
-- Key format: `Mixtormat.Icon.<WrapperName>`; art file: `Icons/<kebab-name>.png`.
-- PNGs are white so the brush tint colours them.
+- Key format: `Mixtormat.Icon.<WrapperName>`; art file: `Resources/Icons/<kebab-name>.svg`.
+- Pass extensionless `Icons/<kebab-name>` to `SetSvgIcon`; it appends `.svg` and applies theme tint.
 - `Resources/Icons/*.png` is excluded from agent file scanning
   (`.zed/settings.json`) — to see the art, open the folder or read the
   registration block in `MixtormatStyle.cpp`.
@@ -163,11 +163,10 @@ Existing generic generator, effect, and noise icons remain available.
 
 ## How to add one
 
-- Art: 64 px white-on-transparent PNG → `Resources/Icons/<kebab>.png`; match the
-  sheet's stroke weight (do not resize an existing glyph up).
+- Art: owned SVG → `Resources/Icons/<kebab>.svg`; match the existing glyphs' stroke weight.
 - Register in `MixtormatStyle.cpp::Refresh()`:
-  `SetPngIcon(TEXT("Mixtormat.Icon.<Name>"), TEXT("Icons/<kebab>"), FVector2D(IconBrushSize, IconBrushSize));`
-  Current glyphs use the equivalent `SetSvgIcon` registration with vector artwork.
+  `SetSvgIcon(TEXT("Mixtormat.Icon.<Name>"), TEXT("Icons/<kebab>"), FVector2D(IconBrushSize, IconBrushSize));`
+  Use the resolved theme's icon brush size, as existing registrations do.
   Vector brand art uses `SetBrandArtwork` instead.
 - Declare + define the wrapper in `MixtormatIcons.h` / `.cpp` (one line each).
 - Use the wrapper; pick the matching `EMixtormatIconRole` for size/opacity. If

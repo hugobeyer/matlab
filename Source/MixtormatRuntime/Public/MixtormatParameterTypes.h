@@ -57,7 +57,8 @@ enum class EMixtormatParameterOwnerType : uint8
 		Boolean = 31 UMETA(DisplayName = "Boolean"),
 	Surfacing = 32 UMETA(DisplayName = "Surfacing"),
 		Rust = 33 UMETA(DisplayName = "Rust"),
-	Wood = 34 UMETA(DisplayName = "Wood")
+	Wood = 34 UMETA(DisplayName = "Wood"),
+	Stone = 35 UMETA(DisplayName = "Stone")
 };
 
 UENUM(BlueprintType)

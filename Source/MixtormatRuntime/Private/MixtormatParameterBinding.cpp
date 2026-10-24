@@ -95,11 +95,14 @@ namespace
 		case EMixtormatParameterOwnerType::Generator: return Child.Type == EMixtormatLayerChildType::Generator;
 		case EMixtormatParameterOwnerType::Surfacing: return Child.Type == EMixtormatLayerChildType::Surfacing
 			&& Child.Surfacing.Type != EMixtormatSurfacingType::Rust
-			&& Child.Surfacing.Type != EMixtormatSurfacingType::Wood;
+			&& Child.Surfacing.Type != EMixtormatSurfacingType::Wood
+			&& Child.Surfacing.Type != EMixtormatSurfacingType::Stone;
 		case EMixtormatParameterOwnerType::Rust: return Child.Type == EMixtormatLayerChildType::Surfacing
 			&& Child.Surfacing.Type == EMixtormatSurfacingType::Rust;
 		case EMixtormatParameterOwnerType::Wood: return Child.Type == EMixtormatLayerChildType::Surfacing
 			&& Child.Surfacing.Type == EMixtormatSurfacingType::Wood;
+		case EMixtormatParameterOwnerType::Stone: return Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Stone;
 				case EMixtormatParameterOwnerType::Boolean: return Child.Type == EMixtormatLayerChildType::Boolean;
 		case EMixtormatParameterOwnerType::MaskShaping:
 			return Child.Type == EMixtormatLayerChildType::Mask
@@ -201,6 +204,7 @@ namespace
 		case EMixtormatParameterOwnerType::Effect: View.ConstData = &Child.Effect; break;
 		case EMixtormatParameterOwnerType::Rust: View.ConstData = &Child.Surfacing.Rust; break;
 		case EMixtormatParameterOwnerType::Wood: View.ConstData = &Child.Surfacing.Wood; break;
+		case EMixtormatParameterOwnerType::Stone: View.ConstData = &Child.Surfacing.Stone; break;
 		case EMixtormatParameterOwnerType::Surfacing: View.ConstData = Child.Surfacing.Type == EMixtormatSurfacingType::Moss
 			? static_cast<const void*>(&Child.Surfacing.Moss) : static_cast<const void*>(&Child.Surfacing.Skin); break;
 		case EMixtormatParameterOwnerType::Boolean: View.ConstData = &Child.Boolean; break;
@@ -654,6 +658,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Surfacing: return { FMixtormatSkin::StaticStruct(), FMixtormatMoss::StaticStruct() };
 		case EMixtormatParameterOwnerType::Rust: return { FMixtormatRust::StaticStruct() };
 		case EMixtormatParameterOwnerType::Wood: return { FMixtormatWood::StaticStruct() };
+		case EMixtormatParameterOwnerType::Stone: return { FMixtormatStone::StaticStruct() };
 		case EMixtormatParameterOwnerType::Boolean: return { FMixtormatBooleanStack::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generated: return { FMixtormatGeneratedMask::StaticStruct() };
 		case EMixtormatParameterOwnerType::Craquelure: return { FMixtormatCraquelure::StaticStruct() };

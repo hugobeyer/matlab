@@ -54,6 +54,34 @@ namespace MixtormatGpuCompositor
 			W.ColorRamp.Sanitize();
 			return;
 		}
+		if (Child.Surfacing.Type == EMixtormatSurfacingType::Stone)
+		{
+			FMixtormatStone& S = Child.Surfacing.Stone;
+			const FMixtormatStone Defaults;
+#define STONE_FINITE(Member) if (!FMath::IsFinite(S.Member)) { S.Member = Defaults.Member; }
+			STONE_FINITE(Amount); STONE_FINITE(HeightScale); STONE_FINITE(Scale); STONE_FINITE(Direction);
+			STONE_FINITE(GrainSize); STONE_FINITE(VeinFreq); STONE_FINITE(VeinWidth); STONE_FINITE(Sharpness);
+			STONE_FINITE(Secondary); STONE_FINITE(Distort); STONE_FINITE(WarpFreq); STONE_FINITE(WarpPower);
+			STONE_FINITE(Grain); STONE_FINITE(StripeFreq); STONE_FINITE(StripeSoft); STONE_FINITE(StripeTone);
+			STONE_FINITE(CellScale); STONE_FINITE(CellJitter); STONE_FINITE(CellWarp); STONE_FINITE(EdgeWidth);
+			STONE_FINITE(EdgeDarken); STONE_FINITE(Roughness); STONE_FINITE(FinishAmount); STONE_FINITE(Alteration);
+#undef STONE_FINITE
+			const auto SanitizeColor = [](FLinearColor& C, const FLinearColor& D)
+			{
+				C.R = FMath::IsFinite(C.R) ? FMath::Max(0.0f, C.R) : D.R;
+				C.G = FMath::IsFinite(C.G) ? FMath::Max(0.0f, C.G) : D.G;
+				C.B = FMath::IsFinite(C.B) ? FMath::Max(0.0f, C.B) : D.B;
+				C.A = 1.0f;
+			};
+			SanitizeColor(S.VeinColor, Defaults.VeinColor);
+			SanitizeColor(S.EdgeColor, Defaults.EdgeColor);
+			for (FMixtormatColorRampStop& Stop : S.ColorRamp.Stops)
+			{
+				SanitizeColor(Stop.Color, FLinearColor::Black);
+			}
+			S.ColorRamp.Sanitize();
+			return;
+		}
 		if (Child.Surfacing.Type == EMixtormatSurfacingType::Moss)
 		{
 			// Moss moved from GeneratorGather: same sanitization, seed resolution

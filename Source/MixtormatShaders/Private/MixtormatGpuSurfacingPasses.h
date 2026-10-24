@@ -27,6 +27,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef DetailNormal = nullptr; // Moss leaf-detail normal (encoded RGB). Skin uses height-derived normals.
 		FRDGTextureRef WoodDiagnostics = nullptr; // RGBA: pores, latewood, rays, remaining coat in relative height units.
 		FRDGTextureRef WoodFlow = nullptr; // Destination-space fiber direction; RG vector, B zero, A validity.
+		FRDGTextureRef StoneDiagnostics = nullptr; // RGBA: vein, band, cell edge, cell id (0..1 hash).
 	};
 
 	// Child.Surfacing must be the instance/binding-resolved, gather-sanitized Runtime payload.
@@ -58,6 +59,13 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
 	void PublishWoodFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FChildRenderData& Child, const FSurfacingFields& Raw,
+		FRDGTextureRef Gate, FRDGTextureRef BeforeHeight, FRDGTextureRef AfterHeight, float AncestorAmount);
+
+	FSurfacingFields AddStoneSurfacePasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
+	void PublishStoneFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer, const FChildRenderData& Child, const FSurfacingFields& Raw,
 		FRDGTextureRef Gate, FRDGTextureRef BeforeHeight, FRDGTextureRef AfterHeight, float AncestorAmount);
 

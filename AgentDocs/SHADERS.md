@@ -33,7 +33,9 @@ Convention: `FMixtormat<Feature><Stage>CS` → `Mixtormat<Feature>.usf` →
 Noise V2.1 also provides optional multi-octave layers for the historically single-frequency
 families, continuous cell-distance modulation, and an independently authored high-frequency
 jagged domain warp. Opt-in values default to zero so the previous shader outputs are unchanged;
-see `AgentDocs/NOISE_V2.md` for exact contracts and performance risks.
+see [MixtormatNoiseV2.ush](../Shaders/Private/MixtormatNoiseV2.ush) for shader contracts and
+`FMixtormatNoise` in [MixtormatGeneratorTypes.h](../Source/MixtormatRuntime/Public/MixtormatGeneratorTypes.h)
+for authored parameters. GPU performance remains an owner-run validation.
 
 Capacity headers (`MixtormatScalarRampCapacity.ush`,
 `MixtormatColorRampCapacity.ush`) are included by **Runtime C++** too

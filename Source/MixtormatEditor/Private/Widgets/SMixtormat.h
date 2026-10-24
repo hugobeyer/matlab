@@ -100,6 +100,7 @@ enum class EMixtormatChildCreation : uint8
 	Skin,
 	Rust,
 	Wood,
+	Stone,
 };
 
 // Immutable identity for one Q opening. Nested menus retain this, never the live selection.
@@ -611,6 +612,9 @@ private:
 	FMixtormatWood* GetSelectedWood();
 	const FMixtormatWood* GetSelectedWood() const;
 	TSharedRef<SWidget> BuildWoodControls();
+	FMixtormatStone* GetSelectedStone();
+	const FMixtormatStone* GetSelectedStone() const;
+	TSharedRef<SWidget> BuildStoneControls();
 	FMixtormatMycelium* GetSelectedMycelium();
 	const FMixtormatMycelium* GetSelectedMycelium() const;
 	TSharedRef<SWidget> BuildMyceliumControls();

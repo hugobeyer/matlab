@@ -7,6 +7,7 @@
 #include "Style/MixtormatStyle.h"
 #include "UI/Containers/SMixtormatMenuPanel.h"
 #include "UI/Menus/SMixtormatMenuItem.h"
+#include "UI/Parameters/MixtormatParameterPresentation.h"
 #include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/CoreStyle.h"
@@ -196,11 +197,12 @@ namespace MixtormatMenu
 			}
 		}
 
+		// Long lists (e.g. 28 Wood presets) exceed the popover height; scroll inside the panel.
 		return SNew(SMixtormatMenuPanel)
 			.MinWidth(Layout.Width)
 			.Padding(FMargin(Layout.PanelPadding))
 			[
-				Rows
+				MixtormatParameterPresentation::MakeScrollableContent(Rows, Layout.Width)
 			];
 	}
 }

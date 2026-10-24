@@ -15,7 +15,8 @@ enum class EMixtormatSurfacingType : uint8
 	Skin = 0,
 	Moss = 1,
 		Rust = 2,
-	Wood = 3
+	Wood = 3,
+	Stone = 4
 };
 
 // Compressed height-field film relaxation on a tissue foundation.
@@ -464,6 +465,122 @@ struct MIXTORMATRUNTIME_API FMixtormatRust
 	}
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatStoneFamily : uint8
+{
+	Marble = 0 UMETA(DisplayName = "Marble (Crystalline Carbonate)"),
+	Granite = 1 UMETA(DisplayName = "Granite (Mineral Populations)"),
+	Limestone = 2 UMETA(DisplayName = "Limestone"),
+	Travertine = 3 UMETA(DisplayName = "Travertine (Banded Pores)"),
+	Sandstone = 4 UMETA(DisplayName = "Sandstone (Cemented Grains)"),
+	Quartzite = 5 UMETA(DisplayName = "Quartzite (Fused Quartz)"),
+	Slate = 6 UMETA(DisplayName = "Slate (Cleavage)")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatStonePattern : uint8
+{
+	Veins = 0 UMETA(DisplayName = "Veins"),
+	Stripes = 1 UMETA(DisplayName = "Stripes / Bands"),
+	Both = 2 UMETA(DisplayName = "Veins + Bands")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatStoneFinish : uint8
+{
+	Polished = 0 UMETA(DisplayName = "Polished"),
+	Honed = 1 UMETA(DisplayName = "Honed"),
+	Sawn = 2 UMETA(DisplayName = "Sawn"),
+	Split = 3 UMETA(DisplayName = "Split / Cleft")
+};
+
+// Shared mineral fabric (warped veins, quantized bands, Worley mineral cells)
+// with finish and alteration evaluated separately. Artistic approximation:
+// vein width is a phase threshold, not a metric width; cell edge is F2-F1 based.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatStone
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Contribution after scoped masks. Zero preserves the incoming material."))
+	float Amount = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Pure multiplier on signed stone relief. Veins recolor without grooving at zero."))
+	float HeightScale = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
+	int32 Seed = 7;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (ToolTip = "Geological family recipe: mineral populations, structure and compatible response. Trade names do not determine the model."))
+	EMixtormatStoneFamily Family = EMixtormatStoneFamily::Marble;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	EMixtormatStonePattern Pattern = EMixtormatStonePattern::Both;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.25", UIMax = "32", Delta = "0.05", ToolTip = "Structure scale: vein/band/clast spacing across the tile (relative units)."))
+	float Scale = 4.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (Units = "deg", UIMin = "0", UIMax = "180", Delta = "0.5", ToolTip = "Fabric orientation in degrees."))
+	float Direction = 25.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.1", UIMax = "8", Delta = "0.05", ToolTip = "Relative crystal/grain size multiplier. Changes material regions, not relief depth."))
+	float GrainSize = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.1", UIMax = "12", Delta = "0.05", ToolTip = "Vein band frequency relative to Structure Scale."))
+	float VeinFreq = 3.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.005", UIMax = "0.6", Delta = "0.005", ToolTip = "Artistic vein phase-threshold width; visible width also varies with frequency and warp stretch. Not millimeters."))
+	float VeinWidth = 0.10f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.1", UIMax = "6", Delta = "0.05", ToolTip = "Vein mask contrast exponent."))
+	float Sharpness = 1.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Secondary finer vein family strength."))
+	float Secondary = 0.45f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "4", Delta = "0.05", ToolTip = "FBM distortion of vein/band phase."))
+	float Distort = 1.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "4", Delta = "0.05", ToolTip = "Domain warp frequency. Zero disables warp."))
+	float WarpFreq = 1.2f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "3", Delta = "0.05", ToolTip = "Domain warp strength."))
+	float WarpPower = 0.75f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "0.3", Delta = "0.005", ToolTip = "Fine noise added to the vein mask. Not a mineral-grain model."))
+	float Grain = 0.03f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "1", UIMax = "24", Delta = "0.1", ToolTip = "Compositional band count relative to Structure Scale."))
+	float StripeFreq = 6.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.01", UIMax = "0.5", Delta = "0.01", ToolTip = "Band boundary softness."))
+	float StripeSoft = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Per-band tone variation amount."))
+	float StripeTone = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.25", UIMax = "12", Delta = "0.05", ToolTip = "Mineral cell scale relative to Structure Scale. Granite reads as intergrown crystal populations."))
+	float CellScale = 2.5f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Cell feature-point jitter."))
+	float CellJitter = 0.9f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "2", Delta = "0.05", ToolTip = "Domain warp of mineral cells."))
+	float CellWarp = 0.6f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0.005", UIMax = "0.4", Delta = "0.005", ToolTip = "Cell boundary indicator width (F2-F1 based, not metric distance)."))
+	float EdgeWidth = 0.08f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Darkening along mineral cell boundaries."))
+	float EdgeDarken = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Baseline stone roughness before finish profile. Neither Ra nor gloss units."))
+	float Roughness = 0.35f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (ToolTip = "Exposed surface finish, evaluated separately from fabric: Polished, Honed, Sawn or Split."))
+	EMixtormatStoneFinish Finish = EMixtormatStoneFinish::Honed;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Finish profile strength. Zero keeps fabric roughness."))
+	float FinishAmount = 0.7f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Selective loss/deposit intensity with independent relief budget. Not elapsed age."))
+	float Alteration = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (ToolTip = "Vein mineral tint."))
+	FLinearColor VeinColor = FLinearColor(0.12f, 0.13f, 0.16f, 1.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (ToolTip = "Cell boundary tint."))
+	FLinearColor EdgeColor = FLinearColor(0.08f, 0.08f, 0.09f, 1.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	FMixtormatColorRamp ColorRamp;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	bool bWriteHeight = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	bool bWriteColor = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
+	bool bWriteRoughness = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone", meta = (ToolTip = "Stone is dielectric (metallic zero, F0 0.04). Uncovered substrate optics are preserved."))
+	bool bWriteMaterial = true;
+
+	FMixtormatStone()
+	{
+		ColorRamp.Stops = {
+			{0.0f, FLinearColor(0.72f, 0.68f, 0.60f, 1.0f)},
+			{1.0f, FLinearColor(0.88f, 0.87f, 0.83f, 1.0f)}};
+	}
+};
+
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatSurfacing
 {
@@ -481,6 +598,8 @@ struct MIXTORMATRUNTIME_API FMixtormatSurfacing
 		FMixtormatRust Rust;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surfacing")
 	FMixtormatWood Wood;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surfacing")
+	FMixtormatStone Stone;
 };
 
 // Published diagnostics are independent of channel write toggles, which govern composition.
@@ -522,10 +641,18 @@ struct MIXTORMATRUNTIME_API FMixtormatWoodPreset
 	FMixtormatWood Settings;
 };
 
+struct MIXTORMATRUNTIME_API FMixtormatStonePreset
+{
+	FText Name;
+	FText Description;
+	FMixtormatStone Settings;
+};
+
 namespace MixtormatSurfacing
 {
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatRustPreset> GetRustPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatWoodPreset> GetWoodPresets();
+	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatStonePreset> GetStonePresets();
 	// Shared by dispatch/remap eligibility and channel application; dye/stain add no relief.
 	MIXTORMATRUNTIME_API bool WoodWritesHeight(const FMixtormatWood& Wood);
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSkinPreset> GetSkinPresets();

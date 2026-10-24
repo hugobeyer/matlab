@@ -208,14 +208,18 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef UpstreamDelta, FRDGTextureRef ParentGate, float AncestorAmount)
 	{
 		if (!Child.Surfacing.bEnabled || (Child.Surfacing.Type != EMixtormatSurfacingType::Skin
-			&& Child.Surfacing.Type != EMixtormatSurfacingType::Rust)
+			&& Child.Surfacing.Type != EMixtormatSurfacingType::Rust
+			&& Child.Surfacing.Type != EMixtormatSurfacingType::Stone
+			&& Child.Surfacing.Type != EMixtormatSurfacingType::Wood)
 			|| EvaluatedSkin.Contains(Child.SourceChildIndex)) { return LocalHeight; }
 		EvaluatedSkin.Add(Child.SourceChildIndex);
 		AddReadyRegionIdPasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, false);
 		if (!LayerCtx.LayerInputBC || !LayerCtx.LayerInputRAM) { AddLayerInputPass(Ctx, LayerCtx, Layer); }
 		const bool bRust = Child.Surfacing.Type == EMixtormatSurfacingType::Rust;
-		const float EffectiveAmount = (bRust ? Child.Surfacing.Rust.Amount : Child.Surfacing.Skin.Amount) * AncestorAmount;
-		if (EffectiveAmount > 0.0f && (bRust ? Child.Surfacing.Rust.bWriteColor : Child.Surfacing.Skin.bWriteColor)) { FlushPendingColorRamps(); }
+		const bool bStone = Child.Surfacing.Type == EMixtormatSurfacingType::Stone;
+		const bool bWood = Child.Surfacing.Type == EMixtormatSurfacingType::Wood;
+		const float EffectiveAmount = (bStone ? Child.Surfacing.Stone.Amount : (bWood ? Child.Surfacing.Wood.Amount : (bRust ? Child.Surfacing.Rust.Amount : Child.Surfacing.Skin.Amount))) * AncestorAmount;
+		if (EffectiveAmount > 0.0f && (bStone ? Child.Surfacing.Stone.bWriteColor : (bWood ? Child.Surfacing.Wood.bWriteColor : (bRust ? Child.Surfacing.Rust.bWriteColor : Child.Surfacing.Skin.bWriteColor)))) { FlushPendingColorRamps(); }
 		FRDGTextureRef Gate = AddSurfacingGatePass(Ctx, ParentGate, ScopeGate(Child.SourceChildIndex));
 		FRDGTextureRef AnalysisDelta = LocalHeight;
 		if (UpstreamDelta)
@@ -229,9 +233,13 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		const FRDGTextureRef Substrate = ResolveSubstrateHeight(Ctx, LayerCtx, AnalysisDelta,
 			!Layer.bFillPassThrough && LayerCtx.LayerIndex > 0
 				? Ctx.OutputHeight[1 - (LayerCtx.LayerIndex & 1)] : nullptr);
-		const FSurfacingFields Raw = bRust
+		const FSurfacingFields Raw = bStone
+			? AddStoneSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)
+			: (bWood
+			? AddWoodSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)
+			: (bRust
 			? AddRustSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)
-			: AddSkinSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV);
+			: AddSkinSurfacePasses(Ctx, LayerCtx, Layer, Child, Substrate, LayerCtx.ReferencedUV)));
 		if (!Raw.Height) { return LocalHeight; }
 		const FRDGTextureRef Before = LocalHeight;
 		LocalHeight = ApplySurfacingFields(Ctx, LayerCtx, Child, Raw, Gate, LocalHeight, AncestorAmount);

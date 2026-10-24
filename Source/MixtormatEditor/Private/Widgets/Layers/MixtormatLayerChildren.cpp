@@ -886,6 +886,7 @@ namespace MixtormatLayersPrivate
 	case EMixtormatChildCreation::Moss:            return EMixtormatLayerChildType::Surfacing;
 		case EMixtormatChildCreation::Rust:            return EMixtormatLayerChildType::Surfacing;
 			case EMixtormatChildCreation::Wood:            return EMixtormatLayerChildType::Surfacing;
+	case EMixtormatChildCreation::Stone:           return EMixtormatLayerChildType::Surfacing;
 	case EMixtormatChildCreation::Mycelium:        return EMixtormatLayerChildType::Generator;
 	case EMixtormatChildCreation::Scales:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::CliffStrata:      return EMixtormatLayerChildType::Generator;
@@ -971,6 +972,9 @@ namespace MixtormatLayersPrivate
 			break;
 		case EMixtormatChildCreation::Wood:
 			Child.Surfacing.Type = EMixtormatSurfacingType::Wood;
+			break;
+		case EMixtormatChildCreation::Stone:
+			Child.Surfacing.Type = EMixtormatSurfacingType::Stone;
 			break;
 		case EMixtormatChildCreation::Mycelium:
 			Child.Generator.Type = EMixtormatGeneratorType::Mycelium;
@@ -1485,7 +1489,8 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 
 	if (Child.Type == EMixtormatLayerChildType::Surfacing)
 	{
-		return Child.Surfacing.Type == EMixtormatSurfacingType::Wood ? LOCTEXT("WoodChildName", "Wood")
+		return Child.Surfacing.Type == EMixtormatSurfacingType::Stone ? LOCTEXT("StoneChildName", "Stone")
+					: Child.Surfacing.Type == EMixtormatSurfacingType::Wood ? LOCTEXT("WoodChildName", "Wood")
 					: Child.Surfacing.Type == EMixtormatSurfacingType::Rust ? LOCTEXT("RustChildName", "Rust")
 			: Child.Surfacing.Type == EMixtormatSurfacingType::Moss
 			? LOCTEXT("MossChildName", "Moss") : LOCTEXT("SkinChildName", "Skin");

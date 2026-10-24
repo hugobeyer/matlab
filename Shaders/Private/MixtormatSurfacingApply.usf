@@ -86,6 +86,12 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 	if (WriteNormal != 0u)
 	{
 		float W0 = SurfaceWeight(P);
+		// Leaf detail normals must stop at the growth footprint, like color/roughness below.
+		if (HasMaterialCoverage != 0u)
+		{
+			float Coverage = MaterialCoverage.Load(int3(P, 0));
+			W0 *= isfinite(Coverage) ? saturate(Coverage) : 0.0f;
+		}
 		if (W0 > 0.0f)
 		{
 			float3 DN = DetailNormal.Load(int3(P, 0)).rgb * 2.0f - 1.0f;

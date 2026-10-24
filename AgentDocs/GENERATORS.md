@@ -52,7 +52,7 @@ source modes. Historical baseline: `old_docs/generator_flow_interaction_audit.md
 ## Boolean Ops — Scatter Carve and field combining
 
 > [!NOTE]
-> The four-mode `BooleanOps` generator authoring is superseded by the dedicated **Boolean stack container** child (`EMixtormatLayerChildType::Boolean`, see `AgentDocs/BOOLEAN_STACK.md`). In the stack architecture, Target and Source operands are authored as scoped children with independent UV and height offsets. The finite-volume **Scatter Carve** compute path is preserved and reserved for separate reclassification.
+> The four-mode `BooleanOps` generator authoring is superseded by the dedicated **Boolean stack container** child (`EMixtormatLayerChildType::Boolean`; see `FMixtormatBooleanStack` in [MixtormatLayerTypes.h](../Source/MixtormatRuntime/Public/MixtormatLayerTypes.h)). In the stack architecture, Target and Source operands are authored as scoped children with independent UV and height offsets. The finite-volume **Scatter Carve** compute path is preserved and reserved for separate reclassification.
 
 `BooleanOps` originally authored four modes: **Scatter Carve**, **Boolean**, **Round** and
 **Bevel**. Scatter Carve preserves its existing finite-volume implementation.
@@ -226,7 +226,7 @@ Worley cell-distance-depth control, Phasor Scale/Bias and independent jagged-dom
 Noise-specific numeric/enum authoring defaults are registered for Generator/MaskNoise in
 `Config/MixtormatParameterAuthoring.json`. The normal right-click reference/dev-menu path
 applies; pixel-based Noise GPU Driver evaluation is **not** implemented yet.
-See [NOISE_V2.md](NOISE_V2.md) for parameters and constraints.
+See `FMixtormatNoise` in [MixtormatGeneratorTypes.h](../Source/MixtormatRuntime/Public/MixtormatGeneratorTypes.h) for parameters and [MixtormatNoiseV2.ush](../Shaders/Private/MixtormatNoiseV2.ush) for shader contracts and algorithms.
 
 ## Ordered Flow and post-generation Behaviors
 

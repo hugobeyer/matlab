@@ -1211,6 +1211,83 @@ namespace MixtormatSurfacing
 		return MakeArrayView(Presets);
 	}
 
+	TConstArrayView<FMixtormatStonePreset> GetStonePresets()
+	{
+		static const TArray<FMixtormatStonePreset> Presets = []()
+		{
+			TArray<FMixtormatStonePreset> Built;
+			Built.SetNum(12);
+			auto Ramp = [](FMixtormatStone& S, FLinearColor A, FLinearColor B)
+			{
+				S.ColorRamp.Stops = {{0.0f, A}, {1.0f, B}};
+			};
+			Built[0].Name = NSLOCTEXT("MixtormatSurfacing", "StoneFineMarble", "Fine Marble");
+			Built[0].Description = NSLOCTEXT("MixtormatSurfacing", "StoneFineMarbleHelp", "Fine crystalline white marble with soft grey warped veins and a polished finish. Veins recolor without grooving.");
+			{ FMixtormatStone& S = Built[0].Settings; S.GrainSize = 0.7f; S.VeinWidth = 0.08f; S.Roughness = 0.18f;
+			  S.Finish = EMixtormatStoneFinish::Polished; S.FinishAmount = 0.9f; S.Seed = 11;
+			  Ramp(S, FLinearColor(0.78f,0.76f,0.72f,1), FLinearColor(0.93f,0.92f,0.89f,1)); }
+			Built[1].Name = NSLOCTEXT("MixtormatSurfacing", "StoneCoarseMarble", "Coarse Marble");
+			Built[1].Description = NSLOCTEXT("MixtormatSurfacing", "StoneCoarseMarbleHelp", "Coarse interlocking carbonate crystals in warm beige, honed with restrained veins.");
+			{ FMixtormatStone& S = Built[1].Settings; S.GrainSize = 2.2f; S.CellScale = 3.5f; S.EdgeDarken = 0.2f;
+			  S.VeinWidth = 0.06f; S.Secondary = 0.25f; S.Roughness = 0.32f; S.Seed = 23;
+			  Ramp(S, FLinearColor(0.62f,0.52f,0.38f,1), FLinearColor(0.85f,0.76f,0.60f,1)); }
+			Built[2].Name = NSLOCTEXT("MixtormatSurfacing", "StoneFoldedMarble", "Folded Marble");
+			Built[2].Description = NSLOCTEXT("MixtormatSurfacing", "StoneFoldedMarbleHelp", "Green folded compositional bands with strong domain warp, like cipollino-style foliated marble.");
+			{ FMixtormatStone& S = Built[2].Settings; S.Direction = 10.0f; S.WarpPower = 1.6f; S.StripeFreq = 8.0f;
+			  S.StripeTone = 0.9f; S.VeinColor = FLinearColor(0.05f,0.10f,0.07f,1); S.Roughness = 0.28f; S.Seed = 37;
+			  Ramp(S, FLinearColor(0.10f,0.22f,0.16f,1), FLinearColor(0.55f,0.65f,0.55f,1)); }
+			Built[3].Name = NSLOCTEXT("MixtormatSurfacing", "StoneCrossCutVeins", "Cross-Cut Veins");
+			Built[3].Description = NSLOCTEXT("MixtormatSurfacing", "StoneCrossCutVeinsHelp", "Grey carbonate crossed by bright mineral-filled vein families and fine secondary branches.");
+			{ FMixtormatStone& S = Built[3].Settings; S.Pattern = EMixtormatStonePattern::Veins; S.Secondary = 0.8f;
+			  S.Sharpness = 2.2f; S.VeinWidth = 0.07f; S.VeinColor = FLinearColor(0.85f,0.82f,0.75f,1);
+			  S.Roughness = 0.3f; S.Seed = 41; Ramp(S, FLinearColor(0.32f,0.33f,0.35f,1), FLinearColor(0.55f,0.56f,0.58f,1)); }
+			Built[4].Name = NSLOCTEXT("MixtormatSurfacing", "StoneBreccia", "Marble Breccia");
+			Built[4].Description = NSLOCTEXT("MixtormatSurfacing", "StoneBrecciaHelp", "Angular pink-brown clasts in a darker matrix with strong cell boundaries. Cellular approximation, not true fragment fabric.");
+			{ FMixtormatStone& S = Built[4].Settings; S.CellScale = 1.6f; S.CellJitter = 1.0f; S.EdgeWidth = 0.14f;
+			  S.EdgeDarken = 0.6f; S.EdgeColor = FLinearColor(0.20f,0.10f,0.08f,1); S.VeinWidth = 0.04f; S.Secondary = 0.2f;
+			  S.Roughness = 0.3f; S.Seed = 53; Ramp(S, FLinearColor(0.45f,0.22f,0.16f,1), FLinearColor(0.82f,0.62f,0.48f,1)); }
+			Built[5].Name = NSLOCTEXT("MixtormatSurfacing", "StoneDarkLimestone", "Dark Limestone");
+			Built[5].Description = NSLOCTEXT("MixtormatSurfacing", "StoneDarkLimestoneHelp", "Near-black limestone with sparse pale and ochre mineral veins, polished.");
+			{ FMixtormatStone& S = Built[5].Settings; S.Family = EMixtormatStoneFamily::Limestone; S.Pattern = EMixtormatStonePattern::Veins;
+			  S.VeinColor = FLinearColor(0.75f,0.62f,0.35f,1); S.VeinWidth = 0.05f; S.Secondary = 0.35f; S.Roughness = 0.2f;
+			  S.Finish = EMixtormatStoneFinish::Polished; S.Seed = 67; Ramp(S, FLinearColor(0.03f,0.03f,0.035f,1), FLinearColor(0.12f,0.12f,0.13f,1)); }
+			Built[6].Name = NSLOCTEXT("MixtormatSurfacing", "StoneFossilLimestone", "Fossil Limestone");
+			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "StoneFossilLimestoneHelp", "Warm fossiliferous-style limestone with large pale inclusions and boundary shading. Inclusions are cellular, not shell geometry.");
+			{ FMixtormatStone& S = Built[6].Settings; S.Family = EMixtormatStoneFamily::Limestone; S.CellScale = 4.5f;
+			  S.EdgeDarken = 0.5f; S.EdgeColor = FLinearColor(0.35f,0.25f,0.15f,1); S.VeinWidth = 0.03f; S.Secondary = 0.1f;
+			  S.Roughness = 0.45f; S.Seed = 71; Ramp(S, FLinearColor(0.55f,0.42f,0.26f,1), FLinearColor(0.80f,0.68f,0.48f,1)); }
+			Built[7].Name = NSLOCTEXT("MixtormatSurfacing", "StoneTravertine", "Travertine");
+			Built[7].Description = NSLOCTEXT("MixtormatSurfacing", "StoneTravertineHelp", "Banded porous travertine in warm ivory with soft depositional stripes and honed roughness.");
+			{ FMixtormatStone& S = Built[7].Settings; S.Family = EMixtormatStoneFamily::Travertine; S.Pattern = EMixtormatStonePattern::Stripes;
+			  S.StripeFreq = 9.0f; S.StripeSoft = 0.45f; S.Grain = 0.08f; S.Roughness = 0.55f; S.Seed = 83;
+			  Ramp(S, FLinearColor(0.60f,0.48f,0.32f,1), FLinearColor(0.85f,0.74f,0.55f,1)); }
+			Built[8].Name = NSLOCTEXT("MixtormatSurfacing", "StoneGranite", "Granite");
+			Built[8].Description = NSLOCTEXT("MixtormatSurfacing", "StoneGraniteHelp", "Coarse intergrown mineral populations (pale quartz/feldspar with dark mica cells), not uniform speckle. Honed finish.");
+			{ FMixtormatStone& S = Built[8].Settings; S.Family = EMixtormatStoneFamily::Granite; S.Pattern = EMixtormatStonePattern::Veins;
+			  S.VeinWidth = 0.02f; S.Secondary = 0.0f; S.CellScale = 5.0f; S.CellJitter = 0.95f; S.EdgeDarken = 0.25f;
+			  S.EdgeColor = FLinearColor(0.05f,0.05f,0.05f,1); S.Roughness = 0.35f; S.Seed = 97;
+			  Ramp(S, FLinearColor(0.55f,0.35f,0.25f,1), FLinearColor(0.80f,0.72f,0.62f,1)); }
+			Built[9].Name = NSLOCTEXT("MixtormatSurfacing", "StoneSandstone", "Sandstone");
+			Built[9].Description = NSLOCTEXT("MixtormatSurfacing", "StoneSandstoneHelp", "Cemented granular sandstone with soft bedding bands and a matte sawn finish.");
+			{ FMixtormatStone& S = Built[9].Settings; S.Family = EMixtormatStoneFamily::Sandstone; S.Pattern = EMixtormatStonePattern::Stripes;
+			  S.StripeSoft = 0.5f; S.Grain = 0.12f; S.CellScale = 6.0f; S.Roughness = 0.7f;
+			  S.Finish = EMixtormatStoneFinish::Sawn; S.Seed = 103; Ramp(S, FLinearColor(0.55f,0.42f,0.25f,1), FLinearColor(0.78f,0.64f,0.42f,1)); }
+			Built[10].Name = NSLOCTEXT("MixtormatSurfacing", "StoneQuartzite", "Quartzite");
+			Built[10].Description = NSLOCTEXT("MixtormatSurfacing", "StoneQuartziteHelp", "Fused interlocking quartz fabric in pale blue-grey with retained faint bedding.");
+			{ FMixtormatStone& S = Built[10].Settings; S.Family = EMixtormatStoneFamily::Quartzite; S.CellScale = 3.0f;
+			  S.EdgeDarken = 0.15f; S.VeinWidth = 0.05f; S.Roughness = 0.3f; S.Finish = EMixtormatStoneFinish::Polished;
+			  S.FinishAmount = 0.6f; S.Seed = 109; Ramp(S, FLinearColor(0.45f,0.48f,0.52f,1), FLinearColor(0.75f,0.76f,0.78f,1)); }
+			Built[11].Name = NSLOCTEXT("MixtormatSurfacing", "StoneSlate", "Slate");
+			Built[11].Description = NSLOCTEXT("MixtormatSurfacing", "StoneSlateHelp", "Dark fine-grained slate with directional cleavage bands and a split-cleft finish.");
+			{ FMixtormatStone& S = Built[11].Settings; S.Family = EMixtormatStoneFamily::Slate; S.Pattern = EMixtormatStonePattern::Stripes;
+			  S.Direction = 0.0f; S.StripeFreq = 10.0f; S.StripeSoft = 0.2f; S.CellScale = 8.0f; S.EdgeDarken = 0.1f;
+			  S.Roughness = 0.5f; S.Finish = EMixtormatStoneFinish::Split; S.FinishAmount = 0.8f; S.Seed = 127;
+			  Ramp(S, FLinearColor(0.05f,0.055f,0.06f,1), FLinearColor(0.16f,0.17f,0.19f,1)); }
+			return Built;
+		}();
+		return MakeArrayView(Presets);
+	}
+
 	TConstArrayView<FMixtormatSurfacingOutput> GetOutputs(const EMixtormatSurfacingType Type)
 	{
 		using K = EMixtormatPublishedFieldKind;
@@ -1240,6 +1317,16 @@ namespace MixtormatSurfacing
 					{FName(TEXT("OxideCoverage")), NSLOCTEXT("MixtormatSurfacing", "RustCoverage", "Visible Oxide"), K::Scalar01},
 				};
 				if (Type == EMixtormatSurfacingType::Rust) { return MakeArrayView(RustOutputs); }
+		static const FMixtormatSurfacingOutput StoneOutputs[] = {
+			{FName(TEXT("Height")), NSLOCTEXT("MixtormatSurfacing", "StoneHeight", "Height"), K::ScalarSigned},
+			{FName(TEXT("Color")), NSLOCTEXT("MixtormatSurfacing", "StoneColor", "Color"), K::Color},
+			{FName(TEXT("Roughness")), NSLOCTEXT("MixtormatSurfacing", "StoneRoughness", "Roughness"), K::Scalar01},
+			{FName(TEXT("Vein")), NSLOCTEXT("MixtormatSurfacing", "StoneVein", "Veins"), K::Scalar01},
+			{FName(TEXT("Band")), NSLOCTEXT("MixtormatSurfacing", "StoneBand", "Bands"), K::Scalar01},
+			{FName(TEXT("CellId")), NSLOCTEXT("MixtormatSurfacing", "StoneCellId", "Mineral Cells"), K::RegionIds},
+			{FName(TEXT("Edge")), NSLOCTEXT("MixtormatSurfacing", "StoneEdge", "Cell Edges"), K::Scalar01},
+		};
+		if (Type == EMixtormatSurfacingType::Stone) { return MakeArrayView(StoneOutputs); }
 		static const FMixtormatSurfacingOutput WoodOutputs[] = {
 			{FName(TEXT("Height")), NSLOCTEXT("MixtormatSurfacing", "WoodHeight", "Height"), K::ScalarSigned},
 			{FName(TEXT("Color")), NSLOCTEXT("MixtormatSurfacing", "WoodColor", "Color"), K::Color},

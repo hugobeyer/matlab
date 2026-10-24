@@ -1,0 +1,238 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Shared mineral fabric: warped veins, quantized bands, Worley mineral cells.
+// Finish/alteration are separate from fabric. Vein width is a phase threshold,
+// not metric; cell edge uses F2-F1, not metric distance. Relative units.
+#include "/Engine/Public/Platform.ush"
+int2 OutputSize;
+
+#if STONE_STAGE == 0
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
+uint Family;
+uint Pattern;
+uint Finish;
+uint Seed;
+float HeightScale;
+float Scale;
+float Direction;
+float GrainSize;
+float VeinFreq;
+float VeinWidth;
+float Sharpness;
+float Secondary;
+float Distort;
+float WarpFreq;
+float WarpPower;
+float Grain;
+float StripeFreq;
+float StripeSoft;
+float StripeTone;
+float CellScale;
+float CellJitter;
+float CellWarp;
+float EdgeWidth;
+float EdgeDarken;
+float Roughness;
+float FinishAmount;
+float Alteration;
+float4 VeinColor;
+float4 EdgeColor;
+uint ColorCount;
+uint ColorInterpolation;
+float4 ColorPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 ColorColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+Texture2D<float> SubstrateHeight;
+Texture2D<float4> InputColor;
+Texture2D<float4> InputRAM;
+Texture2D<float4> InputOptics;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float4> OutColor;
+RWTexture2D<float4> OutRAM;
+RWTexture2D<float4> OutOptics;
+RWTexture2D<float4> OutDiagnostics;
+
+static const float STONE_TAU = 6.28318530718f;
+static const float STONE_F0 = 0.04f;
+
+uint StoneHash(uint X)
+{
+	X ^= X >> 16;
+	X *= 0x7feb352du;
+	X ^= X >> 15;
+	X *= 0x846ca68bu;
+	X ^= X >> 16;
+	return X;
+}
+
+float StoneCellHash(int2 Cell, int2 Period, uint Salt)
+{
+	int2 C = int2(((Cell.x % Period.x) + Period.x) % Period.x, ((Cell.y % Period.y) + Period.y) % Period.y);
+	uint H = (uint)C.x * 0x9e3779b1u ^ (uint)C.y * 0x85ebca6bu ^ Salt ^ Seed * 0x27d4eb2fu;
+	return float(StoneHash(H) & 0x00ffffffu) / 16777216.0f;
+}
+
+float StoneNoise(float2 P, int2 Period, uint Salt)
+{
+	int2 I = int2(floor(P));
+	float2 F = frac(P);
+	float2 U = F * F * (3.0f - 2.0f * F);
+	float A = StoneCellHash(I, Period, Salt) * 2.0f - 1.0f;
+	float B = StoneCellHash(I + int2(1, 0), Period, Salt) * 2.0f - 1.0f;
+	float C = StoneCellHash(I + int2(0, 1), Period, Salt) * 2.0f - 1.0f;
+	float D = StoneCellHash(I + 1, Period, Salt) * 2.0f - 1.0f;
+	return lerp(lerp(A, B, U.x), lerp(C, D, U.x), U.y);
+}
+
+float StoneFbm(float2 P, int2 Period, uint Salt)
+{
+	float Sum = 0.0f;
+	float Amp = 1.0f;
+	float Norm = 0.0f;
+	int2 Per = Period;
+	float2 Q = P;
+	for (int I = 0; I < 5; ++I)
+	{
+		Sum += abs(StoneNoise(Q, Per, Salt + (uint)I * 977u)) * Amp;
+		Norm += Amp;
+		Amp *= 0.5f;
+		Q *= 2.0f;
+		Per *= 2;
+	}
+	return Sum / max(Norm, 0.000001f);
+}
+
+float2 StoneWarp(float2 P, int2 Period, uint Salt)
+{
+	return float2(StoneFbm(P + 17.1f, Period, Salt ^ 0x1b873593u), StoneFbm(P + 29.4f, Period, Salt ^ 0xcc9e2d51u)) - 0.5f;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	float2 Q0 = MixtormatGeneratorUV(UV);
+	float Tile = max(round(Scale), 1.0f);
+	int2 Per = int2(Tile, Tile);
+	float2 Q = Q0 * Tile;
+	float Ang = Direction * STONE_TAU / 360.0f;
+	float2 Dir = float2(cos(Ang), sin(Ang));
+	float2 Nrm = float2(-Dir.y, Dir.x);
+	if (WarpPower > 0.0f && WarpFreq > 0.0f)
+	{
+		int WarpTile = max(1, (int)round(Tile * WarpFreq));
+		Q += StoneWarp(Q * WarpFreq, int2(WarpTile, WarpTile), 0x27d4eb2fu) * (WarpPower * Tile);
+	}
+	float T1 = StoneFbm(Q, Per, 0x51u);
+	bool WantVein = Pattern != 1u;
+	bool WantStripe = Pattern != 0u;
+	float VeinMask = 0.0f;
+	if (WantVein)
+	{
+		float Band1 = dot(Q, Nrm) * VeinFreq + T1 * (VeinFreq * Distort);
+		float Dd1 = abs(sin(Band1 * 3.14159265f));
+		VeinMask = 1.0f - smoothstep(0.0f, max(VeinWidth, 0.0001f), Dd1);
+		if (Secondary > 0.0f)
+		{
+			float Band2 = dot(Q, float2(-Nrm.y, Nrm.x) * 1.7f + Nrm * 0.35f) * (VeinFreq * 1.85f)
+				+ T1 * (VeinFreq * 1.85f * Distort * 1.35f);
+			float Dd2 = abs(sin(Band2 * 3.14159265f));
+			VeinMask += (1.0f - smoothstep(0.0f, max(VeinWidth * 0.55f, 0.0001f), Dd2)) * Secondary;
+		}
+		VeinMask = saturate(VeinMask);
+		VeinMask = pow(VeinMask, max(Sharpness, 0.001f));
+		if (Grain > 0.0f)
+		{
+			VeinMask = saturate(VeinMask + StoneNoise(Q * 12.0f, Per * 12, 0x165667b1u) * Grain);
+		}
+	}
+	float BandVal = 0.5f;
+	float StripeOut = 0.0f;
+	if (WantStripe)
+	{
+		float Sband = dot(Q, Nrm) * StripeFreq + T1 * (StripeFreq * Distort * 0.5f);
+		float Bf = frac(Sband);
+		int Bi = (int)floor(Sband);
+		int Nb = max(1, (int)round(StripeFreq * Tile));
+		int B0 = ((Bi % Nb) + Nb) % Nb;
+		int B1 = (B0 + 1) % Nb;
+		float V0 = StoneCellHash(int2(B0, 7), int2(Nb, 16), 0x51u);
+		float V1 = StoneCellHash(int2(B1, 7), int2(Nb, 16), 0x51u);
+		float Soft = clamp(StripeSoft, 0.001f, 0.5f);
+		BandVal = lerp(V0, V1, smoothstep(1.0f - Soft, 1.0f, Bf));
+		StripeOut = BandVal;
+	}
+	float CellFreq = max(CellScale * max(GrainSize, 0.05f), 0.05f);
+	int CellTile = max(1, (int)round(Tile * CellFreq));
+	float2 CQ = Q * CellFreq;
+	if (CellWarp > 0.0f)
+	{
+		CQ += StoneWarp(CQ * 0.35f, int2(max(1, CellTile / 3), max(1, CellTile / 3)), 0x2545f491u) * CellWarp;
+	}
+	int2 CellBase = int2(floor(CQ));
+	float2 CellFrac = frac(CQ);
+	float D1 = 1e9f;
+	float D2 = 1e9f;
+	int2 Best = CellBase;
+	for (int Y = -1; Y <= 1; ++Y)
+	for (int X = -1; X <= 1; ++X)
+	{
+		int2 C = CellBase + int2(X, Y);
+		float2 Pt = float2(X, Y) + lerp(0.5f, float2(StoneCellHash(C, int2(CellTile, CellTile), 0x68bc21ebu),
+			StoneCellHash(C, int2(CellTile, CellTile), 0x9e3779b1u)), saturate(CellJitter)) - CellFrac;
+		float D = dot(Pt, Pt);
+		if (D < D1) { D2 = D1; D1 = D; Best = C; }
+		else if (D < D2) { D2 = D; }
+	}
+	float CellId = StoneCellHash(Best, int2(CellTile, CellTile), 0x68bc21ebu);
+	float Edge = 1.0f - smoothstep(0.0f, max(EdgeWidth, 0.0001f), sqrt(D2) - sqrt(D1));
+	float TintM = saturate(0.5f + 0.5f * (T1 * 2.0f - 1.0f));
+	if (WantStripe) { TintM = saturate(lerp(TintM, BandVal, StripeTone * (Pattern == 2u ? 0.5f : 1.0f))); }
+	float CellVar = Family == 1u ? 0.35f : (Family == 4u ? 0.18f : 0.12f);
+	float4 Color = MixtormatEvalColorRamp(TintM, ColorCount, ColorInterpolation, ColorPositions, ColorColors);
+	Color.rgb *= 1.0f + (CellId - 0.5f) * 2.0f * CellVar;
+	Color.rgb = lerp(Color.rgb, VeinColor.rgb, VeinMask);
+	Color.rgb = lerp(Color.rgb, EdgeColor.rgb, saturate(Edge * EdgeDarken));
+	float FinishRough = Finish == 0u ? 0.08f : (Finish == 1u ? 0.30f : (Finish == 2u ? 0.55f : 0.70f));
+	float Rough = saturate(lerp(Roughness, FinishRough, saturate(FinishAmount)) + Alteration * 0.15f);
+	float Height = ((TintM - 0.5f) * 0.006f - Edge * 0.003f - Alteration * Edge * 0.004f) * HeightScale;
+	OutHeight[P] = isfinite(Height) ? Height : 0.0f;
+	OutColor[P] = float4(saturate(Color.rgb), 1.0f);
+	OutRAM[P] = float4(Rough, 1.0f, 0.0f, STONE_F0);
+	OutOptics[P] = float4(STONE_F0, 0.0f, 0.0f, 0.0f);
+	OutDiagnostics[P] = float4(VeinMask, StripeOut, Edge, CellId);
+}
+#else
+float Amount;
+uint HasGate;
+Texture2D<float> Gate;
+Texture2D<float> BeforeHeight;
+Texture2D<float> AfterHeight;
+Texture2D<float4> CompletedRAM;
+Texture2D<float4> RawDiagnostics;
+RWTexture2D<float> OutHeightDelta;
+RWTexture2D<float> OutRoughness;
+RWTexture2D<float> OutVein;
+RWTexture2D<float> OutBand;
+RWTexture2D<float> OutEdge;
+RWTexture2D<float> OutCells;
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float G = HasGate != 0u ? Gate.Load(int3(P, 0)) : 1.0f;
+	float Weight = isfinite(G) && isfinite(Amount) ? saturate(G) * saturate(Amount) : 0.0f;
+	float Delta = AfterHeight.Load(int3(P, 0)) - BeforeHeight.Load(int3(P, 0));
+	float4 D = RawDiagnostics.Load(int3(P, 0));
+	OutHeightDelta[P] = isfinite(Delta) ? Delta : 0.0f;
+	OutRoughness[P] = saturate(CompletedRAM.Load(int3(P, 0)).r);
+	OutVein[P] = saturate(D.r) * Weight;
+	OutBand[P] = saturate(D.g) * Weight;
+	OutEdge[P] = saturate(D.b) * Weight;
+	OutCells[P] = D.a;
+}
+#endif

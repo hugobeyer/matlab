@@ -1104,6 +1104,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget 
 		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Wood); }, EAddMenuKind::Surfacing))
 		.UnavailableReason(Reason)
 		.ToolTip(LOCTEXT("AddWoodHint", "Oak, Maple or Pine anatomy with independent figure, preparation and stackable finish passes."));
+	Menu.Item(LOCTEXT("AddStoneChild", "Stone · Marble & Granite"), MixtormatIcons::Surfacing(),
+		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Stone); }, EAddMenuKind::Surfacing))
+		.UnavailableReason(Reason)
+		.ToolTip(LOCTEXT("AddStoneHint", "Shared mineral fabric: warped veins, bands and crystal cells for marble, granite, limestone, travertine, sandstone, quartzite and slate."));
 	return Menu.Build();
 }
 

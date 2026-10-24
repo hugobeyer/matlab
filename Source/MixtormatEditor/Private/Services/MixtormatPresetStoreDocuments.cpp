@@ -346,6 +346,18 @@ namespace MixtormatPresetStore
 			Rust.bWriteMaterial = Original.bWriteMaterial;
 		}
 		if (Destination.Type == EMixtormatLayerChildType::Surfacing
+			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Stone)
+		{
+			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
+			FMixtormatStone& Stone = Copy.Surfacing.Stone;
+			const FMixtormatStone& Original = Destination.Surfacing.Stone;
+			Stone.Amount = Original.Amount;
+			Stone.bWriteHeight = Original.bWriteHeight;
+			Stone.bWriteColor = Original.bWriteColor;
+			Stone.bWriteRoughness = Original.bWriteRoughness;
+			Stone.bWriteMaterial = Original.bWriteMaterial;
+		}
+		if (Destination.Type == EMixtormatLayerChildType::Surfacing
 			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Wood)
 		{
 			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
@@ -514,6 +526,28 @@ namespace MixtormatPresetStore
 					}
 					Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
 				}
+		if (Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Stone)
+		{
+			for (const FMixtormatStonePreset& StonePreset : MixtormatSurfacing::GetStonePresets())
+			{
+				if (Presets.ContainsByPredicate([&](const FModulePreset& Existing)
+				{
+					return Existing.Name.Equals(StonePreset.Name.ToString(), ESearchCase::IgnoreCase)
+						&& IsModuleCompatible(Existing.Settings, Child);
+				})) { continue; }
+				FModulePreset& Preset = Presets.AddDefaulted_GetRef();
+				Preset.Name = StonePreset.Name.ToString();
+				Preset.Description = StonePreset.Description.ToString();
+				Preset.Category = TEXT("Stone");
+				Preset.bShipped = true;
+				Preset.bBuiltIn = true;
+				Preset.Settings.Type = EMixtormatLayerChildType::Surfacing;
+				Preset.Settings.Surfacing.Type = EMixtormatSurfacingType::Stone;
+				Preset.Settings.Surfacing.Stone = StonePreset.Settings;
+			}
+			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
+		}
 		if (Child.Type == EMixtormatLayerChildType::Surfacing
 			&& Child.Surfacing.Type == EMixtormatSurfacingType::Wood)
 		{
