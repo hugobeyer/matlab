@@ -12,6 +12,35 @@
 - **ChildMask: guarded, not implemented.** The enum remains (`Runtime/Public/MixtormatParameterTypes.h:95`), but `SourceSupported` rejects child-mask snapshots with an explicit error (`Runtime/Private/MixtormatParameterDrivers.cpp:52-74`). The menu calls that check and disables unsupported entries (`Editor/Private/Widgets/SMixtormat_Parameters.cpp:1820-1851`); `SetDriverSource` also rejects them (`1716-1719`). The earlier claim that normal UI authoring silently no-ops is incorrect. Owner decision (2026-10-23): defer ChildMask drivers for future work, retain the contract and disabled UI, and exclude implementation from v1 scope. No removal approved.
 - **IdMapping: unresolved contract cleanup.** `IdMapping`, `SpecificId`, `IdRangeMin/Max` remain editable runtime fields (`Runtime/Public/MixtormatParameterTypes.h:240-253`). The inspected output menu offers only Random Per ID and writes both `IdMapping` and `SourceOutput` (`Editor/Private/Widgets/SMixtormat_Parameters.cpp:1879-1892`). Targeted Runtime/Shaders searches found no readers of those mapping fields; this is not proof against every reflective access. No Specific ID/ID Range choice exists in this inspected menu. Decide implementation versus approved removal after checking reflection/serialization consumers.
 
+## PROPOSAL — normalized per-ID controls (2026-10-24)
+
+- **Status:** owner-requested design note, not implemented or committed to v1.
+  This does not approve removal of `IdMapping` fields or change the audit findings above.
+- Prefer artist-facing normalized weights over typing Specific ID / ID Range numbers.
+  Start from one stable seeded random value in 0–1 per valid region ID, not the
+  numeric ID divided by the current region count. Keep the signal constant within each region.
+- **Scalar controls:** remap the signal to an output min/max range, shape it with a
+  scalar ramp, and use it as a value or multiplier on a supported parameter.
+  Example: vary roughness per brick without editing individual brick IDs.
+- **Color controls:** map the same signal through a color ramp for per-region color
+  variation where color driving is supported. Color and scalar outputs need distinct consumers.
+- **Range mask:** separately select an interval of the random signal, not an interval
+  of numeric IDs. Selecting 0–0.3 includes roughly 30% of regions statistically,
+  not necessarily 30% of surface area or exactly 30% of a small region set.
+- Adjusting ranges or ramps must not reshuffle random values for unchanged IDs and seed.
+  Changing the seed chooses another distribution; topology/ID changes may change assignments.
+- **Height safety:** soft random thresholds soften activation while dragging, but do
+  not smooth spatial borders between regions. Spatial edge feathering is a separate
+  concern. For masked height effects, blend the effect delta onto the existing substrate
+  rather than fading the substrate toward zero. Preserve intentional piece tilt/slip
+  and discontinuities; do not impose universal smoothing on Cracks or Pebbles.
+- **Before implementation:** inspect existing Random Per ID, driver remapping/multiply,
+  ID masks and shared scalar/color ramps; reuse their canonical mechanisms where suitable.
+  Establish supported parameter readers, source scope, invalid-region behavior and preview
+  feedback before extending the contract. Do not assume every parameter supports spatial driving.
+- Manual per-ID weight tables, visual region picking and generator subdivision are outside
+  this proposal. Existing features/fields remain untouched pending a separate scope decision.
+
 ## DEFERRED — Child Mask parameter drivers
 
 - Owner hold: future work only; preserve documentation, existing code and disabled source choice.
@@ -56,7 +85,7 @@ The following are historical symbol-trace findings, not current exhaustive cover
 
 ## PRIORITIZED NEXT STEPS
 
-1. **P1 — driver contract:** decide IdMapping support/removal. ChildMask is deferred, not an active v1 task. Trace reflective consumers before removing fields.
+1. **P1 — driver contract:** decide IdMapping support/removal, informed by the normalized per-ID controls proposal above; the proposal is not a v1 commitment or removal approval. ChildMask is deferred, not an active v1 task. Trace reflective consumers before removing fields.
 2. **P2 — ownership:** establish whether OutputReference payload parameters belong in generic bindings; document intent before changing the owner map.
 3. **P2 — authoring metadata:** missing-key handling is traced; decide whether Mask.TilingY needs an explicit JSON override for parity with X.
 4. **P2 — Flow:** finish the Behavior FlowField producer trace and follow MixtormatFlow.usf includes/dispatch before proposing consolidation or deletion.

@@ -18,6 +18,7 @@
 #include "Style/MixtormatTypography.h"
 #include "Style/MixtormatRecipes.h"
 #include "UI/Atoms/MixtormatIcons.h"
+#include "UI/DragDrop/MixtormatDragDropOps.h"
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
@@ -104,10 +105,42 @@ bool SMixtormat::IsHintInteractionActive() const
 	return Slider.IsValid() && Slider->IsInteracting();
 }
 
+bool SMixtormat::HasOwnerInteractionHint() const
+{
+	const TSharedPtr<FDragDropOperation> Operation = FSlateApplication::Get().GetDragDroppingContent();
+	if (Operation.IsValid() && Operation->IsOfType<FMixtormatGuidedDragDropOp>()
+		&& StaticCastSharedPtr<FMixtormatGuidedDragDropOp>(Operation)->HasGuidance(this))
+	{
+		return true;
+	}
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (Viewport.IsValid() && !Viewport->GetNavigationHint().IsEmpty()) { return true; }
+	}
+	return false;
+}
+
+FText SMixtormat::GetOwnerInteractionHint() const
+{
+	const TSharedPtr<FDragDropOperation> Operation = FSlateApplication::Get().GetDragDroppingContent();
+	if (Operation.IsValid() && Operation->IsOfType<FMixtormatGuidedDragDropOp>())
+	{
+		const FText Guidance = StaticCastSharedPtr<FMixtormatGuidedDragDropOp>(Operation)->GetGuidance(this);
+		if (!Guidance.IsEmpty()) { return Guidance; }
+	}
+	for (const TSharedPtr<SMixtormatPreviewViewport>& Viewport : PreviewViewports)
+	{
+		if (!Viewport.IsValid()) { continue; }
+		const FText Guidance = Viewport->GetNavigationHint();
+		if (!Guidance.IsEmpty()) { return Guidance; }
+	}
+	return FText::GetEmpty();
+}
+
 bool SMixtormat::HasInteractionHint() const
 {
 	const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin();
-	return bQuickControlsOpen || (Slider.IsValid()
+	return HasOwnerInteractionHint() || bQuickControlsOpen || (Slider.IsValid()
 		&& (Slider->IsInteracting() || (Slider->IsHovered() && Slider->IsEnabled())));
 }
 
@@ -131,6 +164,11 @@ FText SMixtormat::GetInteractionHint() const
 	if (const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin())
 	{
 		if (Slider->IsInteracting()) { return Slider->GetInteractionHint(); }
+	}
+	const FText OwnerHint = GetOwnerInteractionHint();
+	if (!OwnerHint.IsEmpty()) { return OwnerHint; }
+	if (const TSharedPtr<SMixtormatSlider> Slider = HintSlider.Pin())
+	{
 		if (Slider->IsHovered() && Slider->IsEnabled())
 		{
 			return Now - HintSliderHoveredAt >= MixtormatTokens::HelpDelay
@@ -209,7 +247,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewFeedback()
 	const TSharedRef<SMixtormatSurfaceBox> Feedback = SNew(SMixtormatSurfaceBox)
 		.Visibility_Lambda([this]()
 		{
-			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f && !IsHintInteractionActive()
+			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f
+							&& !IsHintInteractionActive() && !HasOwnerInteractionHint()
 				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 		})
 		.InheritWidgetStyle(true)
@@ -236,7 +275,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 
 	// Read live selection/preview state; do not advertise unavailable hotkeys.
 	// An input owner takes precedence over selection hints, including outside Q.
-		const auto bQuickControls = [this]() { return HasInteractionHint(); };
+	const auto bQuickControls = [this]() { return HasInteractionHint(); };
 	const auto bChannelView = [this]()
 	{
 		return !PreviewViewports.IsEmpty() && PreviewViewports[0].IsValid()
@@ -267,6 +306,31 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	{
 		return bQuickControls() || bDiagnosticActive() || bMaskAvailable() || bFlowAvailable()
 			|| bCycleAvailable() || bPlaneFlip() || bNoMaterial() || bUvRotationAvailable();
+	};
+
+	// Rank relevance independently of row order. Active owners replace these entirely;
+	// otherwise keep reset and selected-output actions ahead of general preview shortcuts.
+	enum class ESelectionHint : uint8 { Reset, Mask, Flow, Plane, Cycle, Uv, Empty };
+	const auto SelectionVisibility = [bQuickControls, bDiagnosticActive, bMaskAvailable,
+		bFlowAvailable, bPlaneFlip, bCycleAvailable, bUvRotationAvailable, bNoMaterial](ESelectionHint Hint)
+	{
+		return TAttribute<EVisibility>::CreateLambda([=]()
+		{
+			if (bQuickControls()) { return EVisibility::Collapsed; }
+			const bool bDiagnostic = bDiagnosticActive();
+			const bool Available[] = {
+				bDiagnostic, bMaskAvailable(), bFlowAvailable(), bPlaneFlip() && !bDiagnostic,
+				bCycleAvailable(), bUvRotationAvailable(), bNoMaterial() && !bPlaneFlip() && !bDiagnostic
+			};
+			constexpr int32 MaxSelectionHints = 4;
+			int32 Rank = 0;
+			for (int32 Index = 0; Index <= static_cast<int32>(Hint); ++Index)
+			{
+				Rank += Available[Index] ? 1 : 0;
+			}
+			return Available[static_cast<int32>(Hint)] && Rank <= MaxSelectionHints
+				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		});
 	};
 
 	// One pair: optional keycap and action text, both with live visibility.
@@ -321,7 +385,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	// Entry owns Escape while typing; never advertise menu dismissal during an edit.
 	const TAttribute<EVisibility> QuickControlsVis = TAttribute<EVisibility>::CreateLambda([this]()
 	{
-		return bQuickControlsOpen && !IsHintInteractionActive()
+		return bQuickControlsOpen && !IsHintInteractionActive() && !HasOwnerInteractionHint()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	});
 	AddPair(*Row, LOCTEXT("HintQuickCloseKeys", "Q / Esc"), LOCTEXT("HintQuickClose", "Close menu"), QuickControlsVis);
@@ -331,7 +395,8 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	});
 	AddGap(*Row, TAttribute<EVisibility>::CreateLambda([this]()
 	{
-		return bQuickControlsOpen && !IsHintInteractionActive() && !GetInteractionHint().IsEmpty()
+		return bQuickControlsOpen && !IsHintInteractionActive() && !HasOwnerInteractionHint()
+					&& !GetInteractionHint().IsEmpty()
 			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 	}));
 	AddPair(*Row, FText::GetEmpty(), TAttribute<FText>::CreateLambda([this]()
@@ -340,12 +405,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 	}), InteractionVis);
 
 	// -- 5 shares the marking-menu's document-wide 90-degree UV rotation toggle.
-	const TAttribute<EVisibility> UvRotationVis = TAttribute<EVisibility>::CreateLambda(
-		[bUvRotationAvailable, bQuickControls]()
-	{
-		return bUvRotationAvailable() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> UvRotationVis = SelectionVisibility(ESelectionHint::Uv);
 	AddGap(*Row, UvRotationVis);
 	AddPair(*Row, LOCTEXT("HintUVRotateKey", "5"),
 		TAttribute<FText>::CreateLambda([this]()
@@ -356,12 +416,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 		}), UvRotationVis);
 
 	// -- A supported selected mask can be toggled whether already visible or not.
-	const TAttribute<EVisibility> MaskVis = TAttribute<EVisibility>::CreateLambda(
-		[bMaskAvailable, bQuickControls]()
-	{
-		return bMaskAvailable() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> MaskVis = SelectionVisibility(ESelectionHint::Mask);
 	AddGap(*Row, MaskVis);
 	AddPair(*Row, LOCTEXT("HintW", "W"), TAttribute<FText>::CreateLambda([this]()
 	{
@@ -384,12 +439,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			: LOCTEXT("HintShowDiagnostic", "Show diagnostic");
 	}), MaskVis);
 
-	const TAttribute<EVisibility> FlowVis = TAttribute<EVisibility>::CreateLambda(
-		[bFlowAvailable, bQuickControls]()
-	{
-		return bFlowAvailable() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> FlowVis = SelectionVisibility(ESelectionHint::Flow);
 	AddGap(*Row, FlowVis);
 	AddPair(*Row, LOCTEXT("HintE", "E"), TAttribute<FText>::CreateLambda([this]()
 	{
@@ -412,42 +462,22 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()
 			: LOCTEXT("HintShowFlow", "Show raw Flow");
 	}), FlowVis);
 
-	const TAttribute<EVisibility> CycleVis = TAttribute<EVisibility>::CreateLambda(
-		[bCycleAvailable, bQuickControls]()
-	{
-		return bCycleAvailable() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> CycleVis = SelectionVisibility(ESelectionHint::Cycle);
 	AddGap(*Row, CycleVis);
 	AddPair(*Row, LOCTEXT("HintV", "V"), LOCTEXT("HintCyclePreview", "Cycle material channels"), CycleVis);
 
 	// -- Shift+V resets PostFX, module diagnostics and material-channel views.
-	const TAttribute<EVisibility> ResetVis = TAttribute<EVisibility>::CreateLambda(
-		[bDiagnosticActive, bQuickControls]()
-	{
-		return bDiagnosticActive() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> ResetVis = SelectionVisibility(ESelectionHint::Reset);
 	AddGap(*Row, ResetVis);
 	AddPair(*Row, LOCTEXT("HintShiftV", "Shift+V"), LOCTEXT("HintResetPreview", "Original material"), ResetVis);
 
 	// -- Re-selecting Plane (2) flips the orientation, but not while a diagnostic is active.
-	const TAttribute<EVisibility> PlaneVis = TAttribute<EVisibility>::CreateLambda(
-		[bPlaneFlip, bDiagnosticActive, bQuickControls]()
-	{
-		return bPlaneFlip() && !bDiagnosticActive() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> PlaneVis = SelectionVisibility(ESelectionHint::Plane);
 	AddGap(*Row, PlaneVis);
 	AddPair(*Row, LOCTEXT("HintPlane", "2"), LOCTEXT("HintPlaneFlip", "Flip plane orientation"), PlaneVis);
 
 	// -- When no recipe exists, keep the Library-to-Layers nudge.
-	const TAttribute<EVisibility> NoMaterialVis = TAttribute<EVisibility>::CreateLambda(
-		[bNoMaterial, bPlaneFlip, bDiagnosticActive, bQuickControls]()
-	{
-		return bNoMaterial() && !bPlaneFlip() && !bDiagnosticActive() && !bQuickControls()
-			? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-	});
+	const TAttribute<EVisibility> NoMaterialVis = SelectionVisibility(ESelectionHint::Empty);
 	AddGap(*Row, NoMaterialVis);
 	AddPair(*Row, FText::GetEmpty(), LOCTEXT("HintNoMaterial", "Drag a surface from Library into Layers"), NoMaterialVis);
 

@@ -70,6 +70,7 @@ namespace MixtormatLayersPrivate
 		void Construct(const FArguments& InArgs);
 
 		virtual FReply OnDragOver(const FGeometry&, const FDragDropEvent& Event) override;
+		virtual void OnDragLeave(const FDragDropEvent& Event) override;
 
 		virtual FReply OnDrop(const FGeometry&, const FDragDropEvent& Event) override;
 

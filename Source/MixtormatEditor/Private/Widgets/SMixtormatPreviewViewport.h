@@ -9,6 +9,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #include "MixtormatMaterial.h"
 #include "Preview/MixtormatPreviewSceneSettings.h"
 #include "SEditorViewport.h"
+#include "InputCoreTypes.h"
 #include "UObject/StrongObjectPtr.h"
 
 class FEditorViewportClient;
@@ -144,6 +145,7 @@ public:
 		// Escape in the viewport: the workspace closes them again.
 		SLATE_EVENT(FMixtormatDismissQuickControls, OnDismissQuickControls)
 		SLATE_EVENT(FMixtormatCameraFovChanged, OnCameraFovChanged)
+		SLATE_EVENT(FSimpleDelegate, OnNavigationContextChanged)
 	SLATE_END_ARGS()
 
 	SMixtormatPreviewViewport();
@@ -151,6 +153,7 @@ public:
 	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 
+	FText GetNavigationHint() const;
 	void Construct(const FArguments& InArgs);
 	void SetPreviewMaterial(UMaterialInterface* Material);
 	// bInteractive marks a request made mid-scrub: it is rate-limited to the measured compose
@@ -231,6 +234,10 @@ protected:
 
 private:
 	friend class FMixtormatPreviewViewportClient;
+
+	void SetNavigationButton(FKey Button);
+	FKey NavigationButton;
+	FSimpleDelegate OnNavigationContextChanged;
 
 	void OrbitCamera(float YawDelta, float PitchDelta);
 	void RotateLighting(float YawDelta, float PitchDelta);

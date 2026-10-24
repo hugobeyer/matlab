@@ -364,6 +364,10 @@ public:
 		// The realtime viewport can redraw without a Slate widget tick (cached UI/input drags).
 		// Capture after camera maintenance on the viewport lifecycle, not only on UI updates.
 		Owner.UpdateMaskPostFx();
+		if (Owner.GetNavigationHint().IsEmpty())
+		{
+			Owner.SetNavigationButton(FKey());
+		}
 	}
 
 	virtual FLinearColor GetBackgroundColor() const override
@@ -431,6 +435,12 @@ public:
 
 	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override
 	{
+		// Observe the owning gesture without changing the viewport's replies or capture.
+		if ((EventArgs.Event == IE_Released && EventArgs.Key == Owner.NavigationButton)
+			|| (EventArgs.Event == IE_Pressed && EventArgs.Key == EKeys::Escape))
+		{
+			Owner.SetNavigationButton(FKey());
+		}
 		// F frames the mesh, the way it does everywhere else in the editor. Handled here rather
 		// than through the viewport's command list because this client deliberately does not run
 		// the standard editor camera -- there is no selection to focus, and the orbit is the
@@ -576,11 +586,13 @@ public:
 		{
 			if (Args.Key == EKeys::MouseX)
 			{
+				Owner.SetNavigationButton(EKeys::MiddleMouseButton);
 				Owner.PanCamera(Args.AmountDepressed, 0.0f);
 				return true;
 			}
 			if (Args.Key == EKeys::MouseY)
 			{
+				Owner.SetNavigationButton(EKeys::MiddleMouseButton);
 				Owner.PanCamera(0.0f, Args.AmountDepressed);
 				return true;
 			}
@@ -589,11 +601,13 @@ public:
 		{
 			if (Args.Key == EKeys::MouseX)
 			{
+				Owner.SetNavigationButton(EKeys::LeftMouseButton);
 				Owner.OrbitCamera(Args.AmountDepressed, 0.0f);
 				return true;
 			}
 			if (Args.Key == EKeys::MouseY)
 			{
+				Owner.SetNavigationButton(EKeys::LeftMouseButton);
 				Owner.OrbitCamera(0.0f, Args.AmountDepressed);
 				return true;
 			}
@@ -603,11 +617,13 @@ public:
 			if (Args.Key == EKeys::MouseX)
 			{
 				// Negated: the light follows the drag instead of moving against it.
+				Owner.SetNavigationButton(EKeys::RightMouseButton);
 				Owner.RotateLighting(-Args.AmountDepressed, 0.0f);
 				return true;
 			}
 			if (Args.Key == EKeys::MouseY)
 			{
+				Owner.SetNavigationButton(EKeys::RightMouseButton);
 				Owner.RotateLighting(0.0f, Args.AmountDepressed);
 				return true;
 			}
@@ -618,6 +634,38 @@ public:
 private:
 	SMixtormatPreviewViewport& Owner;
 };
+
+void SMixtormatPreviewViewport::SetNavigationButton(const FKey Button)
+{
+	if (NavigationButton != Button)
+	{
+		NavigationButton = Button;
+		OnNavigationContextChanged.ExecuteIfBound();
+	}
+}
+
+FText SMixtormatPreviewViewport::GetNavigationHint() const
+{
+	const FViewport* Viewport = PreviewViewportClient.IsValid() ? PreviewViewportClient->Viewport : nullptr;
+	if (!NavigationButton.IsValid() || !Viewport || !Viewport->HasFocus()
+		|| !Viewport->HasMouseCapture() || !Viewport->KeyState(NavigationButton))
+	{
+		return FText::GetEmpty();
+	}
+	if (NavigationButton == EKeys::MiddleMouseButton)
+	{
+		return NSLOCTEXT("SMixtormat", "HintViewportPan", "MMB drag: Pan camera · Release MMB: Finish");
+	}
+	if (NavigationButton == EKeys::LeftMouseButton)
+	{
+		return NSLOCTEXT("SMixtormat", "HintViewportOrbit", "LMB drag: Orbit camera · Release LMB: Finish");
+	}
+	if (NavigationButton == EKeys::RightMouseButton)
+	{
+		return NSLOCTEXT("SMixtormat", "HintViewportLighting", "RMB drag: Rotate lighting · Release RMB: Finish");
+	}
+	return FText::GetEmpty();
+}
 
 SMixtormatPreviewViewport::SMixtormatPreviewViewport()
 	: PreviewScene(FPreviewScene::ConstructionValues())
@@ -717,6 +765,7 @@ void SMixtormatPreviewViewport::Construct(const FArguments& InArgs)
 	OnRequestQuickControls = InArgs._OnRequestQuickControls;
 	OnDismissQuickControls = InArgs._OnDismissQuickControls;
 	OnCameraFovChanged = InArgs._OnCameraFovChanged;
+	OnNavigationContextChanged = InArgs._OnNavigationContextChanged;
 
 	PreviewMeshComponent = NewObject<UStaticMeshComponent>();
 	PreviewMeshComponent->SetMobility(EComponentMobility::Movable);

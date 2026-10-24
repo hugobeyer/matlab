@@ -375,6 +375,14 @@ private:
 	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
 	FReply ClearLayerMask(int32 LayerIndex);
 	FReply RemoveMaskFromLayer(int32 LayerIndex, int32 ChildIndex, bool bRefresh = true);
+	void BindDragGuidance(const TSharedRef<class FMixtormatGuidedDragDropOp>& Operation,
+		const FMixtormatChildAddress& Source);
+	bool CanReorderChild(const FMixtormatChildAddress& Source, int32 TargetChildIndex, FText* OutReason = nullptr) const;
+	bool CanMoveChildToLayer(const FMixtormatChildAddress& Source, int32 DestLayerIndex,
+		int32 DestChildIndex, FText* OutReason = nullptr) const;
+	bool CanMoveChildToGroup(const FMixtormatChildAddress& Source, FGuid GroupId, FText* OutReason = nullptr) const;
+	bool CanReparentLayerChildWithReason(int32 LayerIndex, int32 SourceChildIndex,
+		int32 NewParentChildIndex, FText* OutReason = nullptr) const;
 	FReply ReorderLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 TargetChildIndex);
 	bool CanReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex) const;
 	FReply ReparentLayerChild(int32 LayerIndex, int32 SourceChildIndex, int32 NewParentChildIndex);
@@ -422,6 +430,8 @@ private:
 	FReply MoveChildIntoIdGroup(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
 	FMixtormatChildAddress GetDraggedChildAddress(const FMixtormatChildDragDropOp& Operation) const;
 	bool CanDropChildIntoIdGroup(const FMixtormatChildDragDropOp& Operation, FMixtormatChildAddress Dest) const;
+	bool CanDropIdGroupSource(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest,
+		FText* OutReason = nullptr) const;
 	bool CanAddIdGroupSource(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest) const;
 	FReply AddIdGroupSource(const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest);
 	bool ResolveIdGroupPasteReference(FMixtormatLayerChild& Reference) const;
@@ -851,6 +861,10 @@ private:
 	FReply SetLayerGroupAccentColor(FGuid GroupId, FLinearColor AccentColor);
 	TSharedRef<SWidget> BuildGroupAccentMenu(FGuid GroupId);
 	static int32 InsertIndexToMoveTarget(int32 SourceIndex, int32 InsertIndex);
+	bool CanInsertLayerAt(int32 SourceLayerIndex, int32 InsertIndex) const;
+	bool ResolveGroupDropTarget(FGuid GroupId, int32 InsertIndex,
+		int32& FirstIndex, int32& LastIndex, int32& TargetIndex) const;
+	bool CanDropLayerOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId) const;
 	FReply HandleLayerInsertedAt(int32 SourceLayerIndex, int32 InsertIndex);
 	FReply HandleGroupInsertedAt(FGuid GroupId, int32 InsertIndex);
 	FReply HandleLayerDroppedOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId);
@@ -1654,6 +1668,8 @@ private:
 	void OnSliderContextChanged(TSharedRef<SMixtormatSlider> Slider);
 	bool IsHintInteractionActive() const;
 	bool HasInteractionHint() const;
+	bool HasOwnerInteractionHint() const;
+	FText GetOwnerInteractionHint() const;
 	FText GetInteractionHint() const;
 	TWeakPtr<SMixtormatSlider> HintSlider;
 	double HintSliderHoveredAt = 0.0;

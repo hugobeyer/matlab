@@ -309,7 +309,7 @@ TSharedRef<SWidget> SMixtormat::MakeFeaturePreviewButton(
 	// when it is on.
 	return SNew(SMixtormatIconButton)
 		.Size(IconSize)
-		.ToolTipText(ToolTip)
+		.ToolTip(ToolTip)
 		.bActive_Lambda([this, Mode]() { return DebugPreviewMode == Mode; })
 		.Icon_Lambda([this, Mode]()
 		{
@@ -1071,7 +1071,7 @@ TSharedRef<SWidget> SMixtormat::MakeChildOutputPreviewButton(
 	// the chevron) switches back to the default view; clicking it while lit turns the preview off.
 	TSharedRef<SWidget> Eye = SNew(SMixtormatIconButton)
 		.Size(MixtormatTokens::PreviewEyeSize)
-		.ToolTipText(Primary.Label)
+		.ToolTip(Primary.Label)
 		.IsEnabled_Lambda([IsAnyActive, IsReady]() { return IsAnyActive() || IsReady(); })
 		.bActive_Lambda(IsAnyActive)
 		.Icon_Lambda([IsAnyActive]()
@@ -1307,6 +1307,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 			.OnRequestQuickControls(FSimpleDelegate::CreateLambda([this]()
 			{
 				ToggleQuickControls();
+			}))
+			.OnNavigationContextChanged(FSimpleDelegate::CreateLambda([this]()
+			{
+				Invalidate(EInvalidateWidgetReason::Layout);
 			}))
 			.OnCameraFovChanged(FMixtormatCameraFovChanged::CreateLambda([this](const float Fov)
 			{

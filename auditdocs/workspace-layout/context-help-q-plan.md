@@ -1,7 +1,7 @@
 # Context helpers + Q menu upgrade
 
-2026-10-24 · Increments 1–2 implemented in source; owner runtime checks pending.
-Broader viewport/drag interaction contexts remain planned.
+2026-10-24 · Increments 1–3 implemented in source; owner compile/runtime checks pending.
+Viewport/drag guidance and the three deferred styled-tooltip fixes are included.
 Scope: existing Q menu, corner hint strip and top-center feedback. No new help system.
 
 ## Current code
@@ -13,12 +13,14 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - Q/Escape dismiss; geometry/light selection closes; moving sufficiently far away fades/closes.
   Proximity dismissal is suspended while the tracked Actions/Final submenus are open.
 - Opening remains viewport-scoped; workspace Q closes an open menu, with focus/text-entry guards.
-- Corner hints prioritize active workspace sliders, open Q, then selection/preview state.
+- Corner hints prioritize active workspace sliders, owned drag/navigation contexts, open Q or
+  settled control hover, then selection/preview state. Selection hints are capped at four.
   Q shows Q/Escape close plus settled card guidance. A slider scrub/type-in takes priority;
   Escape is advertised as cancel while typing, not as menu dismissal.
 - Top-center feedback reports V/W/E/reset, Q mesh/light/reset choices, successful Q additions
   and output copies, plus changed slider values on release/capture loss/accepted type-in.
-  It reuses the 1.4s hold + 0.5s fade and stays hidden during an active slider interaction.
+  It reuses the 1.4s hold + 0.5s fade and stays hidden during active slider, viewport-navigation
+  or owned drag-target guidance. Drag hover does not emit per-move center feedback.
 - No directional flick-to-execute or hold-Q/release gesture was found in inspected Q handlers.
 
 ## Shared roles
@@ -73,10 +75,33 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - Q opening remains viewport-only. No input preprocessor, focus, capture, close gesture, preview
   shader or Moss implementation changes. No commands/builds/tests/diagnostics were run.
 
-## Next increment — not implemented
-1. Extend owner-reported contexts to viewport orbit/pan/light rotation and validated layer/module
-   drop destinations. Slider hover/scrub/type-in is already wired through the shared helper.
-2. Bound the remaining selection-hint combinations to 2–4 items without changing hotkeys.
+## Increment 3 — implemented
+- Viewport InputAxis reports only gestures it actually handles: MMB pan, LMB orbit, RMB lighting.
+  The corner describes the active drag and release-to-finish; Escape is not advertised as undo.
+  Changed-owner notifications invalidate hint layout. Release/Escape clears the report; the
+  viewport lifecycle and live capture/focus/button checks suppress stale navigation guidance.
+  Camera/light handlers, mouse replies, focus/capture and Q opening/closing routes are unchanged.
+- Stack layer/group/module operations own their guidance. Only the originating workspace reads
+  it; targets report their existing before/after/into routes. Weak target/owner lifetimes, live
+  source identity/document-revision checks, leave and drop/cancel lifecycle prevent retained
+  target guidance.
+- Hover and mutations share extracted reorder/move/reparent preflights, including existing
+  published-output validation/rejection text. Invalid placements without a specific existing
+  reason show a blocked-placement explanation rather than promising a successful drop.
+  ID Group rows retain their routing reservation while eligibility uses CanAddIdGroupSource;
+  guidance explains that linking Region IDs leaves the source module in place.
+- Existing drop replies, zones, decorators, mutation handlers and status feedback remain.
+  A handled drop is not interpreted as success. Group-edge snapping and no-op placements are
+  described explicitly. No library-drag acceptance rules or new interaction gestures were added.
+- Active contexts replace selection hints. Selection hints keep at most four eligible items,
+  prioritizing diagnostic reset and selected outputs over general preview shortcuts; row order
+  and shortcut handlers remain unchanged. Short contexts are not padded with irrelevant actions.
+- Existing corner/center surfaces retain styling and H/Space visibility. Q's slider-specific
+  proximity suspension, captured targets and nested-menu lifecycle are unchanged.
+- Both preview icon-button tooltip paths now use their existing styled ToolTip(FText) argument;
+  group-accent swatches use MakeStyledToolTip without changing their appearance or handlers.
+- Source edits only: no commands, builds, tests, diagnostics or Unreal launches were run.
+  Rust, Moss and GPU implementation work is untouched.
 
 ## Priorities
 1. **Q guidance + feedback.** While open, replace generic V/W/E hints with Q/Escape close
@@ -123,6 +148,10 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - `Widgets/Layers/MixtormatQuickControlsActions.cpp`: Q target snapshot, resolver and availability.
 - `Widgets/SMixtormat.cpp::ResetEditHistory`: document-revision invalidation.
 - `UI/Menus/MixtormatMenuBuilder.*`, `SMixtormatMenuItem.*`: live disabled reasons and styled help.
+- `Widgets/SMixtormatPreviewViewport.*`: actual navigation owner and capture/focus lifecycle.
+- `UI/DragDrop/MixtormatDragDropOps.h`, `SMixtormatDropTargets.h`: operation-owned target guidance.
+- `Widgets/Layers/MixtormatLayerDragDrop.cpp`, `MixtormatLayerHierarchy.cpp`,
+  `MixtormatLayersPrivate.h`: shared drop preflights, source binding and ID Group routing.
 
 ## Remaining owner checks
 - Build/compile, then check viewport edges and multiple DPI scales; cards must not move on hover.
@@ -142,4 +171,13 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
   disabled reasons must update without moving rows or allowing stale nested actions.
 - Long target names, group targets and first-material creation; no card movement or focus theft.
 - Ordinary context menus still use their existing handlers and selection-routing behavior.
-- After increment 3: viewport capture and validator-backed drag acceptance/rejection.
+- LMB orbit/MMB pan/RMB lighting, mixed held buttons, release/Escape, focus and capture loss;
+  only the active viewport should supply navigation guidance, with no camera/input changes.
+- Layer/group before/after/into, group-edge snapping/no-op, module reorder/reparent/unshare/share;
+  published-output rejection, scoped filters, invalid nesting and ID Group source eligibility.
+- Drag leave, Escape cancellation, drop, source edits, document/theme rebuild and multiple
+  workspaces: no stale or cross-workspace guidance; existing acceptance/replies must remain.
+- At most four selection hints; active drag/navigation/slider guidance replaces them and hides
+  center feedback. Check long rejection text, small windows, custom themes and H/Space.
+- Preview feature/output eyes and group-accent swatches: styled hover timing/placement without
+  changed click, focus, capture or menu behavior.

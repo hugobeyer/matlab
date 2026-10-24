@@ -8,6 +8,7 @@
 #include "Widgets/Layers/MixtormatLayersPrivate.h"
 #include "UI/Layers/MixtormatLayerShortcuts.h"
 #include "UI/Menus/MixtormatMenuBuilder.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Style/MixtormatThemeStore.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "Widgets/Images/SImage.h"
@@ -765,7 +766,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupAccentMenu(const FGuid GroupId)
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::GroupAccentSwatchSize)
 			.HeightOverride(MixtormatTokens::GroupAccentSwatchSize)
-			.ToolTipText(ToolTip)
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(ToolTip))
 			[
 				SNew(SButton)
 				.ButtonStyle(FCoreStyle::Get(), TEXT("NoBorder"))

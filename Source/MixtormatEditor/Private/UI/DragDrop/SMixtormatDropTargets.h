@@ -102,6 +102,14 @@ enum class EMixtormatRowDropZone : uint8
 
 namespace MixtormatDropZone
 {
+	inline void ClearGuidance(const FDragDropEvent& Event, const SWidget* Target)
+	{
+		if (const TSharedPtr<FMixtormatGuidedDragDropOp> Operation = Event.GetOperationAs<FMixtormatGuidedDragDropOp>())
+		{
+			Operation->ClearGuidance(Target);
+		}
+	}
+
 	// The cursor's height through the row, 0 at the top edge and 1 at the bottom.
 	inline float LocalFraction(const FGeometry& Geometry, const FDragDropEvent& Event)
 	{
@@ -260,6 +268,7 @@ public:
 		{
 			Operation->ResetToDefaultToolTip();
 		}
+		MixtormatDropZone::ClearGuidance(Event, this);
 		if (const TSharedPtr<FMixtormatLayerDragDropOp> Operation = Event.GetOperationAs<FMixtormatLayerDragDropOp>())
 		{
 			Operation->ResetToDefaultToolTip();
@@ -282,6 +291,7 @@ public:
 		const FGeometry& MyGeometry,
 		const FDragDropEvent& DragDropEvent) override
 	{
+		MixtormatDropZone::ClearGuidance(DragDropEvent, this);
 		if (DragDropEvent.GetOperationAs<FMixtormatMaskDragDropOp>().IsValid())
 		{
 			return TargetLayerIndex != INDEX_NONE ? FReply::Handled() : FReply::Unhandled();
@@ -302,6 +312,20 @@ public:
 			// no layer index to compare, so only the scoped test applies to it -- every layer is a
 			// destination it is not already on.
 			const bool bFromGroup = ChildOp->GroupId.IsValid();
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::ChildToLayer};
+			Request.LayerIndex = TargetLayerIndex;
+			const FText Guidance = bFromGroup
+				? LOCTEXT("DragUnshareToLayer", "Release to move this module into this layer; other group members lose it")
+				: LOCTEXT("DragAppendToLayer", "Release to append this module to this layer");
+			if (bFromGroup)
+			{
+				ChildOp->SetGuidance(AsShared(), OnGroupChildMovedToLayer, Request, Guidance, ChildOp->bCanLeaveLayer);
+			}
+			else
+			{
+				ChildOp->SetGuidance(AsShared(), OnChildMovedToLayer, Request, Guidance,
+					ChildOp->bCanLeaveLayer && ChildOp->LayerIndex != TargetLayerIndex);
+			}
 			if (!ChildOp->bCanLeaveLayer
 				|| (!bFromGroup && ChildOp->LayerIndex == TargetLayerIndex))
 			{
@@ -345,10 +369,16 @@ public:
 		const FSlateBrush* HintIcon = MixtormatIcons::Add();
 		if (LayerOp.IsValid())
 		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::InsertLayer};
+			Request.InsertIndex = Zone == EMixtormatRowDropZone::Before ? TargetLayerIndex : TargetLayerIndex + 1;
+			LayerOp->SetGuidance(AsShared(), OnLayerInsertedAt, Request, Hint);
 			LayerOp->SetToolTip(Hint, HintIcon);
 		}
 		else if (GroupOp.IsValid())
 		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::InsertGroup};
+			Request.InsertIndex = Zone == EMixtormatRowDropZone::Before ? TargetLayerIndex : TargetLayerIndex + 1;
+			GroupOp->SetGuidance(AsShared(), OnGroupInsertedAt, Request, Hint);
 			GroupOp->SetToolTip(Hint, HintIcon);
 		}
 		else
@@ -370,6 +400,7 @@ public:
 		const FGeometry& MyGeometry,
 		const FDragDropEvent& DragDropEvent) override
 	{
+		MixtormatDropZone::ClearGuidance(DragDropEvent, this);
 		if (const TSharedPtr<FMixtormatMaskDragDropOp> MaskOperation = DragDropEvent.GetOperationAs<FMixtormatMaskDragDropOp>())
 		{
 			bMaskDragOver = false;
@@ -503,6 +534,7 @@ public:
 
 	virtual void OnDragLeave(const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		Zone = EMixtormatRowDropZone::None;
 		if (const TSharedPtr<FMixtormatLayerDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatLayerDragDropOp>())
@@ -528,6 +560,7 @@ public:
 
 	virtual FReply OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		if (!TargetGroupId.IsValid())
 		{
 			return FReply::Unhandled();
@@ -540,6 +573,11 @@ public:
 		if (const TSharedPtr<FMixtormatChildDragDropOp> ChildOp =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>())
 		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::ChildToGroup};
+			Request.GroupId = TargetGroupId;
+			ChildOp->SetGuidance(AsShared(), OnChildDropped, Request,
+				LOCTEXT("DragShareModule", "Release to share this module across the group"),
+				ChildOp->bCanLeaveLayer && !ChildOp->GroupId.IsValid());
 			if (!ChildOp->bCanLeaveLayer || ChildOp->GroupId.IsValid())
 			{
 				Zone = EMixtormatRowDropZone::None;
@@ -560,6 +598,23 @@ public:
 		if (LayerOp.IsValid() && LayerOp->SourceLayerIndex != INDEX_NONE)
 		{
 			Zone = MixtormatDropZone::ForGroupRow(MyGeometry, Event, true);
+			FMixtormatDragTarget Request{Zone == EMixtormatRowDropZone::Into
+				? FMixtormatDragTarget::EAction::LayerIntoGroup : FMixtormatDragTarget::EAction::InsertLayer};
+			Request.GroupId = TargetGroupId;
+			Request.InsertIndex = Zone == EMixtormatRowDropZone::Before ? FirstMemberIndex : LastMemberIndex + 1;
+			const FText Guidance = Zone == EMixtormatRowDropZone::Into
+				? LOCTEXT("ReleaseLayerIntoGroup", "Release to put this layer in the group")
+				: Zone == EMixtormatRowDropZone::Before
+					? LOCTEXT("DropAboveGroup", "Release to place above this group")
+					: LOCTEXT("DropBelowGroup", "Release to place below this group");
+			if (Zone == EMixtormatRowDropZone::Into)
+			{
+				LayerOp->SetGuidance(AsShared(), OnLayerDropped, Request, Guidance);
+			}
+			else
+			{
+				LayerOp->SetGuidance(AsShared(), OnLayerInsertedAt, Request, Guidance);
+			}
 			LayerOp->SetToolTip(
 				Zone == EMixtormatRowDropZone::Into
 					? LOCTEXT("ReleaseLayerIntoGroup", "Release to put this layer in the group")
@@ -584,6 +639,17 @@ public:
 				MixtormatIcons::Add());
 			return FReply::Handled();
 		}
+		if (GroupOp.IsValid())
+		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::InsertGroup};
+			const EMixtormatRowDropZone GuidanceZone = MixtormatDropZone::ForGroupRow(MyGeometry, Event, false);
+			Request.InsertIndex = GuidanceZone == EMixtormatRowDropZone::Before ? FirstMemberIndex : LastMemberIndex + 1;
+			GroupOp->SetGuidance(AsShared(), OnGroupInsertedAt, Request,
+				GuidanceZone == EMixtormatRowDropZone::Before
+					? LOCTEXT("DropAboveGroup", "Release to place above this group")
+					: LOCTEXT("DropBelowGroup", "Release to place below this group"),
+				GroupOp->GroupId.IsValid() && GroupOp->GroupId != TargetGroupId);
+		}
 		if (GroupOp.IsValid() && GroupOp->GroupId.IsValid() && GroupOp->GroupId != TargetGroupId)
 		{
 			// No Into: a group inside a group is not something this model has, so the middle of
@@ -601,6 +667,7 @@ public:
 
 	virtual FReply OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		const EMixtormatRowDropZone DropZone = Zone;
 		Zone = EMixtormatRowDropZone::None;
 		if (!TargetGroupId.IsValid() || DropZone == EMixtormatRowDropZone::None)
@@ -805,6 +872,7 @@ public:
 		{
 			Operation->ResetToDefaultToolTip();
 		}
+		MixtormatDropZone::ClearGuidance(Event, this);
 		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>())
 		{
@@ -814,6 +882,7 @@ public:
 
 	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		if (Event.GetOperationAs<FMixtormatMaskDragDropOp>().IsValid())
 		{
 			return bAcceptsMaskDrop ? FReply::Handled() : FReply::Unhandled();
@@ -827,6 +896,21 @@ public:
 		}
 		if (Operation->GroupId.IsValid() || Operation->LayerIndex != LayerIndex)
 		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::ChildToLayer};
+			Request.LayerIndex = LayerIndex;
+			Request.ChildIndex = ChildIndex;
+			if (Operation->GroupId.IsValid())
+			{
+				Operation->SetGuidance(AsShared(), OnGroupChildMovedToLayer, Request,
+					LOCTEXT("DragUnshareBeforeModule", "Release to move before this module's top-level owner; other group members lose it"),
+					Operation->bCanLeaveLayer);
+			}
+			else
+			{
+				Operation->SetGuidance(AsShared(), OnChildMovedToLayer, Request,
+					LOCTEXT("DragMoveBeforeModule", "Release to move before this module's top-level owner"),
+					Operation->bCanLeaveLayer);
+			}
 			Zone = Operation->bCanLeaveLayer ? EMixtormatRowDropZone::Into
 				: EMixtormatRowDropZone::None;
 			return Zone == EMixtormatRowDropZone::Into
@@ -834,6 +918,9 @@ public:
 		}
 		if (Operation->ChildIndex == ChildIndex)
 		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::ReorderLayerChild};
+			Request.ChildIndex = ChildIndex;
+			Operation->SetGuidance(AsShared(), OnChildReordered, Request, FText::GetEmpty(), false);
 			Zone = EMixtormatRowDropZone::None;
 			return FReply::Unhandled();
 		}
@@ -849,13 +936,23 @@ public:
 		Zone = bCanNest ? EMixtormatRowDropZone::Into
 			: Operation->ChildIndex < ChildIndex
 				? EMixtormatRowDropZone::After : EMixtormatRowDropZone::Before;
+		FMixtormatDragTarget Request{bCanNest
+			? FMixtormatDragTarget::EAction::ReparentChild : FMixtormatDragTarget::EAction::ReorderLayerChild};
+		Request.LayerIndex = LayerIndex;
+		Request.ChildIndex = ChildIndex;
 		if (bCanNest)
 		{
+			Operation->SetGuidance(AsShared(), OnChildReparented, Request,
+				LOCTEXT("ReparentChildIntoRow", "Release to move under this child"));
 			Operation->SetToolTip(LOCTEXT("ReparentChildIntoRow", "Release to move under this child"),
 				MixtormatIcons::Add());
 		}
 		else
 		{
+			Operation->SetGuidance(AsShared(), OnChildReordered, Request,
+				Zone == EMixtormatRowDropZone::Before
+					? LOCTEXT("ReorderChildAboveRow", "Release to reorder above")
+					: LOCTEXT("ReorderChildBelowRow", "Release to reorder below"));
 			Operation->SetToolTip(Zone == EMixtormatRowDropZone::Before
 				? LOCTEXT("ReorderChildAboveRow", "Release to reorder above")
 				: LOCTEXT("ReorderChildBelowRow", "Release to reorder below"),
@@ -866,6 +963,7 @@ public:
 
 	virtual FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		if (const TSharedPtr<FMixtormatMaskDragDropOp> MaskOperation = Event.GetOperationAs<FMixtormatMaskDragDropOp>())
 		{
 			bMaskDragOver = false;
@@ -944,10 +1042,27 @@ public:
 		ChildSlot[InArgs._Content.Widget];
 	}
 
+	virtual void OnDragLeave(const FDragDropEvent& Event) override
+	{
+		MixtormatDropZone::ClearGuidance(Event, this);
+	}
+
 	virtual FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
+		if (Operation.IsValid())
+		{
+			FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::ReorderGroupChild};
+			Request.GroupId = GroupId;
+			Request.ChildIndex = ChildIndex;
+			Operation->SetGuidance(AsShared(), OnChildReordered, Request,
+				Operation->ChildIndex < ChildIndex
+					? LOCTEXT("ReorderChildBelowRow", "Release to reorder below")
+					: LOCTEXT("ReorderChildAboveRow", "Release to reorder above"),
+				Operation->GroupId == GroupId && Operation->bCanLeaveLayer && Operation->ChildIndex != ChildIndex);
+		}
 		// bCanLeaveLayer doubles as "can reorder" here: a scoped filter cannot leave the child that
 		// owns it, and within a group that means it cannot reorder at all, not even among the
 		// group's other top-level children.
@@ -961,6 +1076,7 @@ public:
 
 	virtual FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override
 	{
+		MixtormatDropZone::ClearGuidance(Event, this);
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		if (!Operation.IsValid() || Operation->GroupId != GroupId || !Operation->bCanLeaveLayer)

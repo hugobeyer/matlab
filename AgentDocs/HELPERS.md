@@ -14,7 +14,8 @@ plus the TODO lists for mapping and architecture work on top of it.
   Q mesh/light/reset choices, successful additions/output copies and shared-slider results
   reuse it. Repeated actions replace/restart the label; 1.4s hold + 0.5s fade. PreviewLabel,
   preview plate and padding are reused; H/Space hides optional feedback.
-  Active slider guidance hides the center label; changed values report once on release,
+  Active slider, viewport-navigation and owned drag-target guidance hide the center label;
+  changed slider values report once on release,
   capture loss or accepted type-in, never per mouse move. Existing status writes are preserved.
   F moves the camera and Z updates displacement; existing preview actions are preserved.
 - Aliases are not advertised: `F12` works but menus say `F2`; `Ctrl+Shift+Z`
@@ -45,9 +46,11 @@ plus the TODO lists for mapping and architecture work on top of it.
 | Legacy native tooltips | `.ToolTipText(...)` / `SetToolTipText(...)` | Forbidden for new Mixtormat code. Migrate existing sites to styled help; do not repeat the native pattern. |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
 | Status bar | `WorkingStatusText` | Document/operation status; V/W/E feedback does not overwrite it. |
-| Transient mode/action feedback | `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback`, `ShowPreviewFeedback` | Modes, Q choices/successful edits and slider results; one active timer, no queued messages. Suppressed during active slider interaction. |
-| Interaction guidance | `SMixtormat_PreviewHints.cpp::GetInteractionHint` | Active slider → open Q/control → selection hints. Passive card hover and weak slider ownership; `HelpDelay` settling, no widget-tree scan. |
+| Transient mode/action feedback | `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback`, `ShowPreviewFeedback` | Modes, Q choices/successful edits and slider results; one active timer, no queued messages. Suppressed during active slider, navigation or owned drag-target guidance. |
+| Interaction guidance | `SMixtormat_PreviewHints.cpp::GetInteractionHint` | Active slider → owned drag/navigation → open Q/control → selection hints (maximum four). Passive card hover and weak owners; `HelpDelay` settling, no widget-tree scan. |
 | Slider context signals | `SMixtormatSlider`, `SMixtormat::MakeSlider` | Existing mouse/entry owners report hover, scrub and type-in. Snap guidance uses the live positive delta; successful value changes report once. |
+| Viewport navigation signals | `SMixtormatPreviewViewport::GetNavigationHint`, client `InputAxis` | Actual MMB pan/LMB orbit/RMB lighting branches report the gesture; release/Escape and capture/focus loss clear it. Input handling is unchanged. |
+| Stack drag guidance | `FMixtormatGuidedDragDropOp`, existing drop targets/handlers | Workspace-bound operation, weak target, current payload check. Shared preflights supply eligibility/rejection; leave/drop/cancel/expired targets clear guidance. ID Group reservation remains separate from source eligibility. |
 | Empty states | Text blocks in panels | e.g. "No global variables yet.", "No layer selected". |
 | Entry-commit rules | `UI/Controls/MixtormatEntryCommit.h` | Enter/Tab/click-away accept; Escape/right-click cancel — documented in the header. |
 
@@ -101,6 +104,7 @@ Shortcut discoverability is incomplete.
 | `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |
 | `5` | Toggle complete material UV rotation by 90°, exactly like the preview marking-menu button |
 | Mouse wheel | Zoom camera |
+| LMB / MMB / RMB drag | Orbit camera / pan camera / rotate lighting; active owner guidance says release to finish |
 | `Q` (bare) | Opens viewport quick controls: Render/Composition above, Lighting left, Geometry right, real context-sensitive Actions below. Q/Escape or mesh/light selection closes; cursor distance drives proximity fade/close except while tracked submenus are open. Opening is viewport-scoped; workspace close routing respects focus/text-entry guards. Not Tab. Source-checked; interaction testing remains owner-run. |
 
 ## Hotkey catalog — controls
@@ -154,7 +158,13 @@ the actual inserted child's owner; existing handlers still select their results 
 Output Copy/Gates and unavailable nested rows remain visible with live styled disabled reasons.
 `MixtormatMenu::FBuilder::UnavailableReason` owns the row gate and uses the existing tooltip
 adapter, not local styling. Fill keeps insert-after-layer behavior; Material still appends.
-Viewport manipulation and drag contexts remain planned. Owner checks are listed in the plan;
+Increment 3 adds owner-reported viewport manipulation and layer/group/module drag contexts.
+Drag hover reuses extracted handler preflights and existing published-output/ID Group validators;
+rejection text stays in the corner, not a per-move center announcement. Active contexts replace
+selection hints, which are capped at four with reset/selected-output priority. Short contexts
+are not padded with unrelated actions. Q remains viewport-only with unchanged captured targets,
+focus/capture, proximity and nested-menu rules. The two preview icon-button tooltips and group
+accent swatches now use existing styled adapters. Owner checks are listed in the plan;
 no commands, builds, tests or diagnostics were run for these increments.
 
 ## TODOs — architecture
@@ -168,8 +178,9 @@ no commands, builds, tests or diagnostics were run for these increments.
   move to the preprocessor, or none. `Tab` is the counter-example: it must stay
   viewport-scoped, so the split is likely permanent.
 - **Contextual help uses existing surfaces.** Q cards and shared sliders now report to the
-  corner strip; results reuse the top-center label. Specific explanations remain in
-  `SMixtormatHelp`. Do not add another tooltip/overlay system for the remaining contexts.
+  corner strip; viewport input owners and workspace-bound stack drags now do so too.
+  Results reuse the top-center label. Specific explanations remain in `SMixtormatHelp`;
+  do not add another tooltip/overlay system.
 - **Viewport shortcuts lack a consolidated help surface.** The implemented `Q` marking menu
   could also advertise `F`/`H`/`Z`/`V`; that help extension remains a proposal.
   Its delivery history is archived in `AgentDocs/old_docs/viewport-quick-controls-plan.md`.

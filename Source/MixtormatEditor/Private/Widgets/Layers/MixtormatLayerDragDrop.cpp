@@ -26,27 +26,138 @@ namespace MixtormatLayersPrivate
 
 	void SMixtormatIdGroupChildDropTarget::Construct(const FArguments& InArgs)
 	{
-			Address = InArgs._Address;
-			OnCanDrop = InArgs._OnCanDrop;
-			OnIdDrop = InArgs._OnIdDrop;
-			ChildSlot[InArgs._Content.Widget];
-		}
+		Address = InArgs._Address;
+		OnCanDrop = InArgs._OnCanDrop;
+		OnIdDrop = InArgs._OnIdDrop;
+		ChildSlot[InArgs._Content.Widget];
+	}
 
 	FReply SMixtormatIdGroupChildDropTarget::OnDragOver(const FGeometry&, const FDragDropEvent& Event)
 	{
-			const TSharedPtr<FMixtormatChildDragDropOp> Operation =
-				Event.GetOperationAs<FMixtormatChildDragDropOp>();
-			return Operation.IsValid() && OnCanDrop.IsBound() && OnCanDrop.Execute(*Operation, Address)
-				? FReply::Handled() : FReply::Unhandled();
+		const TSharedPtr<FMixtormatChildDragDropOp> Operation = Event.GetOperationAs<FMixtormatChildDragDropOp>();
+		if (Operation.IsValid())
+		{
+			Operation->ClearGuidance(this);
+			if (OnCanDrop.IsBound() && OnCanDrop.Execute(*Operation, Address))
+			{
+				FMixtormatDragTarget Request{FMixtormatDragTarget::EAction::IdGroupSource};
+				Request.OwnerId = Address.OwnerId;
+				Request.ChildId = Address.ChildId;
+				Request.GroupId = Address.OwnerType == EMixtormatChildOwnerType::Group ? Address.OwnerId : FGuid();
+				Operation->SetGuidance(AsShared(), OnIdDrop, Request,
+					LOCTEXT("DragIdGroupSource", "Release to add Region IDs as a group source; the module stays in place"));
+				// Reservation is intentionally independent of CanAddIdGroupSource eligibility.
+				return FReply::Handled();
+			}
 		}
+		return FReply::Unhandled();
+	}
+
+	void SMixtormatIdGroupChildDropTarget::OnDragLeave(const FDragDropEvent& Event)
+	{
+		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation = Event.GetOperationAs<FMixtormatChildDragDropOp>())
+		{
+			Operation->ClearGuidance(this);
+		}
+	}
 
 	FReply SMixtormatIdGroupChildDropTarget::OnDrop(const FGeometry&, const FDragDropEvent& Event)
 	{
-			const TSharedPtr<FMixtormatChildDragDropOp> Operation =
-				Event.GetOperationAs<FMixtormatChildDragDropOp>();
-			return Operation.IsValid() && OnIdDrop.IsBound()
-				? OnIdDrop.Execute(*Operation, Address) : FReply::Unhandled();
-		}
+		const TSharedPtr<FMixtormatChildDragDropOp> Operation = Event.GetOperationAs<FMixtormatChildDragDropOp>();
+		if (Operation.IsValid()) { Operation->ClearGuidance(this); }
+		return Operation.IsValid() && OnIdDrop.IsBound()
+			? OnIdDrop.Execute(*Operation, Address) : FReply::Unhandled();
+	}
+}
+
+void SMixtormat::BindDragGuidance(const TSharedRef<FMixtormatGuidedDragDropOp>& Operation,
+	const FMixtormatChildAddress& Source)
+{
+	int32 LayerIndex = INDEX_NONE;
+	int32 ChildIndex = INDEX_NONE;
+	FGuid GroupId;
+	const bool bChild = Operation->IsOfType<FMixtormatChildDragDropOp>();
+	if (bChild)
+	{
+		const TSharedRef<FMixtormatChildDragDropOp> ChildOp = StaticCastSharedRef<FMixtormatChildDragDropOp>(Operation);
+		LayerIndex = ChildOp->LayerIndex;
+		ChildIndex = ChildOp->ChildIndex;
+		GroupId = ChildOp->GroupId;
+	}
+	else if (Operation->IsOfType<FMixtormatLayerDragDropOp>())
+	{
+		LayerIndex = StaticCastSharedRef<FMixtormatLayerDragDropOp>(Operation)->SourceLayerIndex;
+	}
+	else if (Operation->IsOfType<FMixtormatGroupDragDropOp>())
+	{
+		GroupId = StaticCastSharedRef<FMixtormatGroupDragDropOp>(Operation)->GroupId;
+	}
+	const TWeakPtr<SMixtormat> WeakOwner = StaticCastSharedRef<SMixtormat>(AsShared());
+	const uint64 DocumentRevision = QuickControlsDocumentRevision;
+	Operation->BindGuidance(AsShared(),
+		[WeakOwner, Source, LayerIndex, ChildIndex, GroupId, bChild, DocumentRevision]()
+		{
+			const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+			if (!Owner || Owner->QuickControlsDocumentRevision != DocumentRevision
+				|| !Source.OwnerId.IsValid() || (bChild && !Source.ChildId.IsValid())) { return false; }
+			// Indices are the routing payload. Do not silently retarget a drag after a rebuild/edit.
+			const FMixtormatChildAddress Current = GroupId.IsValid()
+				? Owner->MakeGroupChildAddress(GroupId, ChildIndex) : Owner->MakeChildAddress(LayerIndex, ChildIndex);
+			return Current == Source;
+		},
+		[WeakOwner, Source, LayerIndex, ChildIndex, GroupId](const FMixtormatDragTarget& Target, FText& Reason)
+		{
+			const TSharedPtr<SMixtormat> Owner = WeakOwner.Pin();
+			if (!Owner) { return false; }
+			using EAction = FMixtormatDragTarget::EAction;
+			switch (Target.Action)
+			{
+			case EAction::InsertLayer:
+				if (!Owner->CanInsertLayerAt(LayerIndex, Target.InsertIndex)) { return false; }
+				if (InsertIndexToMoveTarget(LayerIndex, Target.InsertIndex) == LayerIndex)
+				{
+					Reason = LOCTEXT("DragNoPositionChange", "Already at this position.");
+				}
+				return true;
+			case EAction::InsertGroup:
+			{
+				int32 First, Last, Resolved;
+				if (!Owner->ResolveGroupDropTarget(GroupId, Target.InsertIndex, First, Last, Resolved)) { return false; }
+				if (Resolved >= First && Resolved <= Last + 1)
+				{
+					Reason = LOCTEXT("DragNoPositionChange", "Already at this position.");
+				}
+				else if (Resolved != Target.InsertIndex)
+				{
+					Reason = Resolved < Target.InsertIndex
+						? LOCTEXT("DragGroupSnapBefore", "Release to move the whole group before the target group")
+						: LOCTEXT("DragGroupSnapAfter", "Release to move the whole group after the target group");
+				}
+				return true;
+			}
+			case EAction::LayerIntoGroup:
+				if (!Owner->CanDropLayerOnGroup(LayerIndex, Target.GroupId)) { return false; }
+				if (Owner->WorkingLayers[LayerIndex].GroupId == Target.GroupId)
+				{
+					Reason = LOCTEXT("DragAlreadyGroupMember", "This layer already belongs to the group.");
+				}
+				return true;
+			case EAction::ChildToLayer:
+				return Owner->CanMoveChildToLayer(Source, Target.LayerIndex, Target.ChildIndex, &Reason);
+			case EAction::ChildToGroup:
+				return Owner->CanMoveChildToGroup(Source, Target.GroupId, &Reason);
+			case EAction::ReorderLayerChild:
+			case EAction::ReorderGroupChild:
+				return Owner->CanReorderChild(Source, Target.ChildIndex, &Reason);
+			case EAction::ReparentChild:
+				return Owner->CanReparentLayerChildWithReason(LayerIndex, ChildIndex, Target.ChildIndex, &Reason);
+			case EAction::IdGroupSource:
+				return Owner->CanDropIdGroupSource(Source,
+					{Target.GroupId.IsValid() ? EMixtormatChildOwnerType::Group : EMixtormatChildOwnerType::Layer,
+						Target.OwnerId, Target.ChildId}, &Reason);
+			}
+			return false;
+		});
 }
 
 FReply SMixtormat::HandleLayerDropped(
@@ -185,12 +296,16 @@ int32 SMixtormat::InsertIndexToMoveTarget(const int32 SourceIndex, const int32 I
 	return SourceIndex < InsertIndex ? InsertIndex - 1 : InsertIndex;
 }
 
+bool SMixtormat::CanInsertLayerAt(const int32 SourceLayerIndex, const int32 InsertIndex) const
+{
+	return WorkingLayers.IsValidIndex(SourceLayerIndex)
+		&& WorkingLayers.IsValidIndex(InsertIndexToMoveTarget(SourceLayerIndex, InsertIndex));
+}
+
 FReply SMixtormat::HandleLayerInsertedAt(const int32 SourceLayerIndex, const int32 InsertIndex)
 {
 	const int32 TargetIndex = InsertIndexToMoveTarget(SourceLayerIndex, InsertIndex);
-	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| TargetIndex < 0
-		|| TargetIndex >= WorkingLayers.Num())
+	if (!CanInsertLayerAt(SourceLayerIndex, InsertIndex))
 	{
 		return FReply::Unhandled();
 	}
@@ -207,18 +322,18 @@ FReply SMixtormat::HandleLayerInsertedAt(const int32 SourceLayerIndex, const int
 	return HandleLayerDropped(SourceLayerIndex, TargetIndex);
 }
 
-FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 InsertIndex)
+bool SMixtormat::ResolveGroupDropTarget(const FGuid GroupId, const int32 InsertIndex,
+	int32& FirstIndex, int32& LastIndex, int32& TargetIndex) const
 {
-	int32 FirstIndex = INDEX_NONE;
-	int32 LastIndex = INDEX_NONE;
+	TargetIndex = InsertIndex;
 	if (!MixtormatLayerGroups::GetGroupRange(WorkingLayers, GroupId, FirstIndex, LastIndex))
 	{
-		return FReply::Unhandled();
+		return false;
 	}
 	// Dropping a group on its own edges is a no-op rather than a move that lands where it started.
 	if (InsertIndex >= FirstIndex && InsertIndex <= LastIndex + 1)
 	{
-		return FReply::Handled();
+		return true;
 	}
 
 	// Groups do not nest, so a line drawn between two members of another group -- reachable by
@@ -232,7 +347,6 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 	// snapped edge is always either before the first group in the stack, after the last, or
 	// sitting exactly on the shared boundary between two adjacent ones -- never inside a second
 	// group's span.
-	int32 TargetIndex = InsertIndex;
 	for (const FMixtormatLayerGroup& OtherGroup : WorkingLayerGroups)
 	{
 		if (OtherGroup.GroupId == GroupId)
@@ -252,6 +366,18 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 				: OtherLast + 1;
 			break;
 		}
+	}
+	return true;
+}
+
+FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 InsertIndex)
+{
+	int32 FirstIndex = INDEX_NONE;
+	int32 LastIndex = INDEX_NONE;
+	int32 TargetIndex = INDEX_NONE;
+	if (!ResolveGroupDropTarget(GroupId, InsertIndex, FirstIndex, LastIndex, TargetIndex))
+	{
+		return FReply::Unhandled();
 	}
 	// The snap can land back on the dragged group's own edge (it sits right next to whichever
 	// group absorbed the line), which is the same no-op the raw-index check above exists for.
@@ -319,12 +445,17 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 	return FReply::Handled();
 }
 
+bool SMixtormat::CanDropLayerOnGroup(const int32 SourceLayerIndex, const FGuid TargetGroupId) const
+{
+	return WorkingLayers.IsValidIndex(SourceLayerIndex)
+		&& MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TargetGroupId);
+}
+
 FReply SMixtormat::HandleLayerDroppedOnGroup(
 	const int32 SourceLayerIndex,
 	const FGuid TargetGroupId)
 {
-	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| !MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TargetGroupId))
+	if (!CanDropLayerOnGroup(SourceLayerIndex, TargetGroupId))
 	{
 		return FReply::Unhandled();
 	}
@@ -386,6 +517,13 @@ FGuid SMixtormat::ResolveGroupMembershipAt(const int32 LayerIndex) const
 bool SMixtormat::CanReparentLayerChild(
 	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex) const
 {
+	return CanReparentLayerChildWithReason(LayerIndex, SourceChildIndex, NewParentChildIndex);
+}
+
+bool SMixtormat::CanReparentLayerChildWithReason(
+	const int32 LayerIndex, const int32 SourceChildIndex, const int32 NewParentChildIndex, FText* OutReason) const
+{
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
 	if (!WorkingLayers.IsValidIndex(LayerIndex)) { return false; }
 	const TArray<FMixtormatLayerChild>& Children = WorkingLayers[LayerIndex].Children;
 	if (!Children.IsValidIndex(SourceChildIndex)
@@ -413,7 +551,7 @@ bool SMixtormat::CanReparentLayerChild(
 	const int32 Insert = FindSubtreeEnd(Children, NewParentChildIndex);
 	return CanMovePublishedOutputs(
 		MakeChildAddress(LayerIndex, SourceChildIndex),
-		MakeChildAddress(LayerIndex, NewParentChildIndex), Insert);
+		MakeChildAddress(LayerIndex, NewParentChildIndex), Insert, OutReason);
 }
 
 FReply SMixtormat::ReparentLayerChild(
@@ -469,36 +607,17 @@ FReply SMixtormat::ReorderLayerChild(
 	const int32 SourceChildIndex,
 	const int32 TargetChildIndex)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(SourceChildIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(TargetChildIndex)
-		|| SourceChildIndex == TargetChildIndex)
-	{
-		return FReply::Unhandled();
-	}
-
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FGuid SourceParentId = Layer.Children[SourceChildIndex].ScopeOwnerChildId;
-	const int32 TargetRootIndex = FindSiblingRoot(Layer.Children, TargetChildIndex, SourceParentId);
-	if (TargetRootIndex == INDEX_NONE || TargetRootIndex == SourceChildIndex)
-	{
-		return FReply::Unhandled();
-	}
-
-	const int32 SourceSubtreeEnd = FindSubtreeEnd(Layer.Children, SourceChildIndex);
-	const int32 TargetSubtreeEnd = FindSubtreeEnd(Layer.Children, TargetRootIndex);
-	if (TargetRootIndex < SourceSubtreeEnd && TargetSubtreeEnd > SourceChildIndex)
-	{
-		return FReply::Unhandled();
-	}
 	FText MoveReason;
-	if (!CanMovePublishedOutputs(MakeChildAddress(LayerIndex, SourceChildIndex),
-		{EMixtormatChildOwnerType::Layer, Layer.LayerId, FGuid()},
-		TargetRootIndex < SourceChildIndex ? TargetRootIndex : TargetSubtreeEnd, &MoveReason))
+	if (!CanReorderChild(MakeChildAddress(LayerIndex, SourceChildIndex), TargetChildIndex, &MoveReason))
 	{
 		if (!MoveReason.IsEmpty()) { WorkingStatusText = MoveReason.ToString(); return FReply::Handled(); }
 		return FReply::Unhandled();
 	}
+	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
+	const FGuid SourceParentId = Layer.Children[SourceChildIndex].ScopeOwnerChildId;
+	const int32 TargetRootIndex = FindSiblingRoot(Layer.Children, TargetChildIndex, SourceParentId);
+	const int32 SourceSubtreeEnd = FindSubtreeEnd(Layer.Children, SourceChildIndex);
+	const int32 TargetSubtreeEnd = FindSubtreeEnd(Layer.Children, TargetRootIndex);
 
 	FGuid SelectedEffectId;
 	FGuid SelectedMaskId;
@@ -548,31 +667,16 @@ FReply SMixtormat::ReorderGroupChild(
 	const int32 SourceChildIndex,
 	int32 TargetChildIndex)
 {
-	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	if (!Group
-		|| !Group->Children.IsValidIndex(SourceChildIndex)
-		|| !Group->Children.IsValidIndex(TargetChildIndex)
-		// Scoped mask/flow tools still travel with their owner; ID children can reorder as siblings.
-		|| (Group->Children[SourceChildIndex].ScopeOwnerChildId.IsValid()
-			&& !IsIdGroupChild(Group->Children[SourceChildIndex])))
-	{
-		return FReply::Unhandled();
-	}
-	// Reordering cannot change containment. ID Group nesting is handled by the inner drop target.
-	const FGuid SourceParentId = Group->Children[SourceChildIndex].ScopeOwnerChildId;
-	TargetChildIndex = FindSiblingRoot(Group->Children, TargetChildIndex, SourceParentId);
-	if (TargetChildIndex == INDEX_NONE || TargetChildIndex == SourceChildIndex)
-	{
-		return FReply::Unhandled();
-	}
 	FText MoveReason;
-	if (!CanMovePublishedOutputs(MakeGroupChildAddress(GroupId, SourceChildIndex),
-		{EMixtormatChildOwnerType::Group, GroupId, FGuid()},
-		TargetChildIndex < SourceChildIndex ? TargetChildIndex : FindSubtreeEnd(Group->Children, TargetChildIndex), &MoveReason))
+	if (!CanReorderChild(MakeGroupChildAddress(GroupId, SourceChildIndex), TargetChildIndex, &MoveReason))
 	{
 		if (!MoveReason.IsEmpty()) { WorkingStatusText = MoveReason.ToString(); return FReply::Handled(); }
 		return FReply::Unhandled();
 	}
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	// Reordering cannot change containment. ID Group sources use the inner drop target.
+	const FGuid SourceParentId = Group->Children[SourceChildIndex].ScopeOwnerChildId;
+	TargetChildIndex = FindSiblingRoot(Group->Children, TargetChildIndex, SourceParentId);
 
 	FGuid SelectedChildId;
 	if (SelectedGroupId == GroupId && Group->Children.IsValidIndex(SelectedGroupChildIndex))
@@ -631,32 +735,13 @@ FReply SMixtormat::MoveGroupChildToLayer(
 	const int32 DestLayerIndex,
 	const int32 DestChildIndex)
 {
-	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	if (!Group
-		|| !Group->Children.IsValidIndex(ChildIndex)
-		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
-		// ID children can leave a group; scoped masks/flow tools cannot leave their owner.
-		|| (Group->Children[ChildIndex].ScopeOwnerChildId.IsValid()
-			&& !IsIdGroupChild(Group->Children[ChildIndex])))
-	{
-		return FReply::Unhandled();
-	}
-	if (IsMaskFilter(Group->Children[ChildIndex])
-		|| Group->Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
-	{
-		return FReply::Unhandled();
-	}
-	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
-	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
-		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
 	FText MoveReason;
-	if (!CanMovePublishedOutputs(MakeGroupChildAddress(GroupId, ChildIndex),
-		{EMixtormatChildOwnerType::Layer, WorkingLayers[DestLayerIndex].LayerId, FGuid()},
-		DestRoot == INDEX_NONE ? DestChildren.Num() : DestRoot, &MoveReason))
+	if (!CanMoveChildToLayer(MakeGroupChildAddress(GroupId, ChildIndex), DestLayerIndex, DestChildIndex, &MoveReason))
 	{
 		if (!MoveReason.IsEmpty()) { WorkingStatusText = MoveReason.ToString(); return FReply::Handled(); }
 		return FReply::Unhandled();
 	}
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
 
 	const int32 SubtreeEnd = FindSubtreeEnd(Group->Children, ChildIndex);
 	const int32 MoveCount = SubtreeEnd - ChildIndex;
@@ -715,34 +800,13 @@ FReply SMixtormat::MoveChildToLayer(
 	const int32 DestLayerIndex,
 	const int32 DestChildIndex)
 {
-	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| !WorkingLayers.IsValidIndex(DestLayerIndex)
-		|| !WorkingLayers[SourceLayerIndex].Children.IsValidIndex(ChildIndex)
-		|| SourceLayerIndex == DestLayerIndex)
-	{
-		return FReply::Unhandled();
-	}
-
-	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	const FMixtormatLayerChild& SourceChild = SourceLayer.Children[ChildIndex];
-	const bool bLayerBlur = SourceChild.Type == EMixtormatLayerChildType::Blur
-		&& !SourceChild.ScopeOwnerChildId.IsValid();
-	if ((IsMaskFilter(SourceChild) && !bLayerBlur)
-		|| SourceChild.Type == EMixtormatLayerChildType::Behavior)
-	{
-		return FReply::Unhandled();
-	}
-	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
-	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
-		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
 	FText MoveReason;
-	if (!CanMovePublishedOutputs(MakeChildAddress(SourceLayerIndex, ChildIndex),
-		{EMixtormatChildOwnerType::Layer, WorkingLayers[DestLayerIndex].LayerId, FGuid()},
-		DestRoot == INDEX_NONE ? DestChildren.Num() : DestRoot, &MoveReason))
+	if (!CanMoveChildToLayer(MakeChildAddress(SourceLayerIndex, ChildIndex), DestLayerIndex, DestChildIndex, &MoveReason))
 	{
 		if (!MoveReason.IsEmpty()) { WorkingStatusText = MoveReason.ToString(); return FReply::Handled(); }
 		return FReply::Unhandled();
 	}
+	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
 	const FGuid NewLayerId = WorkingLayers[DestLayerIndex].LayerId;
@@ -790,27 +854,14 @@ FReply SMixtormat::MoveChildToGroup(
 	const int32 ChildIndex,
 	const FGuid GroupId)
 {
-	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| !WorkingLayers[SourceLayerIndex].Children.IsValidIndex(ChildIndex)
-		|| !Group)
-	{
-		return FReply::Unhandled();
-	}
-
-	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
-	if (IsMaskFilter(SourceLayer.Children[ChildIndex])
-		|| SourceLayer.Children[ChildIndex].Type == EMixtormatLayerChildType::Behavior)
-	{
-		return FReply::Unhandled();
-	}
 	FText MoveReason;
-	if (!CanMovePublishedOutputs(MakeChildAddress(SourceLayerIndex, ChildIndex),
-		{EMixtormatChildOwnerType::Group, GroupId, FGuid()}, Group->Children.Num(), &MoveReason))
+	if (!CanMoveChildToGroup(MakeChildAddress(SourceLayerIndex, ChildIndex), GroupId, &MoveReason))
 	{
 		if (!MoveReason.IsEmpty()) { WorkingStatusText = MoveReason.ToString(); return FReply::Handled(); }
 		return FReply::Unhandled();
 	}
+	FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	FMixtormatLayer& SourceLayer = WorkingLayers[SourceLayerIndex];
 
 	const FGuid OldLayerId = SourceLayer.LayerId;
 	const int32 SubtreeEnd = FindSubtreeEnd(SourceLayer.Children, ChildIndex);
@@ -846,6 +897,69 @@ FReply SMixtormat::MoveChildToGroup(
 	RebuildLayerList();
 	RebuildMaskList();
 	return FReply::Handled();
+}
+
+bool SMixtormat::CanReorderChild(
+	const FMixtormatChildAddress& Source, const int32 TargetChildIndex, FText* OutReason) const
+{
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Source);
+	const int32 SourceIndex = ResolveChildIndexAt(Source);
+	if (!Children || !Children->IsValidIndex(SourceIndex) || !Children->IsValidIndex(TargetChildIndex)
+		|| SourceIndex == TargetChildIndex)
+	{
+		return false;
+	}
+	const bool bGroup = Source.OwnerType == EMixtormatChildOwnerType::Group;
+	const FMixtormatLayerChild& Child = (*Children)[SourceIndex];
+	// Group filters travel with their owner; ID children can reorder as siblings.
+	if (bGroup && Child.ScopeOwnerChildId.IsValid() && !IsIdGroupChild(Child)) { return false; }
+	const int32 TargetRoot = FindSiblingRoot(*Children, TargetChildIndex, Child.ScopeOwnerChildId);
+	if (TargetRoot == INDEX_NONE || TargetRoot == SourceIndex) { return false; }
+	const int32 SourceEnd = FindSubtreeEnd(*Children, SourceIndex);
+	const int32 TargetEnd = FindSubtreeEnd(*Children, TargetRoot);
+	if (!bGroup && TargetRoot < SourceEnd && TargetEnd > SourceIndex) { return false; }
+	return CanMovePublishedOutputs(Source, {Source.OwnerType, Source.OwnerId, FGuid()},
+		TargetRoot < SourceIndex ? TargetRoot : TargetEnd, OutReason);
+}
+
+bool SMixtormat::CanMoveChildToLayer(
+	const FMixtormatChildAddress& Source, const int32 DestLayerIndex,
+	const int32 DestChildIndex, FText* OutReason) const
+{
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	const FMixtormatLayerChild* Child = ResolveChildAt(Source);
+	if (!Child || !WorkingLayers.IsValidIndex(DestLayerIndex)) { return false; }
+	const bool bGroup = Source.OwnerType == EMixtormatChildOwnerType::Group;
+	if (bGroup && Child->ScopeOwnerChildId.IsValid() && !IsIdGroupChild(*Child)) { return false; }
+	if (!bGroup && Source.OwnerId == WorkingLayers[DestLayerIndex].LayerId) { return false; }
+	const bool bLayerBlur = !bGroup && Child->Type == EMixtormatLayerChildType::Blur
+		&& !Child->ScopeOwnerChildId.IsValid();
+	if ((IsMaskFilter(*Child) && !bLayerBlur) || Child->Type == EMixtormatLayerChildType::Behavior)
+	{
+		return false;
+	}
+	const TArray<FMixtormatLayerChild>& DestChildren = WorkingLayers[DestLayerIndex].Children;
+	const int32 DestRoot = DestChildren.IsValidIndex(DestChildIndex)
+		? FindSiblingRoot(DestChildren, DestChildIndex, FGuid()) : INDEX_NONE;
+	return CanMovePublishedOutputs(Source,
+		{EMixtormatChildOwnerType::Layer, WorkingLayers[DestLayerIndex].LayerId, FGuid()},
+		DestRoot == INDEX_NONE ? DestChildren.Num() : DestRoot, OutReason);
+}
+
+bool SMixtormat::CanMoveChildToGroup(
+	const FMixtormatChildAddress& Source, const FGuid GroupId, FText* OutReason) const
+{
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	const FMixtormatLayerChild* Child = ResolveChildAt(Source);
+	const FMixtormatLayerGroup* Group = MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
+	if (Source.OwnerType != EMixtormatChildOwnerType::Layer || !Child || !Group
+		|| IsMaskFilter(*Child) || Child->Type == EMixtormatLayerChildType::Behavior)
+	{
+		return false;
+	}
+	return CanMovePublishedOutputs(Source,
+		{EMixtormatChildOwnerType::Group, GroupId, FGuid()}, Group->Children.Num(), OutReason);
 }
 
 bool SMixtormat::CanMovePublishedOutputs(
@@ -1042,6 +1156,23 @@ bool SMixtormat::CanDropChildIntoIdGroup(
 	return Owner && Owner->Type == EMixtormatLayerChildType::IdGroup;
 }
 
+bool SMixtormat::CanDropIdGroupSource(
+	const FMixtormatChildAddress& Source, const FMixtormatChildAddress& Dest, FText* OutReason) const
+{
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	const FMixtormatLayerChild* Owner = ResolveChildAt(Dest);
+	if (!Owner || Owner->Type != EMixtormatLayerChildType::IdGroup) { return false; }
+	if (!CanAddIdGroupSource(Source, Dest))
+	{
+		if (OutReason)
+		{
+			*OutReason = LOCTEXT("IdGroupSourceBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.");
+		}
+		return false;
+	}
+	return true;
+}
+
 FReply SMixtormat::DropChildIntoIdGroup(
 	const FMixtormatChildDragDropOp& Operation,
 	const FMixtormatChildAddress Dest)
@@ -1052,9 +1183,10 @@ FReply SMixtormat::DropChildIntoIdGroup(
 	{
 		return FReply::Unhandled();
 	}
-	if (!CanAddIdGroupSource(Source, Dest))
+	FText Reason;
+	if (!CanDropIdGroupSource(Source, Dest, &Reason))
 	{
-		WorkingStatusText = LOCTEXT("IdGroupSourceBlocked", "Requires available Region IDs from this owner or an earlier owner, without feedback.").ToString();
+		WorkingStatusText = Reason.ToString();
 		return FReply::Handled();
 	}
 	AddIdGroupSource(Source, Dest);

@@ -1621,11 +1621,13 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 			})
 			// Decided here, not in the lambda: Child is a reference into an array the row outlives,
 			// and the answer cannot change without the row being rebuilt anyway.
-			.OnDragDetected_Lambda([this, GroupId, ChildIndex, ChildName, bCanReorder]
+			.OnDragDetected_Lambda([this, Address, GroupId, ChildIndex, ChildName, bCanReorder]
 				(const FGeometry&, const FPointerEvent&)
 			{
-				return FReply::Handled().BeginDragDrop(
-					FMixtormatChildDragDropOp::NewFromGroup(GroupId, ChildIndex, ChildName, bCanReorder));
+				const TSharedRef<FMixtormatChildDragDropOp> Operation =
+					FMixtormatChildDragDropOp::NewFromGroup(GroupId, ChildIndex, ChildName, bCanReorder);
+				BindDragGuidance(Operation, Address);
+				return FReply::Handled().BeginDragDrop(Operation);
 			})
 			]
 		];
@@ -1681,14 +1683,15 @@ TSharedRef<SWidget> SMixtormat::BuildLayerGroupRow(const FGuid GroupId)
 		{
 			RenameLayerGroup(GroupId, Text);
 		})
-		.OnDragDetected_Lambda([this, GroupId](const FGeometry&, const FPointerEvent&)
+		.OnDragDetected_Lambda([this, Address, GroupId](const FGeometry&, const FPointerEvent&)
 		{
 			const FMixtormatLayerGroup* Group =
 				MixtormatLayerGroups::FindGroup(WorkingLayerGroups, GroupId);
-			return Group
-				? FReply::Handled().BeginDragDrop(
-					FMixtormatGroupDragDropOp::New(GroupId, Group->DisplayName))
-				: FReply::Unhandled();
+			if (!Group) { return FReply::Unhandled(); }
+			const TSharedRef<FMixtormatGroupDragDropOp> Operation =
+				FMixtormatGroupDragDropOp::New(GroupId, Group->DisplayName);
+			BindDragGuidance(Operation, Address);
+			return FReply::Handled().BeginDragDrop(Operation);
 		})
 		.OnGetContextMenu(this, &SMixtormat::BuildLayerGroupContextMenu, GroupId);
 	GroupRowWidgets.Add(GroupId, Row);
@@ -1790,10 +1793,12 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 			})
 			.OnToggleSolo_Lambda([this, LayerIndex]() { ToggleLayerSolo(LayerIndex); })
 			.OnGetContextMenu(this, &SMixtormat::BuildLayerContextMenu, LayerIndex)
-			.OnDragDetected_Lambda([this, LayerIndex, DisplayName](const FGeometry&, const FPointerEvent&)
+			.OnDragDetected_Lambda([this, LayerAddress, LayerIndex, DisplayName](const FGeometry&, const FPointerEvent&)
 			{
-				return FReply::Handled().BeginDragDrop(
-					FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName));
+				const TSharedRef<FMixtormatLayerDragDropOp> Operation =
+					FMixtormatLayerDragDropOp::New(LayerIndex, DisplayName);
+				BindDragGuidance(Operation, LayerAddress);
+				return FReply::Handled().BeginDragDrop(Operation);
 			})
 		];
 
@@ -2036,7 +2041,7 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 				// Decided here, not in the lambda: Child is a reference into an array the row
 				// outlives, and the answer cannot change without the row being rebuilt anyway.
 				.OnDragDetected_Lambda(
-					[this, ResolveRow, ChildName,
+					[this, ResolveRow, RowAddress, ChildName,
 										 bCanLeaveLayer = bLayerOutput || (!IsMaskFilter(Child)
 											&& Child.Type != EMixtormatLayerChildType::Behavior)]
 					(const FGeometry&, const FPointerEvent&)
@@ -2044,9 +2049,10 @@ TSharedRef<SWidget> SMixtormat::BuildLayerRow(const int32 LayerIndex)
 
 					int32 LayerIndex, ChildIndex;
 					if (!ResolveRow(LayerIndex, ChildIndex)) { return FReply::Unhandled(); }
-					return FReply::Handled().BeginDragDrop(
-						FMixtormatChildDragDropOp::New(
-							LayerIndex, ChildIndex, ChildName, bCanLeaveLayer));
+					const TSharedRef<FMixtormatChildDragDropOp> Operation =
+						FMixtormatChildDragDropOp::New(LayerIndex, ChildIndex, ChildName, bCanLeaveLayer);
+					BindDragGuidance(Operation, RowAddress);
+					return FReply::Handled().BeginDragDrop(Operation);
 				});
 		if (ProjectedRow.bLayerOutputScope)
 		{

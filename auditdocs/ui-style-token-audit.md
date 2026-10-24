@@ -35,11 +35,13 @@ file splits. Moss and GPU-pass internals are outside this work.
   library ownership badge, Create Material and the mask-bar heading.
 - The shared help host's empty `SetToolTipText` calls deliberately clear native help.
   Its `SNew(SToolTip)` is the themed adapter, not an unstyled-tooltip violation.
-- **Deferred to Q/context owner, files untouched:** `SMixtormat_Preview.cpp` has two
-  `SMixtormatIconButton.ToolTipText` paths (`MakeFeaturePreviewButton`,
-  `MakeChildOutputPreviewButton`); switch those to the existing `.ToolTip(FText)`.
-  `MixtormatLayerMenus.cpp::BuildGroupAccentMenu` has one native swatch `SBox.ToolTipText`;
-  use the styled adapter there. No Q/context handlers, slider internals or Moss/GPU were edited.
+- **Completed by Q/context owner (source only):** `SMixtormat_Preview.cpp` now uses
+  `SMixtormatIconButton.ToolTip(FText)` in `MakeFeaturePreviewButton` and
+  `MakeChildOutputPreviewButton`. `MixtormatLayerMenus.cpp::BuildGroupAccentMenu` uses
+  `SMixtormatHelp::MakeStyledToolTip` on each swatch `SBox`. Existing visuals/click handlers
+  are unchanged; hover timing/placement and focus/capture still need owner runtime checks.
+  Related context guidance is documented in `workspace-layout/context-help-q-plan.md`;
+  no Rust/Moss/GPU implementation was changed.
 - `MixtormatEditorModule.cpp`'s tab-spawner `SetTooltipText` is Unreal host registration,
   not a Mixtormat widget wrapper. Its native tab/menu presentation remains an explicit
   integration exception; no unsupported adapter API was assumed.

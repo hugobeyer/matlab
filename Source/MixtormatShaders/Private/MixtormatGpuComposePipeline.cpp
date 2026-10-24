@@ -438,17 +438,43 @@ namespace MixtormatGpuCompositor
 				const int32 HeightRemapBoundary = Request.bFinalAutoRemapHeight
 					? Request.Layers.IndexOfByPredicate([](const FLayerRenderData& Layer)
 					{
-						return Layer.bEnabled && Layer.bGenerator && (!Layer.bNormalOnly || Layer.bFillPassThrough)
-							&& Layer.Children.ContainsByPredicate([](const FChildRenderData& Child)
+						return Layer.bEnabled && Layer.Opacity > 0.0f && Layer.bGenerator
+							&& (!Layer.bNormalOnly || Layer.bFillPassThrough)
+							&& Layer.Children.ContainsByPredicate([&Layer](const FChildRenderData& Child)
 							{
 								if (Child.Type != EMixtormatLayerChildType::Surfacing || !Child.Surfacing.bEnabled)
 								{
 									return false;
 								}
-								return Child.Surfacing.Type == EMixtormatSurfacingType::Rust
-									? Child.Surfacing.Rust.bWriteHeight
-									: Child.Surfacing.Type == EMixtormatSurfacingType::Moss
-									? Child.Surfacing.Moss.bWriteHeight : Child.Surfacing.Skin.bWriteHeight;
+								for (int32 ParentIdx = Child.ScopeOwnerSourceChildIndex; ParentIdx != INDEX_NONE;)
+								{
+									const FChildRenderData* Parent = Layer.Children.FindByPredicate(
+										[ParentIdx](const FChildRenderData& C) { return C.SourceChildIndex == ParentIdx; });
+									if (!Parent) { break; }
+									if (Parent->Type == EMixtormatLayerChildType::Surfacing)
+									{
+										if (!Parent->Surfacing.bEnabled) { return false; }
+										const float ParentAmt = Parent->Surfacing.Type == EMixtormatSurfacingType::Rust
+											? Parent->Surfacing.Rust.Amount
+											: (Parent->Surfacing.Type == EMixtormatSurfacingType::Moss
+												? Parent->Surfacing.Moss.Amount : Parent->Surfacing.Skin.Amount);
+										if (ParentAmt <= 0.0f) { return false; }
+									}
+									ParentIdx = Parent->ScopeOwnerSourceChildIndex;
+								}
+								if (Child.Surfacing.Type == EMixtormatSurfacingType::Rust)
+								{
+									const FMixtormatRust& Ru = Child.Surfacing.Rust;
+									return Ru.bWriteHeight && Ru.Amount > 0.0f && Ru.Coverage > 0.0f
+										&& Ru.HeightScale != 0.0f && (Ru.PitDepth != 0.0f || Ru.Buildup != 0.0f);
+								}
+								if (Child.Surfacing.Type == EMixtormatSurfacingType::Moss)
+								{
+									const FMixtormatMoss& Mo = Child.Surfacing.Moss;
+									return Mo.bWriteHeight && Mo.Amount > 0.0f && Mo.Coverage > 0.0f && Mo.HeightScale != 0.0f;
+								}
+								const FMixtormatSkin& Sk = Child.Surfacing.Skin;
+								return Sk.bWriteHeight && Sk.Amount > 0.0f && Sk.HeightScale != 0.0f;
 							});
 					}) : INDEX_NONE;
 				if (Request.NodeCache.IsValid())

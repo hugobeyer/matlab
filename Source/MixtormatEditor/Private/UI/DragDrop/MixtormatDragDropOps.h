@@ -164,10 +164,115 @@ private:
 	TSharedPtr<SWidget> DecoratorWidget;
 };
 
-class FMixtormatChildDragDropOp final : public FDecoratedDragDropOp
+// A target describes the existing route, not a second set of acceptance rules.
+struct FMixtormatDragTarget
+{
+	enum class EAction : uint8
+	{
+		InsertLayer, InsertGroup, LayerIntoGroup,
+		ChildToLayer, ChildToGroup, ReorderLayerChild, ReorderGroupChild,
+		ReparentChild, IdGroupSource
+	};
+	EAction Action;
+	int32 LayerIndex = INDEX_NONE;
+	int32 ChildIndex = INDEX_NONE;
+	int32 InsertIndex = INDEX_NONE;
+	FGuid GroupId;
+	FGuid OwnerId;
+	FGuid ChildId;
+};
+
+// Only stack drags participate. The corner strip reads the active operation with its own
+// workspace pointer; neither another workspace nor library/asset drags can supply its hint.
+class FMixtormatGuidedDragDropOp : public FDecoratedDragDropOp
 {
 public:
-	DRAG_DROP_OPERATOR_TYPE(FMixtormatChildDragDropOp, FDecoratedDragDropOp)
+	DRAG_DROP_OPERATOR_TYPE(FMixtormatGuidedDragDropOp, FDecoratedDragDropOp)
+
+	void BindGuidance(const TSharedRef<SWidget>& Workspace, TFunction<bool()> InPayloadIsCurrent,
+		TFunction<bool(const FMixtormatDragTarget&, FText&)> InCanDrop)
+	{
+		GuidanceOwner = Workspace;
+		PayloadIsCurrent = MoveTemp(InPayloadIsCurrent);
+		CanDrop = MoveTemp(InCanDrop);
+	}
+
+	template<typename DelegateType>
+	void SetGuidance(const TSharedRef<SWidget>& Target, const DelegateType& Handler,
+		const FMixtormatDragTarget& Request, const FText& ActionText, bool bRouted = true)
+	{
+		const TSharedPtr<SWidget> Owner = GuidanceOwner.Pin();
+		if (bFinished || !Owner || !Handler.IsBoundToObject(Owner.Get()) || !HasCurrentPayload())
+		{
+			GuidanceTarget.Reset();
+			return;
+		}
+		GuidanceTarget = Target;
+		GuidanceRequest = Request;
+		GuidanceAction = ActionText;
+		bTargetRouted = bRouted;
+	}
+
+	void ClearGuidance(const SWidget* Target)
+	{
+		// A bubbled leave from an outer wrapper must not clear the inner target's guidance.
+		if (GuidanceTarget.Pin().Get() == Target) { GuidanceTarget.Reset(); }
+	}
+
+	bool HasGuidance(const SWidget* Workspace) const
+	{
+		return !bFinished && Workspace && GuidanceOwner.Pin().Get() == Workspace
+			&& HasCurrentPayload() && GuidanceTarget.IsValid() && bool(CanDrop);
+	}
+
+	FText GetGuidance(const SWidget* Workspace) const
+	{
+		if (!HasGuidance(Workspace))
+		{
+			return FText::GetEmpty();
+		}
+		FText Reason;
+		const bool bEligible = bTargetRouted && CanDrop(GuidanceRequest, Reason);
+		// A preflight may also describe a no-op or a snapped group edge, without claiming success.
+		const FText Text = !Reason.IsEmpty() ? Reason : bEligible ? GuidanceAction
+			: LOCTEXT("DragPlacementBlocked", "Cannot drop here. Choose another position or owner.");
+		return FText::Format(LOCTEXT("DragContextCancel", "{0} · Esc cancel"), Text);
+	}
+
+	virtual void OnDrop(bool bDropWasHandled, const FPointerEvent& MouseEvent) override
+	{
+		bFinished = true;
+		GuidanceTarget.Reset();
+		FDecoratedDragDropOp::OnDrop(bDropWasHandled, MouseEvent);
+	}
+
+private:
+	bool HasCurrentPayload() const
+	{
+		if (bPayloadStale || !PayloadIsCurrent || !PayloadIsCurrent())
+		{
+			bPayloadStale = true;
+			GuidanceTarget.Reset();
+			return false;
+		}
+		return true;
+	}
+
+	TWeakPtr<SWidget> GuidanceOwner;
+	mutable TWeakPtr<SWidget> GuidanceTarget;
+	mutable bool bPayloadStale = false;
+	TFunction<bool()> PayloadIsCurrent;
+	TFunction<bool(const FMixtormatDragTarget&, FText&)> CanDrop;
+	FMixtormatDragTarget GuidanceRequest{FMixtormatDragTarget::EAction::InsertLayer};
+	FText GuidanceAction;
+	bool bTargetRouted = false;
+	bool bFinished = false;
+};
+
+class FMixtormatChildDragDropOp final : public FMixtormatGuidedDragDropOp
+{
+public:
+	DRAG_DROP_OPERATOR_TYPE(FMixtormatChildDragDropOp, FMixtormatGuidedDragDropOp)
 
 	int32 LayerIndex = INDEX_NONE;
 	int32 ChildIndex = INDEX_NONE;
@@ -235,10 +340,10 @@ private:
 
 // A whole group on the move. Carries the GroupId rather than an index because the block it names
 // is found by membership, and every index in the stack shifts the moment it lands.
-class FMixtormatGroupDragDropOp final : public FDecoratedDragDropOp
+class FMixtormatGroupDragDropOp final : public FMixtormatGuidedDragDropOp
 {
 public:
-	DRAG_DROP_OPERATOR_TYPE(FMixtormatGroupDragDropOp, FDecoratedDragDropOp)
+	DRAG_DROP_OPERATOR_TYPE(FMixtormatGroupDragDropOp, FMixtormatGuidedDragDropOp)
 
 	FGuid GroupId;
 
@@ -268,10 +373,10 @@ private:
 	TSharedPtr<SWidget> DecoratorWidget;
 };
 
-class FMixtormatLayerDragDropOp final : public FDecoratedDragDropOp
+class FMixtormatLayerDragDropOp final : public FMixtormatGuidedDragDropOp
 {
 public:
-	DRAG_DROP_OPERATOR_TYPE(FMixtormatLayerDragDropOp, FDecoratedDragDropOp)
+	DRAG_DROP_OPERATOR_TYPE(FMixtormatLayerDragDropOp, FMixtormatGuidedDragDropOp)
 
 	int32 SourceLayerIndex = INDEX_NONE;
 

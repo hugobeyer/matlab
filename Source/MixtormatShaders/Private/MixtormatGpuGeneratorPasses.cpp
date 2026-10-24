@@ -300,9 +300,34 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		Ctx.PublishedMaskOutputs.Add(PublishedKey(Layer, Child.SourceChildIndex, FName(TEXT("GrowthAge"))), (*Fields)[2]);
 		return LocalHeight;
 	};
+	bool bRemappedFirstLayerSubstrate = false;
+	const auto MaybeRemapFirstLayerSubstrate = [&](const FChildRenderData& Child, FRDGTextureRef& InOutHeight, float AncestorAmount)
+	{
+		if (bRemappedFirstLayerSubstrate || !Ctx.Request.bFinalAutoRemapHeight || LayerCtx.LayerIndex != 0
+			|| !InOutHeight || InOutHeight == BooleanNeutralHeight || !Child.Surfacing.bEnabled)
+		{
+			return;
+		}
+		const bool bWritesHeight = Child.Surfacing.Type == EMixtormatSurfacingType::Rust
+			? (Child.Surfacing.Rust.bWriteHeight && Child.Surfacing.Rust.Amount * AncestorAmount > 0.0f
+				&& Child.Surfacing.Rust.Coverage > 0.0f && Child.Surfacing.Rust.HeightScale != 0.0f
+				&& (Child.Surfacing.Rust.PitDepth != 0.0f || Child.Surfacing.Rust.Buildup != 0.0f))
+			: (Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+				? (Child.Surfacing.Moss.bWriteHeight && Child.Surfacing.Moss.Amount * AncestorAmount > 0.0f
+					&& Child.Surfacing.Moss.Coverage > 0.0f && Child.Surfacing.Moss.HeightScale != 0.0f)
+				: (Child.Surfacing.Skin.bWriteHeight && Child.Surfacing.Skin.Amount * AncestorAmount > 0.0f
+					&& Child.Surfacing.Skin.HeightScale != 0.0f));
+		if (bWritesHeight)
+		{
+			bRemappedFirstLayerSubstrate = true;
+			InOutHeight = AddNormalizeFieldPasses(Ctx.GraphBuilder, InOutHeight, Size, -0.5f, 0.5f,
+				TEXT("Mixtormat.Surfacing.FirstLayerSubstrateRemapped"));
+		}
+	};
 	EvaluateSurfacing = [&](const FChildRenderData& Child, FRDGTextureRef LocalHeight,
 		FRDGTextureRef UpstreamDelta, FRDGTextureRef ParentGate, float AncestorAmount)
 	{
+		MaybeRemapFirstLayerSubstrate(Child, LocalHeight, AncestorAmount);
 		return Child.Surfacing.Type == EMixtormatSurfacingType::Moss
 			? EvaluateMoss(Child, LocalHeight, UpstreamDelta, ParentGate, AncestorAmount)
 			: EvaluateSkin(Child, LocalHeight, UpstreamDelta, ParentGate, AncestorAmount);
