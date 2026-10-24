@@ -488,17 +488,30 @@ void RemapGeneratorModuleOutputs(FMixtormatComposeContext& Ctx,
 		PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Value")));
 	const FPublishedFieldKey GradientKey =
 		PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("Gradient")));
+	const FPublishedFieldKey WarpedUVKey =
+		PublishedKey(Layer, Owner.SourceChildIndex, FName(TEXT("WarpedUV")));
 	const FPublishedField* NoiseValue = Owner.Generator.Type == EMixtormatGeneratorType::Noise
 		? Ctx.PublishedFieldOutputs.Find(ValueKey) : nullptr;
 	const FPublishedField* NoiseGradient = Owner.Generator.Type == EMixtormatGeneratorType::Noise
 		? Ctx.PublishedFieldOutputs.Find(GradientKey) : nullptr;
+	const FPublishedField* NoiseWarpedUV = Owner.Generator.Type == EMixtormatGeneratorType::Noise
+		? Ctx.PublishedFieldOutputs.Find(WarpedUVKey) : nullptr;
 	const FPublishedField ValueSnapshot = NoiseValue ? *NoiseValue : FPublishedField{};
 	const FPublishedField GradientSnapshot = NoiseGradient ? *NoiseGradient : FPublishedField{};
+	const FPublishedField WarpedUVSnapshot = NoiseWarpedUV ? *NoiseWarpedUV : FPublishedField{};
 	RemapCompletedGeneratorBundle(Ctx, Module, Module.Height, Coordinates, bFilterHeight);
 	if (ValueSnapshot.IsComplete())
 	{
 		Ctx.PublishedFieldOutputs.Add(ValueKey, FPublishedField{
 			ValueSnapshot.Kind, RemapBundleField(Ctx, ValueSnapshot.Texture, Coordinates, 0),
+			nullptr, nullptr, false});
+	}
+	if (WarpedUVSnapshot.IsComplete()
+		&& WarpedUVSnapshot.Texture->Desc.Extent == Ctx.Request.Resolution
+		&& WarpedUVSnapshot.Texture->Desc.Format == PF_G32R32F)
+	{
+		Ctx.PublishedFieldOutputs.Add(WarpedUVKey, FPublishedField{
+			WarpedUVSnapshot.Kind, RemapBundleField(Ctx, WarpedUVSnapshot.Texture, Coordinates, 3),
 			nullptr, nullptr, false});
 	}
 	if (Module.GradientDescriptor.Semantic == FGeneratorBundle::EFieldSemantic::SourceFrameVector

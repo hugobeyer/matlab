@@ -90,7 +90,8 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
   reason show a blocked-placement explanation rather than promising a successful drop.
   ID Group rows retain their routing reservation while eligibility uses CanAddIdGroupSource;
   guidance explains that linking Region IDs leaves the source module in place.
-- Existing drop replies, zones, decorators, mutation handlers and status feedback remain.
+- Existing zones, decorators and mutation handlers remain. Recognized stack-drop rejections
+  are now consumed instead of bubbling to another destination (see corrections below).
   A handled drop is not interpreted as success. Group-edge snapping and no-op placements are
   described explicitly. No library-drag acceptance rules or new interaction gestures were added.
 - Active contexts replace selection hints. Selection hints keep at most four eligible items,
@@ -102,6 +103,25 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
   group-accent swatches use MakeStyledToolTip without changing their appearance or handlers.
 - Source edits only: no commands, builds, tests, diagnostics or Unreal launches were run.
   Rust, Moss and GPU implementation work is untouched.
+
+## Follow-up corrections — five reported source findings
+- Stack drop dispatch now checks the receiving handler's workspace, source GUID/index identity
+  and document revision immediately before invoking it. Guidance checks alone were insufficient.
+  Foreign/stale drops are consumed without edits; ID Group non-reserved rows still defer to
+  their enclosing reorder/move target.
+- Layer/group moves share projected-order helpers between hover checks and commits. The existing
+  PublishedOutputPlacementsValid validator checks final order and group membership before working
+  arrays are replaced. Rejections retain the document and report a published-output placement
+  reason through existing feedback/status paths; height-reference remapping behavior is retained.
+- Dropping a layer into an empty group now commits both projected layers and groups through the
+  existing layer-move handler, including membership, history, selection and preview refresh.
+- A recognized child-row drop consumes both validation failure and a blocked zone, preventing a
+  rejected before-module placement from bubbling into an unintended layer-body append. Shared
+  published-output preflights now supply an explicit failure reason rather than an empty one.
+- Q Texture Mask honors a captured group module's ScopeOwnerChildId via the shared address-based
+  scoped-mask handler. Group-root creation is unchanged; nested Q capture/revalidation remains.
+- These are source fixes, not claims about when the faults were introduced or runtime validation.
+  No commands, builds, tests or diagnostics were run.
 
 ## Priorities
 1. **Q guidance + feedback.** While open, replace generic V/W/E hints with Q/Escape close
@@ -176,8 +196,14 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - Layer/group before/after/into, group-edge snapping/no-op, module reorder/reparent/unshare/share;
   published-output rejection, scoped filters, invalid nesting and ID Group source eligibility.
 - Drag leave, Escape cancellation, drop, source edits, document/theme rebuild and multiple
-  workspaces: no stale or cross-workspace guidance; existing acceptance/replies must remain.
+  workspaces: no stale or cross-workspace guidance or mutation. Recognized rejected drops must
+  not bubble into an append or another destination.
 - At most four selection hints; active drag/navigation/slider guidance replaces them and hides
   center feedback. Check long rejection text, small windows, custom themes and H/Space.
+- Move producer/consumer layers and groups across each other, including membership changes;
+  rejected moves must leave arrays, selection and undo history unchanged. Check valid moves too.
+- Drop into empty groups: membership persists through selection, preview refresh and undo/redo.
+- Q Texture Mask on a group module versus group root: verify mask scope, selected result and
+  feedback; change selection/reorder/delete the captured module while the texture submenu is open.
 - Preview feature/output eyes and group-accent swatches: styled hover timing/placement without
   changed click, focus, capture or menu behavior.

@@ -418,7 +418,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		// Freeze the parent's child-mask dependency before publishing its own native fields.
 		if (HasSurfacingBelow(Child.SourceChildIndex)) { ScopeGate(Child.SourceChildIndex); }
 		const FRDGTextureRef PreUV = BuildGeneratorPreCoordinates(Ctx, LayerCtx, Layer, Child);
-		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, PreUV};
+		const FRDGTextureRef EffectivePreUV = PreUV ? PreUV : LayerCtx.ReferencedUV;
+		const FGeneratorPassInput Input{Child.Generator, Child.SourceChildIndex, EffectivePreUV};
 		switch (Child.Generator.Type)
 		{
 		case EMixtormatGeneratorType::RockFormation:
@@ -451,7 +452,7 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 		case EMixtormatGeneratorType::Noise:
 			// One dispatch, no solve: the field producer publishes its value, gradient and (for
 			// Worley) cell IDs, and leaves the signed height for the shared contract below.
-			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, PreUV, OperandRunningHeight);
+			AddNoisePasses(Ctx, LayerCtx, Layer, Child.SourceChildIndex, &Module, EffectivePreUV, OperandRunningHeight);
 			break;
 
 		}

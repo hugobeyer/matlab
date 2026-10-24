@@ -54,11 +54,17 @@ float LayerMix;
 float2 OffsetUV;
 float2 Wave;
 float PhaseOffset;
+int PhasorWave;
 float PhasorFrequency;
 float PhasorAnisotropy;
 float PhasorPhaseVariation;
 float PhasorOrientationVariation;
 int PhasorComponents;
+float PhasorWaveOffset;
+float PhasorOverlap;
+float PhasorArch;
+float PhasorSecondWeight;
+float PhasorSecondAngle;
 float PhasorScale;
 float PhasorBias;
 int WorleyMetric;
@@ -82,6 +88,7 @@ RWTexture2D<float> OutValue;
 #if !MIXTORMAT_NOISE_VALUE_ONLY
 RWTexture2D<float> OutHeight;
 RWTexture2D<float2> OutGradient;
+RWTexture2D<float2> OutWarpedUV;
 RWTexture2D<uint> OutIds;
 #endif
 
@@ -335,6 +342,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	float Value = 0.0f;
 	float2 Gradient = float2(0.0f, 0.0f);
+	float2 WarpedUV = SampleDomain;
 	uint CellId = MIXTORMAT_INVALID_REGION;
 
 	// The default path is unchanged. Non-uniform sizing changes lattice cell
@@ -439,17 +447,22 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		{
 			Phasor = MixtormatNoiseV2PhasorRect(SampleDomain, RectPeriod, Seed, Wave / SafeSize,
 				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
-				PhasorOrientationVariation, PhasorComponents);
+				PhasorOrientationVariation, PhasorComponents,
+				PhasorWave, PhasorWaveOffset, PhasorOverlap,
+				PhasorArch, PhasorSecondWeight, PhasorSecondAngle);
 		}
 		else
 		{
 			Phasor = MixtormatNoiseV2Phasor(SampleDomain,
 				max((int)round(max(Scale, 1.0f)), 1), Seed, Wave,
 				PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
-				PhasorOrientationVariation, PhasorComponents);
+				PhasorOrientationVariation, PhasorComponents,
+				PhasorWave, PhasorWaveOffset, PhasorOverlap,
+				PhasorArch, PhasorSecondWeight, PhasorSecondAngle);
 		}
 		Value = Phasor.Value;
 		Gradient = Phasor.Gradient;
+		WarpedUV = Phasor.PhaseUV;
 	}
 	else // NOISE_TYPE_BARS, also preserves the previous fallback for unknown values
 	{
@@ -488,6 +501,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					WorleyMetric, WorleyJitter, WorleyCellDepth,
 					PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
 					PhasorOrientationVariation, PhasorComponents,
+					PhasorWave, PhasorWaveOffset, PhasorOverlap,
+					PhasorArch, PhasorSecondWeight, PhasorSecondAngle,
 					OctaveValue, OctaveGradient);
 			}
 			else
@@ -497,6 +512,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 					WorleyMetric, WorleyJitter, WorleyCellDepth,
 					PhasorFrequency, PhasorAnisotropy, PhasorPhaseVariation,
 					PhasorOrientationVariation, PhasorComponents,
+					PhasorWave, PhasorWaveOffset, PhasorOverlap,
+					PhasorArch, PhasorSecondWeight, PhasorSecondAngle,
 					OctaveValue, OctaveGradient);
 			}
 			WeightedValue += Weight * OctaveValue;
@@ -553,6 +570,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Gate = HasMask != 0u ? ScopedMask.Load(int3(Pixel, 0)) : 1.0f;
 	OutHeight[Pixel] = MixtormatNoiseV2SignedHeight(NoiseType, Value) * Gate;
 	OutGradient[Pixel] = Gradient;
+	OutWarpedUV[Pixel] = WarpedUV;
 	if (ProducesIds != 0u)
 	{
 		OutIds[Pixel] = CellId;

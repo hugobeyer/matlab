@@ -45,9 +45,9 @@ file splits. Moss and GPU-pass internals are outside this work.
 - `MixtormatEditorModule.cpp`'s tab-spawner `SetTooltipText` is Unreal host registration,
   not a Mixtormat widget wrapper. Its native tab/menu presentation remains an explicit
   integration exception; no unsupported adapter API was assumed.
-- Native Content Browser/object pickers and bake `FMenuBuilder` entries can generate
-  internal help without literal `.ToolTipText` calls here. These remain owner-run checks,
-  not evidence that every engine-owned popup is themed.
+- Native Content Browser/object pickers and bake `FMenuBuilder` entries retain engine-owned
+  presentation/help. Exact integration boundaries and owner checks are recorded below;
+  these are exceptions, not evidence that every engine-owned popup is themed.
 
 ### Popover sizing and remaining owner-run checks
 
@@ -65,8 +65,8 @@ file splits. Moss and GPU-pass internals are outside this work.
   cancellation, nested menus, click-away dismissal, disabled help and theme reconstruction.
 - Owner: compare thumbnail rendering/lifetime, hover placement and timing. The hover host
   still uses `HelpDelay`; `MakeStyledToolTip` retains Slate's native tooltip timing/lifecycle.
-- Remaining local bake chrome outside the typography fix includes its 12px browse glyph
-  and some mapping/validation spacing. Do not silently substitute unrelated icon/layout roles.
+- Remaining bake glyph/mapping/validation literals are now tokenized as itemized below.
+  Completed typography, summary leading, scrolling and thumbnail-help fixes were not redone.
 
 No commands, builds, tests, diagnostics or automated validation were run. Findings above
 are from targeted source inspection and edits only; visual/interaction equivalence is not certified.
@@ -74,6 +74,50 @@ Action/result dialog sizes already use tokens/theme; do not rewrite them just fo
 Keep data colors/ranges, identity multipliers and retained window geometry out of style cleanup.
 
 The older inventory below remains historical; the current section supersedes its ramp/tab rows.
+
+### Bake follow-up — source changes, 2026-10-24
+
+Scope: `Source/MixtormatEditor/Private/Widgets/Dialogs/SMixtormatBakeSettingsDialog.cpp`
+and the bake-only block of `Source/MixtormatEditor/Private/Style/MixtormatDesignTokens.h`.
+With owner approval, added five structural `constexpr float` tokens and replaced the
+corresponding dialog literals without changing values. No unrelated icon roles were
+borrowed; shared Q/drag and other owners' settings remain untouched. These are structural
+tokens alongside the existing bake layout tokens, not new live UI STYLE controls.
+
+| Completed site | Current token in `MixtormatTokens` | Preserved presentation |
+|---|---|---|
+| `Construct`, Browse folder glyph | `BakeDialogBrowseGlyphSize` | Width/height 12×12; `MixtormatIcons::Folder()` and palette Text unchanged. |
+| `Construct`, `TextureMappingsCaption` slot | `BakeDialogMappingCaptionGap` | Bottom padding 6px. |
+| `Construct`, validation slot | `BakeDialogValidationTopMargin` / `BakeDialogValidationBottomMargin` | Top/bottom padding 6px/4px, including when the text is empty. |
+| `BuildParameterMappingDropdown`, label slot | `BakeDialogMappingLabelGap` | Right padding 8px; existing 90px label-width token unchanged. |
+
+Existing bake field/section/browse gaps and footer action margin already use structural
+`MixtormatTokens`; dialog padding/button gap and path-picker dimensions read resolved
+metrics. They are not outstanding local-literal fixes. All callbacks, mapping
+identity/association, automatic matching, validation clearing and Bake/Cancel behavior
+remain untouched. Native popup/help exceptions below remain; no runtime equivalence
+is claimed for these source-only styling changes.
+
+### Engine-owned popup/help exceptions — retained, not restyled
+
+All bake sites below are in `SMixtormatBakeSettingsDialog.cpp`. Engine implementation/API
+availability was not inspected; these are confirmed native call-site boundaries, not
+claims that Unreal cannot support customization. No widget-tree tooltip suppression,
+replacement picker or new wrapper is proposed. `SMixtormatHelp` clears native help in
+its subtree, so wrapping these controls could erase engine-generated descriptions.
+
+| Exact site | Retained integration boundary | Precise owner visual/interaction check |
+|---|---|---|
+| `BuildPathPicker` → `CreatePathPicker(Config)` | Content Browser owns tree, search, scrolling and internal help; outer width/height already use `BakeDialogPathPickerWidth/Height`. | Open Browse at a screen edge; inspect search/tree help, long paths, scrollbar reachability and keyboard focus. Select a folder: destination updates and menus dismiss. Check Escape/click-away without selection. |
+| `Construct` → `SObjectPropertyEntryBox` | Engine owns asset picker/help, selection and browse/use/clear affordances; `AllowedClass(UMaterialInterface)`, `AllowClear(true)` and `DisplayThumbnail(false)` stay unchanged. | In Custom Material mode, select and clear a master; inspect asset help, search focus and scrolling. Confirm mapping refresh and validation clearing. Keep the entry thumbnail hidden; retain picker thumbnails wherever the engine supplies them. |
+| `BuildParameterMenu` → `FMenuBuilder` / `AddMenuEntry` | Native radio entries retain `[Unassigned]` help and parameter/sampler descriptions. `FUIAction` owns execution/checked state; no per-entry `IToolTip` adapter is used at this call site. | Open all four mappings with zero/many parameters and long global/layer/blend names. Inspect native help, radio checks, keyboard selection, scrolling, popup edges and dismissal. Choose `[Unassigned]` and a parameter; confirm the displayed label and validation clearing. No disabled predicate/reason exists in these entries; do not invent one. |
+| `MixtormatEditorModule.cpp::StartupModule` → tab-spawner `SetTooltipText` | Unreal host registration owns tab/menu help; spawner remains `Hidden`. | Inspect workspace tab/host help where exposed; retain host activation/focus and do not expose a new menu entry just to check styling. |
+
+Owner acceptance, still pending: default/custom themes, large fonts and DPI scaling;
+Browse glyph size; mapping caption/label spacing; validation above the footer with empty
+and long errors; long output-summary scrolling with Bake/Cancel reachable. Check native
+popup focus, capture release and disabled explanations wherever the engine supplies them.
+These checks do not reopen completed Q/drag work. No runtime verification was performed.
 
 ## The rule
 

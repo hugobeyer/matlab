@@ -58,11 +58,17 @@ namespace
 			SHADER_PARAMETER(FVector2f, OffsetUV)
 			SHADER_PARAMETER(FVector2f, Wave)
 			SHADER_PARAMETER(float, PhaseOffset)
+			SHADER_PARAMETER(int32, PhasorWave)
 			SHADER_PARAMETER(float, PhasorFrequency)
 			SHADER_PARAMETER(float, PhasorAnisotropy)
 			SHADER_PARAMETER(float, PhasorPhaseVariation)
 			SHADER_PARAMETER(float, PhasorOrientationVariation)
 			SHADER_PARAMETER(int32, PhasorComponents)
+			SHADER_PARAMETER(float, PhasorWaveOffset)
+			SHADER_PARAMETER(float, PhasorOverlap)
+			SHADER_PARAMETER(float, PhasorArch)
+			SHADER_PARAMETER(float, PhasorSecondWeight)
+			SHADER_PARAMETER(float, PhasorSecondAngle)
 			SHADER_PARAMETER(float, PhasorScale)
 			SHADER_PARAMETER(float, PhasorBias)
 			SHADER_PARAMETER(int32, WorleyMetric)
@@ -87,6 +93,7 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutValue)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float>, OutHeight)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutGradient)
+			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutWarpedUV)
 			SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutIds)
 		END_SHADER_PARAMETER_STRUCT()
 
@@ -286,11 +293,17 @@ FMixtormatNoiseRenderData ResolveNoiseRenderData(const FMixtormatNoise& Noise)
 	Out.OffsetX = Finite(Noise.NoiseOffsetX, Defaults.NoiseOffsetX);
 	Out.OffsetY = Finite(Noise.NoiseOffsetY, Defaults.NoiseOffsetY);
 	Out.Direction = Finite(Noise.NoiseDirection, Defaults.NoiseDirection);
+	Out.PhasorWave = FMath::Clamp(static_cast<int32>(Noise.NoisePhasorWave), 0, 4);
 	Out.PhasorFrequency = FMath::Clamp(Finite(Noise.NoisePhasorFrequency, Defaults.NoisePhasorFrequency), 0.0f, 12.0f);
 	Out.PhasorAnisotropy = FMath::Clamp(Finite(Noise.NoisePhasorAnisotropy, Defaults.NoisePhasorAnisotropy), 0.0f, 8.0f);
 	Out.PhasorPhaseVariation = FMath::Clamp(Finite(Noise.NoisePhasorPhaseVariation, Defaults.NoisePhasorPhaseVariation), 0.0f, 1.0f);
 	Out.PhasorOrientationVariation = FMath::Clamp(Finite(Noise.NoisePhasorOrientationVariation, Defaults.NoisePhasorOrientationVariation), 0.0f, 3.14159265f);
 	Out.PhasorComponents = FMath::Clamp(Noise.NoisePhasorComponents, 1, 4);
+	Out.PhasorWaveOffset = FMath::Clamp(Finite(Noise.NoisePhasorWaveOffset, Defaults.NoisePhasorWaveOffset), -0.95f, 0.95f);
+	Out.PhasorOverlap = FMath::Clamp(Finite(Noise.NoisePhasorOverlap, Defaults.NoisePhasorOverlap), 0.25f, 4.0f);
+	Out.PhasorArch = FMath::Clamp(Finite(Noise.NoisePhasorArch, Defaults.NoisePhasorArch), -2.0f, 2.0f);
+	Out.PhasorSecondWeight = FMath::Clamp(Finite(Noise.NoisePhasorSecondWeight, Defaults.NoisePhasorSecondWeight), 0.0f, 1.0f);
+	Out.PhasorSecondAngle = FMath::Clamp(Finite(Noise.NoisePhasorSecondAngle, Defaults.NoisePhasorSecondAngle), -1.5707963f, 1.5707963f);
 	Out.PhasorScale = FMath::Clamp(Finite(Noise.NoisePhasorScale, Defaults.NoisePhasorScale), 0.0f, 4.0f);
 	Out.PhasorBias = FMath::Clamp(Finite(Noise.NoisePhasorBias, Defaults.NoisePhasorBias), -1.0f, 1.0f);
 	Out.WorleyMetric = FMath::Clamp(static_cast<int32>(Noise.NoiseWorleyMetric), 0, 2);
@@ -456,6 +469,7 @@ struct FNoiseFields
 	FRDGTextureRef Value = nullptr;
 	FRDGTextureRef Height = nullptr;
 	FRDGTextureRef Gradient = nullptr;
+	FRDGTextureRef WarpedUV = nullptr;
 	FRDGTextureRef Ids = nullptr;
 };
 
@@ -493,6 +507,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 	FRDGTextureRef Value = MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Noise.Value"));
 	FRDGTextureRef Height = bValueOnly ? nullptr : MakeTexture(PF_R32_FLOAT, TEXT("Mixtormat.Noise.Height"));
 	FRDGTextureRef Gradient = bValueOnly ? nullptr : MakeTexture(PF_G32R32F, TEXT("Mixtormat.Noise.Gradient"));
+	FRDGTextureRef WarpedUV = bValueOnly ? nullptr : MakeTexture(PF_G32R32F, TEXT("Mixtormat.Noise.WarpedUV"));
 	// The ID map exists only where cells exist. The other families bind the context's empty ID
 	// texture instead of leaving the slot null -- the binding has to be satisfied, and the
 	// ProducesIds uniform keeps the write off it.
@@ -529,11 +544,17 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		P->OffsetUV = FVector2f(Noise.OffsetX, Noise.OffsetY);
 		P->Wave = Wave;
 		P->PhaseOffset = PhaseOffset;
+		P->PhasorWave = Noise.PhasorWave;
 		P->PhasorFrequency = Noise.PhasorFrequency;
 		P->PhasorAnisotropy = Noise.PhasorAnisotropy;
 		P->PhasorPhaseVariation = Noise.PhasorPhaseVariation;
 		P->PhasorOrientationVariation = Noise.PhasorOrientationVariation;
 		P->PhasorComponents = Noise.PhasorComponents;
+		P->PhasorWaveOffset = Noise.PhasorWaveOffset;
+		P->PhasorOverlap = Noise.PhasorOverlap;
+		P->PhasorArch = Noise.PhasorArch;
+		P->PhasorSecondWeight = Noise.PhasorSecondWeight;
+		P->PhasorSecondAngle = Noise.PhasorSecondAngle;
 		P->PhasorScale = Noise.PhasorScale;
 		P->PhasorBias = Noise.PhasorBias;
 		P->WorleyMetric = Noise.WorleyMetric;
@@ -562,6 +583,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 		P->OutValue = GraphBuilder.CreateUAV(Value);
 		P->OutHeight = Height ? GraphBuilder.CreateUAV(Height) : nullptr;
 		P->OutGradient = Gradient ? GraphBuilder.CreateUAV(Gradient) : nullptr;
+		P->OutWarpedUV = WarpedUV ? GraphBuilder.CreateUAV(WarpedUV) : nullptr;
 		P->OutIds = Ids ? GraphBuilder.CreateUAV(Ids) : nullptr;
 		ClearUnusedGraphResources(Shader, P);
 		FComputeShaderUtils::AddPass(GraphBuilder,
@@ -569,7 +591,7 @@ FNoiseFields AddNoiseFieldPass(FMixtormatComposeContext& Ctx, FMixtormatLayerPas
 			Shader, P, Groups);
 	}
 
-	return {Value, Height, Gradient, Ids};
+	return {Value, Height, Gradient, WarpedUV, Ids};
 }
 } // namespace
 
@@ -616,6 +638,7 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	FRDGTextureRef Value = Fields.Value;
 	FRDGTextureRef Height = Fields.Height;
 	FRDGTextureRef Gradient = Fields.Gradient;
+	FRDGTextureRef WarpedUV = Fields.WarpedUV;
 	FRDGTextureRef Ids = Fields.Ids;
 
 	if (Bundle)
@@ -647,6 +670,12 @@ void AddNoisePasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& L
 	Ctx.PublishedFieldOutputs.Add(
 		PublishedKey(Layer, SourceChildIndex, FName(TEXT("Gradient"))),
 		FPublishedField{EMixtormatPublishedFieldKind::Vector2, Gradient, nullptr, nullptr, false});
+	if (WarpedUV)
+	{
+		Ctx.PublishedFieldOutputs.Add(
+			PublishedKey(Layer, SourceChildIndex, FName(TEXT("WarpedUV"))),
+			FPublishedField{EMixtormatPublishedFieldKind::UVMap, WarpedUV, nullptr, nullptr, false});
+	}
 
 	// Write Height OFF: the intrinsic FlowDirection diagnostic is derived here from the native
 	// field, because the completed-height publication after post behaviors does not run for a

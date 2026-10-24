@@ -141,8 +141,8 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
 											[
 												SNew(SBox)
-												.WidthOverride(12.0f)
-												.HeightOverride(12.0f)
+												.WidthOverride(MixtormatTokens::BakeDialogBrowseGlyphSize)
+												.HeightOverride(MixtormatTokens::BakeDialogBrowseGlyphSize)
 												[
 													SNew(SImage)
 													.Image(MixtormatIcons::Folder())
@@ -293,7 +293,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 										.OnObjectChanged(this, &SMixtormatBakeSettingsDialog::OnCustomMasterChanged)
 									]
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogMappingCaptionGap)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("TextureMappingsCaption", "TEXTURE PARAMETER MAPPINGS"))
@@ -368,7 +368,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 			]
 
 			// VALIDATION ERROR
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 4.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, MixtormatTokens::BakeDialogValidationTopMargin, 0.0f, MixtormatTokens::BakeDialogValidationBottomMargin)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() { return ValidationText; })
@@ -548,7 +548,7 @@ TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMappingDropdown(
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+		.Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogMappingLabelGap, 0.0f)
 		[
 			SNew(SBox)
 			.WidthOverride(MixtormatTokens::BakeDialogSettingLabelWidth)

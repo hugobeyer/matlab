@@ -32,11 +32,17 @@ struct FMixtormatNoiseRenderData
 	// Bars / Phasor: the direction the patterns advance across, in degrees.
 	float Direction = 0.0f;
 	float LayerMix = 0.0f;
+	int32 PhasorWave = 0;
 	float PhasorFrequency = 2.0f;
 	float PhasorAnisotropy = 0.0f;
 	float PhasorPhaseVariation = 0.5f;
 	float PhasorOrientationVariation = 0.35f;
 	int32 PhasorComponents = 2;
+	float PhasorWaveOffset = 0.0f;
+	float PhasorOverlap = 1.0f;
+	float PhasorArch = 0.0f;
+	float PhasorSecondWeight = 0.0f;
+	float PhasorSecondAngle = 0.52f;
 	float PhasorScale = 1.0f;
 	float PhasorBias = 0.0f;
 	int32 WorleyMetric = 0;

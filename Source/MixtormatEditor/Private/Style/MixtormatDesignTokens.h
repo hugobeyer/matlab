@@ -645,6 +645,15 @@ namespace MixtormatTokens
 	constexpr float BakeDialogFieldBottomMargin = 10.0f;
 	constexpr float BakeDialogSectionGap = 8.0f;
 	constexpr float BakeDialogSettingLabelWidth = 90.0f;
+	// Folder glyph inside the bake Browse button, independent of toolbar/menu icon roles.
+	constexpr float BakeDialogBrowseGlyphSize = 12.0f;
+	// Space below the texture-mapping caption before the first mapping row.
+	constexpr float BakeDialogMappingCaptionGap = 6.0f;
+	// Space between each fixed-width output label and its mapping dropdown.
+	constexpr float BakeDialogMappingLabelGap = 8.0f;
+	// Validation slot insets remain present even when its message is empty.
+	constexpr float BakeDialogValidationTopMargin = 6.0f;
+	constexpr float BakeDialogValidationBottomMargin = 4.0f;
 
 	// ---- Toggle -----------------------------------------------------------------------------
 	// A square well that fills rather than marking itself with a glyph. A check or a cross is a

@@ -160,7 +160,12 @@ Output Copy/Gates and unavailable nested rows remain visible with live styled di
 adapter, not local styling. Fill keeps insert-after-layer behavior; Material still appends.
 Increment 3 adds owner-reported viewport manipulation and layer/group/module drag contexts.
 Drag hover reuses extracted handler preflights and existing published-output/ID Group validators;
-rejection text stays in the corner, not a per-move center announcement. Active contexts replace
+rejection text stays in the corner, not a per-move center announcement. Drop dispatch also checks
+workspace/source identity and document revision before mutation; recognized rejected drops are
+consumed rather than bubbling to another destination. Layer/group hover and commits share final
+order/membership projections and published-output validation; empty-group membership commits
+through the layer-move handler. Q Texture Mask now honors captured group-module scope through
+the shared scoped-mask handler, while group-root masks remain group-wide. Active contexts replace
 selection hints, which are capped at four with reset/selected-output priority. Short contexts
 are not padded with unrelated actions. Q remains viewport-only with unchanged captured targets,
 focus/capture, proximity and nested-menu rules. The two preview icon-button tooltips and group

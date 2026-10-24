@@ -10,6 +10,7 @@ struct FMixtormatNoiseV2Sample
 {
 	float Value;
 	float2 Gradient; // analytic d/d(tile UV)
+	float2 PhaseUV;  // phase-locked tile UV coordinate for downstream UVMap consumers
 };
 
 // Noise family output range, in one place.
@@ -42,39 +43,163 @@ float MixtormatNoiseV2SignedHeight(int Type, float Value)
 	return Value;
 }
 
-// Local Gabor/phasor impulses, NOT global cosine stripes. Each periodic lattice cell has a
-// seeded impulse with smooth compact support. Cell-specific phases and directions overlap
-// into fibers; components adds independent impulse layers. No discontinuous UV rotations.
-// Wave is the desired *direction*, preferably the existing integer-snapped wave vector.
-// Frequency is cycles per impulse-cell; Anisotropy narrows support across the wave.
-// PhaseVariation and OrientationVariation are zero-neutral (radians for orientation).
-FMixtormatNoiseV2Sample MixtormatNoiseV2Phasor(
-	float2 UV, int Period, uint Seed, float2 Wave, float Frequency,
-	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components)
+// Wave shaping helpers for complex Phasor noise (Houdini COPs OpenCL Phasor + Liu et al. 2015 wood rings).
+// Phi is the wrapped instantaneous phase in [-PI, PI]; WaveOffset in [-0.95, 0.95] shifts the duty-cycle
+// inflection point r = PI * WaveOffset to model asymmetric earlywood/latewood ring widths.
+void MixtormatNoiseV2PhasorShapeWave(
+	int WaveShape, float Phi, float2 DPhi, float Intensity, float2 DIntensity, float WaveOffset,
+	out float OutValue, out float2 OutGradient)
 {
-	const int P = clamp(Period, 1, 4096);
-	const float2 p = frac(UV) * (float)P;
+	const float Pi = 3.14159265f;
+	const float R = clamp(WaveOffset, -0.95f, 0.95f) * Pi;
+	const float SpanLow = max(Pi + R, 1.0e-4f);
+	const float SpanHigh = max(Pi - R, 1.0e-4f);
+
+	// Asymmetric periodic sine wave (Houdini phasorSin): C1 continuous across [-PI, PI] with duty cycle R.
+	const float X = -Phi;
+	float SinWave = 0.0f;
+	float DSinWaveDPhi = 0.0f;
+	if (X <= R)
+	{
+		const float U = Pi * (X - R) / SpanLow;
+		SinWave = -sin(U);
+		DSinWaveDPhi = (Pi / SpanLow) * cos(U);
+	}
+	else
+	{
+		const float U = Pi * (X - R) / SpanHigh;
+		SinWave = -sin(U);
+		DSinWaveDPhi = (Pi / SpanHigh) * cos(U);
+	}
+
+	if (WaveShape == 1) // Saw / Ring (gradual earlywood ramp to crisp latewood annual boundary, Liu et al. 2015)
+	{
+		float LinearSaw = 0.0f;
+		float DLinearSawDPhi = 0.0f;
+		if (Phi <= R)
+		{
+			LinearSaw = 2.0f * (Phi - R) / SpanLow + 1.0f;
+			DLinearSawDPhi = 2.0f / SpanLow;
+		}
+		else
+		{
+			LinearSaw = -2.0f * (Phi - R) / SpanHigh + 1.0f;
+			DLinearSawDPhi = -2.0f / SpanHigh;
+		}
+		// Blend 80% piecewise-linear saw with 20% asymmetric sine to round the measure-zero apexes for clean normals.
+		OutValue = clamp(lerp(LinearSaw, SinWave, 0.2f), -1.0f, 1.0f);
+		OutGradient = lerp(DLinearSawDPhi, DSinWaveDPhi, 0.2f) * DPhi;
+	}
+	else if (WaveShape == 2) // Pulse / Band (smooth-stepped Houdini rectangle wave for ring-porous vessel bands)
+	{
+		const float Sharpness = 3.5f;
+		const float Exp2S = exp(clamp(2.0f * Sharpness * SinWave, -20.0f, 20.0f));
+		const float TanhS = (Exp2S - 1.0f) / (Exp2S + 1.0f);
+		const float Sech2S = 1.0f - TanhS * TanhS;
+		const float InvNorm = 1.0074f; // 1 / tanh(3.5)
+		OutValue = clamp(TanhS * InvNorm, -1.0f, 1.0f);
+		OutGradient = (Sharpness * InvNorm * Sech2S * DSinWaveDPhi) * DPhi;
+	}
+	else if (WaveShape == 3) // Gabor (amplitude-modulated wave I * phasorSin)
+	{
+		const float Env = saturate(Intensity);
+		const float2 DEnv = (Intensity > 0.0f && Intensity < 1.0f) ? DIntensity : float2(0.0f, 0.0f);
+		OutValue = clamp(Env * SinWave, -1.0f, 1.0f);
+		OutGradient = DEnv * SinWave + (Env * DSinWaveDPhi) * DPhi;
+	}
+	else if (WaveShape == 4) // Defect / Envelope (2 * saturate(I) - 1; drops to -1 at grain bifurcations/knots)
+	{
+		const float Env = saturate(Intensity);
+		const float2 DEnv = (Intensity > 0.0f && Intensity < 1.0f) ? DIntensity : float2(0.0f, 0.0f);
+		OutValue = Env * 2.0f - 1.0f;
+		OutGradient = DEnv * 2.0f;
+	}
+	else // 0 = Sine (Houdini phasorSin)
+	{
+		OutValue = clamp(SinWave, -1.0f, 1.0f);
+		OutGradient = DSinWaveDPhi * DPhi;
+	}
+}
+
+// Complex Phasor noise (Tricard et al. 2019 + Houdini COPs OpenCL Phasor + Liu/Marschner/Dye 2015).
+// Accumulates complex kernels Z = C + i*S over the periodic lattice so overlapping wave fronts
+// lock phase instead of cancelling amplitude, and recovers instantaneous phase atan2(S, C) with
+// exact quotient-rule analytic gradient (C*dS - S*dC) / (C^2 + S^2).
+FMixtormatNoiseV2Sample MixtormatNoiseV2PhasorRect(
+	float2 UV, int2 Period, uint Seed, float2 Wave, float Frequency,
+	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components,
+	int WaveShape = 0, float WaveOffset = 0.0f, float Overlap = 1.0f,
+	float Arch = 0.0f, float SecondWeight = 0.0f, float SecondAngle = 0.52f)
+{
+	const int2 P = clamp(Period, int2(1, 1), int2(4096, 4096));
+	const float2 TiledUV = frac(UV);
+	const float2 p = TiledUV * (float2)P;
 	const int2 Base = (int2)floor(p);
 	const float WaveLengthSq = dot(Wave, Wave);
 	const float2 BaseDirection = WaveLengthSq > 1.0e-8f
 		? Wave * rsqrt(WaveLengthSq) : float2(0.0f, 1.0f);
+	const float2 BaseTangent = float2(-BaseDirection.y, BaseDirection.x);
 	const float Freq = clamp(abs(Frequency), 0.0f, 128.0f);
 	const float CrossScale = 1.0f + clamp(Anisotropy, 0.0f, 16.0f);
 	const float PhaseSpread = clamp(PhaseVariation, 0.0f, 1.0f);
 	const float OrientationSpread = clamp(OrientationVariation, 0.0f, 3.14159265f);
 	const int Count = clamp(Components, 1, 4);
-	float Sum = 0.0f;
-	float2 DSum = float2(0.0f, 0.0f);
+	const float SupportRadius = clamp(Overlap, 0.25f, 4.0f) * 1.35f;
+	const float InvSupportSq = 1.0f / max(SupportRadius * SupportRadius, 1.0e-4f);
+	const int SearchRadius = SupportRadius > 1.35f ? 2 : 1;
+
+	// Integer-snapped carrier wave vector closes exactly at the unit tile boundaries.
+	const float2 CarrierWave = round(Wave * max(Freq * 0.5f, 0.0f));
+	const float CarrierScale = max(length(CarrierWave), 1.0f);
+
+	// Periodic tangential board-cut cathedral arch (Liu, Marschner & Dye 2015, arXiv:1511.04224):
+	// cylindrical log chord sqrt(sin^2(pi * u_t) + d^2) - d along the integer-snapped grain axis.
+	const float2 IntTangent = abs(BaseTangent.x) >= abs(BaseTangent.y)
+		? float2(sign(BaseTangent.x != 0.0f ? BaseTangent.x : 1.0f), 0.0f)
+		: float2(0.0f, sign(BaseTangent.y != 0.0f ? BaseTangent.y : 1.0f));
+	const float Pi = 3.14159265f;
+	const float Ut = dot(TiledUV, IntTangent);
+	const float SinUt = sin(Pi * Ut);
+	const float CosUt = cos(Pi * Ut);
+	const float ChordD = 0.35f;
+	const float ChordLen = sqrt(SinUt * SinUt + ChordD * ChordD);
+	const float ArchCycles = Arch * (ChordLen - ChordD);
+	const float2 DArchCyclesDUV = (Arch != 0.0f)
+		? (Arch * Pi * SinUt * CosUt / max(ChordLen, 1.0e-5f)) * IntTangent
+		: float2(0.0f, 0.0f);
+
+	const float CarrierPhase = MIXTORMAT_NOISE_TAU * (dot(TiledUV, CarrierWave) + ArchCycles);
+	const float2 DCarrierPhaseDp = (MIXTORMAT_NOISE_TAU * (CarrierWave + DArchCyclesDUV)) / (float2)P;
+
+	const bool bUseSecond = SecondWeight > 1.0e-4f;
+	const float Sn2Base = sin(SecondAngle);
+	const float Cs2Base = cos(SecondAngle);
+	const float2 SecondBaseDir = float2(
+		BaseDirection.x * Cs2Base - BaseDirection.y * Sn2Base,
+		BaseDirection.x * Sn2Base + BaseDirection.y * Cs2Base);
+	const float2 SecondCarrierWave = round(SecondBaseDir * CarrierScale);
+	const float SecondCarrierPhase = MIXTORMAT_NOISE_TAU * (dot(TiledUV, SecondCarrierWave) + ArchCycles);
+	const float2 DSecondCarrierPhaseDp = (MIXTORMAT_NOISE_TAU * (SecondCarrierWave + DArchCyclesDUV)) / (float2)P;
+
+	float CosSum1 = 0.0f;
+	float SinSum1 = 0.0f;
+	float2 DCosSum1 = float2(0.0f, 0.0f);
+	float2 DSinSum1 = float2(0.0f, 0.0f);
+
+	float CosSum2 = 0.0f;
+	float SinSum2 = 0.0f;
+	float2 DCosSum2 = float2(0.0f, 0.0f);
+	float2 DSinSum2 = float2(0.0f, 0.0f);
 
 	[loop]
 	for (int c = 0; c < Count; ++c)
 	{
 		const uint ComponentSeed = Seed + (uint)c * 0x2545F491u;
-		[unroll]
-		for (int y = -1; y <= 1; ++y)
+		[loop]
+		for (int y = -SearchRadius; y <= SearchRadius; ++y)
 		{
-			[unroll]
-			for (int x = -1; x <= 1; ++x)
+			[loop]
+			for (int x = -SearchRadius; x <= SearchRadius; ++x)
 			{
 				const int2 Cell = Base + int2(x, y);
 				const float2 Jitter = MixtormatCellOffset(Cell, P, ComponentSeed);
@@ -90,96 +215,110 @@ FMixtormatNoiseV2Sample MixtormatNoiseV2Phasor(
 				const float2 Side = float2(-Direction.y, Direction.x);
 				const float Along = dot(Delta, Direction);
 				const float Across = dot(Delta, Side) * CrossScale;
-				const float Radius2 = Along * Along + Across * Across;
+				const float Radius2 = (Along * Along + Across * Across) * InvSupportSq;
 				const float EnvelopeBase = max(1.0f - Radius2, 0.0f);
 				if (EnvelopeBase <= 0.0f) { continue; }
 				const float Envelope = EnvelopeBase * EnvelopeBase * EnvelopeBase;
-				const float Phase = MIXTORMAT_NOISE_TAU
-					* (Freq * Along + Variation.y * PhaseSpread);
-				const float SnPhase = sin(Phase);
-				const float CsPhase = cos(Phase);
-				const float2 EnvelopeGradient = -6.0f * EnvelopeBase * EnvelopeBase
+				const float2 EnvelopeGradient = (-6.0f * InvSupportSq * EnvelopeBase * EnvelopeBase)
 					* (Along * Direction + Across * CrossScale * Side);
-				Sum += Envelope * CsPhase;
-				DSum += EnvelopeGradient * CsPhase
-					- Envelope * (MIXTORMAT_NOISE_TAU * Freq * SnPhase) * Direction;
+
+				// Local orientation & phase perturbation relative to the tile-periodic carrier.
+				const float2 LocalWaveDelta = Freq * (Direction - BaseDirection);
+				const float Phase1 = CarrierPhase + MIXTORMAT_NOISE_TAU
+					* (dot(Delta, LocalWaveDelta) + Variation.y * PhaseSpread);
+				const float2 DPhase1 = DCarrierPhaseDp + MIXTORMAT_NOISE_TAU * LocalWaveDelta;
+				const float SnP1 = sin(Phase1);
+				const float CsP1 = cos(Phase1);
+
+				CosSum1 += Envelope * CsP1;
+				SinSum1 += Envelope * SnP1;
+				DCosSum1 += EnvelopeGradient * CsP1 - (Envelope * SnP1) * DPhase1;
+				DSinSum1 += EnvelopeGradient * SnP1 + (Envelope * CsP1) * DPhase1;
+
+				if (bUseSecond)
+				{
+					const float2 Dir2 = float2(
+						SecondBaseDir.x * Cs - SecondBaseDir.y * Sn,
+						SecondBaseDir.x * Sn + SecondBaseDir.y * Cs);
+					const float2 LocalWaveDelta2 = Freq * (Dir2 - SecondBaseDir);
+					const float Phase2 = SecondCarrierPhase + MIXTORMAT_NOISE_TAU
+						* (dot(Delta, LocalWaveDelta2) - Variation.y * PhaseSpread);
+					const float2 DPhase2 = DSecondCarrierPhaseDp + MIXTORMAT_NOISE_TAU * LocalWaveDelta2;
+					const float SnP2 = sin(Phase2);
+					const float CsP2 = cos(Phase2);
+					CosSum2 += Envelope * CsP2;
+					SinSum2 += Envelope * SnP2;
+					DCosSum2 += EnvelopeGradient * CsP2 - (Envelope * SnP2) * DPhase2;
+					DSinSum2 += EnvelopeGradient * SnP2 + (Envelope * CsP2) * DPhase2;
+				}
 			}
 		}
 	}
-	// Fixed amplitude normalization (not divide by sum of weights): preserves C2 continuity
-	// where no impulse is in support, instead of introducing holes or normalization spikes.
-	const float Normalizer = 0.5f / (float)Count;
+
+	// Combine primary and optional secondary lobes weighted by their instantaneous magnitudes (Houdini COPs).
+	float C = CosSum1;
+	float S = SinSum1;
+	float2 DC = DCosSum1;
+	float2 DS = DSinSum1;
+	if (bUseSecond)
+	{
+		const float W2 = saturate(SecondWeight);
+		const float W1 = 1.0f - 0.5f * W2;
+		const float I1 = sqrt(max(CosSum1 * CosSum1 + SinSum1 * SinSum1, 1.0e-8f));
+		const float I2 = sqrt(max(CosSum2 * CosSum2 + SinSum2 * SinSum2, 1.0e-8f));
+		const float2 DI1 = (CosSum1 * DCosSum1 + SinSum1 * DSinSum1) / I1;
+		const float2 DI2 = (CosSum2 * DCosSum2 + SinSum2 * DSinSum2) / I2;
+		C = W1 * I1 * CosSum1 + W2 * I2 * CosSum2;
+		S = W1 * I1 * SinSum1 + W2 * I2 * SinSum2;
+		DC = W1 * (DI1 * CosSum1 + I1 * DCosSum1) + W2 * (DI2 * CosSum2 + I2 * DCosSum2);
+		DS = W1 * (DI1 * SinSum1 + I1 * DSinSum1) + W2 * (DI2 * SinSum2 + I2 * DSinSum2);
+	}
+
+	// Fallback to the clean carrier phasor if all kernels are outside support.
+	const float MagSq = C * C + S * S;
+	if (MagSq < 1.0e-10f)
+	{
+		C = cos(CarrierPhase);
+		S = sin(CarrierPhase);
+		DC = -S * DCarrierPhaseDp;
+		DS = C * DCarrierPhaseDp;
+	}
+
+	const float SafeMagSq = max(C * C + S * S, 1.0e-8f);
+	const float RawMag = sqrt(SafeMagSq);
+	const float Phi = atan2(S, C);
+	// Quotient rule: d/dp atan2(S, C) = (C * dS - S * dC) / (C^2 + S^2), converted to d/d(tile UV) via * P.
+	const float2 DPhi = ((C * DS - S * DC) / SafeMagSq) * (float2)P;
+
+	const float Normalizer = 0.65f / ((float)Count * max(Overlap, 0.5f));
+	const float Intensity = RawMag * Normalizer;
+	const float2 DIntensity = (((C * DC + S * DS) / RawMag) * Normalizer) * (float2)P;
+
 	FMixtormatNoiseV2Sample Result;
-	Result.Value = Sum * Normalizer;
-	Result.Gradient = DSum * (Normalizer * (float)P);
+	MixtormatNoiseV2PhasorShapeWave(
+		WaveShape, Phi, DPhi, Intensity, DIntensity, WaveOffset,
+		Result.Value, Result.Gradient);
+
+	// Continuous phase-locked UV coordinate: shifts UV along BaseDirection by the wrapped phase deviation
+	// from the unperturbed linear carrier so downstream UVMap consumers follow growth rings and bifurcations.
+	const float LinearPhase = MIXTORMAT_NOISE_TAU * dot(TiledUV, CarrierWave);
+	const float PhaseDiff = atan2(sin(Phi - LinearPhase), cos(Phi - LinearPhase));
+	const float PhaseShiftUV = PhaseDiff / (MIXTORMAT_NOISE_TAU * CarrierScale);
+	Result.PhaseUV = frac(TiledUV + BaseDirection * PhaseShiftUV);
 	return Result;
 }
 
-FMixtormatNoiseV2Sample MixtormatNoiseV2PhasorRect(
-	float2 UV, int2 Period, uint Seed, float2 Wave, float Frequency,
-	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components)
+FMixtormatNoiseV2Sample MixtormatNoiseV2Phasor(
+	float2 UV, int Period, uint Seed, float2 Wave, float Frequency,
+	float Anisotropy, float PhaseVariation, float OrientationVariation, int Components,
+	int WaveShape = 0, float WaveOffset = 0.0f, float Overlap = 1.0f,
+	float Arch = 0.0f, float SecondWeight = 0.0f, float SecondAngle = 0.52f)
 {
-	const int2 P = clamp(Period, int2(1, 1), int2(4096, 4096));
-	const float2 p = frac(UV) * (float2)P;
-	const int2 Base = (int2)floor(p);
-	const float WaveLengthSq = dot(Wave, Wave);
-	const float2 BaseDirection = WaveLengthSq > 1.0e-8f
-		? Wave * rsqrt(WaveLengthSq) : float2(0.0f, 1.0f);
-	const float Freq = clamp(abs(Frequency), 0.0f, 128.0f);
-	const float CrossScale = 1.0f + clamp(Anisotropy, 0.0f, 16.0f);
-	const float PhaseSpread = clamp(PhaseVariation, 0.0f, 1.0f);
-	const float OrientationSpread = clamp(OrientationVariation, 0.0f, 3.14159265f);
-	const int Count = clamp(Components, 1, 4);
-	float Sum = 0.0f;
-	float2 DSum = float2(0.0f, 0.0f);
-
-	[loop]
-	for (int c = 0; c < Count; ++c)
-	{
-		const uint ComponentSeed = Seed + (uint)c * 0x2545F491u;
-		[unroll]
-		for (int y = -1; y <= 1; ++y)
-		{
-			[unroll]
-			for (int x = -1; x <= 1; ++x)
-			{
-				const int2 Cell = Base + int2(x, y);
-				const float2 Jitter = MixtormatCellOffset(Cell, P, ComponentSeed);
-				const float2 Pivot = (float2)Cell + 0.5f + Jitter * 0.75f;
-				const float2 Delta = p - Pivot;
-				const float2 Variation = MixtormatCellOffset(Cell, P, ComponentSeed ^ 0x9e3779b9u);
-				const float Angle = 2.0f * Variation.x * OrientationSpread;
-				const float Sn = sin(Angle);
-				const float Cs = cos(Angle);
-				const float2 Direction = float2(
-					BaseDirection.x * Cs - BaseDirection.y * Sn,
-					BaseDirection.x * Sn + BaseDirection.y * Cs);
-				const float2 Side = float2(-Direction.y, Direction.x);
-				const float Along = dot(Delta, Direction);
-				const float Across = dot(Delta, Side) * CrossScale;
-				const float Radius2 = Along * Along + Across * Across;
-				const float EnvelopeBase = max(1.0f - Radius2, 0.0f);
-				if (EnvelopeBase <= 0.0f) { continue; }
-				const float Envelope = EnvelopeBase * EnvelopeBase * EnvelopeBase;
-				const float Phase = MIXTORMAT_NOISE_TAU
-					* (Freq * Along + Variation.y * PhaseSpread);
-				const float SnPhase = sin(Phase);
-				const float CsPhase = cos(Phase);
-				const float2 EnvelopeGradient = -6.0f * EnvelopeBase * EnvelopeBase
-					* (Along * Direction + Across * CrossScale * Side);
-				Sum += Envelope * CsPhase;
-				DSum += EnvelopeGradient * CsPhase
-					- Envelope * (MIXTORMAT_NOISE_TAU * Freq * SnPhase) * Direction;
-			}
-		}
-	}
-	// Fixed amplitude normalization (not divide by sum of weights): preserves C2 continuity
-	// where no impulse is in support, instead of introducing holes or normalization spikes.
-	const float Normalizer = 0.5f / (float)Count;
-	FMixtormatNoiseV2Sample Result;
-	Result.Value = Sum * Normalizer;
-	Result.Gradient = DSum * (Normalizer * (float2)P);
-	return Result;
+	const int P = clamp(Period, 1, 4096);
+	return MixtormatNoiseV2PhasorRect(
+		UV, int2(P, P), Seed, Wave, Frequency, Anisotropy,
+		PhaseVariation, OrientationVariation, Components,
+		WaveShape, WaveOffset, Overlap, Arch, SecondWeight, SecondAngle);
 }
 
 // A divergence-free (before consumer-dependent masking/normalization) 2D curl field.
@@ -483,6 +622,8 @@ void MixtormatNoiseV2LayerOctave(
 	float BasePeriod, int WorleyMetric, float WorleyJitter, float WorleyCellDepth,
 	float PhasorFrequency, float PhasorAnisotropy, float PhasorPhaseVariation,
 	float PhasorOrientationVariation, int PhasorComponents,
+	int PhasorWaveShape, float PhasorWaveOffset, float PhasorOverlap,
+	float PhasorArch, float PhasorSecondWeight, float PhasorSecondAngle,
 	out float Value, out float2 Gradient)
 {
 	Value = 0.0f;
@@ -527,9 +668,12 @@ void MixtormatNoiseV2LayerOctave(
 	}
 	else if (Type == NOISE_TYPE_PHASOR)
 	{
+		const float2 OctaveWave = round(Wave * ((float)P / max(BasePeriod, 1.0f)));
 		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2Phasor(TiledUV,
-			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,
-			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents);
+			P, Seed, OctaveWave, PhasorFrequency, PhasorAnisotropy,
+			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents,
+			PhasorWaveShape, PhasorWaveOffset, PhasorOverlap,
+			PhasorArch, PhasorSecondWeight, PhasorSecondAngle);
 		Value = N.Value;
 		Gradient = N.Gradient;
 	}
@@ -540,6 +684,8 @@ void MixtormatNoiseV2LayerOctaveRect(
 	float2 BasePeriod, int WorleyMetric, float WorleyJitter, float WorleyCellDepth,
 	float PhasorFrequency, float PhasorAnisotropy, float PhasorPhaseVariation,
 	float PhasorOrientationVariation, int PhasorComponents,
+	int PhasorWaveShape, float PhasorWaveOffset, float PhasorOverlap,
+	float PhasorArch, float PhasorSecondWeight, float PhasorSecondAngle,
 	out float Value, out float2 Gradient)
 {
 	Value = 0.0f;
@@ -585,9 +731,12 @@ void MixtormatNoiseV2LayerOctaveRect(
 	}
 	else if (Type == NOISE_TYPE_PHASOR)
 	{
+		const float2 OctaveWave = round(Wave * ((float2)P / max(BasePeriod, float2(1.0f, 1.0f))));
 		const FMixtormatNoiseV2Sample N = MixtormatNoiseV2PhasorRect(TiledUV,
-			P, Seed, Wave, PhasorFrequency, PhasorAnisotropy,
-			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents);
+			P, Seed, OctaveWave, PhasorFrequency, PhasorAnisotropy,
+			PhasorPhaseVariation, PhasorOrientationVariation, PhasorComponents,
+			PhasorWaveShape, PhasorWaveOffset, PhasorOverlap,
+			PhasorArch, PhasorSecondWeight, PhasorSecondAngle);
 		Value = N.Value;
 		Gradient = N.Gradient;
 	}

@@ -2544,6 +2544,11 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 				LOCTEXT("NoiseElementSizeYHint", "Element height relative to Scale. Larger gives taller cells; the Y period wraps independently."))));
 		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
 			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MakeMemberEnum<FMixtormatNoise, EMixtormatNoisePhasorWave>(
+				LOCTEXT("NoisePhasorWave", "Wave Profile"), Noise, &FMixtormatNoise::NoisePhasorWave,
+				LOCTEXT("NoisePhasorWaveHint", "Phasor wave synthesis profile: Sine, Saw/Ring (earlywood to latewood transition), Pulse/Band, Gabor, or Defect/Envelope."))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
 			MixtormatRow::MakePair(
 				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorFrequency", "Frequency"),
 					Noise, &FMixtormatNoise::NoisePhasorFrequency, 0.0, 12.0, 2.0, 0.05),
@@ -2558,9 +2563,31 @@ TSharedRef<SWidget> SMixtormat::BuildNoisePatternPlacementControls(TFunction<FMi
 					Noise, &FMixtormatNoise::NoisePhasorOrientationVariation, 0.0, 3.14, 0.35, 0.01))]);
 		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
 			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
-			MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoisePhasorComponents", "Components"),
-				Noise, &FMixtormatNoise::NoisePhasorComponents, 1.0, 4.0, 2,
-				LOCTEXT("NoisePhasorComponentsHint", "Overlapping seeded impulse layers."))]);
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorWaveOffset", "Wave Duty"),
+					Noise, &FMixtormatNoise::NoisePhasorWaveOffset, -0.95, 0.95, 0.0, 0.01,
+					LOCTEXT("NoisePhasorWaveOffsetHint", "Shifts the wave inflection point to widen earlywood or narrow latewood rings.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorOverlap", "Kernel Overlap"),
+					Noise, &FMixtormatNoise::NoisePhasorOverlap, 0.25, 4.0, 1.0, 0.02,
+					LOCTEXT("NoisePhasorOverlapHint", "Phasor kernel bandwidth: higher values lock phase smoothly; lower values expose grain bifurcations.")))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorArch", "Cathedral Arch"),
+					Noise, &FMixtormatNoise::NoisePhasorArch, -2.0, 2.0, 0.0, 0.01,
+					LOCTEXT("NoisePhasorArchHint", "Periodic tangential board-cut cathedral arch across the grain.")),
+				MakeMemberSliderInt<FMixtormatNoise>(LOCTEXT("NoisePhasorComponents", "Components"),
+					Noise, &FMixtormatNoise::NoisePhasorComponents, 1.0, 4.0, 2,
+					LOCTEXT("NoisePhasorComponentsHint", "Overlapping seeded impulse layers.")))]);
+		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
+			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
+			MixtormatRow::MakePair(
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorSecondWeight", "Second Lobe"),
+					Noise, &FMixtormatNoise::NoisePhasorSecondWeight, 0.0, 1.0, 0.0, 0.01,
+					LOCTEXT("NoisePhasorSecondWeightHint", "Secondary complex phasor lobe weight for interlocked or cross-hatched grain.")),
+				MakeMemberSlider<FMixtormatNoise>(LOCTEXT("NoisePhasorSecondAngle", "Second Angle"),
+					Noise, &FMixtormatNoise::NoisePhasorSecondAngle, -1.57, 1.57, 0.52, 0.01,
+					LOCTEXT("NoisePhasorSecondAngleHint", "Orientation offset of the secondary phasor lobe, in radians.")))]);
 		AddSliderRow(Pattern, SNew(SBox).Visibility_Lambda([IsPhasor]()
 			{ return IsPhasor() ? EVisibility::Visible : EVisibility::Collapsed; })[
 			MixtormatRow::MakePair(

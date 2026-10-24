@@ -205,7 +205,9 @@ public:
 		const TSharedPtr<SWidget> Owner = GuidanceOwner.Pin();
 		if (!bFinished && Owner && Handler.IsBoundToObject(Owner.Get()) && HasCurrentPayload())
 		{
-			Handler.Execute(Forward<ArgTypes>(Args)...);
+			const FReply Reply = Handler.Execute(Forward<ArgTypes>(Args)...);
+			GuidanceTarget.Reset();
+			return Reply.IsEventHandled() ? Reply : FReply::Handled();
 		}
 		GuidanceTarget.Reset();
 		return FReply::Handled();
