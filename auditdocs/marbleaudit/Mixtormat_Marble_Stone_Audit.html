@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mixtormat — Marble &amp; Stone Surfacing Audit</title>
+<style>
+:root{--ink:#232b30;--muted:#58656c;--paper:#f6f4ef;--card:#fff;--line:#d9dedc;--accent:#987141;--blue:#315d6d;--soft:#edf2f2;--warm:#f4ecdf}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue);text-underline-offset:3px}a:hover{color:#173b49}header{background:#253c45;color:white;padding:54px max(24px,calc((100vw - 1120px)/2)) 44px}header .eyebrow{color:#e2c79d;letter-spacing:.14em;font-size:.78rem;text-transform:uppercase;font-weight:700}h1{font-size:clamp(2rem,4vw,3.3rem);line-height:1.1;letter-spacing:-.035em;max-width:900px;margin:16px 0}header p{max-width:870px;color:#e2e9e9;margin:15px 0 0}main{max-width:1180px;margin:auto;padding:28px 28px 70px}nav{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 24px;margin-bottom:28px}nav ol{columns:2;column-gap:38px;margin:10px 0 0;padding-left:22px}nav li{break-inside:avoid;margin:4px 0}section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:28px;margin:22px 0;scroll-margin-top:20px}h2{font-size:1.55rem;line-height:1.25;letter-spacing:-.02em;margin:0 0 16px;border-bottom:2px solid var(--line);padding-bottom:12px}h3{font-size:1.1rem;margin:23px 0 8px}p{margin:10px 0}ul,ol{padding-left:23px}li{margin:6px 0}.lede{font-size:1.1rem}.note{background:var(--soft);border-left:4px solid var(--blue);padding:14px 18px;margin:18px 0}.note.warm{background:var(--warm);border-color:var(--accent)}.tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:21px}.tag{font-size:.74rem;letter-spacing:.035em;font-weight:700;border:1px solid #617b84;color:#edf4f4;border-radius:99px;padding:4px 11px}.table-wrap{overflow-x:auto;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:.9rem;text-align:left;min-width:700px}th{background:var(--soft);font-size:.79rem;letter-spacing:.025em;text-transform:uppercase}th,td{vertical-align:top;padding:12px 13px;border:1px solid var(--line)}tbody tr:nth-child(even){background:#fcfcfa}code{font: .9em ui-monospace,SFMono-Regular,Consolas,monospace;background:#eff1ed;padding:2px 5px;border-radius:4px}.equation{font:1rem/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;background:#f1f4f4;padding:18px;overflow-x:auto;white-space:pre-wrap;border-radius:7px}.cite{font-size:.82em;white-space:nowrap}.small{font-size:.88rem;color:var(--muted)}.source-list li{padding:9px 0;border-bottom:1px solid var(--line)}.source-list strong{display:block}.source-list p{margin:4px 0}.label{font-size:.74rem;font-weight:750;letter-spacing:.025em;background:#e5ecec;border-radius:4px;padding:2px 5px;white-space:nowrap}.label.art{background:#f0e5d2}.label.fit{background:#e9e6f2}footer{text-align:center;color:var(--muted);font-size:.82rem;margin-top:30px}@media(max-width:720px){main{padding:18px 14px 45px}section{padding:21px 17px}nav{padding:18px}nav ol{columns:1}header{padding:36px 22px}table{font-size:.85rem}h2{font-size:1.35rem}}@media print{body{background:white;font-size:10pt}header{background:white;color:#222;padding:0 0 20px}header p,header .eyebrow{color:#444}.tags{display:none}main{padding:0;max-width:none}nav{break-after:page}section{border:0;border-radius:0;padding:12px 0;break-inside:auto}h2,h3{break-after:avoid}.table-wrap{overflow:visible}table{min-width:0;font-size:8pt}tr{break-inside:avoid}a{color:#222}footer{display:none}}
+</style>
+</head>
+<body>
+<header>
+<div class="eyebrow">Mixtormat · Technical material research · 24 October 2026</div>
+<h1>Marble &amp; Stone<br>Surfacing Audit</h1>
+<p>A procedural material fabric, finish, and weathering system over an existing composite surface. The central requirement is to retain the underlying form while giving each stone family a coherent mineral structure and surface response.</p>
+<div class="tags"><span class="tag">Unreal Engine 5.8 target</span><span class="tag">Free full-text references</span><span class="tag">Measured ≠ fitted ≠ artistic</span><span class="tag">No code changes</span></div>
+</header>
+<main>
+<nav aria-label="Contents"><strong>Contents</strong><ol>
+<li><a href="#recommendation">Recommended model</a></li><li><a href="#families">Stone families and marble structures</a></li><li><a href="#evidence">Numeric evidence and calibration</a></li><li><a href="#model">Internal fields and substrate response</a></li><li><a href="#gpu">Practical GPU methods</a></li><li><a href="#controls">Artist controls</a></li><li><a href="#channels">Material channel contract</a></li><li><a href="#delivery">Phases and acceptance tests</a></li><li><a href="#code">Existing pattern-code assessment</a></li><li><a href="#sources">Full-text sources and sections</a></li>
+</ol></nav>
+
+<section id="recommendation"><h2>1. Recommended model</h2>
+<p class="lede"><strong>Build Stone Surfacing around a shared mineral fabric, with finish and weathering evaluated separately.</strong> Marble is the first complete family; limestone, travertine, granite, sandstone, quartzite and slate require distinct structural presets.</p>
+<p>The material fabric establishes what is present: mineral populations, bands, filled veins, inclusions and pores. Finish establishes the exposed surface: polished, honed, sawn or split. Weathering modifies that surface through selective loss, grain release and deposits. These components share fields, but their amounts remain independently editable.</p>
+<p>At module entry, snapshot the incoming height <code>H0</code> and material bundle. Add only explicitly authored local relief. A polished vein may change color and scattering without becoming a groove. An etched area may lose gloss before visibly changing the silhouette. Deposits may cover a damaged substrate without restoring its original material. Carbonate-weathering experiments demonstrate that deposit formation and substrate deterioration can coexist. <a class="cite" href="#s10">[10]</a></p>
+<div class="note"><strong>Scope:</strong> this is a material-authoring model, not a geological history simulator. Height fields can represent exposed pits and stepped surface relief; connected internal voids, overhangs and detached fragments require geometry. Existing height alone cannot identify minerals, pore connectivity, chemical exposure or moisture history.</div>
+</section>
+
+<section id="families"><h2>2. Stone families and marble structures</h2>
+<p>Use geological families internally and familiar names for preset discovery. Commercial “marble” can include polishable limestone; commercial “granite” includes several unrelated rock types. For example, Natural Stone Institute identifies Crema Marfil as limestone and Absolute Black as gabbro. A trade name should not determine the physical model. <a class="cite" href="#s1">[1]</a></p>
+<div class="table-wrap"><table><thead><tr><th>Family</th><th>Structure to represent</th><th>Useful preset distinction</th></tr></thead><tbody>
+<tr><td>Calcitic / dolomitic marble</td><td>Recrystallized interlocking carbonate grains; accessory minerals, variable grain sizes and deformation.</td><td>Fine crystalline, coarse crystalline, foliated/impure and veined fabrics; calcitic versus dolomitic composition. <a class="cite" href="#s3">[3]</a></td></tr>
+<tr><td>Limestone</td><td>Fine matrix, sedimentary grains, fossils or bioclasts, cement and later seams.</td><td>Micritic, fossiliferous and grain-rich variants; avoid adding fossils to every marble. <a class="cite" href="#s3">[3]</a></td></tr>
+<tr><td>Travertine</td><td>Depositional bands and heterogeneous vugular/fenestral pores.</td><td>Cut direction, exposed versus filled pores, compact versus porous bands. <a class="cite" href="#s5">[5]</a></td></tr>
+<tr><td>Granite</td><td>Coarse intergrown mineral populations rather than one uniformly speckled phase.</td><td>Relative crystal sizes and mineral proportions, with separate finish. <a class="cite" href="#s2">[2]</a></td></tr>
+<tr><td>Sandstone</td><td>Cemented detrital grains with matrix and pore spaces.</td><td>Grain sorting, cement abundance and bedding; do not confuse pores with dark grains. <a class="cite" href="#s2">[2]</a></td></tr>
+<tr><td>Quartzite</td><td>Recrystallized, interlocking quartz; some retains bedding.</td><td>A fused crystalline fabric, distinct from a low-roughness sandstone preset. <a class="cite" href="#s2">[2]</a></td></tr>
+<tr><td>Slate</td><td>Fine-grained metamorphic fabric with foliation/cleavage.</td><td>Directional split surfaces and bounded steps rather than coarse granite crystals. <a class="cite" href="#s2">[2]</a></td></tr>
+</tbody></table></div>
+<h3>Five independent structures within marble and decorative carbonate stone</h3>
+<ol>
+<li><strong>Crystal fabric:</strong> grain size, shape, orientation and mineral identity. Grain dimensions describe the material, not displacement amplitude.</li>
+<li><strong>Compositional bands:</strong> layers or aligned accessory minerals that may be folded or stretched. Greek cipollino examples combine carbonate with aligned chlorite, mica and other phases. <a class="cite" href="#s3">[3]</a></li>
+<li><strong>Filled veins:</strong> earlier fractures occupied by later minerals, commonly calcite or quartz. Their polished surface can be flush. <a class="cite" href="#s7">[7]</a></li>
+<li><strong>Stylolites:</strong> irregular pressure-solution surfaces that concentrate less-soluble residue. They are not simply open cracks. Their morphology varies with host-rock texture. <a class="cite" href="#s8">[8]</a></li>
+<li><strong>Breccia:</strong> angular fragments held in a matrix, potentially carrying earlier fabric within each fragment. A dark cellular network is only a rough artistic approximation. <a class="cite" href="#s7">[7]</a></li>
+</ol>
+<p>Open cracks, cavities and later stains are additional states. Keep their masks separate from the five material structures. Oxford’s Portoro specimen is a useful visual reference: black limestone, white calcite veins, stylolites and yellow goethite-bearing calcite coexist in one sample. <a class="cite" href="#s9">[9]</a></p>
+</section>
+
+<section id="evidence"><h2>3. Numeric evidence and calibration</h2>
+<p><span class="label">MEASURED</span> describes specimen observations or instrument measurements. <span class="label fit">FITTED</span> describes parameters estimated for an optical model. <span class="label art">ARTISTIC</span> describes proposed authoring settings. None establishes a universal stone color, roughness or weathering rate.</p>
+<div class="table-wrap"><table><thead><tr><th>Property</th><th>Value and units</th><th>Conditions and uncertainty</th><th>Evidence</th></tr></thead><tbody>
+<tr><td>Calcite grain diameter</td><td>Carrara <strong>60–220 μm</strong>; Wombeyan <strong>1–2 mm</strong>; Solnhofen limestone <strong>5–10 μm</strong>.</td><td>Specific starting materials; linear-intercept grain measure. Not a universal range for either marble or limestone.</td><td>Measured/reported; §2.1 and Table 1. <a href="#s4">[4]</a></td></tr>
+<tr><td>Cipollino carbonate veins</td><td><strong>250–300 μm</strong> thick; some calcite crystals approximately <strong>300 μm</strong>.</td><td>Selected Greek specimens, microscopy. Vein width and crystal size remain separate quantities.</td><td>Measured; §3.1. <a href="#s3">[3]</a></td></tr>
+<tr><td>Open porosity</td><td>Calcitic marble <strong>0.45 ± 0.26 vol.%</strong>; dolomitic marble <strong>0.91 ± 0.28 vol.%</strong>.</td><td>Class means ±1 SD in a study of 73 total carbonate specimens across five classes; EN 1936 method. Not universal family ordering.</td><td>Measured; Table 2. <a href="#s3">[3]</a></td></tr>
+<tr><td>Roman travertine</td><td>Effective porosity <strong>8.40–14.66%</strong>; sampled massive strata <strong>0.5–5 cm</strong>, banded strata <strong>0.5–8 cm</strong>.</td><td>Lapis tiburtinus specimens from west of Tivoli. Internal voids vary spatially and do not all intersect the visible surface.</td><td>Measured/described; §§3.1–3.2. <a href="#s5">[5]</a></td></tr>
+<tr><td>Bentheim sandstone</td><td>Mean grain <strong>175 μm</strong>; mean pore diameter <strong>92 μm</strong>; porosity <strong>23.4%</strong>.</td><td>One segmented micro-CT volume: 500³ voxels at 4.9 μm. Image-resolution and segmentation dependent.</td><td>Measured image morphology; §2.1, Figure 2. <a href="#s6">[6]</a></td></tr>
+<tr><td>Muğla White calcitic marble finishing roughness</td><td>80-grit <strong>Ra 1.96–2.08 μm</strong>; final polish <strong>Ra 0.05–0.14 μm</strong>.</td><td>Study means from two abrasive systems; 16 positions/plate, 2.5 mm traces, 0.8 mm cutoff; no SD supplied in these tables. Ra is not shader roughness.</td><td>Measured; Tables 4–5. <a href="#s11">[11]</a></td></tr>
+<tr><td>Same finishing study, 60° gloss</td><td>80-grit <strong>2.04–2.11 GU</strong>; final polish <strong>58.02–68.81 GU</strong>.</td><td>Instrument geometry and specimen dependent. Do not remap GU linearly into a renderer roughness slider.</td><td>Measured; Tables 4–5. <a href="#s11">[11]</a></td></tr>
+<tr><td>Marble diffusion coefficients</td><td>RGB reduced scattering σ′s: <strong>2.19 / 2.62 / 3.00 mm⁻¹</strong>; absorption σa: <strong>0.0021 / 0.0041 / 0.0071 mm⁻¹</strong>.</td><td>One measured sample fitted to a particular diffusion model. Not universal marble values and not direct Unreal MFP inputs.</td><td>Fitted; §3, Figures 5–6. <a href="#s12">[12]</a></td></tr>
+</tbody></table></div>
+<div class="note warm"><strong>Calibration requirements:</strong> establish physical tile dimensions and height units before relating grain size, vein width, pore opening or recession depth. Bulk porosity is not surface-hole coverage. Ra does not specify a complete slope distribution. Do not normalize a generated height map to 0–1 to invent physical depth.</div>
+<p class="small">Source caution: Harbord’s Carrara porosity differs between §2.1 (&lt;0.1%) and Table 1 (&lt;0.5%); this report uses its consistent grain-size values instead. Laboratory deformation conditions in that paper are not ordinary surface-weathering conditions.</p>
+</section>
+
+<section id="model"><h2>4. Internal fields and substrate response</h2>
+<p>Use a shared coordinate frame with an explicit metric. Ordinary authoring needs no connected mask: presets create the fabric and response fields automatically. Supplied coordinates, IDs, masks, flow, exposure and reference images override the defaults within the module’s scope.</p>
+<div class="equation">Fabric = { phase weights, grain IDs/orientation, bands, veins,
+           stylolites, inclusions, pore candidates }
+Surface = { finish, moisture, loss L, retained deposit D }
+Hout = H0 + w · (D − L + ΔHfinish + ΔHmicro)</div>
+<p>Here <code>w</code> combines module strength, layer placement and optional masking. Each height term is in the same signed units as <code>H0</code>. Finish and microrelief terms have explicit, bounded amplitude budgets. Zero strength must return every incoming channel exactly.</p>
+<p><strong>Mineral fabric:</strong> phase weights determine base coloration and optical properties; persistent grain identities support coherent variation. Vein and band fields select material, while open-pore and crack fields describe missing material. Avoid independent random noise per output.</p>
+<p><strong>Finish:</strong> polished, honed, sawn and split profiles describe different operations. By default, attenuate only microrelief owned by this module and adjust unresolved surface roughness. Treat inherited relief only when its ownership or intended treatment is explicit: frequency alone cannot distinguish a fine inscription from an abrasive mark. Polishing intensity controls a family-specific response, while scratch direction and residual tool marks remain ordinary optional settings.</p>
+<p><strong>Weathering:</strong> estimate susceptibility from supplied mineral identity, grain boundaries, pores and explicit environmental conditions. Existing slope or recess fields may provide artistic biases, but cannot prove chemical exposure. Carbonate experiments show lithology-dependent damage and gypsum products covering altered stone; therefore retain separate loss and deposit fields. <a class="cite" href="#s10">[10]</a></p>
+<p><strong>Moisture:</strong> distinguish absorbed water, which changes internal light transport, from a surface water film, which adds an interface. A single “wet = darker + smoother” multiplier is an approximation. Use independent absorption and film fields when the rendering contract supports them. <a class="cite" href="#s13">[13]</a></p>
+<p><strong>Distinct damage mechanisms:</strong> carbonate dissolution, grain release (including marble sugaring), differential erosion and scaling should have separate response profiles. The ICOMOS atlas distinguishes interconnected dissolution depressions from isolated pits and grain disintegration. Staining can change color without requiring stone loss. Salt deposition, moisture supply and runoff direction require environmental assumptions or supplied fields; UV-down is not world gravity. <a class="cite" href="#s21">[21]</a></p>
+<p><strong>Coordinate choice:</strong> a 2D fabric is adequate for many slab textures. Object-space or authored 3D coordinates are preferable when one mineral volume must continue across differently oriented faces. Neither triplanar blending nor sampling a single constant-z slice guarantees a coherent volumetric cut.</p>
+</section>
+
+<section id="gpu"><h2>5. Practical GPU methods</h2>
+<p>The following are implementation recommendations, not geological simulations. Start with analytic fields and reserve iterative work for effects that depend materially on barriers, transport or history.</p>
+<div class="table-wrap"><table><thead><tr><th>Method</th><th>Useful role</th><th>Limit / recommendation</th></tr></thead><tbody>
+<tr><td>Periodic multiscale noise and bounded domain warping</td><td>Clouding, gentle fabric deformation, vein modulation and within-phase variation.</td><td>Strong baseline. Filter unresolved octaves; noise alone does not define mineral identity or event order. <a href="#s14">[14]</a> <a href="#s15">[15]</a></td></tr>
+<tr><td>Warped bands and analytic distances</td><td>Compositional bands and economical decorative vein families.</td><td>Use independent spacing, width and irregularity. Repeating contour lines need extra logic for realistic terminations.</td></tr>
+<tr><td>Seeded cells with persistent IDs</td><td>Crystal regions, clasts and repeatable mineral assignment.</td><td>Vary sizes, aspect ratios and boundaries; raw Voronoi polygons and uniformly dark borders look synthetic.</td></tr>
+<tr><td>Sparse curves / fracture-event layers</td><td>Terminating veins, cross-cutting generations and localized branching.</td><td>More control and preprocessing cost; evaluate bounded distances to curves. Represent filling separately from aperture.</td></tr>
+<tr><td>Correlated pore populations</td><td>Travertine openings, grain-boundary pores and localized cavities.</td><td>Relate candidates to fabric; use depth distributions independently of opening width. A height field exposes only a surface representation.</td></tr>
+<tr><td>Optional iterative transport / alteration</td><td>Rain paths, dissolution fronts, deposits and barrier-dependent changes.</td><td>Worthwhile only when history changes the result. Dorsey’s stone weathering is a phenomenological model, not a universal erosion law. <a href="#s17">[17]</a></td></tr>
+</tbody></table></div>
+<h3>Tiling, determinism and resolution</h3>
+<p>Choose feature sizes in physical units, then evaluate them consistently across bake resolutions. Integer-period lattice hashing, compatible band cycles and periodic warps must agree on the same domain. Noninteger frequency changes need a periodic construction; they cannot be made seamless by wrapping only the final UVs. Published periodic gradient noise supplies suitable building blocks. <a class="cite" href="#s15">[15]</a></p>
+<p>Changing resolution must preserve feature placement, seed and dimensional amplitude. Fade unresolved detail according to footprint and carry its statistical effect into roughness where appropriate. Normals must use height units and physical texel spacing. Derive resolved relief once; use a separate residual normal only for detail absent from the height representation. Surface-gradient methods provide a coherent framework for combining such contributions. <a class="cite" href="#s16">[16]</a></p>
+<p>Exact fixed-period tiling generally constrains directional band angle and spacing. Use period-compatible winding or disclose the small adjustment to the requested angle/spacing. Test the carrier, warp, graph neighbors and derivatives together. The periodic-noise primitive alone cannot guarantee that the full construction tiles.</p>
+</section>
+
+<section id="controls"><h2>6. Artist-facing controls</h2>
+<p>Use preset cards, segmented choices and ordinary expandable groups within the inspector; no behavior dropdowns and no separate “advanced” menu. These are <strong>ARTISTIC starting defaults</strong>, chosen for a usable first preset, not measurements. The eight controls below operate on a default fine crystalline marble.</p>
+<div class="table-wrap"><table><thead><tr><th>Primary control</th><th>Proposed default / range</th><th>Coupled behavior</th></tr></thead><tbody>
+<tr><td>Stone Family / Fabric</td><td>Fine crystalline marble; preset cards</td><td>Selects mineral populations, structure recipe and compatible response profiles.</td></tr>
+<tr><td>Crystal / Grain Size</td><td>0.2 mm; soft 0.01–5 mm</td><td>Material regions and microdetail frequency; does not automatically change depth.</td></tr>
+<tr><td>Structure Scale</td><td>100 mm; soft 5–1000 mm</td><td>Vein/band/clast spacing with a coordinated hierarchy of secondary features.</td></tr>
+<tr><td>Structure Amount</td><td>0.35; 0–1</td><td>Presence of veins, bands or inclusions according to preset; preserves crystal scale.</td></tr>
+<tr><td>Structure Direction</td><td>25°; 0–180°</td><td>Fabric orientation. Optional directional reference or 3D frame overrides it.</td></tr>
+<tr><td>Finish</td><td>Honed; segmented profiles, strength 0.7</td><td>Residual microrelief, roughness and optical presentation. Finish profiles remain distinct.</td></tr>
+<tr><td>Alteration</td><td>0; 0–1</td><td>Selected mechanism intensity using independent loss/deposit budgets; not elapsed age.</td></tr>
+<tr><td>Variation</td><td>Seed 1; integer</td><td>Stable correlated feature identities and arrangement across all outputs.</td></tr>
+</tbody></table></div>
+<p><strong>Ordinary optional controls:</strong> mineral palette/proportions, vein width, crystal aspect/orientation spread, branch/termination density, stylolite amount, pore openings and fill, maximum recession, deposit thickness, finish marks, absorption, water film, supplied exposure/flow and overall module strength. Retain independent dimensional budgets even when a primary control drives several effects.</p>
+<p>Useful mechanism presets include clean polished crystalline marble, folded impure marble, mineral-filled fractured carbonate, fossiliferous limestone, banded porous travertine, granular sandstone and cleaved slate. Change structure and response, not merely the palette. Broad variation should come from recipe selection and seeded fields before requiring masks.</p>
+</section>
+
+<section id="channels"><h2>7. Material channel contract</h2>
+<div class="table-wrap"><table><thead><tr><th>Output</th><th>Source fields and required behavior</th></tr></thead><tbody>
+<tr><td>Base color</td><td>Mineral/phase weights, inclusions, absorbed coloration and deposits. No baked light, highlights or AO. A dark line is not automatically a crack.</td></tr>
+<tr><td>Height</td><td>Preserved H0 plus signed local finish, loss and deposit terms. Explicit units and range; no automatic normalization.</td></tr>
+<tr><td>Normal</td><td>Height-derived resolved relief once. Preserve incoming residual detail and blend only genuinely additional unresolved detail.</td></tr>
+<tr><td>Roughness</td><td>Finish, phase response and unresolved surface statistics; fit to references. Neither Ra nor gloss units directly equals shader roughness.</td></tr>
+<tr><td>AO</td><td>Optional cavity visibility estimate at a declared scale. Do not derive AO from color darkness or bake it into base color.</td></tr>
+<tr><td>Metallic</td><td>Ordinary carbonate and silicate stone use dielectric shading. Any explicitly modeled conductive inclusion needs its own phase, not a globally metallic stone preset.</td></tr>
+<tr><td>Surface optics</td><td>Phase/finish-dependent specular behavior, optional scattering and absorption, optional water/coating interface. Keep these distinct from RGB tint.</td></tr>
+<tr><td>Published references</td><td>Stable integer region identity, phase weights, vein/band/stylolite masks, open pores, alteration and directional fields where useful.</td></tr>
+</tbody></table></div>
+<p>Needed contracts are an explicit physical coordinate/height scale, channel ownership and validity, residual-versus-height normal ownership, and typed optional optical fields. Existing outputs can remain; additions should extend their semantics without discarding older features.</p>
+<p>Separate <strong>Stone Material</strong>, which authors a new mineral appearance over the incoming shape, from <strong>Stone Finish/Weathering</strong>, which retains the existing stone composition and modifies its surface. Both may share one implementation and preset system. A height field is not object thickness; thin-slab transmission needs supplied thickness or suitable geometry.</p>
+<p>For UE 5.8, Substrate’s SSS mean-free-path input uses <strong>centimeters</strong>. Its Blendable GBuffer path does not support diffusion SSS through per-pixel MFP. Make the selected render path explicit; do not claim an exported base-color/roughness texture reproduces marble diffusion. Jensen’s fitted reduced scattering and absorption coefficients require a model-aware conversion and validation, not direct copying into that input. <a class="cite" href="#s12">[12]</a> <a class="cite" href="#s18">[18]</a></p>
+</section>
+
+<section id="delivery"><h2>8. Implementation phases and acceptance tests</h2>
+<ol>
+<li><strong>Useful first version:</strong> immutable incoming bundle, physical scale, deterministic periodic fabric, separate veins/bands/grains, polished/honed profiles, bounded relief, correlated outputs and automatic marble presets.</li>
+<li><strong>Material breadth:</strong> limestone inclusions, travertine pores/fill, granite phase populations, sandstone cement and slate directionality. Add event-ordered veins and selective loss.</li>
+<li><strong>Worthwhile advanced capability:</strong> validated optical scattering, 3D material coordinates, environmental transport and cached iterative weathering where it improves a specific use case.</li>
+</ol>
+<p><strong>Acceptance scenes:</strong> one flat slab, one embossed relief, a carved recess, a rounded edge and a UV seam. Compare under neutral diffuse illumination, grazing light and controlled highlights.</p>
+<ul>
+<li><strong>Identity:</strong> zero strength or empty mask returns all incoming channels unchanged.</li>
+<li><strong>Preservation:</strong> painted veins and crystal-color changes leave H0 intact; no relief-wide bulge or flattening.</li>
+<li><strong>Separation:</strong> vein width changes without changing pit depth; polish changes without rearranging mineral IDs.</li>
+<li><strong>Continuity:</strong> inspect a 3×3 tiled view, derivative continuity and opposite borders at several angles, scales and seeds.</li>
+<li><strong>Resolution:</strong> compare 512, 1024 and 4096 bakes over the same physical area; positions and dimensions remain stable.</li>
+<li><strong>Masking and order:</strong> soft masks, nested scopes, copy/paste and instances preserve ownership; later layers see the resulting composite.</li>
+<li><strong>Extreme settings:</strong> bound large pores, recession, deposits and warps; avoid invalid normals, disappearing substrate and unmarked overhang claims.</li>
+<li><strong>Optics:</strong> roughness extremes and wet/dry comparisons remain energy-plausible; no AO painted into color or duplicated relief normals.</li>
+</ul>
+</section>
+
+<section id="code"><h2>9. Existing marble-pattern code: focused assessment</h2>
+<p><strong>Retain it as a fabric generator.</strong> Its warped vein families, stripes, tint, cells/IDs, deterministic seed, optional coordinates and 2D/3D noise paths are useful. It currently has no incoming material/height bundle and produces no height, normal or roughness output. Add a surfacing wrapper rather than deleting its features.</p>
+<ul>
+<li><code>roughness</code> means fBm amplitude persistence, not material roughness. <code>grain</code> adds noise to the vein mask, not a mineral-grain model. Clarify their artist-facing labels while preserving behavior.</li>
+<li><code>F2−F1</code> is a cellular boundary indicator, not metric distance to the nearest cell boundary. A constant threshold does not establish constant physical seam width.</li>
+<li><code>veinwidth</code> thresholds the absolute sine of a band phase. Its visible width therefore changes with frequency, scale and local warp stretching. Keep it as an artistic threshold until metric or gradient-aware width control is added.</li>
+<li>Normalized hashed <code>cellid</code> values are convenient variation values, not guaranteed unique region IDs. Keep them, and publish an additional stable integer identity where downstream operations require uniqueness.</li>
+<li>With default turbulent absolute noise and <code>tintreuse</code>, <code>tintm = clamp(0.5 + 0.5·t1)</code> occupies the upper half of its range before stripe mixing; <code>tintscale</code> is unused in that branch.</li>
+<li>Tiled stripes use direction <code>(−sin(sang), cos(sang))</code>; untiled evaluation yields <code>(+sin(sang), cos(sang))</code>. Their angle conventions disagree.</li>
+<li>At scale 4, stripe frequency 6, zero angles/distortion/warps: tiled mode produces <strong>6 bands</strong>, untiled mode <strong>24</strong>. Frequency semantics need alignment.</li>
+<li>The overall periodic-wrapping construction is otherwise coherent in this inspection: the caller snaps tiled lacunarity. Preserve tiling controls while correcting the specific inconsistencies.</li>
+<li>There is no footprint-aware octave or line filtering. Very fine features can alias despite resolution-independent coordinates.</li>
+<li>A CPU reproduction found a 3D Worley case where the 27-neighbor search misses the true second-nearest point. The nearest point remains correct; the edge field changes when a sufficiently broad edge threshold is used. This is a helper-level finding, not a claim about a default Houdini render.</li>
+<li>OpenCL <code>mix</code> requires weights within 0–1. Several artist-facing weights are not bounded in the kernel; the defaults are safe, but the intended extrapolation behavior should be explicit. Binding and function syntax references were checked separately. <a class="cite" href="#s19">[19]</a> <a class="cite" href="#s20">[20]</a></li>
+</ul>
+<div class="note"><strong>Validation status:</strong> source inspection, algebra and the identified CPU helper reproduction. This report does not claim a Houdini compile, execution, visual benchmark or UE integration test.</div>
+</section>
+
+<section id="sources"><h2>10. Free full-text sources and relevant sections</h2>
+<ol class="source-list">
+<li id="s1"><strong>Natural Stone Institute — Scientific versus Commercial Definitions.</strong><a href="https://www.naturalstoneinstitute.org/consumers/varieties/definition/">Full technical reference</a>. Geological identity versus trade grouping; named examples.</li>
+<li id="s2"><strong>Utah Geological Survey — Igneous, Sedimentary &amp; Metamorphic Rocks.</strong><a href="https://geology.utah.gov/map-pub/survey-notes/glad-you-asked/igneous-sedimentary-metamorphic-rocks/">Full illustrated reference</a>. Intrusive, sedimentary, foliated and nonfoliated sections.</li>
+<li id="s3"><strong>Badouna et al. (2020) — Greek Carbonate Stones.</strong><a href="https://mdpi-res.com/d_attachment/minerals/minerals-10-00507/article_deploy/minerals-10-00507.pdf">Full PDF</a>. §3.1, Figures 2–3 and Table 2; petrography, mineral phases and specimen statistics.</li>
+<li id="s4"><strong>Harbord, Brantut &amp; Wallis (2023) — Grain-Size Effects During Semi-Brittle Flow of Calcite Rocks.</strong><a href="https://www.normalesup.org/~brantut/files/2023JB026458.pdf">Author-hosted full PDF</a>. §2.1, Table 1 and Figure 1; starting materials and grain-size definition.</li>
+<li id="s5"><strong>Luza Huillca et al. (2023) — Geomechanical characterization of travertine.</strong><a href="https://link.springer.com/article/10.1007/s42452-023-05420-w">Open full article</a>. §§3.1–3.2, Figures 2–4; Roman travertine fabric and tomography.</li>
+<li id="s6"><strong>Wetzel, Kempka &amp; Kühn (2020) — Pore Space Alterations within a Sandstone.</strong><a href="https://www.mdpi.com/1996-1944/13/14/3100">Open full article</a>; <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7411822/">free PMC mirror</a>. §2.1 and Figure 2: measured initial digital fabric; subsequent alteration is simulated.</li>
+<li id="s7"><strong>Oxford University Museum of Natural History — Corsi identification guide.</strong><a href="https://www.oum.ox.ac.uk/corsi/stones/identify">Full illustrated guide</a>. Crystals, banding, veins/stylolites, breccias and cavities.</li>
+<li id="s8"><strong>Magni et al. (2025) — Stylolites in Carbonate Rocks: Morphological Variability According to the Host Rock Texture.</strong><a href="https://www.mdpi.com/2075-163X/15/2/132">Open full article</a>. Introduction and Discussion: pressure solution and host-texture effects.</li>
+<li id="s9"><strong>Oxford Corsi Collection — Portoro specimen 133.</strong><a href="https://www.oum.ox.ac.uk/corsi/stones/view/133">Specimen record</a>. Separate veins, stylolites and goethite-bearing calcite.</li>
+<li id="s10"><strong>Molina et al. (2020) — Influence of Surface Finishes and a Calcium Phosphate-Based Consolidant on the Decay of Sedimentary Building Stones Due to Acid Attack.</strong><a href="https://www.frontiersin.org/journals/materials/articles/10.3389/fmats.2020.581979/full">Open full article</a>. Experimental results and microscopy: lithology-dependent damage and gypsum products under artificial SO₂ exposure.</li>
+<li id="s11"><strong>Çetintaş (2025) — Polishing Performance of Muğla White Marble with Different Abrasives.</strong><a href="https://link.springer.com/content/pdf/10.1007/s12371-025-01064-x.pdf">Open full PDF</a>. Measurement method and Tables 4–5: roughness and 60° gloss.</li>
+<li id="s12"><strong>Jensen et al. (2001) — A Practical Model for Subsurface Light Transport.</strong><a href="https://www.cs.cornell.edu/courses/cs667/2005sp/readings/jensen01.pdf">Full paper</a>. §3 and Figures 5–6: measurement and fitted marble coefficients.</li>
+<li id="s13"><strong>Jensen, Legakis &amp; Dorsey — Rendering of Wet Materials.</strong><a href="https://graphics.cs.yale.edu/sites/default/files/wet.pdf">Full paper</a>. §§2.1–2.2: absorbed moisture and a surface liquid film.</li>
+<li id="s14"><strong>Physically Based Rendering, third edition — Noise.</strong><a href="https://pbr-book.org/3ed-2018/Texture/Noise">Free technical chapter</a>. §10.6.6 and related sections: noise, fractals and filtering.</li>
+<li id="s15"><strong>Gustavson &amp; McEwan (2022) — Tiling Simplex Noise and Flow Noise in Two and Three Dimensions.</strong><a href="https://www.jcgt.org/published/0011/01/02/paper-lowres.pdf">Full paper</a>. Periodicity, derivatives and implementation.</li>
+<li id="s16"><strong>Mikkelsen (2020) — Surface Gradient–Based Bump Mapping Framework.</strong><a href="https://jcgt.org/published/0009/03/04/paper-lowres.pdf">Full paper</a>. Height-derived gradients and layered detail.</li>
+<li id="s17"><strong>Dorsey et al. — Modeling and Rendering of Weathered Stone.</strong><a href="https://graphics.cs.yale.edu/sites/default/files/p225-dorsey.pdf">Full paper</a>. §4.3 and §7; phenomenological weathering and limitations.</li>
+<li id="s18"><strong>Epic Games — Overview of Substrate Materials, UE 5.8.</strong><a href="https://dev.epicgames.com/documentation/unreal-engine/overview-of-substrate-materials-in-unreal-engine?application_version=5.8">Official technical documentation</a>. SSS mean free path units and Blendable GBuffer limitations.</li>
+<li id="s19"><strong>SideFX — Houdini OpenCL for VEX users.</strong><a href="https://www.sidefx.com/docs/houdini/vex/ocl.html">Official documentation</a>. Binding decorations and layer binding methods.</li>
+<li id="s20"><strong>Khronos — OpenCL C Specification.</strong><a href="https://registry.khronos.org/OpenCL/specs/unified/html/OpenCL_C.html">Official specification</a>. §6.15.4: common functions, including interpolation-weight requirements.</li>
+<li id="s21"><strong>ICOMOS–ISCS — Illustrated Glossary on Stone Deterioration Patterns.</strong><a href="https://www.icomos.org/public/publications/monuments_and_sites/15/pdf/Monuments_and_Sites_15_ISCS_Glossary_Stone.pdf">Free full illustrated atlas</a>. Printed pp. 20–21: granular disintegration/sugaring; pp. 30–31: differential erosion; pp. 34–35: microkarst; pp. 62–63: subflorescence.</li>
+</ol>
+<p class="small">All references are freely accessible articles, author copies, public research repositories, institutional references or technical documentation. Availability can intermittently be affected by publisher rate limits. Procedural algorithms, UI ranges and implementation phases in this report are engineering proposals, not measured geological constants.</p>
+</section>
+<footer>Mixtormat · Marble &amp; Stone Surfacing Audit · Research and implementation design, not a geological identification certificate</footer>
+</main>
+</body>
+</html>

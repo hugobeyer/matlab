@@ -5,7 +5,8 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Style/MixtormatDesignTokens.h"
 #include "Style/MixtormatThemeStore.h"
-#include "Styling/AppStyle.h"
+#include "Style/MixtormatStyle.h"
+#include "Style/MixtormatTypography.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -17,20 +18,29 @@
 
 void SMixtormatBakeResultDialog::Construct(const FArguments& InArgs)
 {
+	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle BodyStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	ChildSlot
 	[
 		SNew(SBorder)
-		.Padding(FMixtormatThemeStore::GetResolved().ControlLayout.DialogPadding)
-		.BorderImage(FAppStyle::GetBrush(TEXT("ToolPanel.GroupBorder")))
+		.Padding(Resolved.ControlLayout.DialogPadding)
+		.BorderImage(Style.GetBrush(TEXT("Mixtormat.Window")))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
 				SNew(SScrollBox)
+				.ScrollBarStyle(&Style.GetWidgetStyle<FScrollBarStyle>(TEXT("Mixtormat.ScrollBar")))
+				.ScrollBarThickness(FVector2D(Resolved.ShellLayout.ScrollbarThickness))
 				+ SScrollBox::Slot()
 				[
 					SNew(STextBlock)
 					.Text(InArgs._Message)
+					.Font(BodyStyle.Font)
+					.ColorAndOpacity(BodyStyle.ColorAndOpacity)
 					.AutoWrapText(true)
 				]
 			]
@@ -66,14 +76,24 @@ TSharedRef<SWidget> SMixtormatBakeResultDialog::MakeActionButton(
 	const FText& Label,
 	const EMixtormatBakeResultAction InAction)
 {
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle LabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	return SNew(SButton)
-		.Text(Label)
+		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.TopButton")))
 		.OnClicked_Lambda([this, InAction]()
 		{
 			Action = InAction;
 			CloseWindow();
 			return FReply::Handled();
-		});
+		})
+		[
+			SNew(STextBlock)
+			.Text(Label)
+			.Font(LabelStyle.Font)
+			.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+		];
 }
 
 void SMixtormatBakeResultDialog::CloseWindow()

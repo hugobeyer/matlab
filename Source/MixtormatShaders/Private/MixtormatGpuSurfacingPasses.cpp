@@ -1156,18 +1156,27 @@ FRDGTextureRef ApplySurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLay
 	const FMixtormatMoss& Mo = Child.Surfacing.Moss;
 	const bool bRust = Child.Surfacing.Type == EMixtormatSurfacingType::Rust;
 	const FMixtormatRust& Ru = Child.Surfacing.Rust;
-	const float Amount = (bRust ? Ru.Amount : (bMoss ? Mo.Amount : S.Amount)) * AncestorAmount;
+	const bool bWood = Child.Surfacing.Type == EMixtormatSurfacingType::Wood;
+	const FMixtormatWood& W = Child.Surfacing.Wood;
+	const bool bWoodActive = W.Mode == EMixtormatWoodMode::FullWood
+		|| (W.Finish != EMixtormatWoodFinish::Bare && W.FinishAmount > 0.0f);
+	const float Amount = (bWood ? W.Amount : (bRust ? Ru.Amount : (bMoss ? Mo.Amount : S.Amount))) * AncestorAmount;
 	const bool bRustActive = !bRust || Ru.Coverage > 0.0f;
-	const bool bHeight = bRust
+	const bool bHeight = bWood ? (bWoodActive && W.bWriteHeight && W.HeightScale != 0.0f) : (bRust
 		? (Ru.bWriteHeight && bRustActive && Ru.HeightScale != 0.0f && (Ru.PitDepth != 0.0f || Ru.Buildup != 0.0f))
-		: (bMoss ? (Mo.bWriteHeight && Mo.HeightScale != 0.0f) : (S.bWriteHeight && S.HeightScale != 0.0f));
-	const bool wColor = (bRust ? Ru.bWriteColor : (bMoss ? Mo.bWriteColor : S.bWriteColor)) && bRustActive;
-	const bool wRough = (bRust ? Ru.bWriteRoughness : (bMoss ? Mo.bWriteRoughness : S.bWriteRoughness)) && bRustActive;
-	const bool wMetal = bRust && Ru.bWriteMaterial && bRustActive;
-	const bool wAO = !bRust && !bMoss && S.bWriteAO;
-	const bool wF0 = (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteF0)) && bRustActive;
-	const bool wFuzz = (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteFuzz)) && bRustActive;
-	const bool wSSS = (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteSSS)) && bRustActive;
+		: (bMoss ? (Mo.bWriteHeight && Mo.HeightScale != 0.0f) : (S.bWriteHeight && S.HeightScale != 0.0f)));
+	const bool wColor = bWood ? (bWoodActive && W.bWriteColor)
+		: (bRust ? Ru.bWriteColor : (bMoss ? Mo.bWriteColor : S.bWriteColor)) && bRustActive;
+	const bool wRough = bWood ? (bWoodActive && W.bWriteRoughness)
+		: (bRust ? Ru.bWriteRoughness : (bMoss ? Mo.bWriteRoughness : S.bWriteRoughness)) && bRustActive;
+	const bool wMetal = bWood ? (bWoodActive && W.bWriteMaterial) : bRust && Ru.bWriteMaterial && bRustActive;
+	const bool wAO = !bWood && !bRust && !bMoss && S.bWriteAO;
+	const bool wF0 = bWood ? (bWoodActive && W.bWriteMaterial)
+		: (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteF0)) && bRustActive;
+	const bool wFuzz = bWood ? (bWoodActive && W.bWriteMaterial)
+		: (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteFuzz)) && bRustActive;
+	const bool wSSS = bWood ? (bWoodActive && W.bWriteMaterial)
+		: (bRust ? Ru.bWriteMaterial : (!bMoss && S.bWriteSSS)) && bRustActive;
 	const bool wNormal = bMoss && Fields.DetailNormal && Mo.bWriteNormal && Mo.NormalStrength != 0.0f;
 	const float NormalStrength = bMoss ? Mo.NormalStrength : 0.0f;
 	if (!Fields.Height || Amount <= 0.0f
@@ -1247,6 +1256,11 @@ void PublishSurfacingFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassCo
 	const FLayerRenderData& Layer, const FChildRenderData& Child, const FSurfacingFields& Raw,
 	FRDGTextureRef Gate, FRDGTextureRef BeforeHeight, FRDGTextureRef AfterHeight, float AncestorAmount)
 {
+	if (Child.Surfacing.Type == EMixtormatSurfacingType::Wood)
+	{
+		PublishWoodFields(Ctx, LayerCtx, Layer, Child, Raw, Gate, BeforeHeight, AfterHeight, AncestorAmount);
+		return;
+	}
 	check(LayerCtx.LayerInputBC && LayerCtx.LayerInputRAM && LayerCtx.LayerInputOptics && LayerCtx.LayerInputSubsurface);
 	FRDGTextureRef Scalars[7];
 	const FName Names[] = {FName(TEXT("Height")), FName(TEXT("Roughness")), FName(TEXT("AO")),

@@ -23,6 +23,37 @@ namespace MixtormatGpuCompositor
 		Child.SourceChildIndex = SourceChildIndex;
 		Child.ScopeOwnerSourceChildIndex = MixtormatChildScope::ResolveOwnerIndex(Layer.Children, SourceChildIndex);
 		Child.Surfacing = LayerChild.Surfacing;
+		if (Child.Surfacing.Type == EMixtormatSurfacingType::Wood)
+		{
+			FMixtormatWood& W = Child.Surfacing.Wood;
+			const FMixtormatWood Defaults;
+			// Retain finite resolved bindings; slider ranges are not runtime limits.
+#define WOOD_FINITE(Member) if (!FMath::IsFinite(W.Member)) { W.Member = Defaults.Member; }
+			WOOD_FINITE(Amount); WOOD_FINITE(HeightScale);
+			WOOD_FINITE(RingScale); WOOD_FINITE(LatewoodRatio); WOOD_FINITE(LatewoodSharpness);
+			WOOD_FINITE(RingWobble); WOOD_FINITE(PoreDepth); WOOD_FINITE(PoreDensity);
+			WOOD_FINITE(RayAmount); WOOD_FINITE(RayScale); WOOD_FINITE(PithOffset); WOOD_FINITE(CutTilt);
+			WOOD_FINITE(FigureAmount); WOOD_FINITE(FigureScale); WOOD_FINITE(Chatoyance);
+			WOOD_FINITE(PrepIntensity); WOOD_FINITE(Weathering); WOOD_FINITE(Roughness);
+			WOOD_FINITE(FinishAmount); WOOD_FINITE(WetOut); WOOD_FINITE(TintAmount);
+			WOOD_FINITE(FilmBuild); WOOD_FINITE(DepressionFill); WOOD_FINITE(Sheen);
+			WOOD_FINITE(ApplicationTexture); WOOD_FINITE(ApplicationAngle); WOOD_FINITE(Wear);
+#undef WOOD_FINITE
+			const auto SanitizeColor = [](FLinearColor& C, const FLinearColor& D)
+			{
+				C.R = FMath::IsFinite(C.R) ? FMath::Max(0.0f, C.R) : D.R;
+				C.G = FMath::IsFinite(C.G) ? FMath::Max(0.0f, C.G) : D.G;
+				C.B = FMath::IsFinite(C.B) ? FMath::Max(0.0f, C.B) : D.B;
+				C.A = 1.0f;
+			};
+			SanitizeColor(W.FinishTint, Defaults.FinishTint);
+			for (FMixtormatColorRampStop& Stop : W.ColorRamp.Stops)
+			{
+				SanitizeColor(Stop.Color, FLinearColor::Black);
+			}
+			W.ColorRamp.Sanitize();
+			return;
+		}
 		if (Child.Surfacing.Type == EMixtormatSurfacingType::Moss)
 		{
 			// Moss moved from GeneratorGather: same sanitization, seed resolution

@@ -15,7 +15,8 @@ file splits. Moss and GPU-pass internals are outside this work.
 | Hover help — patched 2026-10-24 | Status dots, both tab helpers, gallery drawer header and layer/group Noise-mask rows now use `SMixtormatHelp::MakeStyledToolTip`. | Owner verifies hover appearance and input behavior; this does not certify every tooltip in the plugin. |
 | Ramp stop row — fixed | `SMixtormatColorRamp.cpp` uses resolved `ControlLabel` typography; `ColorRampStopLabelGap`, `ColorRampStopSwatchWidth/Height` and `ColorRampChromeGap` retain 6px, 22×16 and 2px. The 8px gap reuses `ScalarRampToolbarGroupGap`. | New metrics are in theme/schema/JSON; generic swatches are currently 32×12 and `RowLabelGap` is 4, so substituting those would change appearance. Stop dragging, endpoint locks, picker callbacks and the already-styled hover remain unchanged. |
 | Tab styling — fixed | `MakeTab` reads `ControlLayout.TabInactiveOpacity` (0.55) from the resolved theme. | Retains neutral white without adding a palette tint; active foreground and both existing tooltip adapters are unchanged. |
-| Bake dialog — fixed | `SMixtormatBakeSettingsDialog.cpp` uses resolved `ControlLabel`, `Caption` and `Body` roles with Text/TextMuted/Error palette colors, not local font weights or inherited/subdued foreground. | Summary leading retains 1.35 via `BakeDialogSummaryLineHeight` in theme/schema/JSON. Shared scrollbar styling and wrapping cover long output names. Native picker/menu internals still need owner checks. |
+| Bake settings dialog — fixed | `SMixtormatBakeSettingsDialog.cpp` uses resolved `ControlLabel`, `Caption` and `Body` roles with Text/TextMuted/Error palette colors, not local font weights or inherited/subdued foreground. | Summary leading retains 1.35 via `BakeDialogSummaryLineHeight` in theme/schema/JSON. Shared scrollbar styling and wrapping cover long output names. Native picker/menu internals still need owner checks. |
+| Bake result dialog — patched in this follow-up | `SMixtormatBakeResultDialog.cpp` now uses the existing `Mixtormat.Window`, `Mixtormat.ScrollBar` and `Mixtormat.TopButton` styles, resolved scrollbar thickness, Body message and ControlLabel action typography with palette Text. | Previously used `ToolPanel.GroupBorder` and default Slate text/scrollbar/buttons. Modal ownership, message wrapping, window dimensions, footer layout and all five action callbacks remain unchanged; owner visual checks below. |
 | Mask-thumbnail hover — fixed | `BuildMaskPreviewTooltip` passes the existing pooled thumbnail to `SMixtormatHelp::MakeStyledToolTip`'s optional preview slot. | Shared help panel, padding, body text and width replace its private `SToolTip` surface. Thumbnail size follows Gallery TileSize, bounded by the help content width; texture lookup and thumbnail lifetime are preserved. |
 | Interactive popovers — fixed/checked | Parameter info/range/authoring, driver/group controls and preset naming reuse `MixtormatParameterPresentation` for bounded, clipped, themed scrolling. | Menu/card surfaces remain outside the scroll viewport. Form/info rows can grow beyond RowHeight; captions, errors and action labels wrap. Existing callbacks, type locks, enabled states and commit/dismiss routes are retained; runtime interaction checks remain. |
 
@@ -98,11 +99,37 @@ identity/association, automatic matching, validation clearing and Bake/Cancel be
 remain untouched. Native popup/help exceptions below remain; no runtime equivalence
 is claimed for these source-only styling changes.
 
+### Bake result follow-up — local styling only
+
+Current-source inspection confirmed the five settings-dialog tokens above and their readers
+already exist; this pass did not redo them or edit shared tokens/theme/schema. The additional
+source change is confined to `Widgets/Dialogs/SMixtormatBakeResultDialog.cpp`:
+
+- `Construct`: reuse the settings dialog's window brush and scrollbar style/thickness;
+  message text uses resolved Body typography and palette Text instead of native defaults.
+- `MakeActionButton`: reuse TopButton and ControlLabel/Text styling. Close, Re-bake,
+  Apply to Selected Actors, Open Material Instance and Reveal Outputs keep their exact
+  labels, order, action values, callbacks and window-close path. No enabled-state policy,
+  tooltip, input wrapper, scroll container, focus or capture handler was added or removed.
+- Existing dialog dimensions, padding, button gaps, footer margin and message AutoWrapText
+  remain. The horizontal footer is intentionally not redesigned; large-font/localized-label
+  fit remains an owner check, not a claim of responsive-layout certification.
+
+Owner checks for **Bake Complete**: compare default/custom themes and DPI/font scales;
+inspect body contrast, button normal/hover/pressed/keyboard-focus states and scrollbar
+appearance. With long output reports, drag/wheel-scroll to the final line; confirm all five
+footer actions stay visible and reachable. Verify Tab/Shift+Tab traversal, button activation,
+modal focus restoration and each action's existing result. Check title-bar close separately.
+No runtime/Unreal verification was performed; no commands, builds, tests or diagnostics ran.
+Q/drag and all excluded feature-owner files remain untouched.
+
 ### Engine-owned popup/help exceptions — retained, not restyled
 
 All bake sites below are in `SMixtormatBakeSettingsDialog.cpp`. Engine implementation/API
 availability was not inspected; these are confirmed native call-site boundaries, not
-claims that Unreal cannot support customization. No widget-tree tooltip suppression,
+claims that Unreal cannot support customization. This follow-up rechecked the listed call
+sites against current source; their native integrations are not unfinished replacement work.
+No widget-tree tooltip suppression,
 replacement picker or new wrapper is proposed. `SMixtormatHelp` clears native help in
 its subtree, so wrapping these controls could erase engine-generated descriptions.
 
@@ -112,6 +139,7 @@ its subtree, so wrapping these controls could erase engine-generated description
 | `Construct` → `SObjectPropertyEntryBox` | Engine owns asset picker/help, selection and browse/use/clear affordances; `AllowedClass(UMaterialInterface)`, `AllowClear(true)` and `DisplayThumbnail(false)` stay unchanged. | In Custom Material mode, select and clear a master; inspect asset help, search focus and scrolling. Confirm mapping refresh and validation clearing. Keep the entry thumbnail hidden; retain picker thumbnails wherever the engine supplies them. |
 | `BuildParameterMenu` → `FMenuBuilder` / `AddMenuEntry` | Native radio entries retain `[Unassigned]` help and parameter/sampler descriptions. `FUIAction` owns execution/checked state; no per-entry `IToolTip` adapter is used at this call site. | Open all four mappings with zero/many parameters and long global/layer/blend names. Inspect native help, radio checks, keyboard selection, scrolling, popup edges and dismissal. Choose `[Unassigned]` and a parameter; confirm the displayed label and validation clearing. No disabled predicate/reason exists in these entries; do not invent one. |
 | `MixtormatEditorModule.cpp::StartupModule` → tab-spawner `SetTooltipText` | Unreal host registration owns tab/menu help; spawner remains `Hidden`. | Inspect workspace tab/host help where exposed; retain host activation/focus and do not expose a new menu entry just to check styling. |
+| `SMixtormatBakeResultDialog.cpp::ShowMixtormatBakeResultDialog` → `SWindow` / `AddModalWindow` | Native title bar, window controls and modal ownership remain engine-managed; only the authored result content is restyled. | Close via title bar and footer, check parent-window focus restoration, and inspect window controls at high DPI. Do not replace the modal window to theme host chrome. |
 
 Owner acceptance, still pending: default/custom themes, large fonts and DPI scaling;
 Browse glyph size; mapping caption/label spacing; validation above the footer with empty

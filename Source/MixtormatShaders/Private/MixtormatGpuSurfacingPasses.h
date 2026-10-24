@@ -25,6 +25,8 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Pores = nullptr;       // Unit scalar pore cavity diagnostic.
 		FRDGTextureRef Compression = nullptr; // Unit scalar curvature-driven compression cue.
 		FRDGTextureRef DetailNormal = nullptr; // Moss leaf-detail normal (encoded RGB). Skin uses height-derived normals.
+		FRDGTextureRef WoodDiagnostics = nullptr; // RGBA: pores, latewood, rays, remaining coat in relative height units.
+		FRDGTextureRef WoodFlow = nullptr; // Destination-space fiber direction; RG vector, B zero, A validity.
 	};
 
 	// Child.Surfacing must be the instance/binding-resolved, gather-sanitized Runtime payload.
@@ -51,6 +53,13 @@ namespace MixtormatGpuCompositor
 	FSurfacingFields AddRustSurfacePasses(FMixtormatComposeContext& Ctx,
 				FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 				const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
+
+	FSurfacingFields AddWoodSurfacePasses(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+		const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
+	void PublishWoodFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FChildRenderData& Child, const FSurfacingFields& Raw,
+		FRDGTextureRef Gate, FRDGTextureRef BeforeHeight, FRDGTextureRef AfterHeight, float AncestorAmount);
 
 	FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
 		const FLayerRenderData& Layer, const FChildRenderData& Child, FRDGTextureRef RunningHeight,

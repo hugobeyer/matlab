@@ -1,0 +1,373 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Analytic wood/finish approximation. Height and film build use relative units, not millimeters.
+#include "/Engine/Public/Platform.ush"
+int2 OutputSize;
+
+#if WOOD_STAGE == 0
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
+uint Mode, Species, Cut, Figure, Prep, Finish, Seed;
+// @param HeightScale
+float HeightScale;
+// @param RingScale
+float RingScale;
+// @param LatewoodRatio saturates
+float LatewoodRatio;
+// @param LatewoodSharpness saturates
+float LatewoodSharpness;
+// @param RingWobble saturates
+float RingWobble;
+// @param PoreDepth
+float PoreDepth;
+// @param PoreDensity saturates
+float PoreDensity;
+// @param RayAmount saturates
+float RayAmount;
+// @param RayScale
+float RayScale;
+// @param PithOffset
+float PithOffset;
+// @param CutTilt
+float CutTilt;
+// @param FigureAmount saturates
+float FigureAmount;
+// @param FigureScale
+float FigureScale;
+// @param Chatoyance saturates
+float Chatoyance;
+// @param PrepIntensity saturates
+float PrepIntensity;
+// @param Weathering saturates
+float Weathering;
+// @param Roughness saturates
+float Roughness;
+// @param FinishAmount saturates
+float FinishAmount;
+// @param WetOut saturates
+float WetOut;
+// @param TintAmount saturates
+float TintAmount;
+float4 FinishTint;
+// @param FilmBuild
+float FilmBuild;
+// @param DepressionFill saturates
+float DepressionFill;
+// @param Sheen saturates
+float Sheen;
+// @param ApplicationTexture saturates
+float ApplicationTexture;
+// @param ApplicationAngle
+float ApplicationAngle;
+// @param Wear saturates
+float Wear;
+uint ColorCount, ColorInterpolation;
+float4 ColorPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 ColorColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+Texture2D<float> SubstrateHeight;
+Texture2D<float4> InputColor, InputRAM, InputOptics;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float4> OutColor, OutRAM, OutOptics, OutDiagnostics, OutFlow;
+
+static const float WOOD_TAU = 6.28318530718f;
+static const float WOOD_F0 = 0.04f;
+static const float WOOD_TILE_BLEND_START = 0.75f;
+static const float WOOD_RING_RELIEF = 0.012f;
+static const float WOOD_PREP_RELIEF = 0.004f;
+static const float WOOD_FIGURE_DISPLACEMENT = 0.06f;
+static const float WOOD_FIBER_STEP = 0.001f;
+static const float WOOD_ENVELOPE_RADIUS = 0.003f; // Tile widths; does not change with resolution.
+static const float WOOD_COAT_REFERENCE = 0.01f; // Optical coverage scale in relative height units.
+static const float WOOD_MARK_PERIOD = 160.0f;
+
+float WoodHash(int2 Cell, uint Salt)
+{
+	uint H = MixtormatHashU(asuint(Cell.x) ^ MixtormatHashU(asuint(Cell.y) ^ Seed) ^ Salt);
+	return float(H & 0x00ffffffu) / 16777216.0f;
+}
+
+float WoodNoise(float2 Q)
+{
+	int2 C = int2(floor(Q));
+	float2 T = frac(Q);
+	T = T * T * (3.0f - 2.0f * T);
+	return lerp(lerp(WoodHash(C, 17u), WoodHash(C + int2(1, 0), 17u), T.x),
+		lerp(WoodHash(C + int2(0, 1), 17u), WoodHash(C + 1, 17u), T.x), T.y);
+}
+
+float Resolved(float Frequency, float Footprint)
+{
+	return 1.0f - smoothstep(0.35f, 0.9f, abs(Frequency) * Footprint);
+}
+
+float2 FigureOffset(float3 Q)
+{
+	float F = max(abs(FigureScale), 0.0001f);
+	float A = WOOD_FIGURE_DISPLACEMENT * saturate(FigureAmount);
+	float Phase = float(Seed % 1024u) / 1024.0f;
+	if (Figure == 1u) // Curly: axial fiber undulation, not a species.
+	{
+		return A * float2(sin(WOOD_TAU * (Q.z * F + Phase)), cos(WOOD_TAU * (Q.z * F + Phase)));
+	}
+	if (Figure == 2u)
+	{
+		return A * float2(sin(WOOD_TAU * Q.z * F) * cos(WOOD_TAU * Q.x * F),
+			cos(WOOD_TAU * Q.z * F) * sin(WOOD_TAU * Q.x * F));
+	}
+	if (Figure == 3u) // Local conical dimples through the radial growth coordinate.
+	{
+		float2 P = float2(Q.x, Q.z) * F * 3.0f;
+		int2 C = int2(floor(P));
+		float Dimple = 0.0f;
+		[unroll] for (int Y = -1; Y <= 1; ++Y)
+		[unroll] for (int X = -1; X <= 1; ++X)
+		{
+			int2 Cell = C + int2(X, Y);
+			float2 Center = float2(Cell) + float2(WoodHash(Cell, 31u), WoodHash(Cell, 47u));
+			Dimple = max(Dimple, pow(saturate(1.0f - length(P - Center) / 0.38f), 2.0f));
+		}
+		return float2(0.0f, A * Dimple);
+	}
+	if (Figure == 4u)
+	{
+		float Angle = A * sin(WOOD_TAU * length(Q.xy) * F);
+		return float2(-Q.y, Q.x) * (Angle * sin(WOOD_TAU * Q.z * F));
+	}
+	return 0.0f;
+}
+
+struct WoodSample
+{
+	float Height;
+	float Tone;
+	float Pores;
+	float Latewood;
+	float Rays;
+	float Luster;
+	float2 Flow;
+};
+
+WoodSample LogSample(float2 UV, float Footprint)
+{
+	WoodSample W = (WoodSample)0;
+	float2 B = UV - 0.5f;
+	float Tilt = sin(CutTilt * WOOD_TAU / 360.0f);
+	float Pith = max(abs(PithOffset), 0.0001f);
+	float3 Q = float3(B.x, Pith + B.y * Tilt, B.y);
+	float2 Across = float2(1, 0);
+	if (Cut == 1u) { Q = float3(Pith + B.x, B.y * Tilt, B.y); }
+	if (Cut == 2u)
+	{
+		Across = normalize(float2(1, 1));
+		Q = float3(B.x * Across.x, Pith + B.x * Across.y + B.y * Tilt, B.y);
+	}
+	if (Cut == 3u) { Q = float3(B.x, Pith + B.y, 0); }
+	float2 Offset = FigureOffset(Q);
+	float2 Slope = (FigureOffset(Q + float3(0, 0, WOOD_FIBER_STEP))
+		- FigureOffset(Q - float3(0, 0, WOOD_FIBER_STEP))) / (2.0f * WOOD_FIBER_STEP);
+	Q.xy += Offset;
+	float Radius = length(Q.xy);
+	float Rings = max(abs(RingScale), 0.0001f);
+	float Wobble = (WoodNoise(float2(Radius * 3.0f, Q.z * 2.0f)) - 0.5f) * saturate(RingWobble);
+	float R = Radius * Rings + Wobble;
+	float Phase = frac(R);
+	float RingAA = min(0.49f, max(Footprint * Rings * 2.0f, 0.001f));
+	float Transition = max(RingAA, lerp(0.25f, 0.015f, saturate(LatewoodSharpness)));
+	float Late = smoothstep(1.0f - saturate(LatewoodRatio) - Transition,
+		1.0f - saturate(LatewoodRatio) + Transition, Phase);
+	Late *= 1.0f - smoothstep(1.0f - RingAA, 1.0f, Phase);
+	W.Latewood = lerp(saturate(LatewoodRatio), Late, Resolved(Rings, Footprint));
+
+	// Vessels follow the log axis; crosscuts see round pores, face cuts see long grooves.
+	// Species profiles: ring-porous Oak, fine diffuse Maple, sparse resin canals in Pine.
+	float CellFrequency = Species == 0u ? 48.0f : (Species == 1u ? 95.0f : 38.0f);
+	float2 P = Q.xy * CellFrequency + 0.1f * float2(sin(Q.z * 9.0f), cos(Q.z * 7.0f));
+	int2 Cell = int2(floor(P));
+	float PoreAA = max(Footprint * CellFrequency, 0.015f);
+	float Early = 1.0f - smoothstep(0.1f, 0.5f, Phase);
+	float Abundance = saturate(PoreDensity) * (Species == 0u ? lerp(0.2f, 1.0f, Early) : (Species == 1u ? 0.8f : 0.18f));
+	[unroll] for (int Y = -1; Y <= 1; ++Y)
+	[unroll] for (int X = -1; X <= 1; ++X)
+	{
+		int2 C = Cell + int2(X, Y);
+		float2 Center = float2(C) + float2(WoodHash(C, 71u), WoodHash(C, 97u));
+		float Size = Species == 0u ? lerp(0.10f, 0.30f, Early) : (Species == 1u ? 0.13f : 0.22f);
+		float Open = 1.0f - smoothstep(max(0.0f, Size - PoreAA), Size + PoreAA, length(P - Center));
+		W.Pores = max(W.Pores, Open * (WoodHash(C, 131u) < Abundance ? 1.0f : 0.0f));
+	}
+	W.Pores *= Resolved(CellFrequency, Footprint);
+	float Theta = atan2(Q.y, Q.x) / WOOD_TAU;
+	float RayFrequency = 30.0f / max(abs(RayScale), 0.0001f);
+	float AngularDistance = abs(frac(Theta * RayFrequency + 0.5f) - 0.5f);
+	float AngularAA = max(0.002f, Footprint * RayFrequency / (WOOD_TAU * max(Radius, 0.05f)));
+	float RayWidth = Species == 0u ? 0.065f : 0.015f;
+	float RaySheet = 1.0f - smoothstep(RayWidth, RayWidth + AngularAA, AngularDistance);
+	float RayEnds = smoothstep(0.35f, 0.7f, WoodNoise(float2(floor(Theta * RayFrequency), Q.z * 18.0f / max(abs(RayScale), 0.0001f))));
+	W.Rays = RaySheet * RayEnds * saturate(RayAmount) * Resolved(RayFrequency, Footprint);
+	float Fibers = sin(WOOD_TAU * (Q.x * 210.0f + 0.15f * sin(Q.z * 15.0f))) * Resolved(210.0f, Footprint);
+	W.Luster = dot(Slope, Across) / (1.0f + length(Slope));
+	W.Flow = Cut == 3u ? Slope : float2(-dot(Slope, Across), 1.0f);
+	W.Tone = saturate(0.72f - W.Latewood * (Species == 1u ? 0.14f : 0.42f)
+		- W.Pores * 0.32f + W.Rays * 0.22f + Fibers * 0.025f + saturate(Chatoyance) * W.Luster * 0.15f);
+	W.Height = WOOD_RING_RELIEF * (W.Latewood - 0.5f) - max(0.0f, PoreDepth) * W.Pores;
+	float PrepStrength = saturate(PrepIntensity);
+	if (Prep == 0u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.25f; }
+	if (Prep == 1u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.1f; }
+	if (Prep == 2u)
+	{
+		W.Height += WOOD_PREP_RELIEF * PrepStrength * sin(WOOD_TAU * (UV.y * 110.0f + 0.2f * sin(UV.x * 21.0f))) * Resolved(110.0f, Footprint);
+	}
+	if (Prep == 3u) { W.Height -= max(0.0f, PoreDepth) * PrepStrength * (1.0f - W.Latewood); }
+	float Checks = pow(saturate(Fibers), 16.0f) * smoothstep(0.5f, 0.8f, WoodNoise(float2(Q.x * 15.0f, Q.z * 3.0f)));
+	W.Height -= saturate(Weathering) * max(0.0f, PoreDepth) * (0.5f * (1.0f - W.Latewood) + Checks);
+	return W;
+}
+
+WoodSample MixWood(WoodSample A, WoodSample B, float T)
+{
+	A.Height = lerp(A.Height, B.Height, T); A.Tone = lerp(A.Tone, B.Tone, T);
+	A.Pores = lerp(A.Pores, B.Pores, T); A.Latewood = lerp(A.Latewood, B.Latewood, T);
+	A.Rays = lerp(A.Rays, B.Rays, T); A.Luster = lerp(A.Luster, B.Luster, T); A.Flow = lerp(A.Flow, B.Flow, T);
+	return A;
+}
+
+WoodSample SampleWood(float2 UV, float Footprint)
+{
+	// A finite log section is not naturally periodic. Blend translated log sections at tile edges;
+	// every material/anatomy field uses the same weights, preserving their registration.
+	float2 P = frac(UV);
+	float2 T = saturate((P - WOOD_TILE_BLEND_START) / (1.0f - WOOD_TILE_BLEND_START));
+	T = T * T * T * (T * (T * 6.0f - 15.0f) + 10.0f);
+	return MixWood(MixWood(LogSample(P, Footprint), LogSample(P - float2(1, 0), Footprint), T.x),
+		MixWood(LogSample(P - float2(0, 1), Footprint), LogSample(P - 1.0f, Footprint), T.x), T.y);
+}
+
+float SurfaceAt(float2 UV, float Footprint)
+{
+	float H = SubstrateHeight.SampleLevel(LinearWrapSampler, UV, 0);
+	if (Mode == 0u) { H += SampleWood(MixtormatGeneratorUV(UV), Footprint).Height * HeightScale; }
+	return H;
+}
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float2 UV = (float2(P) + 0.5f) / float2(OutputSize);
+	float2 Q = MixtormatGeneratorUV(UV);
+	float2 DX = MixtormatGeneratorUV(UV + float2(1.0f / OutputSize.x, 0)) - Q;
+	float2 DY = MixtormatGeneratorUV(UV + float2(0, 1.0f / OutputSize.y)) - Q;
+	float Footprint = max(length(DX), length(DY));
+	float4 Color = InputColor.Load(int3(P, 0));
+	float4 RAM = InputRAM.Load(int3(P, 0));
+	float4 Optics = InputOptics.Load(int3(P, 0));
+	WoodSample W = (WoodSample)0;
+	float Height = 0.0f;
+	if (Mode == 0u)
+	{
+		W = SampleWood(Q, Footprint);
+		Height = W.Height * HeightScale;
+		Color = MixtormatEvalColorRamp(W.Tone, ColorCount, ColorInterpolation, ColorPositions, ColorColors);
+		float Gray = dot(Color.rgb, float3(0.2126f, 0.7152f, 0.0722f));
+		Color.rgb = lerp(Color.rgb, Gray.xxx, saturate(Weathering));
+		RAM = float4(saturate(Roughness + W.Pores * 0.12f + saturate(Weathering) * 0.15f), 1, 0, WOOD_F0);
+		Optics = float4(WOOD_F0, 0, 0, 0);
+	}
+	float Coat = 0.0f;
+	float Strength = Finish == 0u ? 0.0f : saturate(FinishAmount);
+	if (Strength > 0.0f)
+	{
+		float BaseH = SubstrateHeight.Load(int3(P, 0)) + Height;
+		float Envelope = BaseH;
+		float2 Tap = max(WOOD_ENVELOPE_RADIUS.xx, 1.0f / float2(OutputSize));
+		Envelope = max(Envelope, SurfaceAt(UV + float2(Tap.x, 0), Footprint));
+		Envelope = max(Envelope, SurfaceAt(UV - float2(Tap.x, 0), Footprint));
+		Envelope = max(Envelope, SurfaceAt(UV + float2(0, Tap.y), Footprint));
+		Envelope = max(Envelope, SurfaceAt(UV - float2(0, Tap.y), Footprint));
+		float Capacity = max(0.0f, Envelope - BaseH);
+		// Finish-only knows geometric depressions, not anatomical pore identity.
+		float Retention = max(W.Pores, saturate(Capacity / WOOD_COAT_REFERENCE));
+		float Build = max(0.0f, FilmBuild) * Strength;
+		if (Finish == 4u) { Coat = Capacity * saturate(DepressionFill) * Strength; }
+		else if (Finish != 2u && Finish != 3u)
+		{
+			// Local deposition bounded by the authored budget. This is not a global volume-conserving solve.
+			Coat = lerp(Build, min(Build, Capacity), saturate(DepressionFill));
+			float2 Direction = float2(cos(ApplicationAngle * WOOD_TAU / 360.0f), sin(ApplicationAngle * WOOD_TAU / 360.0f));
+			// Integer lattice direction keeps application marks periodic at arbitrary authored angles.
+			float2 K = round(Direction * WOOD_MARK_PERIOD);
+			float Marks = 0.5f + 0.5f * sin(WOOD_TAU * dot(Q, K));
+			Coat *= 1.0f - saturate(ApplicationTexture) * Marks * Resolved(length(K), Footprint);
+		}
+		float Survival = saturate(1.0f - saturate(Wear) * lerp(2.0f, 1.0f, Retention));
+		Coat *= Survival;
+		float Coverage = Coat > 0.0f ? saturate(Coat / WOOD_COAT_REFERENCE) : 0.0f;
+		float Treatment = (Finish == 1u || Finish == 2u) ? Strength : Coverage;
+		Color.rgb *= 1.0f - 0.35f * saturate(WetOut) * Treatment;
+		if (Finish == 2u)
+		{
+			Color.rgb *= pow(max(FinishTint.rgb, 0.0001f), saturate(TintAmount) * Strength);
+		}
+		if (Finish == 3u || Finish == 4u)
+		{
+			float Deposit = Finish == 3u ? Strength * Retention * Survival : Coverage;
+			Color.rgb = lerp(Color.rgb, FinishTint.rgb, saturate(TintAmount) * Deposit);
+			Coverage = max(Coverage, Deposit);
+		}
+		if (Finish == 5u)
+		{
+			Color.rgb *= pow(max(FinishTint.rgb, 0.0001f), saturate(TintAmount) * Coat / WOOD_COAT_REFERENCE);
+		}
+		float SheenWeight = max(Coverage, Finish == 1u ? Strength * 0.25f : 0.0f);
+		RAM.r = lerp(RAM.r, lerp(0.85f, 0.06f, saturate(Sheen)), SheenWeight);
+		RAM.b = lerp(RAM.b, 0.0f, Coverage);
+		RAM.a = lerp(RAM.a, WOOD_F0, Coverage);
+		Optics = lerp(Optics, float4(WOOD_F0, 0, 0, 0), Coverage);
+		Height += Coat * HeightScale;
+	}
+	float2 JX = DX * OutputSize.x, JY = DY * OutputSize.y;
+	float Det = JX.x * JY.y - JY.x * JX.y;
+	float2 Flow = 0.0f;
+	if (Mode == 0u && abs(Det) > 0.000001f)
+	{
+		Flow = float2(JY.y * W.Flow.x - JY.x * W.Flow.y, JX.x * W.Flow.y - JX.y * W.Flow.x) / Det;
+	}
+	float FlowLength = length(Flow);
+	OutFlow[P] = FlowLength > 0.000001f ? float4(Flow / FlowLength, 0, 1) : 0.0f;
+	OutHeight[P] = isfinite(Height) ? Height : 0.0f;
+	OutColor[P] = float4(Color.rgb, 1);
+	OutRAM[P] = RAM;
+	OutOptics[P] = Optics;
+	OutDiagnostics[P] = float4(W.Pores, W.Latewood, W.Rays, Coat);
+}
+#else
+// Publication is gated once, after descendants complete. No material inputs are mutated here.
+float Amount;
+uint HasGate;
+Texture2D<float> Gate, BeforeHeight, AfterHeight;
+Texture2D<float4> CompletedRAM, RawDiagnostics, RawFlow;
+RWTexture2D<float> OutHeightDelta, OutRoughness, OutPores, OutLatewood, OutRays, OutCoat, OutFlowValidity;
+RWTexture2D<float4> OutPublishedFlow;
+[numthreads(8, 8, 1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) { return; }
+	float G = HasGate != 0u ? Gate.Load(int3(P, 0)) : 1.0f;
+	float Weight = isfinite(G) && isfinite(Amount) ? saturate(G) * saturate(Amount) : 0.0f;
+	float Delta = AfterHeight.Load(int3(P, 0)) - BeforeHeight.Load(int3(P, 0));
+	float4 D = RawDiagnostics.Load(int3(P, 0));
+	float4 F = RawFlow.Load(int3(P, 0));
+	OutHeightDelta[P] = isfinite(Delta) ? Delta : 0.0f;
+	OutRoughness[P] = saturate(CompletedRAM.Load(int3(P, 0)).r);
+	OutPores[P] = saturate(D.r) * Weight;
+	OutLatewood[P] = saturate(D.g) * Weight;
+	OutRays[P] = saturate(D.b) * Weight;
+	OutCoat[P] = saturate(D.a) * Weight;
+	float Valid = Weight > 0.0f && F.a > 0.0f && all(isfinite(F)) ? 1.0f : 0.0f;
+	OutPublishedFlow[P] = Valid > 0.0f ? float4(F.xy, 0, Weight) : 0.0f;
+	OutFlowValidity[P] = Valid;
+}
+#endif

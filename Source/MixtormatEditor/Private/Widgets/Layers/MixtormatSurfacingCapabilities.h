@@ -15,6 +15,7 @@ inline FMixtormatChildCapabilities GetSurfacingCapabilities(const FMixtormatSurf
 		const bool bHeight = Output.Kind == EMixtormatPublishedFieldKind::ScalarSigned;
 		const auto Preview = bHeight ? EMixtormatPreviewOutputKind::SignedDistance
 			: Output.Kind == EMixtormatPublishedFieldKind::Color ? EMixtormatPreviewOutputKind::Color
+			: Output.Kind == EMixtormatPublishedFieldKind::Flow ? EMixtormatPreviewOutputKind::FlowDirection
 			: EMixtormatPreviewOutputKind::Mask;
 		// SignedDistance is the existing signed preview colorist, not the published field kind.
 		Result.Outputs.Add({Output.Name, Output.Label, Preview, bUnit && Output.bReferenceable, true, !bHeight,

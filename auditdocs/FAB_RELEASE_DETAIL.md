@@ -1,7 +1,8 @@
 # Mixtormat FAB Release — Evidence and Exact Paths
 
-Targeted source/config reads; recipe storage/workflow updated 2026-10-24.
-No packaging or runtime validation.
+Targeted source/config baseline; implementation handoffs reconciled 2026-10-24.
+No packaging or runtime validation. Latest Q/drag, bake and Rust implementation reports
+are not an independent re-review of their changed source.
 Git stays private; exclusion from a release is not a request to delete repository files.
 See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_AUDIT.md).
 
@@ -129,16 +130,46 @@ Status carried forward from [ui-style-token-audit.md](ui-style-token-audit.md) a
 implementation handoff, not an independent re-review of the latest source.
 - Implemented: ramp/tab tokens, shared bake typography, styled mask-thumbnail hover,
   native-tooltip bypass fixes, bounded popover scrolling and text wrapping.
-- Deferred to Q/context owner: `Widgets/SMixtormat_Preview.cpp` has two icon-button
-  `.ToolTipText` calls in `MakeFeaturePreviewButton` and `MakeChildOutputPreviewButton`;
-  use the existing `.ToolTip(FText)` wrapper.
-- `Widgets/Layers/MixtormatLayerMenus.cpp::BuildGroupAccentMenu` has one native swatch
-  `SBox.ToolTipText`; use the shared styled adapter. Paths are relative to
-  `Source/MixtormatEditor/Private/`. These are tooltip fixes, not changes to Q input routing.
+- Q/context owner reports the two preview icon-button tooltip paths migrated to
+  `.ToolTip(FText)` in `Widgets/SMixtormat_Preview.cpp::MakeFeaturePreviewButton` and
+  `MakeChildOutputPreviewButton`. Group-accent swatches in
+  `Widgets/Layers/MixtormatLayerMenus.cpp::BuildGroupAccentMenu` use `MakeStyledToolTip`.
+  Paths are relative to `Source/MixtormatEditor/Private/`; no remaining migration task is implied.
+- Bake-settings structural token fixes are reported present. `Widgets/Dialogs/SMixtormatBakeResultDialog.cpp`
+  now reportedly reuses window/button/scrollbar styles and resolved Body/ControlLabel typography.
+  The implementation handoff retains all five actions, scrolling, modal ownership and input handlers.
 - Owner checks remain: clipping/scroll reachability, DPI, focus, capture, nested-menu and
   click-away dismissal, thumbnail lifetime, hover timing and theme reconstruction.
-- Remaining bake chrome and Unreal-owned picker/tab help are tracked exceptions in the audit.
-  Do not mark all UI compliant or runtime-validated. Recipe dependency checks remain separate.
+- Retained engine-owned exceptions: Content Browser path picker, object picker, mapping radio
+  menus, tab-spawner help and native modal window chrome. Exact call sites and owner checks are
+  in the UI audit; these are not pending replacement implementations.
+- Bake Complete still needs theme/DPI checks, long-report scrolling, all five footer actions,
+  keyboard traversal and modal focus restoration. Do not mark all UI compliant or
+  runtime-validated. Recipe dependency checks remain separate.
+
+## Q / shader handoff follow-up — 2026-10-24
+- [Q/context plan](workspace-layout/context-help-q-plan.md): increments 1–3 and all five
+  source-review corrections are reported implemented. Corrections address foreign/stale drops,
+  final published-output placement, empty-group membership, rejected-drop bubbling and scoped
+  group-module Texture Masks. The corrected source has not been independently re-reviewed here.
+  Focus/capture, nested menus, stale targets, drag lifecycle, H/Space, themes and DPI remain owner checks.
+- Rust owner reports zero-effective-height remap exclusion, first-layer substrate remapping,
+  Coverage-independent interior fields and analytic warp-Jacobian footprints. Relevant files:
+  `Shaders/Private/MixtormatRust.usf`, `Source/MixtormatShaders/Private/MixtormatGpuComposePipeline.cpp`,
+  `MixtormatGpuGeneratorPasses.cpp` and `MixtormatGpuSurfacingPasses.cpp` in that same directory.
+  These are reported fixes, not verified rendering/performance or proof of drag stability near zero.
+- Moss compile repair: `Shaders/Private/MixtormatMoss.usf` uses existing placement/noise/ramp
+  headers and actual helper signatures; ramp arrays use the shared capacity matching C++.
+  See `AgentDocs/SHADERS.md` for the source-only repair note.
+- Subsequent owner compiler output identified an extra `};` after `FMixtormatWoodPreset` in
+  `Source/MixtormatRuntime/Public/MixtormatSurfacingTypes.h`. That single stray line was removed
+  with approval. Successful compilation after these corrections has not been reported.
+- Wood/Surfacing are active work; Granite/Masonry/Marble are reserved/planned elsewhere.
+  Moss/GPU completion is unconfirmed. Coordinate shared-file edits and reconcile final feature
+  documentation after the responsible owners finish; do not advertise completion from plans.
+- Normalized per-ID ranges/multipliers and scalar/color ramps remain a proposal in
+  [GHOST_PARAMS_AUDIT.md](GHOST_PARAMS_AUDIT.md), not a new release requirement.
+  ChildMask drivers remain deferred beyond v1; no field removal was approved by that proposal.
 
 ## Owner-run release gates
 1. BuildPlugin for UE 5.8 / Win64 and inspect the resulting file manifest.

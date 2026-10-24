@@ -345,6 +345,18 @@ namespace MixtormatPresetStore
 			Rust.bWriteRoughness = Original.bWriteRoughness;
 			Rust.bWriteMaterial = Original.bWriteMaterial;
 		}
+		if (Destination.Type == EMixtormatLayerChildType::Surfacing
+			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Wood)
+		{
+			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
+			FMixtormatWood& Wood = Copy.Surfacing.Wood;
+			const FMixtormatWood& Original = Destination.Surfacing.Wood;
+			Wood.Amount = Original.Amount;
+			Wood.bWriteHeight = Original.bWriteHeight;
+			Wood.bWriteColor = Original.bWriteColor;
+			Wood.bWriteRoughness = Original.bWriteRoughness;
+			Wood.bWriteMaterial = Original.bWriteMaterial;
+		}
 		TArray<FSoftObjectPath> Assets;
 		Documents::GatherAssets(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Copy), Assets);
 		if (!Documents::CheckAssets(Assets, Error)
@@ -502,7 +514,29 @@ namespace MixtormatPresetStore
 					}
 					Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
 				}
-				Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
+		if (Child.Type == EMixtormatLayerChildType::Surfacing
+			&& Child.Surfacing.Type == EMixtormatSurfacingType::Wood)
+		{
+			for (const FMixtormatWoodPreset& WoodPreset : MixtormatSurfacing::GetWoodPresets())
+			{
+				if (Presets.ContainsByPredicate([&](const FModulePreset& Existing)
+				{
+					return Existing.Name.Equals(WoodPreset.Name.ToString(), ESearchCase::IgnoreCase)
+						&& IsModuleCompatible(Existing.Settings, Child);
+				})) { continue; }
+				FModulePreset& Preset = Presets.AddDefaulted_GetRef();
+				Preset.Name = WoodPreset.Name.ToString();
+				Preset.Description = WoodPreset.Description.ToString();
+				Preset.Category = TEXT("Wood");
+				Preset.bShipped = true;
+				Preset.bBuiltIn = true;
+				Preset.Settings.Type = EMixtormatLayerChildType::Surfacing;
+				Preset.Settings.Surfacing.Type = EMixtormatSurfacingType::Wood;
+				Preset.Settings.Surfacing.Wood = WoodPreset.Settings;
+			}
+			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
+		}
+		Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
 		OutPresets = MoveTemp(Presets);
 		return bClean;
 	}

@@ -503,7 +503,6 @@ struct MIXTORMATRUNTIME_API FMixtormatWoodPreset
 	FText Description;
 	FMixtormatWood Settings;
 };
-};
 
 namespace MixtormatSurfacing
 {

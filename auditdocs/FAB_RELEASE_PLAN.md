@@ -1,7 +1,8 @@
 # Mixtormat — FAB Release Plan
 
-Status checked against source/config; packaging follow-up 2026-10-24.
-Static inspection; no git, commands, builds, Unreal launches, network checks or binary inspection.
+Source/config baseline plus implementation handoffs reconciled 2026-10-24.
+Reported fixes below are distinguished from independent review and owner acceptance.
+No agent git, commands, builds, tests, diagnostics, Unreal launches, network checks or binary inspection.
 
 ## Goal
 Ship Mixtormat 1.0 for UE 5.8 / Win64 with a curated, tested BuildPlugin package.
@@ -48,13 +49,35 @@ this status update did not independently re-review the changed source.
 - [x] Bake typography uses shared roles/colors; mask hover retains pooled thumbnails in styled help.
 - [x] Native-tooltip bypasses migrated outside Q/context-owned files; styled wrappers preserved.
 - [x] Interactive popovers use bounded themed scrolling and improved wrapping.
-- [ ] Q/context owner: migrate two preview icon-button tooltip calls and the group-accent swatch.
-  Exact symbols/adapters are listed in the UI audit; preserve Q behavior and focus/capture.
+- [x] Q/context owner reports all three deferred tooltip fixes implemented with styled adapters.
+- [x] Bake-settings structural tokens and Bake Complete styling are reported implemented.
+- [x] Native pickers, mapping radio menus, host help and modal window chrome are documented
+  integration exceptions, not outstanding replacement work; see the UI audit.
 - [ ] Owner checks: clipping, scrolling, DPI, focus, dismissal, thumbnails and theme reconstruction.
-- [ ] Review remaining local bake chrome and engine-owned picker/help integration exceptions.
+- [ ] Bake Complete: verify all five actions, footer reachability, keyboard navigation and modal focus.
 
 Targeted implementation is not a plugin-wide UI certification. Recipe dependency/package
 checks remain separate release gates; UI work does not establish asset portability.
+
+## Current work / acceptance status — 2026-10-24
+- **Q/context:** increments 1–3 and all five follow-up review fixes are reported implemented.
+  Follow-up fixes cover foreign/stale drop dispatch, published-output ordering, empty-group
+  membership, rejected-drop bubbling and captured group-module Texture Mask scope.
+  The fixes have not been independently re-reviewed here; compile/runtime acceptance remains open.
+  See [Q plan and owner checks](workspace-layout/context-help-q-plan.md).
+- **Rust:** zero-effect/first-layer remapping, Coverage/depth separation and warp-Jacobian
+  filtering are reported fixed. Latest fixes are not independently re-reviewed here.
+  Near-zero drag stability, first-layer behavior, rendering, resolution stability and performance
+  still need acceptance; prior compilation reports do not certify the latest changes.
+- **Moss:** missing shader includes, noise/ramp helper calls and ramp capacity were corrected
+  in source; see `AgentDocs/SHADERS.md`. A subsequent owner build reported a separate header
+  syntax failure: the extra closing brace after `FMixtormatWoodPreset` was removed with approval.
+  Neither correction has a supplied successful compile result; Moss/GPU completion is unconfirmed.
+- **Active owners:** Wood types and Surfacing are in progress; Granite, Masonry and Marble
+  are reserved/planned elsewhere. Coordinate before editing their shared integrations.
+- **Optional proposals:** normalized per-ID weights/ranges/multipliers and scalar/color ramps
+  are documented in the parameter audit, not implemented or committed to v1. Cracks splitting
+  and Pebbles shape improvements were discussed only; neither is a release blocker.
 
 ## Partial / not yet established
 - Packaging filter is not a complete curated-content policy or verified output manifest.
@@ -76,10 +99,12 @@ checks remain separate release gates; UI work does not establish asset portabili
 - File splits remain optional maintenance, not FAB blockers.
 
 ## Next actions — in order
-0. **Close UI follow-ups.** The targeted consistency pass is implemented per the UI audit.
-   Coordinate the three remaining native-tooltip calls with the Q/context owner, then run
-   owner visual/interaction checks. Track remaining bake chrome and engine-owned popup
-   exceptions in [ui-style-token-audit.md](ui-style-token-audit.md); do not redo completed fixes.
+0. **Close acceptance follow-ups.** Q/drag and targeted bake/UI fixes are reported complete;
+   do not redo them or replace retained engine-owned integrations. Owner visual/interaction
+   checks remain in the [UI audit](ui-style-token-audit.md) and Q plan. Obtain compiler results
+   for the Moss/header corrections, then complete Rust visual/resolution acceptance.
+   Agents can prepare changelog/feature-limit docs while other feature owners finish;
+   reconcile their final source/docs before claiming those features release-ready.
 1. **Confirm package inputs.** Ensure both Config JSON files reach the built package;
    explicit filter includes are added; verify the built artifact when packaging.
 2. **Retain recipe content.** Ship all developer-authored recipes and their full asset
@@ -90,7 +115,7 @@ checks remain separate release gates; UI work does not establish asset portabili
    Do not delete apparently unused resources without approval and a reference check.
 4. **Resolve parameter audit decisions.** See [GHOST_PARAMS_AUDIT.md](GHOST_PARAMS_AUDIT.md).
    ChildMask drivers are deferred beyond v1 by owner decision; retain disabled UI and notes.
-   IdMapping remains open.
+   IdMapping contract cleanup remains open; its normalized-control proposal is not a v1 commitment.
 5. **Owner runs package/smoke gates.** BuildPlugin → inspect artifact → clean UE 5.8 project
    → open asset → compose → preview → bake → packaged-game baked-material runtime.
 6. **Finish listing.** Screenshots, video, feature/limit list, demo link, license/EULA review,

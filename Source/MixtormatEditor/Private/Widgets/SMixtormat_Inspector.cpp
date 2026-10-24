@@ -514,6 +514,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 										+ SScrollBox::Slot()[BuildScalesControls()]
 					+ SScrollBox::Slot()[BuildMossControls()]
 										+ SScrollBox::Slot()[BuildRustControls()]
+															+ SScrollBox::Slot()[BuildWoodControls()]
 					+ SScrollBox::Slot()[BuildMyceliumControls()]
 					+ SScrollBox::Slot()[BuildNoiseControls()]
 					+ SScrollBox::Slot()[BuildBooleanOpsControls()]
@@ -586,6 +587,7 @@ TSharedRef<SWidget> SMixtormat::BuildInspectorPanel()
 												+ SVerticalBox::Slot().AutoHeight()[BuildScalesControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildMossControls()]
 												+ SVerticalBox::Slot().AutoHeight()[BuildRustControls()]
+																		+ SVerticalBox::Slot().AutoHeight()[BuildWoodControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildMyceliumControls()]
 						+ SVerticalBox::Slot().AutoHeight()[BuildBooleanOpsControls()]
 
