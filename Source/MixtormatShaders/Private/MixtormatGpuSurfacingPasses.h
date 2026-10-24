@@ -15,6 +15,7 @@ namespace MixtormatGpuCompositor
 	struct FSurfacingFields
 	{
 		FRDGTextureRef Height = nullptr;      // Signed displacement delta, already HeightScale-scaled.
+		FRDGTextureRef MaterialCoverage = nullptr; // Optional color/RAM/optics footprint; height/detail normals already carry coverage.
 		FRDGTextureRef Color = nullptr;       // Linear RGB albedo, alpha 1.
 		FRDGTextureRef RAM = nullptr;         // Roughness, AO, 0, dielectric F0.
 		FRDGTextureRef Optics = nullptr;      // F0, fuzz amount, fuzz roughness, SSS amount.
@@ -22,7 +23,7 @@ namespace MixtormatGpuCompositor
 		FRDGTextureRef Subsurface = nullptr; // RGB mean free path in cm, alpha 0 (not albedo).
 		FRDGTextureRef Pores = nullptr;       // Unit scalar pore cavity diagnostic.
 		FRDGTextureRef Compression = nullptr; // Unit scalar curvature-driven compression cue.
-		FRDGTextureRef DetailNormal = nullptr; // Tangent-space detail normal (encoded RGB), unrelated to height. Surfacing only.
+		FRDGTextureRef DetailNormal = nullptr; // Moss leaf-detail normal (encoded RGB). Skin uses height-derived normals.
 	};
 
 	// Child.Surfacing must be the instance/binding-resolved, gather-sanitized Runtime payload.
@@ -46,7 +47,11 @@ namespace MixtormatGpuCompositor
 		FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 		const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
 
-	// Null gate is identity. Each owner's scoped masks enter the ancestry product once.
+	FSurfacingFields AddRustSurfacePasses(FMixtormatComposeContext& Ctx,
+				FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
+				const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
+
+			// Null gate is identity. Each owner's scoped masks enter the ancestry product once.
 	FRDGTextureRef AddSurfacingGatePass(FMixtormatComposeContext& Ctx,
 		FRDGTextureRef ParentGate, FRDGTextureRef LocalGate);
 	// Mutates only enabled material inputs; returns additive signed running height. AncestorAmount
@@ -72,7 +77,7 @@ namespace MixtormatGpuCompositor
 	// - Add/reset bool bSurfacingColor, bSurfacingRoughness, bSurfacingAO, bSurfacingF0,
 	//   bSurfacingFuzz, bSurfacingSSS (false). They mean a channel has been resolved in LayerInput*,
 	//   NOT occupancy. Do not reapply Fill overrides, Amount or scoped masks.
-	// - RAM.B remains unchanged; F0 writes both RAM.A and Optics.R. Fuzz writes Optics.GB and tint;
+	// - Rust can write RAM.B; Skin/Moss preserve it. F0 writes both RAM.A and Optics.R. Fuzz writes Optics.GB and tint;
 	//   SSS writes Optics.A and RGB MFP. No extra Below* fields are needed by these passes.
 	// - FPublishedField::IsComplete must accept PF_A32B32G32R32F for Color (physical MFP/HDR).
 	//   SSS remains preview-only through Runtime CanReferenceField; never remap its name to Color.

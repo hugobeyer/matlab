@@ -2066,7 +2066,7 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 		return FReply::Handled();
 	}
 	// Creation is a discrete edit, not part of the previous slider scrub.
-	if (Kind == EMixtormatChildCreation::NoiseMask || Kind == EMixtormatChildCreation::Skin)
+	if (Kind == EMixtormatChildCreation::NoiseMask || CreatedType == EMixtormatLayerChildType::Surfacing)
 	{
 		LastHistoryRecordTime = 0.0;
 	}

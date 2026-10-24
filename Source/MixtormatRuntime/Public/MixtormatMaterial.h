@@ -93,9 +93,9 @@ struct MIXTORMATRUNTIME_API FMixtormatFinalSettings
 	UPROPERTY()
 	float HeightNormalStrength = 1.0f;
 
-	// Remap the finished height to 0..1 from its own measured range, after every layer and
-	// before final AO and normals. Layer heights are no longer clipped to 0..1 in the composite,
-	// so this is the one place the document is brought back into range.
+	// Remap height to 0..1 before the first enabled height-writing Surfacing layer, or
+	// after the whole stack when none exists. Surfacing and subsequent layers retain
+	// their authored relief; the finished height may therefore extend outside 0..1.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Final")
 	bool bAutoRemapHeight = false;
 

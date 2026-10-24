@@ -1006,7 +1006,12 @@ TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget 
 		.Enabled(bCanAdd)
 		.ToolTip(bCanAdd ? LOCTEXT("AddSkinHint", "Curvature-driven tissue, folds and material response. Gates are authored as child masks.")
 			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
-	Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Surfacing(),
+	Menu.Item(LOCTEXT("AddRustChild", "Rust · Ferrous Corrosion"), MixtormatIcons::Surfacing(),
+			FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Rust); }))
+			.Enabled(bCanAdd)
+			.ToolTip(bCanAdd ? LOCTEXT("AddRustHint", "Assumes the selected scope is ferrous. Clustered metal loss and retained oxide; no generated steel or coating recovery.")
+				: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
+		Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Surfacing(),
 		FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Moss); }))
 		.Enabled(bCanAdd)
 		.ToolTip(bCanAdd ? LOCTEXT("AddMossHint", "Habitat-driven moss growth, relief and material response. Gates are authored as child masks.")

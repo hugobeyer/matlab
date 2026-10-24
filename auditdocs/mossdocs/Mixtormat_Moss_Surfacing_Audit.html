@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mixtormat — Moss Surfacing Methods Audit</title>
+<style>
+:root{--ink:#203129;--muted:#5c6c63;--line:#d8e2da;--green:#315c42;--pale:#edf4ee;--cream:#fafbf8}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:16px/1.62 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1140px;margin:auto;padding:48px 36px 80px}header{border-top:8px solid var(--green);padding-top:24px;margin-bottom:32px}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--green);font-weight:750}
+h1{font-size:42px;line-height:1.12;letter-spacing:-.035em;margin:12px 0 18px}h2{font-size:26px;line-height:1.25;margin:46px 0 18px;border-bottom:1px solid var(--line);padding-bottom:12px}
+h3{font-size:19px;margin:28px 0 10px}p{margin:10px 0 16px}li{margin:7px 0}ul,ol{padding-left:24px;margin:12px 0 20px}
+a{color:#216847;text-decoration-thickness:1px;text-underline-offset:3px}a.ref{font-size:12px;white-space:nowrap}
+.lead{font-size:20px;max-width:940px}.meta,.note{color:var(--muted);font-size:14px}.callout{background:var(--pale);border-left:4px solid var(--green);padding:18px 22px;margin:22px 0}
+table{border-collapse:collapse;width:100%;margin:18px 0 24px;font-size:14px;background:white}th,td{border:1px solid var(--line);padding:11px 13px;text-align:left;vertical-align:top}th{background:var(--pale);font-weight:700}
+code{background:#eaf0e9;padding:2px 5px;border-radius:3px;font:13px/1.5 ui-monospace,Consolas,monospace}.formula{font:18px/1.8 ui-monospace,Consolas,monospace;background:#eaf0e9;padding:15px 20px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{border:1px solid var(--line);background:white;padding:16px}.card strong{display:block;margin-bottom:6px}
+nav{padding:20px;background:white;border:1px solid var(--line)}nav ul{columns:2;margin:8px 0;padding-left:20px}nav li{break-inside:avoid;font-size:14px}
+.tag{font-size:12px;font-weight:750;color:var(--green);white-space:nowrap}.sources td:first-child{width:7%}.sources td:nth-child(2){width:45%}
+footer{margin-top:45px;border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:13px}
+@media(max-width:720px){main{padding:24px 16px}h1{font-size:32px}.grid{grid-template-columns:1fr}nav ul{columns:1}table{font-size:12px}th,td{padding:8px 7px}}
+@media print{body{background:white;font-size:10pt}main{max-width:none;padding:0}h1{font-size:27pt}h2{font-size:17pt;break-after:avoid}h3{break-after:avoid}table{font-size:8pt}tr{break-inside:avoid}.callout,.card{break-inside:avoid}nav{display:none}a{color:inherit}.meta,.note{font-size:9pt}@page{size:A4;margin:17mm}}
+</style>
+</head>
+<body><main>
+<header>
+<div class="eyebrow">Mixtormat · Unreal Engine 5.8 · Methods audit</div>
+<h1>Moss as a structured surface colony</h1>
+<p class="lead"><strong>Recommended:</strong> deterministic colonies → shoots → leaves, attached to the existing composite surface, with a shared leaf evaluator and explicit visible-surface selection.</p>
+<p class="meta">Prepared 23 October 2026. Research and architecture proposal; no repository inspection, implementation, or runtime benchmark is claimed.</p>
+</header>
+<div class="grid">
+<div class="card"><strong>Default</strong>Analytic hierarchical placement with substrate-aware support and automatic internal fields.</div>
+<div class="card"><strong>Optional simulation</strong>Colony spread, arrival history, obstacles and selected branching behaviors.</div>
+<div class="card"><strong>Geometry extension</strong>Hanging growth, true bridges, independent leaf silhouettes and close views.</div>
+</div>
+<div class="callout"><strong>Evidence labels:</strong> <span class="tag">M</span> study measurement; <span class="tag">R</span> taxonomic/reference description; <span class="tag">F</span> empirical fit; <span class="tag">A</span> artistic default. Engineering proposals are identified as design recommendations. Flora ranges are not probability distributions. No universal moss RGB, roughness, subsurface coefficient, growth rate, or UV-to-millimetre conversion is established here.</div>
+<nav aria-label="Contents"><strong>Contents</strong><ul>
+<li><a href="#forms">1. Growth forms and dimensions</a></li><li><a href="#hydration">2. Hydration and appearance evidence</a></li>
+<li><a href="#habitat">3. Habitat and attachment</a></li><li><a href="#representation">4. Representation limits</a></li>
+<li><a href="#methods">5. Method comparison</a></li><li><a href="#model">6. Recommended structural model</a></li>
+<li><a href="#states">7. State and channel contract</a></li><li><a href="#leaf">8. Shared leaf evaluator and overlap</a></li>
+<li><a href="#height">9. Height and normal contract</a></li><li><a href="#sampling">10. Scale, filtering and tiling</a></li>
+<li><a href="#controls">11. Controls and presets</a></li><li><a href="#plan">12. Prioritized implementation</a></li>
+<li><a href="#checks">13. Visual acceptance checks</a></li><li><a href="#sources">14. Free full-text source register</a></li>
+</ul></nav>
+
+<section id="forms"><h2>1. Growth forms and dimension anchors</h2>
+<p>Presets must change architecture. The four forms below are useful production families; they overlap botanically and are not exact synonyms for acrocarpous and pleurocarpous classifications.</p>
+<table><thead><tr><th>Form / reference</th><th>Structural distinction</th><th>Dimensions and source conditions</th></tr></thead><tbody>
+<tr><td><strong>Compact cushion</strong><br><i>Grimmia pulvinata</i></td><td>Dense upright shoots form a rounded colony; folded leaves and hairpoints influence the exposed surface.</td><td><span class="tag">R</span> FNA: stems 1–3 cm; leaf bodies 1–1.7 × 0.3–0.6 mm. Description includes dry flexing versus moist erect posture. <a class="ref" href="#s1">[S1]</a></td></tr>
+<tr><td><strong>Large cushion</strong><br><i>Leucobryum glaucum</i></td><td>Compact taller masses; narrow cupped leaves and accumulated interior material.</td><td><span class="tag">R</span> FNA: stems 1–12.5 cm, leaves 3–9 mm. Descriptive species range, not a calibrated thickness distribution. <a class="ref" href="#s2">[S2]</a></td></tr>
+<tr><td><strong>Upright tuft</strong><br><i>Dicranum scoparium</i></td><td>Recognizable shoots with commonly swept lanceolate leaves; correlated lean across each shoot.</td><td><span class="tag">R</span> FNA: stems 2–10 cm; usual leaves 5–8.5 × 0.8–1.8 mm, exceptional lengths 4 and 15 mm. <a class="ref" href="#s3">[S3]</a></td></tr>
+<tr><td><strong>Creeping mat</strong><br><i>Hypnum cupressiforme</i></td><td>Trailing or ascending stems, lateral branches, overlapping curved leaves.</td><td><span class="tag">R</span> FNA: stems 1–8+ cm, branches 1–3 cm, leaves 1.5–2 × 0.5–0.8 mm. <a class="ref" href="#s4">[S4]</a></td></tr>
+<tr><td><strong>Feathery / branched</strong><br><i>Hylocomium splendens</i></td><td>Branch hierarchy, flat fronds and successive tiers; smaller leaves on higher branch orders.</td><td><span class="tag">R</span> FNA: fronds usually 20–35 mm wide; primary-branch leaves 0.8–1.3 × 0.3–0.6 mm; branchlet leaves 0.3–0.8 × 0.2–0.4 mm. Reduced arctic forms differ. <a class="ref" href="#s5">[S5]</a></td></tr>
+</tbody></table>
+<p class="note">These flora descriptions do not share a standardized hydration condition or sample count. Stem length can run horizontally or curve; it must not be assigned directly as vertical displacement. Within-range random distributions and correlations require an artistic choice or a separate measured fit.</p>
+<h3>Measured colony size and fitted shape</h3>
+<ul>
+<li><span class="tag">M</span> Zotz et al. studied 27 <i>G. pulvinata</i> cushions from limestone walls in Würzburg: 11–57 mm diameter. Contact-probe profiles excluded hairpoints; height repeatability was 0.5 mm. <a class="ref" href="#s6">[S6, pp.60–61]</a></li>
+<li><span class="tag">F</span> Their maximum-height regression was H(mm) = 11.2 + 4.4 log10(DM in grams), R² = 0.91, valid only for 0.02–3.6 g dry mass. It is not a general biomass-to-height conversion. <a class="ref" href="#s6">[S6, Table 1]</a></li>
+<li><span class="tag">M</span> Rice and Schneider used <i>L. glaucum</i> cushions 4–24 cm across in a wind tunnel (n=14) and 4–34 cm in a New York forest field experiment (n=18). These are sample ranges. <a class="ref" href="#s7">[S7, Methods]</a></li>
+</ul>
+<h3>Living structure and older interior</h3>
+<p><span class="tag">M</span> Antarctic turf samples prepared for optical measurements contained 2–5 mm green photosynthetic tissue above 5–8 mm nonphotosynthetic tissue. They were trimmed to 10 mm total depth; this is not a natural universal thickness, and nonphotosynthetic does not itself mean dead. <a class="ref" href="#s8">[S8, pp.1240–1241]</a></p>
+<p><strong>Design:</strong> retain separate living shoot structure, basal accumulation and damage state. A deep cushion need not contain uniformly green tissue throughout. Older material should be exposed by gaps, worn edges or broken tufts, rather than applied as a fixed brown ring around every colony.</p>
+</section>
+
+<section id="hydration"><h2>2. Hydration and appearance evidence</h2>
+<table><thead><tr><th>Evidence</th><th>Verified observation</th><th>Production consequence</th></tr></thead><tbody>
+<tr><td><span class="tag">M</span> <i>Atrichum undulatum</i>, controlled dehydration microscopy</td><td>Three-week cultured gametophores dried for three days at 30% RH developed apex-first curling and became darker green; rewetting reversed leaf expansion and the dark appearance. <a class="ref" href="#s9">[S9, Morphological features; Figs.1–3]</a></td><td>Hydration controls reversible posture. Drying is not automatically browning or death.</td></tr>
+<tr><td><span class="tag">M/F</span> <i>G. pulvinata</i>, wet/dry cushion profiles</td><td>Table 1 uses one maximum-height relationship for both states but different volume/area fits. <a class="ref" href="#s6">[S6]</a></td><td>Do not use one universal vertical inflation multiplier for wet cushions.</td></tr>
+<tr><td><span class="tag">M</span> <i>G. antarctici</i>, four ridge samples</td><td>Mean 550-nm reflectance was 0.031 dry and 0.037 after five-minute mist rehydration and blotting; difference was not significant. <a class="ref" href="#s8">[S8, Table 7]</a></td><td>There is no universal wet-darkening rule. Integrating-sphere reflectance is not an RGB swatch or microfacet roughness.</td></tr>
+<tr><td><span class="tag">M</span> <i>Dicranum polysetum</i>, Finnish canopy goniometry</td><td>Measured visible-band scattering was comparatively isotropic, within approximately 20%, with wavelength-dependent directional effects. <a class="ref" href="#s10">[S10, §3.2; Figs.6–7]</a></td><td>Canopy packing and leaf orientations matter. Do not infer one leaf BRDF from the whole canopy.</td></tr>
+</tbody></table>
+<p><strong>Recommended appearance model:</strong> use a stable colony palette offset, coherent shoot-level variation, leaf-position/age variation, and a separately controlled response to hydration. A living tip can remain on an old colony; maturity should not globally brown all new tissue.</p>
+<ul>
+<li><strong>Leaf surface:</strong> a fitted or artistic dielectric response, with orientation from the actual leaf shape.</li>
+<li><strong>Thin-leaf transmission:</strong> useful on actual leaves and exposed edges; do not make the host rock or wood transmit light.</li>
+<li><strong>Canopy response:</strong> aggregate orientation, self-occlusion and multiple scattering require an approximation when leaves are unresolved.</li>
+<li><strong>Surface water:</strong> a separate film/droplet state. Hydrated tissue can exist without a continuous glossy film.</li>
+<li><strong>Dead/decayed material:</strong> separate from reversible drying; structural collapse and loss of tissue require independent controls or history.</li>
+</ul>
+<p>No moss-specific universal Unreal roughness, translucency amount or subsurface mean-free-path was established. Fit those to a documented reference capture under known lighting; otherwise label them artistic. Do not bake photographic highlights or large cast shadows into BaseColor.</p>
+</section>
+
+<section id="habitat"><h2>3. Habitat and substrate attachment</h2>
+<p>The substrate supplies geometry; it does not uniquely reveal habitat. Height-derived concavity, local enclosure and slope are useful priors, but they cannot identify rainfall, permeability, pH, species, competition or final world orientation.</p>
+<table><thead><tr><th>Factor</th><th>Evidence and limitation</th><th>Recommended approximation</th></tr></thead><tbody>
+<tr><td>Attachment</td><td>Rhizoids can branch against hard surfaces and coil around substrate objects; their transport roles vary by species. <a class="ref" href="#s11">[S11, rhizoid function section]</a></td><td>Require credible contact positions; favor useful microrelief without requiring deep cavities or carving roots into rock.</td></tr>
+<tr><td>Moisture / drainage</td><td>A 12-species study found species-dependent water-response curves; external excess water can restrict CO₂ transport. <a class="ref" href="#s12">[S12, water-response results]</a></td><td>Use a broad preset-dependent moisture optimum. Retention and drainage are distinct; actual transport needs water supply and gravity context.</td></tr>
+<tr><td>Watering history</td><td><i>S. caninervis</i> receiving 1.25 mm twice weekly for 19 weeks developed chlorosis; dry controls greened on rewetting. This tested small recurring pulses, not all wet conditions. <a class="ref" href="#s13">[S13, Methods; Fig.1]</a></td><td>Current wetness must not directly create biomass or imply good long-term conditions.</td></tr>
+<tr><td>Light / exposure</td><td>Water and light responses depend on architecture and species. Shelter can reduce drying while deep shade limits photosynthetic opportunity. <a class="ref" href="#s12">[S12]</a></td><td>Permit exposed forms; combine light and drying tendencies rather than multiplying coverage by AO.</td></tr>
+<tr><td>Chemistry</td><td>A <i>Bryum atenense</i> culture experiment found reduced establishment in high-calcium/high-pH treatments; calcium and pH varied together. <a class="ref" href="#s14">[S14, Results; Tables I–II]</a></td><td>Optional substrate compatibility tags or overrides. Do not infer chemistry from grayscale, color or roughness.</td></tr>
+<tr><td>Competition / disturbance</td><td>A factorial grassland experiment found effects of nitrogen, vascular-plant composition and disturbance beyond a simple shade explanation. <a class="ref" href="#s15">[S15, Results and Discussion]</a></td><td>Use optional exclusion/competition priors and spatial packing. A generic winner-takes-all ecosystem simulation is unnecessary.</td></tr>
+</tbody></table>
+<h3>Cavities, ridges and cracks</h3>
+<ul>
+<li><strong>Cavities:</strong> potential moisture retention and shelter; not an obligatory home and not proof of adequate light or aeration.</li>
+<li><strong>Ridges:</strong> can carry colonies; exposure adjusts suitability instead of imposing zero growth. <i>G. pulvinata</i> occurs on rock and old mortar. <a class="ref" href="#s1">[S1, Habitat]</a></li>
+<li><strong>Crack occupation:</strong> attached moss may occupy edges or the crack surface. Do not automatically erase the substrate crack.</li>
+<li><strong>Bridging:</strong> allow a bounded artistic spanning distance tied to shoot/branch architecture. No universal biologically measured bridge distance was found.</li>
+<li><strong>Hanging:</strong> <i>Weymouthia mollis</i> has genuinely pendant growth on branches in humid forests. Its attachment and trajectories require a different representation from a positive height offset. <a class="ref" href="#s16">[S16, Description; Habitat]</a></li>
+</ul>
+<p><strong>Automatic fallback:</strong> on a flat substrate, use a neutral habitat score plus deterministic colonies. With no world/gravity metadata, use a surface-attached habit and omit directional drainage claims. Internal score terms must be calculated from the incoming substrate, not repeatedly from the moss-modified output.</p>
+</section>
+
+<section id="representation"><h2>4. What a height field can and cannot represent</h2>
+<table><thead><tr><th>Representation</th><th>Suitable results</th><th>Explicit limits</th></tr></thead><tbody>
+<tr><td>Single surface height + material fields</td><td>Cushion upper envelopes, low mats, shallow leaf relief, substrate-dependent buildup, apparent top surfaces across narrow depressions.</td><td>No true void under a bridge, undersides, independent stacked leaf layers, disconnected hanging stems or correct side silhouettes.</td></tr>
+<tr><td>Leaf cards / small meshes</td><td>Separate leaves, gaps, thin transmission, grazing views and tuft silhouettes.</td><td>Overdraw, alpha filtering, shadows and placement costs need profiling; cards are not automatically cheapest.</td></tr>
+<tr><td>Curves / explicit shoots and leaves</td><td>Pendant growth, multi-level branches, convincing hero tufts and real bridges.</td><td>More scene data, LOD and collision work; a separate output mode is required.</td></tr>
+</tbody></table>
+<p>A top-envelope bake resolves occlusion along its bake axis. It discards lower layers that may become visible from the side. Better normal blending cannot reconstruct those missing layers. A scalar displacement also connects neighboring samples, producing artificial connecting surfaces between raised leaves; owner-aware normals improve shading but do not remove that topology.</p>
+<p><strong>Substrate preservation means:</strong> keep the original substrate as support and add moss without excavation. Thick real buildup can conceal shallow cracks and relief. Preserving the input does not mean forcing every concealed substrate bump to remain visible through the canopy.</p>
+</section>
+
+<section id="methods"><h2>5. Compare implementation methods</h2>
+<table><thead><tr><th>Method</th><th>Useful contribution</th><th>Cost / limitation</th><th>Decision</th></tr></thead><tbody>
+<tr><td>Hierarchical analytic placement</td><td>Stable colonies, shoots and leaves; immediate editing; independent length scales; visible-surface evaluation.</td><td>Appearance model rather than a reconstruction of biological history.</td><td><strong>Default.</strong></td></tr>
+<tr><td>Reaction–diffusion</td><td>Connected colony patterns and spatial heterogeneity.</td><td>Does not automatically produce moss anatomy, attachment or meaningful ecological time.</td><td>Optional colony-field source.</td></tr>
+<tr><td>Surface-front / growth simulation</td><td>Propagation around obstacles, directional spread, arrival order and footprint history.</td><td>State, cache invalidation, integration and resolution dependence.</td><td>Worthwhile when those behaviors are visible.</td></tr>
+<tr><td>Branch / shoot construction</td><td>Connected creeping stems and pinnate feather structure.</td><td>Needs form-specific rules; generic root/tree branching gives the wrong architecture.</td><td>Use deterministic rules first; simulate only useful responses.</td></tr>
+<tr><td>Scene environmental transport</td><td>Influence of nearby walls, water sources, exposure and airflow.</td><td>Requires scene information beyond a material tile.</td><td>Later separate mode.</td></tr>
+</tbody></table>
+<p><strong>Source distinction:</strong> Turk demonstrates reaction–diffusion texture synthesis on surfaces, not a validated moss model. Ogasawara et al. model environmental influences on visual moss distribution; that is a CG model, not measured leaf anatomy or a general growth law. <a class="ref" href="#s17">[S17]</a> <a class="ref" href="#s18">[S18]</a></p>
+<p><strong>Recommended first extension:</strong> a coarse periodic arrival-time or frontier solver driven by suitability and exclusion. Its result controls colony occupation, maturity bias and stem direction. The same structural leaf generator remains responsible for visible moss. An eikonal/weighted-distance approximation may provide the desired spread without a full time simulation.</p>
+</section>
+
+<section id="model"><h2>6. Recommended structural model</h2>
+<ol>
+<li><strong>Read the composite substrate.</strong> Preserve height, material channels, normal provenance and any available surface metric. Generate scale-specific slope, enclosure and support information.</li>
+<li><strong>Generate periodic parent colonies.</strong> Use stable integer-cell seeds and correlated connected lobes. A colony may merge with neighbors without losing its identity. Avoid one identical spherical mound per seed.</li>
+<li><strong>Apply establishment suitability.</strong> A preset controls how retention, exposure, local attachment and optional compatibility influence admission. Flat surfaces retain a useful neutral fallback.</li>
+<li><strong>Construct shoots.</strong> Cushions use dense short erect shoots; tufts use longer coherent axes; mats use creeping axes; feathers use ordered lateral branches. Support frames follow substrate at shoot scale.</li>
+<li><strong>Attach leaves to shoots.</strong> Leaf dimensions, spacing and opening are jointly varied within the chosen architecture. Increasing colony diameter primarily adds shoots instead of enlarging every leaf.</li>
+<li><strong>Check support and penetration.</strong> Sample attachment and leaf centerlines against the substrate; deterministically bend, shorten or reject severe intersections. Fragment clipping alone could create disconnected tips.</li>
+<li><strong>Evaluate visibility and shading.</strong> Use the same leaf geometry, local coordinates, IDs and posture for every channel.</li>
+</ol>
+<p><strong>Variation:</strong> derive colony-level tendencies, shoot-level deviations and leaf-level deviations from separate stable hashes under a shared parent hierarchy. This supplies coherent variation without making every output the same scalar noise field. Optional incoming IDs may replace selected group IDs; they do not need to identify a species.</p>
+</section>
+
+<section id="states"><h2>7. Separate state variables and channel ownership</h2>
+<table><thead><tr><th>State / field</th><th>Meaning</th><th>Main effect</th><th>Must remain distinct from</th></tr></thead><tbody>
+<tr><td>Colony occupation</td><td>Where moss is established or allowed.</td><td>Parent placement, colony edges.</td><td>Instantaneous visible leaf area.</td></tr>
+<tr><td>Visible coverage</td><td>Footprint fraction occupied by resolved visible moss.</td><td>Material mixing and exposed substrate.</td><td>Host opacity or biome viability.</td></tr>
+<tr><td>Biomass / Fullness proxy</td><td>Geometric shoot/leaf abundance and packing.</td><td>Density, occlusion, opportunity for buildup.</td><td>Dry mass in g/m² unless separately calibrated.</td></tr>
+<tr><td>Thickness</td><td>Authored height envelope and basal accumulation.</td><td>Actual displacement.</td><td>Coverage or normalized texture contrast.</td></tr>
+<tr><td>Maturity</td><td>Structural development: branching, old bases, connectedness.</td><td>Distribution of architecture and tissue states.</td><td>Elapsed years, death, or universal browning.</td></tr>
+<tr><td>Hydration</td><td>Current reversible tissue state.</td><td>Leaf opening/curling and preset-specific appearance.</td><td>Long-term suitability or surface film.</td></tr>
+<tr><td>Damage / decay</td><td>Loss of vitality and later structural breakdown.</td><td>Persistent color/structure change.</td><td>Normal reversible drying.</td></tr>
+<tr><td>Film water</td><td>Water on exterior surfaces.</td><td>Glints and a fitted wet optical response.</td><td>Internal tissue hydration.</td></tr>
+</tbody></table>
+<p>Coverage and Fullness are not required to produce perfectly independent projected area: leaf opening, branch extension and basal material can change visible cover. Preserve their distinct authoring meanings and expose resulting coverage as a diagnostic.</p>
+<table><thead><tr><th>Output</th><th>Responsible internal information</th></tr></thead><tbody>
+<tr><td>Height</td><td>Incoming substrate + basal-material/visible-canopy delta, scaled exactly once.</td></tr>
+<tr><td>Normal</td><td>Winning surface-patch derivatives plus only residual detail absent from height.</td></tr>
+<tr><td>BaseColor</td><td>Winning material identity, colony palette, shoot/leaf age and hydration/damage response. Exposed substrate retains its input color.</td></tr>
+<tr><td>Roughness</td><td>Fitted/artistic leaf response, film state and unresolved visible-normal variation.</td></tr>
+<tr><td>AO</td><td>Optional local canopy occlusion; avoid multiplying already represented occlusion repeatedly or baking directional illumination.</td></tr>
+<tr><td>Metallic</td><td>Nonmetallic moss where covered; preserve substrate metalness where exposed.</td></tr>
+<tr><td>Coverage and IDs</td><td>Visible ownership, colony/shoot/leaf identity and establishment mask, kept as distinct fields.</td></tr>
+<tr><td>Optional transmission / thickness</td><td>Leaf material data for a compatible preview/export shader. These cannot be fully encoded by BaseColor/Normal/RAM/Height alone.</td></tr>
+</tbody></table>
+<p>Do not route moss coverage to the host opacity mask: that would cut holes in the rock or wood. Moss replaces the visible material locally while the underlying substrate remains present.</p>
+</section>
+
+<section id="leaf"><h2>8. One shared leaf evaluator; correct overlap</h2>
+<p><strong>Recommended evaluator contract:</strong> for a leaf instance and a sample footprint, return support/coverage, absolute surface height, height derivatives, tangent/orientation, leaf-local coordinates, identity and residual shading detail. All outputs consume these same results.</p>
+<ul>
+<li><strong>Outline:</strong> parameterized lanceolate/ovate profile, taper and aspect ratio.</li>
+<li><strong>Shape:</strong> longitudinal bending, transverse cup/keel, twist and preset-specific dry/wet posture.</li>
+<li><strong>Optional anatomy:</strong> costa, margins and hairpoint only where appropriate. Height from an arched leaf describes its position and curvature, not its tissue thickness.</li>
+<li><strong>Fine detail:</strong> cells or papillae contribute only at an appropriate footprint; otherwise represent their aggregate optical effect.</li>
+</ul>
+<h3>Resolve first, filter second</h3>
+<ol>
+<li>At each subsample, evaluate actual leaf support. Reject fragments below the substrate after support/collision checks.</li>
+<li>Include substrate and any independently covered basal mat as candidate surfaces.</li>
+<li>Select the highest supported surface along the bake axis. Equal heights use a deterministic ID tie-break.</li>
+<li>Carry that candidate’s height, derivatives, material selectors and ID together.</li>
+<li>Filter the resolved visible samples over the footprint.</li>
+</ol>
+<p><strong>Do not:</strong> average normals from every intersecting leaf; soft-max all leaf heights into inflated intersections; lower candidate heights by multiplying by antialiased coverage before depth selection; or shade a buried fragment merely because its height was clamped to zero.</p>
+<p>Partially exposed lower leaves legitimately contribute at subsamples where they are visible. Fully hidden leaves must not alter the upper leaf’s material normal. Their possible indirect-light influence is a separate optional occlusion calculation.</p>
+<p><strong>Keep separate filtered products:</strong> envelope height, area-weighted visible material, visible-normal statistics and categorical IDs. A scalar averaged height is not a sufficient reconstruction of the visible material distribution. Do not multiply the resolved, coverage-averaged delta height by coverage a second time.</p>
+</section>
+
+<section id="height"><h2>9. Height Scale and normals</h2>
+<div class="formula">H<sub>out</sub> = H<sub>0</sub> + s<sub>h</sub> · ΔH<sub>moss</sub></div>
+<p><strong>Contract:</strong> H₀ is the incoming composite height. ΔH is the unnormalized authored moss addition. Height Scale is the nonnegative multiplier sₕ. It must not alter substrate amplitude, seeds, colony size, leaf dimensions, hydration or pigment coverage.</p>
+<ul>
+<li>At zero scale, retain the pre-scale visibility decision and pigment coverage while flattening moss relief.</li>
+<li>At positive scale, multiply the same delta; do not rerun admission or normalize by per-image extrema.</li>
+<li>Thickness remains a length in a declared vertical convention. A broader sparse tile must not make existing moss taller through auto-remapping.</li>
+<li>Normalized export uses a declared reversible range/offset and matching material parameters. Out-of-range values require an explicit response, not silent clamping or thickness loss.</li>
+</ul>
+<h3>Differentiate the winning patch, not a height discontinuity</h3>
+<p>For selected surface zᵢ, within its differentiable patch:</p>
+<div class="formula">∇H<sub>out</sub> = (1 − s<sub>h</sub>) ∇H<sub>0</sub> + s<sub>h</sub> ∇z<sub>i</sub></div>
+<p>Use analytic derivatives or owner-aware/one-sided differences. A difference across a raised leaf edge into a lower leaf generates a false bevel or normal spike. Discontinuous upper envelopes require explicit edge filtering; one smooth normal cannot reproduce all stacked geometry.</p>
+<p><strong>Count relief once.</strong> The leaf-height derivative already describes the leaf cup, keel and bend. Add only detail omitted from height. Incoming normals likewise need provenance: if they already include H₀ relief, do not derive H₀ again and blend the complete incoming normal over it. PBRT distinguishes these normal/bump operations. <a class="ref" href="#s19">[S19, §§10.5.3–10.5.4]</a></p>
+<p><strong>UE 5.8:</strong> Nanite displacement does not update shading normals; supply a matching normal. It is scalar, follows interpolated vertex normals, and applies in object space before object scale. UV/normal discontinuities can crack. <a class="ref" href="#s20">[S20, Nanite Tessellation → Things to know]</a></p>
+<p>For explicit leaf geometry, use the leaf mesh’s geometric normal and only residual material detail. For a texture-only surface, the matching leaf-relief shading normal must be supplied by the evaluator. These are two representations of the same structure, not two relief layers to stack.</p>
+</section>
+
+<section id="sampling"><h2>10. Scale, filtering, determinism and seamless tiling</h2>
+<h3>Declared scale</h3>
+<p>Physical dimensions require horizontal extents Lₓ and Lᵧ and a vertical height conversion. These define a planar tile; arbitrary mesh UV stretching needs a local UV-to-surface metric. Without that information, display normalized tile units rather than asserting millimetres.</p>
+<div class="formula">texels along a feature = resolution · feature length / declared tile extent</div>
+<p>For an explicitly authored 1 m square tile at 2048², a 1.5 mm leaf is about 3.07 texels long and a 0.5 mm width is about 1.02 texels. This is a sampling example, not an assumed default material scale. On stretched or oblique mappings, use the local footprint/Jacobian.</p>
+<h3>Filtering policy</h3>
+<ul>
+<li>Resolved leaves retain shape and owner-aware derivatives.</li>
+<li>Partly resolved leaves need footprint integration; their narrow width may become unresolved before their length.</li>
+<li>Unresolved leaves converge to visible coverage, color and orientation statistics. Do not enlarge physical leaves or change colony locations to hide aliasing.</li>
+<li>Store or approximate visible-normal variation for specular filtering. LEAN provides a primary example; its original shading parameterization is not a plug-in GGX roughness formula. <a class="ref" href="#s21">[S21]</a></li>
+<li>Filter displacement bandwidth separately from appearance. Preserve authored low-frequency thickness; do not compensate for missing fine detail by renormalizing the entire height map.</li>
+</ul>
+<h3>Repeatability and tile contract</h3>
+<ul>
+<li>Generate instance IDs from stable integer cells, parent IDs and a saved seed; never seed from output pixel coordinates.</li>
+<li>Use ranked candidate admission so changing Coverage/Fullness retains the identities and positions of surviving instances.</li>
+<li>Wrap colony distances, leaf copies, gradients, blurs, neighborhoods and simulation boundaries consistently.</li>
+<li>Neighborhood reach must include the largest allowed leaf/branch/colony footprint, including features crossing a corner. A fixed small neighborhood is unsafe for arbitrarily large controls.</li>
+<li>Interpolate directions and scalar attributes appropriately; do not numerically blend categorical IDs.</li>
+<li>Same-backend repeatability and bit-identical results across different GPUs are separate guarantees; avoid nondeterministic accumulation where exact stability is required.</li>
+<li>A periodic moss field cannot repair a nonperiodic input surface or arbitrary mesh chart seams.</li>
+</ul>
+<p><strong>Simulation extension:</strong> use a fixed physical/normalized simulation lattice independent of output raster resolution, or account explicitly for cell spacing and integration stability. Iteration counts are not days or years without species-specific calibration. Cache the structural result separately from optical edits.</p>
+</section>
+
+<section id="controls"><h2>11. Artist controls and clearly differentiated presets</h2>
+<p>Eight primary controls are sufficient. All defaults below are <span class="tag">A — artistic/software starting values</span>, not measured moss constants. Present growth forms as segmented choices.</p>
+<table><thead><tr><th>Control</th><th>Proposed default</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>Form</td><td>Compact Cushion</td><td>Architecture family; changes shoots, branching, leaf profile and posture response.</td></tr>
+<tr><td>Coverage</td><td>0.60</td><td>Target colony occupation; resulting visible cover is reported separately.</td></tr>
+<tr><td>Colony Size</td><td>0.12 tile width</td><td>Characteristic patch diameter in the unitless fallback; independent leaf size.</td></tr>
+<tr><td>Fullness</td><td>0.65</td><td>Packing and prescribed buildup response within colonies; not g/m².</td></tr>
+<tr><td>Height Scale</td><td>1.0</td><td>Pure multiplier on the authored moss height addition.</td></tr>
+<tr><td>Habitat Response</td><td>0.50</td><td>Strength of the selected preset’s establishment biases, not cavity attraction alone.</td></tr>
+<tr><td>Hydration</td><td>0.60</td><td>Reversible visual posture state; not calibrated relative water content.</td></tr>
+<tr><td>Seed</td><td>1</td><td>Saved deterministic variation.</td></tr>
+</tbody></table>
+<p><strong>Preset scale example:</strong> a physically scaled <i>Grimmia</i>-inspired reference preset could choose 30 mm patch diameter, 7 mm nominal envelope and 1.4 × 0.45 mm leaf body. Those selected defaults are <span class="tag">A</span>, informed by the cited observations, not measured means or a statistically fitted specimen. They are only usable as physical values after the tile metric is declared. A unitless preset keeps documented shape ratios without silently asserting that one UV tile has a particular real size.</p>
+<table><thead><tr><th>Preset</th><th>Required visible difference</th><th>Reference</th></tr></thead><tbody>
+<tr><td>Rock Cushion</td><td>Compact merged lobes, short crowded shoots, optional exposed hairpoints, restrained spanning.</td><td><i>Grimmia</i>-inspired</td></tr>
+<tr><td>Forest Pillow</td><td>Larger rounded mass, cupped leaf structure, independently controlled basal accumulation.</td><td><i>Leucobryum</i>-inspired</td></tr>
+<tr><td>Swept Tuft</td><td>Clearly separated taller shoots and coherent swept leaf orientation.</td><td><i>Dicranum</i>-inspired</td></tr>
+<tr><td>Creeping Carpet</td><td>Low connected stems and overlapping leaves with directional spread.</td><td><i>Hypnum</i>-inspired</td></tr>
+<tr><td>Feather Weft</td><td>Ordered lateral branching, flat fronds and smaller branchlet leaves.</td><td><i>Hylocomium</i>-inspired</td></tr>
+</tbody></table>
+<p><strong>Optional expanded settings:</strong> declared tile metric; nominal thickness; leaf length/width; shoot length/spacing; packing-versus-thickness response; basal accumulation; maturity; damage; moisture-posture curve; surface film; support radius; bridge limit; gravity/light context; palette; roughness/transmission fitting; residual normal strength; quality budget.</p>
+<p><strong>Optional inputs:</strong> placement, exclusion, hydration, substrate compatibility, flow and IDs. Define whether each replaces, multiplies or biases the corresponding automatic field. Defaults must work with no masks wired. Do not require anatomical or species inference.</p>
+</section>
+
+<section id="plan"><h2>12. Prioritized implementation plan</h2>
+<p>These are proposed implementation priorities, not defects confirmed in the current Mixtormat source.</p>
+<h3>Priority 0 — correct substrate, structure and output</h3>
+<ol>
+<li>Formalize incoming composite-height ownership, channel validity, physical/normalized scale and zero-coverage identity.</li>
+<li>Implement one shared leaf evaluator, explicit shoot attachment and four architecture families.</li>
+<li>Resolve visible ownership per sample; reject buried fragments; keep the basal mat’s coverage explicit.</li>
+<li>Separate raw delta height, Height Scale, normal derivatives and residual normal detail.</li>
+<li>Remove implicit per-image height normalization from the moss path; preserve reversible export scale metadata.</li>
+<li>Make seeds and periodic neighborhoods independent of output resolution; include all source/parameter dependencies in cache invalidation.</li>
+<li>Validate actual displaced geometry separately from the lit normal-map appearance in UE.</li>
+</ol>
+<h3>Priority 1 — production appearance and predictable editing</h3>
+<ol>
+<li>Add owner-aware filtering, coverage preservation and visible-normal variance treatment.</li>
+<li>Add reversible hydration posture, optional film water and separate maturity/decay controls.</li>
+<li>Fit preset optics against documented multi-angle references; retain unlit, height-only and channel-isolation views.</li>
+<li>Cache substrate analysis, instance layout and optical evaluation separately. Bound candidate counts and memory; changing a palette should not regenerate plants.</li>
+<li>Check copy/paste, duplication, instances and save/reload retain seeds, metric, overrides and output semantics.</li>
+</ol>
+<h3>Priority 2 — useful extensions</h3>
+<ol>
+<li>Add a coarse colony-front or arrival-time solver for visible spread history.</li>
+<li>Add form-specific creeping/feather branching responses when analytic rules are insufficient.</li>
+<li>Reuse the same instance hierarchy for leaf meshes/cards and hanging stems.</li>
+<li>Add optional transmission/thickness outputs and compatible preview/export materials. UE Two Sided Foliage is a thin-leaf rendering option, not a physical optical measurement. <a class="ref" href="#s22">[S22]</a></li>
+</ol>
+<p>Full fluid transport, chemical competition and cell-level growth simulation are not prerequisites for a strong surfacing module. They require more context and calibration than an ordinary material tile supplies.</p>
+</section>
+
+<section id="checks"><h2>13. Visual and numerical acceptance checks</h2>
+<p>Use fixed seeds and lighting, an unlit color view, height-only geometry, a normal-only view and a grazing camera. Show both source and final height profiles where scale is under test.</p>
+<table><thead><tr><th>Case</th><th>Pass condition</th></tr></thead><tbody>
+<tr><td>Flat substrate; no masks</td><td>Recognizable colonies, shoots and leaves appear without requiring cavities or external fields.</td></tr>
+<tr><td>Coverage = 0</td><td>Every incoming material channel and height is unchanged.</td></tr>
+<tr><td>Uneven surface, steps and ridges</td><td>Attachment follows the substrate; no global plane bulge; macroshape is preserved as support. Thick buildup may conceal small relief.</td></tr>
+<tr><td>Narrow and wide cracks</td><td>Bounded occupation/spanning; no automatic excavation, unlimited blanket or erased crack at sparse coverage.</td></tr>
+<tr><td>Leaf crossing a sharp ridge</td><td>Candidate bends, shortens or rejects consistently; no detached tip reappears beyond buried geometry.</td></tr>
+<tr><td>Sparse tall versus dense shallow</td><td>Both remain possible; density, shoot length and basal depth are not one parameter.</td></tr>
+<tr><td>Overlapping leaves</td><td>Rotating/recoloring a fully hidden leaf does not change the upper leaf’s material normal/color. Inspect owner edges for false bevels and dark halos.</td></tr>
+<tr><td>Wet/dry round trip</td><td>Same plant identities; posture and projected cover may change. Rehydration restores posture without spawning colonies or reviving independently dead material.</td></tr>
+<tr><td>Height Scale 0, 0.5, 1, 2</td><td>Identical pre-scale ownership and pigment coverage; proportional moss delta; matching slopes; substrate height never scaled.</td></tr>
+<tr><td>Normal isolation</td><td>Disabling residual detail retains represented leaf curvature. Disabling leaf relief removes that contribution once.</td></tr>
+<tr><td>2 × 2 and 3 × 3 tiled views</td><td>Height, material coverage, derivatives and instance identities match across edges/corners, including cross-boundary leaves and branches.</td></tr>
+<tr><td>Resolution / distance sweep</td><td>Stable world/normalized plant sizes and positions; subpixel leaves converge to aggregate appearance without sparkling or shrinking mean coverage.</td></tr>
+<tr><td>Extreme settings</td><td>No NaNs, unbounded candidate explosion, silent normalization, clipped export thickness or insufficient tile-neighbor search.</td></tr>
+<tr><td>Vertical/rotated surface</td><td>Behavior follows a declared gravity frame when present; otherwise no invented world orientation.</td></tr>
+<tr><td>Grazing and backlit views</td><td>Representation limits are visible and documented; geometry mode supplies true gaps, undersides and appropriate leaf transmission.</td></tr>
+<tr><td>Repeat, reload, copy, instance</td><td>Stable seeds and parameter interpretation; any shared-instance update behavior follows the existing module contract.</td></tr>
+</tbody></table>
+<p><strong>Ship criterion:</strong> the heightfield mode must be convincing as a structured surface covering at its intended viewing scale. A macro photography or hanging-moss claim requires the geometry path and separate validation.</p>
+</section>
+
+<section id="sources"><h2>14. Free full-text source register</h2>
+<p>Links below lead to complete flora entries, research articles, author/repository PDFs or official rendering documentation. No purchase-only source is required. Wiley access can intermittently fail for automated readers; direct PDF links are included where available.</p>
+<table class="sources"><thead><tr><th>ID</th><th>Source / direct link</th><th>Relevant location and evidence type</th></tr></thead><tbody>
+<tr id="s1"><td>S1</td><td><a href="https://floranorthamerica.org/Grimmia_pulvinata">FNA — Grimmia pulvinata</a></td><td>Vol.27 p.255; description and habitat. Reference dimensions/posture.</td></tr>
+<tr id="s2"><td>S2</td><td><a href="https://floranorthamerica.org/Leucobryum_glaucum">FNA — Leucobryum glaucum</a></td><td>Vol.27 p.442; description/discussion. Cushion and leaf architecture.</td></tr>
+<tr id="s3"><td>S3</td><td><a href="https://floranorthamerica.org/Dicranum_scoparium">FNA — Dicranum scoparium</a></td><td>Vol.27 p.402; description/discussion. Tuft and leaf variation.</td></tr>
+<tr id="s4"><td>S4</td><td><a href="https://floranorthamerica.org/Hypnum_cupressiforme">FNA — Hypnum cupressiforme</a></td><td>Vol.28 p.537; description. Stem, branch and leaf dimensions.</td></tr>
+<tr id="s5"><td>S5</td><td><a href="https://floranorthamerica.org/Hylocomium_splendens">FNA — Hylocomium splendens</a></td><td>Vol.28 p.328; description. Frond hierarchy and branch-order dimensions.</td></tr>
+<tr id="s6"><td>S6</td><td><a href="https://jetzlab.yale.edu/sites/default/files/files/WaterRelations2000.pdf">Zotz et al. 2000 — Water relations and carbon gain… Grimmia pulvinata (PDF)</a></td><td>pp.60–61, morphometric methods, Table 1, Fig.1. Measurements and empirical fits.</td></tr>
+<tr id="s7"><td>S7</td><td><a href="https://bsapubs.onlinelibrary.wiley.com/doi/pdf/10.3732/ajb.91.8.1164">Rice &amp; Schneider 2004 — Cushion size, surface roughness… Leucobryum glaucum (PDF)</a></td><td>p.1165, Study species and Canopy structure; field/wind-tunnel methods. Physical canopy roughness is not shader roughness.</td></tr>
+<tr id="s8"><td>S8</td><td><a href="https://repository.si.edu/server/api/core/bitstreams/eaa2ca8b-1aa4-4356-b3b1-d1145d114ced/content">Lovelock &amp; Robinson 2002 — Surface reflectance properties of Antarctic moss (PDF)</a></td><td>Methods pp.1240–1241; Tables 3 and 7; Discussion. Integrating-sphere canopy optics.</td></tr>
+<tr id="s9"><td>S9</td><td><a href="https://link.springer.com/article/10.1007/s10265-016-0836-x">Hu et al. 2016 — Dehydration-responsive features of Atrichum undulatum</a></td><td>Dehydration and recovery; Morphological features; Figs.1–3. Controlled microscopy.</td></tr>
+<tr id="s10"><td>S10</td><td><a href="https://samposm.kapsi.fi/papers/understory_brdf.pdf">Peltoniemi et al. 2005 — BRDF measurement of understory vegetation (PDF)</a></td><td>§2 methods; §3.2 Moss; Figs.6–7. Canopy goniometry.</td></tr>
+<tr id="s11"><td>S11</td><td><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3394659/">Jones &amp; Dolan 2012 — The evolution of root hairs and rhizoids</a></td><td>“Rhizoids have roles in anchorage and the uptake of water and nutrients.” Mechanistic review.</td></tr>
+<tr id="s12"><td>S12</td><td><a href="https://pdfs.semanticscholar.org/e98a/68597884fe44f29d4f7049932fba681296f8.pdf">Wang &amp; Bader 2018 — Water relations and photosynthetic responses in 12 moss species (PDF)</a></td><td>Methods; water/light response results; Discussion. Measurements with fitted responses and stated taxonomic limits.</td></tr>
+<tr id="s13"><td>S13</td><td><a href="https://www.nature.com/articles/srep41793.pdf">Young &amp; Reed 2017 — Syntrichia responses to altered precipitation (PDF)</a></td><td>Methods pp.2–3; Results p.4; Fig.1; Table 2. Chronic stress experiment; spectra measured dry.</td></tr>
+<tr id="s14"><td>S14</td><td><a href="https://www.scielo.br/j/aabc/a/MRf9Lf84BrDxnpf7QrPmCnv/?lang=en">Oliveira et al. 2026 — Calcium/pH preferences of Bryum atenense</a></td><td>Experimental design, Results, Tables I–II. Coupled chemistry treatments; one source population.</td></tr>
+<tr id="s15"><td>S15</td><td><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC11790842/">Lin et al. 2025 — Nitrogen enrichment and vascular plant richness loss reduce bryophyte richness</a></td><td>Experimental design; Results; Discussion. Contextual competition and disturbance evidence.</td></tr>
+<tr id="s16"><td>S16</td><td><a href="https://www.nzflora.info/factsheet/Taxon/Weymouthia-mollis.html">New Zealand Flora — Weymouthia mollis</a></td><td>Description, Recognition and Habitat. Reference for genuinely pendant moss.</td></tr>
+<tr id="s17"><td>S17</td><td><a href="https://faculty.cc.gatech.edu/~turk/my_papers/reaction_diffusion.pdf">Turk 1991 — Generating Textures on Arbitrary Surfaces Using Reaction-Diffusion (PDF)</a></td><td>Part One; Reaction-Diffusion on a Mesh. Pattern-generation method.</td></tr>
+<tr id="s18"><td>S18</td><td><a href="https://www.art-science.org/journal/v2n1/artsci-v2n1p30.pdf">Ogasawara, Muraoka &amp; Chiba 2003 — Visual Simulation of Moss… (PDF)</a></td><td>§§2–5, especially §4.2 and §5. CG model; Japanese body text, English abstract.</td></tr>
+<tr id="s19"><td>S19</td><td><a href="https://www.pbr-book.org/4ed/Textures_and_Materials/Material_Interface_and_Implementations">PBRT 4e — Material Interface and Implementations</a></td><td>§10.5.3 Normal Mapping; §10.5.4 Bump Mapping. Primary rendering reference.</td></tr>
+<tr id="s20"><td>S20</td><td><a href="https://dev.epicgames.com/documentation/unreal-engine/working-with-naniteenabled-content">Epic — Working with Nanite-Enabled Content, UE 5.8</a></td><td>Nanite Tessellation → Things to know; Aggregate Geometry; Foliage Using Nanite.</td></tr>
+<tr id="s21"><td>S21</td><td><a href="https://userpages.cs.umbc.edu/olano/papers/lean/">Olano &amp; Baker 2010 — LEAN Mapping (author page with full paper)</a></td><td>Normal-distribution moments and filtering; read posted errata. Not a universal GGX conversion.</td></tr>
+<tr id="s22"><td>S22</td><td><a href="https://dev.epicgames.com/documentation/en-us/unreal-engine/shading-models-in-unreal-engine">Epic — Shading Models, UE 5.8</a></td><td>Two Sided Foliage. Thin-surface rendering approximation.</td></tr>
+</tbody></table>
+</section>
+<footer>Mixtormat Moss Surfacing Audit · Biological observations guide architecture and scale; renderer parameters remain explicit modeling choices. All proposed defaults are labeled, and all source links are freely accessible full texts or official references.</footer>
+</main></body></html>

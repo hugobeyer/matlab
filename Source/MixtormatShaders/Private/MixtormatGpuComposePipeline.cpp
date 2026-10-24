@@ -433,6 +433,28 @@ namespace MixtormatGpuCompositor
 						return;
 					}
 				}
+				// Gather admits only enabled Surfacing scopes. Keep this boundary independent of
+				// Amount/HeightScale so dragging relief to zero cannot change normalization scope.
+				const int32 HeightRemapBoundary = Request.bFinalAutoRemapHeight
+					? Request.Layers.IndexOfByPredicate([](const FLayerRenderData& Layer)
+					{
+						return Layer.bEnabled && Layer.bGenerator && (!Layer.bNormalOnly || Layer.bFillPassThrough)
+							&& Layer.Children.ContainsByPredicate([](const FChildRenderData& Child)
+							{
+								if (Child.Type != EMixtormatLayerChildType::Surfacing || !Child.Surfacing.bEnabled)
+								{
+									return false;
+								}
+								return Child.Surfacing.Type == EMixtormatSurfacingType::Rust
+									? Child.Surfacing.Rust.bWriteHeight
+									: Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+									? Child.Surfacing.Moss.bWriteHeight : Child.Surfacing.Skin.bWriteHeight;
+							});
+					}) : INDEX_NONE;
+				if (Request.NodeCache.IsValid())
+				{
+					Request.NodeCache->SetAutoRemapHeight(Request.bFinalAutoRemapHeight);
+				}
 				FRDGBuilder GraphBuilder(RHICmdList);
 				FMixtormatComposeContext Ctx(GraphBuilder, Request);
 				// Filled during the graph and stored once it has executed, when the extracted
@@ -1069,6 +1091,17 @@ namespace MixtormatGpuCompositor
 							const bool bHasIdGroups = Layer.Children.ContainsByPredicate(
 								[](const FChildRenderData& Child) { return Child.Type == EMixtormatLayerChildType::IdGroup; });
 							LayerCtx.BeginLayer(LayerIndex);
+							// Normalize the completed substrate once, BEFORE layer inputs and Skin/Moss
+							// analysis read it. Never normalize their added relief afterward. A first-layer
+							// surface has no underlying composite to remap.
+							if (LayerIndex == HeightRemapBoundary && LayerIndex > 0)
+							{
+								const int32 Below = 1 - (LayerIndex & 1);
+								FRDGTextureRef Remapped = AddNormalizeFieldPasses(
+									GraphBuilder, Ctx.OutputHeight[Below], Request.Resolution, 0.0f, 1.0f,
+									TEXT("Mixtormat.Surfacing.SubstrateRemapped"));
+								AddCopyTexturePass(GraphBuilder, Remapped, Ctx.OutputHeight[Below]);
+							}
 							LayerCtx.BelowOptics = OutputOptics[1 - (LayerIndex & 1)];
 							LayerCtx.BelowFuzzColor = OutputFuzzColor[1 - (LayerIndex & 1)];
 							LayerCtx.BelowSubsurface = OutputSubsurface[1 - (LayerIndex & 1)];
@@ -1499,9 +1532,9 @@ namespace MixtormatGpuCompositor
 				}
 
 
-				// Auto remap: the finished height onto 0..1 from its measured range, ahead of AO
-				// and normals so both read the remapped surface.
-				if (Request.bFinalAutoRemapHeight && !Request.Layers.IsEmpty())
+				// Without height-writing Surfacing, retain the final 0..1 remap. Otherwise the
+				// substrate was remapped at the boundary; AO/normals must read unrescaled relief.
+				if (Request.bFinalAutoRemapHeight && HeightRemapBoundary == INDEX_NONE && !Request.Layers.IsEmpty())
 				{
 					const int32 Final = Request.PublishedTargetIndex;
 					// The full stack hash conservatively identifies the unremapped height. Keep the

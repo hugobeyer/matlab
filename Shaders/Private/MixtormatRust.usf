@@ -1,0 +1,146 @@
+// Copyright 2026 Hugo Beyer. All Rights Reserved.
+// Analytic ferrous corrosion. Relative units; no hidden steel or inferred coating breach.
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+
+int2 OutputSize;
+uint Seed;
+uint Structure;
+int ClusterPeriod;
+// @param Coverage saturates
+float Coverage;
+// @param PitDepth
+float PitDepth;
+// @param Buildup
+float Buildup;
+// @param Flaking saturates
+float Flaking;
+// @param SurfaceBias
+float SurfaceBias;
+// @param Variation saturates
+float Variation;
+// @param HeightScale
+float HeightScale;
+// @param Roughness saturates
+float Roughness;
+uint ColorCount;
+uint ColorInterpolation;
+float4 ColorPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 ColorColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+Texture2D<float> SubstrateHeight;
+SamplerState LinearWrapSampler;
+RWTexture2D<float> OutHeight;
+RWTexture2D<float> OutCoverage;
+RWTexture2D<float4> OutColor;
+RWTexture2D<float4> OutRAM;
+RWTexture2D<float4> OutOptics;
+
+uint RustHash(uint V)
+{
+	V ^= V >> 16u; V *= 0x7feb352du; V ^= V >> 15u; V *= 0x846ca68bu;
+	return V ^ (V >> 16u);
+}
+float3 RustRandom(int2 Cell, int Period, uint Salt)
+{
+	int2 C = (Cell % Period + Period) % Period;
+	uint H = RustHash(uint(C.x) ^ RustHash(uint(C.y) + Seed) ^ Salt);
+	return float3(H & 65535u, RustHash(H) & 65535u, RustHash(H + 1u) & 65535u) / 65536.0f;
+}
+// Cellular distance, plate seam distance and stable owner pigment. No pixel-index seeds.
+float4 RustCell(float2 UV, int Period, uint Salt)
+{
+	float2 Q = UV * float(Period);
+	int2 Base = int2(floor(Q));
+	float First = 10.0f, Second = 10.0f;
+	float2 Owner = 0;
+	[unroll] for (int Y = -1; Y <= 1; ++Y) [unroll] for (int X = -1; X <= 1; ++X)
+	{
+		int2 Cell = Base + int2(X,Y);
+		float3 R = RustRandom(Cell, Period, Salt);
+		float2 D = Q - (float2(Cell) + 0.5f + (R.xy - 0.5f) * 0.7f);
+		float Dist = dot(D,D);
+		if (Dist < First) { Second = First; First = Dist; Owner = R.yz; }
+		else Second = min(Second, Dist);
+	}
+	return float4(sqrt(First), sqrt(Second) - sqrt(First), Owner);
+}
+float2 RustUV(float2 UV)
+{
+	float2 P = MixtormatGeneratorUV(UV);
+	return (0.5f + mul(MixtormatSourceOrientation(GeneratorUVFlipU, GeneratorUVFlipV,
+		GeneratorUVRotation), P - 0.5f)) * GeneratorUVScale + GeneratorUVOffset;
+}
+
+// Loss and retained product have separate lifetimes. Buildup=0 still permits thin oxide;
+// Flaking=1 removes all oxide/products without changing the attack or loss fields.
+float4 RustFields(float2 UV, float Bias, float Footprint)
+{
+	float4 Parent = RustCell(UV, ClusterPeriod, 17u);
+	float4 Plate = RustCell(UV, ClusterPeriod * 3, 83u);
+	float4 Grain = RustCell(UV, ClusterPeriod * 12, 191u);
+	float GrainResolved = 1.0f - smoothstep(0.35f, 1.2f, Footprint * 12.0f);
+	float PlateResolved = 1.0f - smoothstep(0.35f, 1.2f, Footprint * 3.0f);
+	float AttackDistance = Parent.x + (Plate.x - 0.4f) * 0.28f * PlateResolved;
+	float Radius = lerp(-0.18f, 1.5f, Coverage) + Bias * 0.18f;
+	float AA = max(Footprint * 0.45f, 0.015f);
+	float Attack = Coverage <= 0 ? 0 : (Coverage >= 1 ? 1 : 1 - smoothstep(Radius-AA, Radius+AA, AttackDistance));
+	// Fixed pit profiles: changing coverage reveals features, never rescales surviving depth.
+	float Basin = pow(saturate(1.0f - Parent.x), 1.5f);
+	float Pits = lerp(0.5f, pow(saturate(1.0f - Plate.x), 2.0f), PlateResolved);
+	float Loss = Attack * PitDepth * (0.18f + 0.48f * Basin + 0.34f * Pits);
+	float Survives = Flaking <= 0 ? 1 : (Flaking >= 1 ? 0 : smoothstep(Flaking-.035f, Flaking+.035f, Plate.w));
+	float Seam = lerp(1.0f, smoothstep(0.012f, 0.065f, Plate.y), PlateResolved);
+	float Aggregate = lerp(0.55f, pow(saturate(1.0f - Grain.x), 2.0f), GrainResolved);
+	float Deposit = 0.4f + 0.35f * Basin;
+	if (Structure == 1u) Deposit *= 0.55f + 0.85f * Aggregate;
+	if (Structure == 2u)
+	{
+		float Terraces = 0.3f + 0.35f * smoothstep(.25f,.29f,Plate.z) + 0.35f * smoothstep(.65f,.69f,Plate.z);
+		Deposit = lerp(Deposit, Terraces * Seam, PlateResolved);
+	}
+	Deposit *= lerp(1.0f, 0.65f + 0.7f * Parent.w, Variation);
+	float Retained = Attack * Survives * Buildup * saturate(Deposit);
+	float Oxide = Attack * Survives * (Structure == 2u ? lerp(.35f,1.0f,Seam) : 1.0f);
+	float Pigment = saturate(.5f + Variation * ((Parent.w-.5f)*.75f
+		+ (Plate.z-.5f)*.55f*PlateResolved + (Aggregate-.5f)*.35f));
+	return float4(Retained - Loss, Oxide, Pigment, Aggregate);
+}
+
+[numthreads(8,8,1)]
+void MainCS(uint3 Id : SV_DispatchThreadID)
+{
+	int2 P = int2(Id.xy);
+	if (any(P >= OutputSize)) return;
+	float2 Texel = 1.0f / float2(OutputSize);
+	float2 UV = (float2(P)+.5f) * Texel;
+	float2 Q = RustUV(UV);
+	float2 DX = RustUV(UV+float2(Texel.x,0))-Q;
+	float2 DY = RustUV(UV+float2(0,Texel.y))-Q;
+	float Footprint = max(length(DX+DY),length(DX-DY)) * float(ClusterPeriod);
+	// Immutable substrate sampling at a bounded feature-relative radius. A geometric cue only.
+	float2 D = max(Texel, (0.2f / float(ClusterPeriod)).xx);
+	float H = SubstrateHeight.SampleLevel(LinearWrapSampler, UV, 0);
+	float Mean = (SubstrateHeight.SampleLevel(LinearWrapSampler, UV+float2(D.x,0),0)
+		+ SubstrateHeight.SampleLevel(LinearWrapSampler, UV-float2(D.x,0),0)
+		+ SubstrateHeight.SampleLevel(LinearWrapSampler, UV+float2(0,D.y),0)
+		+ SubstrateHeight.SampleLevel(LinearWrapSampler, UV-float2(0,D.y),0)) * .25f;
+	float Bias = isfinite(H) && isfinite(Mean) ? clamp((Mean-H)*32.0f,-1.0f,1.0f)*SurfaceBias : 0;
+	float Height = 0, Cover = 0, Rough = 0;
+	float3 Color = 0;
+	const float2 Samples[4] = {float2(-.25f,-.25f),float2(.25f,-.25f),float2(-.25f,.25f),float2(.25f,.25f)};
+	[unroll] for (int I=0; I<4; ++I)
+	{
+		float4 F = RustFields(Q+DX*Samples[I].x+DY*Samples[I].y, Bias, Footprint);
+		Height += F.x * .25f;
+		Cover += F.y * .25f;
+		Color += MixtormatEvalColorRamp(F.z, ColorCount, ColorInterpolation, ColorPositions, ColorColors).rgb * F.y * .25f;
+		Rough += saturate(Roughness + Variation * (F.w-.5f)*.18f) * F.y * .25f;
+	}
+	// Unpremultiply only material fields. The signed relief is NEVER divided by coverage.
+	OutHeight[P] = Height * HeightScale;
+	OutCoverage[P] = Cover;
+	OutColor[P] = float4(Cover > 0 ? Color / Cover : 0, 1);
+	OutRAM[P] = float4(Cover > 0 ? Rough / Cover : Roughness, 1, 0, .04f);
+	OutOptics[P] = float4(.04f,0,0,0);
+}

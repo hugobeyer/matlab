@@ -218,7 +218,8 @@ namespace MixtormatShaderParamScanner
 						break;
 					}
 				}
-				Tag.Owner = (ShaderName == TEXT("MixtormatSkin.usf")
+				Tag.Owner = ShaderName == TEXT("MixtormatRust.usf") ? EMixtormatParameterOwnerType::Rust
+									: (ShaderName == TEXT("MixtormatSkin.usf")
 					|| ShaderName == TEXT("MixtormatSkinSolve.usf")
 					|| ShaderName == TEXT("MixtormatSurfacingApply.usf"))
 					? EMixtormatParameterOwnerType::Surfacing

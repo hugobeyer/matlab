@@ -62,6 +62,30 @@ Surface IDs feature source chips (Primary / Secondary) use full-width rows so
 long options such as Normal Flatness remain readable at the authored Inspector
 width; producer math and feature enumeration are unchanged.
 
+## Auto Remap Height and Surfacing
+
+Auto Remap remains optional. With no enabled height-writing Surfacing scope, it
+normalizes the finished stack to 0..1 as before. Otherwise it normalizes the completed
+composite below the first such layer, before that layer's inputs, masks and Skin/Moss/Rust
+substrate analysis run. If that layer is first, there is no lower composite to remap.
+There is no second normalization afterward: surfacing relief, same-layer modules and
+all later layers retain their authored amplitude, and final height may exceed 0..1.
+This is a layer boundary, not a separate replay of generators within that layer.
+Amount/HeightScale changes do not move the boundary; enabled scope and Write Height do.
+Final AO and normals read the resulting composite, including the retained relief.
+
+The remap option participates in prefix hashes. Node results are invalidated when it
+changes, because substrate-dependent producer keys otherwise contain only authored
+layer/child state. Prefix snapshots remain pre-boundary or post-boundary according to
+their layer index; a resumed stack neither skips nor repeats the boundary operation.
+Skin, Moss and Rust analysis do not add the lower composite again when their layer is
+Pass Through: that layer's private height already contains the inherited substrate.
+Moss canopy support uses the same corrected substrate selection. Nested Surfacing
+children dispatch by subtype (previously the recursive path only called Skin).
+Rust uses the shared signed-delta and gated material apply, with opt-in metallic
+writing and completed-scope Height/Color publications. No material-master changes.
+Source-reviewed only; compilation and render verification remain user-run.
+
 ## Layer surface optics
 
 Material and Fill layers expose optional SSS and fuzz in **Surface Optics**. Both are off

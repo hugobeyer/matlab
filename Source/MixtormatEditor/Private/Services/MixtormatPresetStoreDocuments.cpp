@@ -278,6 +278,18 @@ namespace MixtormatPresetStore
 			Moss.bWriteRoughness = Original.bWriteRoughness;
 			Moss.bWriteNormal = Original.bWriteNormal;
 		}
+		if (Destination.Type == EMixtormatLayerChildType::Surfacing
+			&& Destination.Surfacing.Type == EMixtormatSurfacingType::Rust)
+		{
+			Copy.Surfacing.bEnabled = Destination.Surfacing.bEnabled;
+			FMixtormatRust& Rust = Copy.Surfacing.Rust;
+			const FMixtormatRust& Original = Destination.Surfacing.Rust;
+			Rust.Amount = Original.Amount;
+			Rust.bWriteHeight = Original.bWriteHeight;
+			Rust.bWriteColor = Original.bWriteColor;
+			Rust.bWriteRoughness = Original.bWriteRoughness;
+			Rust.bWriteMaterial = Original.bWriteMaterial;
+		}
 		TArray<FSoftObjectPath> Assets;
 		Documents::GatherAssets(Property->Struct, Property->ContainerPtrToValuePtr<void>(&Copy), Assets);
 		if (!Documents::CheckAssets(Assets, Error)
@@ -413,7 +425,29 @@ namespace MixtormatPresetStore
 			}
 			Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
 		}
-		Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
+		if (Child.Type == EMixtormatLayerChildType::Surfacing
+					&& Child.Surfacing.Type == EMixtormatSurfacingType::Rust)
+				{
+					for (const FMixtormatRustPreset& RustPreset : MixtormatSurfacing::GetRustPresets())
+					{
+						if (Presets.ContainsByPredicate([&](const FModulePreset& Existing)
+						{
+							return Existing.Name.Equals(RustPreset.Name.ToString(), ESearchCase::IgnoreCase)
+								&& IsModuleCompatible(Existing.Settings, Child);
+						})) { continue; }
+						FModulePreset& Preset = Presets.AddDefaulted_GetRef();
+						Preset.Name = RustPreset.Name.ToString();
+						Preset.Description = RustPreset.Description.ToString();
+						Preset.Category = TEXT("Rust");
+						Preset.bShipped = true;
+						Preset.bBuiltIn = true;
+						Preset.Settings.Type = EMixtormatLayerChildType::Surfacing;
+						Preset.Settings.Surfacing.Type = EMixtormatSurfacingType::Rust;
+						Preset.Settings.Surfacing.Rust = RustPreset.Settings;
+					}
+					Presets.Sort([](const FModulePreset& A, const FModulePreset& B) { return A.Name < B.Name; });
+				}
+				Presets.RemoveAll([&Child](const FModulePreset& Preset) { return !IsModuleCompatible(Child, Preset.Settings); });
 		OutPresets = MoveTemp(Presets);
 		return bClean;
 	}

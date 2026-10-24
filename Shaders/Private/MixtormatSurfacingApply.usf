@@ -29,9 +29,12 @@ float SurfaceWeight(int2 P)
 	return isfinite(Amount) && isfinite(G) ? saturate(Amount) * saturate(G) : 0.0f;
 }
 #if SURFACING_STAGE == 1
+uint HasMaterialCoverage;
+Texture2D<float> MaterialCoverage;
 uint WriteHeight;
 uint WriteColor;
 uint WriteRoughness;
+uint WriteMetallic;
 uint WriteAO;
 uint WriteF0;
 uint WriteFuzz;
@@ -86,7 +89,7 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 		if (W0 > 0.0f)
 		{
 			float3 DN = DetailNormal.Load(int3(P, 0)).rgb * 2.0f - 1.0f;
-			DN.xy *= NormalStrength * W0;
+			DN = normalize(float3(DN.xy * NormalStrength, max(DN.z, 0.05f)));
 			float3 Blended = normalize(float3(BaseN.xy + DN.xy, BaseN.z * max(DN.z, 0.05f)));
 			BaseN = normalize(lerp(BaseN, Blended, W0));
 		}
@@ -100,13 +103,22 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 			// Zero signed relief is identity even for a signed-zero incoming height.
 			if (Delta != 0.0f && isfinite(Delta) && isfinite(H + Delta)) { H += Delta; }
 		}
+		// Moss relief and leaf normals already contain their growth footprint.
+		// Its ramp color and roughness are unweighted fields: apply coverage here,
+		// alongside (not instead of) Amount and the authored scope gate.
+		if (HasMaterialCoverage != 0u)
+		{
+			float Coverage = MaterialCoverage.Load(int3(P, 0));
+			W *= isfinite(Coverage) ? saturate(Coverage) : 0.0f;
+		}
 		if (WriteColor != 0u) { C = float4(MixRGB(C.rgb, SkinColor.Load(int3(P, 0)).rgb, W), C.a); }
 		float4 SR = SkinRAM.Load(int3(P, 0));
 		float4 SO = SkinOptics.Load(int3(P, 0));
 		if (WriteRoughness != 0u) { R.r = MixChannel(R.r, SR.r, W); }
 		// Skin contributes local visibility; it must not erase upstream crevice occlusion.
 		if (WriteAO != 0u) { R.g = MixChannel(R.g, R.g * SR.g, W); }
-		// Skin has no metallic write flag; RAM.B is always preserved.
+		// Only the ferrous-corrosion material path opts into metallic replacement.
+				if (WriteMetallic != 0u) { R.b = MixChannel(R.b, SR.b, W); }
 		if (WriteF0 != 0u) { R.a = MixChannel(R.a, SR.a, W); O.r = MixChannel(O.r, SO.r, W); }
 		if (WriteFuzz != 0u)
 		{

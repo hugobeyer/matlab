@@ -237,6 +237,8 @@ namespace
 				TEXT("Crossing"), TEXT("TissueCoupling"), TEXT("MarbleDrift"), TEXT("DirectionVariation"),
 				TEXT("Cellular"), TEXT("CurvatureStrength"), TEXT("PoreDepth"), TEXT("PoreVariation"),
 				TEXT("Grain"), TEXT("PigmentVariation"), TEXT("ThicknessVariation"), TEXT("VascularAmount"),
+				TEXT("RednessAmount"), TEXT("VeinAmount"), TEXT("VeinWidth"), TEXT("VeinDepth"), TEXT("VeinDensity"),
+				TEXT("OilAmount"), TEXT("Dryness"), TEXT("Flaking"), TEXT("FinishVariation"),
 				TEXT("CavityAO"), TEXT("CavityRoughness"), TEXT("FuzzAmount"), TEXT("FuzzRoughness"),
 				TEXT("SSSAmount"), TEXT("Bending"), TEXT("Support"), TEXT("SurfaceTiling"),
 				TEXT("GravityBulge"), TEXT("GravityAngle"), TEXT("GravityHold"), TEXT("VascularScale"), TEXT("VascularDensity"),
@@ -382,7 +384,22 @@ namespace
 				}
 			}
 		}
-		else if (Owner == EMixtormatParameterOwnerType::Surfacing)
+		else if (Owner == EMixtormatParameterOwnerType::Rust)
+				{
+					static const FMixtormatRust Defaults;
+					const FProperty* Property = FMixtormatRust::StaticStruct()->FindPropertyByName(Parameter);
+					if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+					{
+						Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+						Result.bFound = true;
+					}
+					else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+					{
+						Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+						Result.bFound = true;
+					}
+				}
+				else if (Owner == EMixtormatParameterOwnerType::Surfacing)
 		{
 			static const FMixtormatSkin Defaults;
 			static const FMixtormatMoss MossDefaults;

@@ -51,9 +51,9 @@ Path keys below, all relative to the plugin root:
 | D11 | `Mixtormat.MigrateAssets [Apply]`: `Source/MixtormatEditor/Private/MixtormatEditorModule.cpp:43–51,128–138`. | Registered with `ECVF_Default` when source directories exist; `Apply` runs migration. | **DEV-ONLY** registration, callback, includes, and command state. |
 | D12 | MaterialLab/ML → Mixtormat/DA migration service: `EV/MixtormatAssetMigration.cpp:47–89,119–136,301–328`; `.h:7–27`. | One-time internal asset renaming, not customer import. | **DEV-ONLY** service; **PACKAGE-EXCLUDE** dedicated implementation/header after guarding dependencies. |
 | D13 | `Mixtormat.DisableComposeCache`: `SP/MixtormatGpuCompositor.cpp:59–64,1866–1868`. | Default 0, `ECVF_Default`, no private build guard. | **DEV-ONLY** registration and bypass read. Keep normal caching. |
-| D14 | Moss **Preview** solver selector: `EW/Inspector/MixtormatInspectorGenerators.cpp:2953–2955`; `RP/MixtormatGeneratorTypes.h:403–414,437–439`. | Normal inspector and reflected editable field. Options: Moss, Chemical A/B, Activation, Arrival, Boundary, Biomass. | **REMOVE AUTHORING CONTROL / VIEWPORT-ONLY INSPECTION**. User clarified that this dropdown should not exist as an authored Moss parameter. Use the existing viewport-output mechanism for inspection, without replacing composed Height. Keep Moss relief and detail normals. |
+| D14 | Moss **Preview** solver selector: `EW/Inspector/MixtormatInspectorGenerators.cpp:2953–2955`; `RP/MixtormatGeneratorTypes.h:403–414,437–439`. | Normal inspector and reflected editable field. Options: Moss, Chemical A/B, Activation, Arrival, Boundary, Biomass. | **HIDE FROM CUSTOMERS / INTERNAL TOOL ONLY**. No customer solver-inspection UI is needed. Do not automatically add these modes to viewport outputs. Keep useful existing material/mask outputs, Moss relief, and detail normals; see the focused output audit below. |
 
-### Moss clarification: keep relief/normals; move solver inspection to viewport outputs
+### Moss clarification: keep relief/normals; hide solver internals from customers
 
 **Moss and Skin changing Height is intentional, not a release defect.** Moss bulges/thickness belong
 in Height. The final-normal path derives slope from finished Height and adds authored detail normals
@@ -64,20 +64,62 @@ Its current diagnostic selection changes composed/published Height rather than o
 
 1. `SP/Compositing/MixtormatSurfacingGather.cpp:35–40` clamps the selection, but does not dev-gate it.
 2. `SP/MixtormatGpuGeneratorPasses.cpp:4075` binds it to the shader.
-3. The Moss height/preview shader stage can substitute a diagnostic field for Height. Shader line numbers have moved since the initial audit.
+3. `SH/MixtormatMoss.usf:403–412` substitutes a diagnostic field for Height when Preview is nonzero.
 4. `SP/MixtormatGpuGeneratorPasses.cpp:5211–5223` skips normal height scaling/normalization for that mode and applies the result to composition.
 5. The published **Height** also receives `Raw.Height` at `:5231`.
 
-**User-confirmed direction:** remove the Moss Preview dropdown as an authoring parameter.
-Use the existing viewport-output mechanism for solver inspection, not a second preview system.
-Check which diagnostic fields are already published before deciding what wiring is needed.
-Inspection should not replace composed or published material Height, or affect baking.
+**Latest user direction:** customers do not need solver inspection. Audit mask usefulness first;
+keep internal diagnostics hidden rather than automatically moving them into customer viewport outputs.
+The existing ordinary output/mask workflow remains; do not add a diagnostic browser or new outputs.
 
-Retire the Preview field/enum and its gather, cache, CPU/shader binding, and Height-substitution readers
-together; merely hiding the row would leave authored values affecting output. The composition path
-also reads `Child.Surfacing.Moss`, so this is not a gather-only change. Remove the obsolete tooltip
-with the dropdown. Preserve normal Moss generation, Height Scale/normalization, Skin relief, and all
-detail-normal behavior. No product changes have been implemented by this document.
+Minimum UI proposal: hide the Preview dropdown from customer builds, retain private access only if
+useful internally. This does not by itself retire the authored Preview field: saved nonzero values can
+still affect Height. Any later field retirement must update gather/cache, CPU/shader bindings, and
+Height-substitution readers together; the composition path also reads `Child.Surfacing.Moss`.
+Do not silently reset authored values as part of a visibility-only change. No product changes have
+been implemented by this document. Preserve Moss/Skin relief and all detail-normal behavior.
+
+### Focused Moss output audit: masks versus solver internals
+
+Source-based usefulness assessment, not observed customer usage. Binary assets were not inspected,
+so this audit cannot establish whether an existing output has saved consumers.
+
+Current public registry: `RI/MixtormatSurfacingTypes.cpp:229–237`. It has seven outputs—not the
+six internal diagnostic choices. Publication: `SP/MixtormatGpuGeneratorPasses.cpp:5231–5240`.
+
+| Output / mode | Actual data and mask value | Recommendation |
+|---|---|---|
+| **Growth Coverage** | Resolved 0..1 colony footprint. Directly useful for masking other treatments to the moss area. | **KEEP customer mask output.** Strongest practical mask use. |
+| **Growth Age** | Coverage-aware maturity derived from growth arrival. Can distinguish older interiors from newer growth/fronts; zero outside coverage. Not elapsed real-world time. | **KEEP existing mask output.** Plausible gradient for color/roughness or other treatments; lower priority than Coverage, but not redundant solver-only data. |
+| **Roughness** | Final wet/dry roughness with per-colony variation; 0..1. | **KEEP material output**, also reusable as a scalar mask. It is not a pure moisture mask. |
+| **Colony IDs** | Discrete colony labels, not a grayscale mask. Can support per-colony selection/variation through ID operations. | **KEEP existing ID output** pending a separate simplification decision. Do not present it as an ordinary scalar mask. |
+| **Height** | Moss relief, including bulk/micro relief, with signed-height treatment. | **KEEP material output.** Useful for height-driven treatments, but not a ready-made 0..1 occupancy mask. |
+| **Albedo** | Material color, not a single mask channel. | **KEEP material output.** No new diagnostic exposure. |
+| **Detail Normal** | Analytic tufted blade normals. Stage 12 explicitly generates normals separately from Stage 3 Height. | **KEEP material output and normal contribution.** Not a scalar mask or engineering-only feature. |
+| **Chemical A** (Preview 1) | Current shader uses the first Chemical channel as moisture. Internal moisture could theoretically drive wetness, but this is not a named moisture output and is not colony-gated here. | **DEV-ONLY / HIDE.** No established need to expose it; do not add a new public mask just because it is scalar. |
+| **Chemical B** (Preview 2) | Raw coverage concentration before the public threshold/smoothstep resolves the footprint. | **DEV-ONLY / HIDE.** Public Growth Coverage is the clearer artist mask. |
+| **Activation** (Preview 3) | Initial activation/inoculation field, not final grown coverage. | **DEV-ONLY / HIDE.** No clear additional customer mask value demonstrated. |
+| **Arrival** (Preview 4) | Returns `SampleMossSimulation(...).Maturity`, not raw arrival time. Related to the already-published Growth Age signal. | **DEV-ONLY / HIDE.** Misleading diagnostic label; no additional customer output needed. |
+| **Boundary** (Preview 5) | Reads `ActivationHabitat.b`, which seeding writes from `MaskSeed`. It is not the final colony edge/boundary. | **DEV-ONLY / HIDE.** Do not advertise this as a new edge mask. |
+| **Biomass** (Preview 6) | Solver state used for maturity/thickness/deposition. Could be an artistic signal in theory, but no independent mask requirement is established. | **DEV-ONLY / HIDE.** Keep computation; do not add public inspection UI. |
+
+Evidence:
+
+- Diagnostic switch: `SH/MixtormatMoss.usf:403–412`.
+- Seed packing: same file `:275–288`; Chemical meaning `:8–9,488–493`.
+- Coverage threshold and maturity sampling: `:178–196`; resolved public fields `:585–595`.
+- Material shading consumes Coverage/Age/IDs/moisture: `:752–766`.
+- Leaf-normal implementation: `:738–742,813–833`.
+- Coverage/Age are also registered as named bundle masks: `SP/MixtormatGpuGeneratorPasses.cpp:4310–4316`.
+- The seven registry outputs feed editor capabilities: `EW/Layers/MixtormatSurfacingCapabilities.h:12–21`.
+- Runtime reference validation consults that registry: `RI/MixtormatOutputReference.cpp:215–218` and
+  `RI/MixtormatSurfacingTypes.cpp:243–260`.
+
+**Smallest recommendation:** hide the authored Preview dropdown from customers; expose no new solver
+fields. Keep existing Coverage/Age masks and ordinary material/ID outputs. If further output-list
+simplification is desired, make it presentation-only first: do not remove registry entries, published
+textures, or reference eligibility as a shortcut. Coverage/Age/IDs are consumed by Moss itself, so
+hiding output rows is not permission to delete their computation or storage.
 
 ### Confirmed policy: keep UI STYLE and parameter-range authoring for developers only
 
@@ -321,8 +363,9 @@ These are not valid private-developer identities:
 **Reflected fields are a separate problem.** Do not put arbitrary private preprocessor guards around
 `UPROPERTY`/`UENUM` declarations and assume UHT/serialization will remain valid. First approve either
 coordinated parameter retirement or a safe release evaluation policy. For Moss, retire the authored
-Preview override while keeping solver inspection in the existing viewport-output path; do not gate
-or remove normal Height generation. Matching shader defines/permutations are necessary only
+Preview UI from customers; keep diagnostics internal rather than adding customer viewport outputs.
+Preserve existing useful masks, normal Height generation, and detail normals. Field retirement is a
+separate coordinated change from hiding UI. Matching shader defines/permutations are necessary only
 if shader engineering branches are actually compiled out; CPU bindings/dispatch must agree.
 
 This is distribution hygiene, not an anti-tamper/security boundary: customers receiving source can
@@ -340,7 +383,7 @@ Clean the labels and isolate genuine engineering tools instead.
 
 1. Delete stale UI text and redundant readouts from section 2; preserve working features.
 2. Add the default-off private gate for UI STYLE, locator, parameter-definition/range editing, source-library mutation, and migration. Keep these tools available in private developer builds.
-3. Remove the Moss Preview authoring parameter and route solver inspection through existing viewport outputs. Preserve material Height-to-normal behavior and leaf detail normals.
+3. Hide Moss Preview from customers; add no solver-inspection outputs. Preserve Coverage/Age masks, material/ID outputs, Height-to-normal behavior, and leaf detail normals. Decide authored-field retirement separately.
 4. Retire confirmed unused shim/inactive style controls, with approval for actual deletions.
 5. Decide obsolete Flow and serialized parameter retirements as separate coordinated changes.
 6. Trim dormant shader permutations only after checking every dispatch/resource dependency.

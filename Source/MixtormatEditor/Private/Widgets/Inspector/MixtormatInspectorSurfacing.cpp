@@ -110,6 +110,15 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 	AddSliderRow(Albedo, MixtormatRow::MakePair(SKIN_FLOAT(VascularScale), SKIN_FLOAT(VascularDensity)));
 	AddSliderRow(Albedo, SKIN_FLOAT(ThicknessVariation));
 
+	const auto Veins = AddCard(Cards, LOCTEXT("SkinVeinsCard", "REDNESS & VEINS"));
+	AddSliderRow(Veins, SKIN_FLOAT(RednessAmount));
+	AddSliderRow(Veins, MixtormatRow::MakePair(SKIN_FLOAT(VeinAmount), SKIN_FLOAT(VeinDensity)));
+	AddSliderRow(Veins, MixtormatRow::MakePair(SKIN_FLOAT(VeinWidth), SKIN_FLOAT(VeinDepth)));
+
+	const auto Finish = AddCard(Cards, LOCTEXT("SkinFinishCard", "SURFACE CONDITION"));
+	AddSliderRow(Finish, MixtormatRow::MakePair(SKIN_FLOAT(OilAmount), SKIN_FLOAT(Dryness)));
+	AddSliderRow(Finish, MixtormatRow::MakePair(SKIN_FLOAT(Flaking), SKIN_FLOAT(FinishVariation)));
+
 	const auto Roughness = AddCard(Cards, LOCTEXT("SkinRoughnessCard", "ROUGHNESS & CAVITY"));
 	const TSharedRef<SWidget> RoughnessEditor = SNew(SMixtormatScalarRamp)
 		.IsEnabled_Lambda([this, Skin]() { return Skin() && !IsSelectedChildInstance()
@@ -237,6 +246,89 @@ TSharedRef<SWidget> SMixtormat::BuildSkinControls()
 				SNew(SBox).IsEnabled_Lambda([this]() { return !IsSelectedChildInstance(); })[Cards]
 			]
 		];
+}
+
+FMixtormatRust* SMixtormat::GetSelectedRust()
+{
+	return const_cast<FMixtormatRust*>(static_cast<const SMixtormat*>(this)->GetSelectedRust());
+}
+
+const FMixtormatRust* SMixtormat::GetSelectedRust() const
+{
+	const FMixtormatLayerChild* Child = ResolveChildAt(GetSelectedChildAddress());
+	return Child && Child->Type == EMixtormatLayerChildType::Surfacing
+		&& Child->Surfacing.Type == EMixtormatSurfacingType::Rust ? &Child->Surfacing.Rust : nullptr;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildRustControls()
+{
+	const auto Rust = [this]() { return GetSelectedRust(); };
+	const FMixtormatRust Defaults;
+	const auto Scalar = [this, Rust](FName Name, float FMixtormatRust::* Member)
+	{
+		const FProperty* P = FMixtormatRust::StaticStruct()->FindPropertyByName(Name);
+		check(P);
+		FMixtormatParameterUiResolution Meta;
+		MixtormatParameterUi::TryResolveUi({EMixtormatParameterOwnerType::Rust, Name, EMixtormatParameterValueType::Float}, Meta);
+		return MakeMemberSlider<FMixtormatRust>(P->GetDisplayNameText(), Rust, Member,
+			Meta.UiMin, Meta.UiMax, Meta.Default, Meta.Snap, P->GetToolTipText());
+	};
+	const auto Toggle = [this, Rust](FName Name, bool FMixtormatRust::* Member)
+	{
+		const FProperty* P = FMixtormatRust::StaticStruct()->FindPropertyByName(Name);
+		check(P);
+		return MakeMemberToggle<FMixtormatRust>(P->GetDisplayNameText(), Rust, Member, P->GetToolTipText());
+	};
+	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
+#define RUST_FLOAT(Name) Scalar(GET_MEMBER_NAME_CHECKED(FMixtormatRust, Name), &FMixtormatRust::Name)
+#define RUST_WRITE(Name) Toggle(GET_MEMBER_NAME_CHECKED(FMixtormatRust, Name), &FMixtormatRust::Name)
+	const auto Surface = AddCard(Cards, LOCTEXT("RustSurfaceCard", "FERROUS CORROSION · RELATIVE UNITS"));
+	AddSliderRow(Surface, MakeMemberEnum<FMixtormatRust, EMixtormatRustStructure>(
+		LOCTEXT("RustStructure", "Structure"), Rust, &FMixtormatRust::Structure,
+		LOCTEXT("RustAssumption", "Assumes exposed iron or steel in this scope. Does not identify alloy, recover painted-over steel or generate a substitute substrate.")));
+	AddSliderRow(Surface, MixtormatRow::MakePair(RUST_FLOAT(Amount), RUST_FLOAT(Coverage)));
+	AddSliderRow(Surface, MixtormatRow::MakePair(RUST_FLOAT(PitDepth), RUST_FLOAT(Buildup)));
+	AddSliderRow(Surface, MixtormatRow::MakePair(RUST_FLOAT(Flaking), RUST_FLOAT(FeatureSize)));
+	AddSliderRow(Surface, MixtormatRow::MakePair(RUST_FLOAT(SurfaceBias), RUST_FLOAT(Variation)));
+	AddSliderRow(Surface, MakeMemberSliderInt<FMixtormatRust>(LOCTEXT("RustSeed", "Seed"), Rust,
+		&FMixtormatRust::Seed, 0, 9999, Defaults.Seed));
+	AddSliderRow(Surface, RUST_FLOAT(HeightScale));
+	const auto Material = AddCard(Cards, LOCTEXT("RustMaterial", "OXIDE MATERIAL"));
+	AddSliderRow(Material, RUST_FLOAT(Roughness));
+	const TSharedRef<SWidget> Palette = SNew(SMixtormatColorRamp)
+		.IsEnabled_Lambda([this, Rust]() { return Rust() && !IsSelectedChildInstance()
+			&& !GroupControlValueFor(Rust(), FMixtormatRust::StaticStruct(), TEXT("ColorRamp")); })
+		.Ramp_Lambda([this, Rust, Defaults]()
+		{
+			if (const auto* V = GroupControlValueFor(Rust(), FMixtormatRust::StaticStruct(), TEXT("ColorRamp")))
+			{ return V->ColorRampValue; }
+			return Rust() ? Rust()->ColorRamp : Defaults.ColorRamp;
+		})
+		.DomainMin(0).DomainMax(1)
+		.OnChanged_Lambda([this, Rust](const FMixtormatColorRamp& Ramp)
+		{
+			if (auto* R = Rust(); R && !IsSelectedChildInstance()
+				&& !GroupControlValueFor(R, FMixtormatRust::StaticStruct(), TEXT("ColorRamp")))
+			{ R->ColorRamp = Ramp; RefreshLayeredPreview(); }
+		})
+		.OnBeginInteractiveEdit_Lambda([this]() { bInteractiveEdit = true; })
+		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
+	AddSliderRow(Material, WrapParameterControl(Palette, MakeAddressResolver<FMixtormatRust>(Rust, &FMixtormatRust::ColorRamp)));
+	const auto Channels = AddCard(Cards, LOCTEXT("RustChannels", "CHANNELS"));
+	AddSliderRow(Channels, MixtormatRow::MakePair(RUST_WRITE(bWriteHeight), RUST_WRITE(bWriteColor)));
+	AddSliderRow(Channels, MixtormatRow::MakePair(RUST_WRITE(bWriteRoughness), RUST_WRITE(bWriteMaterial)));
+#undef RUST_WRITE
+#undef RUST_FLOAT
+	return SNew(SBox).Visibility_Lambda([Rust]() { return Rust() ? EVisibility::Visible : EVisibility::Collapsed; })[
+		SNew(SMixtormatInspectorGroup)
+		.Title(LOCTEXT("RustHeading", "SURFACING · RUST"))
+		.PresetAction(MakeModulePresetButton()).InitiallyExpanded(true)
+		.HeaderAction(MakeChildOutputPreviewButton(GetChildPreviewOutputSet([]()
+		{
+			FMixtormatLayerChild Probe; Probe.Type = EMixtormatLayerChildType::Surfacing;
+			Probe.Surfacing.Type = EMixtormatSurfacingType::Rust; return Probe;
+		}())))
+		[SNew(SBox).IsEnabled_Lambda([this]() { return !IsSelectedChildInstance(); })[Cards]]];
 }
 
 #undef LOCTEXT_NAMESPACE

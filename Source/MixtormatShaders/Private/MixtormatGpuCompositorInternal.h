@@ -2677,6 +2677,19 @@ struct FMixtormatNodeCache
 
 	TArray<TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>> Entries;
 	uint64 Tick = 0;
+	bool bAutoRemapHeight = false;
+
+	// Substrate-dependent producers also depend on this document setting, which is
+	// not part of their authored child/layer keys. Never reuse them across a toggle.
+	void SetAutoRemapHeight(bool bEnabled)
+	{
+		check(IsInRenderingThread());
+		if (bAutoRemapHeight != bEnabled)
+		{
+			Reset();
+			bAutoRemapHeight = bEnabled;
+		}
+	}
 
 	TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe> Find(const uint64 Key, const FIntPoint InResolution)
 	{

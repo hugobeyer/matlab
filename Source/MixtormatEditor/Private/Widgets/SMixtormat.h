@@ -98,6 +98,7 @@ enum class EMixtormatChildCreation : uint8
 	Moss,
 	Mycelium,
 	Skin,
+	Rust,
 };
 
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
@@ -582,6 +583,9 @@ private:
 	FMixtormatMoss* GetSelectedMoss();
 	const FMixtormatMoss* GetSelectedMoss() const;
 	TSharedRef<SWidget> BuildMossControls();
+		FMixtormatRust* GetSelectedRust();
+		const FMixtormatRust* GetSelectedRust() const;
+		TSharedRef<SWidget> BuildRustControls();
 	FMixtormatMycelium* GetSelectedMycelium();
 	const FMixtormatMycelium* GetSelectedMycelium() const;
 	TSharedRef<SWidget> BuildMyceliumControls();

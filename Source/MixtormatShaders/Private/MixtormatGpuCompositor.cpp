@@ -1876,6 +1876,9 @@ bool FMixtormatGpuCompositor::RequestComposeInternal(
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x526567696F6E5232ull);
 	// Optical transport, effective Surfacing inputs and full-precision physical channels.
 	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x4F70746963733031ull);
+	// Shared Moss leaves, procedural colonies, single-weight residual normals and ferrous corrosion.
+	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, 0x5375726648303034ull);
+	PrefixHash = MixtormatComposeHash::Combine(PrefixHash, static_cast<uint64>(bFinalAutoRemapHeight));
 
 	for (int32 LayerIndex = 0; LayerIndex < EffectiveLayers.Num(); ++LayerIndex)
 	{

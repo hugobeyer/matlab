@@ -100,7 +100,8 @@ namespace
 		case EMixtormatLayerChildType::Curvature: return EMixtormatParameterOwnerType::Curvature;
 		case EMixtormatLayerChildType::Behavior: return EMixtormatParameterOwnerType::Behavior;
 		case EMixtormatLayerChildType::Generator: return EMixtormatParameterOwnerType::Generator;
-		case EMixtormatLayerChildType::Surfacing: return EMixtormatParameterOwnerType::Surfacing;
+		case EMixtormatLayerChildType::Surfacing: return Child.Surfacing.Type == EMixtormatSurfacingType::Rust
+					? EMixtormatParameterOwnerType::Rust : EMixtormatParameterOwnerType::Surfacing;
 		default: return EMixtormatParameterOwnerType::Layer;
 		}
 	}
@@ -142,7 +143,8 @@ namespace
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Data(Child.Generator);
 		case EMixtormatLayerChildType::Surfacing:
-			return Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+			return Child.Surfacing.Type == EMixtormatSurfacingType::Rust ? static_cast<const void*>(&Child.Surfacing.Rust)
+				: Child.Surfacing.Type == EMixtormatSurfacingType::Moss
 				? static_cast<const void*>(&Child.Surfacing.Moss) : static_cast<const void*>(&Child.Surfacing.Skin);
 		default: return nullptr;
 		}
@@ -865,7 +867,8 @@ namespace
 		case EMixtormatLayerChildType::Generator:
 			return MixtormatGeneratorPayload::Struct(Child.Generator);
 		case EMixtormatLayerChildType::Surfacing:
-			return Child.Surfacing.Type == EMixtormatSurfacingType::Moss
+			return Child.Surfacing.Type == EMixtormatSurfacingType::Rust ? FMixtormatRust::StaticStruct()
+				: Child.Surfacing.Type == EMixtormatSurfacingType::Moss
 				? FMixtormatMoss::StaticStruct() : FMixtormatSkin::StaticStruct();
 		default: return nullptr;
 		}
