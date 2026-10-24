@@ -108,9 +108,55 @@ namespace
 TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 {
 	MixtormatMenu::FBuilder Menu;
-	const bool bLayer = WorkingLayers.IsValidIndex(SelectedLayerIndex);
+	const TSharedPtr<const FMixtormatQuickControlsTarget> Context = QuickControlsActionTarget;
+	Menu.Caption(FText::Format(LOCTEXT("QuickActionsTarget", "Target · {0}"), GetQuickControlsTargetLabel()));
+	const auto Reason = [this, Context](const EQuickControlsAction Action)
+	{
+		return TAttribute<FText>::CreateLambda([this, Context, Action]()
+		{
+			return GetQuickControlsActionUnavailableReason(Context, Action);
+		});
+	};
+	const auto Execute = [this, Context](const EQuickControlsAction Action, const FSimpleDelegate& Callback)
+	{
+		return FSimpleDelegate::CreateLambda([this, Context, Action, Callback]()
+		{
+			const FText Disabled = GetQuickControlsActionUnavailableReason(Context, Action);
+			if (!Disabled.IsEmpty()) { ShowPreviewFeedback(Disabled); return; }
+			const bool bCreatesChild = Action == EQuickControlsAction::NoiseGate || Action == EQuickControlsAction::GalleryGate
+				|| Action == EQuickControlsAction::PasteGate || Action == EQuickControlsAction::Blur || Action == EQuickControlsAction::Curvature;
+			const TArray<FMixtormatLayerChild>* Before = bCreatesChild ? ResolveContainer(Context->Address) : nullptr;
+			const int32 Count = Before ? Before->Num() : 0;
+			Callback.ExecuteIfBound();
+			if (bCreatesChild)
+			{
+				const TArray<FMixtormatLayerChild>* After = ResolveContainer(Context->Address);
+				if (!After || After->Num() == Count)
+				{
+					ShowPreviewFeedback(LOCTEXT("QuickCreationRejected", "Nothing added · The target or source is no longer available."));
+				}
+			}
+		});
+	};
+	const auto Open = [this, Context](const EQuickControlsAction Action, const FOnGetContent& Callback)
+	{
+		return FOnGetContent::CreateLambda([this, Context, Action, Callback]() -> TSharedRef<SWidget>
+		{
+			const FText Disabled = GetQuickControlsActionUnavailableReason(Context, Action);
+			if (!Disabled.IsEmpty())
+			{
+				MixtormatMenu::FBuilder Unavailable;
+				Unavailable.Caption(Disabled);
+				return Unavailable.Build();
+			}
+			return Callback.Execute();
+		});
+	};
+	FMixtormatAddTarget Target;
+	Target.QuickControlsTarget = Context;
+	Target = ResolveQuickControlsAddTarget(Target);
 	Menu.Item(LOCTEXT("QuickAddFill", "Fill Layer"), MixtormatIcons::LayerFill(),
-				FSimpleDelegate::CreateLambda([this]()
+				Execute(EQuickControlsAction::Fill, FSimpleDelegate::CreateLambda([this, Target]()
 				{
 					if (!bHasWorkingMaterial)
 					{
@@ -124,8 +170,9 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					}
 					// AddWorkingLayer appends. Insert once here, as the positioned surface drop does,
 					// so height references are not lost by an append followed by a reorder.
-					const int32 Slot = WorkingLayers.IsValidIndex(SelectedLayerIndex)
-						? SelectedLayerIndex + 1 : WorkingLayers.Num();
+					const FMixtormatAddTarget Resolved = ResolveQuickControlsAddTarget(Target);
+					const int32 Slot = WorkingLayers.IsValidIndex(Resolved.LayerIndex)
+						? Resolved.LayerIndex + 1 : WorkingLayers.Num();
 					FMixtormatLayer Layer;
 					InitializeNewLayer(Layer, EMixtormatLayerType::Fill, WorkingLayers.Num() + 1);
 					WorkingLayers.Insert(MoveTemp(Layer), Slot);
@@ -149,9 +196,11 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 					RefreshLayeredPreview();
 					RebuildLayerList();
 					RebuildMaskList();
-				}));
+				})))
+				.UnavailableReason(Reason(EQuickControlsAction::Fill))
+				.ToolTip(LOCTEXT("QuickFillTargetHint", "Insert after the captured layer; with a group or no selection, append to the material stack."));
 			Menu.Item(LOCTEXT("QuickAddMaterial", "Material"), MixtormatIcons::LayerMaterial(),
-				FSimpleDelegate::CreateLambda([this]()
+				Execute(EQuickControlsAction::Material, FSimpleDelegate::CreateLambda([this]()
 								{
 									const int32 PreviousCount = WorkingLayers.Num();
 									const bool bHadMaterial = bHasWorkingMaterial;
@@ -166,46 +215,51 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 									{
 										ShowPreviewFeedback(LOCTEXT("QuickMaterialUnavailable", "Material unavailable · Select a library surface"));
 									}
-								}))
-				.Enabled(TAttribute<bool>::CreateLambda([this]() { return !SelectedSurfacePath.IsNull(); }));
+								})))
+				.UnavailableReason(Reason(EQuickControlsAction::Material))
+				.ToolTip(LOCTEXT("QuickMaterialTargetHint", "Append the selected Library surface to the material stack."));
 			Menu.SubMenu(LOCTEXT("QuickAddEffects", "Effects"), MixtormatIcons::Effect(),
-				FOnGetContent::CreateLambda([this]() { return BuildAddEffectMenu(SelectedLayerIndex); }))
-				.Enabled(bLayer);
+				Open(EQuickControlsAction::Effects, FOnGetContent::CreateLambda([this, Target]()
+				{ return BuildAddEffectTargetMenu(ResolveQuickControlsAddTarget(Target)); })))
+				.UnavailableReason(Reason(EQuickControlsAction::Effects))
+				.ToolTip(LOCTEXT("QuickRootEffectsHint", "Add to the captured layer, not its selected module."));
 			Menu.SubMenu(LOCTEXT("QuickAddIds", "IDs"), MixtormatIcons::Ids(),
-				FOnGetContent::CreateLambda([this]() { return BuildAddIdsMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex)); }))
-				.Enabled(bLayer);
+				Open(EQuickControlsAction::Ids, FOnGetContent::CreateLambda([this, Target]()
+				{ return BuildAddIdsMenu(ResolveQuickControlsAddTarget(Target)); })))
+				.UnavailableReason(Reason(EQuickControlsAction::Ids))
+				.ToolTip(LOCTEXT("QuickRootChildrenHint", "Add at the captured layer/group root."));
 			Menu.SubMenu(LOCTEXT("QuickGeneratorSubmodules", "Generator Submodules"), MixtormatIcons::Generator(),
-				FOnGetContent::CreateLambda([this]() { return BuildAddGeneratorsMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex)); }))
-				.Enabled(CanAddGeneratorModule(FMixtormatAddTarget::Layer(SelectedLayerIndex)));
+				Open(EQuickControlsAction::Generators, FOnGetContent::CreateLambda([this, Target]()
+				{ return BuildAddGeneratorsMenu(ResolveQuickControlsAddTarget(Target)); })))
+				.UnavailableReason(Reason(EQuickControlsAction::Generators))
+				.ToolTip(LOCTEXT("QuickRootGeneratorsHint", "Add at the captured layer root."));
 			Menu.SubMenu(LOCTEXT("QuickSurfacing", "Surfacing"), MixtormatIcons::Surfacing(),
-				FOnGetContent::CreateLambda([this]() { return BuildAddSurfacingMenu(FMixtormatAddTarget::Layer(SelectedLayerIndex)); }))
-				.Enabled(CanAddSurfacingModule(FMixtormatAddTarget::Layer(SelectedLayerIndex)));
+				Open(EQuickControlsAction::Surfacing, FOnGetContent::CreateLambda([this, Target]()
+				{ return BuildAddSurfacingMenu(ResolveQuickControlsAddTarget(Target)); })))
+				.UnavailableReason(Reason(EQuickControlsAction::Surfacing))
+				.ToolTip(LOCTEXT("QuickRootChildrenHint", "Add at the captured layer/group root."));
 			Menu.SubMenu(LOCTEXT("QuickMasks", "Masks"), MixtormatIcons::Mask(),
-				FOnGetContent::CreateLambda([this]() -> TSharedRef<SWidget>
+				Open(EQuickControlsAction::Masks, FOnGetContent::CreateLambda([this, Context, Target, Reason, Execute]() -> TSharedRef<SWidget>
 				{
-					const FMixtormatChildAddress Address = GetSelectedChildAddress();
+					const FMixtormatChildAddress Address = Context->Address;
 					const FMixtormatLayerChild* Child = ResolveChildAt(Address);
 					if (!Child || !CanOwnScopedBlurs(*Child))
 					{
-						FMixtormatAddTarget Destination = FMixtormatAddTarget::Layer(SelectedLayerIndex);
+						FMixtormatAddTarget Destination = ResolveQuickControlsAddTarget(Target);
 						if (Child && CanOwnScopedMasks(*Child) && !Child->IsInstance())
 						{
-							Destination = Address.OwnerType == EMixtormatChildOwnerType::Group
-								? FMixtormatAddTarget::Group(Address.OwnerId)
-								: FMixtormatAddTarget::Layer(WorkingLayers.IndexOfByPredicate(
-									[&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; }));
+
 							Destination.ScopeOwnerChildId = Child->ChildId;
 						}
 						return BuildAddMasksMenu(Destination);
 					}
 					MixtormatMenu::FBuilder Masks;
-					const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Address);
-					const int32 Index = ResolveChildIndexAt(Address);
-					const bool bCanNest = Children && CanAddScopedChild(*Children, Index) && !Child->IsInstance();
+
 					for (const EMixtormatLayerChildType Type : {EMixtormatLayerChildType::Blur, EMixtormatLayerChildType::Curvature})
 					{
 						Masks.Item(Type == EMixtormatLayerChildType::Blur
 							? LOCTEXT("QuickMaskBlur", "Blur") : LOCTEXT("QuickMaskCurvature", "Curvature"), MixtormatIcons::Mask(),
+							Execute(Type == EMixtormatLayerChildType::Blur ? EQuickControlsAction::Blur : EQuickControlsAction::Curvature,
 							FSimpleDelegate::CreateLambda([this, Address, Type]()
 							{
 								const int32 ChildIndex = ResolveChildIndexAt(Address);
@@ -218,48 +272,39 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsActionsMenu()
 									const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&Address](const FMixtormatLayer& Layer) { return Layer.LayerId == Address.OwnerId; });
 									AddMaskFilterToLayerChild(LayerIndex, ChildIndex, Type);
 								}
-							})).Enabled(bCanNest && (Type == EMixtormatLayerChildType::Blur
-								|| Child->Type == EMixtormatLayerChildType::Mask));
+							}))).UnavailableReason(Reason(Type == EMixtormatLayerChildType::Blur
+								? EQuickControlsAction::Blur : EQuickControlsAction::Curvature));
 					}
 					return Masks.Build();
-				})).Enabled(bLayer || ResolveChildAt(GetSelectedChildAddress()) != nullptr);
-			const FMixtormatChildAddress Address = GetSelectedChildAddress();
-			const FMixtormatLayerChild* Child = ResolveChildAt(Address);
-			if (Child && !GetCopyableOutputs(GetChildCapabilities(*Child)).IsEmpty())
-			{
-				Menu.SubMenu(LOCTEXT("QuickOutputCopy", "Output Copy"), MixtormatIcons::Duplicate(),
-					FOnGetContent::CreateLambda([this]() { return BuildCopyChildOutputMenu(GetSelectedChildAddress()); }));
-			}
-			if (Child && CanOwnScopedMasks(*Child))
-			{
-				Menu.SubMenu(LOCTEXT("QuickGates", "Gates"), MixtormatIcons::Mask(),
-					FOnGetContent::CreateLambda([this]() -> TSharedRef<SWidget>
+				}))).UnavailableReason(Reason(EQuickControlsAction::Masks))
+				.ToolTip(LOCTEXT("QuickMasksTargetHint", "Use the captured module when it accepts scoped masks/filters; otherwise use its layer/group root."));
+			Menu.SubMenu(LOCTEXT("QuickOutputCopy", "Output Copy"), MixtormatIcons::Duplicate(),
+				Open(EQuickControlsAction::Outputs, FOnGetContent::CreateLambda([this, Context]()
+				{ return BuildCopyChildOutputTargetMenu(Context->Address, Context); })))
+				.UnavailableReason(Reason(EQuickControlsAction::Outputs));
+			Menu.SubMenu(LOCTEXT("QuickGates", "Gates"), MixtormatIcons::Mask(),
+				Open(EQuickControlsAction::Gates, FOnGetContent::CreateLambda([this, Context, Reason, Execute]() -> TSharedRef<SWidget>
 					{
 						MixtormatMenu::FBuilder Gates;
-						const FMixtormatChildAddress Owner = GetSelectedChildAddress();
-						const FMixtormatLayerChild* Selected = ResolveChildAt(Owner);
-						const TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
-						const int32 Index = ResolveChildIndexAt(Owner);
+						const FMixtormatChildAddress Owner = Context->Address;
 						Gates.Item(LOCTEXT("QuickNoiseMask", "Noise Mask"), MixtormatIcons::Mask(),
-							FSimpleDelegate::CreateLambda([this, Owner]() { CreateNoiseGate(Owner); }))
-							.Enabled(CanCreateNoiseGate(Owner));
+							Execute(EQuickControlsAction::NoiseGate, FSimpleDelegate::CreateLambda([this, Owner]() { CreateNoiseGate(Owner); })))
+							.UnavailableReason(Reason(EQuickControlsAction::NoiseGate));
 						Gates.Item(LOCTEXT("QuickGalleryGate", "Gallery Mask"), MixtormatIcons::Mask(),
-							FSimpleDelegate::CreateLambda([this, Owner]()
+							Execute(EQuickControlsAction::GalleryGate, FSimpleDelegate::CreateLambda([this, Owner]()
 							{
 								const int32 LayerIndex = WorkingLayers.IndexOfByPredicate([&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; });
 								AssignScopedMaskToChild(LayerIndex, ResolveChildIndexAt(Owner), SelectedMaskPath);
-							})).Enabled(Owner.OwnerType == EMixtormatChildOwnerType::Layer
-								&& Selected && !Selected->IsInstance() && CanOwnScopedMasks(*Selected)
-								&& Children && CanAddScopedChild(*Children, Index) && !SelectedMaskPath.IsNull());
+							}))).UnavailableReason(Reason(EQuickControlsAction::GalleryGate));
 						Gates.Item(LOCTEXT("QuickPasteGate", "Paste Gating Mask"), MixtormatIcons::Mask(),
-							FSimpleDelegate::CreateLambda([this, Owner]() { PasteAsGatingMask(Owner); }))
-							.Enabled(TAttribute<bool>::CreateLambda([this, Owner]() { return CanPasteAsGatingMask(Owner); }));
+							Execute(EQuickControlsAction::PasteGate, FSimpleDelegate::CreateLambda([this, Owner]() { PasteAsGatingMask(Owner); })))
+							.UnavailableReason(Reason(EQuickControlsAction::PasteGate));
 						return Gates.Build();
-					}));
-		}
+					}))).UnavailableReason(Reason(EQuickControlsAction::Gates))
+				.ToolTip(LOCTEXT("QuickGatesTargetHint", "Add a gating mask to the captured module."));
 
-		return Menu.Build();
-	}
+	return Menu.Build();
+}
 
 	TSharedRef<SWidget> SMixtormat::BuildLayerColumnContextMenu()
 {
@@ -380,23 +425,39 @@ TSharedRef<SWidget> SMixtormat::BuildReplaceInstanceSourceMenu(const FMixtormatC
 
 TSharedRef<SWidget> SMixtormat::BuildCopyChildOutputMenu(FMixtormatChildAddress Address)
 {
+	return BuildCopyChildOutputTargetMenu(Address, nullptr);
+}
+
+TSharedRef<SWidget> SMixtormat::BuildCopyChildOutputTargetMenu(FMixtormatChildAddress Address,
+	TSharedPtr<const FMixtormatQuickControlsTarget> Context)
+{
 	MixtormatMenu::FBuilder Menu;
 	if (const FMixtormatLayerChild* Child = ResolveChildAt(Address))
 	{
 		for (const FMixtormatPublishedOutputDesc& Output : GetCopyableOutputs(GetChildCapabilities(*Child)))
 		{
-			// The submenu already says "Outputs", so each row names the output itself rather than
-			// repeating the verb: "Region IDs", "Gap", "Color" -- not "Copy IDs", "Copy Gate · Gap".
-			Menu.Item(Output.Label,
-				GetPublishedOutputIcon(Output),
-				FSimpleDelegate::CreateLambda([this, Address, OutputName = Output.Name]()
+			const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Address, Context, OutputName = Output.Name]()
+			{
+				if (Context.IsValid())
 				{
+					const FText Invalid = GetQuickControlsTargetUnavailableReason(Context);
+					if (!Invalid.IsEmpty()) { return Invalid; }
+				}
+				return CanCopyChildOutput(Address, OutputName) ? FText::GetEmpty()
+					: LOCTEXT("QuickOutputUnavailable", "This output is no longer published or cannot currently be copied.");
+			});
+			// Keep the output's row even if its availability changes while the submenu is open.
+			Menu.Item(Output.Label, GetPublishedOutputIcon(Output),
+				FSimpleDelegate::CreateLambda([this, Address, Context, Reason, OutputName = Output.Name]()
+				{
+					const FText Disabled = Reason.Get();
+					if (!Disabled.IsEmpty())
+					{
+						if (Context.IsValid()) { ShowPreviewFeedback(Disabled); }
+						return;
+					}
 					CopyChildOutput(Address, OutputName);
-				}))
-				.Enabled(TAttribute<bool>::CreateLambda([this, Address, OutputName = Output.Name]()
-				{
-					return CanCopyChildOutput(Address, OutputName);
-				}));
+				})).UnavailableReason(Reason);
 		}
 	}
 	return Menu.Build();
@@ -1022,22 +1083,22 @@ void SMixtormat::AddCreationSections(MixtormatMenu::FBuilder& Menu, const FMixto
 TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
-	const bool bCanAdd = CanAddSurfacingModule(Target);
+	const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Target]()
+	{
+		return GetAddMenuUnavailableReason(Target, EAddMenuKind::Surfacing);
+	});
 	Menu.Item(LOCTEXT("AddSkinChild", "Skin"), MixtormatIcons::Surfacing(),
-		FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Skin); }))
-		.Enabled(bCanAdd)
-		.ToolTip(bCanAdd ? LOCTEXT("AddSkinHint", "Curvature-driven tissue, folds and material response. Gates are authored as child masks.")
-			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
+		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Skin); }, EAddMenuKind::Surfacing))
+		.UnavailableReason(Reason)
+		.ToolTip(LOCTEXT("AddSkinHint", "Curvature-driven tissue, folds and material response. Gates are authored as child masks."));
 	Menu.Item(LOCTEXT("AddRustChild", "Rust · Ferrous Corrosion"), MixtormatIcons::Surfacing(),
-			FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Rust); }))
-			.Enabled(bCanAdd)
-			.ToolTip(bCanAdd ? LOCTEXT("AddRustHint", "Assumes the selected scope is ferrous. Clustered metal loss and retained oxide; no generated steel or coating recovery.")
-				: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
-		Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Surfacing(),
-		FSimpleDelegate::CreateLambda([this, Target]() { CreateChild(Target, EMixtormatChildCreation::Moss); }))
-		.Enabled(bCanAdd)
-		.ToolTip(bCanAdd ? LOCTEXT("AddMossHint", "Habitat-driven moss growth, relief and material response. Gates are authored as child masks.")
-			: LOCTEXT("AddSkinUnavailable", "Requires a layer/group root or an editable Generator/Surfacing owner with available scope depth."));
+		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Rust); }, EAddMenuKind::Surfacing))
+		.UnavailableReason(Reason)
+		.ToolTip(LOCTEXT("AddRustHint", "Assumes the selected scope is ferrous. Clustered metal loss and retained oxide; no generated steel or coating recovery."));
+	Menu.Item(LOCTEXT("AddMossChild", "Moss"), MixtormatIcons::Surfacing(),
+		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Moss); }, EAddMenuKind::Surfacing))
+		.UnavailableReason(Reason)
+		.ToolTip(LOCTEXT("AddMossHint", "Habitat-driven moss growth, relief and material response. Gates are authored as child masks."));
 	return Menu.Build();
 }
 
@@ -1050,18 +1111,20 @@ TSharedRef<SWidget> SMixtormat::BuildAddIdsMenu(const FMixtormatAddTarget Target
 
 		{ LOCTEXT("AddIdGroupChild", "ID Group"), EMixtormatChildCreation::IdGroup },
 	};
-	const bool bEnabled = CanCreateChild(Target);
+	const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Target]()
+	{
+		return GetAddMenuUnavailableReason(Target, EAddMenuKind::Child);
+	});
 	for (const TPair<FText, EMixtormatChildCreation>& Entry : Entries)
 	{
-
 		Menu.Item(
 			Entry.Key,
 			MixtormatIcons::Ids(),
-			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
+			MakeAddMenuAction(Target, [this, Kind = Entry.Value](FMixtormatAddTarget Resolved)
 			{
-				CreateChild(Target, Kind);
+				CreateChild(Resolved, Kind);
 			}))
-			.Enabled(TAttribute<bool>(bEnabled));
+			.UnavailableReason(Reason);
 	}
 	return Menu.Build();
 }
@@ -1221,7 +1284,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddFiltersMenu(const FMixtormatAddTarget Ta
 TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
-	const bool bEnabled = CanCreateChild(Target);
+	const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Target]()
+	{
+		return GetAddMenuUnavailableReason(Target, EAddMenuKind::Child);
+	});
 	const TArray<FMixtormatLayerChild>* ScopedChildren = nullptr;
 	if (Target.IsGroup())
 	{
@@ -1249,11 +1315,16 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 				? LOCTEXT("NoSelectedLibraryMask", "Select Mask from Gallery")
 				: SelectedLibraryMaskName),
 		MixtormatIcons::Mask(),
-		FSimpleDelegate::CreateLambda([this, Target, MaskPath]()
+		MakeAddMenuAction(Target, [this, MaskPath](FMixtormatAddTarget Resolved)
 		{
-			AddTextureMask(Target, MaskPath);
+			AddTextureMask(Resolved, MaskPath);
 		}))
-		.Enabled(TAttribute<bool>(bEnabled && !MaskPath.IsNull()));
+		.UnavailableReason(TAttribute<FText>::CreateLambda([Reason, MaskPath]()
+		{
+			const FText Disabled = Reason.Get();
+			return !Disabled.IsEmpty() ? Disabled : MaskPath.IsNull()
+				? LOCTEXT("QuickGalleryMaskRequired", "Select a mask in Library first.") : FText::GetEmpty();
+		}));
 
 	const TPair<FText, EMixtormatChildCreation> Entries[] = {
 		// Beside the other mask producers rather than under the asset picker above, because it
@@ -1279,11 +1350,11 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 				: Entry.Value == EMixtormatChildCreation::GeneratedMask
 					? MixtormatIcons::Generated()
 					: MixtormatIcons::Mask(),
-			FSimpleDelegate::CreateLambda([this, Target, Kind = Entry.Value]()
+			MakeAddMenuAction(Target, [this, Kind = Entry.Value](FMixtormatAddTarget Resolved)
 			{
-				CreateChild(Target, Kind);
+				CreateChild(Resolved, Kind);
 			}))
-			.Enabled(TAttribute<bool>(bEnabled));
+			.UnavailableReason(Reason);
 	}
 	return Menu.Build();
 }
@@ -1292,158 +1363,91 @@ TSharedRef<SWidget> SMixtormat::BuildAddMasksMenu(const FMixtormatAddTarget Targ
 TSharedRef<SWidget> SMixtormat::BuildAddGeneratorsMenu(const FMixtormatAddTarget Target)
 {
 	MixtormatMenu::FBuilder Menu;
-	if (CanAddScopedFlowGenerator(Target))
+	const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Target]()
 	{
-		Menu.Item(LOCTEXT("AddScopedFlowChild", "Flow"), MixtormatIcons::Generator(),
-			FSimpleDelegate::CreateLambda([this, Target]()
-			{
-				CreateChild(Target, EMixtormatChildCreation::NoiseFlow);
-			}));
+		return GetAddMenuUnavailableReason(Target, EAddMenuKind::Generator);
+	});
+	const auto Add = [this, Target, &Menu, Reason](const FText& Label, const FSlateBrush* Icon, const EMixtormatChildCreation Kind)
+	{
+		Menu.Item(Label, Icon, MakeAddMenuAction(Target, [this, Kind](FMixtormatAddTarget Resolved)
+		{
+			CreateChild(Resolved, Kind);
+		}, EAddMenuKind::Generator)).UnavailableReason(Reason);
+	};
+	if (CanAddScopedFlowGenerator(ResolveQuickControlsAddTarget(Target)))
+	{
+		Add(LOCTEXT("AddScopedFlowChild", "Flow"), MixtormatIcons::Generator(), EMixtormatChildCreation::NoiseFlow);
 		return Menu.Build();
 	}
-	const bool bCanAdd = CanCreateChild(Target) && CanAddGeneratorModule(Target);
-	const FText Reason = bCanAdd ? FText::GetEmpty()
-		: Target.IsGroup() ? LOCTEXT("GeneratorModuleGroupUnavailable", "Generator modules cannot be authored in groups")
-		: Target.ScopeOwnerChildId.IsValid() ? LOCTEXT("GeneratorModuleScopedUnavailable", "Generator modules must be unscoped")
-		: LOCTEXT("GeneratorModuleCreationUnavailable", "Cannot create a child at this location");
-	if (!bCanAdd) { Menu.Caption(Reason); }
+	if (!Reason.Get().IsEmpty()) { Menu.Caption(Reason.Get()); }
 
-	Menu.Item(
-		LOCTEXT("AddCracksChild", "Cracks"),
-		MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target]()
-		{
-			CreateChild(Target, EMixtormatChildCreation::Cracks);
-		}))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(
-		LOCTEXT("AddRockFormationChild", "Rock Formation"),
-		MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target]()
-		{
-			CreateChild(Target, EMixtormatChildCreation::RockFormation);
-		}))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(
-		LOCTEXT("AddPebblesChild", "Pebbles"),
-		MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target]()
-		{
-			CreateChild(Target, EMixtormatChildCreation::Pebbles);
-		}))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(
-		LOCTEXT("AddRootNetworkChild", "Root Network"),
-		MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target]()
-		{
-			CreateChild(Target, EMixtormatChildCreation::RootNetwork);
-		}))
-		.Enabled(bCanAdd).ToolTip(Reason);
-
-	Menu.Item(LOCTEXT("AddMyceliumChild", "Mycelium"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Mycelium); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddScalesChild", "Scales"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Scales); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::CliffStrata); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::Noise); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddScatterCarveChild", "Scatter Carve"), MixtormatIcons::BooleanOps(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::ScatterCarve); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddBooleanOpsChild", "Boolean"), MixtormatIcons::BooleanOps(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::BooleanOps); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
+	Add(LOCTEXT("AddCracksChild", "Cracks"), MixtormatIcons::Generator(), EMixtormatChildCreation::Cracks);
+	Add(LOCTEXT("AddRockFormationChild", "Rock Formation"), MixtormatIcons::Generator(), EMixtormatChildCreation::RockFormation);
+	Add(LOCTEXT("AddPebblesChild", "Pebbles"), MixtormatIcons::Generator(), EMixtormatChildCreation::Pebbles);
+	Add(LOCTEXT("AddRootNetworkChild", "Root Network"), MixtormatIcons::Generator(), EMixtormatChildCreation::RootNetwork);
+	Add(LOCTEXT("AddMyceliumChild", "Mycelium"), MixtormatIcons::Generator(), EMixtormatChildCreation::Mycelium);
+	Add(LOCTEXT("AddScalesChild", "Scales"), MixtormatIcons::Generator(), EMixtormatChildCreation::Scales);
+	Add(LOCTEXT("AddCliffStrataChild", "Cliff Strata"), MixtormatIcons::Generator(), EMixtormatChildCreation::CliffStrata);
+	Add(LOCTEXT("AddNoiseChild", "Noise"), MixtormatIcons::Generator(), EMixtormatChildCreation::Noise);
+	Add(LOCTEXT("AddScatterCarveChild", "Scatter Carve"), MixtormatIcons::BooleanOps(), EMixtormatChildCreation::ScatterCarve);
+	Add(LOCTEXT("AddBooleanOpsChild", "Boolean"), MixtormatIcons::BooleanOps(), EMixtormatChildCreation::BooleanOps);
 	// Generator-layer sublayers: ordered with the modules, they rewrite the running signed height.
 	Menu.Separator();
-	Menu.Item(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightBlend); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightCurve); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
-	Menu.Item(LOCTEXT("AddHeightColorRampChild", "Color Ramp"), MixtormatIcons::Generator(),
-		FSimpleDelegate::CreateLambda([this, Target](){ CreateChild(Target, EMixtormatChildCreation::HeightColorRamp); }))
-		.Enabled(bCanAdd).ToolTip(Reason);
+	Add(LOCTEXT("AddHeightBlendChild", "Height Blend"), MixtormatIcons::Generator(), EMixtormatChildCreation::HeightBlend);
+	Add(LOCTEXT("AddHeightCurveChild", "Height Remap"), MixtormatIcons::Generator(), EMixtormatChildCreation::HeightCurve);
+	Add(LOCTEXT("AddHeightColorRampChild", "Color Ramp"), MixtormatIcons::Generator(), EMixtormatChildCreation::HeightColorRamp);
 	return Menu.Build();
 }
 
 TSharedRef<SWidget> SMixtormat::BuildAddEffectMenu(const int32 LayerIndex)
 {
+	return BuildAddEffectTargetMenu(FMixtormatAddTarget::Layer(LayerIndex));
+}
+
+TSharedRef<SWidget> SMixtormat::BuildAddEffectTargetMenu(const FMixtormatAddTarget Target)
+{
 	MixtormatMenu::FBuilder Menu;
+	const TAttribute<FText> Reason = TAttribute<FText>::CreateLambda([this, Target]()
+	{
+		return GetAddMenuUnavailableReason(Target, EAddMenuKind::Effect);
+	});
+	const auto Add = [this, Target, &Menu, Reason](const FText& Label, const FSlateBrush* Icon,
+		TFunction<void(FMixtormatAddTarget)> Action)
+	{
+		Menu.Item(Label, Icon, MakeAddMenuAction(Target, MoveTemp(Action), EAddMenuKind::Effect))
+			.UnavailableReason(Reason);
+	};
 	const TArray<FMixtormatEffectEntry> Effects = FMixtormatRegistry::GetEffects();
 	for (const FMixtormatEffectEntry& Entry : Effects)
 	{
-		Menu.Item(
-			Entry.DisplayName,
-			MixtormatIcons::Effect(),
-			FSimpleDelegate::CreateLambda([this, LayerIndex, EffectPath = Entry.AssetPath]()
-			{
-				AddEffectToLayer(LayerIndex, EffectPath);
-			}));
+		Add(Entry.DisplayName, MixtormatIcons::Effect(), [this, EffectPath = Entry.AssetPath](FMixtormatAddTarget Resolved)
+		{
+			AddEffectToLayer(Resolved.LayerIndex, EffectPath);
+		});
 	}
 
 	// Procedural, so they are not discovered from an imported asset set and always available.
-	if (!Effects.IsEmpty())
-	{
-		Menu.Separator();
-	}
-	Menu.Item(
-		LOCTEXT("AddCraquelureChild", "Craquelure"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddCraquelureToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddWetStainEffect", "Wet Stain"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]()
-		{
-			AddStainToLayer(LayerIndex, EMixtormatStainMode::Wet);
-		}));
-	Menu.Item(
-		LOCTEXT("AddDepositStainEffect", "Stain Deposit"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]()
-		{
-			AddStainToLayer(LayerIndex, EMixtormatStainMode::Deposit);
-		}));
-	Menu.Item(
-		LOCTEXT("AddRunoffEffect", "Runoff"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddRunoffToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddErosionEffect", "Erosion"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddErosionToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddGradeEffect", "Grade"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddGradeToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddBreakupEffect", "Breakup"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddBreakupToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddWornEdgesEffect", "Worn Edges"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddWornEdgesToLayer(LayerIndex); }));
-	Menu.Item(
-		LOCTEXT("AddFlowWarpEffect", "Flow Warp · Targets Layer"),
-		MixtormatIcons::WarpStructural(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]() { AddFlowWarpToLayer(LayerIndex); }));
-
-	Menu.Item(
-		LOCTEXT("AddPeelingEffect", "Peeling"),
-		MixtormatIcons::Effect(),
-		FSimpleDelegate::CreateLambda([this, LayerIndex]()
-		{
-			CreateChild(FMixtormatAddTarget::Layer(LayerIndex), EMixtormatChildCreation::Peeling);
-		}));
-
+	if (!Effects.IsEmpty()) { Menu.Separator(); }
+	Add(LOCTEXT("AddCraquelureChild", "Craquelure"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddCraquelureToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddWetStainEffect", "Wet Stain"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddStainToLayer(Resolved.LayerIndex, EMixtormatStainMode::Wet); });
+	Add(LOCTEXT("AddDepositStainEffect", "Stain Deposit"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddStainToLayer(Resolved.LayerIndex, EMixtormatStainMode::Deposit); });
+	Add(LOCTEXT("AddRunoffEffect", "Runoff"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddRunoffToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddErosionEffect", "Erosion"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddErosionToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddGradeEffect", "Grade"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddGradeToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddBreakupEffect", "Breakup"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddBreakupToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddWornEdgesEffect", "Worn Edges"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { AddWornEdgesToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddFlowWarpEffect", "Flow Warp · Targets Layer"), MixtormatIcons::WarpStructural(),
+		[this](FMixtormatAddTarget Resolved) { AddFlowWarpToLayer(Resolved.LayerIndex); });
+	Add(LOCTEXT("AddPeelingEffect", "Peeling"), MixtormatIcons::Effect(),
+		[this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Peeling); });
 	return Menu.Build();
 }
 

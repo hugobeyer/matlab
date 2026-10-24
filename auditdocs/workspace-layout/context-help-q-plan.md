@@ -1,14 +1,15 @@
 # Context helpers + Q menu upgrade
 
-2026-10-24 · Increment 1 implemented in source; owner runtime checks pending.
-Target snapshotting and the remaining interaction contexts are still planned.
+2026-10-24 · Increments 1–2 implemented in source; owner runtime checks pending.
+Broader viewport/drag interaction contexts remain planned.
 Scope: existing Q menu, corner hint strip and top-center feedback. No new help system.
 
 ## Current code
 - Q opens viewport quick controls at the pointer; bounds clamp it inside the viewport.
 - Cards: Render + Composition above, Lighting left, Geometry right, Actions below.
-- Actions already supports layers, effects, IDs, generators, surfacing, masks, output copy
-  and gates. Some entries depend on the selected child; it is not a placeholder.
+- Actions supports layers, effects, IDs, generators, surfacing, masks, output copy and gates.
+  It captures the layer/group/module identity when Q opens; later selection changes do not retarget it.
+  Output Copy and Gates retain their row positions even when unavailable.
 - Q/Escape dismiss; geometry/light selection closes; moving sufficiently far away fades/closes.
   Proximity dismissal is suspended while the tracked Actions/Final submenus are open.
 - Opening remains viewport-scoped; workspace Q closes an open menu, with focus/text-entry guards.
@@ -43,16 +44,39 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
   Active slider guidance suppresses selection shortcuts and hides center feedback until it ends.
 - No commands, builds, tests, diagnostics or Unreal launches were run. Static source review only.
 
-## Next increments — not implemented
-1. Capture stable action identity on Q open, show the destination, and revalidate each action.
-   Include shared submenu callbacks, not just `BuildQuickControlsActionsMenu`: they capture
-   layer indices, and `CreateChild` can infer scope from the current selected child.
-   Preserve existing routing/validators; do not temporarily change selection to execute actions.
-2. Keep unavailable Output Copy/Gates entries in place with authoritative disabled reasons;
-   add rejection feedback where handlers currently return `Handled()` without changing data.
-3. Extend owner-reported contexts to viewport orbit/pan/light rotation and validated layer/module
+## Increment 2 — implemented
+- One immutable Q snapshot captures owner/child GUIDs, display names and document revision.
+  Actions shows the captured name; its styled help and menu caption show the full target path.
+  The existing Actions width metric constrains the title, so long names cannot move the cards.
+- Root and nested callbacks retain the snapshot. Shared creation callbacks resolve current layer
+  indices from the owner GUID immediately before invoking the existing handler; scoped child
+  identities survive reordering. No temporary selection changes are used to route actions.
+- Q close/reopen invalidates old callbacks. A history-baseline/document reset invalidates the
+  document revision, including reopening the same asset. Missing or moved-to-another-owner
+  targets are rejected rather than falling back to selection. Creating the first material also
+  changes the revision: reopen Q before further actions in that new document.
+- Shared creation menus use live `CanCreateChild`, generator/surfacing/Flow checks; output copy
+  and gate callbacks reuse their existing copy/paste/scope validators. Rejections reuse the
+  center label. Creation feedback checks the actual destination, not `FReply::Handled()`.
+- Output Copy/Gates and unavailable nested rows stay visible. `FBuilder::UnavailableReason`
+  disables a row and feeds its reason into the existing `SMixtormatHelp` tooltip adapter.
+  Reasons do not change row text, width or order. No new help surface or styling was added.
+- Target semantics remain explicit: effects/generators go to the captured layer root; IDs and
+  surfacing use the captured layer/group root. Masks use the supported captured module or its
+  root; gates/output copy use the captured module. Supported group-root creation now reuses the
+  existing group handlers; unsupported generator/effect entries remain disabled with reasons.
+- Fill inserts after the captured layer (group/no selection appends). Material keeps its existing
+  append behavior. Library source selections remain inputs to those existing handlers; they are
+  not captured owner identities. Texture-mask submenus retain their existing asset-path capture.
+- Inferred creation scope reads the captured child GUID for Q, not a later selected-child index.
+  Ordinary context-menu signatures and handlers remain in place.
+- Q opening remains viewport-only. No input preprocessor, focus, capture, close gesture, preview
+  shader or Moss implementation changes. No commands/builds/tests/diagnostics were run.
+
+## Next increment — not implemented
+1. Extend owner-reported contexts to viewport orbit/pan/light rotation and validated layer/module
    drop destinations. Slider hover/scrub/type-in is already wired through the shared helper.
-4. Bound the remaining selection-hint combinations to 2–4 items without changing hotkeys.
+2. Bound the remaining selection-hint combinations to 2–4 items without changing hotkeys.
 
 ## Priorities
 1. **Q guidance + feedback.** While open, replace generic V/W/E hints with Q/Escape close
@@ -60,8 +84,8 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
    lighting and action choices. Keep slider guidance during a scrub; summarize on release,
    rather than emitting a new message per mouse move. Preserve nested-menu/text-entry behavior.
 2. **Explicit action target.** Show the selected layer/group/module name in Actions.
-   Capture its stable identity when Q opens; revalidate before execution. Current callbacks
-   often re-read selection when a submenu opens/clicks, so snapshotting is new work.
+   Capture its stable identity when Q opens; revalidate before execution. Root and nested
+   callbacks now retain the snapshot, including shared creation and output-copy builders.
    Disable unavailable actions with a short reason; retain entry positions and existing actions.
 3. **Broader interaction contexts.** Reuse the same hint selection for viewport orbit/pan/light
    rotation, inspector slider hover/scrub/type-in, and layer/module drag destinations.
@@ -96,6 +120,9 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - `Widgets/SMixtormat.cpp::MakeSlider`: workspace binding for Q/Inspector and other shared sliders.
 - `Widgets/Layers/MixtormatLayerActions.cpp`: successful creation feedback with actual owner names.
 - `Widgets/Layers/MixtormatLayerClipboard.cpp`: output-copy and pasted-gate feedback.
+- `Widgets/Layers/MixtormatQuickControlsActions.cpp`: Q target snapshot, resolver and availability.
+- `Widgets/SMixtormat.cpp::ResetEditHistory`: document-revision invalidation.
+- `UI/Menus/MixtormatMenuBuilder.*`, `SMixtormatMenuItem.*`: live disabled reasons and styled help.
 
 ## Remaining owner checks
 - Build/compile, then check viewport edges and multiple DPI scales; cards must not move on hover.
@@ -106,5 +133,13 @@ Scope: existing Q menu, corner hint strip and top-center feedback. No new help s
 - Q additions/copies name the result and actual scope; no success label on failed insertion.
 - Inspector/shared-slider guidance clears on leave, rebuild, disabled controls and theme changes.
 - H/Space hides both optional surfaces; material-contract warnings remain separate.
-- After increment 2: selection/reorder/delete/document invalidation and stable disabled reasons.
+- Q on layer/group/module/no selection: target title/path and root-versus-scoped destinations.
+- Change selection with a nested menu open; reorder layers/modules before choosing an action.
+  The original identity must receive the edit; deleted/cross-owner-moved targets must reject it.
+- Close/reopen Q or reset/open a document (including the same asset); old callbacks must not act.
+- Test Fill/Material, every creation submenu, output copies, Noise/Gallery/Paste Gates and filters.
+- Change clipboard, output publication, instance state and scope capacity with menus open;
+  disabled reasons must update without moving rows or allowing stale nested actions.
+- Long target names, group targets and first-material creation; no card movement or focus theft.
+- Ordinary context menus still use their existing handlers and selection-routing behavior.
 - After increment 3: viewport capture and validator-backed drag acceptance/rejection.

@@ -88,6 +88,7 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 				[
 					SNew(STextBlock).Text(LOCTEXT("GroupControlCancel", "Cancel"))
 					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+					.AutoWrapText(true).OverflowPolicy(ETextOverflowPolicy::Clip)
 				],
 				SNew(SButton)
 				.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.PrimaryButton")))
@@ -96,6 +97,7 @@ void SMixtormatGroupControlPopover::Construct(const FArguments& InArgs)
 				[
 					SNew(STextBlock).Text(bEditing ? LOCTEXT("GroupControlApply", "Apply") : LOCTEXT("GroupControlCreate", "Create Control"))
 					.TextStyle(&FMixtormatStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
+					.AutoWrapText(true).OverflowPolicy(ETextOverflowPolicy::Clip)
 				])
 		]
 	];

@@ -50,6 +50,8 @@ namespace MixtormatMenu
 		FBuilder& ToolTip(const FText& Text);
 		FBuilder& Checked(const TAttribute<bool>& InChecked);
 		FBuilder& Enabled(const TAttribute<bool>& InEnabled);
+		// A non-empty reason disables the row without removing or resizing it.
+		FBuilder& UnavailableReason(const TAttribute<FText>& Reason);
 		FBuilder& Destructive();
 		FBuilder& BehaviorStyle();
 
@@ -70,6 +72,7 @@ namespace MixtormatMenu
 			FText Label;
 			FText Shortcut;
 			FText ToolTip;
+			TAttribute<FText> UnavailableReason;
 			const FSlateBrush* Icon = nullptr;
 			FSimpleDelegate OnActivate;
 			FOnGetContent OnGetSubMenu;

@@ -13,18 +13,65 @@ file splits. Moss and GPU-pass internals are outside this work.
 | Area | Confirmed source evidence | Next action |
 |---|---|---|
 | Hover help — patched 2026-10-24 | Status dots, both tab helpers, gallery drawer header and layer/group Noise-mask rows now use `SMixtormatHelp::MakeStyledToolTip`. | Owner verifies hover appearance and input behavior; this does not certify every tooltip in the plugin. |
-| Ramp stop row | Swatch hover now uses the shared styled adapter with localized text. Local 6/8px gaps, 22×16 swatch dimensions and `RebuildChrome`'s 2px gap remain. | Reuse appropriate metrics/text roles; centralize missing styling values without changing ramp interaction. |
-| Tab styling | `SMixtormatTabStrip.cpp::MakeTab` hardcodes inactive white at 0.55 alpha. | Use a canonical theme value preserving existing appearance; do not blindly tint twice. |
-| Bake dialog | `Widgets/Dialogs/SMixtormatBakeSettingsDialog.cpp` mixes themed cards/padding with direct Regular/Bold font selection and `UseSubduedForeground`. | Use shared typography roles and palette rather than locally selecting weight/foreground. |
-| Interactive popovers | Parameter/driver, preset naming and group-control surfaces need a focused consistency pass. | Check shared menu surface, spacing, input styling, disabled states, focus and dismissal; not yet certified by this spot-check. |
+| Ramp stop row — fixed | `SMixtormatColorRamp.cpp` uses resolved `ControlLabel` typography; `ColorRampStopLabelGap`, `ColorRampStopSwatchWidth/Height` and `ColorRampChromeGap` retain 6px, 22×16 and 2px. The 8px gap reuses `ScalarRampToolbarGroupGap`. | New metrics are in theme/schema/JSON; generic swatches are currently 32×12 and `RowLabelGap` is 4, so substituting those would change appearance. Stop dragging, endpoint locks, picker callbacks and the already-styled hover remain unchanged. |
+| Tab styling — fixed | `MakeTab` reads `ControlLayout.TabInactiveOpacity` (0.55) from the resolved theme. | Retains neutral white without adding a palette tint; active foreground and both existing tooltip adapters are unchanged. |
+| Bake dialog — fixed | `SMixtormatBakeSettingsDialog.cpp` uses resolved `ControlLabel`, `Caption` and `Body` roles with Text/TextMuted/Error palette colors, not local font weights or inherited/subdued foreground. | Summary leading retains 1.35 via `BakeDialogSummaryLineHeight` in theme/schema/JSON. Shared scrollbar styling and wrapping cover long output names. Native picker/menu internals still need owner checks. |
+| Mask-thumbnail hover — fixed | `BuildMaskPreviewTooltip` passes the existing pooled thumbnail to `SMixtormatHelp::MakeStyledToolTip`'s optional preview slot. | Shared help panel, padding, body text and width replace its private `SToolTip` surface. Thumbnail size follows Gallery TileSize, bounded by the help content width; texture lookup and thumbnail lifetime are preserved. |
+| Interactive popovers — fixed/checked | Parameter info/range/authoring, driver/group controls and preset naming reuse `MixtormatParameterPresentation` for bounded, clipped, themed scrolling. | Menu/card surfaces remain outside the scroll viewport. Form/info rows can grow beyond RowHeight; captions, errors and action labels wrap. Existing callbacks, type locks, enabled states and commit/dismiss routes are retained; runtime interaction checks remain. |
 
-Not every `.ToolTipText` match is a violation: some custom controls consume it into
-styled help, and `SMixtormatHelp` deliberately clears native tooltips or creates a
-styled `SToolTip` adapter. Inspect the widget path before editing.
+### Tooltip trace — current source, not a match-count certification
+
+- `SMixtormatGroupAction` consumes inherited `.ToolTipText` into `SMixtormatHelp` and
+  clears the native tooltip. The shell-action wrapper uses this path: Undo/Redo and
+  the other top-bar actions are **not** violations. Layer creation group actions also qualify.
+- `SMixtormatIconButton` styles its own `.ToolTip(FText)`, **not** inherited `.ToolTipText`.
+  Inspector-group reset now uses the correct argument. `SMixtormatLayerIcon` has no
+  such text wrapper; child/group visibility, disclosure and inspector preview callers
+  now use the shared `IToolTip` adapter instead.
+- `MixtormatMenuBuilder` previously forwarded help to `SMixtormatMenuItem`'s native
+  inherited argument. It now supplies the styled adapter; entries without help retain no tooltip.
+- Migrated native paths: Tile's `SetToolTipText`, instance-banner buttons, Peel seed-mask
+  clearing, height inversion, ID texture/swatch/legacy container, fuzz/fill swatches,
+  library ownership badge, Create Material and the mask-bar heading.
+- The shared help host's empty `SetToolTipText` calls deliberately clear native help.
+  Its `SNew(SToolTip)` is the themed adapter, not an unstyled-tooltip violation.
+- **Deferred to Q/context owner, files untouched:** `SMixtormat_Preview.cpp` has two
+  `SMixtormatIconButton.ToolTipText` paths (`MakeFeaturePreviewButton`,
+  `MakeChildOutputPreviewButton`); switch those to the existing `.ToolTip(FText)`.
+  `MixtormatLayerMenus.cpp::BuildGroupAccentMenu` has one native swatch `SBox.ToolTipText`;
+  use the styled adapter there. No Q/context handlers, slider internals or Moss/GPU were edited.
+- `MixtormatEditorModule.cpp`'s tab-spawner `SetTooltipText` is Unreal host registration,
+  not a Mixtormat widget wrapper. Its native tab/menu presentation remains an explicit
+  integration exception; no unsupported adapter API was assumed.
+- Native Content Browser/object pickers and bake `FMenuBuilder` entries can generate
+  internal help without literal `.ToolTipText` calls here. These remain owner-run checks,
+  not evidence that every engine-owned popup is themed.
+
+### Popover sizing and remaining owner-run checks
+
+- Info/range/authoring keep their existing resolved content widths (260/300/320 defaults).
+  Driver/group keep 224/360 structural widths, existing card/menu surfaces and text-field styles.
+  All use the existing 600px `ParameterPopoverMaxHeight` and shared scrollbar metrics.
+- Preset naming is bounded to the existing `MenuLayout.Width`, not only a minimum;
+  heading/instructions use shared Caption styling. Error text uses palette Error and
+  wraps instead of inheriting the row-label ellipsis policy.
+- Group actions use a minimum height rather than a fixed box. Disabled enum creation,
+  locked type controls, validation and label-based commit gating remain intact.
+- Owner: compile in UE 5.8; inspect default/custom themes, large fonts, narrow windows,
+  long unbroken names and DPI scaling. Check scroll reachability and popup edge placement.
+- Owner: verify ramp capture/drag/crossing, picker focus, text Enter/Tab/Escape, right-click
+  cancellation, nested menus, click-away dismissal, disabled help and theme reconstruction.
+- Owner: compare thumbnail rendering/lifetime, hover placement and timing. The hover host
+  still uses `HelpDelay`; `MakeStyledToolTip` retains Slate's native tooltip timing/lifecycle.
+- Remaining local bake chrome outside the typography fix includes its 12px browse glyph
+  and some mapping/validation spacing. Do not silently substitute unrelated icon/layout roles.
+
+No commands, builds, tests, diagnostics or automated validation were run. Findings above
+are from targeted source inspection and edits only; visual/interaction equivalence is not certified.
 Action/result dialog sizes already use tokens/theme; do not rewrite them just for using `SWindow`.
 Keep data colors/ranges, identity multipliers and retained window geometry out of style cleanup.
 
-The older inventory below remains historical; only the rows above were rechecked here.
+The older inventory below remains historical; the current section supersedes its ramp/tab rows.
 
 ## The rule
 

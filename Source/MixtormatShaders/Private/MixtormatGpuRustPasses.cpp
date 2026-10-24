@@ -87,7 +87,7 @@ FSurfacingFields AddRustSurfacePasses(FMixtormatComposeContext& Ctx,
 	P->Structure = static_cast<uint32>(R.Structure);
 	// Preserve the binding value. Only protect division; unresolvable noise octaves
 		// are filtered in the shared Noise lattice, not clamped back to a larger feature.
-		P->ClusterPeriod = FMath::Max(1.0f, 24.0f / FMath::Max(FMath::Abs(R.FeatureSize), UE_SMALL_NUMBER));
+		P->ClusterPeriod = FMath::Max(1.0f, 12.0f / FMath::Max(FMath::Abs(R.FeatureSize), UE_SMALL_NUMBER));
 	P->Coverage = R.Coverage;
 	P->PitDepth = R.PitDepth;
 	P->Buildup = R.Buildup;

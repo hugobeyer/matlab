@@ -241,8 +241,11 @@ struct MIXTORMATRUNTIME_API FMixtormatRust
 
 	FMixtormatRust()
 	{
-		ColorRamp.Stops = {{0.0f, FLinearColor(.055f,.018f,.009f,1)},
-			{0.45f, FLinearColor(.22f,.055f,.018f,1)}, {1.0f, FLinearColor(.52f,.19f,.035f,1)}};
+		ColorRamp.Stops = {
+			{0.0f, FLinearColor(.042f, .016f, .009f, 1.0f)},
+			{0.32f, FLinearColor(.14f, .038f, .014f, 1.0f)},
+			{0.68f, FLinearColor(.34f, .095f, .022f, 1.0f)},
+			{1.0f, FLinearColor(.58f, .22f, .042f, 1.0f)}};
 	}
 };
 

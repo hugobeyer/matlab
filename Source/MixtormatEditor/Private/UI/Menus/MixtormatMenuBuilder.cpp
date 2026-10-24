@@ -98,6 +98,12 @@ namespace MixtormatMenu
 		return *this;
 	}
 
+	FBuilder& FBuilder::UnavailableReason(const TAttribute<FText>& Reason)
+	{
+		LastRow().UnavailableReason = Reason;
+		return *this;
+	}
+
 	FBuilder& FBuilder::Destructive()
 	{
 		LastRow().bDestructive = true;
@@ -169,7 +175,14 @@ namespace MixtormatMenu
 				[
 					SNew(SMixtormatMenuItem)
 					.Label(Entry.Label)
-					.ToolTip(SMixtormatHelp::MakeStyledToolTip(Entry.ToolTip))
+					.ToolTip(Entry.ToolTip.IsEmpty() && !Entry.UnavailableReason.IsSet() ? TSharedPtr<IToolTip>()
+						: TSharedPtr<IToolTip>(SMixtormatHelp::MakeStyledToolTip(TAttribute<FText>::CreateLambda(
+							[Help = Entry.ToolTip, Reason = Entry.UnavailableReason]()
+							{
+								const FText Disabled = Reason.Get(FText::GetEmpty());
+								return Disabled.IsEmpty() ? Help : Disabled;
+							}))))
+					.UnavailableReason(Entry.UnavailableReason)
 					.Shortcut(Entry.Shortcut)
 					.Icon(Entry.Icon)
 					.bChecked(Entry.bChecked)

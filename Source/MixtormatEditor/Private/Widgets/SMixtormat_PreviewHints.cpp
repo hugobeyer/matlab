@@ -169,6 +169,10 @@ void SMixtormat::ShowPreviewFeedback(const FText& Text)
 	PreviewFeedbackText = Text;
 	PreviewFeedbackStartedAt = FSlateApplication::Get().GetCurrentTime();
 	PreviewFeedbackOpacity = 1.0f;
+	if (const TSharedPtr<SWidget> Widget = PreviewFeedbackWidget.Pin())
+	{
+		Widget->SetRenderOpacity(PreviewFeedbackOpacity);
+	}
 	if (!bPreviewFeedbackTimerActive)
 	{
 		bPreviewFeedbackTimerActive = true;
@@ -182,6 +186,10 @@ EActiveTimerReturnType SMixtormat::TickPreviewFeedback(const double CurrentTime,
 	const double FadeTime = CurrentTime - PreviewFeedbackStartedAt - MixtormatTokens::PreviewFeedbackHoldSeconds;
 	PreviewFeedbackOpacity = 1.0f - FMath::Clamp(
 		static_cast<float>(FadeTime / MixtormatTokens::PreviewFeedbackFadeSeconds), 0.0f, 1.0f);
+	if (const TSharedPtr<SWidget> Widget = PreviewFeedbackWidget.Pin())
+	{
+		Widget->SetRenderOpacity(PreviewFeedbackOpacity);
+	}
 	Invalidate(EInvalidateWidgetReason::Paint);
 	if (PreviewFeedbackOpacity <= 0.0f)
 	{
@@ -198,13 +206,13 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewFeedback()
 	const FTextBlockStyle TextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
 		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
 		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
-	return SNew(SMixtormatSurfaceBox)
+	const TSharedRef<SMixtormatSurfaceBox> Feedback = SNew(SMixtormatSurfaceBox)
 		.Visibility_Lambda([this]()
 		{
 			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f && !IsHintInteractionActive()
 				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 		})
-		.RenderOpacity_Lambda([this]() { return PreviewFeedbackOpacity; })
+		.InheritWidgetStyle(true)
 		.Recipe_Lambda([]() { return Mixtormat::MakePreviewPlateRecipe(FMixtormatThemeStore::GetResolved()); })
 		.Padding(FMargin(Resolved.ContextLayout.HintKeycapPadding))
 		[
@@ -214,6 +222,9 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewFeedback()
 			.Justification(ETextJustify::Center)
 			.AutoWrapText(true)
 		];
+	Feedback->SetRenderOpacity(PreviewFeedbackOpacity);
+	PreviewFeedbackWidget = Feedback;
+	return Feedback;
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()

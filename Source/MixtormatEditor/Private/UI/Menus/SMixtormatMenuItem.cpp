@@ -8,6 +8,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatTypography.h"
 #include "UI/Atoms/MixtormatIcons.h"
+
 #include "UI/Primitives/SMixtormatSurfaceBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SMenuAnchor.h"
@@ -20,6 +21,8 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 {
 	bChecked = InArgs._bChecked;
 	bRowEnabled = InArgs._bEnabled;
+	UnavailableReason = InArgs._UnavailableReason;
+
 	bDestructive = InArgs._bDestructive;
 	bBehaviorStyle = InArgs._bBehaviorStyle;
 	OnActivate = InArgs._OnActivate;
@@ -148,7 +151,7 @@ void SMixtormatMenuItem::Construct(const FArguments& InArgs)
 
 bool SMixtormatMenuItem::IsRowEnabled() const
 {
-	return bRowEnabled.Get(true);
+	return bRowEnabled.Get(true) && UnavailableReason.Get(FText::GetEmpty()).IsEmpty();
 }
 
 

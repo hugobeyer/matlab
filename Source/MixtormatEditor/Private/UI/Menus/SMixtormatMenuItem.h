@@ -34,6 +34,8 @@ public:
 		, _bBehaviorStyle(false)
 	{}
 		SLATE_ATTRIBUTE(FText, Label)
+
+		SLATE_ATTRIBUTE(FText, UnavailableReason)
 		// Printed quietly on the right. Never a control -- it teaches the shortcut, it does not
 		// offer it.
 		SLATE_ATTRIBUTE(FText, Shortcut)
@@ -73,6 +75,7 @@ private:
 
 	TAttribute<bool> bChecked;
 	TAttribute<bool> bRowEnabled;
+	TAttribute<FText> UnavailableReason;
 	bool bDestructive = false;
 	bool bBehaviorStyle = false;
 	FSimpleDelegate OnActivate;

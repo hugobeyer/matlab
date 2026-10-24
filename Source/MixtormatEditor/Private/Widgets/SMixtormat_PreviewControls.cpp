@@ -1055,7 +1055,11 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 	AddSliderRow(GeometryRows, BuildPreviewGeometryControls(EPreviewControlLayout::Grid));
 	const Mixtormat::FMixtormatPreviewMetrics& PreviewMetrics = FMixtormatThemeStore::GetResolved().PreviewLayout;
 	const TSharedRef<SMixtormatInspectorCard> ActionsCard = SNew(SMixtormatInspectorCard)
-		.Title(LOCTEXT("QuickControlsActions", "ACTIONS"))
+		.Title_Lambda([this]()
+		{
+			return FText::Format(LOCTEXT("QuickActionsTargetTitle", "Actions · {0}"),
+				QuickControlsActionTarget.IsValid() ? QuickControlsActionTarget->Name : FText::GetEmpty());
+		})
 		.HeaderOnly(true)
 		.HeaderAction(SNew(SBox)
 			.WidthOverride(FMixtormatThemeStore::GetResolved().ControlLayout.LayerChildIconSize)
@@ -1081,6 +1085,12 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 		[
 			ActionsCard
 		];
+	ActionsCombo->SetToolTip(SMixtormatHelp::MakeStyledToolTip(TAttribute<FText>::CreateLambda([this]()
+	{
+		const FText Reason = GetQuickControlsTargetUnavailableReason(QuickControlsActionTarget);
+		return Reason.IsEmpty() ? GetQuickControlsTargetLabel()
+			: FText::Format(LOCTEXT("QuickTargetInvalidHelp", "{0} · {1}"), GetQuickControlsTargetLabel(), Reason);
+	})));
 	ActionsCombo->SetRenderTransform(Reveal(FVector2D(0.0, 1.0)));
 	const TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox)
 		.Visibility(EVisibility::SelfHitTestInvisible)
@@ -1125,7 +1135,7 @@ TSharedRef<SWidget> SMixtormat::BuildQuickControlsOverlay()
 		.Padding(0.0f, PreviewMetrics.QuickControlsRowGap, 0.0f, 0.0f)
 		[
 			SNew(SBox)
-			.MinDesiredWidth(PreviewMetrics.QuickControlsActionsWidth)
+			.WidthOverride(PreviewMetrics.QuickControlsActionsWidth)
 			[
 				WithContext(EQuickControlsHint::Actions, ActionsCombo)
 			]
@@ -1214,6 +1224,7 @@ void SMixtormat::ToggleQuickControls()
 	QuickControlsPosition = Local;
 	bQuickControlsNeedsCentre = true;
 	bQuickControlsOpen = true;
+	CaptureQuickControlsTarget();
 	QuickControlsHint = EQuickControlsHint::None;
 	HintSlider.Reset();
 	// A single timer handles reveal and proximity until the menu closes.
@@ -1269,6 +1280,7 @@ void SMixtormat::ToggleQuickControls()
 void SMixtormat::CloseQuickControls()
 {
 	bQuickControlsOpen = false;
+	QuickControlsActionTarget.Reset();
 	QuickControlsHint = EQuickControlsHint::None;
 	if (!IsHintInteractionActive()) { HintSlider.Reset(); }
 	if (bQuickControlsActionMenuOpen || bQuickControlsFinalMenuOpen)

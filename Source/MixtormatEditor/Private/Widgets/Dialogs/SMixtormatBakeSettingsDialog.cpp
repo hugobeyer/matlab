@@ -10,6 +10,7 @@
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
 #include "Style/MixtormatTypography.h"
+
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Containers/SMixtormatInspectorCard.h"
 #include "UI/Controls/SMixtormatSegmentedControl.h"
@@ -57,6 +58,21 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 	RefreshDiscoveredParameters();
 	const ISlateStyle& Style = FMixtormatStyle::Get();
 	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle LabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	const FTextBlockStyle MutedLabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const FTextBlockStyle CaptionStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Caption),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const FTextBlockStyle BodyStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
+	const FTextBlockStyle ErrorStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Body),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Error));
 
 	ChildSlot
 	[
@@ -88,8 +104,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("BakeDestinationLabel", "Destination Folder"))
-									.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontDialogLabel))
-									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+									.Font(MutedLabelStyle.Font)
+									.ColorAndOpacity(MutedLabelStyle.ColorAndOpacity)
+									.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 								]
 								+ SVerticalBox::Slot().AutoHeight()
 								[
@@ -121,7 +138,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 										.ButtonContent()
 										[
 											SNew(SHorizontalBox)
-											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 4.0f, 0.0f)
+											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, MixtormatTokens::BakeDialogBrowseButtonGap, 0.0f)
 											[
 												SNew(SBox)
 												.WidthOverride(12.0f)
@@ -129,15 +146,16 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 												[
 													SNew(SImage)
 													.Image(MixtormatIcons::Folder())
-													.ColorAndOpacity(FSlateColor::UseForeground())
+													.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text))
 												]
 											]
 											+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 											[
 												SNew(STextBlock)
 												.Text(LOCTEXT("BrowseBakeDestination", "Browse..."))
-												.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-												.ColorAndOpacity(FSlateColor::UseForeground())
+												.Font(LabelStyle.Font)
+												.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+												.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 											]
 										]
 									]
@@ -150,8 +168,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("BakeBaseNameLabel", "Output Base Name"))
-									.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontDialogLabel))
-									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+									.Font(MutedLabelStyle.Font)
+									.ColorAndOpacity(MutedLabelStyle.ColorAndOpacity)
+									.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 								]
 								+ SVerticalBox::Slot().AutoHeight()
 								[
@@ -202,7 +221,7 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 						.Title(LOCTEXT("BakeMaterialParentTitle", "MATERIAL PARENT"))
 						[
 							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogSectionGap)
 							[
 								SNew(SMixtormatSegmentedControl)
 								.Options({LOCTEXT("ParentModeDefault", "Mixtormat Default"), LOCTEXT("ParentModeCustom", "Custom Material")})
@@ -235,8 +254,8 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("DefaultMasterInfo", "Bakes to standard Substrate master with DA_BaseColor, DA_Normal, DA_RAMH, and DA_Height parameters."))
-									.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+									.Font(BodyStyle.Font)
+									.ColorAndOpacity(BodyStyle.ColorAndOpacity)
 									.AutoWrapText(true)
 								]
 							]
@@ -257,8 +276,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 									[
 										SNew(STextBlock)
 										.Text(LOCTEXT("CustomMasterLabel", "Master Material"))
-										.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontDialogLabel))
-										.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+										.Font(MutedLabelStyle.Font)
+										.ColorAndOpacity(MutedLabelStyle.ColorAndOpacity)
+										.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 									]
 									+ SVerticalBox::Slot().AutoHeight()
 									[
@@ -277,18 +297,18 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 								[
 									SNew(STextBlock)
 									.Text(LOCTEXT("TextureMappingsCaption", "TEXTURE PARAMETER MAPPINGS"))
-									.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Bold, MixtormatTokens::FontDialogLabel))
-									.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+									.Font(CaptionStyle.Font)
+									.ColorAndOpacity(CaptionStyle.ColorAndOpacity)
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
 								[
 									BuildParameterMappingDropdown(Settings.MaterialSettings.BaseColorMapping, LOCTEXT("MapBC", "Base Color"))
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
 								[
 									BuildParameterMappingDropdown(Settings.MaterialSettings.NormalMapping, LOCTEXT("MapNormal", "Normal"))
 								]
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, MixtormatTokens::BakeDialogFieldTopMargin)
 								[
 									BuildParameterMappingDropdown(Settings.MaterialSettings.RAMMapping, LOCTEXT("MapRAM", "Packed RAM"))
 								]
@@ -337,11 +357,11 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 																		FText::FromString(Names[8]),
 																		FText::FromString(Names[9]));
 							})
-							.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-							.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted))
+							.Font(BodyStyle.Font)
+							.ColorAndOpacity(BodyStyle.ColorAndOpacity)
 							.AutoWrapText(true)
 							.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
-							.LineHeightPercentage(1.35f)
+							.LineHeightPercentage(Resolved.ControlLayout.BakeDialogSummaryLineHeight)
 						]
 					]
 				]
@@ -352,8 +372,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() { return ValidationText; })
-				.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-				.ColorAndOpacity(Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Error))
+				.Font(ErrorStyle.Font)
+				.ColorAndOpacity(ErrorStyle.ColorAndOpacity)
+				.OverflowPolicy(ETextOverflowPolicy::Clip)
 				.AutoWrapText(true)
 			]
 
@@ -369,8 +390,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 					[
 						SNew(STextBlock)
 						.Text(LOCTEXT("CancelBakeSettings", "Cancel"))
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
-						.ColorAndOpacity(FSlateColor::UseForeground())
+						.Font(LabelStyle.Font)
+						.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().Padding(Resolved.ControlLayout.DialogButtonGap, 0.0f, 0.0f, 0.0f)
@@ -381,8 +403,9 @@ void SMixtormatBakeSettingsDialog::Construct(const FArguments& InArgs)
 					[
 						SNew(STextBlock)
 						.Text(LOCTEXT("AcceptBakeSettings", "Bake"))
-						.TextStyle(&Style.GetWidgetStyle<FTextBlockStyle>(TEXT("Mixtormat.RowLabel")))
-						.ColorAndOpacity(FSlateColor::UseForeground())
+						.Font(LabelStyle.Font)
+						.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+						.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 					]
 				]
 			]
@@ -517,6 +540,10 @@ TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMappingDropdown(
 	const FText& OutputLabel)
 {
 	const ISlateStyle& Style = FMixtormatStyle::Get();
+	const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle LabelStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::ControlLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -528,8 +555,9 @@ TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMappingDropdown(
 			[
 				SNew(STextBlock)
 				.Text(OutputLabel)
-				.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-				.ColorAndOpacity(FMixtormatThemeStore::GetResolved().Palette.Get(Mixtormat::EMixtormatColorRole::Text))
+				.Font(LabelStyle.Font)
+				.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 			]
 		]
 		+ SHorizontalBox::Slot()
@@ -549,8 +577,9 @@ TSharedRef<SWidget> SMixtormatBakeSettingsDialog::BuildParameterMappingDropdown(
 				{
 					return GetParameterDisplayLabel(Mapping);
 				})
-				.Font(Mixtormat::FMixtormatTypography::MakeFont(Mixtormat::EMixtormatFontWeight::Regular, MixtormatTokens::FontDialogLabel))
-				.ColorAndOpacity(FSlateColor::UseForeground())
+				.Font(LabelStyle.Font)
+				.ColorAndOpacity(LabelStyle.ColorAndOpacity)
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 			]
 		];
 }

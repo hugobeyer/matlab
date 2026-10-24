@@ -286,7 +286,7 @@ Do not delete these utilities merely to clean the customer package.
 | P07 | `Tools/upgrade_surface_optics.py:1–6,18–29`; `.md:233–256`. | **DEV-ONLY / PACKAGE-EXCLUDE already** master-preparation tool and internal upgrade instructions. Preserve resulting product/material functionality. |
 | P08 | `Tools/strip_import_metadata.py:14–28,60–67,79`. | **DEV-ONLY / PACKAGE-EXCLUDE already** staging sanitation; executes on load. Do not run against the working asset library without approval. |
 | P09 | `Tools/__pycache__/` directory. | **PACKAGE-EXCLUDE already** under Tools; generated private cache, not release content. Not inspected or deleted. |
-| P10 | `Resources/Icons/_source_sheet.webp` (file inventory only). | **PACKAGE-EXCLUDE candidate** authoring sheet; no source-code reference found. No explicit filter exclusion. Confirm no external/resource consumer before excluding. Image contents were not read. |
+| P10 | `Resources/Icons/_source_sheet.webp`. | **REMOVED 2026-10-24** with owner approval after text-reference checks found only this audit entry, no code/resource consumer. Excluded binary/archive paths were not inspected; image contents were not read. |
 | P11 | `Resources/Icons/beh-deform.svg:7–9`: copied document identity/export name. | **SOURCE COPY** clean embedded source metadata, preserve icon path/artwork. |
 | P12 | `Resources/Icons/beh-flow.svg:8–9`, `beh-gravity.svg:8`, `beh-noise.svg:8–9`, `beh-push.svg:8–9`, `beh-warp.svg:8–9`. | **SOURCE COPY** stale SVG document/export names; not visible material labels. Preserve resource filenames. |
 | P13 | `Resources/Icons/filter.svg:8–9`, `frame.svg:8–9`, `mixtormat-logo.svg:8`. | **SOURCE COPY** stale export targets/inconsistent embedded branding. Preserve product resources. |

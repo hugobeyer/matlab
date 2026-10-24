@@ -23,17 +23,17 @@ namespace MixtormatSurfacing
 			Built[3].Name = NSLOCTEXT("MixtormatSurfacing", "RustCrust", "Compact Crust");
 			Built[3].Description = NSLOCTEXT("MixtormatSurfacing", "RustCrustHelp", "Broad dark plates with mineral seams and restrained shedding.");
 			{ auto& R = Built[3].Settings; R.Structure = EMixtormatRustStructure::Layered; R.Coverage = .82f;
-			  R.FeatureSize = 2.5f; R.PitDepth = .035f; R.Buildup = .07f; R.Flaking = .08f; R.Roughness = .9f;
-			  R.ColorRamp.Stops = {{0, FLinearColor(.025f,.012f,.008f,1)}, {.5f, FLinearColor(.11f,.035f,.016f,1)}, {1, FLinearColor(.34f,.10f,.025f,1)}}; }
+			  R.FeatureSize = 1.6f; R.PitDepth = .035f; R.Buildup = .07f; R.Flaking = .08f; R.Roughness = .9f;
+			  R.ColorRamp.Stops = {{0, FLinearColor(.025f,.012f,.008f,1)}, {.38f, FLinearColor(.11f,.035f,.016f,1)}, {.72f, FLinearColor(.24f,.075f,.020f,1)}, {1, FLinearColor(.42f,.14f,.032f,1)}}; }
 			Built[4].Name = NSLOCTEXT("MixtormatSurfacing", "RustBuildup", "Granular Buildup");
 			Built[4].Description = NSLOCTEXT("MixtormatSurfacing", "RustBuildupHelp", "Raised ochre aggregate with shallow attack; demonstrates independent buildup.");
 			{ auto& R = Built[4].Settings; R.Coverage = .72f; R.PitDepth = .006f; R.Buildup = .12f;
 			  R.Flaking = 0; R.FeatureSize = .9f; R.Variation = .9f; R.Roughness = .94f;
-			  R.ColorRamp.Stops = {{0, FLinearColor(.08f,.025f,.01f,1)}, {.5f, FLinearColor(.32f,.10f,.02f,1)}, {1, FLinearColor(.6f,.28f,.065f,1)}}; }
+			  R.ColorRamp.Stops = {{0, FLinearColor(.06f,.020f,.009f,1)}, {.35f, FLinearColor(.20f,.055f,.016f,1)}, {.70f, FLinearColor(.38f,.12f,.025f,1)}, {1, FLinearColor(.62f,.28f,.058f,1)}}; }
 			Built[5].Name = NSLOCTEXT("MixtormatSurfacing", "RustLayers", "Layered Accumulation");
 			Built[5].Description = NSLOCTEXT("MixtormatSurfacing", "RustLayersHelp", "Terraced attached plates and irregular surviving edges above recessed metal.");
 			{ auto& R = Built[5].Settings; R.Structure = EMixtormatRustStructure::Layered; R.Coverage = .85f;
-			  R.PitDepth = .055f; R.Buildup = .14f; R.Flaking = .35f; R.FeatureSize = 2.2f; R.Variation = .85f; R.Seed = 71; }
+			  R.PitDepth = .055f; R.Buildup = .14f; R.Flaking = .35f; R.FeatureSize = 1.5f; R.Variation = .85f; R.Seed = 71; }
 			Built[6].Name = NSLOCTEXT("MixtormatSurfacing", "RustShed", "After Shedding");
 			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "RustShedHelp", "Sparse retained plate islands over the same deep attack footprint; shedding does not heal pits.");
 			Built[6].Settings = Built[5].Settings;

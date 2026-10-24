@@ -316,6 +316,7 @@
 		"ControlLayout.ParameterAuthoringPanelWidth": 320,
 		"ControlLayout.BakeDialogPathPickerWidth": 360,
 		"ControlLayout.BakeDialogPathPickerHeight": 420,
+		"ControlLayout.BakeDialogSummaryLineHeight": 1.35,
 		"ControlLayout.BakeResultDialogWidth": 760,
 		"ControlLayout.BakeResultDialogHeight": 320,
 		"ControlLayout.BakeSettingsDialogWidth": 520,

@@ -1129,6 +1129,7 @@ namespace Mixtormat
 		ClampMin(TEXT("ControlLayout.ScalarRampPointSize"), InOutTheme.ControlLayout.ScalarRampPointSize, 0.0f);
 		ClampMin(TEXT("ControlLayout.ScalarRampToolbarGroupGap"), InOutTheme.ControlLayout.ScalarRampToolbarGroupGap, 0.0f);
 		ClampMin(TEXT("ControlLayout.ScalarRampHeight"), InOutTheme.ControlLayout.ScalarRampHeight, 1.0f);
+		ClampMin(TEXT("ControlLayout.BakeDialogSummaryLineHeight"), InOutTheme.ControlLayout.BakeDialogSummaryLineHeight, 1.0f);
 		ClampMin(TEXT("ControlLayout.ColorRampHeight"), InOutTheme.ControlLayout.ColorRampHeight, 1.0f);
 		ClampMin(TEXT("ControlLayout.ColorRampStopLabelGap"), InOutTheme.ControlLayout.ColorRampStopLabelGap, 0.0f);
 		ClampMin(TEXT("ControlLayout.ColorRampStopSwatchWidth"), InOutTheme.ControlLayout.ColorRampStopSwatchWidth, 1.0f);

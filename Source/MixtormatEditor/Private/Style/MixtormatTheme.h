@@ -643,6 +643,8 @@ namespace Mixtormat
 		// window is deliberately not here -- it is a dev tool and sizes itself.
 		float BakeDialogPathPickerWidth = 360.0f;
 		float BakeDialogPathPickerHeight = 420.0f;
+		// Leading for the multiline output summary; font and color come from the Body role.
+		float BakeDialogSummaryLineHeight = 1.35f;
 		float BakeResultDialogWidth = 760.0f;
 		float BakeResultDialogHeight = 320.0f;
 		float BakeSettingsDialogWidth = 520.0f;

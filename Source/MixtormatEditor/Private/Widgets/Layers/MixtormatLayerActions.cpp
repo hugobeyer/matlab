@@ -2069,7 +2069,9 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 				: nullptr);
 		if (TargetChildren)
 		{
-			const int32 ActiveIdx = GetSelectedChildIndex();
+			const int32 ActiveIdx = Target.QuickControlsTarget.IsValid()
+				? FindChildById(*TargetChildren, Target.QuickControlsTarget->Address.ChildId)
+				: GetSelectedChildIndex();
 			if (TargetChildren->IsValidIndex(ActiveIdx)
 				&& CanOwnIdFilters((*TargetChildren)[ActiveIdx])
 				&& CanAddScopedChild(*TargetChildren, ActiveIdx))

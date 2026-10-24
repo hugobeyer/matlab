@@ -38,20 +38,9 @@ namespace MixtormatPresetUi
 		};
 		const Mixtormat::FMixtormatResolvedStyle& Resolved = FMixtormatThemeStore::GetResolved();
 		const TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
-		const auto AddCaption = [&Rows, &Resolved](const FText& Text)
+		const auto AddCaption = [&Rows](const FText& Text)
 		{
-			const FTextBlockStyle CaptionStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
-				Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::Caption),
-				Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::TextMuted));
-			Rows->AddSlot().AutoHeight()
-				.Padding(FMargin(Resolved.MenuLayout.ItemInset, Resolved.MenuLayout.CaptionInsetAbove,
-					Resolved.MenuLayout.ItemInset, Resolved.MenuLayout.CaptionInsetBelow))
-				[
-					SNew(STextBlock).Text(Text)
-					.Font(CaptionStyle.Font).ColorAndOpacity(CaptionStyle.ColorAndOpacity)
-					.AutoWrapText(true)
-					.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
-				];
+			Rows->AddSlot().AutoHeight()[MixtormatParameterPresentation::MakeCaption(Text)];
 		};
 		AddCaption(Heading.IsEmpty() ? LOCTEXT("PresetNameEntryHeading", "SAVE USER PRESET") : Heading);
 		const auto AddField = [&Rows, State, Commit](const FText& Hint, FString FEntry::* Member)

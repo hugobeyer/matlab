@@ -275,6 +275,9 @@ execution retains a 512-pass safety maximum independently of editor settings.
   remain visible. The optional Attach Target picker filters to the control's type.
 - UI ownership: `Widgets/Inspector/MixtormatInspectorGroupParameters.cpp`,
   `MixtormatInspectorGroupControlMenus.cpp`, and `UI/Parameters/SMixtormatGroupControlPopover.*`.
+- Parameter, preset and group popover content shares bounded/clipped scrolling through
+  `UI/Parameters/MixtormatParameterPresentation.h`. Menu/card surfaces stay outside scrolling;
+  form/info rows grow for wrapped text. Widths and the 600px height cap retain existing owners.
 - These UI changes are source-reviewed only; no build or live interaction validation was run.
 
 ## Cards / rows / atoms
@@ -322,13 +325,19 @@ toolbar. Its icon buttons opt into `ScalarRampButton`: an Accent gradient, prebl
 `Palette.Ground` when `BodyBlend` is non-Normal. This is a Ground-based approximation, not
 sampling the containing surface. State precedence is Active → Hover → Rest; Auto Zoom is active.
 The plate currently does not apply inherited tint/opacity or a disabled-specific plate state.
+The color-ramp stop row uses `ControlLayout.ColorRampStopLabelGap`,
+`ColorRampStopSwatchWidth/Height`, `ColorRampChromeGap` and the shared toolbar-group gap;
+its label uses the resolved ControlLabel typography role.
 
 ## Tooltip styling contract
 
 All Mixtormat help popovers must use `UI/Menus/SMixtormatHelp.*`; for controls requiring direct `IToolTip`, use its `MakeStyledToolTip` adapter. Do not add Unreal/Slate default white tooltips, `.ToolTipText(...)`, `SetToolTipText(...)`, or independently styled `SToolTip`. Existing group actions own their styled help internally. New controls must preserve user input handling and retrieve their help styling from shared tokens and theme store. See `AgentDocs/HELPERS.md`.
 
-Known source exceptions in the audited workspace: `SMixtormat_Shell.cpp` Undo/Redo and
-`SMixtormat_Library.cpp`'s gallery header still use `.ToolTipText`. These are gaps, not precedent.
+Shell Undo/Redo use the styled group-action wrapper; the gallery header is also patched.
+Remaining native calls in Q/context-owned preview buttons and group accent swatches are
+tracked in `auditdocs/ui-style-token-audit.md`; do not confuse inherited `.ToolTipText`
+with `SMixtormatIconButton`'s styled `.ToolTip(FText)` argument. Mask-thumbnail help uses
+the shared adapter's optional preview slot, retaining its pooled thumbnail.
 
 ## Theme / style / tokens
 

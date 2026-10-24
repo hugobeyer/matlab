@@ -412,6 +412,7 @@ void AddIconRole(
 		NUM("ControlLayout.ParameterAuthoringPanelWidth", Controls, "Layout", "Parameter Authoring Panel Width", ControlLayout.ParameterAuthoringPanelWidth, 120, 480, 4, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.BakeDialogPathPickerWidth", Controls, "Dialogs", "Bake Path Picker Width", ControlLayout.BakeDialogPathPickerWidth, 160, 800, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.BakeDialogPathPickerHeight", Controls, "Dialogs", "Bake Path Picker Height", ControlLayout.BakeDialogPathPickerHeight, 160, 800, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
+		NUM("ControlLayout.BakeDialogSummaryLineHeight", Controls, "Dialogs", "Bake Summary Line Height", ControlLayout.BakeDialogSummaryLineHeight, 1, 3, .05, 2, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.BakeResultDialogWidth", Controls, "Dialogs", "Bake Result Width", ControlLayout.BakeResultDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.BakeResultDialogHeight", Controls, "Dialogs", "Bake Result Height", ControlLayout.BakeResultDialogHeight, 160, 1200, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);
 		NUM("ControlLayout.BakeSettingsDialogWidth", Controls, "Dialogs", "Bake Settings Width", ControlLayout.BakeSettingsDialogWidth, 320, 1600, 8, 0, EMixtormatThemeRefreshMode::Reconstruct);

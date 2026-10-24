@@ -101,6 +101,15 @@ enum class EMixtormatChildCreation : uint8
 	Rust,
 };
 
+// Immutable identity for one Q opening. Nested menus retain this, never the live selection.
+struct FMixtormatQuickControlsTarget
+{
+	FMixtormatChildAddress Address;
+	FText Label;
+	FText Name;
+	uint64 DocumentRevision = 0;
+};
+
 // Where an Add menu puts what it creates: one layer's child stack, or a group's shared one.
 //
 // The whole reason the layer and group Add menus can share a taxonomy. Everything above the
@@ -111,6 +120,8 @@ struct FMixtormatAddTarget
 	int32 LayerIndex = INDEX_NONE;
 	FGuid GroupId;
 	FGuid ScopeOwnerChildId;
+	// Only Q supplies a snapshot; ordinary Add menus retain their existing routing.
+	TSharedPtr<const FMixtormatQuickControlsTarget> QuickControlsTarget;
 
 	static FMixtormatAddTarget Layer(const int32 InLayerIndex)
 	{
@@ -456,6 +467,8 @@ private:
 	// the vocabulary does not drift between a mask, an effect, a filter -- or a container.
 	void AddSharedChildMenuItems(MixtormatMenu::FBuilder& Menu, const FMixtormatChildAddress& Address);
 	TSharedRef<SWidget> BuildCopyChildOutputMenu(FMixtormatChildAddress Address);
+	TSharedRef<SWidget> BuildCopyChildOutputTargetMenu(FMixtormatChildAddress Address,
+		TSharedPtr<const FMixtormatQuickControlsTarget> Context);
 
 	// THE ADD MENU. One taxonomy, two containers.
 	//
@@ -1596,6 +1609,7 @@ private:
 	FText GetLayerChildSourceText(int32 LayerIndex, int32 ChildIndex) const;
 	TSharedRef<SWidget> BuildLayerContextMenu(int32 LayerIndex);
 	TSharedRef<SWidget> BuildAddEffectMenu(int32 LayerIndex);
+	TSharedRef<SWidget> BuildAddEffectTargetMenu(FMixtormatAddTarget Target);
 	TSharedRef<SWidget> BuildEffectContextMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildMaskBar();
 	TSharedRef<SWidget> BuildMaskBlendModeMenu(int32 LayerIndex, int32 MaskIndex);
@@ -1647,6 +1661,7 @@ private:
 	FText PreviewFeedbackText;
 	double PreviewFeedbackStartedAt = 0.0;
 	float PreviewFeedbackOpacity = 0.0f;
+	TWeakPtr<SWidget> PreviewFeedbackWidget;
 	bool bPreviewFeedbackTimerActive = false;
 	TSharedRef<SWidget> BuildPreviewOutputStrip();
 	void RebuildPreviewOutputStrip();
@@ -1666,7 +1681,24 @@ private:
 	TSharedRef<SWidget> MakePreviewCluster(const TSharedRef<SWidget>& Content);
 	// Q controls: a cursor-centred overlay with distance fading and pass-through gaps.
 	TSharedRef<SWidget> BuildQuickControlsOverlay();
-		TSharedRef<SWidget> BuildQuickControlsActionsMenu();
+	TSharedRef<SWidget> BuildQuickControlsActionsMenu();
+	void CaptureQuickControlsTarget();
+	FText GetQuickControlsTargetLabel() const;
+	FText GetQuickControlsTargetUnavailableReason(const TSharedPtr<const FMixtormatQuickControlsTarget>& Context) const;
+	FMixtormatAddTarget ResolveQuickControlsAddTarget(FMixtormatAddTarget Target) const;
+	enum class EAddMenuKind : uint8 { Child, Generator, Surfacing, Effect };
+	FSimpleDelegate MakeAddMenuAction(FMixtormatAddTarget Target, TFunction<void(FMixtormatAddTarget)> Action,
+		EAddMenuKind Kind = EAddMenuKind::Child);
+	FText GetAddMenuUnavailableReason(FMixtormatAddTarget Target, EAddMenuKind Kind) const;
+	enum class EQuickControlsAction : uint8
+	{
+		Fill, Material, Effects, Ids, Generators, Surfacing, Masks, Outputs, Gates,
+		NoiseGate, GalleryGate, PasteGate, Blur, Curvature
+	};
+	FText GetQuickControlsActionUnavailableReason(const TSharedPtr<const FMixtormatQuickControlsTarget>& Context,
+		EQuickControlsAction Action) const;
+	TSharedPtr<const FMixtormatQuickControlsTarget> QuickControlsActionTarget;
+	uint64 QuickControlsDocumentRevision = 0;
 	void ToggleQuickControls();
 	void CloseQuickControls();
 	void ShowQuickControlsAddedFeedback(const FMixtormatChildAddress& Address);

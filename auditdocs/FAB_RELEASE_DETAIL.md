@@ -124,6 +124,22 @@ A separate demo-project download is an option, not a completed task.
 - Moss and GPU-pass internals are intentionally excluded during active rewrites.
   Recheck their documentation and release behavior after those changes land.
 
+## UI consistency follow-up — 2026-10-24
+Status carried forward from [ui-style-token-audit.md](ui-style-token-audit.md) and the
+implementation handoff, not an independent re-review of the latest source.
+- Implemented: ramp/tab tokens, shared bake typography, styled mask-thumbnail hover,
+  native-tooltip bypass fixes, bounded popover scrolling and text wrapping.
+- Deferred to Q/context owner: `Widgets/SMixtormat_Preview.cpp` has two icon-button
+  `.ToolTipText` calls in `MakeFeaturePreviewButton` and `MakeChildOutputPreviewButton`;
+  use the existing `.ToolTip(FText)` wrapper.
+- `Widgets/Layers/MixtormatLayerMenus.cpp::BuildGroupAccentMenu` has one native swatch
+  `SBox.ToolTipText`; use the shared styled adapter. Paths are relative to
+  `Source/MixtormatEditor/Private/`. These are tooltip fixes, not changes to Q input routing.
+- Owner checks remain: clipping/scroll reachability, DPI, focus, capture, nested-menu and
+  click-away dismissal, thumbnail lifetime, hover timing and theme reconstruction.
+- Remaining bake chrome and Unreal-owned picker/tab help are tracked exceptions in the audit.
+  Do not mark all UI compliant or runtime-validated. Recipe dependency checks remain separate.
+
 ## Owner-run release gates
 1. BuildPlugin for UE 5.8 / Win64 and inspect the resulting file manifest.
 2. Confirm both JSONs, SVGs, applicable notices and required content dependencies are included.

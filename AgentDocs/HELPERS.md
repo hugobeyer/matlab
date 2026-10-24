@@ -29,6 +29,12 @@ plus the TODO lists for mapping and architecture work on top of it.
 - For input widgets that cannot be wrapped without altering drag/focus behavior, use `SMixtormatHelp::MakeStyledToolTip` with `SetToolTip`.
 - No raw `.ToolTipText(...)`, `SetToolTipText(...)` or unstyled `SToolTip` in new code. Existing use at call sites of `SMixtormatGroupAction` is routed through its styled wrapper, but should not be expanded.
 - The shared help surface owns typography, palette, compositing, padding and width. Never duplicate these recipes at individual call sites.
+- `MakeStyledToolTip(Text, Preview)` can include an existing thumbnail widget above the text;
+  mask-row help uses this instead of a separately styled tooltip. The adapter retains Slate's
+  timing/lifecycle; the hover-only host uses `HelpDelay`.
+- `SMixtormatIconButton.ToolTip(FText)` is styled; its inherited `.ToolTipText` is not.
+  `SMixtormatLayerIcon` callers must use the styled `IToolTip` adapter. MenuBuilder now
+  adapts nonempty help centrally; the group/shell-action text wrappers already do so.
 - Preserve mouse capture, focus, modifiers, hover/click semantics and localized help strings.
 
 ## Mechanisms
@@ -140,9 +146,16 @@ source-checked Q capabilities and staged integration with corner hints/top-cente
 Increment 1 adds settled Q-card guidance, shared-slider hover/scrub/type-in guidance and
 mesh/light/action/result feedback. The original Q focus gates, gestures, card geometry and
 nested-menu behavior remain; proximity dismissal also pauses during slider interactions.
-Creation feedback names the actual inserted child's scope owner; this is not target snapshotting.
-Captured action identities, stable disabled entries/reasons, viewport manipulation and drag
-contexts remain planned. Owner runtime checks are listed in the plan; none have been run.
+Increment 2 captures Q's layer/group/module GUIDs and names on opening. Actions shows the name;
+its styled help/menu caption shows the full path without widening the card. Root and nested
+callbacks resolve the captured identity and recheck availability instead of using later selection.
+Document/history resets and Q close/reopen invalidate stale callbacks. Creation feedback names
+the actual inserted child's owner; existing handlers still select their results normally.
+Output Copy/Gates and unavailable nested rows remain visible with live styled disabled reasons.
+`MixtormatMenu::FBuilder::UnavailableReason` owns the row gate and uses the existing tooltip
+adapter, not local styling. Fill keeps insert-after-layer behavior; Material still appends.
+Viewport manipulation and drag contexts remain planned. Owner checks are listed in the plan;
+no commands, builds, tests or diagnostics were run for these increments.
 
 ## TODOs — architecture
 

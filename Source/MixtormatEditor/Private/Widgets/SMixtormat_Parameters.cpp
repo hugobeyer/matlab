@@ -1151,7 +1151,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterInfoPanel(const FMixtormatParamete
 	}
 
 	MixtormatMenu::FBuilder Menu;
-	Menu.Caption(FText::FromName(Target.Parameter))
+	Menu.Widget(MixtormatParameterPresentation::MakeCaption(FText::FromName(Target.Parameter)))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
@@ -1235,7 +1235,7 @@ TSharedRef<SWidget> SMixtormat::BuildParameterUiRangeOverridePanel(
 	AddBoundRow(LOCTEXT("DevOverrideMin", "Override Min"), MetaMin, false, MetaMax);
 	AddBoundRow(LOCTEXT("DevOverrideMax", "Override Max"), MetaMax, true, MetaMin);
 
-	Menu.Caption(LOCTEXT("DevOverrideCaption", "Override UI Range"))
+	Menu.Widget(MixtormatParameterPresentation::MakeCaption(LOCTEXT("DevOverrideCaption", "Override UI Range")))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,
@@ -1587,7 +1587,7 @@ TSharedRef<SWidget> SMixtormat::BuildAuthoringSetupPanel(const FMixtormatParamet
 		Contract && Contract->bShaderSaturates ? TEXT("yes") : TEXT("no"));
 	AddInfo(LOCTEXT("DevAuthoringShader", "Shader"), FText::FromString(ShaderInfo));
 
-	Menu.Caption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup"))
+	Menu.Widget(MixtormatParameterPresentation::MakeCaption(LOCTEXT("DevAuthoringCaption", "Edit Authoring Setup")))
 		.Widget(SNew(SBox)
 			.Padding(FMargin(
 				FMixtormatThemeStore::GetResolved().MenuLayout.ItemInset,

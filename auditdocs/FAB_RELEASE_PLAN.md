@@ -41,6 +41,21 @@ See [exact paths and packaging caveats](FAB_RELEASE_DETAIL.md).
 Implementation map and behavior: `AgentDocs/UI.md` → Layer/group recipes — Gallery column.
 These are static source findings, not runtime test results.
 
+## UI consistency — targeted pass implemented; validation pending
+Per [ui-style-token-audit.md](ui-style-token-audit.md) and the implementation handoff;
+this status update did not independently re-review the changed source.
+- [x] Ramp metrics and tab opacity tokenized while preserving existing appearance.
+- [x] Bake typography uses shared roles/colors; mask hover retains pooled thumbnails in styled help.
+- [x] Native-tooltip bypasses migrated outside Q/context-owned files; styled wrappers preserved.
+- [x] Interactive popovers use bounded themed scrolling and improved wrapping.
+- [ ] Q/context owner: migrate two preview icon-button tooltip calls and the group-accent swatch.
+  Exact symbols/adapters are listed in the UI audit; preserve Q behavior and focus/capture.
+- [ ] Owner checks: clipping, scrolling, DPI, focus, dismissal, thumbnails and theme reconstruction.
+- [ ] Review remaining local bake chrome and engine-owned picker/help integration exceptions.
+
+Targeted implementation is not a plugin-wide UI certification. Recipe dependency/package
+checks remain separate release gates; UI work does not establish asset portability.
+
 ## Partial / not yet established
 - Packaging filter is not a complete curated-content policy or verified output manifest.
 - `.gitignore` excludes local content/output; it does not control BuildPlugin packaging.
@@ -61,10 +76,10 @@ These are static source findings, not runtime test results.
 - File splits remain optional maintenance, not FAB blockers.
 
 ## Next actions — in order
-0. **UI consistency first.** Audit/fix hover help, interactive popovers and dialogs against
-   shared help/menu/card surfaces, typography and theme metrics. Confirmed native-tooltip,
-   ramp/tab literal and bake-dialog typography gaps are in [ui-style-token-audit.md](ui-style-token-audit.md).
-   Trace wrappers before replacing tooltip calls; preserve focus, drag and dismissal behavior.
+0. **Close UI follow-ups.** The targeted consistency pass is implemented per the UI audit.
+   Coordinate the three remaining native-tooltip calls with the Q/context owner, then run
+   owner visual/interaction checks. Track remaining bake chrome and engine-owned popup
+   exceptions in [ui-style-token-audit.md](ui-style-token-audit.md); do not redo completed fixes.
 1. **Confirm package inputs.** Ensure both Config JSON files reach the built package;
    explicit filter includes are added; verify the built artifact when packaging.
 2. **Retain recipe content.** Ship all developer-authored recipes and their full asset

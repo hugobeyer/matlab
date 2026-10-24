@@ -327,6 +327,7 @@ bool SMixtormat::HaveSameLayerStructure(
 
 void SMixtormat::ResetEditHistory(const bool bCurrentStateIsSaved)
 {
+	++QuickControlsDocumentRevision;
 	SelectedLayerChildIds.Reset();
 	SelectionAnchorLayerChildId.Invalidate();
 	// A fresh history baseline also begins a fresh document-local disclosure session.
