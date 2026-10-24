@@ -1635,6 +1635,13 @@ private:
 	// key/action pairs at the bottom-left, first matching context wins. Hit-test-invisible;
 	// follows the H/Space master flag.
 	TSharedRef<SWidget> BuildPreviewHintStrip();
+	TSharedRef<SWidget> BuildPreviewFeedback();
+	void ShowPreviewFeedback(const FText& Text);
+	EActiveTimerReturnType TickPreviewFeedback(double CurrentTime, float DeltaTime);
+	FText PreviewFeedbackText;
+	double PreviewFeedbackStartedAt = 0.0;
+	float PreviewFeedbackOpacity = 0.0f;
+	bool bPreviewFeedbackTimerActive = false;
 	TSharedRef<SWidget> BuildPreviewOutputStrip();
 	void RebuildPreviewOutputStrip();
 	// The preview's control clusters, shared by the viewport overlay and the GLOBAL Preview /

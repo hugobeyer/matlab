@@ -11,6 +11,7 @@
 // strip follows the H/Space master flag and collapses when nothing applies.
 
 #include "Widgets/SMixtormat.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Widgets/SMixtormatInternal.h"
 #include "Widgets/MixtormatChildCapabilities.h"
 #include "Style/MixtormatThemeStore.h"
@@ -67,6 +68,58 @@ namespace Mixtormat
 				.TextStyle(&KeycapStyle)
 			];
 	}
+}
+
+void SMixtormat::ShowPreviewFeedback(const FText& Text)
+{
+	PreviewFeedbackText = Text;
+	PreviewFeedbackStartedAt = FSlateApplication::Get().GetCurrentTime();
+	PreviewFeedbackOpacity = 1.0f;
+	if (!bPreviewFeedbackTimerActive)
+	{
+		bPreviewFeedbackTimerActive = true;
+		RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SMixtormat::TickPreviewFeedback));
+	}
+	Invalidate(EInvalidateWidgetReason::Layout);
+}
+
+EActiveTimerReturnType SMixtormat::TickPreviewFeedback(const double CurrentTime, const float DeltaTime)
+{
+	const double FadeTime = CurrentTime - PreviewFeedbackStartedAt - MixtormatTokens::PreviewFeedbackHoldSeconds;
+	PreviewFeedbackOpacity = 1.0f - FMath::Clamp(
+		static_cast<float>(FadeTime / MixtormatTokens::PreviewFeedbackFadeSeconds), 0.0f, 1.0f);
+	Invalidate(EInvalidateWidgetReason::Paint);
+	if (PreviewFeedbackOpacity <= 0.0f)
+	{
+		bPreviewFeedbackTimerActive = false;
+		Invalidate(EInvalidateWidgetReason::Layout);
+		return EActiveTimerReturnType::Stop;
+	}
+	return EActiveTimerReturnType::Continue;
+}
+
+TSharedRef<SWidget> SMixtormat::BuildPreviewFeedback()
+{
+	const auto& Resolved = FMixtormatThemeStore::GetResolved();
+	const FTextBlockStyle TextStyle = Mixtormat::FMixtormatTypography::MakeTextStyle(
+		Mixtormat::FMixtormatTypography::GetSpec(Resolved.Typography, Mixtormat::EMixtormatTextRole::PreviewLabel),
+		Resolved.Palette.Get(Mixtormat::EMixtormatColorRole::Text));
+	return SNew(SMixtormatSurfaceBox)
+		.Visibility_Lambda([this]()
+		{
+			return bPreviewOverlayUiVisible && PreviewFeedbackOpacity > 0.0f
+				? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		})
+		.RenderOpacity_Lambda([this]() { return PreviewFeedbackOpacity; })
+		.Recipe_Lambda([]() { return Mixtormat::MakePreviewPlateRecipe(FMixtormatThemeStore::GetResolved()); })
+		.Padding(FMargin(Resolved.ContextLayout.HintKeycapPadding))
+		[
+			SNew(STextBlock)
+			.Text_Lambda([this]() { return PreviewFeedbackText; })
+			.TextStyle(&TextStyle)
+			.Justification(ETextJustify::Center)
+			.AutoWrapText(true)
+		];
 }
 
 TSharedRef<SWidget> SMixtormat::BuildPreviewHintStrip()

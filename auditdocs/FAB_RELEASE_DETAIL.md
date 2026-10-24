@@ -13,7 +13,7 @@ See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_
 | `Source/MixtormatRuntime/MixtormatRuntime.Build.cs` | Only Core, CoreUObject, Engine declared. This is not an exhaustive include audit. |
 | `Source/MixtormatShaders/MixtormatShaders.Build.cs` | Runtime, RenderCore, RHI and Projects dependencies; no Editor module dependency declared. |
 | `Config/` | DefaultMixtormat.ini, FilterPlugin.ini, MixtormatParameterAuthoring.json and UIStyleTheme.json present. |
-| `Config/FilterPlugin.ini` | Excludes Docs/Old, Docs Markdown, Tools, .gitignore, Content PNG/PNG~/HDR/FBX and nested Source Tests. |
+| `Config/FilterPlugin.ini` | Explicitly includes both Config JSON files; excludes Docs/Old, Docs Markdown, Tools, .gitignore, Content PNG/PNG~/HDR/FBX and nested Source Tests. |
 | `.gitignore` | Ignores Content, generated outputs and asset/image formats; exceptions for Icon128 and icon PNGs. SVGs are not covered by the PNG exclusion. Not a packaging policy. |
 | `Docs/ThirdPartyNotices.txt` | Removed with its filter entry at owner request: Lucide/Feather no longer used; SVGs are owned. |
 | `AgentDocs/` | Nine canonical guides plus ignored temp.md in visible root listing. Archived directories were not inspected. |
@@ -34,7 +34,6 @@ See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_
   `AgentDocs/ICONS.md` identifies current SVG registrations in
   `Source/MixtormatEditor/Private/Style/MixtormatStyle.cpp` as authoritative.
   The previous PNG-only recommendation was incorrect.
-- Required fonts and their notices; exact font payload/license coverage remains to review.
 
 - Curated `Content/` plus all required dependencies; see below.
 
@@ -59,8 +58,8 @@ See [release checklist](FAB_RELEASE_PLAN.md) and [parameter audit](GHOST_PARAMS_
   is stale copy to fix separately, not a missing feature to reintroduce.
 
 ## Filter gaps / limits
-- No explicit includes for either Config JSON are present. Verify the actual BuildPlugin
-  manifest before assuming default Config rules copy non-INI files; add includes if needed.
+- Explicit includes for both Config JSON files were added on 2026-10-24.
+  Actual inclusion still needs a BuildPlugin artifact/manifest check.
 - Content exclusions remove raw import sources only. They do not curate `.uasset` files,
   HDR-derived assets, masks, sample materials or thumbnails.
 - There are no explicit exclusions for every developer directory listed below.
@@ -101,9 +100,20 @@ A separate demo-project download is an option, not a completed task.
 - Docs/support fields are populated; URL availability and mail delivery were not checked.
 - No definitive archive-root layout or FAB validator outcome is claimed without current guidance.
 
+## Stable-source follow-up — 2026-10-24
+- `Source/MixtormatEditor/Private/Compositing/MixtormatBakeService.cpp::GetOutputAssetNames`
+  declares 10 outputs: BC, Normal, RAM, Height, RAMH, Optics, FuzzColor, Subsurface,
+  Material Instance and Surface. Smoke checks must cover optical outputs as well.
+- A complete optical-master contract uses `DA_Optics`, `DA_FuzzColorMap`,
+  `DA_Subsurface` and `DA_UseSurfaceOptics`. Partial support errors; no support warns
+  while still exporting maps. Shipping a working optical preview/master remains unverified.
+- Config JSON filter rules are now explicit; packaged-file inclusion remains unverified.
+- Moss and GPU-pass internals are intentionally excluded during active rewrites.
+  Recheck their documentation and release behavior after those changes land.
+
 ## Owner-run release gates
 1. BuildPlugin for UE 5.8 / Win64 and inspect the resulting file manifest.
-2. Confirm both JSONs, SVGs/fonts, licenses and required content dependencies are included.
+2. Confirm both JSONs, SVGs, applicable notices and required content dependencies are included.
 3. Confirm developer files/raw import sources are absent from the submission artifact.
 4. Install in a clean project: open → compose → preview → bake.
 5. Check baked-material behavior in a packaged game and review relevant log warnings.

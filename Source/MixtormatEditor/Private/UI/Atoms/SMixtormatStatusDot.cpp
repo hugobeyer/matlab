@@ -3,6 +3,7 @@
 #include "UI/Atoms/SMixtormatStatusDot.h"
 
 #include "Style/MixtormatStyle.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 
@@ -13,7 +14,7 @@ void SMixtormatStatusDot::Construct(const FArguments& InArgs)
 	OnClicked = InArgs._OnClicked;
 	if (InArgs._ToolTip.IsSet())
 	{
-		SetToolTipText(InArgs._ToolTip);
+		SetToolTip(SMixtormatHelp::MakeStyledToolTip(InArgs._ToolTip));
 	}
 
 	ChildSlot

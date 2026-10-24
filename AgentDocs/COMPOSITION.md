@@ -25,6 +25,12 @@ These are generator-scope results, not a new cross-layer global Flow channel.
 Pre-generation Warp publishes its composed coordinate map. Existing diagnostic
 render targets are reused; no persistent per-module preview targets are allocated.
 
+## Review scope — 2026-10-24
+
+Stable Runtime reference/driver contracts and Editor bake outputs were checked against source.
+Moss and GPU-pass internals are under active rewrite; scheduling/cache descriptions and
+pass paths below are retained context, not revalidated claims. Recheck after those changes land.
+
 ## Feather Blur
 
 Feather's Blur mode uses separable horizontal/vertical Gaussian passes for both
@@ -295,6 +301,18 @@ a source-sampling cycle. Private ID Group maps remain private.
 - Referenced compositions get their own `FMixtormatGpuCompositor` per source
   asset, recomposited only on content-hash change.
 
+## Parameter drivers versus group controls
+
+- `Runtime/Private/MixtormatParameterDrivers.cpp` defines per-target capabilities and source checks.
+  Spatial drivers are supported only for parameters with readers, not arbitrary float properties.
+- Independent group controls and spatial drivers cannot own the same target.
+- Sources: completed earlier-layer masks; layer scalars can also use their own layer mask
+  or local/group Region IDs under `SourceSupported` rules. Forward sources are rejected.
+- Child Mask snapshots are not implemented. Keep the disabled option and contract;
+  owner has deferred this work beyond v1. Ordinary scoped module masks are separate.
+- IdMapping alternatives remain an open contract question, not confirmed functionality.
+  See `auditdocs/GHOST_PARAMS_AUDIT.md` for evidence and deferred work.
+
 ## Caching
 
 `MixtormatGpuCompositorInternal.h`: `FMixtormatNetworkCache` (grown networks),
@@ -331,11 +349,18 @@ final AO and normal generation.
 ## Bake Pipeline & Custom Material Masters
 
 - `Editor/Private/Compositing/MixtormatBakeService.*` — orchestrates GPU composition, asset creation, and material instance wiring.
-- Generates 7 coordinated output assets:
-  - Textures: Base Color (`T_*_BC`), Normal (`T_*_N`), packed RAM (`T_*_RAM`), Height (`T_*_H`), RAMH (`T_*_RAMH`).
-  - Instances & Surfaces: Material Instance (`MI_*`), Surface (`SF_*`).
+- `GetOutputAssetNames` lists 10 coordinated output assets:
+  - Base Color (`T_*_BC`), Normal (`T_*_N`), RAM (`T_*_RAM`), Height (`T_*_H`), RAMH (`T_*_RAMH`).
+  - Optical textures: `T_*_Optics`, `T_*_FuzzColor`, `T_*_Subsurface`.
+  - Material Instance (`MI_*`) and Surface (`SF_*`).
+  - `FMixtormatBakeResult::Succeeded` requires all eight textures, the instance and surface,
+    with no errors. This is a source contract, not a verified bake result.
 - Material Parent modes (`EMixtormatBakeMaterialParentMode`):
   - **Mixtormat Default**: Targets `/Mixtormat/Materials/Masters/M_Master_Mixtormat.M_Master_Mixtormat`. Binds `Result.RAM` to `DA_RAMH`, while `Result.RAMH` is generated for the `UMixtormatSurface` definition.
   - **Custom Material**: Accepts any user-specified `UMaterialInterface`. Discovers texture parameters across material and function expressions. Mappings support Base Color, Normal, Packed RAM, and Height, with explicit Unassigned options.
+- Shared optical binding requires global `DA_Optics`, `DA_FuzzColorMap`, `DA_Subsurface`
+  and `DA_UseSurfaceOptics`. An incomplete contract fails validation; a parent with none
+  still exports optical textures but warns that the instance cannot render those maps.
+  Enabling optical rendering also depends on `bHasAuthoredSurfaceOptics`.
 - Identity-aware override tracking: `UMixtormatMaterial::LastAppliedBakeOverrides` tracks the target Material Instance identity and parameter keys. Re-baking safely resets only previously applied Mixtormat overrides without modifying user-authored parameters on existing instances.
 - Validation preflight executes in `SMixtormat::ExecuteBake` before GPU composition and asset generation, checking master validity, parameter name collisions, and G16 sampler compatibility.

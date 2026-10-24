@@ -13,6 +13,7 @@ decision log, and the diagrams.
 
 | File | What it is |
 |---|---|
+| [context-help-q-plan.md](context-help-q-plan.md) | Current Q inventory + proposed shared corner/center context-help upgrade (2026-10-24) |
 | `AgentDocs/old_docs/ui-layout-and-panels-audit.md` | Archived pre-redesign shell/layout audit |
 | `global_variables_plan.md` | Implementation plan: document-scope variable table driving float parameters |
 | `inspector-placement-model.md` | Inspector as overlay / docked / hidden / auto, draggable popover, collapse-to-top |

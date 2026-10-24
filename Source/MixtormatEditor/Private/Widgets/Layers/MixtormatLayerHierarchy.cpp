@@ -1172,9 +1172,8 @@ TSharedPtr<IToolTip> SMixtormat::BuildMaskPreviewTooltip(const int32 LayerIndex,
 
 	if (Child.Mask.UsesNoise() || (Child.Mask.HasPublishedSource() && Child.Mask.PublishedSourceOutput == TEXT("Value")))
 	{
-		return SNew(SToolTip)
-			.Text(FText::Format(LOCTEXT("NoiseMaskRowTooltip", "{0}\nCoverage mask; shaping and scoped filters are preserved. Inline Noise uses raw Value, not Height Scale or Normalize. Signed Value maps to 0..1, unsigned Value is clamped. A gate affects only its actual scoped owner."),
-				GetMaskSourceLabel(MakeChildAddress(LayerIndex, ChildIndex))));
+		return SMixtormatHelp::MakeStyledToolTip(FText::Format(LOCTEXT("NoiseMaskRowTooltip", "{0}\nCoverage mask; shaping and scoped filters are preserved. Inline Noise uses raw Value, not Height Scale or Normalize. Signed Value maps to 0..1, unsigned Value is clamped. A gate affects only its actual scoped owner."),
+			GetMaskSourceLabel(MakeChildAddress(LayerIndex, ChildIndex))));
 	}
 
 	const FSoftObjectPath MaskPath = !Child.Mask.Mask.IsNull()
@@ -1521,7 +1520,7 @@ TSharedRef<SWidget> SMixtormat::BuildGroupChildRow(const FGuid GroupId, const in
 	if (Child.Type == EMixtormatLayerChildType::Mask && (Child.Mask.UsesNoise()
 		|| (Child.Mask.HasPublishedSource() && Child.Mask.PublishedSourceOutput == TEXT("Value"))))
 	{
-		NoiseTooltip = SNew(SToolTip).Text(FText::Format(LOCTEXT("SharedNoiseMaskHint",
+		NoiseTooltip = SMixtormatHelp::MakeStyledToolTip(FText::Format(LOCTEXT("SharedNoiseMaskHint",
 			"{0}\nShared coverage mask, projected into every member. Signed Noise Value maps to 0..1; unsigned Value is clamped. Shaping and scoped filters apply afterwards."),
 			GetMaskSourceLabel(MakeGroupChildAddress(GroupId, ChildIndex))));
 	}

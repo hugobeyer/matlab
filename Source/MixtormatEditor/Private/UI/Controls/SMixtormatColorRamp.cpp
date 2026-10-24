@@ -9,6 +9,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/Atoms/MixtormatIcons.h"
 #include "UI/Controls/SMixtormatSlider.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Colors/SColorPicker.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Colors/SColorBlock.h"
@@ -475,7 +476,7 @@ TSharedRef<SWidget> SMixtormatColorRamp::BuildSelectedStopRow()
 				.ContentPadding(0.0f)
 				.IsEnabled_Lambda([this]() { return Ramp.Stops.IsValidIndex(SelectedPoint); })
 				.OnClicked(this, &SMixtormatColorRamp::OnSwatchClicked)
-				.ToolTipText(FText::FromString(TEXT("Edit stop colour")))
+				.ToolTip(SMixtormatHelp::MakeStyledToolTip(NSLOCTEXT("SMixtormat", "ColorRampEditStopColour", "Edit stop colour")))
 				[
 					SNew(SColorBlock)
 					.Color_Lambda([this]()

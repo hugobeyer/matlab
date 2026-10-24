@@ -1660,131 +1660,118 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 	const FMixtormatMoss Defaults;
 	TSharedRef<SVerticalBox> Cards = SNew(SVerticalBox);
 
-	// Output
-	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("MossOutput", "OUTPUT"));
 	const auto Slider = [this, Moss, Defaults](const FText& Label, float FMixtormatMoss::* Member,
 		double Min, double Max, double Delta, const FText& Hint)
 	{
 		return MakeMemberSlider<FMixtormatMoss>(Label, Moss, Member, Min, Max, Defaults.*Member, Delta, Hint);
 	};
+
+	// Output & Simulation
+	TSharedRef<SVerticalBox> Panel = AddCard(Cards, LOCTEXT("MossOutput", "OUTPUT"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossAmount", "Amount"), &FMixtormatMoss::Amount, 0, 2, .01,
+			LOCTEXT("MossAmountHint", "Overall surfacing contribution after scoped masks.")),
 		Slider(LOCTEXT("MossHeightScale", "Height Scale"), &FMixtormatMoss::HeightScale, -4, 4, .01,
-			LOCTEXT("MossHeightScaleHint", "Scales the signed colony relief after optional normalization. Negative values invert the relief.")),
+			LOCTEXT("MossHeightScaleHint", "Scales the signed colony relief after optional normalization. Negative values invert the relief."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberEnum<FMixtormatMoss>(
+			LOCTEXT("MossPreview", "Preview"), Moss, &FMixtormatMoss::Preview,
+			LOCTEXT("MossPreviewHint", "Moss shows normal relief; diagnostic modes route grayscale to Height only. Named outputs remain normal.")),
 		MixtormatRow::MakeTrailing(LOCTEXT("MossNormalize", "Normalize"), MixtormatRow::MakeCheckbox(
 			TAttribute<ECheckBoxState>::CreateLambda([Moss]() { const auto* M = Moss(); return M && M->bNormalizeHeight ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }),
 			FOnCheckStateChanged::CreateLambda([this, Moss](ECheckBoxState State) { if (auto* M = Moss()) { M->bNormalizeHeight = State == ECheckBoxState::Checked; RefreshLayeredPreview(); } })),
 			LOCTEXT("MossNormalizeHint", "Zero-preserving normalization of moss height before Height Scale."))));
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatMoss>(
-		LOCTEXT("MossPreview", "Preview"), Moss, &FMixtormatMoss::Preview,
-		LOCTEXT("MossPreviewHint", "Moss shows normal relief; diagnostic modes route grayscale to Height only. Named outputs remain normal.")));
-
-	// Simulation
-	Panel = AddCard(Cards, LOCTEXT("MossSimulation", "SIMULATION"));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
-		LOCTEXT("MossGrowthIterations", "Growth Iterations"), Moss, &FMixtormatMoss::GrowthIterations, 0, 2048, Defaults.GrowthIterations,
-		LOCTEXT("MossGrowthIterationsHint", "Habitat-guided colony-front iterations; zero keeps the procedural inoculation. Not biological time.")));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
-		LOCTEXT("MossSimulationResolution", "Simulation Resolution"), Moss, &FMixtormatMoss::SimulationResolution, 64, 2048, Defaults.SimulationResolution,
-		LOCTEXT("MossSimulationResolutionHint", "Growth and cushion grid, independent of export size; leaves use output resolution. Default 1024. Doubling the grid uses about four times the simulation memory and work per iteration.")));
-
-
-	// Seeding
-	Panel = AddCard(Cards, LOCTEXT("MossSeeding", "PROCEDURAL COLONIES"));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
-		LOCTEXT("MossColonyDensity", "Colony Density"), Moss, &FMixtormatMoss::ColonyDensity, 1, 32, Defaults.ColonyDensity,
-		LOCTEXT("MossColonyDensityHint", "Stable parent-colony cells across the tile. Each has connected lobes; no mask or cavity is required.")));
-	AddSliderRow(Panel, MakeMemberSliderInt<FMixtormatMoss>(
-		LOCTEXT("MossSeed", "Seed"), Moss, &FMixtormatMoss::Seed, 0, 99999, Defaults.Seed));
-	const auto HasSeedMask = [Moss]()
-	{
-		const FMixtormatMoss* M = Moss();
-		return M && (M->SeedMask.ToSoftObjectPath().IsValid() || M->SeedMaskTexture.ToSoftObjectPath().IsValid());
-	};
-	// No inline asset picker. Keep an explicit way to clear an already-authored
-	// seed input rather than silently leaving it active behind the procedural UI.
-	AddSliderRow(Panel, SNew(SButton)
-		.ButtonStyle(&FMixtormatStyle::Get().GetWidgetStyle<FButtonStyle>(TEXT("Mixtormat.CompactRowButton")))
-		.IsEnabled_Lambda([this, HasSeedMask]() { return HasSeedMask() && !IsSelectedChildInstance(); })
-		.Text_Lambda([Moss, HasSeedMask]()
-		{
-			if (!HasSeedMask()) return LOCTEXT("MossProceduralSeeds", "Procedural Seeds — No Mask");
-			const FMixtormatMoss* M = Moss();
-			const FSoftObjectPath Path = !M->SeedMask.IsNull()
-				? M->SeedMask.ToSoftObjectPath() : M->SeedMaskTexture.ToSoftObjectPath();
-			return FText::Format(LOCTEXT("MossClearSeedInput", "Clear Seed Input: {0}"),
-				FText::FromString(Path.GetAssetName()));
-		})
-		.OnClicked_Lambda([this, Moss]()
-		{
-			if (FMixtormatMoss* M = Moss(); M && !IsSelectedChildInstance())
-			{
-				M->SeedMask.Reset();
-				M->SeedMaskTexture.Reset();
-				RefreshLayeredPreview();
-			}
-			return FReply::Handled();
-		}));
-
-
-	// Habitat
-	Panel = AddCard(Cards, LOCTEXT("MossHabitat", "HABITAT"));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossCavityAttraction", "Cavity Attraction"), &FMixtormatMoss::CavityAttraction, 0, 1, .01,
-			LOCTEXT("MossCavityAttractionHint", "Habitat seeding weight for substrate crevices, cracks, and concave depressions. Established colonies can grow beyond these seed areas.")),
-		Slider(LOCTEXT("MossOcclusion", "Occlusion Influence"), &FMixtormatMoss::OcclusionInfluence, 0, 1, .01,
-			LOCTEXT("MossOcclusionHint", "Bias establishment toward locally sheltered regions. Flat unsheltered substrates still receive procedural colonies; this does not infer scene lighting."))));
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteHeight", "Write Height"), Moss, &FMixtormatMoss::bWriteHeight,
+			LOCTEXT("MossWriteHeightHint", "Write cushion and shoot relief into layer height.")),
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteColor", "Write Color"), Moss, &FMixtormatMoss::bWriteColor,
+			LOCTEXT("MossWriteColorHint", "Write colony, shoot, and living-tip pigment to albedo."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteRoughness", "Write Roughness"), Moss, &FMixtormatMoss::bWriteRoughness,
+			LOCTEXT("MossWriteRoughnessHint", "Write dry/wet moss roughness.")),
+		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteNormal", "Write Normal"), Moss, &FMixtormatMoss::bWriteNormal,
+			LOCTEXT("MossWriteNormalHint", "Write 3D cushion dome and leaf blade detail normals."))));
+
+	// Seeding & Growth
+	Panel = AddCard(Cards, LOCTEXT("MossGrowth", "SEEDING & GROWTH"));
+	AddSliderRow(Panel, MakeMemberEnum<FMixtormatMoss>(
+		LOCTEXT("MossSeedMode", "Seeding Mode"), Moss, &FMixtormatMoss::SeedMode,
+		LOCTEXT("MossSeedModeHint", "Habitat & Colonies combines crevice rooting with scattered patches; Crevices & Shelter roots strictly in mortar joints, cracks, and ledges; Colony Scatter distributes patches across terrain.")));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
+			LOCTEXT("MossCoverageHint", "Overall moss abundance and colonization threshold.")),
+		Slider(LOCTEXT("MossSplatter", "Spore Splatter"), &FMixtormatMoss::Splatter, 0, 1, .01,
+			LOCTEXT("MossSplatterHint", "Stochastic pioneer spore splatter, micro-tuft islands, and dithered crustose edge breakup around colonies."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatMoss>(
+			LOCTEXT("MossColonyDensity", "Colony Density"), Moss, &FMixtormatMoss::ColonyDensity, 1, 32, Defaults.ColonyDensity,
+			LOCTEXT("MossColonyDensityHint", "Periodic parent-colony cells across the tile.")),
+		MakeMemberSliderInt<FMixtormatMoss>(
+			LOCTEXT("MossSeed", "Seed"), Moss, &FMixtormatMoss::Seed, 0, 99999, Defaults.Seed)));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossSpread", "Growth Spread"), &FMixtormatMoss::GrowthSpread, 0, 1, .01,
+			LOCTEXT("MossSpreadHint", "Habitat-guided expansion speed across favorable crevices and ledges.")),
+		Slider(LOCTEXT("MossCompetition", "Competition"), &FMixtormatMoss::Competition, 0, 1, .01,
+			LOCTEXT("MossCompetitionHint", "Contact inhibition between neighboring colonies: creates distinct inter-cushion clefts when high, or seamless merging mats when low."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		MakeMemberSliderInt<FMixtormatMoss>(
+			LOCTEXT("MossGrowthIterations", "Growth Steps"), Moss, &FMixtormatMoss::GrowthIterations, 0, 2048, Defaults.GrowthIterations,
+			LOCTEXT("MossGrowthIterationsHint", "Colony-front reaction-diffusion iterations.")),
+		MakeMemberSliderInt<FMixtormatMoss>(
+			LOCTEXT("MossSimulationResolution", "Sim Resolution"), Moss, &FMixtormatMoss::SimulationResolution, 64, 2048, Defaults.SimulationResolution,
+			LOCTEXT("MossSimulationResolutionHint", "Simulation grid resolution; micro-shoots and leaves always evaluate at full output resolution."))));
+
+	// Habitat & Gravity Slope
+	Panel = AddCard(Cards, LOCTEXT("MossHabitat", "HABITAT & GRAVITY"));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossCavityAttraction", "Crevice Attraction"), &FMixtormatMoss::CavityAttraction, 0, 1, .01,
+			LOCTEXT("MossCavityAttractionHint", "Attraction to mortar joints, rock cracks, bark furrows, and concave pockets.")),
+		Slider(LOCTEXT("MossOcclusion", "Shelter AO"), &FMixtormatMoss::OcclusionInfluence, 0, 1, .01,
+			LOCTEXT("MossOcclusionHint", "Smooth multiscale ambient shelter preference over exposed ridges."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossAnglePref", "Gravity Shelf"), &FMixtormatMoss::SurfaceAnglePreference, 0, 1, .01,
+			LOCTEXT("MossAnglePrefHint", "Directional gravitational slope bias: upward-facing shelves and ledges along the Slope Angle axis catch water and spores while underside overhangs shed them.")),
+		Slider(LOCTEXT("MossSlopeAngle", "Slope Angle"), &FMixtormatMoss::SlopeAngle, -180, 180, 1,
+			LOCTEXT("MossSlopeAngleHint", "Downhill gravitational runoff axis in degrees (-90 = top-to-bottom). Upward shelves opposing this direction catch moss."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossMoisture", "Moisture"), &FMixtormatMoss::Moisture, 0, 1, .01,
-			LOCTEXT("MossMoistureHint", "Base moisture availability and accumulation potential.")),
-		Slider(LOCTEXT("MossAnglePref", "Surface Angle"), &FMixtormatMoss::SurfaceAnglePreference, 0, 1, .01,
-			LOCTEXT("MossAnglePrefHint", "Preference for low height-field slopes. No mesh orientation or world-up information is inferred."))));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossExposure", "Exposure Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
-		LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks.")));
+			LOCTEXT("MossMoistureHint", "Environmental moisture availability.")),
+		Slider(LOCTEXT("MossExposure", "Peak Tolerance"), &FMixtormatMoss::ExposureTolerance, 0, 1, .01,
+			LOCTEXT("MossExposureHint", "Tolerance to exposed convex ridges and high peaks."))));
 
-
-	// Growth
-	Panel = AddCard(Cards, LOCTEXT("MossGrowth", "GROWTH"));
-
-	AddSliderRow(Panel, Slider(LOCTEXT("MossSpread", "Growth Spread"), &FMixtormatMoss::GrowthSpread, 0, 1, .01,
-		LOCTEXT("MossSpreadHint", "Habitat-gated expansion speed; higher spreads faster into favorable cavity/AO areas.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossCoverage", "Coverage"), &FMixtormatMoss::Coverage, 0, 1, .01,
-		LOCTEXT("MossCoverageHint", "Overall moss abundance and coverage threshold.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossCompetition", "Competition"), &FMixtormatMoss::Competition, 0, 1, .01,
-		LOCTEXT("MossCompetitionHint", "Persistent inhibition where different colonies meet: reduces contact growth, biomass and cover. Zero allows merging. Separated colonies and zero growth iterations cannot show contact competition.")));
-
-
-
-	// Structure
-	Panel = AddCard(Cards, LOCTEXT("MossStructure", "STRUCTURE"));
+	// Cushion & Shoot Structure
+	Panel = AddCard(Cards, LOCTEXT("MossStructure", "CUSHIONS & SHOOTS"));
 	AddSliderRow(Panel, MakeMemberEnum<FMixtormatMoss>(
-		LOCTEXT("MossGrowthForm", "Growth Form"), Moss, &FMixtormatMoss::GrowthForm,
-		LOCTEXT("MossGrowthFormHint", "Cushion rosettes, swept tufts, creeping alternate leaves or ordered feather branches. All remain height-field approximations.")));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossLeafScale", "Leaf Scale"), &FMixtormatMoss::LeafScale, .1, 8, .05,
-		LOCTEXT("MossLeafScaleHint", "Relative shoot size, independent of colony spacing and cushion bulk. Smaller is finer. Nearby shoots overlap with correlated size and direction variation; detail finer than the export pixels fades.")));
-	AddSliderRow(Panel, MakeMemberEnum<FMixtormatMoss>(
-		LOCTEXT("MossCushionMode", "Cushion Solver"), Moss, &FMixtormatMoss::CushionMode,
-		LOCTEXT("MossCushionModeHint", "Deposition: simulated thickness reacting to substrate height/moisture. SDF Inflation: legacy Jump-Flood dome from the grown footprint.")));
+		LOCTEXT("MossGrowthForm", "Growth Habit"), Moss, &FMixtormatMoss::GrowthForm,
+		LOCTEXT("MossGrowthFormHint", "Compact Cushion (acrocarpous rosettes), Swept Tuft, Creeping Mat (pleurocarpous sheets), or Feather Weft.")));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossCushionSize", "Cushion Size"), &FMixtormatMoss::CushionSize, 0.005, 0.15, .001,
-			LOCTEXT("MossCushionSizeHint", "Deposition: lateral creep scale of simulated thickness. SDF Inflation: inflation diameter/smoothing scale. Does not expand coverage.")),
-		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .001,
-			LOCTEXT("MossCushionHeightHint", "Base height of the smoothed, footprint-shaped cushion before biomass buildup, coverage and output scaling. Fine clumps only add shallow surface detail."))));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossMatureHeight", "Mature Height"), &FMixtormatMoss::MatureHeight, 0, 1, .001,
-		LOCTEXT("MossMatureHeightHint", "Extra footprint-shaped bulk at full biomass. Smoothing does not give fresh growth mature thickness. Zero disables added bulk. Keep Normalize Height off to compare thickness across iteration counts.")));
+		Slider(LOCTEXT("MossCushionHeight", "Cushion Height"), &FMixtormatMoss::CushionHeight, 0, 1, .005,
+			LOCTEXT("MossCushionHeightHint", "Cushion bulk thickness (0 = flat crustose/mat film hugging the substrate, higher = plump hummock pillows).")),
+		Slider(LOCTEXT("MossMatureHeight", "Thickness Variation"), &FMixtormatMoss::MatureHeight, 0, 1, .01,
+			LOCTEXT("MossMatureHeightHint", "Multi-scale thickness variation from thin pioneer edges and low mats to tall billowing hummock crowns."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossClumpDensity", "Clump Density"), &FMixtormatMoss::ClumpDensity, 0, 256, 1,
-			LOCTEXT("MossClumpDensityHint", "Surface clumps across one tile. Changes spacing without reducing relief at higher density. Rounded for tiling; zero disables clump detail.")),
-		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
-			Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
-				LOCTEXT("MossShootDensityHint", "Density of micro leaf tufts following the cushion slope and growth front. Higher values make finer, denser leaves; unresolved relief and normals fade. Inactive while Shoot Length is zero."))]));
+		Slider(LOCTEXT("MossCushionSize", "Cushion Span"), &FMixtormatMoss::CushionSize, 0.005, 0.15, .001,
+			LOCTEXT("MossCushionSizeHint", "Cushion dome rounding diameter from colony boundaries into the mature interior.")),
+		Slider(LOCTEXT("MossClumpDensity", "Sub-Pillow Cells"), &FMixtormatMoss::ClumpDensity, 0, 256, 1,
+			LOCTEXT("MossClumpDensityHint", "Sub-cushion hummock division density across the tile. Zero disables sub-clump division."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossShootLength", "Shoot Length"), &FMixtormatMoss::ShootLength, 0, 1, .01,
-			LOCTEXT("MossShootLengthHint", "Shallow microshoot relief and leaf-normal prominence. Cushion Height and Mature Height still own the bulk; shoot relief fades at colony boundaries.")),
-		SNew(SBox).IsEnabled_Lambda([Moss]() { const auto* M = Moss(); return M && M->ShootLength != 0.0f; })[
-			Slider(LOCTEXT("MossFiberThickness", "Fiber Thickness"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
-				LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing. Narrow values resemble fibers; wider values reveal blades and midribs. Inactive while Shoot Length is zero."))]));
+		Slider(LOCTEXT("MossSoftness", "Crown Softness"), &FMixtormatMoss::Softness, 0, 1, .01,
+			LOCTEXT("MossSoftnessHint", "Low values create crisp divided rock cushions; high values create soft merged forest pillows.")),
+		Slider(LOCTEXT("MossPlumpness", "Turgor Plumpness"), &FMixtormatMoss::Plumpness, 0, 1, .01,
+			LOCTEXT("MossPlumpnessHint", "Swelling of hydrated cushions and leaf rosettes."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossLeafScale", "Leaf Scale"), &FMixtormatMoss::LeafScale, .1, 8, .05,
+			LOCTEXT("MossLeafScaleHint", "Relative tuft and leaf size, independent of colony spacing.")),
+		Slider(LOCTEXT("MossShootLength", "Shoot Relief"), &FMixtormatMoss::ShootLength, 0, 1, .01,
+			LOCTEXT("MossShootLengthHint", "3D micro-shoot relief and leaf blade prominence."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossShootDensity", "Shoot Density"), &FMixtormatMoss::ShootDensity, 0, 1, .01,
+			LOCTEXT("MossShootDensityHint", "Density of micro leaf tufts aligned by cushion slope and growth flow.")),
+		Slider(LOCTEXT("MossFiberThickness", "Blade Width"), &FMixtormatMoss::FiberThickness, 0, 1, .01,
+			LOCTEXT("MossFiberThicknessHint", "Width of tapered leaf blades relative to tuft spacing."))));
 
-	Panel = AddCard(Cards, LOCTEXT("MossColorRampCard", "COLOR RAMP"));
+	// Color & Surface Optics
+	Panel = AddCard(Cards, LOCTEXT("MossAppearance", "COLOR & SURFACE"));
 	const TSharedRef<SWidget> ColorRampEditor = SNew(SMixtormatColorRamp)
 		.IsEnabled_Lambda([this, Moss]() { return Moss() && !IsSelectedChildInstance()
 			&& !GroupControlValueFor(Moss(), FMixtormatMoss::StaticStruct(), TEXT("ColorRamp")); })
@@ -1808,51 +1795,31 @@ TSharedRef<SWidget> SMixtormat::BuildMossControls()
 		.OnEndInteractiveEdit_Lambda([this]() { RefreshLayeredPreview(); });
 	AddSliderRow(Panel, WrapParameterControl(ColorRampEditor,
 		MakeAddressResolver<FMixtormatMoss>(Moss, &FMixtormatMoss::ColorRamp)));
-
-	Panel = AddCard(Cards, LOCTEXT("MossAppearance", "LEAF APPEARANCE"));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossHydration", "Hydration"), &FMixtormatMoss::Hydration, 0, 1, .01,
-			LOCTEXT("MossHydrationHint", "Reversible leaf opening and curling. Does not reseed colonies or change habitat moisture.")),
-		Slider(LOCTEXT("MossDamage", "Damage"), &FMixtormatMoss::Damage, 0, 1, .01,
-			LOCTEXT("MossDamageHint", "Seeded brown collapsed shoots. Separate from ordinary reversible drying."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossColonyVariation", "Colony Variation"), &FMixtormatMoss::ColonyVariation, 0, 1, .01,
-			LOCTEXT("MossColonyVariationHint", "Stable parent-colony palette and finish differences.")),
-		Slider(LOCTEXT("MossLeafVariation", "Leaf Variation"), &FMixtormatMoss::LeafVariation, 0, 1, .01,
-			LOCTEXT("MossLeafVariationHint", "Correlated shoot and visible-leaf pigment differences; hidden leaves do not tint the winner."))));
-	AddSliderRow(Panel, Slider(LOCTEXT("MossTipColor", "Living Tips"), &FMixtormatMoss::TipColor, 0, 1, .01,
-		LOCTEXT("MossTipColorHint", "Shift leaf-tip pigment toward the high color-ramp end. Not baked light.")));
+			LOCTEXT("MossColonyVariationHint", "Multi-scale patch and per-colony hue, warmth, and tone variation.")),
+		Slider(LOCTEXT("MossLeafVariation", "Shoot Variation"), &FMixtormatMoss::LeafVariation, 0, 1, .01,
+			LOCTEXT("MossLeafVariationHint", "Per-tuft and visible-leaf pigment variation."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossTipColor", "Living Tips"), &FMixtormatMoss::TipColor, 0, 1, .01,
+			LOCTEXT("MossTipColorHint", "Shifts raised cushion crowns and living leaf tips toward the bright top of the color ramp.")),
+		Slider(LOCTEXT("MossDamage", "Dry / Senescent"), &FMixtormatMoss::Damage, 0, 1, .01,
+			LOCTEXT("MossDamageHint", "Bleached golden-brown senescent shoots and collapsed dry tufts."))));
+	AddSliderRow(Panel, MixtormatRow::MakePair(
+		Slider(LOCTEXT("MossHydration", "Hydration"), &FMixtormatMoss::Hydration, 0, 1, .01,
+			LOCTEXT("MossHydrationHint", "Reversible leaf opening and curl (low = crisp curled dry blades, high = open turgid rosettes).")),
+		Slider(LOCTEXT("MossNormalStrength", "Normal Strength"), &FMixtormatMoss::NormalStrength, 0, 3, .01,
+			LOCTEXT("MossNormalStrengthHint", "3D leaf blade, tuft rosette, and cushion dome normal intensity."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossSurfaceWetness", "Surface Wetness"), &FMixtormatMoss::SurfaceWetness, 0, 1, .01,
-			LOCTEXT("MossSurfaceWetnessHint", "Single-surface wet sheen, independent of hydration and growth. Not a separate water film.")),
+			LOCTEXT("MossSurfaceWetnessHint", "Wet sheen interpolating roughness from Dry Roughness toward Wet Roughness.")),
 		Slider(LOCTEXT("MossWetDarkening", "Wet Darkening"), &FMixtormatMoss::WetDarkening, 0, 1, .01,
-			LOCTEXT("MossWetDarkeningHint", "Optional artistic pigment darkening by surface water. Zero disables it."))));
-
-	// Material (Surfacing response)
-	Panel = AddCard(Cards, LOCTEXT("MossMaterial", "MATERIAL"));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossAmount", "Amount"), &FMixtormatMoss::Amount, 0, 2, .01,
-			LOCTEXT("MossAmountHint", "Surfacing contribution after child masks.")),
-		Slider(LOCTEXT("MossNormalStrength", "Normal Strength"), &FMixtormatMoss::NormalStrength, 0, 3, .01,
-			LOCTEXT("MossNormalStrengthHint", "Residual leaf-lamina striations only. Cup, bend and midrib are represented in height and are not shaded twice. Does not change height."))));
+			LOCTEXT("MossWetDarkeningHint", "Natural pigment darkening in wet and recessed cushion zones."))));
 	AddSliderRow(Panel, MixtormatRow::MakePair(
 		Slider(LOCTEXT("MossDryRoughness", "Dry Roughness"), &FMixtormatMoss::DryRoughness, 0, 1, .01,
-			LOCTEXT("MossDryRoughnessHint", "Leaf roughness without surface water. Habitat moisture and tissue hydration remain independent.")),
+			LOCTEXT("MossDryRoughnessHint", "Base matte roughness of dry moss shoots.")),
 		Slider(LOCTEXT("MossWetRoughness", "Wet Roughness"), &FMixtormatMoss::WetRoughness, 0, 1, .01,
-			LOCTEXT("MossWetRoughnessHint", "Roughness at full Surface Wetness. Wet Darkening independently controls pigment response."))));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteColor", "Write Color"), Moss, &FMixtormatMoss::bWriteColor,
-			LOCTEXT("MossWriteColorHint", "Write colony, visible-leaf and living-tip pigment to albedo.")),
-		MakeMemberToggle<FMixtormatMoss>(LOCTEXT("MossWriteNormal", "Write Normal"), Moss, &FMixtormatMoss::bWriteNormal,
-			LOCTEXT("MossWriteNormalHint", "Write tufted leaf detail normals (Surfacing only)."))));
-
-	// Body (mush)
-	Panel = AddCard(Cards, LOCTEXT("MossBody", "BODY (MUSH)"));
-	AddSliderRow(Panel, MixtormatRow::MakePair(
-		Slider(LOCTEXT("MossSoftness", "Softness"), &FMixtormatMoss::Softness, 0, 1, .01,
-			LOCTEXT("MossSoftnessHint", "Mushiness: isotropic squash, flattened crown, merged lobes, limp shoots and a wet rim. No gravity direction.")), 
-		Slider(LOCTEXT("MossPlumpness", "Plumpness"), &FMixtormatMoss::Plumpness, 0, 1, .01,
-			LOCTEXT("MossPlumpnessHint", "Cushion swelling follows habitat moisture; leaf opening and curl use independent Hydration. No world-gravity inference."))));
+			LOCTEXT("MossWetRoughnessHint", "Specular roughness at full Surface Wetness."))));
 
 	return SNew(SBox).Visibility_Lambda([this]() { return GetSelectedMoss() ? EVisibility::Visible : EVisibility::Collapsed; })[
 		SNew(SMixtormatInspectorGroup)

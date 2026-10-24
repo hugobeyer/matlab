@@ -36,17 +36,19 @@ namespace MixtormatGpuCompositor
 			S.SimulationResolution = FMath::Max(S.SimulationResolution, 1);
 			S.Preview = static_cast<EMixtormatMossPreview>(FMath::Clamp(static_cast<int32>(S.Preview),
 				static_cast<int32>(EMixtormatMossPreview::Moss), static_cast<int32>(EMixtormatMossPreview::Biomass)));
-			S.CushionMode = static_cast<EMixtormatMossCushionMode>(FMath::Clamp(static_cast<int32>(S.CushionMode),
-				static_cast<int32>(EMixtormatMossCushionMode::Deposition), static_cast<int32>(EMixtormatMossCushionMode::SdfInflation)));
+			S.SeedMode = static_cast<EMixtormatMossSeedMode>(FMath::Clamp(static_cast<int32>(S.SeedMode),
+				static_cast<int32>(EMixtormatMossSeedMode::Combined), static_cast<int32>(EMixtormatMossSeedMode::ColonyScatter)));
 			S.CavityAttraction = Finite(S.CavityAttraction, MossDefaults.CavityAttraction);
 			S.OcclusionInfluence = Finite(S.OcclusionInfluence, MossDefaults.OcclusionInfluence);
 			S.Moisture = Finite(S.Moisture, MossDefaults.Moisture);
 			S.SurfaceAnglePreference = Finite(S.SurfaceAnglePreference, MossDefaults.SurfaceAnglePreference);
+			S.SlopeAngle = Finite(S.SlopeAngle, MossDefaults.SlopeAngle);
 			S.Competition = Finite(S.Competition, MossDefaults.Competition);
 			S.ExposureTolerance = Finite(S.ExposureTolerance, MossDefaults.ExposureTolerance);
 			S.ColonyDensity = FMath::Max(S.ColonyDensity, 1);
 			S.GrowthSpread = Finite(S.GrowthSpread, MossDefaults.GrowthSpread);
 			S.Coverage = Finite(S.Coverage, MossDefaults.Coverage);
+			S.Splatter = Finite(S.Splatter, MossDefaults.Splatter);
 			S.CushionSize = Finite(S.CushionSize, MossDefaults.CushionSize);
 			S.CushionHeight = Finite(S.CushionHeight, MossDefaults.CushionHeight);
 			S.MatureHeight = Finite(S.MatureHeight, MossDefaults.MatureHeight);
@@ -105,19 +107,19 @@ namespace MixtormatGpuCompositor
 				MixtormatComposeHash::FHasher FieldHasher;
 				FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.FieldKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657038ull) | 1ull;
+					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657039ull) | 1ull;
 				MixtormatComposeHash::FHasher SimulationHasher;
 				SimulationHasher.SkipTopLevel = {
-					TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionMode"), TEXT("CushionSize"),
+					TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("CushionSize"),
 					TEXT("CushionHeight"), TEXT("MatureHeight"), TEXT("ClumpDensity"), TEXT("ShootDensity"), TEXT("ShootLength"),
 					TEXT("FiberThickness"), TEXT("Softness"), TEXT("Plumpness"), TEXT("Preview"),
 					TEXT("Amount"), TEXT("bWriteHeight"), TEXT("bWriteColor"), TEXT("bWriteRoughness"), TEXT("bWriteNormal"),
 					TEXT("ColorRamp"), TEXT("DryRoughness"), TEXT("WetRoughness"), TEXT("NormalStrength"),
-										TEXT("GrowthForm"), TEXT("LeafScale"), TEXT("Hydration"), TEXT("SurfaceWetness"),
-										TEXT("WetDarkening"), TEXT("ColonyVariation"), TEXT("LeafVariation"), TEXT("TipColor"), TEXT("Damage")};
+					TEXT("GrowthForm"), TEXT("LeafScale"), TEXT("Hydration"), TEXT("SurfaceWetness"),
+					TEXT("WetDarkening"), TEXT("ColonyVariation"), TEXT("LeafVariation"), TEXT("TipColor"), TEXT("Damage")};
 				SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.SimulationKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657037ull) | 1ull;
+					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657038ull) | 1ull;
 			}
 			return;
 		}

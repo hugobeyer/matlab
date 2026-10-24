@@ -1,7 +1,12 @@
 # File Map
 
 Task → likely files, and symbol → owning file. Search the symbol first; open
-the range, not the file.
+the range, not the file. `Runtime/`, `Editor/` and `Shaders/` module shorthand
+means `Source/MixtormatRuntime/`, `Source/MixtormatEditor/` and `Source/MixtormatShaders/`;
+shader `.usf`/`.ush` files live in the plugin's root `Shaders/` directory.
+
+Stable routes checked 2026-10-24. Moss and GPU-pass routes are provisional during
+active rewrites; search the named symbol before relying on a shader-module filename.
 
 ## Task → files
 
@@ -24,11 +29,13 @@ the range, not the file.
 | Change theme/style | `Style/MixtormatTheme.h`, `MixtormatThemeSchema.cpp`, `MixtormatResolvedStyle.*`, `MixtormatThemeStore.*`, `MixtormatDesignTokens.h`, `Config/UIStyleTheme.json` |
 | Change UI STYLE locator | `Style/MixtormatStyleLocator.*`, `MixtormatLocatorOutline.*`, `MixtormatThemeSchema.cpp` |
 | Add/change an icon | `AgentDocs/ICONS.md` → `UI/Atoms/MixtormatIcons.*` → `Style/MixtormatStyle.cpp` (`SetSvgIcon` / `SetPngIcon`) → `Resources/Icons/` |
-| Add/change a tooltip, hint or hotkey text | `AgentDocs/HELPERS.md` → the widget's `.ToolTipText`, menu `.Shortcut`, or the key handler (`SMixtormat.cpp::OnKeyDown`, viewport `InputKey`) |
+| Add/change help, hints or hotkeys | `AgentDocs/HELPERS.md` → `SMixtormatHelp` / styled adapter, menu help, or key handler (`SMixtormat.cpp::OnKeyDown`, viewport `InputKey`); do not add native tooltips |
 | Change layer hierarchy UI | `UI/Layers/*`, `Widgets/Layers/*` |
 | Change clipboard / copy output | `Widgets/Layers/MixtormatLayerClipboard.cpp`, `Widgets/MixtormatChildCapabilities.*` |
 | Change references / instances | `Runtime/Public/MixtormatParameterBinding.h`, `MixtormatOutputReference.h` |
 | Change group behaviour | `Runtime/Public/MixtormatLayerGroups.h` |
+| Change parameter drivers | `Runtime/Private/MixtormatParameterDrivers.cpp`, `Editor/Private/Widgets/SMixtormat_Parameters.cpp` |
+| Change group recipes / gallery column | `Editor/Private/Services/MixtormatRecipeService.*`, `MixtormatPresetStoreDocuments.cpp`, `Editor/Private/Widgets/SMixtormat_Recipes.cpp`, `SMixtormat_Presets.cpp`, `SMixtormat_Library.cpp` |
 | Change scoped masks | `Runtime/Public/MixtormatChildScope.h` |
 
 ## Symbol → owner
@@ -69,23 +76,21 @@ the range, not the file.
 | `FMixtormatThemeSchema` | `Editor/Private/Style/MixtormatThemeSchema.*` |
 | `FMixtormatStyleLocator`, `SMixtormatLocatorOutline` | `Editor/Private/Style/MixtormatStyleLocator.*`, `MixtormatLocatorOutline.*` |
 
-## Large files — read by section
+## Large files — navigate by symbol
 
-| File | ~Lines | Sections / useful symbols |
-|---|---|---|
-| `Runtime/Public/MixtormatEffect.h` | 1,180 | effect enums + `UMixtormatEffect`; `FMixtormatLayerEffect` L268 |
-| `Runtime/Public/MixtormatGeneratorTypes.h` | 890 | generator enum + payloads; `FMixtormatGenerator` L853 |
-| `Runtime/Public/MixtormatIdTypes.h` | 845 | ID filters; `FMixtormatPatternFilter` L329 |
-| `Runtime/Public/MixtormatLayerTypes.h` | 680 | layer enums; `FMixtormatLayerChild` L164; `FMixtormatLayer` L328 |
-| `Runtime/Public/MixtormatMaskTypes.h` | 600 | mask enums + payloads; `FMixtormatMaskLayer` L90 |
-| `Runtime/Public/MixtormatParameterTypes.h` | 240 | parameter address/reference/driver/binding |
-| `Runtime/Public/MixtormatMaterial.h` | 134 | `FMixtormatFinalSettings` L16; `UMixtormatMaterial` L76 |
-| `Shaders/Private/MixtormatGpuGeneratorPasses.cpp` | 2,400 | `AddGeneratorLayerPasses` L2312; module combine L780 |
-| `Shaders/Private/MixtormatGpuCompositor.cpp` | 1,700 | `RequestComposeInternal` L1685; gather dispatch |
-| `Shaders/Private/MixtormatGpuComposePipeline.cpp` | 1,000 | `EnqueueCompose` L834; final AO/normal L29–73 |
-| `Editor/Private/Widgets/SMixtormat.cpp` | 1,600+ | main widget; split across `SMixtormat_*.cpp` |
-| `Editor/Private/Style/MixtormatDesignTokens.h` | 830 | `namespace MixtormatTokens` |
-| `Config/UIStyleTheme.json` | 570 | `global` / `controls` / `layers` / `typography` sections |
+Historical line counts and offsets were stale; use current symbol outlines instead.
+The Runtime type and GPU entry-point owners are listed above.
+
+| File | Useful symbols / sections |
+|---|---|
+| `Editor/Private/Widgets/Inspector/MixtormatInspectorGenerators.cpp` | `BuildBehaviorWarpControls`, `BuildRootNetworkControls`, `BuildNoiseControls` |
+| `Editor/Private/Widgets/SMixtormat_Parameters.cpp` | `BuildParameterAddress`, `BuildAuthoringSetupPanel`, `BuildParameterDriverPopover` |
+| `Editor/Private/Widgets/Inspector/MixtormatInspectorMasks.cpp` | `BuildBlurControls`, `BuildGeneratedMaskControls`, `BuildLayerMaskControls` |
+| `Runtime/Private/MixtormatParameterBinding.cpp` | owner lookup, `RegenerateLayerIdentities`, `ResolveChildInstances`, `ApplyDirectReferences` |
+| `Editor/Private/Widgets/SMixtormat.cpp` | `Construct`, `RecordEditHistory`, `OnKeyDown`, `FlushPendingPreviewRefresh` |
+| `Editor/Private/Style/MixtormatDesignTokens.h` | `namespace MixtormatTokens` |
+
+Optional split priorities: `auditdocs/SOURCE_SPLIT_PLAN.md`. File size alone is not a task.
 
 `SMixtormat` is decomposed into `SMixtormat_Document.cpp`, `_Inspector.cpp`,
 `_Layers.cpp`, `_Library.cpp`, `_Parameters.cpp`, `_Preview.cpp`, `_Shell.cpp`,

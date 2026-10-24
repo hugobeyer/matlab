@@ -5,6 +5,27 @@ Source wins; verify line numbers before acting. The tables below are not impleme
 Scope: `Source/MixtormatEditor/Private` — spacing, padding, sizing, opacity, colour,
 typography/boldness, icons, gradients, borders and corner radius.
 
+## Current release priority — hover, popovers and dialogs (2026-10-24)
+
+Targeted static check, not visual validation. Fix styling consistency before optional
+file splits. Moss and GPU-pass internals are outside this work.
+
+| Area | Confirmed source evidence | Next action |
+|---|---|---|
+| Hover help — patched 2026-10-24 | Status dots, both tab helpers, gallery drawer header and layer/group Noise-mask rows now use `SMixtormatHelp::MakeStyledToolTip`. | Owner verifies hover appearance and input behavior; this does not certify every tooltip in the plugin. |
+| Ramp stop row | Swatch hover now uses the shared styled adapter with localized text. Local 6/8px gaps, 22×16 swatch dimensions and `RebuildChrome`'s 2px gap remain. | Reuse appropriate metrics/text roles; centralize missing styling values without changing ramp interaction. |
+| Tab styling | `SMixtormatTabStrip.cpp::MakeTab` hardcodes inactive white at 0.55 alpha. | Use a canonical theme value preserving existing appearance; do not blindly tint twice. |
+| Bake dialog | `Widgets/Dialogs/SMixtormatBakeSettingsDialog.cpp` mixes themed cards/padding with direct Regular/Bold font selection and `UseSubduedForeground`. | Use shared typography roles and palette rather than locally selecting weight/foreground. |
+| Interactive popovers | Parameter/driver, preset naming and group-control surfaces need a focused consistency pass. | Check shared menu surface, spacing, input styling, disabled states, focus and dismissal; not yet certified by this spot-check. |
+
+Not every `.ToolTipText` match is a violation: some custom controls consume it into
+styled help, and `SMixtormatHelp` deliberately clears native tooltips or creates a
+styled `SToolTip` adapter. Inspect the widget path before editing.
+Action/result dialog sizes already use tokens/theme; do not rewrite them just for using `SWindow`.
+Keep data colors/ranges, identity multipliers and retained window geometry out of style cleanup.
+
+The older inventory below remains historical; only the rows above were rechecked here.
+
 ## The rule
 
 Widgets must not introduce local styling values. Style metrics and authored colours

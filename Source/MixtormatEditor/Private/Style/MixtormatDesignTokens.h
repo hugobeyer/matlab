@@ -430,6 +430,9 @@ namespace MixtormatTokens
 			inline float HelpBodyOpacity = 0.7f;
 		// Slate active-timer intervals are seconds; prototype help-delay is 350ms.
 		inline float HelpDelay = 0.35f;
+		// Transient viewport mode feedback; repeated actions restart the same label.
+		constexpr float PreviewFeedbackHoldSeconds = 1.4f;
+		constexpr float PreviewFeedbackFadeSeconds = 0.5f;
 	constexpr float MenuCornerRadius = 3.0f;
 	// Where the menu's tint has landed on its ground. The canvas puts this at a fixed 22px rather
 	// than a fraction, so a tall menu and a short one have the same lip rather than the same ramp.

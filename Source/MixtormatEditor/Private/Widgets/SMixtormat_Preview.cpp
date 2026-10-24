@@ -563,6 +563,7 @@ FReply SMixtormat::ResetDiagnosticOverlays()
 		}
 	}
 	RefreshLayeredPreview(false);
+	ShowPreviewFeedback(LOCTEXT("PreviewResetFeedback", "Material · diagnostics off"));
 	return FReply::Handled();
 }
 
@@ -581,10 +582,14 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 {
 	if (!bHasWorkingMaterial)
 	{
+		ShowPreviewFeedback(LOCTEXT("PreviewNeedsMaterial", "Open or create a material to preview outputs"));
 		return FReply::Handled();
 	}
 	// Bare W/E can dismiss their active diagnostic from any workspace selection.
 	// Explicit output-eye actions retain their output-specific switching behavior.
+	const FText OffFeedback = Kind == EMixtormatPreviewOutputKind::FlowDirection
+		? LOCTEXT("FlowPreviewOffFeedback", "Flow / UV preview off")
+		: LOCTEXT("MaskPreviewOffFeedback", "Mask preview off");
 	const bool bActiveFlow = MaskOverlayOutputKind != EMixtormatPreviewOutputKind::Mask;
 	if (bMaskOverlayEnabled && RequiredOutputName.IsNone()
 		&& bActiveFlow == (Kind != EMixtormatPreviewOutputKind::Mask))
@@ -594,6 +599,7 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 		MaskOverlayOutputName = NAME_None;
 		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
 		RefreshLayeredPreview(false);
+		ShowPreviewFeedback(OffFeedback);
 		return FReply::Handled();
 	}
 	const FMixtormatChildAddress SelectedSource = GetSelectedChildAddress();
@@ -614,6 +620,7 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 		MaskOverlayOutputName = NAME_None;
 		MaskOverlayOutputKind = EMixtormatPreviewOutputKind::Mask;
 		RefreshLayeredPreview(false);
+		ShowPreviewFeedback(OffFeedback);
 		return FReply::Handled();
 	}
 	if (SelectedTarget.IsValid())
@@ -635,12 +642,37 @@ FReply SMixtormat::ToggleDiagnosticOverlayPreview(
 			}
 		}
 		RefreshLayeredPreview(false);
+		FText OutputLabel = SelectedTarget.Kind == EMixtormatPreviewOutputKind::WarpedUVGrid
+			? LOCTEXT("PreviewFeedbackUV", "UV preview")
+			: SelectedTarget.Kind == EMixtormatPreviewOutputKind::FlowDirection
+				? LOCTEXT("PreviewFeedbackFlow", "Flow preview")
+				: SelectedTarget.bScalarDiagnostic
+					? LOCTEXT("PreviewFeedbackScalar", "Scalar preview")
+					: LOCTEXT("PreviewFeedbackMask", "Mask preview");
+		if (const FMixtormatLayerChild* Source = ResolveChildAt(SelectedSource))
+		{
+			const FMixtormatChildCapabilities Caps = GetChildCapabilities(*Source);
+			for (const FMixtormatPublishedOutputDesc& Output : Caps.Outputs)
+			{
+				if (Output.Name == SelectedTarget.OutputName && Output.Kind == SelectedTarget.Kind)
+				{
+					OutputLabel = Output.Label;
+					break;
+				}
+			}
+			ShowPreviewFeedback(FText::Format(LOCTEXT("PreviewOutputFeedback", "{0} · {1}"),
+				GetLayerChildName(*Source), OutputLabel));
+		}
+		else
+		{
+			ShowPreviewFeedback(OutputLabel);
+		}
 		return FReply::Handled();
 	}
 	// Starting/switching requires a real output on the selection. Dismissal above never does.
-	WorkingStatusText = Kind == EMixtormatPreviewOutputKind::FlowDirection
-		? LOCTEXT("NoFlowDiagnosticTarget", "No eligible Flow output on this selection").ToString()
-		: LOCTEXT("NoMaskDiagnosticTarget", "No eligible mask output on this selection").ToString();
+	ShowPreviewFeedback(Kind == EMixtormatPreviewOutputKind::FlowDirection
+		? LOCTEXT("NoFlowDiagnosticTarget", "No eligible Flow output on this selection")
+		: LOCTEXT("NoMaskDiagnosticTarget", "No eligible mask output on this selection"));
 	return FReply::Handled();
 }
 
@@ -1262,9 +1294,7 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 						ChildPreviewTarget = FMixtormatChildPreviewTarget();
 						RefreshLayeredPreview(false);
 					}
-					WorkingStatusText = FString::Printf(
-						TEXT("Preview: %s"),
-						*PreviewViewports[0]->GetChannelPreviewLabel());
+					ShowPreviewFeedback(FText::FromString(PreviewViewports[0]->GetChannelPreviewLabel()));
 				}
 			}))
 			// Bare 1-4 in the viewport: same path as the geometry rail buttons.
@@ -1352,6 +1382,10 @@ TSharedRef<SWidget> SMixtormat::BuildPreviewPanel()
 					.TextStyle(&WarningStyle)
 					.AutoWrapText(true)
 				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+			[
+				BuildPreviewFeedback()
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
 			[

@@ -6,6 +6,7 @@
 #include "Style/MixtormatGroupButton.h"
 #include "Style/MixtormatStyle.h"
 #include "Style/MixtormatThemeStore.h"
+#include "UI/Menus/SMixtormatHelp.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -41,7 +42,7 @@ namespace
 	{
 		const TSharedRef<SCheckBox> CheckBox = SNew(SCheckBox)
 			.Style(&CheckBoxStyle)
-			.ToolTipText(ToolTip)
+			.ToolTip(SMixtormatHelp::MakeStyledToolTip(ToolTip))
 			.IsChecked_Lambda([bSelected]()
 			{
 				return bSelected.Get(false) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
@@ -102,7 +103,7 @@ namespace
 				[
 					SNew(SCheckBox)
 					.Style(&Style.GetWidgetStyle<FCheckBoxStyle>(TEXT("Mixtormat.TabToggle")))
-					.ToolTipText(ToolTip)
+					.ToolTip(SMixtormatHelp::MakeStyledToolTip(ToolTip))
 					.IsChecked_Lambda([bSelected]()
 					{
 						return bSelected.Get(false) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;

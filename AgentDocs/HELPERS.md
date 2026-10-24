@@ -10,10 +10,10 @@ plus the TODO lists for mapping and architecture work on top of it.
 - Tooltips name the key as a sentence suffix: `"Collapse or expand the material
   and mask galleries (G)."` — action first, key in parentheses, period last.
 - Menus advertise keys with `.Shortcut(LOCTEXT(..., "F2"))` on the row.
-- Viewport feedback is not universally status-only: F moves the camera, H/Space
-  changes overlay visibility, Z updates displacement and V changes the mode label
-  as well as `WorkingStatusText` (`SMixtormat_Preview.cpp` L1400–1514). Some source
-  comments still describe status-only feedback; trust the live bindings.
+- V/W/E now use transient top-center viewport feedback, not `WorkingStatusText`.
+  Repeated actions replace/restart the label; 1.4s hold + 0.5s fade. Existing PreviewLabel
+  typography, preview plate and padding are reused; H/Space hides optional feedback.
+  F moves the camera and Z updates displacement; existing preview actions are preserved.
 - Aliases are not advertised: `F12` works but menus say `F2`; `Ctrl+Shift+Z`
   is named in the Redo tooltip only because it is a second redo path.
 - Rename never lives on double-click (double-click opens/shuts a row); it is
@@ -35,8 +35,8 @@ plus the TODO lists for mapping and architecture work on top of it.
 | `SMixtormatHelp` | `UI/Menus/SMixtormatHelp.h` | Styled hover-only help host (menu anchor); opens after `MixtormatTokens::HelpDelay` (0.35 seconds / 350 ms). Used by shell actions, sliders, the icon rail, preview quick controls, and overlay resize/fit controls. It clears native tooltips in its child subtree. |
 | Legacy native tooltips | `.ToolTipText(...)` / `SetToolTipText(...)` | Forbidden for new Mixtormat code. Migrate existing sites to styled help; do not repeat the native pattern. |
 | Menu shortcut column | `Menu.Item(...).Shortcut(...)` | `Widgets/Layers/MixtormatLayerMenus.cpp` etc. |
-| Status bar | `WorkingStatusText` | "Unsaved changes" / "All changes saved" / `Preview: <mode>`. Supplements visual/control feedback; not updated by every viewport hotkey. |
-| Mode label | `GetPreviewModeLabel()` | `"{0}  (Shift+V for Material)"` on the preview. |
+| Status bar | `WorkingStatusText` | Document/operation status; V/W/E feedback does not overwrite it. |
+| Transient mode feedback | `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback`, `ShowPreviewFeedback` | Top-center channel or module/output label; off/unavailable/reset messages; one active timer, no queued messages. |
 | Empty states | Text blocks in panels | e.g. "No global variables yet.", "No layer selected". |
 | Entry-commit rules | `UI/Controls/MixtormatEntryCommit.h` | Enter/Tab/click-away accept; Escape/right-click cancel — documented in the header. |
 
@@ -90,7 +90,7 @@ Shortcut discoverability is incomplete.
 | `1`–`4` | Select Sphere / Plane / Cube / Cylinder; `2` flips an already selected Plane |
 | `5` | Toggle complete material UV rotation by 90°, exactly like the preview marking-menu button |
 | Mouse wheel | Zoom camera |
-| `Q` (bare) | Toggle viewport quick controls (render top, lighting left, geometry right, Actions placeholder bottom). Q again, Escape, an outside click, or choosing a mesh/light preset dismisses. Opening remains viewport-scoped; Q closes while the popup has focus. **Implemented, needs in-editor verification** — opening is routed through `FMixtormatPreviewViewportClient::InputKey`; closing while a control has focus uses the workspace input processor. Not Tab: Slate navigates focus on Tab regardless of a widget handling it, so Tab also lit up the top bar (I13). Archived delivery history: `AgentDocs/old_docs/viewport-quick-controls-plan.md` |
+| `Q` (bare) | Opens viewport quick controls: Render/Composition above, Lighting left, Geometry right, real context-sensitive Actions below. Q/Escape or mesh/light selection closes; cursor distance drives proximity fade/close except while tracked submenus are open. Opening is viewport-scoped; workspace close routing respects focus/text-entry guards. Not Tab. Source-checked; interaction testing remains owner-run. |
 
 ## Hotkey catalog — controls
 
@@ -127,6 +127,13 @@ table in as surfaces land; add a "Help text" section to the mandated
 | GLOBAL Preview/Viewport toggles | GLOBAL group rows | `SMixtormat_Shell.cpp` | Done — five switches with labels and tooltips; the settings below them are the viewport's own builders |
 | `(L)` left-panel cycle | Top-bar control label + tooltip | `SMixtormat_Shell.cpp` | Done — the cycle moves the layer stack; the rail stays docked |
 | Left column rail | Icon help | `SMixtormatIconRail.cpp` | Done — LAYERS / LIBRARY / GLOBAL use `SMixtormatHelp` for their tab hints |
+
+## Context-help upgrade proposal
+
+See [context-help-q-plan.md](../auditdocs/workspace-layout/context-help-q-plan.md) for
+source-checked Q capabilities and staged integration with corner hints/top-center feedback.
+Q already has contextual Actions. Rich interaction-aware guidance and captured action targets
+are proposals, not completed features; retain existing gesture/focus behavior.
 
 ## TODOs — architecture
 

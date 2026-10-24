@@ -4,6 +4,10 @@ All Slate lives in `Source/MixtormatEditor/Private`. The main widget is
 `SMixtormat` (`Widgets/SMixtormat.h`), decomposed into `SMixtormat_*.cpp`
 translation units — search the member function, not the header.
 
+Targeted source audit (2026-10-24): workspace, Library/Gallery/Recipes and parameter
+menus/group controls only. Moss and GPU internals were excluded; other sections were
+not revalidated. No build, tests or live UI validation; packaging remains unverified.
+
 ## Slate regions
 
 | Region | Files |
@@ -258,10 +262,12 @@ execution retains a 512-pass safety maximum independently of editor settings.
 - Group selection shows compact parameter wells, not a separate titled card per control.
 - Each control has one label inside its well and an unlabeled enable toggle on the right.
 - RMB on the control opens Edit Label, Control Settings, reset, connections, order and removal.
-- Add Control opens a draft popup using the driver-popover surface. Numeric controls expose
-  type, label, default and scrub Min/Max; creation/settings commit only on Create/Apply.
+- Add Control opens an owned modal dialog, not a transient submenu, using the popover surface.
+  Numeric controls expose type, label, default and scrub Min/Max; commit uses Create Control/Apply.
 - Connect from the member parameter: RMB → Assign to Group Control → New Control or an
-  existing control. New controls inherit the member's exact type, value and UI metadata.
+  existing control. The draft starts with the member's local value/type; that value seeds Reset.
+  `ShowGroupControlSetup` copies reflected range/snap via `TryResolveUi`, not effective authoring
+  or session overrides. Do not assume its scrub range matches the member's current UI range.
 - Enum controls originate from a real enum parameter; no arbitrary enum identity is fabricated.
 - Scalar/color ramp consumers participate in the same parameter menu. RMB on a ramp point
   still removes that point; RMB on empty ramp space opens the enclosing parameter menu.
@@ -319,7 +325,10 @@ The plate currently does not apply inherited tint/opacity or a disabled-specific
 
 ## Tooltip styling contract
 
-All Mixtormat help popovers use `UI/Menus/SMixtormatHelp.*`; for controls requiring direct `IToolTip`, use its `MakeStyledToolTip` adapter. Do not add Unreal/Slate default white tooltips, `.ToolTipText(...)`, `SetToolTipText(...)`, or independently styled `SToolTip`. Existing group actions own their styled help internally. New controls must preserve user input handling and retrieve their help styling from shared tokens and theme store. See `AgentDocs/HELPERS.md`.
+All Mixtormat help popovers must use `UI/Menus/SMixtormatHelp.*`; for controls requiring direct `IToolTip`, use its `MakeStyledToolTip` adapter. Do not add Unreal/Slate default white tooltips, `.ToolTipText(...)`, `SetToolTipText(...)`, or independently styled `SToolTip`. Existing group actions own their styled help internally. New controls must preserve user input handling and retrieve their help styling from shared tokens and theme store. See `AgentDocs/HELPERS.md`.
+
+Known source exceptions in the audited workspace: `SMixtormat_Shell.cpp` Undo/Redo and
+`SMixtormat_Library.cpp`'s gallery header still use `.ToolTipText`. These are gaps, not precedent.
 
 ## Theme / style / tokens
 
@@ -380,11 +389,12 @@ inside the common left column, whose own `ColumnGutter` is independent.
 
 Global uses existing `SMixtormatInspectorGroup` foldouts and `AddCard` card
 recipes, with `Shell.GlobalPagePadding` and `Shell.GlobalCardGap`
-(UI STYLE > Gallery/Shell > Global Page). Generator and material behavior
-is unchanged. Preview render/lighting/geometry/camera/output widgets are still
-shared with the viewport; **their internal layout remains a known follow-up**:
-give these builders an explicit compact row-mode variant for Global before
-replacing viewport-specific button geometry. Do not delete or fork controls.
+(UI STYLE > Gallery/Shell > Global Page). `BuildGlobalPage` in `SMixtormat_Shell.cpp`
+mounts FINAL COMPOSITE and VIEWPORT & LIGHTING foldouts. Lighting already calls
+`BuildPreviewLightingControls(EPreviewControlLayout::Inline)`; geometry uses a local
+mesh segmented strip plus shared displacement controls. Scene, camera and render
+builders are also reused. A blanket claim that inline layout is still unimplemented
+is stale; broader compact-layout consistency remains unverified. Do not delete or fork controls.
 
 Library search is one `SMixtormatWellBox`, including the unplated folder icon,
 with `Shell.LibrarySearchInnerPadding`. Content beneath the search is a
@@ -422,6 +432,14 @@ delegating workspace actions back to `SMixtormat`.
 Bare V always cycles PBR material channels, independent of layer/module selection:
 Material → Base Color → Normal → Roughness → AO → Metallic → F0 → Height → Fuzz → Material.
 It does not cycle module diagnostics or PostFX output modes. Shift+V resets all diagnostics.
+V/W/E feedback now uses a top-center, hit-test-invisible label instead of writing preview
+messages to the status bar. `SMixtormat_PreviewHints.cpp::BuildPreviewFeedback` reuses
+`PreviewLabel` typography, the shared preview plate and existing inset/padding metrics.
+One label is replaced/restarted on repeated actions: hold 1.4s, fade 0.5s, then collapse
+(`MixtormatTokens::PreviewFeedbackHoldSeconds` / `PreviewFeedbackFadeSeconds`).
+W/E identify the selected module/output, report off/unavailable states, and Shift+V
+reports the Material reset. H/Space hides the label with other optional overlays;
+material-contract warnings remain separate. Source-reviewed; in-editor verification pending.
 W/E remain separate PostFX toggles. `DA_DiagnosticMode` now emits only Mask (0,
 including scalar coverage) and Flow (1, including warped UVs); 3 is reserved for
 future PostFX IDs and 2 is unused. Artist-authored materials must put their Flow/UV
@@ -454,7 +472,7 @@ Layers no longer has a draggable header or pop-out mode; it is always docked und
 the navigation rail. The L shortcut switches between Layers and the previously
 selected Library/Global page. The Inspector alone retains Docked / Overlay / Hidden.
 The gallery is one resizable bottom
-drawer over the whole workspace, replacing both gallery splitters. Its header reads `GALLERY`;
+drawer over the whole workspace; its internal three-column `SSplitter` remains. Its header reads `GALLERY`;
 `MATERIALS`, `MASKS` and `RECIPES` label its three resizable columns. A header click collapses it; dragging past the normal
 Slate drag threshold resizes it. Collapse leaves a fixed-width centred restore tab
 (`SMixtormatGalleryTab`, `GalleryTabWidth`) above the status bar: the foldout header surface
@@ -464,7 +482,8 @@ Column sizes use persisted `GalleryColumnWeights.X/Y/Z` for Materials/Masks/Reci
 Tile selection borders paint above
 thumbnails; the Masks header also shows the selected mask name without applying it.
 Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.
-Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
+The drawer backing uses `DrawerSurfaceOpacity`; not every child surface is transparent:
+recipe cards explicitly use `MakeGroundRecipe()` in `SMixtormat_Recipes.cpp`.
 The category popup populates its family list on opening; `All` clears the category filter.
 Inspector remains dockable.
 
@@ -475,9 +494,10 @@ third column. `Widgets/SMixtormat_Recipes.cpp` owns its search, category filter,
 recipe cards and shipped/user labels. Recipes capture a group and its layers;
 insertion creates an independent editable group, not a live composition reference.
 
-`Widgets/SMixtormat_Presets.cpp` owns insertion and menus: Refresh Recipes,
-Insert Editable Group, Save User Copy and referenced-asset details. Insertion requires
-an open/created material and leaves document/global settings unchanged. Shipped recipe
+`Widgets/SMixtormat_Presets.cpp` owns insertion and menus: the RECIPES header offers
+Refresh Recipes only; card RMB offers Insert Editable Group, Save User Copy and
+referenced-asset details. Card click also inserts. Insertion appends and selects a new
+group, requires an open/created material and leaves document/global settings unchanged. Shipped recipe
 files are read-only; user copies are separate. Assets are referenced, not embedded.
 
 `Services/MixtormatRecipeService.*` owns capture, strict dependency-closure validation
@@ -486,8 +506,11 @@ recipes from `Resources/Presets/Recipes` and provides recipe persistence. Shippi
 actual recipe files and their asset dependencies still needs a package-manifest check.
 
 Artist menus do not expose JSON import/export; developer serialization APIs remain.
-Some recipe card/empty-state help in `SMixtormat_Recipes.cpp` still mentions export/import;
-that copy is stale, not evidence of available menu actions. Source-reviewed only.
+Remaining code-copy issues (not changed by this docs audit):
+- `SMixtormat_Recipes.cpp`: `RecipeCardHelp` promises export; `RecipesEmpty` suggests JSON import.
+  Neither action exists in the artist menus.
+- `SMixtormat_Shell.cpp`: `RestoreGalleryStyledHint` names materials and masks, omitting recipes.
+Source-reviewed only; interaction and asset/package availability remain unverified.
 The left rail has its own `NavigationRail` icon role (18px glyph, 24px shipped target),
 independent of toolbar sizing. It overlays the full-width left page's leading
 `PreviewLayout.LeftRailContentInset` (28px shipped default); the page surface remains one

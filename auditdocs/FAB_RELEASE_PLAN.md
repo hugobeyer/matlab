@@ -1,6 +1,6 @@
 # Mixtormat — FAB Release Plan
 
-Status checked 2026-10-23 against current source/config. Documentation update only.
+Status checked against source/config; packaging follow-up 2026-10-24.
 Static inspection; no git, commands, builds, Unreal launches, network checks or binary inspection.
 
 ## Goal
@@ -14,7 +14,8 @@ See [exact paths and packaging caveats](FAB_RELEASE_DETAIL.md).
 - [x] Runtime + two Editor modules are declared; Editor modules have Editor target allowlists.
 - [x] Docs/support URLs are populated. Reachability/delivery is not verified.
 - [x] Runtime Build.cs declares only Core, CoreUObject and Engine dependencies.
-- [x] All four planned Config files exist.
+- [x] All four planned Config files exist; both JSON files now have explicit filter includes.
+
 - [x] Filter excludes Tools and nested source Tests.
 - [x] Removed obsolete Lucide/Feather notice and its filter entry; owner confirms no longer used.
 - [x] Filter excludes Content PNG/HDR/FBX import sources (not their `.uasset` counterparts).
@@ -44,12 +45,27 @@ These are static source findings, not runtime test results.
 - Historical asset/file counts and archive inventories were not revalidated.
 - Full Runtime include audit, shader registration coverage and UI compliance remain unverified.
 
+## Stable-doc follow-up — 2026-10-24
+- Corrected architecture's obsolete Generator-layer description and stale file-map offsets.
+- Bake service declares 10 outputs, including three optical textures; include these in smoke checks.
+- Missing authoring JSON defaults resolve through reflected defaults; Mask.TilingY is not a proven bug.
+- Recipe help still mentions unavailable import/export; gallery restore help omits Recipes.
+  These are copy issues, not reasons to reintroduce menu actions.
+- Moss and GPU-pass internals are being rewritten. Reconcile their docs after the work lands;
+  this review does not certify those implementations or their existing documentation.
+- File splits remain optional maintenance, not FAB blockers.
+
 ## Next actions — in order
+0. **UI consistency first.** Audit/fix hover help, interactive popovers and dialogs against
+   shared help/menu/card surfaces, typography and theme metrics. Confirmed native-tooltip,
+   ramp/tab literal and bake-dialog typography gaps are in [ui-style-token-audit.md](ui-style-token-audit.md).
+   Trace wrappers before replacing tooltip calls; preserve focus, drag and dismissal behavior.
 1. **Confirm package inputs.** Ensure both Config JSON files reach the built package;
-   they are accessed by plugin-relative paths. Add explicit filter includes if needed.
+   explicit filter includes are added; verify the built artifact when packaging.
 2. **Choose sample content.** Pick 2–3 materials and a sample mesh, then retain their
    full dependency closure, including required preview/runtime assets. Do not prune blindly.
-3. **Review resources/notices.** Retain registered SVGs, brand art, fonts and required licenses.
+3. **Review resources/notices.** Retain registered SVGs, brand art and any required notices.
+
    Do not delete apparently unused resources without approval and a reference check.
 4. **Resolve parameter audit decisions.** See [GHOST_PARAMS_AUDIT.md](GHOST_PARAMS_AUDIT.md).
    ChildMask drivers are deferred beyond v1 by owner decision; retain disabled UI and notes.
@@ -60,10 +76,12 @@ These are static source findings, not runtime test results.
    changelog, live docs/support checks; add MarketplaceURL when assigned.
 
 ## Acceptance gates — still pending
-- [ ] Artifact contains needed Config JSON, SVG/fonts, shader/source files and notices.
+- [ ] Hover help/popovers/dialogs follow shared styling; owner checks clipping, focus and dismissal.
+- [ ] Artifact contains needed Config JSON, SVGs, shader/source files and applicable notices.
 - [ ] No developer docs, prototypes, metadata, caches or raw import sources leak into it.
 - [ ] Curated Content includes all dependencies; no stale sample thumbnails.
 - [ ] Clean-project and packaged-game checks pass; relevant log warnings are reviewed.
+- [ ] Bake produces all 10 expected outputs; optical-master support/warnings are checked.
 - [ ] FAB submission requirements and final archive layout are checked against current guidance.
 - [ ] Listing assets and links are ready.
 

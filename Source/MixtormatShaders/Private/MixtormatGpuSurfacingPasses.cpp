@@ -25,8 +25,7 @@ public:
 	DECLARE_GLOBAL_SHADER(FMixtormatMossCS);
 	SHADER_USE_PARAMETER_STRUCT(FMixtormatMossCS, FGlobalShader);
 	class FStage : SHADER_PERMUTATION_INT("MOSS_STAGE", 14);
-	class FSdfCushion : SHADER_PERMUTATION_BOOL("MOSS_SDF_CUSHION");
-	using FPermutationDomain = TShaderPermutationDomain<FStage, FSdfCushion>;
+	using FPermutationDomain = TShaderPermutationDomain<FStage>;
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FIntPoint, OutputSize)
 		SHADER_PARAMETER(FIntPoint, SimulationSize)
@@ -35,8 +34,6 @@ public:
 		SHADER_PARAMETER(uint32, Preview)
 
 		SHADER_PARAMETER(int32, HeightJump)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, MossThickness)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float2>, OutMossThickness)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, HeightSeeds)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, GrowthInteriorDistance)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, CushionInflation)
@@ -52,12 +49,14 @@ public:
 		SHADER_PARAMETER(uint32, UsePreGenerationUV)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float2>, PreGenerationUV)
 		SHADER_PARAMETER(uint32, Seed)
+		SHADER_PARAMETER(uint32, SeedMode)
 		SHADER_PARAMETER(float, HeightScale)
 		SHADER_PARAMETER(uint32, bNormalizeHeight)
 		SHADER_PARAMETER(float, CavityAttraction)
 		SHADER_PARAMETER(float, OcclusionInfluence)
 		SHADER_PARAMETER(float, Moisture)
 		SHADER_PARAMETER(float, SurfaceAnglePreference)
+		SHADER_PARAMETER(float, SlopeAngle)
 		SHADER_PARAMETER(float, Competition)
 		SHADER_PARAMETER(float, ExposureTolerance)
 
@@ -69,6 +68,7 @@ public:
 		SHADER_PARAMETER(float, GrowthSpread)
 
 		SHADER_PARAMETER(float, Coverage)
+		SHADER_PARAMETER(float, Splatter)
 		SHADER_PARAMETER(float, CushionSize)
 		SHADER_PARAMETER(float, CushionHeight)
 
@@ -127,10 +127,7 @@ public:
 	END_SHADER_PARAMETER_STRUCT()
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		const FPermutationDomain Permutation(Parameters.PermutationId);
-		const int32 Stage = Permutation.Get<FStage>();
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5)
-			&& (!Permutation.Get<FSdfCushion>() || Stage == 2 || Stage == 3);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
 IMPLEMENT_GLOBAL_SHADER(FMixtormatMossCS, "/Plugin/Mixtormat/Private/MixtormatMoss.usf", "MainCS", SF_Compute);
@@ -491,7 +488,7 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 	{
 		FMixtormatNodeCache* Cache = Ctx.Request.NodeCache.Get();
 		const uint64 Key = Cache && !PreUV && Data.FieldKey
-			? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f737352444732ull) : 0;
+			? MixtormatComposeHash::Combine(Data.FieldKey, 0x4d6f737352444733ull) : 0;
 		const auto Hit = Key ? Cache->Find(Key, Size) : TSharedPtr<FMixtormatNodeCacheEntry, ESPMode::ThreadSafe>();
 		bool bComplete = Hit.IsValid();
 		for (int32 Index = 0; bComplete && Index < SlotCount; ++Index)
@@ -528,10 +525,6 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 			};
 			FRDGTextureRef HabitatColony = MakeTexture(Size, PF_FloatRGBA, TEXT("Mixtormat.Moss.HabitatColony"));
 			FRDGTextureRef MesoHeight = MakeTexture(Size, PF_R32_FLOAT, TEXT("Mixtormat.Moss.MesoHeight"));
-			FRDGTextureRef Thickness[2] = {
-				MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Thickness.Ping")),
-				MakeTexture(SimulationSize, PF_G16R16F, TEXT("Mixtormat.Moss.Thickness.Pong"))};
-			int32 CurrentThickness = 0;
 			FRDGTextureRef HeightSeeds[2] = {
 				MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Ping")),
 				MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.HeightSeeds.Pong"))};
@@ -539,8 +532,6 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 			FRDGTextureRef RawInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Raw"));
 			FRDGTextureRef SmoothInflation = MakeTexture(SimulationSize, PF_G32R32F, TEXT("Mixtormat.Moss.Inflation.Smooth"));
 			int32 CurrentHeightSeeds = 0;
-			// Substrate is needed by height-coupled moisture (Stage 4) and
-			// thickness slump (Stage 7) even on a simulation-cache hit.
 			FRDGTextureRef SubstrateAlways = ResolveSubstrateHeight(Ctx, LayerCtx, RunningHeight, BelowHeight);
 
 			// A separate cache retains chemicals across output remaps, previews and relief edits.
@@ -588,10 +579,6 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 			{
 				FMixtormatMossCS::FPermutationDomain Permutation;
 				Permutation.Set<FMixtormatMossCS::FStage>(Stage);
-				// Runtime branches retain both modes' SRVs in shader reflection.
-				// Specialize consumers so RDG only sees resources written by the selected solver.
-				Permutation.Set<FMixtormatMossCS::FSdfCushion>((Stage == 2 || Stage == 3)
-					&& Settings.CushionMode == EMixtormatMossCushionMode::SdfInflation);
 				TShaderMapRef<FMixtormatMossCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 				auto* P = GraphBuilder.AllocParameters<FMixtormatMossCS::FParameters>();
 				FillGeneratorPlacement(P, Layer, PreUV, Ctx.EmptyPatternUV);
@@ -602,6 +589,7 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				P->Preview = static_cast<uint32>(Settings.Preview);
 
 				P->Seed = static_cast<uint32>(Settings.Seed);
+				P->SeedMode = static_cast<uint32>(Settings.SeedMode);
 				// Shared signed-height assembly owns normalization/scale, once, downstream.
 				P->HeightScale = 1.0f;
 				P->bNormalizeHeight = 0u;
@@ -609,6 +597,7 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				P->OcclusionInfluence = Settings.OcclusionInfluence;
 				P->Moisture = Settings.Moisture;
 				P->SurfaceAnglePreference = Settings.SurfaceAnglePreference;
+				P->SlopeAngle = Settings.SlopeAngle;
 				P->Competition = Settings.Competition;
 				P->ExposureTolerance = Settings.ExposureTolerance;
 
@@ -619,6 +608,7 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				P->GrowthSpread = Settings.GrowthSpread;
 
 				P->Coverage = Settings.Coverage;
+				P->Splatter = Settings.Splatter;
 				P->DryRoughness = Settings.DryRoughness;
 				P->WetRoughness = Settings.WetRoughness;
 				P->NormalStrength = Settings.NormalStrength;
@@ -691,7 +681,6 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				}
 				else if (Stage == 2)
 				{
-					P->MossThickness = Thickness[CurrentThickness];
 					P->CushionInflation = SmoothInflation;
 					P->GrowthInteriorDistance = InteriorDistance;
 					P->GrowthState = States[Current];
@@ -708,28 +697,13 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 					P->GrowthAge = Outputs[2];
 					P->HabitatColony = HabitatColony;
 					P->MesoCushionHeight = MesoHeight;
-					P->MossThickness = Thickness[CurrentThickness];
 					P->GrowthInteriorDistance = InteriorDistance;
 					P->OutGrowthHeight = GraphBuilder.CreateUAV(Outputs[0]);
-				}
-				else if (Stage == 6)
-				{
-					P->Chemical = Chemicals[Current];
-					P->GrowthState = States[Current];
-					P->OutMossThickness = GraphBuilder.CreateUAV(Thickness[CurrentThickness]);
-				}
-				else if (Stage == 7)
-				{
-					P->Chemical = Chemicals[Current];
-					P->GrowthState = States[Current];
-					P->ActivationHabitat = ActivationHabitat;
-					P->SubstrateHeight = SubstrateAlways;
-					P->MossThickness = Thickness[CurrentThickness];
-					P->OutMossThickness = GraphBuilder.CreateUAV(Thickness[1 - CurrentThickness]);
 				}
 				else if (Stage == 8)
 				{
 					P->Chemical = Chemicals[Current];
+					P->GrowthState = States[Current];
 					P->OutHeightSeeds = GraphBuilder.CreateUAV(HeightSeeds[CurrentHeightSeeds]);
 				}
 				else if (Stage == 9)
@@ -765,7 +739,7 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				}
 
 				ClearUnusedGraphResources(Shader, P);
-				const bool bSimulationStage = Stage == 0 || Stage == 1 || Stage == 4 || (Stage >= 6 && Stage <= 11);
+				const bool bSimulationStage = Stage == 0 || Stage == 1 || Stage == 4 || (Stage >= 8 && Stage <= 11);
 				FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("Mixtormat.Moss.S%d.I%u.L%d.C%d",
 					Stage, Iteration, LayerCtx.LayerIndex, Child.SourceChildIndex), Shader, P,
 					bSimulationStage ? SimulationPixels : Pixels);
@@ -796,9 +770,8 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 					Ctx.PendingNodeEntries.Add(Entry);
 				}
 			}
-			if (Settings.CushionMode == EMixtormatMossCushionMode::SdfInflation)
 			{
-				RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.HeightFootprint");
+				RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.CushionEnvelope");
 				DispatchStage(8);
 				const int32 InitialJump = static_cast<int32>(FMath::RoundUpToPowerOfTwo(
 					static_cast<uint32>(FMath::Max(SimulationSize.X, SimulationSize.Y)))) / 2;
@@ -811,18 +784,6 @@ FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassC
 				CurrentHeightSeeds = 1 - CurrentHeightSeeds;
 				DispatchStage(10);
 				DispatchStage(11);
-			}
-			else
-			{
-				RDG_EVENT_SCOPE(GraphBuilder, "Mixtormat.Moss.ThicknessDeposition");
-				DispatchStage(6);
-				// Deposition PDE steps: logistic growth + creep + repose slump.
-				constexpr int32 DepositionSteps = 64;
-				for (int32 Step = 0; Step < DepositionSteps; ++Step)
-				{
-					DispatchStage(7, static_cast<uint32>(Step));
-					CurrentThickness = 1 - CurrentThickness;
-				}
 			}
 			DispatchStage(5);
 			DispatchStage(2);
@@ -864,14 +825,11 @@ FRDGTextureRef AddMossCanopyResolvePass(FMixtormatComposeContext& Ctx,
 	if (!bRawPreview && Mo.HeightScale > 0.0f && Mo.CushionSize > 0.0f)
 	{
 		const FIntPoint Size = Ctx.Request.Resolution;
-		// Both cushion solvers share a substrate-relative top envelope. Keep this
-		// outside the raw-field cache: normalization and scoped gates are resolved here.
 		FRDGTextureRef CanopyHeight = Ctx.GraphBuilder.CreateTexture(FRDGTextureDesc::Create2D(
 			Size, PF_R32_FLOAT, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV),
 			TEXT("Mixtormat.Moss.CanopyHeight"));
 		FMixtormatMossCS::FPermutationDomain Permutation;
 		Permutation.Set<FMixtormatMossCS::FStage>(13);
-		Permutation.Set<FMixtormatMossCS::FSdfCushion>(false);
 		TShaderMapRef<FMixtormatMossCS> Shader(GetGlobalShaderMap(GMaxRHIFeatureLevel), Permutation);
 		auto* P = Ctx.GraphBuilder.AllocParameters<FMixtormatMossCS::FParameters>();
 		P->OutputSize = Size;

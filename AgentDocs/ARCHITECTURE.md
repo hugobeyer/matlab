@@ -1,5 +1,9 @@
 # Architecture
 
+Stable model/module documentation checked against source on 2026-10-24.
+Moss and GPU-pass internals are under active rewrite and were not re-audited;
+pass filenames/order below are navigation context, not a validation of that work.
+
 ## Modules
 
 | Module | Type | Location | Responsibility |
@@ -8,7 +12,7 @@
 | `MixtormatShaders` | Editor-only | `Source/MixtormatShaders` | Gather, RDG GPU compositor, compute passes. |
 | `MixtormatEditor` | Editor-only | `Source/MixtormatEditor` | Slate UI, hierarchy, inspector, preview, bake, style. |
 
-Declared in `Mixtormat.uplugin`. Dependency direction is one-way and enforced:
+Declared in `Mixtormat.uplugin` and the module Build.cs dependencies. Required direction:
 **Runtime ← Shaders ← Editor**. Never include Editor from Runtime or Shaders.
 
 ## Data flow
@@ -20,12 +24,11 @@ UMixtormatMaterial (asset)
   └─ TArray<FMixtormatLayerGroup>       groups (expanded to layers before render)
 
 Editor (SMixtormat)
-  → MixtormatLayerGroups::BuildEffectiveLayers   flatten groups
-  → MixtormatParameterBinding::ResolveChildInstances / ApplyDirectReferences
   → FMixtormatGpuCompositor::RequestCompose
+       → prepare effective layers: group expansion, instances and direct references
        → gather (Compositing/Mixtormat*Gather.cpp)  authored → render data
        → EnqueueCompose (MixtormatGpuComposePipeline.cpp)  RDG passes
-       → render targets: BaseColor / Normal / RAM / Height / Debug
+       → outputs: BaseColor / Normal / RAM / Height + optical maps / diagnostics
   → BindOutputs / preview viewport / FMixtormatBakeService
 ```
 
@@ -35,15 +38,17 @@ Editor (SMixtormat)
 Layer source height
   → AddLayerInputPass              resolve into output space
   → AddLayerHeightSmoothPasses     optional pre-smooth
-  → AddGeneratorLayerPasses        Generator layers only; rewrites input height
+  → ordered procedural modules    Material or Fill layers with generator-chain children
   → mask children, effects, AddLayerCompositePass
   → post-composite filters (Erosion, Breakup, Worn Edges, Grade, LayerBlur, Runoff)
 → AddFinalAOPass / AddFinalNormalPass   document-level, once
 ```
 
-Generators rewrite the layer's **input** height before anything reads it.
-Effects are filters over the already-composited layer. Masks produce 0..1
-coverage and join the mask chain. See `COMPOSITION.md` and `GENERATORS.md`.
+The authored layer kinds are **Material** and **Fill**, not a separate Generator type.
+`FMixtormatLayer::HasGeneratorModules()` detects children handled by the procedural
+chain, including generators, behaviors and height modules. Effects and scoped masks
+have owner/stage-specific scheduling; not every effect runs after composition.
+See `COMPOSITION.md` and `GENERATORS.md`; recheck detailed scheduling after the GPU rewrite.
 
 ## Canonical types (Runtime)
 
@@ -68,10 +73,10 @@ ParameterTypes  HeightTypes  MaskTypes  IdTypes  GeneratorTypes  Effect(types)
 | `FMixtormatLayerGroup` | `MixtormatLayerTypes.h` | group; shared children broadcast onto members |
 | `UMixtormatMaterial` | `MixtormatMaterial.h` | the asset; `Layers`, `LayerGroups`, baked outputs |
 | `FMixtormatFinalSettings` | `MixtormatMaterial.h` | document-level final AO/normal settings |
-| `EMixtormatLayerChildType` | `MixtormatLayerTypes.h` | child taxonomy (append-only) |
-| `EMixtormatEffectType` | `MixtormatEffect.h` | effect taxonomy (append-only) |
+| `EMixtormatLayerChildType` | `MixtormatLayerTypes.h` | serialized child taxonomy; preserve active numeric values |
+| `EMixtormatEffectType` | `MixtormatEffect.h` | serialized effect taxonomy; preserve active numeric values |
 | `FMixtormatLayerEffect` | `MixtormatEffect.h` | per-child effect payload |
-| `EMixtormatGeneratorType` | `MixtormatGeneratorTypes.h` | generator taxonomy (append-only) |
+| `EMixtormatGeneratorType` | `MixtormatGeneratorTypes.h` | serialized generator taxonomy; preserve active numeric values |
 | `FMixtormatGenerator` | `MixtormatGeneratorTypes.h` | generator payload union |
 | `EMixtormatHeightOp`, `FMixtormatHeightBlend` | `MixtormatHeightTypes.h` | shared height-combine block |
 | `FMixtormatMaskLayer`, `FMixtormatGeneratedMask`, `FMixtormatColorIdMask`, `FMixtormatRandomIdMask`, `FMixtormatCraquelure` | `MixtormatMaskTypes.h` | mask payloads |
@@ -87,8 +92,10 @@ ParameterTypes  HeightTypes  MaskTypes  IdTypes  GeneratorTypes  Effect(types)
   parameter contract. It must not know about Slate, RDG, or shader files.
 - **Shaders** owns gather + GPU. It reads Runtime types and writes render
   targets. It must not include Editor headers.
-- **Editor** owns Slate, menus, dialogs, bake, style. It calls Runtime helpers
-  and the compositor; it does not own document mutation rules.
+- **Editor** owns Slate, menus, dialogs, bake, style and working-document edit/history
+  orchestration. Runtime helpers own shared model/reference rules.
+- Pre-release retirement requires approval and updated consumers, per `AGENTS.md`;
+  serialized enums are not an absolute prohibition on approved obsolete-entry removal.
 
 ## Related
 
