@@ -1100,6 +1100,10 @@ TSharedRef<SWidget> SMixtormat::BuildAddSurfacingMenu(const FMixtormatAddTarget 
 		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Moss); }, EAddMenuKind::Surfacing))
 		.UnavailableReason(Reason)
 		.ToolTip(LOCTEXT("AddMossHint", "Habitat-driven moss growth, relief and material response. Gates are authored as child masks."));
+	Menu.Item(LOCTEXT("AddWoodChild", "Wood"), MixtormatIcons::Surfacing(),
+		MakeAddMenuAction(Target, [this](FMixtormatAddTarget Resolved) { CreateChild(Resolved, EMixtormatChildCreation::Wood); }, EAddMenuKind::Surfacing))
+		.UnavailableReason(Reason)
+		.ToolTip(LOCTEXT("AddWoodHint", "Oak, Maple or Pine anatomy with independent figure, preparation and stackable finish passes."));
 	return Menu.Build();
 }
 

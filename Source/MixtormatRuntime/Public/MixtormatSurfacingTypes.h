@@ -14,7 +14,8 @@ enum class EMixtormatSurfacingType : uint8
 {
 	Skin = 0,
 	Moss = 1,
-		Rust = 2
+		Rust = 2,
+	Wood = 3
 };
 
 // Compressed height-field film relaxation on a tissue foundation.
@@ -198,6 +199,202 @@ enum class EMixtormatRustStructure : uint8
 	Layered = 2
 };
 
+UENUM(BlueprintType)
+enum class EMixtormatWoodMode : uint8
+{
+	FullWood = 0 UMETA(DisplayName = "Full Wood (Substrate + Finish)"),
+	FinishOnly = 1 UMETA(DisplayName = "Finish Pass Only")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatWoodSpecies : uint8
+{
+	Oak = 0 UMETA(DisplayName = "Oak (Ring-Porous)"),
+	Maple = 1 UMETA(DisplayName = "Maple (Diffuse-Porous)"),
+	Pine = 2 UMETA(DisplayName = "Pine (Conifer / Resin Canals)")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatWoodCut : uint8
+{
+	PlainSawn = 0 UMETA(DisplayName = "Plain-Sawn (Tangential)"),
+	QuarterSawn = 1 UMETA(DisplayName = "Quarter-Sawn (Radial)"),
+	RiftSawn = 2 UMETA(DisplayName = "Rift-Sawn (Oblique)"),
+	EndGrain = 3 UMETA(DisplayName = "End-Grain (Cross)")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatWoodFigure : uint8
+{
+	None = 0 UMETA(DisplayName = "None (Straight)"),
+	Curly = 1 UMETA(DisplayName = "Curly / Fiddleback"),
+	Quilted = 2 UMETA(DisplayName = "Quilted (Blistered)"),
+	Birdseye = 3 UMETA(DisplayName = "Birdseye (Conical Dimple)"),
+	Interlocked = 4 UMETA(DisplayName = "Interlocked (Ribbon)")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatWoodPrep : uint8
+{
+	Planed = 0 UMETA(DisplayName = "Planed"),
+	Sanded = 1 UMETA(DisplayName = "Sanded"),
+	RawSawn = 2 UMETA(DisplayName = "Raw Sawn (Kerf)"),
+	WireBrushed = 3 UMETA(DisplayName = "Wire-Brushed")
+};
+
+UENUM(BlueprintType)
+enum class EMixtormatWoodFinish : uint8
+{
+	Bare = 0 UMETA(DisplayName = "None / Bare"),
+	WipedOil = 1 UMETA(DisplayName = "Wiped Oil"),
+	DissolvedDye = 2 UMETA(DisplayName = "Dissolved Dye"),
+	PigmentStain = 3 UMETA(DisplayName = "Pigment Stain"),
+	PoreFiller = 4 UMETA(DisplayName = "Pore Filler"),
+	FilmCoating = 5 UMETA(DisplayName = "Film Coating"),
+	Wax = 6 UMETA(DisplayName = "Wax")
+};
+
+// Coherent 3D log anatomy (rings, vessels/tracheids/canals, rays) sliced by cut plane,
+// plus orthogonal figure deformation, surface preparation/aging, and stackable finish/coating.
+USTRUCT(BlueprintType)
+struct MIXTORMATRUNTIME_API FMixtormatWood
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Full Wood generates 3D wood anatomy and optional finish; Finish Pass Only applies repeatable dye, stain, filler, film, or wax over the incoming wood surface."))
+	EMixtormatWoodMode Mode = EMixtormatWoodMode::FullWood;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Master contribution after scoped masks. Zero is exact identity."))
+	float Amount = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "-4", UIMax = "4", Delta = "0.01", ToolTip = "Pure multiplier on signed wood and coating relief."))
+	float HeightScale = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "9999", Delta = "1"))
+	int32 Seed = 42;
+
+	// --- Species & 3D Anatomy ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Species anatomical family: Oak (ring-porous earlywood vessels, dendritic latewood flame tracts, multiseriate + uniseriate rays), Maple (diffuse-porous uniform vessels, crisp latewood line, fine rays), Pine (non-porous conifer tracheids with normal axial/radial resin canals)."))
+	EMixtormatWoodSpecies Species = EMixtormatWoodSpecies::Oak;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "1", UIMax = "32", Delta = "0.1", ToolTip = "Annual growth ring frequency in 3D log radial space."))
+	float RingScale = 6.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.05", UIMax = "0.95", Delta = "0.01", ToolTip = "Fraction of each annual growth ring occupied by dense summer/latewood."))
+	float LatewoodRatio = 0.38f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Sharpness of the earlywood-to-latewood transition within each annual ring, separate from the sharp outer annual ring boundary."))
+	float LatewoodSharpness = 0.55f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Organic 3D radial and axial growth-ring undulation."))
+	float RingWobble = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Relative depth of open vessel pores (Oak/Maple) or resin canals and tracheid grooves (Pine), independent of pore density."))
+	float PoreDepth = 0.035f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Abundance of anatomical vessel pores (or axial/radial resin canals in Pine). Does not rescale surviving pore depth."))
+	float PoreDensity = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Prominence of 3D radial medullary rays (multiseriate silver fleck + uniseriate rays in Oak; fine rays in Maple/Pine). Appearance changes automatically with Cut."))
+	float RayAmount = 0.55f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.25", UIMax = "4", Delta = "0.02", ToolTip = "Relative 3D spacing and ribbon height of medullary rays."))
+	float RayScale = 1.0f;
+
+	// --- 3D Cut Orientation ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Sawing plane through the 3D log cylinder: Plain-Sawn (tangential cathedral arches and tall ray spindles), Quarter-Sawn (radial parallel ribbons and wide ray fleck), Rift-Sawn (45-degree oblique), or End-Grain (concentric cross-section)."))
+	EMixtormatWoodCut Cut = EMixtormatWoodCut::PlainSawn;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.05", UIMax = "2", Delta = "0.01", ToolTip = "Normalized distance of the board plane from the log pith axis. Smaller values tighten cathedral arches and increase ring curvature."))
+	float PithOffset = 0.45f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "-45", UIMax = "45", Delta = "0.5", ToolTip = "Longitudinal cant angle of the board cut relative to the log axis (degrees). Controls cathedral arch frequency on plain-sawn boards and grain runout."))
+	float CutTilt = 8.0f;
+
+	// --- Figure (Separate from Species) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "3D fiber undulation variant (independent of species): Curly/Fiddleback axial wave, Quilted biaxial blister, Birdseye conical radial dimple, or Interlocked alternating spiral ribbon."))
+	EMixtormatWoodFigure Figure = EMixtormatWoodFigure::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Amplitude of the 3D figure deformation and subsurface fiber inclination."))
+	float FigureAmount = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.25", UIMax = "8", Delta = "0.05", ToolTip = "Spatial frequency of figure waves, blisters, or birdseye dimples."))
+	float FigureScale = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Subsurface fiber-tilt reflectance modulation (chatoyance) driven by the 3D fiber inclination angle."))
+	float Chatoyance = 0.45f;
+
+	// --- Preparation & Aging ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Mechanical surface preparation before finishing: Planed, Sanded, Raw Sawn kerf marks, or Wire-Brushed earlywood erosion."))
+	EMixtormatWoodPrep Prep = EMixtormatWoodPrep::Planed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Intensity of tool marks, sanding scratches, saw kerf chatter, or wire-brushed earlywood excavation."))
+	float PrepIntensity = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "UV lignin photodegradation (silver-gray bleaching), differential earlywood recession, and fine axial drying checks."))
+	float Weathering = 0.0f;
+
+	// --- Bare Wood Material ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Baseline bare-wood roughness before finish sheen is applied."))
+	float Roughness = 0.58f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood")
+	FMixtormatColorRamp ColorRamp;
+
+	// --- Finish & Coating ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Finish process: Bare, Wiped Oil, Dissolved Dye, Pigment Stain (pools in pores/depressions), Pore Filler, Film Coating, or Wax."))
+	EMixtormatWoodFinish Finish = EMixtormatWoodFinish::WipedOil;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Finish stage strength. Zero leaves the wood or incoming surface untouched."))
+	float FinishAmount = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Refractive wet-out darkening and figure/chatoyance amplification from oil, dye, or film penetration. Independent of added colorant tint."))
+	float WetOut = 0.45f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Added dye, pigment stain, or pore-filler colorant strength. Dye penetrates fibers; Pigment Stain and Pore Filler concentrate in open pores and depressions."))
+	float TintAmount = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Colorant tint for Dissolved Dye, Pigment Stain, Pore Filler, or toned Film Coating."))
+	FLinearColor FinishTint = FLinearColor(0.18f, 0.09f, 0.04f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Calibrated coating thickness budget added above the substrate. Independent of input height min/max; oil can have low non-zero build."))
+	float FilmBuild = 0.01f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Capillary depression and open-pore leveling capacity against the local upper surface envelope."))
+	float DepressionFill = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Target finish sheen (0 = dead-flat matte, 1 = high-gloss polished film), independent of film build and wax amount."))
+	float Sheen = 0.55f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Coating-top application micro-relief (brush marks or spray orange peel) scaled by remaining coating thickness."))
+	float ApplicationTexture = 0.08f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "360", Delta = "1", ToolTip = "Brush or wiping direction in degrees for coating application marks."))
+	float ApplicationAngle = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "High-point and edge coating abrasion. Removes coating thickness first and restores underlying substrate color, roughness, and relief at breakthrough."))
+	float Wear = 0.0f;
+
+	// --- Channels ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood")
+	bool bWriteHeight = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood")
+	bool bWriteColor = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood")
+	bool bWriteRoughness = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Wood and finish write dielectric optics (metallic zero, F0 from bare wood or coating sheen)."))
+	bool bWriteMaterial = true;
+
+	FMixtormatWood()
+	{
+		ColorRamp.Stops = {
+			{0.0f, FLinearColor(0.16f, 0.095f, 0.052f, 1.0f)},
+			{0.38f, FLinearColor(0.36f, 0.22f, 0.12f, 1.0f)},
+			{0.72f, FLinearColor(0.54f, 0.37f, 0.21f, 1.0f)},
+			{1.0f, FLinearColor(0.68f, 0.50f, 0.31f, 1.0f)}};
+	}
+};
+
 // Ferrous-substrate assumption. No hidden metal, coating provenance or physical unit calibration.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatRust
@@ -264,6 +461,8 @@ struct MIXTORMATRUNTIME_API FMixtormatSurfacing
 	FMixtormatMoss Moss;
 		UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surfacing")
 		FMixtormatRust Rust;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Surfacing")
+	FMixtormatWood Wood;
 };
 
 // Published diagnostics are independent of channel write toggles, which govern composition.
@@ -298,9 +497,18 @@ struct MIXTORMATRUNTIME_API FMixtormatRustPreset
 	FMixtormatRust Settings;
 };
 
+struct MIXTORMATRUNTIME_API FMixtormatWoodPreset
+{
+	FText Name;
+	FText Description;
+	FMixtormatWood Settings;
+};
+};
+
 namespace MixtormatSurfacing
 {
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatRustPreset> GetRustPresets();
+	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatWoodPreset> GetWoodPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSkinPreset> GetSkinPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatMossPreset> GetMossPresets();
 	MIXTORMATRUNTIME_API TConstArrayView<FMixtormatSurfacingOutput> GetOutputs(EMixtormatSurfacingType Type);

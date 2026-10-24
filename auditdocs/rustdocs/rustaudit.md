@@ -354,3 +354,48 @@ These are proposed implementation gates.
 | **Stack and persistence** | Re-evaluation, reordering, duplication, copy/paste, and instances preserve seeds, units, scope, and reference behavior. |
 
 **The first release should be judged on composition correctness, coherent morphology, and stable physical scale. Simulation should earn its place by producing better transport or barrier-dependent growth.**
+
+## Source follow-up — localized pits, oxidation spots and peeling (2026-10-24)
+
+Implemented only in `Shaders/Private/MixtormatRust.usf`; runtime appearance and shader
+compilation remain unverified. The sections above remain a design proposal, not a record
+of shipped physical calibration, substrate inference or automatic ferrous fallback.
+Current Rust still uses relative units and the existing authored palette/controls.
+
+- Removed the universal `0.14 * PitDepth` recession floor and broad valley component.
+  Pit loss now follows bounded cell-distance mouths with varied radii, steep finite walls,
+  irregular floors and subordinate micro-pits. Shape support is separate from coverage.
+- Product rims now follow the actual pit-mouth distance, broken by correlated variation;
+  the old pigment contour of `ColonyCore` is no longer used as a geometric rim proxy.
+- Non-layered deposits are reduced inside pit mouths, with a bounded product contribution
+  around their edges. This changes existing Rust appearance; it is not a preset-only fix.
+- Pigment now blends dark-body, red-brown and sparse bloom coordinates in the existing
+  color ramp using colony-correlated spot masks. Fine grain is subordinate. Variation=0
+  selects a uniform body coordinate; custom palettes remain authoritative, so darkening
+  depends on their authored colors. No light-dependent highlights or shadows are added.
+- Layered scale has a lower retained envelope beneath the upper plates. Upper seams and
+  shedding can expose lower oxide or the recessed substrate. Reserved buildup headroom
+  permits asymmetric edge lift without flattening every high tier through saturation.
+- Both retained layers and pit residue disappear at Flaking=1; metal loss remains.
+  Buildup=0 still permits thin oxide, while PitDepth=0 eliminates metal recession.
+  No new controls, parameter bindings, shared apply contracts or iterative passes added.
+
+Remaining: independent artist controls for pit/grain/plate scale and oxidation spots,
+explicit projected overlaps beyond the two-level envelope, transport and physical
+calibration. True detached sheets, underside voids and overhangs still require geometry.
+Do not describe this analytic source change as a corrosion simulation or a validated
+match to the conceptual image board.
+
+Owner visual checks (not run):
+
+1. Compare board 05 against Buildup=0: localized pit mouths, uncut gaps, no broad depth floor.
+2. Compare board 07/08 in Layered mode while sweeping Flaking: lifted upper plates,
+   lower-scale exposure and final bare recessed metal; no restoration of consumed metal.
+3. Compare base color alone with the old result: dark bodies, red-brown patches and limited
+   orange blooms. Check the default and a custom palette, including Variation=0.
+4. Check Coverage=0/1, PitDepth=0, Buildup=0 and Flaking=1, plus channel-write toggles and
+   masks. Fully covered existing pits must not be renormalized as Coverage increases.
+5. Inspect 3×3 tiling, 1K/2K/4K output and small FeatureSize under grazing light for mouth,
+   rim and seam aliasing. Check substrate detail, final normals and layer ordering.
+
+No commands, builds, tests, diagnostics, installs or Unreal launches were run.

@@ -56,7 +56,8 @@ enum class EMixtormatParameterOwnerType : uint8
 	BehaviorFeatherSettings = 30 UMETA(DisplayName = "Behavior Feather"),
 		Boolean = 31 UMETA(DisplayName = "Boolean"),
 	Surfacing = 32 UMETA(DisplayName = "Surfacing"),
-		Rust = 33 UMETA(DisplayName = "Rust")
+		Rust = 33 UMETA(DisplayName = "Rust"),
+	Wood = 34 UMETA(DisplayName = "Wood")
 };
 
 UENUM(BlueprintType)

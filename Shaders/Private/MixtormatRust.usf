@@ -42,6 +42,25 @@ static const float RUST_NOISE_ROUGHNESS = 0.55f;
 static const float RUST_NOISE_LACUNARITY = 2.0f;
 static const float2 RUST_NOISE_AA_RANGE = float2(0.35f, 0.9f);
 
+// Relative morphology, not millimeters: pit walls/rims share the same cell-distance profile.
+static const float RUST_PIT_PERIOD_RATIO = 3.2f;
+static const float2 RUST_PIT_RADIUS_RANGE = float2(0.22f, 0.42f);
+static const float RUST_PIT_WALL_RATIO = 0.18f;
+static const float RUST_PIT_RIM_RATIO = 0.28f;
+static const float RUST_PIT_BOUNDARY_VARIATION = 0.18f;
+static const float RUST_PIT_FLOOR_RELIEF = 0.12f;
+static const float RUST_PIT_MICRO_DEPTH = 0.12f;
+static const float RUST_PIT_RIM_DEPOSIT = 0.18f;
+// Leave room within Buildup for edge lift; exposed lower scale remains below the top plate.
+static const float2 RUST_LOWER_SCALE_HEIGHT = float2(0.10f, 0.22f);
+static const float2 RUST_UPPER_SCALE_HEIGHT = float2(0.38f, 0.68f);
+static const float RUST_SCALE_LIFT_BUDGET = 0.28f;
+// Positions in the existing artist-authored ramp, never baked lighting or replacement RGB colors.
+static const float RUST_PIGMENT_DARK = 0.18f;
+static const float RUST_PIGMENT_BODY = 0.24f;
+static const float RUST_PIGMENT_RED = 0.48f;
+static const float RUST_PIGMENT_BLOOM = 0.84f;
+
 // Reuse Noise's periodic gradient lattice and octave contract. Filter each octave,
 // retaining the full normalization so unresolved detail tends to its mean, not a new look.
 // Returns float3(Value, dValue/dU, dValue/dV) in UV space so domain warps can propagate
@@ -262,8 +281,7 @@ float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
 	float ColonyNucleus = saturate(1.0f - ColonyCell.x * 1.15f);
 
 	float2 PitDelta;
-	float4 PitCell = RustWorley(Q + ColonyDrift * (0.25f / BasePeriod), BasePeriod * 3.2f, 149u, 0.95f, DetailFootprint, PitDelta);
-	float PitNucleus = saturate(1.0f - PitCell.x * 1.35f);
+	float4 PitCell = RustWorley(Q, BasePeriod * RUST_PIT_PERIOD_RATIO, 149u, 0.95f, DetailFootprint, PitDelta);
 
 	// Pinpoint satellite freckling & filiform creep around colony borders.
 	float2 FreckleDelta;
@@ -292,14 +310,26 @@ float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
 	float Basin = saturate(0.5f + Broad);
 	float Pits = saturate(0.5f + Meso);
 
-	// 3. Metal recession (PitDepth): sparse steep-walled pits -> overlapping pits -> connected valleys.
-	// Fixed profile revealed by Attack; shedding (Flaking) never restores consumed metal.
-	float ValleyErosion = (0.25f + 0.75f * ColonyCore) * saturate(0.42f + 0.58f * Basin + 0.28f * Meso);
-	float PrimaryPitBowl = pow(PitNucleus, 1.65f) * (0.45f + 0.55f * PitCell.w);
-	float MicroPitBowl = pow(FreckleSpatter, 1.8f) * 0.45f;
-	float PitLocalization = saturate(PrimaryPitBowl * 0.68f + ValleyErosion * 0.46f + MicroPitBowl * 0.26f
-		+ max(Bias, 0.0f) * 0.22f);
-	float Loss = Attack * PitDepth * (0.14f + 0.86f * PitLocalization);
+	// 3. Localized metal loss: finite mouths and steep walls, not a recession floor over
+	// the entire attack mask. Coverage reveals a fixed profile; shedding cannot restore metal.
+	float PitRadius = lerp(RUST_PIT_RADIUS_RANGE.x, RUST_PIT_RADIUS_RANGE.y, PitCell.w)
+		* (1.0f + RUST_PIT_BOUNDARY_VARIATION * Var * Fine);
+	float PitEdge = PitCell.x - PitRadius;
+	float PitAA = DetailFootprint * BasePeriod * RUST_PIT_PERIOD_RATIO;
+	float PitWallWidth = max(PitRadius * RUST_PIT_WALL_RATIO, PitAA);
+	float PitResolved = 1.0f - smoothstep(RUST_NOISE_AA_RANGE.x, RUST_NOISE_AA_RANGE.y, PitAA);
+	float PitMouth = (1.0f - smoothstep(-PitWallWidth, PitWallWidth, PitEdge)) * PitResolved;
+	float PitFloor = saturate(1.0f - RUST_PIT_FLOOR_RELIEF * (0.5f + Fine));
+	float PrimaryPitBowl = PitMouth * PitFloor * lerp(0.45f, 1.0f, PitCell.w);
+	float MicroPitBowl = pow(FreckleSpatter, 1.8f) * RUST_PIT_MICRO_DEPTH;
+	float PitLocalization = saturate(max(PrimaryPitBowl, MicroPitBowl));
+	float Loss = Attack * PitDepth * PitLocalization;
+
+	// Broken product rings follow actual pit mouths, not a contour of the attack noise.
+	float PitRimWidth = max(PitRadius * RUST_PIT_RIM_RATIO, PitAA);
+	float PitRim = smoothstep(-PitWallWidth, 0.0f, PitEdge)
+		* (1.0f - smoothstep(0.0f, PitRimWidth, PitEdge)) * PitResolved
+		* smoothstep(0.25f, 0.75f, saturate(0.5f + Meso));
 
 	// 4. Structure-specific deposit envelope, delamination plates, and shedding (Flaking).
 	float Deposit = 0.0f;
@@ -308,6 +338,8 @@ float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
 	float PlateEdgeLift = 0.0f;
 	float PlateTier = 0.5f;
 	float NoduleCrest = 0.0f;
+	float LowerDeposit = 0.0f;
+	float LowerRetentionField = 0.0f;
 
 	float GranularAggregate = saturate(0.5f + Fine * 0.65f + Micro * 0.35f + (FreckleSpatter - 0.25f) * 0.45f);
 
@@ -366,12 +398,12 @@ float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
 		float BorderBand = (1.0f - smoothstep(0.03f, 0.22f, Plate.z)) * PrimarySeam;
 		PlateEdgeLift = BorderBand * AsymmetricProj * (0.35f + 0.65f * saturate(Flaking) + 0.35f * saturate(Var));
 
-		// Multi-tier stepped plate thickness + internal strata terraces.
-		float StrataStep = 0.38f + 0.34f * PlateTier
-			+ 0.28f * smoothstep(0.32f, 0.42f, SubPlate.w)
-			+ 0.18f * smoothstep(0.68f, 0.78f, Pits);
-		Deposit = (StrataStep + PlateEdgeLift * 0.42f) * PlateCrackSeam
-			* (0.80f + 0.45f * Var * Basin);
+		// Two retained envelopes: an upper plate can peel away without erasing the lower
+		// scale bed. Lift uses reserved height headroom instead of clipping every tall plate flat.
+		LowerDeposit = lerp(RUST_LOWER_SCALE_HEIGHT.x, RUST_LOWER_SCALE_HEIGHT.y, SubPlate.w);
+		float StrataStep = lerp(RUST_UPPER_SCALE_HEIGHT.x, RUST_UPPER_SCALE_HEIGHT.y, PlateTier);
+		Deposit = saturate(StrataStep + PlateEdgeLift * RUST_SCALE_LIFT_BUDGET);
+		LowerRetentionField = lerp(0.35f, 0.95f, SubPlate.w);
 
 		// Plate-coherent retention: whole scale plates and fractured edge chips delaminate together.
 		float PlateRetention = 0.62f * Plate.w + 0.23f * SubPlate.w
@@ -382,39 +414,44 @@ float4 RustFields(float2 UV, float2 DX, float2 DY, float Bias, float Footprint)
 	float Survives = Flaking <= 0.0f ? 1.0f
 		: (Flaking >= 1.0f ? 0.0f : smoothstep(Flaking - AA, Flaking + AA, RetentionField));
 
-	// Surviving deposit relief above the recessed metal bed.
-	float Retained = Attack * Survives * Buildup * saturate(Deposit);
+	float TopPresence = Survives;
+	float LowerSurvives = 0.0f;
+	if (Structure == 2u)
+	{
+		TopPresence *= PlateCrackSeam;
+		LowerSurvives = Flaking <= 0.0f ? 1.0f
+			: (Flaking >= 1.0f ? 0.0f : smoothstep(Flaking - AA, Flaking + AA, LowerRetentionField));
+	}
+	else
+	{
+		// Keep granular relief out of the deepest pit floors; retained product can form
+		// a broken mouth rim without turning every corroded pixel into a raised bead.
+		Deposit = Deposit * (1.0f - PitMouth) + PitRim * RUST_PIT_RIM_DEPOSIT;
+	}
+	float ExposedLowerScale = (1.0f - TopPresence) * LowerSurvives;
+	float Retained = Attack * Buildup
+		* (TopPresence * saturate(Deposit) + ExposedLowerScale * LowerDeposit);
 
-	// Visible oxide coverage:
-	// - Surviving rust covers the surface (with deep layered fracture cracks partially exposing dark inner oxide).
-	// - When Flaking < 1 and PitDepth > 0, spalled/shed beds inside deep pits retain a thin dark corroded
-	//   residue unless Flaking reaches 1.0 (which enforces 100% oxide removal per contract).
-	float SpalledPitResidue = saturate(1.0f - Flaking) * (1.0f - Survives)
+	// The material follows the same retained envelopes. Thin oxide still exists at Buildup=0;
+	// Flaking=1 removes both scale layers/residue but leaves the original metal loss intact.
+	float VisibleRetention = TopPresence + ExposedLowerScale;
+	float SpalledPitResidue = saturate(1.0f - Flaking) * (1.0f - VisibleRetention)
 		* smoothstep(0.25f, 0.75f, PitLocalization) * saturate(PitDepth * 18.0f) * 0.42f;
-	float SeamOxide = Structure == 2u ? lerp(0.42f, 1.0f, PlateCrackSeam) : 1.0f;
-	float Oxide = saturate(Attack * (Survives * SeamOxide + SpalledPitResidue));
+	float Oxide = saturate(Attack * (VisibleRetention + SpalledPitResidue));
 
-	// 5. Mineral-inspired pigment (0..1 into ColorRamp; strictly unlit & Coverage-independent):
-	// - 0.00..0.30: Dark pit cores, spalled beds, and fracture seams.
-	// - 0.30..0.70: Red-brown / dark chestnut across consolidated crust & scale plates.
-	// - 0.70..1.00: Bright orange-ochre bloom on granular nodules, lifted rims, and porous pockets.
-	float ColonyRimZone = saturate(1.0f - abs(ColonyCore - 0.38f) * 2.8f) * Survives;
-	float PitCoreDarkening = PitLocalization * (0.65f - 0.35f * Survives + 0.30f * saturate(PitDepth * 12.0f));
-	float SeamDarkening = Structure == 2u ? (1.0f - PlateCrackSeam) * 0.55f : 0.0f;
-	float BloomCrest = Structure == 1u
-		? (NoduleCrest * 0.48f + ColonyRimZone * 0.26f)
-		: (Structure == 2u
-			? ((1.0f - PlateTier) * 0.22f + PlateEdgeLift * 0.32f + ColonyRimZone * 0.22f)
-			: (ColonyRimZone * 0.30f + (1.0f - ColonyCore) * 0.20f));
-
-	float MineralGrain = (Fine * 0.32f + Micro * 0.22f + (FreckleCell.w - 0.5f) * 0.18f) * (0.25f + 0.75f * saturate(Var));
-	float BasePigment = 0.48f
-		+ Var * (Broad * 0.34f + Meso * 0.26f)
-		+ BloomCrest * (0.35f + 0.45f * saturate(Var))
-		- PitCoreDarkening * (0.42f + 0.25f * saturate(Var))
-		- SeamDarkening
-		+ MineralGrain;
-	float Pigment = saturate(BasePigment);
+	// 5. Dark consolidated oxide -> red-brown patches -> sparse orange blooms. Spot masks
+	// share colony organization, but are not the height field or a baked cavity shadow.
+	float OxidationSpots = smoothstep(0.38f, 0.72f,
+		saturate(0.5f + MacroZone * 0.45f + Broad * 0.55f + (ColonyCell.w - 0.5f) * 0.35f));
+	float OrangeBloom = smoothstep(0.58f, 0.85f,
+		saturate(0.5f + Meso * 0.65f + (ColonyCell.w - 0.5f) * 0.30f))
+		* saturate(PitRim + NoduleCrest * 0.45f + PlateEdgeLift * 0.35f) * TopPresence;
+	float Pigment = lerp(RUST_PIGMENT_DARK, RUST_PIGMENT_RED, OxidationSpots);
+	Pigment = lerp(Pigment, RUST_PIGMENT_BLOOM, OrangeBloom);
+	Pigment = lerp(Pigment, RUST_PIGMENT_DARK,
+		saturate(ExposedLowerScale + PitLocalization * 0.45f));
+	float MineralGrain = Fine * 0.08f + Micro * 0.04f;
+	Pigment = saturate(lerp(RUST_PIGMENT_BODY, Pigment + MineralGrain, saturate(Var)));
 
 	// Microstructure roughness modulation around the artist's Roughness value.
 	float RoughnessMod = (GranularAggregate - 0.5f) * 0.22f

@@ -391,6 +391,21 @@ namespace
 				}
 			}
 		}
+		else if (Owner == EMixtormatParameterOwnerType::Wood)
+		{
+			static const FMixtormatWood Defaults;
+			const FProperty* Property = FMixtormatWood::StaticStruct()->FindPropertyByName(Parameter);
+			if (const FFloatProperty* Float = CastField<FFloatProperty>(Property))
+			{
+				Result.Value = *Float->ContainerPtrToValuePtr<float>(&Defaults);
+				Result.bFound = true;
+			}
+			else if (const FIntProperty* Int = CastField<FIntProperty>(Property))
+			{
+				Result.Value = static_cast<float>(*Int->ContainerPtrToValuePtr<int32>(&Defaults));
+				Result.bFound = true;
+			}
+		}
 		else if (Owner == EMixtormatParameterOwnerType::Rust)
 				{
 					static const FMixtormatRust Defaults;

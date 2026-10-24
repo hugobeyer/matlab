@@ -632,6 +632,317 @@ namespace MixtormatSurfacing
 		return MakeArrayView(Presets);
 	}
 
+	TConstArrayView<FMixtormatWoodPreset> GetWoodPresets()
+	{
+		static const TArray<FMixtormatWoodPreset> Presets = []()
+		{
+			TArray<FMixtormatWoodPreset> Built;
+			Built.SetNum(9);
+
+			// 0. Quarter-Sawn White Oak
+			FMixtormatWoodPreset& QSOak = Built[0];
+			QSOak.Name = NSLOCTEXT("MixtormatSurfacing", "WoodQSOak", "Quarter-Sawn White Oak");
+			QSOak.Description = NSLOCTEXT("MixtormatSurfacing", "WoodQSOakHelp", "Ring-porous White Oak cut radially (Quarter-Sawn): parallel vertical ring ribbons, open earlywood pore rows, radial latewood flame tracts, and wide silver multiseriate ray fleck with hand-wiped oil finish.");
+			{
+				FMixtormatWood& W = QSOak.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Oak;
+				W.Cut = EMixtormatWoodCut::QuarterSawn;
+				W.PithOffset = 0.55f;
+				W.CutTilt = 3.0f;
+				W.RingScale = 7.0f;
+				W.LatewoodRatio = 0.42f;
+				W.LatewoodSharpness = 0.65f;
+				W.RingWobble = 0.25f;
+				W.PoreDepth = 0.038f;
+				W.PoreDensity = 0.72f;
+				W.RayAmount = 0.82f;
+				W.RayScale = 1.15f;
+				W.Figure = EMixtormatWoodFigure::None;
+				W.FigureAmount = 0.12f;
+				W.Chatoyance = 0.52f;
+				W.Prep = EMixtormatWoodPrep::Planed;
+				W.PrepIntensity = 0.15f;
+				W.Roughness = 0.52f;
+				W.Finish = EMixtormatWoodFinish::WipedOil;
+				W.FinishAmount = 0.75f;
+				W.WetOut = 0.52f;
+				W.TintAmount = 0.12f;
+				W.FinishTint = FLinearColor(0.24f, 0.14f, 0.06f, 1.0f);
+				W.FilmBuild = 0.008f;
+				W.DepressionFill = 0.22f;
+				W.Sheen = 0.52f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.14f, 0.09f, 0.05f, 1.0f)},
+					{0.38f, FLinearColor(0.33f, 0.22f, 0.13f, 1.0f)},
+					{0.72f, FLinearColor(0.49f, 0.36f, 0.22f, 1.0f)},
+					{1.0f, FLinearColor(0.66f, 0.52f, 0.35f, 1.0f)}};
+			}
+
+			// 1. Plain-Sawn Red Oak
+			FMixtormatWoodPreset& PSOak = Built[1];
+			PSOak.Name = NSLOCTEXT("MixtormatSurfacing", "WoodPSOak", "Plain-Sawn Red Oak");
+			PSOak.Description = NSLOCTEXT("MixtormatSurfacing", "WoodPSOakHelp", "Tangential plain-sawn Red Oak with parabolic cathedral arches, open earlywood pores, short dark vertical ray spindles, pigment stain pooled in pores, and satin film build.");
+			{
+				FMixtormatWood& W = PSOak.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Oak;
+				W.Cut = EMixtormatWoodCut::PlainSawn;
+				W.PithOffset = 0.38f;
+				W.CutTilt = 11.0f;
+				W.RingScale = 5.5f;
+				W.LatewoodRatio = 0.38f;
+				W.LatewoodSharpness = 0.62f;
+				W.RingWobble = 0.38f;
+				W.PoreDepth = 0.045f;
+				W.PoreDensity = 0.78f;
+				W.RayAmount = 0.45f;
+				W.RayScale = 1.0f;
+				W.Prep = EMixtormatWoodPrep::Sanded;
+				W.PrepIntensity = 0.18f;
+				W.Finish = EMixtormatWoodFinish::PigmentStain;
+				W.FinishAmount = 0.8f;
+				W.WetOut = 0.48f;
+				W.TintAmount = 0.55f;
+				W.FinishTint = FLinearColor(0.15f, 0.065f, 0.03f, 1.0f);
+				W.FilmBuild = 0.02f;
+				W.DepressionFill = 0.42f;
+				W.Sheen = 0.62f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.16f, 0.08f, 0.045f, 1.0f)},
+					{0.35f, FLinearColor(0.38f, 0.21f, 0.12f, 1.0f)},
+					{0.7f, FLinearColor(0.56f, 0.35f, 0.21f, 1.0f)},
+					{1.0f, FLinearColor(0.70f, 0.48f, 0.31f, 1.0f)}};
+			}
+
+			// 2. Curly Fiddleback Maple
+			FMixtormatWoodPreset& CurlyMaple = Built[2];
+			CurlyMaple.Name = NSLOCTEXT("MixtormatSurfacing", "WoodCurlyMaple", "Curly Fiddleback Maple");
+			CurlyMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodCurlyMapleHelp", "Diffuse-porous quarter-sawn Maple with tight sinusoidal fiddleback curl, subsurface fiber-tilt chatoyance, amber dissolved dye, and high-gloss luthier film coat.");
+			{
+				FMixtormatWood& W = CurlyMaple.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Maple;
+				W.Cut = EMixtormatWoodCut::QuarterSawn;
+				W.PithOffset = 0.62f;
+				W.CutTilt = 4.0f;
+				W.RingScale = 8.0f;
+				W.LatewoodRatio = 0.22f;
+				W.LatewoodSharpness = 0.82f;
+				W.RingWobble = 0.22f;
+				W.PoreDepth = 0.012f;
+				W.PoreDensity = 0.45f;
+				W.RayAmount = 0.38f;
+				W.RayScale = 0.85f;
+				W.Figure = EMixtormatWoodFigure::Curly;
+				W.FigureAmount = 0.78f;
+				W.FigureScale = 2.4f;
+				W.Chatoyance = 0.85f;
+				W.Prep = EMixtormatWoodPrep::Sanded;
+				W.PrepIntensity = 0.08f;
+				W.Roughness = 0.42f;
+				W.Finish = EMixtormatWoodFinish::DissolvedDye;
+				W.FinishAmount = 0.88f;
+				W.WetOut = 0.72f;
+				W.TintAmount = 0.42f;
+				W.FinishTint = FLinearColor(0.58f, 0.28f, 0.05f, 1.0f);
+				W.FilmBuild = 0.045f;
+				W.DepressionFill = 0.78f;
+				W.Sheen = 0.86f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.32f, 0.19f, 0.09f, 1.0f)},
+					{0.35f, FLinearColor(0.58f, 0.41f, 0.23f, 1.0f)},
+					{0.72f, FLinearColor(0.76f, 0.60f, 0.38f, 1.0f)},
+					{1.0f, FLinearColor(0.88f, 0.75f, 0.54f, 1.0f)}};
+			}
+
+			// 3. Quilted Bigleaf Maple
+			FMixtormatWoodPreset& QuiltMaple = Built[3];
+			QuiltMaple.Name = NSLOCTEXT("MixtormatSurfacing", "WoodQuiltMaple", "Quilted Bigleaf Maple");
+			QuiltMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodQuiltMapleHelp", "Tangential Bigleaf Maple with blistered biaxial quilted figure, deep chatoyant pillows, warm honey dye, and levelled high-gloss finish.");
+			{
+				FMixtormatWood& W = QuiltMaple.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Maple;
+				W.Cut = EMixtormatWoodCut::PlainSawn;
+				W.PithOffset = 0.48f;
+				W.CutTilt = 6.0f;
+				W.RingScale = 5.5f;
+				W.LatewoodRatio = 0.24f;
+				W.LatewoodSharpness = 0.78f;
+				W.RingWobble = 0.35f;
+				W.PoreDepth = 0.012f;
+				W.PoreDensity = 0.42f;
+				W.RayAmount = 0.32f;
+				W.Figure = EMixtormatWoodFigure::Quilted;
+				W.FigureAmount = 0.85f;
+				W.FigureScale = 1.65f;
+				W.Chatoyance = 0.88f;
+				W.Prep = EMixtormatWoodPrep::Sanded;
+				W.PrepIntensity = 0.06f;
+				W.Roughness = 0.4f;
+				W.Finish = EMixtormatWoodFinish::FilmCoating;
+				W.FinishAmount = 0.92f;
+				W.WetOut = 0.75f;
+				W.TintAmount = 0.35f;
+				W.FinishTint = FLinearColor(0.52f, 0.24f, 0.05f, 1.0f);
+				W.FilmBuild = 0.055f;
+				W.DepressionFill = 0.85f;
+				W.Sheen = 0.9f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.30f, 0.17f, 0.08f, 1.0f)},
+					{0.38f, FLinearColor(0.55f, 0.38f, 0.20f, 1.0f)},
+					{0.74f, FLinearColor(0.75f, 0.58f, 0.35f, 1.0f)},
+					{1.0f, FLinearColor(0.86f, 0.72f, 0.50f, 1.0f)}};
+			}
+
+			// 4. Birdseye Sugar Maple
+			FMixtormatWoodPreset& BirdseyeMaple = Built[4];
+			BirdseyeMaple.Name = NSLOCTEXT("MixtormatSurfacing", "WoodBirdseyeMaple", "Birdseye Sugar Maple");
+			BirdseyeMaple.Description = NSLOCTEXT("MixtormatSurfacing", "WoodBirdseyeMapleHelp", "Tangential plain-sawn Sugar Maple where localized conical dimples indent the growth rings into circular birdseye figures with radial fiber-tilt chatoyance.");
+			{
+				FMixtormatWood& W = BirdseyeMaple.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Maple;
+				W.Cut = EMixtormatWoodCut::PlainSawn;
+				W.PithOffset = 0.42f;
+				W.CutTilt = 7.0f;
+				W.RingScale = 6.5f;
+				W.LatewoodRatio = 0.20f;
+				W.LatewoodSharpness = 0.84f;
+				W.RingWobble = 0.28f;
+				W.PoreDepth = 0.01f;
+				W.PoreDensity = 0.4f;
+				W.RayAmount = 0.30f;
+				W.Figure = EMixtormatWoodFigure::Birdseye;
+				W.FigureAmount = 0.82f;
+				W.FigureScale = 2.1f;
+				W.Chatoyance = 0.72f;
+				W.Finish = EMixtormatWoodFinish::WipedOil;
+				W.FinishAmount = 0.72f;
+				W.WetOut = 0.50f;
+				W.TintAmount = 0.1f;
+				W.FilmBuild = 0.012f;
+				W.Sheen = 0.62f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.35f, 0.22f, 0.11f, 1.0f)},
+					{0.4f, FLinearColor(0.62f, 0.46f, 0.28f, 1.0f)},
+					{0.75f, FLinearColor(0.79f, 0.65f, 0.45f, 1.0f)},
+					{1.0f, FLinearColor(0.90f, 0.80f, 0.62f, 1.0f)}};
+			}
+
+			// 5. Heart Pine (Plain-Sawn)
+			FMixtormatWoodPreset& HeartPine = Built[5];
+			HeartPine.Name = NSLOCTEXT("MixtormatSurfacing", "WoodHeartPine", "Heart Pine (Plain-Sawn)");
+			HeartPine.Description = NSLOCTEXT("MixtormatSurfacing", "WoodHeartPineHelp", "Non-porous conifer (Pinus) with wide pale earlywood, abrupt dense resinous latewood bands, normal axial/radial resin canals, and warm amber wax finish.");
+			{
+				FMixtormatWood& W = HeartPine.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Pine;
+				W.Cut = EMixtormatWoodCut::PlainSawn;
+				W.PithOffset = 0.35f;
+				W.CutTilt = 10.0f;
+				W.RingScale = 5.0f;
+				W.LatewoodRatio = 0.34f;
+				W.LatewoodSharpness = 0.76f;
+				W.RingWobble = 0.42f;
+				W.PoreDepth = 0.022f;
+				W.PoreDensity = 0.52f;
+				W.RayAmount = 0.18f;
+				W.RayScale = 0.8f;
+				W.Prep = EMixtormatWoodPrep::Planed;
+				W.PrepIntensity = 0.22f;
+				W.Roughness = 0.55f;
+				W.Finish = EMixtormatWoodFinish::Wax;
+				W.FinishAmount = 0.68f;
+				W.WetOut = 0.42f;
+				W.TintAmount = 0.18f;
+				W.FinishTint = FLinearColor(0.45f, 0.22f, 0.05f, 1.0f);
+				W.FilmBuild = 0.01f;
+				W.DepressionFill = 0.25f;
+				W.Sheen = 0.54f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.22f, 0.10f, 0.035f, 1.0f)},
+					{0.36f, FLinearColor(0.46f, 0.24f, 0.09f, 1.0f)},
+					{0.70f, FLinearColor(0.68f, 0.44f, 0.21f, 1.0f)},
+					{1.0f, FLinearColor(0.82f, 0.62f, 0.36f, 1.0f)}};
+			}
+
+			// 6. Wire-Brushed Weathered Oak
+			FMixtormatWoodPreset& WeatheredOak = Built[6];
+			WeatheredOak.Name = NSLOCTEXT("MixtormatSurfacing", "WoodWeatheredOak", "Wire-Brushed Weathered Oak");
+			WeatheredOak.Description = NSLOCTEXT("MixtormatSurfacing", "WoodWeatheredOakHelp", "Unfinished Oak with wire-brushed earlywood excavation, standing dense latewood ridges, UV silvered lignin photodegradation, and fine axial drying checks.");
+			{
+				FMixtormatWood& W = WeatheredOak.Settings;
+				W.Mode = EMixtormatWoodMode::FullWood;
+				W.Species = EMixtormatWoodSpecies::Oak;
+				W.Cut = EMixtormatWoodCut::PlainSawn;
+				W.PithOffset = 0.42f;
+				W.CutTilt = 9.0f;
+				W.RingScale = 6.0f;
+				W.LatewoodRatio = 0.42f;
+				W.LatewoodSharpness = 0.68f;
+				W.RingWobble = 0.45f;
+				W.PoreDepth = 0.055f;
+				W.PoreDensity = 0.82f;
+				W.RayAmount = 0.55f;
+				W.Prep = EMixtormatWoodPrep::WireBrushed;
+				W.PrepIntensity = 0.78f;
+				W.Weathering = 0.75f;
+				W.Roughness = 0.82f;
+				W.Finish = EMixtormatWoodFinish::Bare;
+				W.FinishAmount = 0.0f;
+				W.ColorRamp.Stops = {
+					{0.0f, FLinearColor(0.12f, 0.11f, 0.10f, 1.0f)},
+					{0.4f, FLinearColor(0.28f, 0.26f, 0.23f, 1.0f)},
+					{0.75f, FLinearColor(0.44f, 0.41f, 0.37f, 1.0f)},
+					{1.0f, FLinearColor(0.58f, 0.55f, 0.50f, 1.0f)}};
+			}
+
+			// 7. Finish Pass · Dark Pore Filler
+			FMixtormatWoodPreset& PoreFillerPass = Built[7];
+			PoreFillerPass.Name = NSLOCTEXT("MixtormatSurfacing", "WoodFinishPoreFiller", "Finish Pass · Dark Pore Filler");
+			PoreFillerPass.Description = NSLOCTEXT("MixtormatSurfacing", "WoodFinishPoreFillerHelp", "Repeatable Finish-Only pass: packs dark walnut paste filler into open vessel pores and depressions against the upper surface envelope without building a continuous film.");
+			{
+				FMixtormatWood& W = PoreFillerPass.Settings;
+				W.Mode = EMixtormatWoodMode::FinishOnly;
+				W.Finish = EMixtormatWoodFinish::PoreFiller;
+				W.FinishAmount = 1.0f;
+				W.WetOut = 0.18f;
+				W.TintAmount = 0.85f;
+				W.FinishTint = FLinearColor(0.055f, 0.032f, 0.018f, 1.0f);
+				W.FilmBuild = 0.0f;
+				W.DepressionFill = 0.78f;
+				W.Sheen = 0.38f;
+				W.ApplicationTexture = 0.04f;
+				W.Wear = 0.0f;
+			}
+
+			// 8. Finish Pass · Worn Satin Varnish
+			FMixtormatWoodPreset& WornVarnishPass = Built[8];
+			WornVarnishPass.Name = NSLOCTEXT("MixtormatSurfacing", "WoodFinishWornVarnish", "Finish Pass · Worn Satin Varnish");
+			WornVarnishPass.Description = NSLOCTEXT("MixtormatSurfacing", "WoodFinishWornVarnishHelp", "Repeatable Finish-Only pass: warm amber varnish film with capillary pore leveling, subtle brush marks, and high-point abrasion that exposes the underlying wood at wear breakthrough.");
+			{
+				FMixtormatWood& W = WornVarnishPass.Settings;
+				W.Mode = EMixtormatWoodMode::FinishOnly;
+				W.Finish = EMixtormatWoodFinish::FilmCoating;
+				W.FinishAmount = 1.0f;
+				W.WetOut = 0.58f;
+				W.TintAmount = 0.28f;
+				W.FinishTint = FLinearColor(0.32f, 0.16f, 0.04f, 1.0f);
+				W.FilmBuild = 0.032f;
+				W.DepressionFill = 0.62f;
+				W.Sheen = 0.68f;
+				W.ApplicationTexture = 0.14f;
+				W.ApplicationAngle = 0.0f;
+				W.Wear = 0.35f;
+			}
+
+			return Built;
+		}();
+		return MakeArrayView(Presets);
+	}
+
 	TConstArrayView<FMixtormatSurfacingOutput> GetOutputs(const EMixtormatSurfacingType Type)
 	{
 		using K = EMixtormatPublishedFieldKind;
@@ -661,6 +972,17 @@ namespace MixtormatSurfacing
 					{FName(TEXT("OxideCoverage")), NSLOCTEXT("MixtormatSurfacing", "RustCoverage", "Visible Oxide"), K::Scalar01},
 				};
 				if (Type == EMixtormatSurfacingType::Rust) { return MakeArrayView(RustOutputs); }
+		static const FMixtormatSurfacingOutput WoodOutputs[] = {
+			{FName(TEXT("Height")), NSLOCTEXT("MixtormatSurfacing", "WoodHeight", "Height"), K::ScalarSigned},
+			{FName(TEXT("Color")), NSLOCTEXT("MixtormatSurfacing", "WoodColor", "Color"), K::Color},
+			{FName(TEXT("Roughness")), NSLOCTEXT("MixtormatSurfacing", "WoodRoughness", "Roughness"), K::Scalar01},
+			{FName(TEXT("PoreMask")), NSLOCTEXT("MixtormatSurfacing", "WoodPoreMask", "Pores & Canals"), K::Scalar01},
+			{FName(TEXT("LatewoodMask")), NSLOCTEXT("MixtormatSurfacing", "WoodLatewoodMask", "Latewood Rings"), K::Scalar01},
+			{FName(TEXT("RayMask")), NSLOCTEXT("MixtormatSurfacing", "WoodRayMask", "Medullary Rays"), K::Scalar01},
+			{FName(TEXT("CoatThickness")), NSLOCTEXT("MixtormatSurfacing", "WoodCoatThickness", "Coat Thickness"), K::Scalar01},
+			{FName(TEXT("FlowDirection")), NSLOCTEXT("MixtormatSurfacing", "WoodFlow", "Fiber Flow"), K::Flow},
+		};
+		if (Type == EMixtormatSurfacingType::Wood) { return MakeArrayView(WoodOutputs); }
 				if (Type == EMixtormatSurfacingType::Moss) { return MakeArrayView(MossOutputs); }
 		return Type == EMixtormatSurfacingType::Skin
 			? MakeArrayView(SkinOutputs) : TConstArrayView<FMixtormatSurfacingOutput>();
