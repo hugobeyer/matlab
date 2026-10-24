@@ -14,6 +14,17 @@ using namespace MixtormatLayersPrivate;
 
 namespace MixtormatLayersPrivate
 {
+	static bool ValidateDropPlacement(const TArray<FMixtormatLayer>& Layers,
+		const TArray<FMixtormatLayerGroup>& Groups, FText* OutReason)
+	{
+		if (PublishedOutputPlacementsValid(FMixtormatBindingScope{Layers, Groups})) { return true; }
+		if (OutReason)
+		{
+			*OutReason = LOCTEXT("MoveInvalidPublishedOutputs", "Cannot move here: published-output consumers must remain after their producers in a readable scope.");
+		}
+		return false;
+	}
+
 	static FGuid ResolveGroupMembershipForLayers(const TArray<FMixtormatLayer>& Layers, const int32 LayerIndex)
 	{
 		if (!Layers.IsValidIndex(LayerIndex)) { return FGuid(); }
@@ -65,8 +76,12 @@ namespace MixtormatLayersPrivate
 	{
 		const TSharedPtr<FMixtormatChildDragDropOp> Operation = Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		if (Operation.IsValid()) { Operation->ClearGuidance(this); }
-		return Operation.IsValid() && OnIdDrop.IsBound()
-			? OnIdDrop.Execute(*Operation, Address) : FReply::Unhandled();
+		// Non-ID rows intentionally defer to their surrounding reorder/move target.
+		if (!Operation.IsValid() || !OnCanDrop.IsBound() || !OnCanDrop.Execute(*Operation, Address))
+		{
+			return FReply::Unhandled();
+		}
+		return Operation->ExecuteDrop(OnIdDrop, *Operation, Address);
 	}
 }
 
@@ -113,7 +128,7 @@ void SMixtormat::BindDragGuidance(const TSharedRef<FMixtormatGuidedDragDropOp>& 
 			switch (Target.Action)
 			{
 			case EAction::InsertLayer:
-				if (!Owner->CanInsertLayerAt(LayerIndex, Target.InsertIndex)) { return false; }
+				if (!Owner->CanInsertLayerAt(LayerIndex, Target.InsertIndex, &Reason)) { return false; }
 				if (InsertIndexToMoveTarget(LayerIndex, Target.InsertIndex) == LayerIndex)
 				{
 					Reason = LOCTEXT("DragNoPositionChange", "Already at this position.");
@@ -121,6 +136,10 @@ void SMixtormat::BindDragGuidance(const TSharedRef<FMixtormatGuidedDragDropOp>& 
 				return true;
 			case EAction::InsertGroup:
 			{
+				TArray<FMixtormatLayer> Layers;
+				TArray<FMixtormatLayerGroup> Groups;
+				int32 DroppedReferences = 0;
+				if (!Owner->ProjectGroupMove(GroupId, Target.InsertIndex, Layers, Groups, DroppedReferences, &Reason)) { return false; }
 				int32 First, Last, Resolved;
 				if (!Owner->ResolveGroupDropTarget(GroupId, Target.InsertIndex, First, Last, Resolved)) { return false; }
 				if (Resolved >= First && Resolved <= Last + 1)
@@ -136,7 +155,7 @@ void SMixtormat::BindDragGuidance(const TSharedRef<FMixtormatGuidedDragDropOp>& 
 				return true;
 			}
 			case EAction::LayerIntoGroup:
-				if (!Owner->CanDropLayerOnGroup(LayerIndex, Target.GroupId)) { return false; }
+				if (!Owner->CanDropLayerOnGroup(LayerIndex, Target.GroupId, &Reason)) { return false; }
 				if (Owner->WorkingLayers[LayerIndex].GroupId == Target.GroupId)
 				{
 					Reason = LOCTEXT("DragAlreadyGroupMember", "This layer already belongs to the group.");
@@ -160,16 +179,17 @@ void SMixtormat::BindDragGuidance(const TSharedRef<FMixtormatGuidedDragDropOp>& 
 		});
 }
 
-FReply SMixtormat::HandleLayerDropped(
-	const int32 SourceLayerIndex,
-	const int32 TargetLayerIndex,
-	const bool bRecordHistory, const FGuid* ExplicitGroupId)
+bool SMixtormat::ProjectLayerMove(
+	const int32 SourceLayerIndex, const int32 TargetLayerIndex, const FGuid* ExplicitGroupId,
+	TArray<FMixtormatLayer>& ProposedLayers, TArray<FMixtormatLayerGroup>& ProposedGroups,
+	int32& DroppedReferences, FText* OutReason) const
 {
-	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
-		|| !WorkingLayers.IsValidIndex(TargetLayerIndex)
-		|| SourceLayerIndex == TargetLayerIndex)
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	if (!WorkingLayers.IsValidIndex(SourceLayerIndex) || !WorkingLayers.IsValidIndex(TargetLayerIndex)
+		|| (ExplicitGroupId && ExplicitGroupId->IsValid()
+			&& !MixtormatLayerGroups::FindGroup(WorkingLayerGroups, *ExplicitGroupId)))
 	{
-		return FReply::Unhandled();
+		return false;
 	}
 
 	// One layer moving is a permutation like any other, so it goes through the same helper the
@@ -184,15 +204,33 @@ FReply SMixtormat::HandleLayerDropped(
 		}
 	}
 	NewOrder.Insert(SourceLayerIndex, TargetLayerIndex);
-	TArray<FMixtormatLayer> ProposedLayers = WorkingLayers;
-	TArray<FMixtormatLayerGroup> ProposedGroups = WorkingLayerGroups;
-	const int32 DroppedReferences = MixtormatUI::ReorderLayersByPermutation(ProposedLayers, NewOrder);
+	ProposedLayers = WorkingLayers;
+	ProposedGroups = WorkingLayerGroups;
+	DroppedReferences = MixtormatUI::ReorderLayersByPermutation(ProposedLayers, NewOrder);
 	// Validate the final membership, not an intermediate reorder that an explicit group drop overrides.
 	const FGuid JoinedGroupId = ExplicitGroupId ? *ExplicitGroupId
 		: ResolveGroupMembershipForLayers(ProposedLayers, TargetLayerIndex);
-	const bool bChangedGroup = ProposedLayers[TargetLayerIndex].GroupId != JoinedGroupId;
 	ProposedLayers[TargetLayerIndex].GroupId = JoinedGroupId;
 	MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
+	return ValidateDropPlacement(ProposedLayers, ProposedGroups, OutReason);
+}
+
+FReply SMixtormat::HandleLayerDropped(
+	const int32 SourceLayerIndex, const int32 TargetLayerIndex,
+	const bool bRecordHistory, const FGuid* ExplicitGroupId)
+{
+	TArray<FMixtormatLayer> ProposedLayers;
+	TArray<FMixtormatLayerGroup> ProposedGroups;
+	int32 DroppedReferences = 0;
+	FText Reason;
+	if (!ProjectLayerMove(SourceLayerIndex, TargetLayerIndex, ExplicitGroupId,
+		ProposedLayers, ProposedGroups, DroppedReferences, &Reason))
+	{
+		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); ShowPreviewFeedback(Reason); }
+		return FReply::Handled();
+	}
+	const FGuid JoinedGroupId = ProposedLayers[TargetLayerIndex].GroupId;
+	const bool bChangedGroup = WorkingLayers[SourceLayerIndex].GroupId != JoinedGroupId;
 	WorkingLayers = MoveTemp(ProposedLayers);
 	WorkingLayerGroups = MoveTemp(ProposedGroups);
 
@@ -296,18 +334,23 @@ int32 SMixtormat::InsertIndexToMoveTarget(const int32 SourceIndex, const int32 I
 	return SourceIndex < InsertIndex ? InsertIndex - 1 : InsertIndex;
 }
 
-bool SMixtormat::CanInsertLayerAt(const int32 SourceLayerIndex, const int32 InsertIndex) const
+bool SMixtormat::CanInsertLayerAt(const int32 SourceLayerIndex, const int32 InsertIndex, FText* OutReason) const
 {
-	return WorkingLayers.IsValidIndex(SourceLayerIndex)
-		&& WorkingLayers.IsValidIndex(InsertIndexToMoveTarget(SourceLayerIndex, InsertIndex));
+	TArray<FMixtormatLayer> Layers;
+	TArray<FMixtormatLayerGroup> Groups;
+	int32 DroppedReferences = 0;
+	return ProjectLayerMove(SourceLayerIndex, InsertIndexToMoveTarget(SourceLayerIndex, InsertIndex),
+		nullptr, Layers, Groups, DroppedReferences, OutReason);
 }
 
 FReply SMixtormat::HandleLayerInsertedAt(const int32 SourceLayerIndex, const int32 InsertIndex)
 {
 	const int32 TargetIndex = InsertIndexToMoveTarget(SourceLayerIndex, InsertIndex);
-	if (!CanInsertLayerAt(SourceLayerIndex, InsertIndex))
+	FText Reason;
+	if (!CanInsertLayerAt(SourceLayerIndex, InsertIndex, &Reason))
 	{
-		return FReply::Unhandled();
+		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); ShowPreviewFeedback(Reason); }
+		return FReply::Handled();
 	}
 	if (TargetIndex == SourceLayerIndex)
 	{
@@ -370,20 +413,26 @@ bool SMixtormat::ResolveGroupDropTarget(const FGuid GroupId, const int32 InsertI
 	return true;
 }
 
-FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 InsertIndex)
+bool SMixtormat::ProjectGroupMove(const FGuid GroupId, const int32 InsertIndex,
+	TArray<FMixtormatLayer>& ProposedLayers, TArray<FMixtormatLayerGroup>& ProposedGroups,
+	int32& DroppedReferences, FText* OutReason) const
 {
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	ProposedLayers = WorkingLayers;
+	ProposedGroups = WorkingLayerGroups;
+	DroppedReferences = 0;
 	int32 FirstIndex = INDEX_NONE;
 	int32 LastIndex = INDEX_NONE;
 	int32 TargetIndex = INDEX_NONE;
 	if (!ResolveGroupDropTarget(GroupId, InsertIndex, FirstIndex, LastIndex, TargetIndex))
 	{
-		return FReply::Unhandled();
+		return false;
 	}
 	// The snap can land back on the dragged group's own edge (it sits right next to whichever
 	// group absorbed the line), which is the same no-op the raw-index check above exists for.
 	if (TargetIndex >= FirstIndex && TargetIndex <= LastIndex + 1)
 	{
-		return FReply::Handled();
+		return true;
 	}
 
 	// The block moves as one. Built the same way the group gather is: everything else in order,
@@ -417,14 +466,31 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 		NewOrder.Add(Others[Index]);
 	}
 
-	TArray<FMixtormatLayer> ProposedLayers = WorkingLayers;
-	TArray<FMixtormatLayerGroup> ProposedGroups = WorkingLayerGroups;
-	const int32 DroppedReferences =
-		MixtormatUI::ReorderLayersByPermutation(ProposedLayers, NewOrder);
+	DroppedReferences = MixtormatUI::ReorderLayersByPermutation(ProposedLayers, NewOrder);
 	// The block carried its GroupId with it, so the run is still whole, and the snap above already
 	// kept it out of another group's run. This is the general backstop for shapes that snap does
 	// not cover -- hand-edited data, a merge -- not the normal path for a group-on-group drop.
 	MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
+	return ValidateDropPlacement(ProposedLayers, ProposedGroups, OutReason);
+}
+
+FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 InsertIndex)
+{
+	int32 FirstIndex = INDEX_NONE, LastIndex = INDEX_NONE, TargetIndex = INDEX_NONE;
+	if (!ResolveGroupDropTarget(GroupId, InsertIndex, FirstIndex, LastIndex, TargetIndex))
+	{
+		return FReply::Handled();
+	}
+	if (TargetIndex >= FirstIndex && TargetIndex <= LastIndex + 1) { return FReply::Handled(); }
+	TArray<FMixtormatLayer> ProposedLayers;
+	TArray<FMixtormatLayerGroup> ProposedGroups;
+	int32 DroppedReferences = 0;
+	FText Reason;
+	if (!ProjectGroupMove(GroupId, InsertIndex, ProposedLayers, ProposedGroups, DroppedReferences, &Reason))
+	{
+		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); ShowPreviewFeedback(Reason); }
+		return FReply::Handled();
+	}
 	WorkingLayers = MoveTemp(ProposedLayers);
 	WorkingLayerGroups = MoveTemp(ProposedGroups);
 
@@ -445,19 +511,31 @@ FReply SMixtormat::HandleGroupInsertedAt(const FGuid GroupId, const int32 Insert
 	return FReply::Handled();
 }
 
-bool SMixtormat::CanDropLayerOnGroup(const int32 SourceLayerIndex, const FGuid TargetGroupId) const
+bool SMixtormat::CanDropLayerOnGroup(const int32 SourceLayerIndex, const FGuid TargetGroupId, FText* OutReason) const
 {
-	return WorkingLayers.IsValidIndex(SourceLayerIndex)
-		&& MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TargetGroupId);
+	if (OutReason) { *OutReason = FText::GetEmpty(); }
+	if (!WorkingLayers.IsValidIndex(SourceLayerIndex)
+		|| !MixtormatLayerGroups::FindGroup(WorkingLayerGroups, TargetGroupId)) { return false; }
+	if (WorkingLayers[SourceLayerIndex].GroupId == TargetGroupId) { return true; }
+	int32 FirstIndex = INDEX_NONE, LastIndex = INDEX_NONE;
+	const int32 TargetIndex = MixtormatLayerGroups::GetGroupRange(WorkingLayers, TargetGroupId, FirstIndex, LastIndex)
+		? (SourceLayerIndex < FirstIndex ? LastIndex : FirstIndex) : SourceLayerIndex;
+	TArray<FMixtormatLayer> Layers;
+	TArray<FMixtormatLayerGroup> Groups;
+	int32 DroppedReferences = 0;
+	return ProjectLayerMove(SourceLayerIndex, TargetIndex, &TargetGroupId,
+		Layers, Groups, DroppedReferences, OutReason);
 }
 
 FReply SMixtormat::HandleLayerDroppedOnGroup(
 	const int32 SourceLayerIndex,
 	const FGuid TargetGroupId)
 {
-	if (!CanDropLayerOnGroup(SourceLayerIndex, TargetGroupId))
+	FText Reason;
+	if (!CanDropLayerOnGroup(SourceLayerIndex, TargetGroupId, &Reason))
 	{
-		return FReply::Unhandled();
+		if (!Reason.IsEmpty()) { WorkingStatusText = Reason.ToString(); ShowPreviewFeedback(Reason); }
+		return FReply::Handled();
 	}
 	if (WorkingLayers[SourceLayerIndex].GroupId == TargetGroupId)
 	{
@@ -470,16 +548,7 @@ FReply SMixtormat::HandleLayerDroppedOnGroup(
 	{
 		// An empty group has no run to land inside, so the dropped layer becomes its first member
 		// and keeps its position; the group then spans exactly that layer.
-		TArray<FMixtormatLayer> ProposedLayers = WorkingLayers;
-		TArray<FMixtormatLayerGroup> ProposedGroups = WorkingLayerGroups;
-		ProposedLayers[SourceLayerIndex].GroupId = TargetGroupId;
-		MixtormatLayerGroups::ValidateGroups(ProposedLayers, ProposedGroups);
-		WorkingLayerGroups = MoveTemp(ProposedGroups);
-		RecordEditHistory();
-		bIsWorkingMaterialDirty = !IsCurrentStateSaved();
-		RefreshLayeredPreview();
-		RebuildLayerList();
-		return FReply::Handled();
+		return HandleLayerDropped(SourceLayerIndex, SourceLayerIndex, true, &TargetGroupId);
 	}
 
 	// The top of the run. A layer joining a group has to land inside it, and the top is the one
@@ -1043,7 +1112,7 @@ bool SMixtormat::CanMovePublishedOutputs(
 				(*ProjectedDest)[ProjectedInsert + Index].ChildId, Source.OwnerId, Dest.OwnerId);
 		}
 	}
-	return PublishedOutputPlacementsValid(FMixtormatBindingScope{Layers, Groups});
+	return ValidateDropPlacement(Layers, Groups, OutReason);
 }
 
 bool SMixtormat::CanMoveChildIntoIdGroup(

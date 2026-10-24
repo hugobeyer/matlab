@@ -1007,10 +1007,18 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	const int32 OwnerChildIndex,
 	const FSoftObjectPath MaskPath)
 {
-	if (!WorkingLayers.IsValidIndex(LayerIndex)
-		|| !WorkingLayers[LayerIndex].Children.IsValidIndex(OwnerChildIndex)
-		|| !CanOwnScopedMasks(WorkingLayers[LayerIndex].Children[OwnerChildIndex])
-		|| !CanAddScopedChild(WorkingLayers[LayerIndex].Children, OwnerChildIndex))
+	return AssignScopedMaskToChild(MakeChildAddress(LayerIndex, OwnerChildIndex), MaskPath);
+}
+
+FReply SMixtormat::AssignScopedMaskToChild(
+	const FMixtormatChildAddress& Owner,
+	const FSoftObjectPath MaskPath)
+{
+	TArray<FMixtormatLayerChild>* Children = ResolveContainer(Owner);
+	const int32 OwnerChildIndex = ResolveChildIndexAt(Owner);
+	if (!Children || !Children->IsValidIndex(OwnerChildIndex)
+		|| !CanOwnScopedMasks((*Children)[OwnerChildIndex])
+		|| !CanAddScopedChild(*Children, OwnerChildIndex))
 	{
 		return FReply::Handled();
 	}
@@ -1027,18 +1035,24 @@ FReply SMixtormat::AssignScopedMaskToChild(
 	// step through the row's Blend Mode.
 	NewMask.BlendMode = EMixtormatMaskBlendMode::Replace;
 
-	FMixtormatLayer& Layer = WorkingLayers[LayerIndex];
-	const FGuid OwnerId = Layer.Children[OwnerChildIndex].ChildId;
-	const int32 InsertAt = FindSubtreeEnd(Layer.Children, OwnerChildIndex);
+	const int32 InsertAt = FindSubtreeEnd(*Children, OwnerChildIndex);
 
 	FMixtormatLayerChild ScopedMask;
 	ScopedMask.Type = EMixtormatLayerChildType::Mask;
-	ScopedMask.ScopeOwnerChildId = OwnerId;
+	ScopedMask.ScopeOwnerChildId = Owner.ChildId;
 	ScopedMask.Mask = MoveTemp(NewMask);
-	Layer.Children.Insert(MoveTemp(ScopedMask), InsertAt);
-	ApplyLinkDefaults(Layer.Children[InsertAt], Layer.LayerId);
-	ShowQuickControlsAddedFeedback({EMixtormatChildOwnerType::Layer, Layer.LayerId, Layer.Children[InsertAt].ChildId});
+	Children->Insert(MoveTemp(ScopedMask), InsertAt);
+	ApplyLinkDefaults((*Children)[InsertAt], Owner.OwnerId);
+	ShowQuickControlsAddedFeedback({Owner.OwnerType, Owner.OwnerId, (*Children)[InsertAt].ChildId});
 
+	if (Owner.OwnerType == EMixtormatChildOwnerType::Group)
+	{
+		FinishGroupChildEdit(Owner.OwnerId, InsertAt);
+		return FReply::Handled();
+	}
+
+	const int32 LayerIndex = WorkingLayers.IndexOfByPredicate(
+		[&Owner](const FMixtormatLayer& Layer) { return Layer.LayerId == Owner.OwnerId; });
 	SelectedLayerIndex = LayerIndex;
 	SelectedEffectIndex = INDEX_NONE;
 	SelectedMaskIndex = InsertAt;
@@ -2221,6 +2235,11 @@ FReply SMixtormat::CreateChild(const FMixtormatAddTarget Target, const EMixtorma
 
 FReply SMixtormat::AddTextureMask(const FMixtormatAddTarget Target, const FSoftObjectPath MaskPath)
 {
+	if (Target.IsGroup() && Target.ScopeOwnerChildId.IsValid())
+	{
+		return AssignScopedMaskToChild(
+			{EMixtormatChildOwnerType::Group, Target.GroupId, Target.ScopeOwnerChildId}, MaskPath);
+	}
 	if (!Target.IsGroup()
 		&& Target.ScopeOwnerChildId.IsValid()
 		&& WorkingLayers.IsValidIndex(Target.LayerIndex))

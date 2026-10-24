@@ -414,7 +414,8 @@ public:
 		Zone = EMixtormatRowDropZone::None;
 		if (TargetLayerIndex == INDEX_NONE || DropZone == EMixtormatRowDropZone::None)
 		{
-			return FReply::Unhandled();
+			return DragDropEvent.GetOperationAs<FMixtormatGuidedDragDropOp>().IsValid()
+				? FReply::Handled() : FReply::Unhandled();
 		}
 
 		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
@@ -425,15 +426,11 @@ public:
 			// of its rows, so it lands on the end of that layer's stack.
 			if (Operation->GroupId.IsValid())
 			{
-				return OnGroupChildMovedToLayer.IsBound()
-					? OnGroupChildMovedToLayer.Execute(
-						Operation->GroupId, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE)
-					: FReply::Unhandled();
+				return Operation->ExecuteDrop(OnGroupChildMovedToLayer,
+					Operation->GroupId, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE);
 			}
-			return OnChildMovedToLayer.IsBound()
-				? OnChildMovedToLayer.Execute(
-					Operation->LayerIndex, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnChildMovedToLayer,
+				Operation->LayerIndex, Operation->ChildIndex, TargetLayerIndex, INDEX_NONE);
 		}
 		const int32 InsertIndex =
 			DropZone == EMixtormatRowDropZone::Before ? TargetLayerIndex : TargetLayerIndex + 1;
@@ -442,17 +439,13 @@ public:
 			DragDropEvent.GetOperationAs<FMixtormatLayerDragDropOp>())
 		{
 			Operation->ResetToDefaultToolTip();
-			return Operation->SourceLayerIndex != INDEX_NONE && OnLayerInsertedAt.IsBound()
-				? OnLayerInsertedAt.Execute(Operation->SourceLayerIndex, InsertIndex)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnLayerInsertedAt, Operation->SourceLayerIndex, InsertIndex);
 		}
 		if (const TSharedPtr<FMixtormatGroupDragDropOp> Operation =
 			DragDropEvent.GetOperationAs<FMixtormatGroupDragDropOp>())
 		{
 			Operation->ResetToDefaultToolTip();
-			return Operation->GroupId.IsValid() && OnGroupInsertedAt.IsBound()
-				? OnGroupInsertedAt.Execute(Operation->GroupId, InsertIndex)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnGroupInsertedAt, Operation->GroupId, InsertIndex);
 		}
 		if (const TSharedPtr<FMixtormatSurfaceDragDropOp> Operation =
 			DragDropEvent.GetOperationAs<FMixtormatSurfaceDragDropOp>())
@@ -672,16 +665,16 @@ public:
 		Zone = EMixtormatRowDropZone::None;
 		if (!TargetGroupId.IsValid() || DropZone == EMixtormatRowDropZone::None)
 		{
-			return FReply::Unhandled();
+			return Event.GetOperationAs<FMixtormatGuidedDragDropOp>().IsValid()
+				? FReply::Handled() : FReply::Unhandled();
 		}
 
 		if (const TSharedPtr<FMixtormatChildDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatChildDragDropOp>())
 		{
 			Operation->ResetToDefaultToolTip();
-			return OnChildDropped.IsBound()
-				? OnChildDropped.Execute(Operation->LayerIndex, Operation->ChildIndex, TargetGroupId)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnChildDropped,
+				Operation->LayerIndex, Operation->ChildIndex, TargetGroupId);
 		}
 
 		// Before the group is its first member's slot; after it is one past the last.
@@ -694,17 +687,13 @@ public:
 			Operation->ResetToDefaultToolTip();
 			if (Operation->SourceLayerIndex == INDEX_NONE)
 			{
-				return FReply::Unhandled();
+				return FReply::Handled();
 			}
 			if (DropZone == EMixtormatRowDropZone::Into)
 			{
-				return OnLayerDropped.IsBound()
-					? OnLayerDropped.Execute(Operation->SourceLayerIndex, TargetGroupId)
-					: FReply::Unhandled();
+				return Operation->ExecuteDrop(OnLayerDropped, Operation->SourceLayerIndex, TargetGroupId);
 			}
-			return OnLayerInsertedAt.IsBound()
-				? OnLayerInsertedAt.Execute(Operation->SourceLayerIndex, EdgeIndex)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnLayerInsertedAt, Operation->SourceLayerIndex, EdgeIndex);
 		}
 		if (const TSharedPtr<FMixtormatSurfaceDragDropOp> Operation =
 			Event.GetOperationAs<FMixtormatSurfaceDragDropOp>())
@@ -726,11 +715,9 @@ public:
 			Event.GetOperationAs<FMixtormatGroupDragDropOp>())
 		{
 			Operation->ResetToDefaultToolTip();
-			return Operation->GroupId.IsValid()
-				&& Operation->GroupId != TargetGroupId
-				&& OnGroupInsertedAt.IsBound()
-				? OnGroupInsertedAt.Execute(Operation->GroupId, EdgeIndex)
-				: FReply::Unhandled();
+			return Operation->GroupId != TargetGroupId
+				? Operation->ExecuteDrop(OnGroupInsertedAt, Operation->GroupId, EdgeIndex)
+				: FReply::Handled();
 		}
 		return FReply::Unhandled();
 	}
@@ -977,33 +964,26 @@ public:
 			Event.GetOperationAs<FMixtormatChildDragDropOp>();
 		const EMixtormatRowDropZone DropZone = Zone;
 		Zone = EMixtormatRowDropZone::None;
-		if (!Operation.IsValid() || DropZone == EMixtormatRowDropZone::None)
-		{
-			return FReply::Unhandled();
-		}
+		if (!Operation.IsValid()) { return FReply::Unhandled(); }
+		if (DropZone == EMixtormatRowDropZone::None) { return FReply::Handled(); }
 		Operation->ResetToDefaultToolTip();
 		if (Operation->GroupId.IsValid())
 		{
-			return Operation->bCanLeaveLayer && OnGroupChildMovedToLayer.IsBound()
-				? OnGroupChildMovedToLayer.Execute(
+			return Operation->bCanLeaveLayer
+				? Operation->ExecuteDrop(OnGroupChildMovedToLayer,
 					Operation->GroupId, Operation->ChildIndex, LayerIndex, ChildIndex)
-				: FReply::Unhandled();
+				: FReply::Handled();
 		}
 		if (Operation->LayerIndex == LayerIndex)
 		{
 			if (DropZone == EMixtormatRowDropZone::Into)
 			{
-				return OnChildReparented.IsBound()
-					? OnChildReparented.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
-					: FReply::Unhandled();
+				return Operation->ExecuteDrop(OnChildReparented, LayerIndex, Operation->ChildIndex, ChildIndex);
 			}
-			return OnChildReordered.IsBound()
-				? OnChildReordered.Execute(LayerIndex, Operation->ChildIndex, ChildIndex)
-				: FReply::Unhandled();
+			return Operation->ExecuteDrop(OnChildReordered, LayerIndex, Operation->ChildIndex, ChildIndex);
 		}
-		return OnChildMovedToLayer.IsBound()
-			? OnChildMovedToLayer.Execute(Operation->LayerIndex, Operation->ChildIndex, LayerIndex, ChildIndex)
-			: FReply::Unhandled();
+		return Operation->ExecuteDrop(OnChildMovedToLayer,
+			Operation->LayerIndex, Operation->ChildIndex, LayerIndex, ChildIndex);
 	}
 
 private:
@@ -1083,9 +1063,7 @@ public:
 		{
 			return FReply::Unhandled();
 		}
-		return OnChildReordered.IsBound()
-			? OnChildReordered.Execute(GroupId, Operation->ChildIndex, ChildIndex)
-			: FReply::Unhandled();
+		return Operation->ExecuteDrop(OnChildReordered, GroupId, Operation->ChildIndex, ChildIndex);
 	}
 
 private:

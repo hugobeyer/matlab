@@ -100,6 +100,10 @@ namespace MixtormatOutputReferences
 				return OutputName == FName(TEXT("RootUV"))
 					|| OutputName == FName(TEXT("WarpedUV"));
 			}
+			if (Generator.Type == EMixtormatGeneratorType::Noise)
+			{
+				return OutputName == FName(TEXT("WarpedUV"));
+			}
 			return false;
 		default:
 			return false;
@@ -641,8 +645,8 @@ namespace MixtormatOutputReferences
 			Status.Issue = EStructuralLinkIssue::None;
 			return SourceIndex;
 		}
-		// Only declared native Flow outputs are directional sources, never raw Vector2 Gradient.
-		const bool bGeneratorFlow = bFlow && Source.Type == EMixtormatLayerChildType::Generator
+		// Only declared native Flow/UV outputs are directional/coordinate sources, never raw Vector2 Gradient.
+		const bool bGeneratorFlow = (bFlow || bUV) && Source.Type == EMixtormatLayerChildType::Generator
 			&& GeneratorPublishesField(Source.Generator, Reference.Kind, Reference.OutputName);
 		const bool bBehaviorFlow = (bFlow || bUV) && Source.Type == EMixtormatLayerChildType::Behavior;
 		if (!bGeneratorFlow && !bBehaviorFlow) { return Reject(EStructuralLinkIssue::WrongSourceKind); }

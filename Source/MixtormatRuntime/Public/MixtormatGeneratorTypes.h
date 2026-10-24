@@ -1197,6 +1197,17 @@ enum class EMixtormatNoiseWorleyMetric : uint8
 	Chebyshev UMETA(DisplayName = "Chebyshev")
 };
 
+// Wave synthesis profile for Phasor noise (Houdini COPs Phasor + Liu/Marschner/Dye 2015 wood rings).
+UENUM(BlueprintType)
+enum class EMixtormatNoisePhasorWave : uint8
+{
+	Sine UMETA(DisplayName = "Sine"),
+	Saw UMETA(DisplayName = "Saw / Ring"),
+	Pulse UMETA(DisplayName = "Pulse / Band"),
+	Gabor UMETA(DisplayName = "Gabor"),
+	Defect UMETA(DisplayName = "Defect / Envelope")
+};
+
 // Which creation preset a Noise module was authored as. Noise and Flow are two presets of one
 // generator implementation (AgentDocs/FINAL_BEHAVIOR_PLAN.md section 2): both run the existing
 // Noise V2 algorithms and differ only in output defaults and preview behavior. The preset
@@ -1287,6 +1298,9 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	float NoiseLayerMix = 0.0f;
 
 	// Phasor only. Existing Bars keeps its original cosine/seed appearance.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor")
+	EMixtormatNoisePhasorWave NoisePhasorWave = EMixtormatNoisePhasorWave::Sine;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "12.0", Delta = "0.05"))
 	float NoisePhasorFrequency = 2.0f;
 
@@ -1301,6 +1315,25 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "1", UIMax = "4", ClampMin = "1", ClampMax = "4"))
 	int32 NoisePhasorComponents = 2;
+
+	// Wave duty-cycle asymmetry (-0.95..0.95): shifts earlywood/latewood ring width ratio.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "-0.95", UIMax = "0.95", Delta = "0.01"))
+	float NoisePhasorWaveOffset = 0.0f;
+
+	// Kernel bandwidth / overlap support (Houdini gaussian_band): higher values lock phase smoothly; lower values expose grain bifurcations.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.25", UIMax = "4.0", Delta = "0.02"))
+	float NoisePhasorOverlap = 1.0f;
+
+	// Periodic tangential board-cut cathedral arch / radial log curvature (Liu et al. 2015).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "-2.0", UIMax = "2.0", Delta = "0.01"))
+	float NoisePhasorArch = 0.0f;
+
+	// Secondary complex phasor lobe weight and angle offset (Houdini use_second_angle / polar_freq_offset) for interlocked grain.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
+	float NoisePhasorSecondWeight = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "-1.57", UIMax = "1.57", Delta = "0.01"))
+	float NoisePhasorSecondAngle = 0.52f;
 
 	// Signed raw Value shaping for Phasor only. Scale=1 and Bias=0 preserve V2 defaults.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Phasor", meta = (UIMin = "0.0", UIMax = "4.0", Delta = "0.01"))

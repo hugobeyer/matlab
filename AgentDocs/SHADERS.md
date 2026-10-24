@@ -85,6 +85,16 @@ Render-data structs (`F*RenderData`) are filled by gather and read by the pass.
 
 ## Moss canopy and material coverage
 
+Compile-dependency repair (2026-10-24): `MixtormatMoss.usf` now includes the existing
+`MixtormatGeneratorPlacement.ush`, `MixtormatGeneratorHeightModules.ush` and
+`MixtormatNoise.ush` via plugin paths, replacing three nonexistent header references.
+FBM calls use value/gradient out parameters and roughness-before-lacunarity order;
+Worley calls use seed-before-metric order and the returned `F1`/`F2` fields.
+Color lookup uses `MixtormatEvalColorRamp(...).rgb` and the shared
+`MIXTORMAT_COLOR_RAMP_MAX_STOPS`, matching the C++ payload rather than a local 32-stop array.
+This is a source-level compile fix only, not compile/render acceptance or revalidation
+of the earlier Moss behavior descriptions below. No commands or tests were run.
+
 Stages 2/3 specialize by `MOSS_SDF_CUSHION` at compile time. Deposition does not
 read SDF distance/inflation textures; SDF does not read deposition thickness.
 `ClearUnusedGraphResources` removes the inactive mode's bindings before RDG pass

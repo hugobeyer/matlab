@@ -371,6 +371,7 @@ private:
 	TSharedRef<SWidget> BuildCurvatureSourceMenu(int32 LayerIndex, int32 ChildIndex);
 	TSharedRef<SWidget> BuildCurvatureModeMenu(int32 LayerIndex, int32 ChildIndex);
 	FReply AssignScopedMaskToChild(int32 LayerIndex, int32 OwnerChildIndex, FSoftObjectPath MaskPath);
+	FReply AssignScopedMaskToChild(const FMixtormatChildAddress& Owner, FSoftObjectPath MaskPath);
 	FReply ReplaceMaskInLayer(int32 LayerIndex, int32 MaskIndex, FSoftObjectPath MaskPath);
 	FReply ReplaceSurfaceInLayer(int32 LayerIndex, FSoftObjectPath SurfacePath);
 	FReply ClearLayerMask(int32 LayerIndex);
@@ -861,10 +862,16 @@ private:
 	FReply SetLayerGroupAccentColor(FGuid GroupId, FLinearColor AccentColor);
 	TSharedRef<SWidget> BuildGroupAccentMenu(FGuid GroupId);
 	static int32 InsertIndexToMoveTarget(int32 SourceIndex, int32 InsertIndex);
-	bool CanInsertLayerAt(int32 SourceLayerIndex, int32 InsertIndex) const;
+	bool ProjectLayerMove(int32 SourceLayerIndex, int32 TargetLayerIndex, const FGuid* ExplicitGroupId,
+		TArray<FMixtormatLayer>& Layers, TArray<FMixtormatLayerGroup>& Groups,
+		int32& DroppedReferences, FText* OutReason = nullptr) const;
+	bool ProjectGroupMove(FGuid GroupId, int32 InsertIndex,
+		TArray<FMixtormatLayer>& Layers, TArray<FMixtormatLayerGroup>& Groups,
+		int32& DroppedReferences, FText* OutReason = nullptr) const;
+	bool CanInsertLayerAt(int32 SourceLayerIndex, int32 InsertIndex, FText* OutReason = nullptr) const;
 	bool ResolveGroupDropTarget(FGuid GroupId, int32 InsertIndex,
 		int32& FirstIndex, int32& LastIndex, int32& TargetIndex) const;
-	bool CanDropLayerOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId) const;
+	bool CanDropLayerOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId, FText* OutReason = nullptr) const;
 	FReply HandleLayerInsertedAt(int32 SourceLayerIndex, int32 InsertIndex);
 	FReply HandleGroupInsertedAt(FGuid GroupId, int32 InsertIndex);
 	FReply HandleLayerDroppedOnGroup(int32 SourceLayerIndex, FGuid TargetGroupId);

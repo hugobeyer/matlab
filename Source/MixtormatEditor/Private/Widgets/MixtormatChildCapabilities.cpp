@@ -381,6 +381,10 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true,
 				!bFlowPrimary || Child.Generator.Noise.bNoiseWriteFlow, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
+			Result.Outputs.Add({FName(TEXT("WarpedUV")),
+				NSLOCTEXT("SMixtormat", "PreviewOutputNoiseWarpedUV", "Warped UV"),
+				EMixtormatPreviewOutputKind::WarpedUVGrid, false, true, true, NAME_None,
+				true, EMixtormatPublishedFieldKind::UVMap});
 			// P1 generated MODE contribution, published only when Write Flow is on. Canonical
 			// layout; previewable through the existing output-key mechanism.
 			if (Child.Generator.Noise.bNoiseWriteFlow)

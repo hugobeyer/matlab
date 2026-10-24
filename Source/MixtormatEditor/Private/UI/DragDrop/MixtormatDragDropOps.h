@@ -197,6 +197,20 @@ public:
 		CanDrop = MoveTemp(InCanDrop);
 	}
 
+	// A recognized stack drop owns its rejection too: never let a failed row drop
+	// bubble into an ancestor that would reinterpret it as an append.
+	template<typename DelegateType, typename... ArgTypes>
+	FReply ExecuteDrop(const DelegateType& Handler, ArgTypes&&... Args)
+	{
+		const TSharedPtr<SWidget> Owner = GuidanceOwner.Pin();
+		if (!bFinished && Owner && Handler.IsBoundToObject(Owner.Get()) && HasCurrentPayload())
+		{
+			Handler.Execute(Forward<ArgTypes>(Args)...);
+		}
+		GuidanceTarget.Reset();
+		return FReply::Handled();
+	}
+
 	template<typename DelegateType>
 	void SetGuidance(const TSharedRef<SWidget>& Target, const DelegateType& Handler,
 		const FMixtormatDragTarget& Request, const FText& ActionText, bool bRouted = true)

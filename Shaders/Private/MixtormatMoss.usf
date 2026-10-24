@@ -1,9 +1,9 @@
 // Copyright 2026 Hugo Beyer. All Rights Reserved.
 
 #include "/Engine/Private/Common.ush"
-#include "MixtormatGeneratorCoordinates.ush"
-#include "MixtormatColorRampCommon.ush"
-#include "MixtormatNoiseCommon.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatNoise.ush"
 
 int2 OutputSize;
 int2 SimulationSize;
@@ -90,8 +90,8 @@ float WetRoughness;
 float NormalStrength;
 uint ColorRampCount;
 uint ColorRampInterpolation;
-float4 ColorRampPositions[32];
-float4 ColorRampColors[32];
+float4 ColorRampPositions[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
+float4 ColorRampColors[MIXTORMAT_COLOR_RAMP_MAX_STOPS];
 
 Texture2D<uint> GrowthIds;
 RWTexture2D<float4> OutMossColor;
@@ -204,7 +204,7 @@ float MossTuftAngle(float3 Flow, float Random01)
 	return lerp(RandomAngle, FlowAngle + (Random01 - 0.5f) * 0.85f, Align);
 }
 
-#include "MixtormatMossLeaves.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatMossLeaves.ush"
 
 // -----------------------------------------------------------------------------
 // Compute MainCS by MOSS_STAGE
@@ -310,7 +310,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float OverhangPenalty = saturate((0.45f - GravShelf) * 2.2f) * saturate(SurfaceAnglePreference);
 
 	int Cells = max(1, ColonyDensity);
-	float4 PatchFbm = MixtormatNoiseFbm(UV, max(2, Cells / 2), 3, 2.0f, 0.5f, Seed + 71u);
+	float3 PatchFbm;
+		MixtormatNoiseFbm(UV, max(2, Cells / 2), 3, 0.5f, 2.0f, Seed + 71u, PatchFbm.x, PatchFbm.yz);
 	float PatchVar = PatchFbm.x * 0.5f + 0.5f;
 
 	float Favor = 0.24f
@@ -361,7 +362,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float CreviceSignal = Cavity * saturate(CavityAttraction) * 0.78f
 		+ Shelter * saturate(OcclusionInfluence) * 0.48f
 		+ max(0.0f, GravShelf - 0.5f) * saturate(SurfaceAnglePreference) * 0.68f;
-	float4 FineNoise = MixtormatNoiseFbm(UV, max(6, Cells * 2), 3, 2.0f, 0.5f, Seed + 313u);
+	float3 FineNoise;
+		MixtormatNoiseFbm(UV, max(6, Cells * 2), 3, 0.5f, 2.0f, Seed + 313u, FineNoise.x, FineNoise.yz);
 	float CreviceThresh = lerp(0.60f, 0.12f, saturate(Coverage));
 	float HabitatSeed = smoothstep(CreviceThresh, CreviceThresh + 0.18f, CreviceSignal + FineNoise.x * 0.18f);
 
@@ -385,8 +387,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	// Pioneer spore splatter around suitable micro-pockets
 	if (Splatter > 0.001f)
 	{
-		float2 SporeWorley = MixtormatNoiseV2Worley(UV, max(14, Cells * 3), 0u, 1.0f, Seed + 509u);
-		float SporeDot = saturate(1.0f - SporeWorley.x * lerp(3.4f, 1.75f, saturate(Splatter)));
+		FMixtormatNoiseWorley SporeWorley = MixtormatNoiseV2Worley(UV, max(14, Cells * 3), Seed + 509u, 1.0f, 0);
+		float SporeDot = saturate(1.0f - SporeWorley.F1 * lerp(3.4f, 1.75f, saturate(Splatter)));
 		float SporeGate = smoothstep(0.30f, 0.70f, Habitat + FineNoise.x * 0.22f);
 		ProcSeed = max(ProcSeed, SporeDot * SporeGate * saturate(Splatter) * 0.85f);
 	}
@@ -615,9 +617,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	// Pioneer spore splatter & dithered edge breakup at full output resolution
 	int Cells = max(1, ColonyDensity);
-	float4 EdgeFbm = MixtormatNoiseFbm(UV, max(12, Cells * 3), 3, 2.0f, 0.5f, Seed + 911u);
-	float2 MicroWorley = MixtormatNoiseV2Worley(UV, max(32, Cells * 5), 0u, 1.0f, Seed + 977u);
-	float SporeSpeckle = saturate(1.0f - MicroWorley.x * lerp(2.85f, 1.40f, saturate(Splatter)));
+	float3 EdgeFbm;
+	MixtormatNoiseFbm(UV, max(12, Cells * 3), 3, 0.5f, 2.0f, Seed + 911u, EdgeFbm.x, EdgeFbm.yz);
+	FMixtormatNoiseWorley MicroWorley = MixtormatNoiseV2Worley(UV, max(32, Cells * 5), Seed + 977u, 1.0f, 0);
+	float SporeSpeckle = saturate(1.0f - MicroWorley.F1 * lerp(2.85f, 1.40f, saturate(Splatter)));
 
 	float BaseCover = smoothstep(0.14f, 0.36f, Chem.y + EdgeFbm.x * 0.08f * saturate(Splatter));
 	float HaloZone = smoothstep(0.03f, 0.28f, Chem.y + ActHab.w * 0.22f) * (1.0f - BaseCover * 0.65f);
@@ -651,18 +654,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	if (ClumpDensity > 0.5f)
 	{
 		int ClumpCells = max(2, int(round(ClumpDensity)));
-		float4 WarpNoise = MixtormatNoiseFbm(UV, max(2, ClumpCells / 2), 2, 2.0f, 0.5f, Seed + 601u);
+		float3 WarpNoise;
+				MixtormatNoiseFbm(UV, max(2, ClumpCells / 2), 2, 0.5f, 2.0f, Seed + 601u, WarpNoise.x, WarpNoise.yz);
 		float2 WarpedUV = frac(UV + float2(WarpNoise.y, WarpNoise.z) * (0.18f / float(ClumpCells)));
-		float2 W = MixtormatNoiseV2Worley(WarpedUV, ClumpCells, 0u, 0.92f, Seed + 643u);
-		float Cleft = smoothstep(0.0f, lerp(0.30f, 0.72f, saturate(Softness)), W.y - W.x);
-		float Crown = sqrt(saturate(1.0f - W.x * W.x * 1.15f));
+		FMixtormatNoiseWorley W = MixtormatNoiseV2Worley(WarpedUV, ClumpCells, Seed + 643u, 0.92f, 0);
+		float Cleft = smoothstep(0.0f, lerp(0.30f, 0.72f, saturate(Softness)), W.F2 - W.F1);
+		float Crown = sqrt(saturate(1.0f - W.F1 * W.F1 * 1.15f));
 		float PillowProfile = lerp(Crown, 1.0f, saturate(Softness) * 0.55f) * lerp(0.32f, 1.0f, Cleft);
 		SubPillow = lerp(1.0f, PillowProfile, saturate(ClumpDensity / 24.0f));
 	}
 
 	// Multi-scale thickness variation (controlled by MatureHeight = Thickness Variation)
 	int Cells = max(1, ColonyDensity);
-	float4 ThickFbm = MixtormatNoiseFbm(UV, max(3, Cells), 4, 2.0f, 0.5f, Seed + 733u);
+	float3 ThickFbm;
+		MixtormatNoiseFbm(UV, max(3, Cells), 4, 0.5f, 2.0f, Seed + 733u, ThickFbm.x, ThickFbm.yz);
 	float ThickMod = lerp(1.0f, saturate(0.55f + 0.55f * ThickFbm.x) * (0.45f + 0.75f * Biomass), saturate(MatureHeight));
 
 	// GrowthForm habit scale: CreepingMat (2) and Feather (3) form flatter carpets, Cushion (0) forms plump domes
@@ -672,8 +677,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float Turgor = 1.0f + saturate(Plumpness) * (0.40f * saturate(Hydration) + 0.20f * HabCol.x);
 
 	// Pioneer spore micro-tufts around margins
-	float2 SporeW = MixtormatNoiseV2Worley(UV, max(24, Cells * 4), 0u, 1.0f, Seed + 829u);
-	float SporeTuft = saturate(1.0f - SporeW.x * 2.2f) * CrustoseMask * saturate(Splatter);
+	FMixtormatNoiseWorley SporeW = MixtormatNoiseV2Worley(UV, max(24, Cells * 4), Seed + 829u, 1.0f, 0);
+	float SporeTuft = saturate(1.0f - SporeW.F1 * 2.2f) * CrustoseMask * saturate(Splatter);
 
 	float CushionBulk = (Inflation.x * SubPillow * ThickMod + SporeTuft * 0.28f)
 		* CushionHeight * HabitBulkScale * Turgor;
@@ -740,8 +745,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	int Cells = max(1, ColonyDensity);
-	float4 BroadPigment = MixtormatNoiseFbm(UV, max(3, Cells / 2), 4, 2.0f, 0.5f, Seed + 1103u);
-	float4 MesoPigment = MixtormatNoiseFbm(UV, max(10, Cells * 2), 3, 2.0f, 0.5f, Seed + 1217u);
+	float3 BroadPigment;
+	MixtormatNoiseFbm(UV, max(3, Cells / 2), 4, 0.5f, 2.0f, Seed + 1103u, BroadPigment.x, BroadPigment.yz);
+	float3 MesoPigment;
+	MixtormatNoiseFbm(UV, max(10, Cells * 2), 3, 0.5f, 2.0f, Seed + 1217u, MesoPigment.x, MesoPigment.yz);
 	float ColonyHash = float((ColonyId >> 3u) & 0x3ffu) / 1023.0f;
 
 	float ColonyShift = ((BroadPigment.x * 0.65f + MesoPigment.x * 0.35f) * 0.55f + (ColonyHash - 0.5f) * 0.45f) * saturate(ColonyVariation);
@@ -753,8 +760,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float ThinEdge = saturate(1.0f - Cover * 1.6f);
 
 	float RampT = saturate(CrownLift + ColonyShift + ShootShift + LivingTip * 0.55f - ThinEdge * 0.25f);
-	float3 Albedo = EvaluateMixtormatColorRamp(
-		RampT, ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors);
+	float3 Albedo = MixtormatEvalColorRamp(
+		RampT, ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors).rgb;
 
 	// Organic per-colony hue/warmth shift so neighboring cushions feel naturally distinct
 	float WarmthShift = MesoPigment.x * saturate(ColonyVariation) * 0.14f;
@@ -783,7 +790,8 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		- MesoCushionHeight.SampleLevel(LinearWrapSampler, DestinationUV - float2(0.0f, OutTexel.y), 0.0f);
 	float2 CushionSlope = -float2(MX, MY) * float2(OutputSize) * 1.45f;
 
-	float4 GranularNoise = MixtormatNoiseFbm(UV, max(48, Cells * 6), 2, 2.0f, 0.5f, Seed + 1451u);
+	float3 GranularNoise;
+		MixtormatNoiseFbm(UV, max(48, Cells * 6), 2, 0.5f, 2.0f, Seed + 1451u, GranularNoise.x, GranularNoise.yz);
 	float2 GranularSlope = float2(GranularNoise.y, GranularNoise.z) * (0.28f * (0.35f + 0.65f * ThinEdge));
 
 	float2 LeafSlope = Leaf.ResidualSlope * lerp(0.75f, 2.15f, saturate(ShootLength));
