@@ -225,19 +225,7 @@ FMixtormatChildCapabilities GetChildCapabilities(const FMixtormatLayerChild& Chi
 				EMixtormatPreviewOutputKind::FlowDirection, false, true, true, NAME_None,
 				true, EMixtormatPublishedFieldKind::Flow});
 		}
-		else if (Child.Generator.Type == EMixtormatGeneratorType::StrataCarver)
-		{
-			// Bed IDs feed the ID consumers below this row. Position is 0..1 up each bed, the
-			// natural coordinate for a colour ramp; random is one value per bed.
-			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,
-				false, true, false, NAME_None});
-			Result.Outputs.Add({FName(TEXT("StrataPosition")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputStrataPosition", "Bed Position"),
-				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
-			Result.Outputs.Add({FName(TEXT("StrataRandom")),
-				NSLOCTEXT("SMixtormat", "PreviewOutputStrataRandom", "Bed Random"),
-				EMixtormatPreviewOutputKind::Mask, true, true, true, NAME_None});
-		}
+
 				else if (Child.Generator.Type == EMixtormatGeneratorType::RootNetwork)
 		{
 			Result.Outputs.Add({NAME_None, RegionIdsLabel, EMixtormatPreviewOutputKind::RegionIds,

@@ -19,10 +19,10 @@ class UTexture2D;
 UENUM(BlueprintType)
 enum class EMixtormatGeneratorType : uint8
 {
-	StrataCarver UMETA(DisplayName = "Strata Carver"),
+
 	// Slot 1 was Fracture. Cracks replaces it in place; Config/DefaultMixtormat.ini carries the
 	// name redirect, so a saved Fracture child loads as Cracks at its defaults.
-	Cracks UMETA(DisplayName = "Cracks"),
+	Cracks = 1 UMETA(DisplayName = "Cracks"),
 	// Appended: serialized by value.
 	RockFormation UMETA(DisplayName = "Rock Formation"),
 	Pebbles UMETA(DisplayName = "Pebbles"),
@@ -43,8 +43,7 @@ enum class EMixtormatGeneratorType : uint8
 // One list for runtime gather, GPU passes and editor placement.
 inline bool MixtormatCanOwnGeneratorFlow(const EMixtormatGeneratorType Type)
 {
-	return Type == EMixtormatGeneratorType::StrataCarver
-		|| Type == EMixtormatGeneratorType::RockFormation
+	return Type == EMixtormatGeneratorType::RockFormation
 		|| Type == EMixtormatGeneratorType::Pebbles
 		|| Type == EMixtormatGeneratorType::Cracks
 		|| Type == EMixtormatGeneratorType::CliffStrata
@@ -71,109 +70,6 @@ enum class EMixtormatPebbleDirection : uint8
 	Axis UMETA(DisplayName = "Axis Biased")
 };
 
-// Strata Carver: coherent folded interfaces, hard shelves, recessed soft beds and joint-cut
-// slabs. Interface offsets are bounded so beds cannot cross. One field pass publishes signed
-// relief, bed IDs, position inside each bed and stable per-bed random.
-USTRUCT(BlueprintType)
-struct MIXTORMATRUNTIME_API FMixtormatStrataCarver
-{
-	GENERATED_BODY()
-
-	// Generator height contract: zero is neutral. Shared normalization preserves zero;
-	// Height Scale is applied afterwards.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output")
-	bool bStrataNormalizeHeight = true;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver|Output", meta = (UIMin = "-4.0", UIMax = "4.0", Delta = "0.01"))
-	float StrataHeightScale = 1.0f;
-
-	// Draws interfaces, bed hardness, slab joints, cross-bedding and the shared fold.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0"))
-	int32 Seed = 3;
-
-	// How far the strata relief reaches, in the same units as the layer's height.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float Depth = 0.25f;
-
-	// Beds across the tile along the bedding's own direction. Rounded to a whole number so the
-	// column closes on the tile, and it is also how many distinct beds are drawn before they
-	// repeat.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1.0", UIMax = "64.0"))
-	float StrataFrequency = 6.0f;
-
-	// Direction of the bedding, in degrees. Snaps to the nearest tileable lattice angle.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "360.0"))
-	float StrataRotation = 0.0f;
-
-	// Varies interface spacing and lateral thickness. The shader saturates to keep beds ordered.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float ThicknessVariation = 0.5f;
-
-	// Per-bed shelf elevation variation, independent of the hard/soft material contrast.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float HeightVariation = 0.5f;
-
-	// Sharpens and narrows the shoulders between a shelf and its shared bed seams.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (DisplayName = "Edge Sharpness", UIMin = "0.0", UIMax = "1.0"))
-	float Verticality = 0.7f;
-
-	// Serialized data only. The ramp algorithm has been replaced, not retained as another mode.
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Strata now uses geological shelves; use LedgeWidth."))
-	float RampShape = 0.0f;
-
-	// Wider ledges leave more of each bed as a planar shelf. Hardness also affects shoulder width.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float LedgeWidth = 0.65f;
-
-	// 0 gives all beds equal hardness; 1 gives the full per-bed hard/soft contrast.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float HardnessContrast = 0.75f;
-
-	// Recesses soft beds and shared seams without changing their IDs or spacing.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float SoftRecession = 0.65f;
-
-	// Shared fold amplitude in tile widths, and its integer frequency along the bedding.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.25"))
-	float Bend = 0.03f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "8"))
-	int32 BendScale = 2;
-
-	// Joint-cut depth, rim chipping and planar slab displacement. Zero leaves continuous shelves.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (DisplayName = "Slab Breakup", UIMin = "0.0", UIMax = "1.0", Delta = "0.01"))
-	float Breakup = 0.35f;
-
-	// Slabs per primitive strike repeat. Integer counts keep the joint network tileable.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "1", UIMax = "16"))
-	int32 JointScale = 4;
-
-	// Joint width as a fraction of nominal slab spacing. Zero closes cuts but retains slab relief.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "0.25", Delta = "0.005"))
-	float JointWidth = 0.035f;
-
-	// How many beds the upstream composite height shifts the bedding by; zero ignores it.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "16.0"))
-	float HeightFollow = 0.0f;
-
-	// Fine laminae, stronger in soft beds and filtered by pixel footprint; cross-bedding tilts them.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float Lamination = 0.25f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "3.0"))
-	float CrossBedding = 1.0f;
-
-	// 0 ignores any mask scoped under this generator entirely. 1 lets it scale where the strata
-	// act.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float MaskInfluence = 1.0f;
-
-	// How much Region IDs above this generator vary the relief per region. Exactly zero at 0 --
-	// the shader branches rather than multiplying by zero, so a stack with no ID producer and a
-	// stack with one at influence 0 are bit-identical.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Strata Carver", meta = (UIMin = "0.0", UIMax = "1.0"))
-	float IDInfluence = 0.0f;
-};
 
 UENUM(BlueprintType)
 enum class EMixtormatRockHeightMode : uint8
@@ -1321,7 +1217,7 @@ enum class EMixtormatNoisePreset : uint8
 // Every family is periodic by construction -- the lattice is wrapped to an integer period
 // before it is hashed -- so the field tiles exactly at any Scale, and Offset translates it
 // without breaking the wrap. Direction is used by Bars and Phasor, where
-// it snaps to the nearest angle that tiles, exactly like Strata Carver's bedding.
+// it snaps to the nearest angle that tiles.
 USTRUCT(BlueprintType)
 struct MIXTORMATRUNTIME_API FMixtormatNoise
 {
@@ -1370,7 +1266,7 @@ struct MIXTORMATRUNTIME_API FMixtormatNoise
 	float NoiseOffsetY = 0.0f;
 
 	// Bars / Phasor: the direction the waves advance across, in degrees. 0 is horizontal stripes;
-	// the angle snaps to the nearest one that tiles, like Strata Carver's bedding direction.
+	// the angle snaps to the nearest one that tiles.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Noise|Placement", meta = (UIMin = "0", UIMax = "360", Delta = "1"))
 	float NoiseDirection = 0.0f;
 
@@ -1782,7 +1678,7 @@ struct MIXTORMATRUNTIME_API FMixtormatRootNetwork
 // The wrapper exists so the category is one thing everywhere -- one child type, one owner type,
 // one badge, one dispatch, one gather branch, one inspector slot -- and the kind is a field
 // inside it rather than a second discriminator bolted onto EMixtormatLayerChildType. Adding a
-// generator is then: a value on EMixtormatGeneratorType, a payload struct beside StrataCarver,
+// generator is then: a value on EMixtormatGeneratorType, a payload struct beside RockFormation,
 // a case in AddGeneratorLayerPasses, and an inspector panel. Nothing that already exists changes.
 //
 // This is the opposite of the trade EMixtormatLayerChildType makes for filters, and deliberately
@@ -1824,7 +1720,7 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	bool bEnabled = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator")
-	EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+	EMixtormatGeneratorType Type = EMixtormatGeneratorType::RockFormation;
 
 	// Used by Cracks, Rock Formation, Pebbles and Cliff Strata only.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator|Native Flow")
@@ -1855,8 +1751,6 @@ struct MIXTORMATRUNTIME_API FMixtormatGenerator
 	UPROPERTY()
 	FMixtormatHeightBlend HeightBlend = FMixtormatHeightBlend(EMixtormatHeightOp::Add);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::StrataCarver"))
-	FMixtormatStrataCarver StrataCarver;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Generator", meta = (EditCondition = "Type == EMixtormatGeneratorType::Cracks"))
 	FMixtormatCracks Cracks;

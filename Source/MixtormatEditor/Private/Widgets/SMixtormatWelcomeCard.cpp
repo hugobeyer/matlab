@@ -131,7 +131,7 @@ TSharedRef<SWidget> SMixtormatWelcomeCard::BuildOverviewView()
 				[
 					BuildFeatureRow(
 						LOCTEXT("FeatureGeneratorsTitle", "Generators & Procedurals"),
-						LOCTEXT("FeatureGeneratorsDesc", "GPU-evaluated procedural patterns including cellular, perlin, weave, tile, and strata carvers."))
+						LOCTEXT("FeatureGeneratorsDesc", "GPU-evaluated procedural patterns including cellular, perlin, weave, and tile."))
 				]
 				+ SVerticalBox::Slot()
 				.AutoHeight()
@@ -334,7 +334,7 @@ TSharedRef<SWidget> SMixtormatWelcomeCard::BuildGuideContent(int32 TopicIndex)
 		HeaderText = LOCTEXT("GuideGeneratorsHeader", "Procedural Generators & Patterns");
 		Points = {
 			{ LOCTEXT("GuideGeneratorsP1Title", "GPU Evaluation"), LOCTEXT("GuideGeneratorsP1Desc", "Generators produce procedural textures on the GPU in real time, avoiding disk storage and texture resolution limits during authoring.") },
-			{ LOCTEXT("GuideGeneratorsP2Title", "Pattern Library"), LOCTEXT("GuideGeneratorsP2Desc", "Includes cellular noise, perlin noise, Voronoi cells, bricks, tiles, weave, and strata carvers.") },
+			{ LOCTEXT("GuideGeneratorsP2Title", "Pattern Library"), LOCTEXT("GuideGeneratorsP2Desc", "Includes cellular noise, perlin noise, Voronoi cells, bricks, tiles, and weave.") },
 			{ LOCTEXT("GuideGeneratorsP3Title", "Height Modulation"), LOCTEXT("GuideGeneratorsP3Desc", "Generators contribute to the layer's height map, producing displacement and normal gradients automatically.") },
 			{ LOCTEXT("GuideGeneratorsP4Title", "Driver Linkage"), LOCTEXT("GuideGeneratorsP4Desc", "Generator seeds and parameters can be linked to spatial drivers or modulated across layers.") }
 		};

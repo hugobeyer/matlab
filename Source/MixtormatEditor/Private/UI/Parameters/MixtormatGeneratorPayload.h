@@ -11,7 +11,7 @@ namespace MixtormatGeneratorPayload
 	{
 		switch (Generator.Type)
 		{
-		case EMixtormatGeneratorType::StrataCarver: return &Generator.StrataCarver;
+
 		case EMixtormatGeneratorType::Cracks: return &Generator.Cracks;
 		case EMixtormatGeneratorType::RockFormation: return &Generator.RockFormation;
 		case EMixtormatGeneratorType::Pebbles: return &Generator.Pebbles;
@@ -30,7 +30,7 @@ namespace MixtormatGeneratorPayload
 	{
 		switch (Generator.Type)
 		{
-		case EMixtormatGeneratorType::StrataCarver: return FMixtormatStrataCarver::StaticStruct();
+
 		case EMixtormatGeneratorType::Cracks: return FMixtormatCracks::StaticStruct();
 		case EMixtormatGeneratorType::RockFormation: return FMixtormatRockFormation::StaticStruct();
 		case EMixtormatGeneratorType::Pebbles: return FMixtormatPebbles::StaticStruct();

@@ -91,7 +91,7 @@ namespace MixtormatGpuCompositor
 			});
 	}
 
-	// The erosion jump schedule, the same construction the Strata Carver uses. Strides halve
+	// The erosion jump schedule. Strides halve
 	// from the jump start down to 1 and then the cycle restarts, so a long iteration budget
 	// alternates reach and relaxation instead of spending everything past the first few
 	// iterations wearing at the same distance. The wide passes carry wear across the tile; the

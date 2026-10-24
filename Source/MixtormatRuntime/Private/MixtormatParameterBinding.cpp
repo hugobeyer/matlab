@@ -117,10 +117,7 @@ namespace
 		View.Bindings = &Bindings;
 		switch (Generator.Type)
 		{
-		case EMixtormatGeneratorType::StrataCarver:
-			View.ConstData = &Generator.StrataCarver;
-			View.Struct = FMixtormatStrataCarver::StaticStruct();
-			break;
+
 		case EMixtormatGeneratorType::Cracks:
 			View.ConstData = &Generator.Cracks;
 			View.Struct = FMixtormatCracks::StaticStruct();
@@ -677,7 +674,7 @@ namespace MixtormatParameterBinding
 		case EMixtormatParameterOwnerType::Curvature: return { FMixtormatMaskCurvature::StaticStruct() };
 		case EMixtormatParameterOwnerType::MaskShaping: return { FMixtormatMaskShaping::StaticStruct() };
 		case EMixtormatParameterOwnerType::Generator:
-			return { FMixtormatStrataCarver::StaticStruct(), FMixtormatCracks::StaticStruct(),
+			return { FMixtormatCracks::StaticStruct(),
 				FMixtormatRockFormation::StaticStruct(), FMixtormatPebbles::StaticStruct(),
 				FMixtormatCliffStrata::StaticStruct(), FMixtormatNoise::StaticStruct(),
 				FMixtormatRootNetwork::StaticStruct(), FMixtormatScales::StaticStruct(),

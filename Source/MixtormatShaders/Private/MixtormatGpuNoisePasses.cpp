@@ -122,14 +122,12 @@ namespace
 	//
 	// A global stripe at an arbitrary angle does not close on the tile, so the phase direction snaps to
 	// the nearest small coprime integer vector and is scaled so a whole number of cycles crosses
-	// the tile -- the same lattice snap Strata Carver's bedding uses, kept local here because the
-	// original is file-private to the generator-pass file. Scale is cycles across the tile; the
-	// snap changes the effective angle, never the count.
+	// the tile. Scale is cycles across the tile; the snap changes the effective angle, never the count.
 	FVector2f ResolveNoiseWave(const float Scale, const float DirectionDegrees)
 	{
 		const float Radians = FMath::DegreesToRadians(DirectionDegrees);
 		// The phase advances across the stripes: 0 degrees is horizontal stripes, so the phase
-		// direction is (sin, cos) -- matching Strata Carver's bedding convention.
+		// direction is (sin, cos).
 		const FVector2f Want(FMath::Sin(Radians), FMath::Cos(Radians));
 
 		FIntPoint Best(0, 1);

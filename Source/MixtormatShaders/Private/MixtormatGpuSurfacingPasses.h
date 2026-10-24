@@ -10,6 +10,7 @@ namespace MixtormatGpuCompositor
 	struct FMixtormatLayerPassContext;
 	struct FLayerRenderData;
 	struct FChildRenderData;
+	struct FGeneratorBundle;
 
 	// Raw destination-space fields, never globally published/cached here.
 	struct FSurfacingFields
@@ -50,6 +51,16 @@ namespace MixtormatGpuCompositor
 	FSurfacingFields AddRustSurfacePasses(FMixtormatComposeContext& Ctx,
 				FMixtormatLayerPassContext& LayerCtx, const FLayerRenderData& Layer,
 				const FChildRenderData& Child, FRDGTextureRef SubstrateHeight, FRDGTextureRef PreUV = nullptr);
+
+	FRDGTextureRef AddMossPasses(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext& LayerCtx,
+		const FLayerRenderData& Layer, const FChildRenderData& Child, FRDGTextureRef RunningHeight,
+		FRDGTextureRef BelowHeight, FGeneratorBundle* Bundle, FRDGTextureRef PreUV = nullptr);
+
+	// Returns ScaledMossHeight unchanged for raw previews or inactive canopy support.
+	FRDGTextureRef AddMossCanopyResolvePass(FMixtormatComposeContext& Ctx,
+		FMixtormatLayerPassContext& LayerCtx, const FChildRenderData& Child,
+		FRDGTextureRef AnalysisDelta, FRDGTextureRef BelowHeight, FRDGTextureRef ScaledMossHeight,
+		FRDGTextureRef GrowthCoverage, FRDGTextureRef Gate);
 
 			// Null gate is identity. Each owner's scoped masks enter the ancestry product once.
 	FRDGTextureRef AddSurfacingGatePass(FMixtormatComposeContext& Ctx,

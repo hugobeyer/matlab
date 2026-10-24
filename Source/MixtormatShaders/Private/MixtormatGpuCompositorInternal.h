@@ -821,33 +821,9 @@ namespace MixtormatGpuCompositor
 	};
 
 
-	// Strata Carver settings: ordered interfaces, hardness, shelves and slab joints.
-	struct FStrataCarverRenderData
-	{
-		uint32 Seed = 3;
-		float Depth = 0.25f;
-		float StrataFrequency = 6.0f;
-		float StrataRotation = 0.0f;
-		float ThicknessVariation = 0.5f;
-		float HeightVariation = 0.5f;
-		float Verticality = 0.7f;
-		float LedgeWidth = 0.65f;
-		float HardnessContrast = 0.75f;
-		float SoftRecession = 0.65f;
-		float Bend = 0.03f;
-		int32 BendScale = 2;
-		float Breakup = 0.35f;
-		int32 JointScale = 4;
-		float JointWidth = 0.035f;
-		float HeightFollow = 0.0f;
-		float Lamination = 0.25f;
-		float CrossBedding = 1.0f;
-		float MaskInfluence = 1.0f;
-		float IDInfluence = 0.0f;
-	};
 
 	// One GENERATORS child. Mirrors FMixtormatGenerator: the kind is a field, so a second
-	// generator adds a payload beside StrataCarver and a case in AddGeneratorLayerPasses.
+	// generator adds a payload beside RockFormation and a case in AddGeneratorLayerPasses.
 	struct FCracksRenderData
 	{
 		int32 Seed = 1;
@@ -1071,12 +1047,12 @@ namespace MixtormatGpuCompositor
 
 	struct FGeneratorRenderData
 	{
-		EMixtormatGeneratorType Type = EMixtormatGeneratorType::StrataCarver;
+		EMixtormatGeneratorType Type = EMixtormatGeneratorType::RockFormation;
 		bool bNormalizeHeight = true;
 		float HeightScale = 1.0f;
 		float HeightBias = 0.0f;
 		FNativeFlowRenderData NativeFlow;
-		FStrataCarverRenderData StrataCarver;
+
 		FCracksRenderData Cracks;
 		FRockFormationRenderData RockFormation;
 		FPebblesRenderData Pebbles;
@@ -1344,7 +1320,7 @@ namespace MixtormatGpuCompositor
 			Unsupported,
 			ContinuousAttribute,
 			RegionAttribute, // Same wrapped anchor as this bundle's immutable RegionIds.
-			BedCoordinate, // Owner + local phase branch from immutable RegionIds.
+
 			UvDistance, // Negative inside; own scalar metric, immutable BoundaryField validity.
 			CoverageAlias, // Apply-owned Coverage, never an independent remap.
 			LiftedCoordinateMap, // Identity winding; compose periodic displacement.
@@ -1355,14 +1331,14 @@ namespace MixtormatGpuCompositor
 		enum class EFieldUnits : uint8
 		{
 			Unitless,
-			BedFraction,
+
 			CrackCell,
 			MapUV,
 			GeneratorDomain,
 			Radians
 		};
 		// MapUV is the completed producer's source-map frame, not generator-domain units.
-		// Region/bed attributes associate with this bundle's RegionIds; UV distances use
+		// Region attributes associate with this bundle's RegionIds; UV distances use
 		// its BoundaryField validity. Remapping snapshots both associations before writes.
 		struct FFieldDescriptor
 		{
@@ -1385,8 +1361,7 @@ namespace MixtormatGpuCompositor
 		TMap<FName, FRDGTextureRef> NamedMasks;
 		// Exhaustively registered at production; contains policies only, no second textures.
 		TMap<FName, FFieldDescriptor> NamedMaskDescriptors;
-		// Negative-inside local distance in map UV + validity. May be generated directly
-		// by structurally warped Strata; only a later completed-field flow remaps it.
+		// Negative-inside local distance in map UV + validity; completed-field flow remaps it.
 		FRDGTextureRef BoundaryField = nullptr;
 		// Noise declares its heterogeneous Gradient as producer-domain data. The completed-warp
 		// path transport-samples it rather than guessing a covector/direction transform.

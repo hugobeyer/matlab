@@ -7,8 +7,7 @@
 // Completed-field flow companions only; apply owns Height/Coverage. Not structural generation.
 // 0 continuous attribute, 1 IDs, 2 valid UV boundary, 3 lifted coordinate map,
 // 4 declared source-frame vector data, 5/6 legacy local centre/orientation,
-// 7 valid UV scalar distance, 8 legacy bed boundary, 9 height combine,
-// 10 region attribute, 11 owner/phase-aware bed coordinate,
+// 7 valid UV scalar distance, 9 height combine, 10 region attribute,
 // 12 automatic footprint-filtered signed height for post-generation Warp.
 int2 OutputSize;
 float InvalidDistance;
@@ -38,33 +37,6 @@ float2 BundleDestinationVector(float2 V, float2 X, float2 Y)
 	return Det != 0.0f ? float2(Y.y * V.x - Y.x * V.y, -X.y * V.x + X.x * V.y) / Det : 0.0f;
 }
 
-#if BUNDLE_STAGE == 11
-float BundleBedCoordinate(float2 UV, int2 Anchor)
-{
-	const uint Owner = IdField.Load(int3(Anchor, 0));
-	const float T0 = ScalarField.Load(int3(Anchor, 0));
-	if (Owner == MIXTORMAT_INVALID_REGION) { return T0; }
-	int2 Base;
-	float4 Weights;
-	MixtormatGeneratorWarpBilinear(UV, OutputSize, Base, Weights);
-	float Sum = 0.0f;
-	float Weight = 0.0f;
-	[unroll]
-	for (int Tap = 0; Tap < 4; ++Tap)
-	{
-		const int2 P = BundleWrap(Base + int2(Tap & 1, Tap >> 1));
-		const float T = ScalarField.Load(int3(P, 0));
-		if (Weights[Tap] > 0.0f && IdField.Load(int3(P, 0)) == Owner && abs(T - T0) < 0.5f)
-		{
-			Sum += Weights[Tap] * T;
-			Weight += Weights[Tap];
-		}
-	}
-	// The valid anchor is a positive-weight tap. No circular averaging, ID switching,
-	// neighbour-owner search or frac: equal modulo IDs alone do not identify a phase branch.
-	return Weight > 0.0f ? Sum / Weight : T0;
-}
-#endif
 
 #if BUNDLE_STAGE == 2 || BUNDLE_STAGE == 7
 bool BundleValidBoundary(float2 UV, out float Distance)
@@ -171,18 +143,6 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float Module = ModuleHeight.Load(int3(Pixel, 0));
 	OutScalar[Pixel] = Running + Module;
 
-#elif BUNDLE_STAGE == 8
-	// Historical inactive-structural-warp approximation, deliberately unchanged.
-	const float T = ScalarField.Load(int3(Pixel, 0));
-	const float XP = ScalarField.Load(int3(BundleWrap(Pixel + int2(1, 0)), 0));
-	const float XM = ScalarField.Load(int3(BundleWrap(Pixel - int2(1, 0)), 0));
-	const float YP = ScalarField.Load(int3(BundleWrap(Pixel + int2(0, 1)), 0));
-	const float YM = ScalarField.Load(int3(BundleWrap(Pixel - int2(0, 1)), 0));
-	const float2 D = float2(XP - XM, YP - YM);
-	const float2 G = (D - round(D)) * float2(OutputSize) * 0.5f;
-	const float GL = length(G);
-	OutVector[Pixel] = float2(GL != 0.0f ? -min(T, 1.0f - T) / GL : 0.0f,
-		GL != 0.0f ? 1.0f : 0.0f);
 #else
 	const float2 UV = WarpedUV.Load(int3(Pixel, 0));
 	int2 Anchor;
@@ -257,8 +217,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #elif BUNDLE_STAGE == 10
 	// Copy the producer random/default at exactly the output ID's wrapped anchor.
 	OutScalar[Pixel] = ScalarField.Load(int3(Anchor, 0));
-#elif BUNDLE_STAGE == 11
-	OutScalar[Pixel] = BundleBedCoordinate(UV, Anchor);
+
 #else
 	float2 X, Y;
 	MixtormatGeneratorWarpJacobian(WarpedUV, Pixel, OutputSize, X, Y);

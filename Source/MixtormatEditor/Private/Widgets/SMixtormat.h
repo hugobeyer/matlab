@@ -48,7 +48,7 @@ struct FMixtormatSurfaceEntry;
 // What an Add-menu entry creates.
 //
 // Not the same thing as EMixtormatLayerChildType, and deliberately so: Texture Mask and Layer
-// Values Mask are both EMixtormatLayerChildType::Mask, and Strata Carver is a Generator with its
+// Values Mask are both EMixtormatLayerChildType::Mask, and Cracks is a Generator with its
 // kind set. This names what the artist picked, which is what both Add menus are authored against,
 // and MixtormatChildCreate::ApplyDefaults turns one of these into a configured child. Editor-only
 // and never serialised, so it is free to be reordered.
@@ -69,7 +69,7 @@ enum class EMixtormatChildCreation : uint8
 	GeneratedMask,
 	ColorIdMask,
 	RandomFromIds,
-	StrataCarver,
+
 	Cracks,
 	RockFormation,
 	Pebbles,
@@ -560,10 +560,7 @@ private:
 
 	// GENERATORS. Panels resolve a generator child first, or the selected Generator layer payload.
 	// HasSelectedGenerator remains child-only so a layer keeps its HEIGHT and COMPOSITION cards.
-	FReply AddStrataCarverToLayer(int32 LayerIndex);
-	FMixtormatStrataCarver* GetSelectedStrataCarver();
-	const FMixtormatStrataCarver* GetSelectedStrataCarver() const;
-	TSharedRef<SWidget> BuildStrataCarverControls();
+
 	FMixtormatCracks* GetSelectedCracks();
 	const FMixtormatCracks* GetSelectedCracks() const;
 	TSharedRef<SWidget> BuildCracksControls();

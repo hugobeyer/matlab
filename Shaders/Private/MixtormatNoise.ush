@@ -354,7 +354,7 @@ FMixtormatNoiseWorley MixtormatNoiseWorley(float2 UV, int Period, uint Seed)
 
 // Bars / Stripes: a phasor on an integer wave vector. The wave is resolved CPU-side by snapping
 // the authored direction to the nearest small integer vector and scaling it so a whole number of
-// cycles crosses the tile -- the same lattice snap Strata Carver's bedding uses. Phase therefore
+// cycles crosses the tile. Phase therefore
 // advances by an integer number of cycles across each seam, and cos() closes it exactly.
 //
 // Value = cos(Tau * phase), zero-centred in [-1, 1]. Gradient is the unit phase direction --

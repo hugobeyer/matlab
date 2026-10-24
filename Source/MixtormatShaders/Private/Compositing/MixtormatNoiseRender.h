@@ -12,9 +12,7 @@ namespace MixtormatGpuCompositor
 // The Noise module's settings, resolved from the authored payload to what the GPU pass reads.
 //
 // This rides a side table rather than the child render-data payload because that payload lives
-// in MixtormatGpuCompositorInternal.h, which the Noise pass does not own. When the payload lands
-// there (integration pass), this struct moves beside StrataCarver and the store dissolves --
-// the gather and the pass keep their shapes.
+// in MixtormatGpuCompositorInternal.h, which the Noise pass does not own.
 struct FMixtormatNoiseRenderData
 {
 	// EMixtormatNoiseType, by value.

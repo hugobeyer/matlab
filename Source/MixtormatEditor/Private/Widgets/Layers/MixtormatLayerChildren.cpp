@@ -839,7 +839,7 @@ namespace MixtormatLayersPrivate
 	// colour on a Color ID mask and the LayerValues source on a Layer Values mask used to exist
 	// only on the layer path, so the same entry on a group produced a differently configured node.
 	// The serialised child type one menu entry produces. Several kinds share one: Texture Mask and
-	// Layer Values Mask are both Mask, and Strata Carver is a Generator. That collapse is exactly
+	// Layer Values Mask are both Mask, and Cracks is a Generator. That collapse is exactly
 	// why EMixtormatChildCreation exists alongside the type.
 
 	EMixtormatChildCreation CreationKindForGenerator(const EMixtormatGeneratorType Type)
@@ -855,7 +855,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatGeneratorType::CliffStrata:    return EMixtormatChildCreation::CliffStrata;
 		case EMixtormatGeneratorType::Noise:          return EMixtormatChildCreation::Noise;
 		case EMixtormatGeneratorType::BooleanOps:    return EMixtormatChildCreation::ScatterCarve;
-		default:                                      return EMixtormatChildCreation::StrataCarver;
+		default:                                   return EMixtormatChildCreation::RockFormation;
 		}
 	}
 
@@ -877,7 +877,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::ColorIdMask:     return EMixtormatLayerChildType::ColorId;
 		case EMixtormatChildCreation::RandomFromIds:   return EMixtormatLayerChildType::RandomId;
 		case EMixtormatChildCreation::Skin:            return EMixtormatLayerChildType::Surfacing;
-		case EMixtormatChildCreation::StrataCarver:    return EMixtormatLayerChildType::Generator;
+
 		case EMixtormatChildCreation::Cracks:          return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::RockFormation:   return EMixtormatLayerChildType::Generator;
 		case EMixtormatChildCreation::Pebbles:         return EMixtormatLayerChildType::Generator;
@@ -951,9 +951,7 @@ namespace MixtormatLayersPrivate
 		case EMixtormatChildCreation::Skin:
 			Child.Surfacing.Type = EMixtormatSurfacingType::Skin;
 			break;
-		case EMixtormatChildCreation::StrataCarver:
-			Child.Generator.Type = EMixtormatGeneratorType::StrataCarver;
-			break;
+
 		case EMixtormatChildCreation::Cracks:
 			Child.Generator.Type = EMixtormatGeneratorType::Cracks;
 			break;
@@ -1584,8 +1582,7 @@ FText SMixtormat::GetLayerChildName(const FMixtormatLayerChild& Child) const
 	{
 		switch (Child.Generator.Type)
 		{
-		case EMixtormatGeneratorType::StrataCarver:
-			return LOCTEXT("StrataCarverChildName", "Strata Carver");
+
 		case EMixtormatGeneratorType::Cracks:
 			return LOCTEXT("CracksChildName", "Cracks");
 		case EMixtormatGeneratorType::RockFormation:
@@ -2224,19 +2221,6 @@ const FMixtormatPatternFilter* SMixtormat::GetSelectedPatternId() const
 	return Child.Type == EMixtormatLayerChildType::PatternId ? &Child.PatternId : nullptr;
 }
 
-FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver()
-{
-	FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && Generator->Type == EMixtormatGeneratorType::StrataCarver
-		? &Generator->StrataCarver : nullptr;
-}
-
-const FMixtormatStrataCarver* SMixtormat::GetSelectedStrataCarver() const
-{
-	const FMixtormatGenerator* Generator = GetSelectedGenerator();
-	return Generator && Generator->Type == EMixtormatGeneratorType::StrataCarver
-		? &Generator->StrataCarver : nullptr;
-}
 
 FMixtormatCracks* SMixtormat::GetSelectedCracks()
 {

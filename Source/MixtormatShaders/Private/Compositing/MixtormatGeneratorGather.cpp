@@ -35,40 +35,7 @@ namespace MixtormatGpuCompositor
 
 	switch (Generator.Type)
 	{
-	case EMixtormatGeneratorType::StrataCarver:
-	{
-		const FMixtormatStrataCarver& Carver = Generator.StrataCarver;
-		const FMixtormatStrataCarver Defaults;
-		FStrataCarverRenderData& Out = ChildData.Generator.StrataCarver;
-		// Non-finite falls back to the default; ranges are authored in the tool.
-		const auto Finite = [](const float Value, const float Fallback)
-		{
-			return FMath::IsFinite(Value) ? Value : Fallback;
-		};
-		ChildData.Generator.bNormalizeHeight = Carver.bStrataNormalizeHeight;
-		ChildData.Generator.HeightScale = Finite(Carver.StrataHeightScale, Defaults.StrataHeightScale);
-		Out.Seed = static_cast<uint32>(Carver.Seed);
-		Out.Depth = Finite(Carver.Depth, Defaults.Depth);
-		Out.StrataFrequency = Finite(Carver.StrataFrequency, Defaults.StrataFrequency);
-		Out.StrataRotation = Finite(Carver.StrataRotation, Defaults.StrataRotation);
-		Out.ThicknessVariation = Finite(Carver.ThicknessVariation, Defaults.ThicknessVariation);
-		Out.HeightVariation = Finite(Carver.HeightVariation, Defaults.HeightVariation);
-		Out.Verticality = Finite(Carver.Verticality, Defaults.Verticality);
-		Out.LedgeWidth = Finite(Carver.LedgeWidth, Defaults.LedgeWidth);
-		Out.HardnessContrast = Finite(Carver.HardnessContrast, Defaults.HardnessContrast);
-		Out.SoftRecession = Finite(Carver.SoftRecession, Defaults.SoftRecession);
-		Out.Bend = Finite(Carver.Bend, Defaults.Bend);
-		Out.BendScale = Carver.BendScale;
-		Out.Breakup = Finite(Carver.Breakup, Defaults.Breakup);
-		Out.JointScale = Carver.JointScale;
-		Out.JointWidth = Finite(Carver.JointWidth, Defaults.JointWidth);
-		Out.HeightFollow = Finite(Carver.HeightFollow, Defaults.HeightFollow);
-		Out.Lamination = Finite(Carver.Lamination, Defaults.Lamination);
-		Out.CrossBedding = Finite(Carver.CrossBedding, Defaults.CrossBedding);
-		Out.MaskInfluence = Finite(Carver.MaskInfluence, Defaults.MaskInfluence);
-		Out.IDInfluence = Finite(Carver.IDInfluence, Defaults.IDInfluence);
-		break;
-	}
+
 	case EMixtormatGeneratorType::Cracks:
 	{
 		// Unclamped: ranges are authored in the tool. Non-finite falls back to the default.
@@ -462,8 +429,7 @@ namespace MixtormatGpuCompositor
 	}
 	// Native Flow settings do not belong to the geometry cache keys.
 	if (Generator.Type != EMixtormatGeneratorType::Noise
-		&& Generator.Type != EMixtormatGeneratorType::BooleanOps
-		&& Generator.Type != EMixtormatGeneratorType::StrataCarver)
+		&& Generator.Type != EMixtormatGeneratorType::BooleanOps)
 	{
 		const FMixtormatNativeFlowSettings Defaults;
 		const FMixtormatNativeFlowSettings& F = Generator.NativeFlow;

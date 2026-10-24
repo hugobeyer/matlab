@@ -2306,19 +2306,6 @@ FReply SMixtormat::AddPatternIdToLayer(const int32 LayerIndex)
 		EMixtormatChildCreation::PatternIds);
 }
 
-// A generator, added to the end of the layer's chain like any other child.
-//
-// Where it lands in the row order matters less than it does for a mask or an effect: every
-// generator on a layer runs together, before the child loop, in authored order among themselves.
-// What the row position does decide is which Region ID map it sees -- FindRegionIdsAbove takes
-// the nearest producer above it -- and which masks are scoped beneath it.
-FReply SMixtormat::AddStrataCarverToLayer(const int32 LayerIndex)
-{
-	return CreateChild(
-		FMixtormatAddTarget::Layer(LayerIndex),
-		EMixtormatChildCreation::StrataCarver);
-}
-
 
 FReply SMixtormat::AddRampIdToLayer(const int32 LayerIndex)
 {

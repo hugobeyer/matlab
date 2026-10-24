@@ -455,17 +455,39 @@ the navigation rail. The L shortcut switches between Layers and the previously
 selected Library/Global page. The Inspector alone retains Docked / Overlay / Hidden.
 The gallery is one resizable bottom
 drawer over the whole workspace, replacing both gallery splitters. Its header reads `GALLERY`;
-`MATERIALS` and `MASKS` label its two panes. A header click collapses it; dragging past the normal
+`MATERIALS`, `MASKS` and `RECIPES` label its three resizable columns. A header click collapses it; dragging past the normal
 Slate drag threshold resizes it. Collapse leaves a fixed-width centred restore tab
 (`SMixtormatGalleryTab`, `GalleryTabWidth`) above the status bar: the foldout header surface
 with only its top corners rounded (`MakeGalleryTabRecipe` via the recipe's optional per-corner
 `CornerRadii` override), a disclosure chevron beside the Library icon.
-Fresh layouts allocate 67% to Materials and 33% to Masks. Tile selection borders paint above
+Column sizes use persisted `GalleryColumnWeights.X/Y/Z` for Materials/Masks/Recipes.
+Tile selection borders paint above
 thumbnails; the Masks header also shows the selected mask name without applying it.
 Drawer side margins, header/collapsed heights and surface opacity live in `GalleryLayout`.
 Child gallery backgrounds stay transparent so the drawer opacity can reveal the preview.
 The category popup populates its family list on opening; `All` clears the category filter.
 Inspector remains dockable.
+
+### Layer/group recipes — Gallery column
+
+`SMixtormat_Library.cpp::BuildBottomLibrary` mounts `BuildRecipeGallery()` in the
+third column. `Widgets/SMixtormat_Recipes.cpp` owns its search, category filter,
+recipe cards and shipped/user labels. Recipes capture a group and its layers;
+insertion creates an independent editable group, not a live composition reference.
+
+`Widgets/SMixtormat_Presets.cpp` owns insertion and menus: Refresh Recipes,
+Insert Editable Group, Save User Copy and referenced-asset details. Insertion requires
+an open/created material and leaves document/global settings unchanged. Shipped recipe
+files are read-only; user copies are separate. Assets are referenced, not embedded.
+
+`Services/MixtormatRecipeService.*` owns capture, strict dependency-closure validation
+and insertion preparation. `Services/MixtormatPresetStoreDocuments.cpp` loads shipped
+recipes from `Resources/Presets/Recipes` and provides recipe persistence. Shipping
+actual recipe files and their asset dependencies still needs a package-manifest check.
+
+Artist menus do not expose JSON import/export; developer serialization APIs remain.
+Some recipe card/empty-state help in `SMixtormat_Recipes.cpp` still mentions export/import;
+that copy is stale, not evidence of available menu actions. Source-reviewed only.
 The left rail has its own `NavigationRail` icon role (18px glyph, 24px shipped target),
 independent of toolbar sizing. It overlays the full-width left page's leading
 `PreviewLayout.LeftRailContentInset` (28px shipped default); the page surface remains one

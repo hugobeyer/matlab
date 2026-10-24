@@ -968,13 +968,7 @@ namespace MixtormatGpuCompositor
 						{
 							continue;
 						}
-						if (Other.Type == EMixtormatLayerChildType::Generator
-							&& Other.Generator.Type == EMixtormatGeneratorType::StrataCarver)
-						{
-							// Strata consumes this map before publishing its own.
-							bWanted = true;
-							break;
-						}
+
 						if (Other.Type == EMixtormatLayerChildType::Filter
 							|| Other.Type == EMixtormatLayerChildType::PatternId
 							|| Other.Type == EMixtormatLayerChildType::IdGroup

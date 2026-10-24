@@ -147,10 +147,7 @@
 // Blend the module's own Strength, Threshold, Softness and biases open beneath the shared row.
 
 
-// Strata Carver, the first GENERATORS panel.
-//
-// Rows run from what the beds are (size, direction, thickness, height), through their profile
-// (verticality, ramp shape), to what bends and roughens them, then the laminae.
+
 
 
 

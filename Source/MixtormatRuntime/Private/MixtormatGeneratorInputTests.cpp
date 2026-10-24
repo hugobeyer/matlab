@@ -58,7 +58,7 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 	Reference.SourceChildId = Layers[0].Children[0].ChildId;
 
 	const EMixtormatGeneratorType Types[] = {
-		EMixtormatGeneratorType::StrataCarver, EMixtormatGeneratorType::RockFormation,
+		EMixtormatGeneratorType::RockFormation,
 		EMixtormatGeneratorType::Pebbles, EMixtormatGeneratorType::Cracks,
 		EMixtormatGeneratorType::CliffStrata, EMixtormatGeneratorType::Noise};
 	for (const EMixtormatGeneratorType Type : Types)
@@ -66,7 +66,7 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 		Layers[0].Children[0].Generator.Type = Type;
 		TestEqual(TEXT("Every generator publishes completed signed height"), Resolve(0, 2), 0);
 	}
-	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::StrataCarver;
+	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::RockFormation;
 	Reference.Kind = EMixtormatPublishedFieldKind::Vector2;
 	TestEqual(TEXT("Vector2 is not Flow"), Resolve(0, 2), INDEX_NONE);
 	Reference.Kind = EMixtormatPublishedFieldKind::ScalarSigned;
@@ -96,7 +96,7 @@ bool FMixtormatGeneratorInputOrderTest::RunTest(const FString& Parameters)
 	Layers[0].Children[0].Generator.bEnabled = true;
 	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::CliffStrata;
 	TestEqual(TEXT("Cliff flow ownership remains unavailable"), Resolve(0, 2), INDEX_NONE);
-	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::StrataCarver;
+	Layers[0].Children[0].Generator.Type = EMixtormatGeneratorType::RockFormation;
 	Layers[0].Children[1].Behavior.bEnabled = false;
 	TestEqual(TEXT("Disabled flow tool"), Resolve(0, 2), INDEX_NONE);
 	Layers[0].Children[1].Behavior.bEnabled = true;

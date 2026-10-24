@@ -1,75 +1,72 @@
-# Mixtormat — FAB Release Plan (glance audit)
+# Mixtormat — FAB Release Plan
 
-This is a plan, not a special mode; I haven't started implementation. Reply `go` to execute this plan, or tell me what to change.
+Status checked 2026-10-23 against current source/config. Documentation update only.
+Static inspection; no git, commands, builds, Unreal launches, network checks or binary inspection.
 
 ## Goal
-- Ship clean Mixtormat 1.0 on FAB for UE 5.8, Win64.
-- No dev trash in zip. No docs/prototypes/audits in plugin.
+Ship Mixtormat 1.0 for UE 5.8 / Win64 with a curated, tested BuildPlugin package.
+See [exact paths and packaging caveats](FAB_RELEASE_DETAIL.md).
 
-## Success Criteria
-- Packaged zip = `.uplugin + Config + Resources + Shaders + Source` (+ curated `Content/` samples only).
-- Opens in clean UE 5.8 project, no warnings blocking FAB review.
-- FAB listing ready: desc, images, video, support URL, license.
+## Confirmed done
+- [x] `Mixtormat.uplugin`: `VersionName` is `1.0.0`; `Version` is `1`.
+- [x] Buyer description mentions authoring, baking and runtime control of baked materials.
+- [x] Engine `5.8.0`, Win64-only, Rendering category, non-beta are declared.
+- [x] Runtime + two Editor modules are declared; Editor modules have Editor target allowlists.
+- [x] Docs/support URLs are populated. Reachability/delivery is not verified.
+- [x] Runtime Build.cs declares only Core, CoreUObject and Engine dependencies.
+- [x] All four planned Config files exist.
+- [x] Filter excludes Tools and nested source Tests.
+- [x] Removed obsolete Lucide/Feather notice and its filter entry; owner confirms no longer used.
+- [x] Filter excludes Content PNG/HDR/FBX import sources (not their `.uasset` counterparts).
+- [x] Nine canonical AgentDocs guides remain at root, plus ignored `temp.md`.
 
-## Verdict (3-file glance)
-- Sources: `Mixtormat.uplugin`, `AgentDocs/ARCHITECTURE.md`, `AgentDocs/FILE_MAP.md`, `AGENTS.md`.
-- Arch is FAB-safe: `Runtime ← Shaders ← Editor`, 3 modules correct in `.uplugin`.
-- `Shaders` + `Editor` are `Editor`-only — good, keeps runtime lean.
-- Main risk is not code, it's payload: ~100+ md/html/py/svg/txt helpers ship today if zipped as-is.
+## Layer/group recipes — implemented, release checks pending
+- [x] Gallery has Materials, Masks and Recipes columns with persisted resize weights.
+- [x] Recipes column supports search/categories and shipped/user recipe entries.
+- [x] Group/layer capture, closure validation and editable-group insertion exist in source.
+- [x] Menus provide refresh, insertion, user copies and referenced-asset details.
+- [ ] Verify intended shipped recipes in `Resources/Presets/Recipes` reach the package.
+- [ ] Include all referenced assets; recipes reference assets rather than embedding them.
+- [ ] Owner smoke check: create/save group recipe → find in gallery → insert twice;
+  confirm independent editable groups, preserved internal links and unchanged global settings.
+- [ ] Check shipped read-only entries, user copies and missing-dependency errors.
+- [ ] Correct stale recipe help mentioning JSON import/export; current menus omit these actions.
 
-## Approach
-- Delete nothing yet. Exclude via pack + move dev stuff out of plugin root.
-- Keep one source of truth, no migrations/redirects (unshipped per `AGENTS.md`).
+Implementation map and behavior: `AgentDocs/UI.md` → Layer/group recipes — Gallery column.
+These are static source findings, not runtime test results.
 
-## Steps
+## Partial / not yet established
+- Packaging filter is not a complete curated-content policy or verified output manifest.
+- `.gitignore` excludes local content/output; it does not control BuildPlugin packaging.
+- SVG icon registrations supersede the old PNG-only shipping recommendation.
+- Owned SVGs do not require the removed Lucide/Feather notice.
+- No changelog was found in the visible workspace; scope freeze is an owner decision.
+- Historical asset/file counts and archive inventories were not revalidated.
+- Full Runtime include audit, shader registration coverage and UI compliance remain unverified.
 
-### 0. Freeze
-- Bump `VersionName` to `1.0.0`, changelog started.
-- Lock scope: no new generators/effects before FAB.
+## Next actions — in order
+1. **Confirm package inputs.** Ensure both Config JSON files reach the built package;
+   they are accessed by plugin-relative paths. Add explicit filter includes if needed.
+2. **Choose sample content.** Pick 2–3 materials and a sample mesh, then retain their
+   full dependency closure, including required preview/runtime assets. Do not prune blindly.
+3. **Review resources/notices.** Retain registered SVGs, brand art, fonts and required licenses.
+   Do not delete apparently unused resources without approval and a reference check.
+4. **Resolve parameter audit decisions.** See [GHOST_PARAMS_AUDIT.md](GHOST_PARAMS_AUDIT.md).
+   ChildMask drivers are deferred beyond v1 by owner decision; retain disabled UI and notes.
+   IdMapping remains open.
+5. **Owner runs package/smoke gates.** BuildPlugin → inspect artifact → clean UE 5.8 project
+   → open asset → compose → preview → bake → packaged-game baked-material runtime.
+6. **Finish listing.** Screenshots, video, feature/limit list, demo link, license/EULA review,
+   changelog, live docs/support checks; add MarketplaceURL when assigned.
 
-### 1. Strip trash (exclude from zip, move or gitignore)
-- `AgentDocs/` — ALL of it (incl `archive_old/`, `old_docs/`, `audits/`, `Prototypes/`, `NEW_TASKS/`, `new iconography/`, `code_docs/`, `*.html`).
-- `auditdocs/`, `Concepts/`, `Docs/` (keep only linkage to `https://hugobeyer.github.io/mixtormat/`).
-- Root trash if present: `Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/`, `.vs/`, `.claude/worktrees/`, `Docs/docs-assets/`.
-- Keep in repo but out of FAB zip: move above to `../Mixtormat-Dev/` or separate private repo.
-- Decide: `Content/` — ship only 2–3 demo materials + meshes. Rest stays gitignored.
+## Acceptance gates — still pending
+- [ ] Artifact contains needed Config JSON, SVG/fonts, shader/source files and notices.
+- [ ] No developer docs, prototypes, metadata, caches or raw import sources leak into it.
+- [ ] Curated Content includes all dependencies; no stale sample thumbnails.
+- [ ] Clean-project and packaged-game checks pass; relevant log warnings are reviewed.
+- [ ] FAB submission requirements and final archive layout are checked against current guidance.
+- [ ] Listing assets and links are ready.
 
-### 2. Fix `.uplugin` for FAB
-- `Description`: 1-line buyer pitch, not dev pitch. Mention bake + runtime control.
-- `Category`: keep `Rendering`.
-- `SupportedTargetPlatforms`: confirm Win64-only is intentional; FAB buyers expect Win64+ at least.
-- `DocsURL`/`SupportURL`: keep site + mailto, verify both live.
-- Add `MarketplaceURL` on submit; no code change needed.
-
-### 3. Config + Resources check
-- Keep: `Config/DefaultMixtormat.ini`, `Config/FilterPlugin.ini`, `Config/UIStyleTheme.json`, `Config/MixtormatParameterAuthoring.json`.
-- Keep: `Resources/Icons/` only used icons (see `AgentDocs/ICONS.md` flow).
-- Delete: unused themes, old `UIStyleTheme` backups, prototype JSON.
-
-### 4. Code glance gates (no full review)
-- Runtime: no `Editor` includes, no Slate, no GPU.
-- Shaders: `Shaders/Private/*.usf|*.ush` match `IMPLEMENT_GLOBAL_SHADER` sites.
-- Editor: style via `MixtormatDesignTokens.h` + `ThemeStore`, help via `SMixtormatHelp` only.
-- Enums: numeric-stable, no CoreRedirects needed (unshipped).
-
-### 5. Package + smoke
-- Package via `RunUAT BuildPlugin`, test zip in clean UE 5.8 project.
-- Check: open asset, compose, preview viewport, bake, packaged-game runtime (baked only).
-- Clear `Output Log` errors/warnings before submit.
-
-### 6. FAB listing pack (outside plugin)
-- Title, 30-sec video, 5–8 screenshots, feature list, limits (Win64, UE 5.8, bake workflow).
-- Demo project link, docs link, support mail, license + EULA note.
-- Version + changelog file for updates.
-
-## Validation Plan
-- Zip content list shows no `AgentDocs|auditdocs|Concepts|Docs|Prototypes|Intermediate|Saved|Binaries`.
-- Clean-project open + bake passes without user testing your dev machine.
-- FAB validator / review returns zero file-hygiene flags.
-
-## Risks / Open Questions
-- Win64-only: limit sales vs cut QA? Default keep Win64-only for v1.
-- `Content/` samples: which 2–3 materials best demo? Pick before pack.
-- External site docs: must be live before submit — verify URL.
-
-Reply `go` to execute this plan, or tell me what to change.
+Do not delete source-controlled files or blanket-remove BuildPlugin-generated binaries.
+The submitted archive must follow the applicable FAB code-plugin requirements; output
+binaries and staging files are distinct from local development artifacts.
