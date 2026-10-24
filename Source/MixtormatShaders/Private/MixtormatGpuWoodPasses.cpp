@@ -192,7 +192,8 @@ void PublishWoodFields(FMixtormatComposeContext& Ctx, FMixtormatLayerPassContext
 {
 	check(Raw.WoodDiagnostics && Raw.WoodFlow && BeforeHeight && AfterHeight && LayerCtx.LayerInputRAM);
 	FRDGTextureRef Scalars[6];
-	const FName Names[] = {TEXT("Height"), TEXT("Roughness"), TEXT("PoreMask"), TEXT("LatewoodMask"), TEXT("RayMask"), TEXT("CoatThickness")};
+	const FName Names[] = {FName(TEXT("Height")), FName(TEXT("Roughness")), FName(TEXT("PoreMask")),
+			FName(TEXT("LatewoodMask")), FName(TEXT("RayMask")), FName(TEXT("CoatThickness"))};
 	for (FRDGTextureRef& Scalar : Scalars) { Scalar = WoodTexture(Ctx, PF_R32_FLOAT, TEXT("Mixtormat.Wood.Diagnostic")); }
 	FRDGTextureRef Flow = WoodTexture(Ctx, GetPublishedFieldFormat(EMixtormatPublishedFieldKind::Flow), TEXT("Mixtormat.Wood.PublishedFlow"));
 	FRDGTextureRef Validity = WoodTexture(Ctx, PF_R16F, TEXT("Mixtormat.Wood.FlowValidity"));

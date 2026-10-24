@@ -751,7 +751,15 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	MixtormatNoiseFbm(UV, max(10, Cells * 2), 3, 0.5f, 2.0f, Seed + 1217u, MesoPigment.x, MesoPigment.yz);
 	float ColonyHash = float((ColonyId >> 3u) & 0x3ffu) / 1023.0f;
 
-	float ColonyShift = ((BroadPigment.x * 0.65f + MesoPigment.x * 0.35f) * 0.55f + (ColonyHash - 0.5f) * 0.45f) * saturate(ColonyVariation);
+	// Colony identity sampled at the colony root UV: GrowthState is bilinear,
+	// so neighbouring colonies feather across their border over a few
+	// simulation texels instead of meeting at a hard ID seam. The discrete
+	// hash only seasons this continuous field, it no longer drives it.
+	float3 RootPigment;
+	MixtormatNoiseFbm(frac(State.zw), max(3, Cells / 2), 3, 0.5f, 2.0f, Seed + 1103u, RootPigment.x, RootPigment.yz);
+	float ColonyField = saturate(0.5f + RootPigment.x * 0.85f + (ColonyHash - 0.5f) * 0.35f);
+	float ColonyShift = ((BroadPigment.x * 0.55f + MesoPigment.x * 0.25f)
+		+ (ColonyField - 0.5f) * 0.55f) * saturate(ColonyVariation);
 	float ShootShift = Leaf.Variation * saturate(LeafVariation) * 0.65f;
 
 	float NormCushion = saturate(Meso / max(CushionHeight * 0.85f, 0.02f));
@@ -759,28 +767,64 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float LivingTip = Leaf.Tip * (1.0f - Leaf.Damaged) * saturate(TipColor) * (0.45f + 0.55f * NormCushion);
 	float ThinEdge = saturate(1.0f - Cover * 1.6f);
 
-	float RampT = saturate(CrownLift + ColonyShift + ShootShift + LivingTip * 0.55f - ThinEdge * 0.25f);
+	// Fine per-leaf grain so adjacent winner leaves intermix tonally
+	// instead of tiling flat per-shoot colours.
+	float3 FinePigment;
+	MixtormatNoiseFbm(UV, max(48, Cells * 6), 2, 0.5f, 2.0f, Seed + 1319u, FinePigment.x, FinePigment.yz);
+	float RampT = saturate(CrownLift + ColonyShift + ShootShift + LivingTip * 0.55f
+		- ThinEdge * 0.25f + FinePigment.x * 0.10f * saturate(LeafVariation));
 	float3 Albedo = MixtormatEvalColorRamp(
 		RampT, ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors).rgb;
 
-	// Organic per-colony hue/warmth shift so neighboring cushions feel naturally distinct
-	float WarmthShift = MesoPigment.x * saturate(ColonyVariation) * 0.14f;
-	Albedo *= float3(1.0f + WarmthShift, 1.0f + WarmthShift * 0.35f, 1.0f - WarmthShift * 0.65f);
+	// Two-axis palette: RampT is the light axis (base -> body -> tip); the
+	// colony field is the hue axis, mixing deep-emerald and warm yellow-green
+	// ramp readings of the same authored palette. No post-ramp RGB scaling.
+	float3 DeepAlbedo = MixtormatEvalColorRamp(
+		saturate(RampT * 0.68f), ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors).rgb;
+	float3 WarmAlbedo = MixtormatEvalColorRamp(
+		saturate(RampT + 0.20f), ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors).rgb;
+	float3 ColonyVariant = lerp(DeepAlbedo, WarmAlbedo, ColonyField);
+	Albedo = lerp(Albedo, ColonyVariant, 0.15f + 0.45f * saturate(ColonyVariation));
 
-	// Deep inter-cushion clefts & pioneer protonema crustose edges darken toward rich humus/rhizoid base
+	// Pioneer protonema film at thin colony edges: yellow-green, no relief.
+	float3 Protonema = MixtormatEvalColorRamp(
+		0.72f, ColorRampCount, ColorRampInterpolation, ColorRampPositions, ColorRampColors).rgb;
+	Albedo = lerp(Albedo, Protonema, ThinEdge * saturate(Splatter) * 0.25f);
+
+	// Deep inter-cushion clefts darken toward the humus/rhizoid base.
 	float CleftDarkening = saturate((1.0f - NormCushion) * 0.62f + ThinEdge * 0.55f);
-	Albedo = lerp(Albedo, MOSS_HUMUS_BASE, CleftDarkening * 0.42f);
+	Albedo = lerp(Albedo, MOSS_HUMUS_BASE * (0.8f + 0.45f * saturate(0.5f + MesoPigment.x)), CleftDarkening * 0.42f);
 
-	// Senescent / bleached golden-brown damaged shoots
-	float DamageWeight = saturate(Leaf.Damaged * 0.85f + saturate(Damage) * (1.0f - Age) * 0.30f);
-	Albedo = lerp(Albedo, MOSS_DEAD_BROWN, DamageWeight);
+	// Older interior browns while living tips stay green (audit board 11);
+	// browning rises with Age, the previous (1-Age) term inverted this.
+	float OlderInterior = saturate(Age * 1.15f) * (1.0f - NormCushion);
+	Albedo = lerp(Albedo, MOSS_HUMUS_BASE * 1.6f,
+		OlderInterior * 0.38f * (1.0f - LivingTip));
+
+	// Senescent shoots: varied golden-brown, feathered by meso pigment so
+	// damaged and living shoots grade into each other; tips resist browning.
+	float3 DeadColor = MOSS_DEAD_BROWN * (0.75f + 0.50f * saturate(0.5f + MesoPigment.x));
+	float DamageWeight = saturate(Leaf.Damaged * 0.80f
+		+ saturate(Damage) * (0.25f + 0.75f * Age) * 0.45f
+		+ MesoPigment.x * saturate(Damage) * 0.10f) * (1.0f - LivingTip * 0.60f);
+	Albedo = lerp(Albedo, DeadColor, DamageWeight);
+
+	// Hydration is a colour state too (board 09): dry moss desaturates
+	// toward olive, hydrated moss gains saturation. Wet film stays separate.
+	float Luminance = dot(Albedo, float3(0.333f, 0.333f, 0.333f));
+	float3 DryAlbedo = lerp(float3(Luminance, Luminance, Luminance), Albedo, 0.72f)
+		* float3(1.06f, 1.02f, 0.82f);
+	Albedo = lerp(Albedo, DryAlbedo, (1.0f - saturate(Hydration)) * 0.38f);
+	Albedo = lerp(float3(Luminance, Luminance, Luminance), Albedo,
+		1.0f + saturate(Hydration) * 0.12f);
 
 	// Surface wetness & hydration darkening
 	float LocalWetness = saturate(SurfaceWetness * (0.70f + 0.30f * (1.0f - NormCushion)));
 	Albedo *= lerp(1.0f, 0.52f, LocalWetness * saturate(WetDarkening));
 
 	float Rough = lerp(DryRoughness, WetRoughness, LocalWetness);
-	Rough = saturate(Rough + (Leaf.Damaged * 0.08f - Leaf.Tip * 0.05f) * saturate(LeafVariation));
+	Rough = saturate(Rough + (Leaf.Damaged * 0.08f - Leaf.Tip * 0.05f) * saturate(LeafVariation)
+		+ OlderInterior * 0.05f + (1.0f - saturate(Hydration)) * 0.05f);
 
 	// Full 3D Moss Normal (Cushion Dome + Clump Hummocks + 3D Leaf Blades + Granular Crust)
 	float2 OutTexel = 1.0f / float2(max(OutputSize, int2(1, 1)));

@@ -9,9 +9,12 @@ namespace MixtormatSurfacing
 		static const TArray<FMixtormatRustPreset> Presets = []()
 		{
 			TArray<FMixtormatRustPreset> Built;
-			Built.SetNum(7);
+			Built.SetNum(8);
 			Built[0].Name = NSLOCTEXT("MixtormatSurfacing", "RustAtmospheric", "Atmospheric Granular");
 			Built[0].Description = NSLOCTEXT("MixtormatSurfacing", "RustAtmosphericHelp", "Clustered orange-brown granular deposits with shallow connected metal loss.");
+			{ auto& R = Built[0].Settings; R.Structure = EMixtormatRustStructure::Granular; R.Coverage = .55f;
+			  R.PitDepth = .025f; R.Buildup = .04f; R.Flaking = .15f; R.FeatureSize = 1.0f; R.SurfaceBias = .3f; R.Variation = .65f; R.Seed = 19; R.Roughness = .82f;
+			  R.ColorRamp.Stops = {{0, FLinearColor(.042f,.016f,.009f,1)}, {.32f, FLinearColor(.14f,.038f,.014f,1)}, {.68f, FLinearColor(.34f,.095f,.022f,1)}, {1, FLinearColor(.58f,.22f,.042f,1)}}; }
 			Built[1].Name = NSLOCTEXT("MixtormatSurfacing", "RustThin", "Thin Discoloration");
 			Built[1].Description = NSLOCTEXT("MixtormatSurfacing", "RustThinHelp", "Smooth sparse oxide with almost no relief; underlying stamped detail remains intact.");
 			{ auto& R = Built[1].Settings; R.Structure = EMixtormatRustStructure::Smooth; R.Coverage = .3f;
@@ -38,6 +41,11 @@ namespace MixtormatSurfacing
 			Built[6].Description = NSLOCTEXT("MixtormatSurfacing", "RustShedHelp", "Sparse retained plate islands over the same deep attack footprint; shedding does not heal pits.");
 			Built[6].Settings = Built[5].Settings;
 			Built[6].Settings.Flaking = .85f;
+			Built[7].Name = NSLOCTEXT("MixtormatSurfacing", "RustRunoff", "Runoff Streaks");
+			Built[7].Description = NSLOCTEXT("MixtormatSurfacing", "RustRunoffHelp", "Fine depression-biased streaking with elongated thin oxide and shallow loss; reads as water-runoff tracing over intact plate.");
+			{ auto& R = Built[7].Settings; R.Structure = EMixtormatRustStructure::Smooth; R.Coverage = .42f;
+			  R.PitDepth = .008f; R.Buildup = .006f; R.Flaking = .05f; R.FeatureSize = .45f; R.SurfaceBias = .85f; R.Variation = .8f; R.Seed = 83; R.Roughness = .68f;
+			  R.ColorRamp.Stops = {{0, FLinearColor(.035f,.014f,.008f,1)}, {.4f, FLinearColor(.16f,.045f,.016f,1)}, {.75f, FLinearColor(.36f,.10f,.024f,1)}, {1, FLinearColor(.55f,.20f,.05f,1)}}; }
 			return Built;
 		}();
 		return MakeArrayView(Presets);
@@ -105,7 +113,8 @@ namespace MixtormatSurfacing
 			{ FMixtormatMoss& M = Built[6].Settings; M.ColonyDensity = 18; M.Coverage = 0.8f; M.GrowthIterations = 80; M.Seed = 1907;
 			  M.CushionSize = 0.055f; M.CushionHeight = 0.32f; M.MatureHeight = 0.85f; M.Softness = 0.80f;
 			  M.ClumpDensity = 56; M.Hydration = 0.85f; M.Plumpness = 0.85f; M.LeafScale = 1.35f;
-			  M.ColonyVariation = 0.65f; M.TipColor = 0.45f; M.SurfaceWetness = 0.35f; }
+			  M.ColonyVariation = 0.65f; M.TipColor = 0.45f; M.SurfaceWetness = 0.35f;
+			  Ramp(M, FLinearColor(0.035f,0.08f,0.02f,1), FLinearColor(0.10f,0.26f,0.06f,1), FLinearColor(0.36f,0.54f,0.14f,1)); }
 			Built[7].Name = NSLOCTEXT("MixtormatSurfacing", "MossSweptTuft", "Swept Tuft");
 			Built[7].Description = NSLOCTEXT("MixtormatSurfacing", "MossSweptTuftHelp", "Open fans of long tapered leaves following local growth and cushion flow.");
 			{ FMixtormatMoss& M = Built[7].Settings; M.GrowthForm = EMixtormatMossForm::SweptTuft;
@@ -756,7 +765,7 @@ namespace MixtormatSurfacing
 				W.WetOut = 0.72f;
 				W.TintAmount = 0.42f;
 				W.FinishTint = FLinearColor(0.58f, 0.28f, 0.05f, 1.0f);
-				W.FilmBuild = 0.045f;
+				W.FilmBuild = 0.0f;
 				W.DepressionFill = 0.78f;
 				W.Sheen = 0.86f;
 				W.ColorRamp.Stops = {

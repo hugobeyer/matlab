@@ -74,12 +74,196 @@ static const float WOOD_TAU = 6.28318530718f;
 static const float WOOD_F0 = 0.04f;
 static const float WOOD_TILE_BLEND_START = 0.75f;
 static const float WOOD_RING_RELIEF = 0.012f;
+static const float WOOD_OAK_LATEWOOD_TRACTS = 96.0f;
 static const float WOOD_PREP_RELIEF = 0.004f;
 static const float WOOD_FIGURE_DISPLACEMENT = 0.06f;
 static const float WOOD_FIBER_STEP = 0.001f;
 static const float WOOD_ENVELOPE_RADIUS = 0.003f; // Tile widths; does not change with resolution.
 static const float WOOD_COAT_REFERENCE = 0.01f; // Optical coverage scale in relative height units.
 static const float WOOD_MARK_PERIOD = 160.0f;
+
+// Mirrors EMixtormatWoodSpecies (0..20). These dimensionless profiles are artistic
+// anatomy approximations, not measured dimensions, species identification or resin chemistry.
+// Original Oak/Maple/Pine coefficients are retained; figure/cut/finish are never selected here.
+struct WoodAnatomyProfile
+{
+	uint Conifer;
+	float CellFrequency;
+	float2 FeatureRadius;       // Latewood, earlywood cell radii; canals use equal radii.
+	float2 VesselAbundance;     // Latewood, earlywood probabilities before PoreDensity.
+	float2 EarlyTransition;     // Radial range of the earlywood-to-latewood vessel taper.
+	float ClosedVesselFraction; // Stylized heartwood pore occlusion, not a permeability model.
+	float RadialTracts;
+	float TangentialBands;
+	float TractFrequency;
+	float RayFrequency;
+	float RayWidth;
+	float RayHeightFrequency;
+	float FineRayStrength;
+	float RingContrast;
+	float RingRelief;
+	float TracheidRelief;
+	float AxialCanals;
+	float RadialCanals;
+	float CanalFrequency;
+	float CanalWidth;
+};
+
+WoodAnatomyProfile GetWoodAnatomyProfile(uint Kind)
+{
+	WoodAnatomyProfile A;
+	A.Conifer = 0u;
+	A.CellFrequency = 48.0f;
+	A.FeatureRadius = float2(0.10f, 0.30f);
+	A.VesselAbundance = float2(0.20f, 1.0f);
+	A.EarlyTransition = float2(0.10f, 0.50f);
+	A.ClosedVesselFraction = 0.0f;
+	A.RadialTracts = 0.40f;
+	A.TangentialBands = 0.0f;
+	A.TractFrequency = WOOD_OAK_LATEWOOD_TRACTS;
+	A.RayFrequency = 30.0f;
+	A.RayWidth = 0.065f;
+	A.RayHeightFrequency = 18.0f;
+	A.FineRayStrength = 0.25f;
+	A.RingContrast = 0.42f;
+	A.RingRelief = 1.0f;
+	A.TracheidRelief = 0.0f;
+	A.AxialCanals = 0.0f;
+	A.RadialCanals = 0.0f;
+	A.CanalFrequency = 24.0f;
+	A.CanalWidth = 0.035f;
+	if (Kind == 2u || (Kind >= 17u && Kind <= 20u))
+	{
+		A.Conifer = 1u;
+		A.CellFrequency = 38.0f;
+		A.FeatureRadius = float2(0.22f, 0.22f);
+		A.VesselAbundance = 0.0f;
+		A.RadialTracts = 0.0f;
+		A.RayWidth = 0.015f;
+		A.TracheidRelief = 0.10f;
+		A.AxialCanals = 0.18f;
+		A.RadialCanals = 0.20f;
+	}
+	switch (Kind)
+	{
+	case 0u: break; // Original generic Oak.
+	case 1u: // Original Maple.
+		A.CellFrequency = 95.0f; A.FeatureRadius = float2(0.13f, 0.13f);
+		A.VesselAbundance = float2(0.80f, 0.80f); A.RadialTracts = 0.0f;
+		A.RayWidth = 0.015f; A.RingContrast = 0.14f;
+		break;
+	case 2u: break; // Original Pine: axial/radial canals, no vessels.
+	case 3u: // White Oak heartwood-style profile: broad rays and partly occluded large pores.
+		A.CellFrequency = 50.0f; A.FeatureRadius = float2(0.09f, 0.29f);
+		A.VesselAbundance = float2(0.20f, 0.95f); A.ClosedVesselFraction = 0.55f;
+		A.RadialTracts = 0.42f; A.RayWidth = 0.075f; A.RayHeightFrequency = 14.0f;
+		break;
+	case 4u: // Red Oak: more open earlywood lumens and narrower broad rays.
+		A.CellFrequency = 46.0f; A.FeatureRadius = float2(0.11f, 0.34f);
+		A.VesselAbundance = float2(0.25f, 1.0f); A.RadialTracts = 0.50f;
+		A.RayWidth = 0.055f; A.RayHeightFrequency = 20.0f;
+		break;
+	case 5u: // Ash: large earlywood pores, dispersed smaller latewood vessels, fine rays.
+		A.CellFrequency = 45.0f; A.FeatureRadius = float2(0.11f, 0.33f);
+		A.VesselAbundance = float2(0.35f, 0.95f); A.EarlyTransition = float2(0.08f, 0.42f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.014f; A.RayFrequency = 40.0f;
+		A.FineRayStrength = 0.16f; A.RingContrast = 0.38f;
+		break;
+	case 6u: // Elm: latewood vessels arranged in tangential/wavy bands, not oak flame tracts.
+		A.CellFrequency = 48.0f; A.FeatureRadius = float2(0.10f, 0.30f);
+		A.VesselAbundance = float2(0.15f, 0.90f); A.RadialTracts = 0.0f;
+		A.TangentialBands = 0.65f; A.RayWidth = 0.020f; A.RayFrequency = 36.0f;
+		A.RayHeightFrequency = 24.0f; A.RingContrast = 0.36f;
+		break;
+	case 7u: // Chestnut: radial vessel tracts without the oak-like broad ray fleck.
+		A.CellFrequency = 44.0f; A.FeatureRadius = float2(0.08f, 0.32f);
+		A.VesselAbundance = float2(0.18f, 0.95f); A.RadialTracts = 0.55f;
+		A.TractFrequency = 112.0f; A.RayWidth = 0.008f; A.RayFrequency = 48.0f;
+		A.RayHeightFrequency = 30.0f; A.FineRayStrength = 0.10f;
+		break;
+	case 8u: // Black Walnut: broad, gradual semi-ring-porous taper.
+		A.CellFrequency = 58.0f; A.FeatureRadius = float2(0.15f, 0.28f);
+		A.VesselAbundance = float2(0.48f, 0.84f); A.EarlyTransition = float2(0.05f, 0.95f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.020f; A.RayFrequency = 34.0f;
+		A.RingContrast = 0.25f; A.RingRelief = 0.75f;
+		break;
+	case 9u: // Hickory: a ring-biased Carya sample, not a claim for every Carya species.
+		A.CellFrequency = 50.0f; A.FeatureRadius = float2(0.10f, 0.31f);
+		A.VesselAbundance = float2(0.28f, 0.95f); A.EarlyTransition = float2(0.08f, 0.70f);
+		A.RadialTracts = 0.12f; A.RayWidth = 0.013f; A.RayFrequency = 42.0f;
+		A.RingContrast = 0.34f;
+		break;
+	case 10u: // Pecan: a more gradual Carya sample with more persistent latewood pores.
+		A.CellFrequency = 54.0f; A.FeatureRadius = float2(0.14f, 0.29f);
+		A.VesselAbundance = float2(0.40f, 0.90f); A.EarlyTransition = float2(0.04f, 0.95f);
+		A.RadialTracts = 0.08f; A.RayWidth = 0.015f; A.RayFrequency = 38.0f;
+		A.RingContrast = 0.29f; A.RingRelief = 0.85f;
+		break;
+	case 11u: // Teak is represented as ring-porous, not as a diffuse hardwood.
+		A.CellFrequency = 47.0f; A.FeatureRadius = float2(0.12f, 0.33f);
+		A.VesselAbundance = float2(0.30f, 0.90f); A.EarlyTransition = float2(0.12f, 0.50f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.023f; A.RayFrequency = 32.0f;
+		A.RingContrast = 0.32f;
+		break;
+	case 12u: // Beech: fine diffuse vessels, conspicuous broad rays.
+		A.CellFrequency = 100.0f; A.FeatureRadius = float2(0.125f, 0.135f);
+		A.VesselAbundance = float2(0.90f, 0.95f); A.EarlyTransition = float2(0.05f, 0.95f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.060f; A.RayFrequency = 27.0f;
+		A.RayHeightFrequency = 12.0f; A.RingContrast = 0.12f; A.RingRelief = 0.60f;
+		break;
+	case 13u: // Cherry: weak semi-ring-porous size/density gradient.
+		A.CellFrequency = 90.0f; A.FeatureRadius = float2(0.11f, 0.17f);
+		A.VesselAbundance = float2(0.60f, 0.85f); A.EarlyTransition = float2(0.08f, 0.90f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.018f; A.RayFrequency = 38.0f;
+		A.RingContrast = 0.20f; A.RingRelief = 0.65f;
+		break;
+	case 14u: // Birch: fine diffuse vessels and fine, short rays.
+		A.CellFrequency = 108.0f; A.FeatureRadius = float2(0.12f, 0.12f);
+		A.VesselAbundance = float2(0.90f, 0.90f); A.RadialTracts = 0.0f;
+		A.RayWidth = 0.011f; A.RayFrequency = 44.0f; A.RayHeightFrequency = 28.0f;
+		A.FineRayStrength = 0.14f; A.RingContrast = 0.10f; A.RingRelief = 0.55f;
+		break;
+	case 15u: // Mahogany: medium diffuse vessels; ribbon figure remains an independent choice.
+		A.CellFrequency = 65.0f; A.FeatureRadius = float2(0.22f, 0.23f);
+		A.VesselAbundance = float2(0.65f, 0.70f); A.EarlyTransition = float2(0.05f, 0.95f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.023f; A.RayFrequency = 34.0f;
+		A.RayHeightFrequency = 22.0f; A.RingContrast = 0.12f; A.RingRelief = 0.55f;
+		break;
+	case 16u: // Rosewood: coarser, less numerous diffuse vessels and finer rays.
+		A.CellFrequency = 52.0f; A.FeatureRadius = float2(0.27f, 0.28f);
+		A.VesselAbundance = float2(0.50f, 0.58f); A.EarlyTransition = float2(0.05f, 0.95f);
+		A.RadialTracts = 0.0f; A.RayWidth = 0.016f; A.RayFrequency = 42.0f;
+		A.FineRayStrength = 0.18f; A.RingContrast = 0.16f; A.RingRelief = 0.65f;
+		break;
+	case 17u: // Douglas Fir: sparse smaller canals and strong tracheid/ring contrast.
+		A.CellFrequency = 44.0f; A.FeatureRadius = float2(0.16f, 0.16f);
+		A.AxialCanals = 0.07f; A.RadialCanals = 0.06f;
+		A.CanalFrequency = 30.0f; A.CanalWidth = 0.022f;
+		A.RayWidth = 0.010f; A.RayFrequency = 40.0f; A.RingContrast = 0.52f;
+		A.TracheidRelief = 0.12f; A.RingRelief = 1.15f;
+		break;
+	case 18u: // Larch: small canals, denser than the Douglas Fir artistic profile.
+		A.CellFrequency = 42.0f; A.FeatureRadius = float2(0.18f, 0.18f);
+		A.AxialCanals = 0.12f; A.RadialCanals = 0.10f;
+		A.CanalFrequency = 28.0f; A.CanalWidth = 0.026f;
+		A.RayWidth = 0.012f; A.RayFrequency = 36.0f; A.RingContrast = 0.48f;
+		A.TracheidRelief = 0.14f; A.RingRelief = 1.10f;
+		break;
+	case 19u: // Cedar: canal-free normal wood, not a traumatic-canal simulation.
+		A.AxialCanals = 0.0f; A.RadialCanals = 0.0f;
+		A.RayWidth = 0.008f; A.RayFrequency = 46.0f; A.RayHeightFrequency = 32.0f;
+		A.FineRayStrength = 0.10f; A.RingContrast = 0.18f;
+		A.TracheidRelief = 0.06f; A.RingRelief = 0.55f;
+		break;
+	case 20u: // Cypress: also canal-free, with a distinct ray/tracheid/ring profile.
+		A.AxialCanals = 0.0f; A.RadialCanals = 0.0f;
+		A.RayWidth = 0.010f; A.RayFrequency = 40.0f; A.RayHeightFrequency = 26.0f;
+		A.FineRayStrength = 0.12f; A.RingContrast = 0.27f;
+		A.TracheidRelief = 0.09f; A.RingRelief = 0.75f;
+		break;
+	}
+	return A;
+}
 
 float WoodHash(int2 Cell, uint Salt)
 {
@@ -151,6 +335,7 @@ struct WoodSample
 WoodSample LogSample(float2 UV, float Footprint)
 {
 	WoodSample W = (WoodSample)0;
+	WoodAnatomyProfile Anatomy = GetWoodAnatomyProfile(Species);
 	float2 B = UV - 0.5f;
 	float Tilt = sin(CutTilt * WOOD_TAU / 360.0f);
 	float Pith = max(abs(PithOffset), 0.0001f);
@@ -179,46 +364,76 @@ WoodSample LogSample(float2 UV, float Footprint)
 	Late *= 1.0f - smoothstep(1.0f - RingAA, 1.0f, Phase);
 	W.Latewood = lerp(saturate(LatewoodRatio), Late, Resolved(Rings, Footprint));
 
-	// Vessels follow the log axis; crosscuts see round pores, face cuts see long grooves.
-	// Species profiles: ring-porous Oak, fine diffuse Maple, sparse resin canals in Pine.
-	float CellFrequency = Species == 0u ? 48.0f : (Species == 1u ? 95.0f : 38.0f);
-	float2 P = Q.xy * CellFrequency + 0.1f * float2(sin(Q.z * 9.0f), cos(Q.z * 7.0f));
-	int2 Cell = int2(floor(P));
-	float PoreAA = max(Footprint * CellFrequency, 0.015f);
-	float Early = 1.0f - smoothstep(0.1f, 0.5f, Phase);
-	float Abundance = saturate(PoreDensity) * (Species == 0u ? lerp(0.2f, 1.0f, Early) : (Species == 1u ? 0.8f : 0.18f));
-	[unroll] for (int Y = -1; Y <= 1; ++Y)
-	[unroll] for (int X = -1; X <= 1; ++X)
-	{
-		int2 C = Cell + int2(X, Y);
-		float2 Center = float2(C) + float2(WoodHash(C, 71u), WoodHash(C, 97u));
-		float Size = Species == 0u ? lerp(0.10f, 0.30f, Early) : (Species == 1u ? 0.13f : 0.22f);
-		float Open = 1.0f - smoothstep(max(0.0f, Size - PoreAA), Size + PoreAA, length(P - Center));
-		W.Pores = max(W.Pores, Open * (WoodHash(C, 131u) < Abundance ? 1.0f : 0.0f));
-	}
-	W.Pores *= Resolved(CellFrequency, Footprint);
+	// Hardwood vessels and conifer canals share an axial sampler, not a vessel identity.
+	// Cedar/Cypress skip it entirely: PoreDensity must not invent vessels or normal canals.
 	float Theta = atan2(Q.y, Q.x) / WOOD_TAU;
-	float RayFrequency = 30.0f / max(abs(RayScale), 0.0001f);
+	float Early = 1.0f - smoothstep(Anatomy.EarlyTransition.x, Anatomy.EarlyTransition.y, Phase);
+	float CellFrequency = Anatomy.CellFrequency;
+	if (Anatomy.Conifer == 0u || Anatomy.AxialCanals > 0.0f)
+	{
+		float2 P = Q.xy * CellFrequency + 0.1f * float2(sin(Q.z * 9.0f), cos(Q.z * 7.0f));
+		int2 Cell = int2(floor(P));
+		float PoreAA = max(Footprint * CellFrequency, 0.015f);
+		float LateAbundance = Anatomy.VesselAbundance.x;
+		if (Anatomy.TangentialBands > 0.0f)
+		{
+			// Elm's small latewood vessels cluster along wavy constant-radius bands.
+			float BandPhase = R * 4.0f + 0.18f * sin(Theta * WOOD_TAU * 24.0f);
+			float BandDistance = abs(frac(BandPhase + 0.5f) - 0.5f);
+			float BandAA = max(0.01f, Footprint * Rings * 4.0f);
+			float Band = (1.0f - smoothstep(0.10f, 0.10f + BandAA, BandDistance)) * Resolved(Rings * 4.0f, Footprint);
+			LateAbundance = lerp(LateAbundance * 0.2f, 1.0f, Band * Anatomy.TangentialBands);
+		}
+		float Abundance = saturate(PoreDensity) * (Anatomy.Conifer != 0u ? Anatomy.AxialCanals
+			: lerp(LateAbundance, Anatomy.VesselAbundance.y, Early));
+		[unroll] for (int Y = -1; Y <= 1; ++Y)
+		[unroll] for (int X = -1; X <= 1; ++X)
+		{
+			int2 C = Cell + int2(X, Y);
+			float2 Center = float2(C) + float2(WoodHash(C, 71u), WoodHash(C, 97u));
+			float Size = lerp(Anatomy.FeatureRadius.x, Anatomy.FeatureRadius.y, Early);
+			float Open = 1.0f - smoothstep(max(0.0f, Size - PoreAA), Size + PoreAA, length(P - Center));
+			if (Anatomy.ClosedVesselFraction > 0.0f)
+			{
+				Open *= WoodHash(C, 181u) < Anatomy.ClosedVesselFraction * Early ? 0.25f : 1.0f;
+			}
+			W.Pores = max(W.Pores, Open * (WoodHash(C, 131u) < Abundance ? 1.0f : 0.0f));
+		}
+		W.Pores *= Resolved(CellFrequency, Footprint);
+	}
+	if (Anatomy.RadialTracts > 0.0f)
+	{
+		// Oak/Chestnut latewood has radial tracts rather than Elm's tangential bands.
+		float TractPhase = Theta * Anatomy.TractFrequency + 0.3f * sin(R * WOOD_TAU * 0.5f);
+		float TractDistance = abs(frac(TractPhase + 0.5f) - 0.5f);
+		float TractAA = max(0.01f, Footprint * Anatomy.TractFrequency / (WOOD_TAU * max(Radius, 0.05f)));
+		float Tract = 1.0f - smoothstep(0.04f, 0.04f + TractAA, TractDistance);
+		float Present = WoodHash(int2(floor(Theta * Anatomy.TractFrequency), floor(R)), 157u) < saturate(PoreDensity) ? 1.0f : 0.0f;
+		W.Pores = max(W.Pores, Tract * Present * W.Latewood * Anatomy.RadialTracts * Resolved(Anatomy.TractFrequency, Footprint));
+	}
+	float RayFrequency = Anatomy.RayFrequency / max(abs(RayScale), 0.0001f);
 	float AngularDistance = abs(frac(Theta * RayFrequency + 0.5f) - 0.5f);
 	float AngularAA = max(0.002f, Footprint * RayFrequency / (WOOD_TAU * max(Radius, 0.05f)));
-	float RayWidth = Species == 0u ? 0.065f : 0.015f;
-	float RaySheet = 1.0f - smoothstep(RayWidth, RayWidth + AngularAA, AngularDistance);
-	float RayEnds = smoothstep(0.35f, 0.7f, WoodNoise(float2(floor(Theta * RayFrequency), Q.z * 18.0f / max(abs(RayScale), 0.0001f))));
-	W.Rays = RaySheet * RayEnds * saturate(RayAmount) * Resolved(RayFrequency, Footprint);
-		if (Species == 2u)
-		{
-			float CanalZ = abs(frac(Q.z * 24.0f + 0.5f) - 0.5f);
-			float Canal = 1.0f - smoothstep(0.035f, 0.035f + max(0.01f, Footprint * 24.0f), CanalZ);
-			float Present = WoodHash(int2(floor(Theta * RayFrequency), floor(Q.z * 24.0f)), 173u) < saturate(PoreDensity) * 0.2f ? 1.0f : 0.0f;
-			W.Pores = max(W.Pores, RaySheet * Canal * Present * Resolved(max(RayFrequency, 24.0f), Footprint));
-		}
+	float RaySheet = 1.0f - smoothstep(Anatomy.RayWidth, Anatomy.RayWidth + AngularAA, AngularDistance);
+	float RayEnds = smoothstep(0.35f, 0.7f, WoodNoise(float2(floor(Theta * RayFrequency), Q.z * Anatomy.RayHeightFrequency / max(abs(RayScale), 0.0001f))));
+	float FineRayDistance = abs(frac(Theta * RayFrequency * 3.0f + 0.5f) - 0.5f);
+	float FineRays = (1.0f - smoothstep(0.012f, 0.012f + AngularAA * 3.0f, FineRayDistance))
+		* Anatomy.FineRayStrength * Resolved(RayFrequency * 3.0f, Footprint);
+	W.Rays = max(RaySheet * RayEnds * Resolved(RayFrequency, Footprint), FineRays) * saturate(RayAmount);
+	if (Anatomy.Conifer != 0u && Anatomy.RadialCanals > 0.0f)
+	{
+		float CanalZ = abs(frac(Q.z * Anatomy.CanalFrequency + 0.5f) - 0.5f);
+		float Canal = 1.0f - smoothstep(Anatomy.CanalWidth, Anatomy.CanalWidth + max(0.01f, Footprint * Anatomy.CanalFrequency), CanalZ);
+		float Present = WoodHash(int2(floor(Theta * RayFrequency), floor(Q.z * Anatomy.CanalFrequency)), 173u) < saturate(PoreDensity) * Anatomy.RadialCanals ? 1.0f : 0.0f;
+		W.Pores = max(W.Pores, RaySheet * Canal * Present * Resolved(max(RayFrequency, Anatomy.CanalFrequency), Footprint));
+	}
 	float Fibers = sin(WOOD_TAU * (Q.x * 210.0f + 0.15f * sin(Q.z * 15.0f))) * Resolved(210.0f, Footprint);
 	W.Luster = dot(Slope, Across) / (1.0f + length(Slope));
 	W.Flow = Cut == 3u ? Slope : float2(-dot(Slope, Across), 1.0f);
-	W.Tone = saturate(0.72f - W.Latewood * (Species == 1u ? 0.14f : 0.42f)
+	W.Tone = saturate(0.72f - W.Latewood * Anatomy.RingContrast
 		- W.Pores * 0.32f + W.Rays * 0.22f + Fibers * 0.025f + saturate(Chatoyance) * W.Luster * 0.15f);
-	W.Height = WOOD_RING_RELIEF * (W.Latewood - 0.5f) - max(0.0f, PoreDepth) * W.Pores;
-		if (Species == 2u) { W.Height -= max(0.0f, PoreDepth) * 0.1f * saturate(Fibers) * (1.0f - W.Latewood); }
+	W.Height = WOOD_RING_RELIEF * Anatomy.RingRelief * (W.Latewood - 0.5f) - max(0.0f, PoreDepth) * W.Pores;
+	if (Anatomy.Conifer != 0u) { W.Height -= max(0.0f, PoreDepth) * Anatomy.TracheidRelief * saturate(Fibers) * (1.0f - W.Latewood); }
 	float PrepStrength = saturate(PrepIntensity);
 	if (Prep == 0u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.25f; }
 	if (Prep == 1u) { W.Height += WOOD_PREP_RELIEF * PrepStrength * Fibers * 0.1f; }
@@ -314,9 +529,10 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 		float Coverage = Coat > 0.0f ? saturate(Coat / WOOD_COAT_REFERENCE) : 0.0f;
 		float Treatment = (Finish == 1u || Finish == 2u) ? Strength : Coverage;
 		Color.rgb *= 1.0f - 0.35f * saturate(WetOut) * Treatment;
+		Color.rgb *= 1.0f + 0.1f * saturate(Chatoyance) * W.Luster * saturate(WetOut) * Treatment;
 		if (Finish == 2u)
 		{
-			Color.rgb *= pow(max(FinishTint.rgb, 0.0001f), saturate(TintAmount) * Strength);
+			Color.rgb *= pow(max(saturate(FinishTint.rgb), 0.0001f), saturate(TintAmount) * Strength);
 		}
 		if (Finish == 3u || Finish == 4u)
 		{
@@ -326,7 +542,7 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 		}
 		if (Finish == 5u)
 		{
-			Color.rgb *= pow(max(FinishTint.rgb, 0.0001f), saturate(TintAmount) * Coat / WOOD_COAT_REFERENCE);
+			Color.rgb *= pow(max(saturate(FinishTint.rgb), 0.0001f), saturate(TintAmount) * Coat / WOOD_COAT_REFERENCE);
 		}
 		float SheenWeight = max(Coverage, Finish == 1u ? Strength * 0.25f : 0.0f);
 		RAM.r = lerp(RAM.r, lerp(0.85f, 0.06f, saturate(Sheen)), SheenWeight);
@@ -348,7 +564,7 @@ void MainCS(uint3 Id : SV_DispatchThreadID)
 	OutColor[P] = float4(Color.rgb, 1);
 	OutRAM[P] = RAM;
 	OutOptics[P] = Optics;
-	OutDiagnostics[P] = float4(W.Pores, W.Latewood, W.Rays, Coat);
+	OutDiagnostics[P] = float4(W.Pores, W.Latewood, W.Rays, isfinite(Coat) ? max(0.0f, Coat) : 0.0f);
 }
 #else
 // Publication is gated once, after descendants complete. No material inputs are mutated here.

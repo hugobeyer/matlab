@@ -57,7 +57,12 @@ TSharedRef<SWidget> SMixtormat::BuildWoodControls()
 	// Keep anatomy controls visible, but unavailable for a finish-only pass.
 	TSharedRef<SVerticalBox> AnatomyCards = SNew(SVerticalBox);
 	Cards->AddSlot().AutoHeight()[SNew(SBox)
-		.IsEnabled_Lambda([Wood]() { return Wood() && Wood()->Mode == EMixtormatWoodMode::FullWood; })[AnatomyCards]];
+		.IsEnabled_Lambda([this, Wood]()
+		{
+			if (const auto* V = GroupControlValueFor(Wood(), FMixtormatWood::StaticStruct(), TEXT("Mode")))
+			{ return V->EnumValue == static_cast<int64>(EMixtormatWoodMode::FullWood); }
+			return Wood() && Wood()->Mode == EMixtormatWoodMode::FullWood;
+		})[AnatomyCards]];
 	const auto Anatomy = AddCard(AnatomyCards, LOCTEXT("WoodAnatomyCard", "SPECIES & CUT"));
 	AddSliderRow(Anatomy, WOOD_ENUM(Species, EMixtormatWoodSpecies));
 	AddSliderRow(Anatomy, WOOD_ENUM(Cut, EMixtormatWoodCut));

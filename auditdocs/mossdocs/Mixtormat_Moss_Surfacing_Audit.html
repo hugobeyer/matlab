@@ -335,5 +335,14 @@ footer{margin-top:45px;border-top:1px solid var(--line);padding-top:18px;color:v
 <tr id="s22"><td>S22</td><td><a href="https://dev.epicgames.com/documentation/en-us/unreal-engine/shading-models-in-unreal-engine">Epic — Shading Models, UE 5.8</a></td><td>Two Sided Foliage. Thin-surface rendering approximation.</td></tr>
 </tbody></table>
 </section>
-<footer>Mixtormat Moss Surfacing Audit · Biological observations guide architecture and scale; renderer parameters remain explicit modeling choices. All proposed defaults are labeled, and all source links are freely accessible full texts or official references.</footer>
+<section><h2>Implementation follow-up - colour variation &amp; mixing (2026-10-24)</h2>
+<p>Stage 12 of <code>Shaders/Private/MixtormatMoss.usf</code> reworked; leaf damage feather widened in <code>MixtormatMossLeaves.ush</code>. Same controls, ramp and outputs; compilation/rendering unverified.</p>
+<ul>
+<li><b>Two-axis palette:</b> RampT stays the light axis (base-body-tip); a colony hue field mixes deep-emerald and warm yellow-green readings of the same authored ramp. The old post-ramp RGB warmth multiplier is removed.</li>
+<li><b>Colony mixing:</b> colony identity is sampled at the bilinear colony-root UV (GrowthState.zw), so neighbours feather across borders; the discrete ColonyId hash only seasons the field. Fine per-leaf grain intermixes adjacent winner leaves.</li>
+<li><b>Age fixed:</b> older interiors now brown with Age while living tips stay green (board 11); the previous (1-Age) damage term inverted this.</li>
+<li><b>Damage mixing:</b> varied golden-brown, meso-feathered, tip-protected; tuft damage window widened so the 4-sample leaf average grades living/damaged shoots.</li>
+<li><b>Hydration colour:</b> dry moss desaturates toward olive, hydrated moss gains saturation (board 09); wet-film darkening/roughness remain separate. Protonema edge tint added at thin colony margins.</li>
+</ul>
+<p>Owner visual checks (not run): board 11 old colony (brown interior, green tips), 09 Hydration 0 vs 1 at fixed SurfaceWetness, 16 ColonyVariation sweep for neighbour-colony hue separation without seams, Damage sweep for graded browning, 3x3 tiling.</p></section><footer>Mixtormat Moss Surfacing Audit · Biological observations guide architecture and scale; renderer parameters remain explicit modeling choices. All proposed defaults are labeled, and all source links are freely accessible full texts or official references.</footer>
 </main></body></html>

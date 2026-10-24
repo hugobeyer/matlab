@@ -211,7 +211,25 @@ enum class EMixtormatWoodSpecies : uint8
 {
 	Oak = 0 UMETA(DisplayName = "Oak (Ring-Porous)"),
 	Maple = 1 UMETA(DisplayName = "Maple (Diffuse-Porous)"),
-	Pine = 2 UMETA(DisplayName = "Pine (Conifer / Resin Canals)")
+	Pine = 2 UMETA(DisplayName = "Pine (Conifer / Resin Canals)"),
+	WhiteOak = 3 UMETA(DisplayName = "White Oak (Ring-Porous)"),
+	RedOak = 4 UMETA(DisplayName = "Red Oak (Ring-Porous)"),
+	Ash = 5 UMETA(DisplayName = "Ash (Ring-Porous)"),
+	Elm = 6 UMETA(DisplayName = "Elm (Ring-Porous / Tangential Bands)"),
+	Chestnut = 7 UMETA(DisplayName = "Chestnut (Ring-Porous / Fine Rays)"),
+	BlackWalnut = 8 UMETA(DisplayName = "Black Walnut (Semi-Ring-Porous)"),
+	Hickory = 9 UMETA(DisplayName = "Hickory (Ring to Semi-Ring-Porous)"),
+	Pecan = 10 UMETA(DisplayName = "Pecan (Ring to Semi-Ring-Porous)"),
+	Teak = 11 UMETA(DisplayName = "Teak (Ring-Porous)"),
+	Beech = 12 UMETA(DisplayName = "Beech (Diffuse-Porous / Broad Rays)"),
+	Cherry = 13 UMETA(DisplayName = "Cherry (Semi-Ring-Porous)"),
+	Birch = 14 UMETA(DisplayName = "Birch (Diffuse-Porous / Fine Rays)"),
+	Mahogany = 15 UMETA(DisplayName = "Mahogany (Diffuse-Porous)"),
+	Rosewood = 16 UMETA(DisplayName = "Rosewood (Diffuse-Porous)"),
+	DouglasFir = 17 UMETA(DisplayName = "Douglas Fir (Conifer / Resin Canals)"),
+	Larch = 18 UMETA(DisplayName = "Larch (Conifer / Resin Canals)"),
+	Cedar = 19 UMETA(DisplayName = "Cedar (Conifer / No Normal Resin Canals)"),
+	Cypress = 20 UMETA(DisplayName = "Cypress (Conifer / No Normal Resin Canals)")
 };
 
 UENUM(BlueprintType)
@@ -274,7 +292,7 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	int32 Seed = 42;
 
 	// --- Species & 3D Anatomy ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Species anatomical family: Oak (ring-porous earlywood vessels, dendritic latewood flame tracts, multiseriate + uniseriate rays), Maple (diffuse-porous uniform vessels, crisp latewood line, fine rays), Pine (non-porous conifer tracheids with normal axial/radial resin canals)."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (ToolTip = "Artistic species anatomy profiles: ring-, semi-ring- or diffuse-porous hardwood vessels with species-specific latewood arrangement and rays; conifers have tracheids, never vessels. Pine/Douglas Fir/Larch include normal resin canals; Cedar/Cypress omit them. Dimensions and open-pore fractions are approximations, not botanical measurements. Figures remain independent."))
 	EMixtormatWoodSpecies Species = EMixtormatWoodSpecies::Oak;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "1", UIMax = "32", Delta = "0.1", ToolTip = "Annual growth ring frequency in 3D log radial space."))
@@ -289,13 +307,13 @@ struct MIXTORMATRUNTIME_API FMixtormatWood
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Organic 3D radial and axial growth-ring undulation."))
 	float RingWobble = 0.35f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Relative depth of open vessel pores (Oak/Maple) or resin canals and tracheid grooves (Pine), independent of pore density."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "0.15", Delta = "0.001", ToolTip = "Relative depth of hardwood vessel pores or conifer resin canals and tracheid grooves, independent of feature density. Canal-free conifers retain tracheid relief without vessel pores."))
 	float PoreDepth = 0.035f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Abundance of anatomical vessel pores (or axial/radial resin canals in Pine). Does not rescale surviving pore depth."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Abundance of hardwood vessel pores or resin canals in Pine/Douglas Fir/Larch. Cedar/Cypress have neither vessels nor normal resin canals; this control does not create them. Does not rescale surviving feature depth."))
 	float PoreDensity = 0.65f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Prominence of 3D radial medullary rays (multiseriate silver fleck + uniseriate rays in Oak; fine rays in Maple/Pine). Appearance changes automatically with Cut."))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0", UIMax = "1", Delta = "0.01", ToolTip = "Prominence of radial rays with profile-specific width, spacing and ribbon height. Oak/Beech show broad ray fleck; fine-ray profiles remain fine. Appearance changes with Cut; this is not a vessel or resin-canal control."))
 	float RayAmount = 0.55f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wood", meta = (UIMin = "0.25", UIMax = "4", Delta = "0.02", ToolTip = "Relative 3D spacing and ribbon height of medullary rays."))

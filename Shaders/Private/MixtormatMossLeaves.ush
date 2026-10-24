@@ -39,7 +39,9 @@ FMossLeafSurface MossLeafPoint(float2 Q, int Period, float3 Flow)
 			float Angle = MossTuftAngle(Flow, frac(Cluster.x + (Tuft.x - 0.5f) * 0.5f));
 			float2 Stem = float2(cos(Angle), sin(Angle));
 
-			float Damaged = smoothstep(1.0f - saturate(Damage), 1.02f - saturate(Damage), Tuft.y);
+			// Wide feather so damaged tufts grade into living neighbours
+			// through the 4-sample leaf average instead of switching on/off.
+			float Damaged = smoothstep(0.94f - saturate(Damage), 1.06f - saturate(Damage), Tuft.y);
 			[loop] for (uint Leaf = 0u; Leaf < Count; ++Leaf)
 			{
 				float2 Vary = Random22(Wrapped, 707u + Leaf * 131u + Shoot * 1543u);
