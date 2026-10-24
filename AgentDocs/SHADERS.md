@@ -97,6 +97,8 @@ resolves a supported top envelope after signed-height normalization/HeightScale,
 using the composed substrate (including enclosing upstream height). Opposing-bank
 samples span at most CushionSize in destination UV; sampled growth coverage and
 scope gates limit support. Only already-covered, positive-relief pixels are lifted.
+Extra lift is smoothly bounded by CushionHeight + MatureHeight before scaling;
+deep substrate crevices no longer supply unlimited added thickness.
 The lift scales linearly with positive HeightScale, including above one; negative
 relief and diagnostic previews retain their prior path. Amount and the center's scope gate apply once,
 after this resolve. The later leaf/appearance work below adds reflected Moss fields.
@@ -123,15 +125,24 @@ Compilation and render verification remain user-run.
 
 ### Procedural colonies and shared leaf envelope
 
-Stage 1 now establishes stable parent colonies with connected child lobes on neutral
-flat substrates. Cavity/shelter bias suitability but no longer hard-gate procedural
+Stage 1 establishes stable parent colonies with two to five unequal connected lobes
+and a seeded elongated frame on neutral flat substrates. This replaces the repeated
+three-lobed seed stamp observed in the user's first Moss screenshots. Cavity/shelter bias suitability but no longer hard-gate procedural
 seeding. The optional seed mask adds inoculation; scoped masks still gate composition.
-Stage 4's local drain/neighbor-height signs were corrected. Both cushion solvers remain.
+Stage 4's local drain/neighbor-height signs were corrected. Established cells now
+mature their coverage toward one rather than freezing the initial activation value.
+Newly colonized cells enter at the active threshold and follow the same maturation;
+Activation remains a separate diagnostic. The previous frozen values etched the seed
+outline inside subsequent growth. Both cushion solvers remain.
 
 `MixtormatMossLeaves.ush` is shared by Stages 3/12. It evaluates cushion rosettes,
 swept tufts, creeping alternate leaves or feather pairs in a bounded 3x3 neighborhood.
 Each of four footprint samples chooses its upper leaf before averaging. Attached leaf
 profiles taper into their support; cup/keel/bend exist only in height. Independent
+Leaf relief now derives from tuft spacing using the existing height-to-normal unit
+convention, not an extra fraction of cushion height. It remains tapered by support,
+maturity and ShootLength; HeightScale multiplies the finished delta. This is an
+artistic leaf aspect ratio, not physical unit calibration. Independent
 lamina striations remain in DetailNormal, with NormalStrength and scope/Amount each
 applied once. Zero NormalStrength leaves the incoming normal input untouched.
 
@@ -140,6 +151,10 @@ ColonyVariation, LeafVariation, TipColor and Damage. Hydration changes leaf post
 surface water changes effective roughness and optional darkening; damaged shoots
 collapse and brown independently. Palette changes reuse cached growth state, although
 the final leaf/material evaluation still reruns. Field/simulation/prefix salts advanced.
+The user compiled the previous C++ changes and supplied Moss renders showing flat
+patches, repeated seed outlines and jagged rock buildup. The subsequent coverage,
+seed, leaf-budget and canopy-budget corrections are source-reviewed only; no compile
+or render result has been supplied for them. No new public fields or passes were added.
 Ten built-in looks preserve the original five names and add Rock Cushion, Forest Pillow,
 Swept Tuft, Creeping Carpet and Feather Weft. They are artistic, not reference-fitted.
 

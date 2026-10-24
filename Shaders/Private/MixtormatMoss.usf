@@ -12,6 +12,7 @@
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorPlacement.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatGeneratorHeightModules.ush"
 #include "/Plugin/Mixtormat/Private/MixtormatRegionId.ush"
+#include "/Plugin/Mixtormat/Private/MixtormatHeightNormal.ush"
 
 // Fourteen stages; stages 2/3 additionally specialize by MOSS_SDF_CUSHION:
 // 0 analysis, 1 seed, 2 meso, 3 height/preview,
@@ -140,6 +141,10 @@ static const float MOSS_COARSE_RELIEF_FRACTION = 0.1f;
 static const float MOSS_SMOOTH_RADIUS_FRACTION = 0.5f;
 static const float MOSS_COLONY_CORE_RADIUS = 0.24f;
 static const float MOSS_COLONY_LOBE_RADIUS = 0.18f;
+static const int MOSS_COLONY_MIN_LOBES = 2;
+static const int MOSS_COLONY_MAX_LOBES = 5;
+// Shared height-to-normal convention, not a physical centimeters calibration.
+static const float MOSS_UV_TO_HEIGHT = MIXTORMAT_HEIGHT_NORMAL_REFERENCE_RES / 8.0f;
 static const int MOSS_CANOPY_RADIAL_STEPS = 4;
 static const float MOSS_REPOSE_HEIGHT = 0.004f;
 static const float MOSS_SLUMP_RATE = 0.20f;
@@ -301,13 +306,20 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		float2 Random = Random22(Wrapped, 101u);
 		float2 Center = float2(Cell) + 0.5f + (Random - 0.5f) * 0.7f;
 		float2 D = Q - Center;
+		float2 Architecture = Random22(Wrapped, 303u);
+		float ParentAngle = 6.283185307f * Architecture.x;
+		float2 Axis = float2(cos(ParentAngle), sin(ParentAngle));
+		float Elongation = lerp(1.0f, 1.65f, Architecture.y);
+		D = float2(dot(D, Axis) / Elongation, dot(D, float2(-Axis.y, Axis.x)));
 		float Radius = MOSS_COLONY_CORE_RADIUS * lerp(0.75f, 1.25f, Random.y);
 		float Profile = 1.0f - smoothstep(Radius * 0.6f, Radius, length(D));
-		[unroll] for (int Lobe = 0; Lobe < 3; ++Lobe)
+		int LobeCount = MOSS_COLONY_MIN_LOBES + int(Random.x * float(MOSS_COLONY_MAX_LOBES - MOSS_COLONY_MIN_LOBES + 1));
+		// Connected, unequal branches rather than the same three-lobed stamp in every cell.
+		[loop] for (int Lobe = 0; Lobe < LobeCount; ++Lobe)
 		{
 			float2 LR = Random22(Wrapped, 202u + uint(Lobe) * 71u);
-			float Angle = 6.283185307f * (float(Lobe) / 3.0f + Random.x);
-			float2 Offset = float2(cos(Angle), sin(Angle)) * Radius * 0.75f;
+			float Angle = 6.283185307f * (float(Lobe) + LR.y * 0.8f) / float(LobeCount);
+			float2 Offset = float2(cos(Angle), sin(Angle)) * Radius * lerp(0.45f, 0.9f, LR.y);
 			float R = MOSS_COLONY_LOBE_RADIUS * lerp(0.6f, 1.2f, LR.x);
 			Profile = max(Profile, 1.0f - smoothstep(R * 0.6f, R, length(D - Offset)));
 		}
@@ -472,8 +484,10 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 #else
 	float EdgeFade = smoothstep(0.02f, 0.35f, MossThickness.SampleLevel(LinearWrapSampler, DestinationUV, 0).x);
 #endif
-	float ShootHeightBudget = MOSS_SHOOT_RELIEF_FRACTION
-		* (max(CushionHeight, 0.0f) + max(MatureHeight, 0.0f) * ColonyAge) * EdgeFade;
+	// Leaf aspect follows its own lateral scale, not a small fraction of already
+	// shallow cushion bulk. Final HeightScale still multiplies the complete delta once.
+	float ShootHeightBudget = MOSS_SHOOT_RELIEF_FRACTION * MOSS_UV_TO_HEIGHT
+		/ float(ShootDim) * EdgeFade;
 	float MicroRelief = ShootProfile * ShootLength * ShootHeightBudget * saturate(ColonyAge * 2.0f) * (1.0f - 0.45f * Softness) * Plump;
 	MicroRelief *= lerp(0.75f, 1.0f, Hab.a);
 	float CombinedHeight = (Meso + MicroRelief) * ColonyMask;
@@ -525,7 +539,11 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	{
 		float Grow = 1.0f - exp(-0.028f * (0.25f + 0.75f * LocalMoisture) * (0.40f + 0.60f * LocalHabitat));
 		float Biomass = saturate(PreviousState.z + (1.0f - PreviousState.z) * Grow - (1.0f - LocalMoisture) * 0.002f * PreviousState.z);
-		OutChemical[Pixel] = float2(LocalMoisture, Center.y);
+		// Activation is retained separately for diagnostics. Established cover must
+		// mature too: freezing Center.y permanently etched the initial seed outline
+		// inside later growth and fed those false boundaries into both cushion solvers.
+		float EstablishedCover = lerp(Center.y, 1.0f, Grow);
+		OutChemical[Pixel] = float2(LocalMoisture, EstablishedCover);
 		OutGrowthState[Pixel] = float4(PreviousState.x, PreviousState.y, Biomass, LocalMoisture);
 		return;
 	}
@@ -560,7 +578,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	}
 	if (BestRoot != 0u)
 	{
-		float NewB = lerp(0.15f, 0.5f, saturate(LocalHabitat * (0.5f + 0.5f * LocalMoisture)));
+		// Enter at the same activation threshold; moisture controls maturation speed,
+				// rather than assigning each newly reached pixel a permanent coverage band.
+				float NewB = MOSS_ACTIVE_B;
 		OutChemical[Pixel] = float2(LocalMoisture, NewB);
 		OutGrowthState[Pixel] = float4(float(IterationIndex + 1u), float(BestRoot), 0.05f, LocalMoisture);
 	}
@@ -785,6 +805,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	float2 UV = (float2(Pixel) + 0.5f) / float2(OutputSize);
 	float HC = SubstrateHeight.Load(int3(Pixel, 0));
 	float Radius = min(max(CushionSize, 0.0f) * 0.5f, 0.5f);
+	float LiftBudget = max(CushionHeight, 0.0f) + max(MatureHeight, 0.0f);
 	float Lift = 0.0f;
 	const float2 Axes[4] = {float2(1,0), float2(0,1), normalize(float2(1,1)), normalize(float2(1,-1))};
 	[unroll] for (int Axis = 0; Axis < 4; ++Axis)
@@ -799,7 +820,13 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 			float HA = SubstrateHeight.SampleLevel(LinearWrapSampler, A, 0);
 			float HB = SubstrateHeight.SampleLevel(LinearWrapSampler, B, 0);
 			float BankLift = max(0.0f, min(HA, HB) - HC);
-			if (isfinite(BankLift)) { Lift = max(Lift, BankLift * Support); }
+			if (isfinite(BankLift))
+						{
+							// A deep rock crevice is not an unlimited source of moss thickness.
+							// Smoothly bound extra lift by the authored bulk budget before scaling.
+							float BoundedLift = LiftBudget * BankLift / max(LiftBudget + BankLift, 1.0e-6f);
+							Lift = max(Lift, BoundedLift * Support);
+						}
 		}
 	}
 	// Amount and the center's authored gate are applied once by SurfacingApply.

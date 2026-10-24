@@ -101,11 +101,11 @@ namespace MixtormatGpuCompositor
 					}
 				}
 				const uint64 DependencyKey = DependencyHasher.Get();
-				// Stable procedural colony seeding and shared visible-leaf evaluation.
+				// Maturing cover, varied seed architecture and footprint-scaled leaf relief.
 				MixtormatComposeHash::FHasher FieldHasher;
 				FieldHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.FieldKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657036ull) | 1ull;
+					MixtormatComposeHash::Combine(FieldHasher.Get(), DependencyKey), 0x4d6f737344657037ull) | 1ull;
 				MixtormatComposeHash::FHasher SimulationHasher;
 				SimulationHasher.SkipTopLevel = {
 					TEXT("HeightScale"), TEXT("bNormalizeHeight"), TEXT("Coverage"), TEXT("CushionMode"), TEXT("CushionSize"),
@@ -117,7 +117,7 @@ namespace MixtormatGpuCompositor
 										TEXT("WetDarkening"), TEXT("ColonyVariation"), TEXT("LeafVariation"), TEXT("TipColor"), TEXT("Damage")};
 				SimulationHasher.Struct(FMixtormatMoss::StaticStruct(), &S);
 				Out.SimulationKey = MixtormatComposeHash::Combine(
-					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657035ull) | 1ull;
+					MixtormatComposeHash::Combine(SimulationHasher.Get(), DependencyKey), 0x4d6f737344657036ull) | 1ull;
 			}
 			return;
 		}

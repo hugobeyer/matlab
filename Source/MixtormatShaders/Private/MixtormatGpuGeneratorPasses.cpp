@@ -5278,6 +5278,8 @@ void AddGeneratorLayerPasses(FMixtormatComposeContext& Ctx,
 			P->OutputSize = Size;
 			P->HeightScale = Mo.HeightScale;
 			P->CushionSize = Mo.CushionSize;
+			P->CushionHeight = Mo.CushionHeight;
+			P->MatureHeight = Mo.MatureHeight;
 			P->SubstrateHeight = ResolveSubstrateHeight(Ctx, LayerCtx, AnalysisDelta, BelowHeight);
 			P->ScaledMossHeight = Raw.Height;
 			P->GrowthCoverage = (*Fields)[1];
